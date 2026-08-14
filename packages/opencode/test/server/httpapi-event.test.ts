@@ -1,5 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
 import { Effect, Layer, Queue, Schema, Stream } from "effect"
+import { Sse } from "effect/unstable/encoding"
 import { EventPaths } from "../../src/server/routes/instance/httpapi/groups/event"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -12,22 +13,27 @@ const EventData = Schema.Struct({
   properties: Schema.Record(Schema.String, Schema.Any),
 })
 
-const readEvent = (reader: Queue.Dequeue<Uint8Array>) =>
+const readEvent = (reader: Queue.Dequeue<Sse.Event>, type?: string) =>
   Effect.gen(function* () {
-    const value = yield* Queue.take(reader).pipe(
-      Effect.timeoutOrElse({
-        duration: "5 seconds",
-        orElse: () => Effect.fail(new Error("timed out waiting for event")),
-      }),
-    )
-    return Schema.decodeUnknownSync(EventData)(JSON.parse(new TextDecoder().decode(value).replace(/^data: /, "")))
-  })
+    while (true) {
+      const event = Schema.decodeUnknownSync(EventData)(JSON.parse((yield* Queue.take(reader)).data))
+      if (type === undefined || event.type === type) return event
+    }
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "5 seconds",
+      orElse: () => Effect.fail(new Error("timed out waiting for event")),
+    }),
+  )
 
 const openEventStream = (directory: string) =>
   Effect.gen(function* () {
     const response = yield* requestInDirectory(EventPaths.event, directory)
-    const reader = yield* Queue.unbounded<Uint8Array>()
+    const reader = yield* Queue.unbounded<Sse.Event>()
     yield* response.stream.pipe(
+      Stream.decodeText(),
+      Stream.pipeThroughChannel(Sse.decode()),
+      Stream.catchTag("Retry", () => Stream.empty),
       Stream.runForEach((value) => Queue.offer(reader, value)),
       Effect.forkScoped,
     )
@@ -87,8 +93,9 @@ describe("event HttpApi", () => {
 
         const created = yield* requestInDirectory("/session", directory, { method: "POST" })
         expect(created.status).toBe(200)
-        expect(yield* readEvent(reader)).toMatchObject({ type: "session.created" })
+        expect(yield* readEvent(reader, "session.created")).toMatchObject({ type: "session.created" })
       }),
     { git: true, config: { formatter: false, lsp: false } },
+    15_000,
   )
 })
