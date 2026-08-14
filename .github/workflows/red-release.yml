@@ -26,7 +26,9 @@ jobs:
           token: ${{ secrets.RELEASE_PAT }}
           fetch-depth: 0
           ref: dev
-      - uses: ./.github/actions/setup-bun
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
       - name: Validate requested version
         env:
           VERSION: ${{ inputs.version }}
@@ -35,7 +37,7 @@ jobs:
             echo "::error::version must be exact semver (major.minor.patch)"
             exit 1
           fi
-          node -e 'const semver = require("semver"); const current = require("./package.json").version; if (!semver.gt(process.env.VERSION, current)) { console.error(`requested ${process.env.VERSION} must be newer than ${current}`); process.exit(1) }'
+          node -e 'const requested = process.env.VERSION.split(".").map(Number); const currentVersion = require("./package.json").version; const current = currentVersion.split(".").map(Number); const changed = requested.findIndex((value, index) => value !== current[index]); if (changed === -1 || requested[changed] < current[changed]) { console.error(`requested ${process.env.VERSION} must be newer than ${currentVersion}`); process.exit(1) }'
       - name: Update version surfaces
         run: bun script/red-version.ts "${{ inputs.version }}"
       - name: Open or refresh Version PR
@@ -48,7 +50,7 @@ jobs:
           git checkout -B red-version-pr
           git add package.json packages/opencode/package.json
           git commit -m "chore(release): ${VERSION}"
-          git push --force-with-lease origin HEAD:red-version-pr
+          HUSKY=0 git push --force-with-lease origin HEAD:red-version-pr
           number="$(gh pr list --head red-version-pr --state open --json number --jq '.[0].number')"
           if [ -n "$number" ]; then
             gh pr edit "$number" --title "chore(release): ${VERSION}" --body "Publish Redcode ${VERSION} after this PR merges."
@@ -67,6 +69,9 @@ jobs:
           token: ${{ secrets.RELEASE_PAT }}
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
       - name: Tag the reviewed version
         env:
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
@@ -80,4 +85,4 @@ jobs:
             exit 0
           fi
           git tag -a "v${version}" "$MERGE_SHA" -m "Redcode ${version}"
-          git push origin "v${version}"
+          HUSKY=0 git push origin "v${version}"
