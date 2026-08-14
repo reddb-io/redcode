@@ -681,6 +681,33 @@ const adaptGroup17 = (raw: RawClient["server.projectCopy"]) => ({
   refresh: Endpoint17_2(raw),
 })
 
+type Endpoint18_0Request = Parameters<RawClient["server.hook"]["hook.status"]>[0]
+type Endpoint18_0Input = { readonly location?: Endpoint18_0Request["query"]["location"] }
+const Endpoint18_0 = (raw: RawClient["server.hook"]) => (input?: Endpoint18_0Input) =>
+  raw["hook.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint18_1Request = Parameters<RawClient["server.hook"]["hook.trust"]>[0]
+type Endpoint18_1Input = { readonly location?: Endpoint18_1Request["query"]["location"] }
+const Endpoint18_1 = (raw: RawClient["server.hook"]) => (input?: Endpoint18_1Input) =>
+  raw["hook.trust"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint18_2Request = Parameters<RawClient["server.hook"]["hook.revoke"]>[0]
+type Endpoint18_2Input = { readonly location?: Endpoint18_2Request["query"]["location"] }
+const Endpoint18_2 = (raw: RawClient["server.hook"]) => (input?: Endpoint18_2Input) =>
+  raw["hook.revoke"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint18_3Request = Parameters<RawClient["server.hook"]["hook.import"]>[0]
+type Endpoint18_3Input = { readonly location?: Endpoint18_3Request["query"]["location"] }
+const Endpoint18_3 = (raw: RawClient["server.hook"]) => (input?: Endpoint18_3Input) =>
+  raw["hook.import"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup18 = (raw: RawClient["server.hook"]) => ({
+  status: Endpoint18_0(raw),
+  trust: Endpoint18_1(raw),
+  revoke: Endpoint18_2(raw),
+  import: Endpoint18_3(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -700,6 +727,7 @@ const adaptClient = (raw: RawClient) => ({
   questions: adaptGroup15(raw["server.question"]),
   references: adaptGroup16(raw["server.reference"]),
   projectCopies: adaptGroup17(raw["server.projectCopy"]),
+  hooks: adaptGroup18(raw["server.hook"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

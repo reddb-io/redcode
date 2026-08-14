@@ -11227,6 +11227,957 @@ export type ExperimentalWorkspaceWarpResponses = {
 export type ExperimentalWorkspaceWarpResponse =
   ExperimentalWorkspaceWarpResponses[keyof ExperimentalWorkspaceWarpResponses]
 
+export type RedskilledStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    scope?: "project" | "host"
+  }
+  url: "/redskilled"
+}
+
+export type RedskilledStatusErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledStatusError = RedskilledStatusErrors[keyof RedskilledStatusErrors]
+
+export type RedskilledStatusResponses = {
+  /**
+   * Native redskilled integration status
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledStatusResponse = RedskilledStatusResponses[keyof RedskilledStatusResponses]
+
+export type RedskilledConsentData = {
+  body?: {
+    decision: "accepted" | "refused"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/consent"
+}
+
+export type RedskilledConsentErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledConsentError = RedskilledConsentErrors[keyof RedskilledConsentErrors]
+
+export type RedskilledConsentResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledConsentResponse = RedskilledConsentResponses[keyof RedskilledConsentResponses]
+
+export type RedskilledProjectResizeData = {
+  body?: {
+    target: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/project/resize"
+}
+
+export type RedskilledProjectResizeErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledProjectResizeError = RedskilledProjectResizeErrors[keyof RedskilledProjectResizeErrors]
+
+export type RedskilledProjectResizeResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledProjectResizeResponse = RedskilledProjectResizeResponses[keyof RedskilledProjectResizeResponses]
+
+export type RedskilledProjectStopData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/project/stop"
+}
+
+export type RedskilledProjectStopErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledProjectStopError = RedskilledProjectStopErrors[keyof RedskilledProjectStopErrors]
+
+export type RedskilledProjectStopResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledProjectStopResponse = RedskilledProjectStopResponses[keyof RedskilledProjectStopResponses]
+
+export type RedskilledWorkerStopData = {
+  body?: {
+    worker: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/worker/stop"
+}
+
+export type RedskilledWorkerStopErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledWorkerStopError = RedskilledWorkerStopErrors[keyof RedskilledWorkerStopErrors]
+
+export type RedskilledWorkerStopResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledWorkerStopResponse = RedskilledWorkerStopResponses[keyof RedskilledWorkerStopResponses]
+
+export type RedskilledWorkerRecycleData = {
+  body?: {
+    worker: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/worker/recycle"
+}
+
+export type RedskilledWorkerRecycleErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledWorkerRecycleError = RedskilledWorkerRecycleErrors[keyof RedskilledWorkerRecycleErrors]
+
+export type RedskilledWorkerRecycleResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledWorkerRecycleResponse = RedskilledWorkerRecycleResponses[keyof RedskilledWorkerRecycleResponses]
+
+export type RedskilledWorkerSteerData = {
+  body?: {
+    worker: string
+    text: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/worker/steer"
+}
+
+export type RedskilledWorkerSteerErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledWorkerSteerError = RedskilledWorkerSteerErrors[keyof RedskilledWorkerSteerErrors]
+
+export type RedskilledWorkerSteerResponses = {
+  /**
+   * Success
+   */
+  200: {
+    lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    consent: "unknown" | "accepted" | "refused"
+    scope: "project" | "host"
+    native: true
+    activation?: {
+      eligible: boolean
+      project: string
+      runner: string
+      target: number
+      standing: boolean
+      config: string
+    }
+    payload?: {
+      version: 1
+      generated_at: string
+      daemon: {
+        pid: number
+        daemon_version: string
+        protocol_version: number
+        started_at: string
+      }
+      staleness: {
+        sampled_at: string
+        age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        stale: boolean
+        measured_worker_count: number
+        unmeasured_workers: Array<string>
+        reason: string
+      }
+      host: {
+        worker_count: number
+        project_count: number
+        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        measured_worker_count: number
+        ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        ceiling: {
+          memory_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          worker_count: number
+          interactive_reservation?: number
+        }
+      }
+      known_projects?: Array<string>
+      registered_projects?: Array<string>
+      workers: Array<{
+        worker_id: string
+        project_label: string
+        pid: number
+        started_at: string
+        uptime_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        vitals: {
+          rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          sampled_at: string
+          age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          fresh: boolean
+          rss_source?: string
+        }
+        budget: {
+          declared: string
+          bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          enforceable: boolean
+        }
+        log: {
+          last_line: string
+          published_at: string
+        }
+        display?: {
+          runner: string
+          model: string
+          effort: string
+          origin: string
+          issue: string
+          phase: string
+          step: string
+          phase_index: number
+          phase_total: number
+          failed: boolean
+          heartbeat: string
+          started_at: string
+          context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          eta: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          added: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          removed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tokens: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          tools: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          reasoning: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }>
+    }
+    render?: {
+      line: string
+      degraded: boolean
+      stale: boolean
+      generated_at: string
+    }
+    last_success_at?: string
+    error?: string
+  }
+}
+
+export type RedskilledWorkerSteerResponse = RedskilledWorkerSteerResponses[keyof RedskilledWorkerSteerResponses]
+
+export type RedskilledWorkerSteerStatusData = {
+  body?: {
+    worker: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/redskilled/worker/steer/status"
+}
+
+export type RedskilledWorkerSteerStatusErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RedskilledWorkerSteerStatusError =
+  RedskilledWorkerSteerStatusErrors[keyof RedskilledWorkerSteerStatusErrors]
+
+export type RedskilledWorkerSteerStatusResponses = {
+  /**
+   * Success
+   */
+  200: {
+    worker: string
+    status: "none" | "pending" | "consumed"
+    iteration?: number
+  }
+}
+
+export type RedskilledWorkerSteerStatusResponse =
+  RedskilledWorkerSteerStatusResponses[keyof RedskilledWorkerSteerStatusResponses]
+
 export type V2HealthGetData = {
   body?: never
   path?: never
@@ -13584,6 +14535,244 @@ export type V2ProjectCopyRefreshResponses = {
 }
 
 export type V2ProjectCopyRefreshResponse = V2ProjectCopyRefreshResponses[keyof V2ProjectCopyRefreshResponses]
+
+export type V2HookStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/hook"
+}
+
+export type V2HookStatusErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2HookStatusError = V2HookStatusErrors[keyof V2HookStatusErrors]
+
+export type V2HookStatusResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: {
+      trust: {
+        trusted: boolean
+        fingerprint: string
+      }
+      definitions: Array<{
+        id: string
+        event:
+          | "SessionStart"
+          | "UserPromptSubmit"
+          | "PreToolUse"
+          | "PermissionRequest"
+          | "PostToolUse"
+          | "PostToolUseFailure"
+          | "Notification"
+          | "SubagentStart"
+          | "SubagentStop"
+          | "Stop"
+          | "PreCompact"
+          | "InstructionsLoaded"
+          | "ConfigChange"
+          | "WorktreeCreate"
+          | "WorktreeRemove"
+          | "MessageDisplay"
+          | "Setup"
+          | "PermissionDenied"
+          | "TaskCreated"
+          | "TaskCompleted"
+          | "TeammateIdle"
+          | "DirectoryAdded"
+          | "SessionEnd"
+          | "Elicitation"
+          | "ElicitationResult"
+        matcher?: string
+        handler:
+          | {
+              timeout?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+              statusMessage?: string
+              type: "command"
+              command: string
+              async?: boolean
+            }
+          | {
+              timeout?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+              statusMessage?: string
+              type: "http"
+              url: string
+              headers?: {
+                [key: string]: string
+              }
+            }
+          | {
+              timeout?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+              statusMessage?: string
+              type: "mcp_tool"
+              server: string
+              tool: string
+              arguments?: {
+                [key: string]: unknown
+              }
+            }
+          | {
+              timeout?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+              statusMessage?: string
+              type: "prompt"
+              prompt: string
+              model?: string
+            }
+          | {
+              timeout?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+              statusMessage?: string
+              type: "agent"
+              prompt: string
+              agent?: string
+              model?: string
+            }
+        source: string
+        support: "active" | "unsupported" | "untrusted"
+        reason?: string
+      }>
+    }
+  }
+}
+
+export type V2HookStatusResponse = V2HookStatusResponses[keyof V2HookStatusResponses]
+
+export type V2HookRevokeData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/hook/trust"
+}
+
+export type V2HookRevokeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2HookRevokeError = V2HookRevokeErrors[keyof V2HookRevokeErrors]
+
+export type V2HookRevokeResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: {
+      trusted: boolean
+      fingerprint: string
+    }
+  }
+}
+
+export type V2HookRevokeResponse = V2HookRevokeResponses[keyof V2HookRevokeResponses]
+
+export type V2HookTrustData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/hook/trust"
+}
+
+export type V2HookTrustErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2HookTrustError = V2HookTrustErrors[keyof V2HookTrustErrors]
+
+export type V2HookTrustResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: {
+      trusted: boolean
+      fingerprint: string
+    }
+  }
+}
+
+export type V2HookTrustResponse = V2HookTrustResponses[keyof V2HookTrustResponses]
+
+export type V2HookImportData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/hook/import/claude"
+}
+
+export type V2HookImportErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2HookImportError = V2HookImportErrors[keyof V2HookImportErrors]
+
+export type V2HookImportResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: {
+      imported: number
+      target: string
+      restart_required: boolean
+    }
+  }
+}
+
+export type V2HookImportResponse = V2HookImportResponses[keyof V2HookImportResponses]
 
 export type PtyConnectData = {
   body?: never

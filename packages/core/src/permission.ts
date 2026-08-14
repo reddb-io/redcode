@@ -10,6 +10,7 @@ import { SessionV2 } from "./session"
 import { SessionStore } from "./session/store"
 import { Wildcard } from "./util/wildcard"
 import { PermissionSaved } from "./permission/saved"
+import { HookV2 } from "./hook"
 
 export { Effect, Rule, Ruleset } from "@opencode-ai/schema/permission"
 const missingAgentPermissions: Permission.Ruleset = [{ action: "*", resource: "*", effect: "deny" }]
@@ -114,6 +115,7 @@ const layer = Layer.effect(
     const agents = yield* AgentV2.Service
     const sessions = yield* SessionStore.Service
     const saved = yield* PermissionSaved.Service
+    const hooks = yield* HookV2.Service
     const pending = new Map<ID, Pending>()
 
     yield* EffectRuntime.addFinalizer(() =>
@@ -158,6 +160,16 @@ const layer = Layer.effect(
       const all = [...rules, ...(yield* savedRules())]
       const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
       const effect: Permission.Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
+      if (effect !== "ask") return { effect, rules: all }
+      const hook = yield* hooks.run({
+        event: "PermissionRequest",
+        matcher: HookV2.toolName(input.action),
+        session_id: input.sessionID,
+        tool_name: HookV2.toolName(input.action),
+        tool_input: { resources: input.resources, metadata: input.metadata },
+      })
+      if (!hook.continue || hook.decision === "deny") return { effect: "deny" as const, rules: all }
+      if (hook.decision === "allow") return { effect: "allow" as const, rules: all }
       return { effect, rules: all }
     })
 
@@ -306,5 +318,5 @@ export const locationLayer = layer.pipe(Layer.provideMerge(AgentV2.locationLayer
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [EventV2.node, Location.node, AgentV2.node, SessionStore.node, PermissionSaved.node],
+  deps: [EventV2.node, Location.node, AgentV2.node, SessionStore.node, PermissionSaved.node, HookV2.node],
 })

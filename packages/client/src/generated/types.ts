@@ -2805,3 +2805,136 @@ export type ProjectCopiesRefreshInput = {
 }
 
 export type ProjectCopiesRefreshOutput = void
+
+export type HooksStatusInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type HooksStatusOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly trust: { readonly trusted: boolean; readonly fingerprint: string }
+    readonly definitions: ReadonlyArray<{
+      readonly id: string
+      readonly event:
+        | "SessionStart"
+        | "UserPromptSubmit"
+        | "PreToolUse"
+        | "PermissionRequest"
+        | "PostToolUse"
+        | "PostToolUseFailure"
+        | "Notification"
+        | "SubagentStart"
+        | "SubagentStop"
+        | "Stop"
+        | "PreCompact"
+        | "InstructionsLoaded"
+        | "ConfigChange"
+        | "WorktreeCreate"
+        | "WorktreeRemove"
+        | "MessageDisplay"
+        | "Setup"
+        | "PermissionDenied"
+        | "TaskCreated"
+        | "TaskCompleted"
+        | "TeammateIdle"
+        | "DirectoryAdded"
+        | "SessionEnd"
+        | "Elicitation"
+        | "ElicitationResult"
+      readonly matcher?: string
+      readonly handler:
+        | {
+            readonly timeout?: number | "Infinity" | "-Infinity" | "NaN"
+            readonly statusMessage?: string
+            readonly type: "command"
+            readonly command: string
+            readonly async?: boolean
+          }
+        | {
+            readonly timeout?: number | "Infinity" | "-Infinity" | "NaN"
+            readonly statusMessage?: string
+            readonly type: "http"
+            readonly url: string
+            readonly headers?: { readonly [x: string]: string }
+          }
+        | {
+            readonly timeout?: number | "Infinity" | "-Infinity" | "NaN"
+            readonly statusMessage?: string
+            readonly type: "mcp_tool"
+            readonly server: string
+            readonly tool: string
+            readonly arguments?: { readonly [x: string]: JsonValue }
+          }
+        | {
+            readonly timeout?: number | "Infinity" | "-Infinity" | "NaN"
+            readonly statusMessage?: string
+            readonly type: "prompt"
+            readonly prompt: string
+            readonly model?: string
+          }
+        | {
+            readonly timeout?: number | "Infinity" | "-Infinity" | "NaN"
+            readonly statusMessage?: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string
+            readonly model?: string
+          }
+      readonly source: string
+      readonly support: "active" | "unsupported" | "untrusted"
+      readonly reason?: string
+    }>
+  }
+}
+
+export type HooksTrustInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type HooksTrustOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: { readonly trusted: boolean; readonly fingerprint: string }
+}
+
+export type HooksRevokeInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type HooksRevokeOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: { readonly trusted: boolean; readonly fingerprint: string }
+}
+
+export type HooksImportInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type HooksImportOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: { readonly imported: number; readonly target: string; readonly restart_required: boolean }
+}

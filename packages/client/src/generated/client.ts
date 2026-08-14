@@ -112,6 +112,14 @@ import type {
   ProjectCopiesRemoveOutput,
   ProjectCopiesRefreshInput,
   ProjectCopiesRefreshOutput,
+  HooksStatusInput,
+  HooksStatusOutput,
+  HooksTrustInput,
+  HooksTrustOutput,
+  HooksRevokeInput,
+  HooksRevokeOutput,
+  HooksImportInput,
+  HooksImportOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -374,7 +382,7 @@ export function make(options: ClientOptions) {
             path: `/api/session/${encodeURIComponent(input.sessionID)}/prompt`,
             body: { id: input["id"], prompt: input["prompt"], delivery: input["delivery"], resume: input["resume"] },
             successStatus: 200,
-            declaredStatuses: [409, 404, 400, 401],
+            declaredStatuses: [409, 400, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -983,6 +991,56 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [400, 401],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    hooks: {
+      status: (input?: HooksStatusInput, requestOptions?: RequestOptions) =>
+        request<HooksStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/hook`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      trust: (input?: HooksTrustInput, requestOptions?: RequestOptions) =>
+        request<HooksTrustOutput>(
+          {
+            method: "POST",
+            path: `/api/hook/trust`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      revoke: (input?: HooksRevokeInput, requestOptions?: RequestOptions) =>
+        request<HooksRevokeOutput>(
+          {
+            method: "DELETE",
+            path: `/api/hook/trust`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      import: (input?: HooksImportInput, requestOptions?: RequestOptions) =>
+        request<HooksImportOutput>(
+          {
+            method: "POST",
+            path: `/api/hook/import/claude`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
           },
           requestOptions,
         ),

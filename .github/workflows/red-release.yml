@@ -1,0 +1,83 @@
+name: red-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact Redcode semver to propose"
+        required: true
+        type: string
+  pull_request:
+    branches: [dev]
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  version-pr:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'reddb-io/redcode'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0
+          ref: dev
+      - uses: ./.github/actions/setup-bun
+      - name: Validate requested version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be exact semver (major.minor.patch)"
+            exit 1
+          fi
+          node -e 'const semver = require("semver"); const current = require("./package.json").version; if (!semver.gt(process.env.VERSION, current)) { console.error(`requested ${process.env.VERSION} must be newer than ${current}`); process.exit(1) }'
+      - name: Update version surfaces
+        run: bun script/red-version.ts "${{ inputs.version }}"
+      - name: Open or refresh Version PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "redcode-release[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B red-version-pr
+          git add package.json packages/opencode/package.json
+          git commit -m "chore(release): ${VERSION}"
+          git push --force-with-lease origin HEAD:red-version-pr
+          number="$(gh pr list --head red-version-pr --state open --json number --jq '.[0].number')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "chore(release): ${VERSION}" --body "Publish Redcode ${VERSION} after this PR merges."
+            exit 0
+          fi
+          gh pr create --base dev --head red-version-pr --title "chore(release): ${VERSION}" --body "Publish Redcode ${VERSION} after this PR merges."
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'red-version-pr' && github.repository == 'reddb-io/redcode'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: Tag the reviewed version
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          bun script/red-version.ts "$version" --check
+          git config user.name "redcode-release[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "v${version}" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "v${version}")" = "$MERGE_SHA"
+            exit 0
+          fi
+          git tag -a "v${version}" "$MERGE_SHA" -m "Redcode ${version}"
+          git push origin "v${version}"

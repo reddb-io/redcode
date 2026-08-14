@@ -308,6 +308,11 @@ export function createTuiApiAdapters(input: Input): Omit<TuiPluginApi, "lifecycl
         throw new Error("slots.register is only available in plugin context")
       },
     },
+    statusline: {
+      register() {
+        throw new Error("statusline.register is only available in plugin context")
+      },
+    },
     plugins: {
       list() {
         return []

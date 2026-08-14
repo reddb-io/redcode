@@ -1,7 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode",
-  "description": "AI-powered development tool",
+  "name": "@reddb-io/redcode-workspace",
+  "version": "0.0.0",
+  "description": "RedDB's AI-powered development tool",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.14",
@@ -119,7 +120,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/anomalyco/opencode"
+    "url": "https://github.com/reddb-io/redcode"
   },
   "license": "MIT",
   "prettier": {
