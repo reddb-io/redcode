@@ -5,7 +5,6 @@ import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { FileComponentProvider } from "@opencode-ai/ui/context/file"
 import { File } from "@opencode-ai/session-ui/file"
 import { Font } from "@opencode-ai/ui/font"
-import { Splash } from "@opencode-ai/ui/logo"
 import { ThemeProvider } from "@opencode-ai/ui/theme/context"
 import { MetaProvider } from "@solidjs/meta"
 import {
@@ -46,7 +45,7 @@ import { ServerSyncProvider, useServerSync } from "@/context/server-sync"
 import { GlobalProvider, useGlobal } from "@/context/global"
 import { HighlightsProvider } from "@/context/highlights"
 import { LanguageProvider, type Locale, useLanguage } from "@/context/language"
-import { LayoutProvider } from "@/context/layout"
+import { LayoutProvider, useLayout } from "@/context/layout"
 import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
@@ -64,6 +63,7 @@ import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
 import { legacySessionHref, legacySessionServer, requireServerKey, sessionHref } from "./utils/session-route"
 import { createSessionLineage } from "@/pages/session/session-lineage"
+import { RedCodeWordmark } from "@/components/redcode-wordmark"
 
 import { SessionPage, SessionRouteErrorBoundary, TargetSessionRouteContent } from "@/pages/session"
 import { NewHome } from "@/pages/home"
@@ -490,11 +490,41 @@ function ConnectionGate(props: ParentProps<{ disableHealthCheck?: boolean; start
         </Show>
       </Show>
       <Show when={loading()}>
-        <div class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background-base">
-          <Splash class="w-16 h-20 opacity-50 animate-pulse" />
-        </div>
+        <ConnectionShell loading />
       </Show>
     </>
+  )
+}
+
+function DraftPanelSkeleton() {
+  return (
+    <div
+      data-component="chat-shell-skeleton"
+      class="m-2 flex min-h-0 flex-1 self-stretch flex-col overflow-hidden rounded-[10px] bg-v2-background-bg-base"
+      aria-hidden="true"
+    >
+      <div class="flex-1" />
+      <div class="mx-auto w-full max-w-[1000px] px-3 pb-3">
+        <div class="min-h-32 animate-pulse rounded-[12px] border border-v2-border-border-weak bg-v2-background-bg-layer-01 motion-reduce:animate-none" />
+      </div>
+    </div>
+  )
+}
+
+function ConnectionShell(props: ParentProps<{ loading?: boolean }>) {
+  return (
+    <div class="fixed inset-0 z-[9999] flex flex-col bg-v2-background-bg-deep">
+      <header class="flex h-9 shrink-0 items-center px-4" data-tauri-drag-region>
+        <RedCodeWordmark class="h-6 px-1.5" />
+      </header>
+      <main class="flex min-h-0 flex-1 flex-col">
+        <Show when={!props.loading} fallback={<DraftPanelSkeleton />}>
+          <div class="m-2 flex min-h-0 flex-1 self-stretch flex-col overflow-hidden rounded-[10px] bg-v2-background-bg-base">
+            {props.children}
+          </div>
+        </Show>
+      </main>
+    </div>
   )
 }
 
@@ -510,38 +540,39 @@ function ConnectionError(props: { onRetry?: () => void; onServerSelected?: (key:
   onCleanup(() => clearInterval(timer))
 
   return (
-    <div class="h-dvh w-screen flex flex-col items-center justify-center bg-background-base gap-6 p-6">
-      <div class="flex flex-col items-center max-w-md text-center">
-        <Splash class="w-12 h-15 mb-4" />
-        <p class="text-14-regular text-text-base">
-          {unreachable()[0]}
-          <span class="text-text-strong font-medium">{name()}</span>
-          {unreachable()[1]}
-        </p>
-        <p class="mt-1 text-12-regular text-text-weak">{language.t("app.server.retrying")}</p>
-      </div>
-      <Show when={others().length > 0}>
-        <div class="flex flex-col gap-2 w-full max-w-sm">
-          <span class="text-12-regular text-text-base text-center">{language.t("app.server.otherServers")}</span>
-          <div class="flex flex-col gap-1 bg-surface-base rounded-lg p-2">
-            <For each={others()}>
-              {(conn) => {
-                const key = ServerConnection.key(conn)
-                return (
-                  <button
-                    type="button"
-                    class="flex items-center gap-3 w-full px-3 py-2 rounded-md hover:bg-surface-raised-base-hover transition-colors text-left"
-                    onClick={() => props.onServerSelected?.(key)}
-                  >
-                    <span class="text-14-regular text-text-strong truncate">{serverName(conn)}</span>
-                  </button>
-                )
-              }}
-            </For>
-          </div>
+    <ConnectionShell>
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 p-6">
+        <div class="flex max-w-md flex-col items-center text-center">
+          <p class="text-14-regular text-text-base">
+            {unreachable()[0]}
+            <span class="text-text-strong font-medium">{name()}</span>
+            {unreachable()[1]}
+          </p>
+          <p class="mt-1 text-12-regular text-text-weak">{language.t("app.server.retrying")}</p>
         </div>
-      </Show>
-    </div>
+        <Show when={others().length > 0}>
+          <div class="flex w-full max-w-sm flex-col gap-2">
+            <span class="text-12-regular text-text-base text-center">{language.t("app.server.otherServers")}</span>
+            <div class="flex flex-col gap-1 rounded-lg bg-surface-base p-2">
+              <For each={others()}>
+                {(conn) => {
+                  const key = ServerConnection.key(conn)
+                  return (
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-surface-raised-base-hover"
+                      onClick={() => props.onServerSelected?.(key)}
+                    >
+                      <span class="text-14-regular text-text-strong truncate">{serverName(conn)}</span>
+                    </button>
+                  )
+                }}
+              </For>
+            </div>
+          </div>
+        </Show>
+      </div>
+    </ConnectionShell>
   )
 }
 
@@ -636,12 +667,51 @@ function Routes(props: { serverScoped?: JSX.Element }) {
         </Route>
       </Route>
       <Show when={settings.general.newLayoutDesigns()}>
-        <Route path="/" component={NewHome} />
+        <Route path="/" component={NewEntryRoute} />
         <Route path="/:dir/session/:id" component={NewLayoutLegacySessionRedirect} />
         <Route path="/server/:serverKey/session/:id" component={TargetSessionRoute} />
       </Show>
       <Route path="/new-session" component={DraftRoute} />
     </>
+  )
+}
+
+function NewEntryRoute() {
+  const [search] = useSearchParams<{ view?: string }>()
+  const global = useGlobal()
+  const layout = useLayout()
+  const server = useServer()
+  const tabs = useTabs()
+  let started = false
+  const target = createMemo(() => {
+    const selection = layout.home.selection()
+    const conn =
+      global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
+      server.current ??
+      global.servers.list()[0]
+    if (!conn) return undefined
+    const projects = global.ensureServerCtx(conn).projects
+    const project =
+      projects.list().find((item) => item.worktree === selection.directory) ??
+      projects.list().find((item) => item.worktree === projects.last()) ??
+      projects.list()[0]
+    if (!project) return undefined
+    return { server: ServerConnection.key(conn), directory: project.worktree }
+  })
+
+  createEffect(() => {
+    if (search.view === "home") return
+    if (!tabs.ready() || started) return
+    const draft = target()
+    if (!draft) return
+    started = true
+    void tabs.newDraft(draft, "")
+  })
+
+  return (
+    <Show when={search.view === "home" || (tabs.ready() && !target())} fallback={<DraftPanelSkeleton />}>
+      <NewHome />
+    </Show>
   )
 }
 

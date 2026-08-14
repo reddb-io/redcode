@@ -39,6 +39,7 @@ import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
 import { newTabTooltipKeybind } from "./command-tooltip-keybind"
 import { normalizeSessionInfo } from "@/utils/session"
+import { RedCodeWordmark } from "./redcode-wordmark"
 
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
@@ -372,6 +373,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 <Show when={windows() || linux()}>
                   <WindowsAppMenu command={command} platform={platform} variant="v2" />
                 </Show>
+                <RedCodeWordmark class="h-6 px-1.5" onClick={openNewTab} />
                 <TooltipV2
                   placement="bottom"
                   value={
@@ -449,6 +451,10 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
               <Show when={windows() || linux()}>
                 <WindowsAppMenu command={command} platform={platform} />
               </Show>
+              <RedCodeWordmark
+                class="mx-2 h-6 px-1.5"
+                onClick={() => navigate(params.dir ? `/${params.dir}/session` : "/")}
+              />
               <Show when={mac()}>
                 <div class="xl:hidden w-10 shrink-0 flex items-center justify-center">
                   <IconButton

@@ -193,6 +193,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
     plugin: {
       add: (input) => plugin.add(PluginV2.ID.make(input.id), input.effect),
       remove: (id) => plugin.remove(PluginV2.ID.make(id)),
+      list: () => plugin.list(),
     },
     reference: {
       reload: reference.reload,

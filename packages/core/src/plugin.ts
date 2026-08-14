@@ -15,6 +15,7 @@ import { PluginHost } from "./plugin/host"
 import { Reference } from "./reference"
 import { SkillV2 } from "./skill"
 import { State } from "./state"
+import { RuntimeInvariant } from "./invariant"
 
 export const ID = Plugin.ID
 export type ID = typeof ID.Type
@@ -24,6 +25,7 @@ export interface Interface {
   readonly add: (id: ID, effect: PluginRuntime["effect"]) => Effect.Effect<void>
   readonly remove: (id: ID) => Effect.Effect<void>
   readonly wait: (id: ID) => Effect.Effect<void>
+  readonly list: () => Effect.Effect<readonly ID[]>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Plugin") {}
@@ -32,9 +34,11 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2.Service
+    const invariants = yield* RuntimeInvariant.Service
     const locks = KeyedMutex.makeUnsafe<ID>()
     const scope = yield* Scope.make()
     const active = new Map<ID, Scope.Closeable>()
+    const order: ID[] = []
     const loading = new Set<ID>()
     const waiters = new Map<ID, Set<Deferred.Deferred<void>>>()
     const failures = new Map<ID, Exit.Exit<void, never>>()
@@ -63,6 +67,7 @@ const layer = Layer.effect(
                 )
                 yield* events.publish(Event.Added, { id })
                 active.set(id, child)
+                if (!order.includes(id)) order.push(id)
                 yield* Effect.forEach(waiters.get(id) ?? [], (waiter) => Deferred.succeed(waiter, undefined), {
                   discard: true,
                 })
@@ -75,7 +80,16 @@ const layer = Layer.effect(
             failures.set(id, exit)
             return Effect.forEach(waiters.get(id) ?? [], (waiter) => Deferred.done(waiter, exit), {
               discard: true,
-            }).pipe(Effect.ensuring(Effect.sync(() => waiters.delete(id))))
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  waiters.delete(id)
+                  if (active.has(id)) return
+                  const index = order.indexOf(id)
+                  if (index !== -1) order.splice(index, 1)
+                }),
+              ),
+            )
           }),
           Effect.ensuring(Effect.sync(() => loading.delete(id))),
         ),
@@ -90,6 +104,8 @@ const layer = Layer.effect(
           Effect.gen(function* () {
             const current = active.get(id)
             active.delete(id)
+            const index = order.indexOf(id)
+            if (index !== -1) order.splice(index, 1)
             failures.delete(id)
             if (current) yield* Scope.close(current, Exit.void).pipe(Effect.ignore)
           }),
@@ -125,6 +141,19 @@ const layer = Layer.effect(
       )
     })
 
+    const list = Effect.fn("Plugin.list")(function* () {
+      return order.filter((id) => active.has(id))
+    })
+
+    yield* invariants.register("@opencode-ai/core/plugin", () =>
+      Effect.sync(() => {
+        if (new Set(order).size !== order.length) throw new Error("Plugin inventory contains duplicate ids")
+        if (order.some((id) => !active.has(id))) throw new Error("Plugin inventory contains an inactive id")
+        if (Array.from(active.keys()).some((id) => !order.includes(id)))
+          throw new Error("Active plugin is missing from inventory")
+      }),
+    )
+
     yield* Effect.addFinalizer((exit) =>
       Effect.gen(function* () {
         active.clear()
@@ -136,6 +165,7 @@ const layer = Layer.effect(
       add,
       remove,
       wait,
+      list,
     })
     host = yield* PluginHost.make(service)
     return service
@@ -156,6 +186,7 @@ export const node = makeLocationNode({
   layer,
   deps: [
     EventV2.node,
+    RuntimeInvariant.node,
     AgentV2.node,
     AISDK.node,
     Catalog.node,

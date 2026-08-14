@@ -13,6 +13,7 @@ import { Watcher } from "./filesystem/watcher"
 import { Image } from "./image"
 import { HookV2 } from "./hook"
 import { Integration } from "./integration"
+import { RuntimeInvariant } from "./invariant"
 import { Location } from "./location"
 import { LocationMutation } from "./location-mutation"
 import { LocationServiceMap } from "./location-service-map"
@@ -50,6 +51,7 @@ export const locationServices = LayerNode.group([
   Integration.node,
   Catalog.node,
   AISDK.node,
+  RuntimeInvariant.node,
   PluginV2.node,
   PluginInternal.node,
   ProjectCopy.node,
