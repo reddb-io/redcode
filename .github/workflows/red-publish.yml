@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing Redcode tag to reconcile, e.g. v0.1.0"
+        description: "Existing draft Redcode tag to reconcile, e.g. v0.1.1"
         required: true
         type: string
 
@@ -56,11 +56,21 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: bun script/red-version.ts "${TAG#v}" --check
-      - name: Create draft GitHub Release
+      - name: Create or resume draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
-        run: gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --draft --generate-notes --title "Redcode $TAG"
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --generate-notes --title "Redcode $TAG"
+            exit 0
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
+            echo "::error::released tags are immutable; publish a new patch version instead of replacing $TAG"
+            exit 1
+          fi
+          echo "resuming existing draft $TAG"
       - name: Build and upload native binaries
         env:
           GH_REPO: reddb-io/redcode

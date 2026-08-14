@@ -70,10 +70,16 @@ for (const required of [
   "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
   'npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"',
   "workflow_dispatch:",
-  "Existing Redcode tag to reconcile",
+  "Existing draft Redcode tag to reconcile",
+  "released tags are immutable",
   "https://github.com/reddb-io/redcode",
 ]) {
   if (!publish.includes(required)) throw new Error(`red-publish.yml is missing ${required}`)
+}
+
+const build = await Bun.file(path.join(root, "packages", "opencode", "script", "build.ts")).text()
+for (const required of ["SHA256SUMS", 'new Bun.CryptoHasher("sha256")', "./dist/SHA256SUMS"]) {
+  if (!build.includes(required)) throw new Error(`build.ts is missing release integrity contract ${required}`)
 }
 for (const banned of ["beta", "docker", "desktop", "sst", "vscode"]) {
   if (publish.toLowerCase().includes(banned)) throw new Error(`red-publish.yml must not mention ${banned}`)
