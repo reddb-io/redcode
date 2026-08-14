@@ -5,6 +5,7 @@ import { Api } from "../api"
 import { SessionsCursor } from "@opencode-ai/protocol/groups/session"
 import {
   ConflictError,
+  InvalidRequestError,
   InvalidCursorError,
   MessageNotFoundError,
   ServiceUnavailableError,
@@ -164,6 +165,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                       resource: error.messageID,
                     }),
                   ),
+                ),
+                Effect.catchTag("Hook.BlockedError", (error) =>
+                  Effect.fail(new InvalidRequestError({ message: error.reason, kind: "hook_denied" })),
                 ),
               ),
           }

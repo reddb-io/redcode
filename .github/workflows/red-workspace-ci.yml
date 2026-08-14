@@ -1,0 +1,29 @@
+name: red-workspace-ci
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/setup-bun
+      - name: Check binary-only workflow posture
+        run: bun script/test-redcode-release-contract.ts
+      - name: Build the current native binary
+        run: OPENCODE_VERSION="$(node -p "require('./package.json').version")" OPENCODE_CHANNEL=latest OPENCODE_RELEASE=1 ./packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui --skip-upload
+      - name: Pack the npm distribution without publishing
+        run: OPENCODE_VERSION="$(node -p "require('./package.json').version")" OPENCODE_CHANNEL=latest ./packages/opencode/script/publish.ts --pack-only
+      - name: Inspect packed package identity
+        run: |
+          tarball="$(find packages/opencode/dist/redcode-package -maxdepth 1 -name 'reddb-io-redcode-*.tgz' -print -quit)"
+          test -n "$tarball"
+          tar -xOf "$tarball" package/package.json |
+            node -e 'let text=""; process.stdin.on("data", (chunk) => text += chunk); process.stdin.on("end", () => { const pkg = JSON.parse(text); const expected = require("./package.json").version; if (pkg.name !== "@reddb-io/redcode" || pkg.version !== expected || pkg.bin.redcode === undefined) process.exit(1) })'

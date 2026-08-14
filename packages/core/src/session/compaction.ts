@@ -8,6 +8,7 @@ import { SessionEvent } from "./event"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
+import type { Hook } from "@opencode-ai/schema/hook"
 
 const DEFAULT_BUFFER = 20_000
 const DEFAULT_KEEP_TOKENS = 8_000
@@ -71,6 +72,10 @@ type Dependencies = {
     readonly stream: (request: LLMRequest) => Stream.Stream<LLMEvent, LLMError>
   }
   readonly config: readonly Config.Entry[]
+  readonly beforeCompact: (input: {
+    readonly sessionID: SessionSchema.ID
+    readonly reason: "auto"
+  }) => Effect.Effect<Hook.Output>
 }
 
 type Input = {
@@ -188,6 +193,8 @@ export const make = (dependencies: Dependencies) => {
     })
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
     if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
+    const hook = yield* dependencies.beforeCompact({ sessionID: input.sessionID, reason: "auto" })
+    if (!hook.continue || hook.decision === "deny") return false
     const messageID = SessionMessage.ID.create()
     yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
       sessionID: input.sessionID,

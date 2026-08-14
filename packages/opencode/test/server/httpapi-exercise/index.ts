@@ -658,6 +658,51 @@ const scenarios: Scenario[] = [
         check(auth.test === undefined, "auth remove should delete provider from isolated auth file")
       }),
     ),
+  http.protected.get("/redskilled", "redskilled.status").json(200, (body) => {
+    object(body)
+    check(body.native === true, "redskilled status should use the native integration")
+    check(body.scope === "project", "redskilled status should default to project scope")
+  }),
+  http.protected
+    .post("/redskilled/consent", "redskilled.consent")
+    .mutating()
+    .at((ctx) => ({ path: "/redskilled/consent", headers: ctx.headers(), body: { decision: "refused" } }))
+    .json(200, (body) => {
+      object(body)
+      check(body.consent === "refused", "redskilled consent should persist the refusal")
+    }),
+  http.protected
+    .post("/redskilled/project/resize", "redskilled.project.resize")
+    .at((ctx) => ({ path: "/redskilled/project/resize", headers: ctx.headers(), body: { target: -1 } }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/redskilled/project/stop", "redskilled.project.stop")
+    .at((ctx) => ({ path: "/redskilled/project/stop", headers: ctx.headers() }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/redskilled/worker/stop", "redskilled.worker.stop")
+    .at((ctx) => ({ path: "/redskilled/worker/stop", headers: ctx.headers(), body: { worker: "missing" } }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/redskilled/worker/recycle", "redskilled.worker.recycle")
+    .at((ctx) => ({ path: "/redskilled/worker/recycle", headers: ctx.headers(), body: { worker: "missing" } }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/redskilled/worker/steer", "redskilled.worker.steer")
+    .at((ctx) => ({
+      path: "/redskilled/worker/steer",
+      headers: ctx.headers(),
+      body: { worker: "missing", text: "continue" },
+    }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/redskilled/worker/steer/status", "redskilled.worker.steerStatus")
+    .at((ctx) => ({
+      path: "/redskilled/worker/steer/status",
+      headers: ctx.headers(),
+      body: { worker: "missing" },
+    }))
+    .json(400, object, "status"),
   http.protected.get("/api/health", "v2.health.get").json(200, (body) => {
     object(body)
     check(body.healthy === true, "v2 server should report healthy")
@@ -800,6 +845,35 @@ const scenarios: Scenario[] = [
     }))
     .status(404, undefined, "none"),
   http.protected.get("/api/reference", "v2.reference.list").json(200, object),
+  http.protected.get("/api/hook", "v2.hook.status").json(
+    200,
+    locationData((body) => {
+      object(body)
+      object(body.trust)
+      array(body.definitions)
+    }),
+  ),
+  http.protected
+    .post("/api/hook/trust", "v2.hook.trust")
+    .mutating()
+    .json(
+      200,
+      locationData((body) => {
+        object(body)
+        check(body.trusted === true, "hook trust should approve the current definitions")
+      }),
+    ),
+  http.protected
+    .delete("/api/hook/trust", "v2.hook.revoke")
+    .mutating()
+    .json(
+      200,
+      locationData((body) => {
+        object(body)
+        check(body.trusted === false, "hook revoke should remove project trust")
+      }),
+    ),
+  http.protected.post("/api/hook/import/claude", "v2.hook.import").json(400, object, "status"),
   http.protected
     .get("/api/provider/{providerID}", "v2.provider.get")
     .at((ctx) => ({ path: route("/api/provider/{providerID}", { providerID: "missing" }), headers: ctx.headers() }))

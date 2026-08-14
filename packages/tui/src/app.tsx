@@ -9,7 +9,7 @@ import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
-import { createCliRenderer, MouseButton } from "@opentui/core"
+import { createCliRenderer, MouseButton, TextAttributes } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
 import {
   Switch,
@@ -43,6 +43,7 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
+import { DialogHooks } from "./component/dialog-hooks"
 import { DialogDebug } from "./component/dialog-debug"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
@@ -69,6 +70,9 @@ import { TuiConfigProvider, useTuiConfig, type TuiConfig } from "./config"
 import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
 import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
+import { Statusline } from "./component/statusline"
+import { RedskilledProvider, useRedskilled } from "./context/redskilled"
+import { Workers } from "./routes/workers"
 import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
@@ -119,6 +123,9 @@ const appBindingCommands = [
   "provider.connect",
   "console.org.switch",
   "opencode.status",
+  "hooks.list",
+  "workers.show",
+  "session.show",
   "opencode.debug",
   "theme.switch",
   "theme.switch_mode",
@@ -315,10 +322,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                               <PromptRefProvider>
                                                                 <EditorContextProvider>
                                                                   <LocationProvider>
-                                                                    <App
-                                                                      onSnapshot={input.onSnapshot}
-                                                                      pluginHost={input.pluginHost}
-                                                                    />
+                                                                    <RedskilledProvider>
+                                                                      <App
+                                                                        onSnapshot={input.onSnapshot}
+                                                                        pluginHost={input.pluginHost}
+                                                                      />
+                                                                    </RedskilledProvider>
                                                                   </LocationProvider>
                                                                 </EditorContextProvider>
                                                               </PromptRefProvider>
@@ -365,6 +374,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
 function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPluginHost }) {
   const startup = useTuiStartup()
   const tuiConfig = useTuiConfig()
+  const redskilled = useRedskilled()
+  const [primaryView, setPrimaryView] = createSignal<"session" | "workers">("session")
   const route = useRoute()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
@@ -761,11 +772,40 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           ]
         : []),
       {
+        name: "workers.show",
+        title: "Open Workers",
+        category: "RedDB",
+        slashName: "workers",
+        run: () => {
+          setPrimaryView("workers")
+          dialog.clear()
+        },
+      },
+      {
+        name: "session.show",
+        title: "Return to Session",
+        category: "RedDB",
+        slashName: "session",
+        run: () => {
+          setPrimaryView("session")
+          dialog.clear()
+        },
+      },
+      {
         name: "opencode.status",
         title: "View status",
         slashName: "status",
         run: () => {
           dialog.replace(() => <DialogStatus />)
+        },
+        category: "System",
+      },
+      {
+        name: "hooks.list",
+        title: "View project hooks",
+        slashName: "hooks",
+        run: () => {
+          dialog.replace(() => <DialogHooks />)
         },
         category: "System",
       },
@@ -1015,6 +1055,22 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
   })
 
+  let consentAsked = ""
+  createEffect(() => {
+    const current = redskilled.status()
+    if (!ready() || current?.lifecycle !== "needs_consent" || !current.activation?.eligible) return
+    if (consentAsked === current.activation.project) return
+    consentAsked = current.activation.project
+    void DialogConfirm.show(
+      dialog,
+      "Connect RedSkills",
+      `Register ${current.activation.project} with redskilled using ${current.activation.runner} × ${current.activation.target}?`,
+    ).then((accepted) => {
+      if (accepted === undefined) return
+      return redskilled.consent(accepted ? "accepted" : "refused").catch(toast.error)
+    })
+  })
+
   event.on("session.error", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
     const error = evt.properties.error
@@ -1108,19 +1164,41 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         <TimeToFirstDraw />
       </Show>
       <Show when={ready()}>
-        <box flexGrow={1} minHeight={0} flexDirection="column">
-          <Switch>
-            <Match when={route.data.type === "home"}>
-              <Home />
-            </Match>
-            <Match when={route.data.type === "session"}>
-              <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
-                {(_) => <Session />}
-              </Show>
-            </Match>
-          </Switch>
-          {plugin()}
+        <box flexDirection="row" paddingLeft={2} paddingRight={2} paddingTop={1} gap={2}>
+          <text
+            fg={primaryView() === "session" ? theme.primary : theme.textMuted}
+            attributes={primaryView() === "session" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => setPrimaryView("session")}
+          >
+            Session
+          </text>
+          <text
+            fg={primaryView() === "workers" ? theme.primary : theme.textMuted}
+            attributes={primaryView() === "workers" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => setPrimaryView("workers")}
+          >
+            Workers{" "}
+            {redskilled.status()?.payload?.workers.length ? `(${redskilled.status()?.payload?.workers.length})` : ""}
+          </text>
         </box>
+        <Show when={primaryView() === "session"} fallback={<Workers />}>
+          <box flexGrow={1} minHeight={0} flexDirection="column">
+            <Switch>
+              <Match when={route.data.type === "home"}>
+                <Home />
+              </Match>
+              <Match when={route.data.type === "session"}>
+                <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
+                  {(_) => <Session />}
+                </Show>
+              </Match>
+            </Switch>
+            {plugin()}
+          </box>
+        </Show>
+        <Show when={tuiConfig.statusline.enabled}>
+          <Statusline version={InstallationVersion} />
+        </Show>
         <box flexShrink={0}>
           <pluginRuntime.Slot name="app_bottom" />
         </box>

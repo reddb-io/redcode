@@ -16,12 +16,16 @@ const generated = await import("./generate.ts")
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
 
+const product = "redcode"
+const npmScope = "@reddb-io"
+
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
 const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
+const skipUpload = process.argv.includes("--skip-upload")
 
 const createEmbeddedWebUIBundle = async () => {
   console.log(`Building Web UI to embed in the binary`)
@@ -144,7 +148,7 @@ if (!skipInstall) {
 }
 for (const item of targets) {
   const name = [
-    pkg.name,
+    product,
     // changing to win32 flags npm for some reason
     item.os === "win32" ? "windows" : item.os,
     item.arch,
@@ -174,9 +178,9 @@ for (const item of targets) {
       autoloadDotenv: false,
       autoloadTsconfig: true,
       autoloadPackageJson: true,
-      target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/opencode`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
+      target: name.replace(product, "bun") as any,
+      outfile: `dist/${name}/bin/${product}`,
+      execArgv: [`--user-agent=${product}/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
     files: {
@@ -203,7 +207,7 @@ for (const item of targets) {
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {
-    const binaryPath = `dist/${name}/bin/opencode`
+    const binaryPath = `dist/${name}/bin/${product}`
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {
       const versionOutput = await $`${binaryPath} --version`.text()
@@ -218,7 +222,7 @@ for (const item of targets) {
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {
-        name,
+        name: `${npmScope}/${name}`,
         version: Script.version,
         preferUnplugged: true,
         os: [item.os],
@@ -240,7 +244,8 @@ if (Script.release) {
       await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
     }
   }
-  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
+  if (!skipUpload)
+    await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
 }
 
 export { binaries }

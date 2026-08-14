@@ -39,6 +39,7 @@ import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
+import { HookV2 } from "../../hook"
 
 /**
  * Runs one durable coding-agent Session until it settles.
@@ -105,8 +106,15 @@ const layer = Layer.effect(
     const referenceGuidance = yield* ReferenceGuidance.Service
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
+    const hooks = yield* HookV2.Service
     const db = (yield* Database.Service).db
-    const compaction = SessionCompaction.make({ events, llm, config: yield* config.entries() })
+    const compaction = SessionCompaction.make({
+      events,
+      llm,
+      config: yield* config.entries(),
+      beforeCompact: ({ sessionID, reason }) =>
+        hooks.run({ event: "PreCompact", session_id: sessionID, matcher: reason }),
+    })
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
       const session = yield* store.get(sessionID)
       if (!session) return yield* Effect.die(`Session not found: ${sessionID}`)
@@ -224,6 +232,7 @@ const layer = Layer.effect(
           ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
         },
         snapshot: startSnapshot,
+        messageDisplay: (message) => hooks.run({ event: "MessageDisplay", session_id: session.id, message }),
       })
       const withPublication = Semaphore.makeUnsafe(1).withPermit
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
@@ -249,11 +258,33 @@ const layer = Layer.effect(
             const assistantMessageID = yield* publisher.assistantMessageID(event.id)
             yield* Effect.uninterruptibleMask((restore) =>
               restore(
-                toolMaterialization.settle({
-                  sessionID: session.id,
-                  agent: agent.id,
-                  assistantMessageID,
-                  call: event,
+                Effect.gen(function* () {
+                  const pre = yield* hooks.run({
+                    event: "PreToolUse",
+                    matcher: HookV2.toolName(event.name),
+                    session_id: session.id,
+                    tool_name: HookV2.toolName(event.name),
+                    tool_input: event.input,
+                  })
+                  const settlement =
+                    !pre.continue || pre.decision === "deny"
+                      ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
+                      : yield* toolMaterialization.settle({
+                          sessionID: session.id,
+                          agent: agent.id,
+                          assistantMessageID,
+                          call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
+                        })
+                  yield* hooks.run({
+                    event: settlement.result.type === "error" ? "PostToolUseFailure" : "PostToolUse",
+                    matcher: HookV2.toolName(event.name),
+                    session_id: session.id,
+                    tool_name: HookV2.toolName(event.name),
+                    tool_input: pre.updatedInput ?? event.input,
+                    tool_response: settlement.result,
+                    error: settlement.result.type === "error" ? String(settlement.result.value) : undefined,
+                  })
+                  return settlement
                 }),
               ).pipe(
                 Effect.flatMap((settlement) =>
@@ -380,6 +411,18 @@ const layer = Layer.effect(
       )
     })
 
+    const continueAfterStop: (sessionID: SessionSchema.ID, attempts: number) => Effect.Effect<void, RunError> =
+      Effect.fn("SessionRunner.continueAfterStop")(function* (sessionID, attempts) {
+        const decision = yield* hooks.run({ event: "Stop", session_id: sessionID, matcher: "stop" })
+        if (decision.continue && decision.decision !== "deny") return
+        if (attempts >= 7) {
+          yield* Effect.logWarning("Stop hook continuation limit reached", { sessionID, attempts: attempts + 1 })
+          return
+        }
+        yield* runTurn(sessionID, undefined, 1)
+        return yield* continueAfterStop(sessionID, attempts + 1)
+      })
+
     const run = Effect.fn("SessionRunner.run")(function* (input: {
       readonly sessionID: SessionSchema.ID
       readonly force: boolean
@@ -403,6 +446,7 @@ const layer = Layer.effect(
         shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
         promotion = shouldRun ? "queue" : undefined
       }
+      yield* continueAfterStop(input.sessionID, 0)
     })
 
     return Service.of({
@@ -428,5 +472,6 @@ export const node = makeLocationNode({
     Config.node,
     Snapshot.node,
     Database.node,
+    HookV2.node,
   ],
 })

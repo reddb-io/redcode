@@ -37,6 +37,7 @@ import { SessionRevert } from "./session/revert"
 import { Revert } from "@opencode-ai/schema/revert"
 import { FSUtil } from "./fs-util"
 import { SessionDurable } from "@opencode-ai/schema/durable-event-manifest"
+import { HookV2 } from "./hook"
 
 export const RevertState = Revert.State
 export type RevertState = Revert.State
@@ -108,7 +109,12 @@ export class PromptConflictError extends Schema.TaggedErrorClass<PromptConflictE
 export const MessageNotFoundError = SessionRevert.MessageNotFoundError
 export type MessageNotFoundError = SessionRevert.MessageNotFoundError
 
-export type Error = NotFoundError | MessageDecodeError | OperationUnavailableError | PromptConflictError
+export type Error =
+  | NotFoundError
+  | MessageDecodeError
+  | OperationUnavailableError
+  | PromptConflictError
+  | HookV2.BlockedError
 
 export interface Interface {
   readonly list: (input?: ListInput) => Effect.Effect<SessionSchema.Info[]>
@@ -150,7 +156,7 @@ export interface Interface {
     prompt: PromptInput.Prompt
     delivery?: SessionInput.Delivery
     resume?: boolean
-  }) => Effect.Effect<SessionInput.Admitted, NotFoundError | PromptConflictError>
+  }) => Effect.Effect<SessionInput.Admitted, NotFoundError | PromptConflictError | HookV2.BlockedError>
   readonly shell: (input: {
     id?: EventV2.ID
     sessionID: SessionSchema.ID
@@ -191,6 +197,7 @@ const layer = Layer.effect(
     const execution = yield* SessionExecution.Service
     const store = yield* SessionStore.Service
     const locations = yield* LocationServiceMap.Service
+    const fs = yield* FSUtil.Service
     const decodeMessage = Schema.decodeUnknownEffect(SessionMessage.Message)
     const isDurableSessionEvent = Schema.is(SessionEvent.Durable)
     const decode = (row: typeof SessionMessageTable.$inferSelect) =>
@@ -258,7 +265,12 @@ const layer = Layer.effect(
           )
         if (projected.type === "existing") return projected.session
         // TODO: Restore recorded sessions onto replacement synchronized workspaces in a future API slice.
-        return yield* result.get(sessionID).pipe(Effect.orDie)
+        const created = yield* result.get(sessionID).pipe(Effect.orDie)
+        if (yield* fs.isDir(created.location.directory))
+          yield* HookV2.Service.use((hooks) =>
+            hooks.run({ event: "SessionStart", session_id: sessionID, matcher: "startup" }),
+          ).pipe(Effect.provide(locations.get(created.location)))
+        return created
       }),
       get: Effect.fn("V2Session.get")(function* (sessionID) {
         const session = yield* store.get(sessionID)
@@ -360,8 +372,18 @@ const layer = Layer.effect(
       prompt: Effect.fn("V2Session.prompt")((input) =>
         Effect.uninterruptible(
           Effect.gen(function* () {
-            yield* result.get(input.sessionID)
-            const prompt = resolvePrompt(input.prompt)
+            const session = yield* result.get(input.sessionID)
+            const hook = (yield* fs.isDir(session.location.directory))
+              ? yield* HookV2.Service.use((hooks) =>
+                  hooks
+                    .run({ event: "UserPromptSubmit", session_id: input.sessionID, prompt: input.prompt.text })
+                    .pipe(Effect.flatMap((output) => HookV2.requireAllowed("UserPromptSubmit", output))),
+                ).pipe(Effect.provide(locations.get(session.location)))
+              : { continue: true as const }
+            const prompt = resolvePrompt({
+              ...input.prompt,
+              text: hook.additionalContext ? `${input.prompt.text}\n\n${hook.additionalContext}` : input.prompt.text,
+            })
             const messageID = input.id ?? SessionMessage.ID.create()
             const delivery = input.delivery ?? "steer"
             const expected = { sessionID: input.sessionID, messageID, prompt, delivery }
@@ -482,5 +504,6 @@ export const node = makeGlobalNode({
     SessionStore.node,
     LocationServiceMap.node,
     SessionProjector.node,
+    FSUtil.node,
   ],
 })

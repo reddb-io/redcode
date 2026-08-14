@@ -559,9 +559,9 @@
     },
     "packages/opencode": {
       "name": "opencode",
-      "version": "1.18.18",
+      "version": "0.0.0",
       "bin": {
-        "opencode": "./bin/opencode",
+        "redcode": "./bin/opencode",
       },
       "dependencies": {
         "@actions/core": "1.11.1",
@@ -616,6 +616,7 @@
         "@opentui/solid": "catalog:",
         "@parcel/watcher": "2.5.1",
         "@pierre/diffs": "catalog:",
+        "@reddb-io/toon": "0.26.2",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@solid-primitives/event-bus": "1.1.2",
         "@solid-primitives/scheduled": "1.5.2",
@@ -2426,6 +2427,8 @@
     "@radix-ui/react-visually-hidden": ["@radix-ui/react-visually-hidden@1.0.3", "", { "dependencies": { "@babel/runtime": "^7.13.10", "@radix-ui/react-primitive": "1.0.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0", "react-dom": "^16.8 || ^17.0 || ^18.0" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-D4w41yN5YRKtu464TLnByKzMDG/JlMPHtfZgQAu9v6mNakUqGUI9vUrfQKz8NK41VMm/xbZbh76NUTVtIYqOMA=="],
 
     "@radix-ui/rect": ["@radix-ui/rect@1.0.1", "", { "dependencies": { "@babel/runtime": "^7.13.10" } }, "sha512-fyrgCaedtvMg9NK3en0pnOYJdtfwxUcNolezkNPUsoX57X8oQk+NkqcvzHXD2uKNij6GXmWU9NDru2IWjrO4BQ=="],
+
+    "@reddb-io/toon": ["@reddb-io/toon@0.26.2", "", {}, "sha512-XXcBkLcwVVhy2A+BQvv+Ds1KD8YqQ+Bu0/ETbJT2TnnaIRcEIHNT98DHUV1qSlijpF8aGH1VgLqEv3Q7TOxZsA=="],
 
     "@remix-run/node-fetch-server": ["@remix-run/node-fetch-server@0.8.1", "", {}, "sha512-J1dev372wtJqmqn9U/qbpbZxbJSQrogNN2+Qv1lKlpATpe/WQ9aCZfl/xSb9d2Rgh1IyLSvNxZAXPZxruO6Xig=="],
 

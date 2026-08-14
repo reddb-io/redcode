@@ -32,6 +32,12 @@ import type { WorkspaceAdapter } from "@/control-plane/types"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { HookV2 } from "@opencode-ai/core/hook"
+import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
+import { Location } from "@opencode-ai/core/location"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Hook } from "@opencode-ai/schema/hook"
+import { isRecord } from "@/util/record"
 
 type State = {
   hooks: Hooks[]
@@ -128,6 +134,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const config = yield* Config.Service
     const flags = yield* RuntimeFlags.Service
+    const locations = yield* LocationServiceMap.Service
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Plugin.state")(function* (ctx) {
@@ -252,10 +259,24 @@ const layer = Layer.effect(
 
         const unsubscribe = yield* events.listen((event) => {
           if (event.location?.directory !== ctx.directory) return Effect.void
-          return Effect.sync(() => {
-            for (const hook of hooks) {
-              void hook["event"]?.({ event: { id: event.id, type: event.type, properties: event.data } as any })
+          return Effect.gen(function* () {
+            const declarative = eventInput(event.type, event.data)
+            if (declarative) {
+              const ref = Location.Ref.make({
+                directory: AbsolutePath.make(ctx.directory),
+                ...(event.location?.workspaceID ? { workspaceID: event.location.workspaceID } : {}),
+              })
+              yield* HookV2.Service.use((service) => service.run(declarative)).pipe(
+                Effect.provide(locations.get(ref)),
+                Effect.tapError((error) => Effect.logWarning("declarative event hook failed", { error })),
+                Effect.ignore,
+              )
             }
+            yield* Effect.sync(() => {
+              for (const hook of hooks) {
+                void hook["event"]?.({ event: { id: event.id, type: event.type, properties: event.data } as any })
+              }
+            })
           })
         })
         yield* Effect.addFinalizer(() => unsubscribe)
@@ -285,6 +306,31 @@ const layer = Layer.effect(
       Output = Parameters<Required<Hooks>[Name]>[1],
     >(name: Name, input: Input, output: Output) {
       if (!name) return output
+      const ctx = yield* InstanceState.context
+      const workspaceID = yield* InstanceState.workspaceID
+      const hookInput = declarativeInput(name, input, output)
+      if (hookInput) {
+        const decision = yield* HookV2.Service.use((hooks) => hooks.run(hookInput)).pipe(
+          Effect.provide(
+            locations.get(
+              Location.Ref.make({
+                directory: AbsolutePath.make(ctx.directory),
+                ...(workspaceID ? { workspaceID } : {}),
+              }),
+            ),
+          ),
+        )
+        if (decision.updatedInput !== undefined && name === "tool.execute.before") {
+          if (isRecord(output)) Object.assign(output, { args: decision.updatedInput })
+        }
+        if (!decision.continue || decision.decision === "deny")
+          return yield* Effect.die(
+            new HookV2.BlockedError({
+              event: hookInput.event,
+              reason: decision.reason ?? `${hookInput.event} hook denied the operation`,
+            }),
+          )
+      }
       const s = yield* InstanceState.get(state)
       for (const hook of s.hooks) {
         const fn = hook[name] as any
@@ -307,10 +353,79 @@ const layer = Layer.effect(
   }),
 )
 
+function declarativeInput(name: string, input: unknown, output: unknown): Omit<Hook.Input, "cwd"> | undefined {
+  const source = isRecord(input) ? input : {}
+  const result = isRecord(output) ? output : {}
+  const sessionID = typeof source.sessionID === "string" ? source.sessionID : undefined
+  if (name === "chat.message") {
+    const parts = Array.isArray(result.parts) ? result.parts : []
+    return {
+      event: "UserPromptSubmit",
+      session_id: sessionID,
+      prompt: parts
+        .filter((part): part is { text: string } =>
+          Boolean(part && typeof part === "object" && "text" in part && typeof part.text === "string"),
+        )
+        .map((part) => part.text)
+        .join("\n"),
+    }
+  }
+  if (name === "tool.execute.before" || name === "command.execute.before") {
+    const tool =
+      name === "command.execute.before"
+        ? "Command"
+        : HookV2.toolName(typeof source.tool === "string" ? source.tool : "")
+    return {
+      event: "PreToolUse",
+      matcher: tool,
+      session_id: sessionID,
+      tool_name: tool,
+      tool_input: name === "command.execute.before" ? source : result.args,
+    }
+  }
+  if (name === "tool.execute.after") {
+    const tool = HookV2.toolName(typeof source.tool === "string" ? source.tool : "")
+    return {
+      event: "PostToolUse",
+      matcher: tool,
+      session_id: sessionID,
+      tool_name: tool,
+      tool_input: source.args,
+      tool_response: result,
+    }
+  }
+  if (name === "permission.ask")
+    return {
+      event: "PermissionRequest",
+      matcher: typeof source.permission === "string" ? source.permission : "",
+      session_id: sessionID,
+      message: JSON.stringify(source),
+    }
+  if (name === "experimental.session.compacting") return { event: "PreCompact", session_id: sessionID, matcher: "auto" }
+  return undefined
+}
+
+function eventInput(type: string, input: unknown): Omit<Hook.Input, "cwd"> | undefined {
+  const data = isRecord(input) ? input : {}
+  const sessionID = typeof data.sessionID === "string" ? data.sessionID : undefined
+  if (type === "session.created") return { event: "SessionStart", session_id: sessionID, matcher: "startup" }
+  if (type === "session.idle") return { event: "Stop", session_id: sessionID, matcher: "stop" }
+  if (type !== "message.part.updated") return undefined
+  const part = isRecord(data.part) ? data.part : {}
+  if (part.type !== "text" || typeof part.text !== "string") return undefined
+  return { event: "MessageDisplay", session_id: sessionID, message: part.text }
+}
+
+const locationServiceMapNode = LayerNode.make({
+  service: LocationServiceMap.Service,
+  layer: locationServiceMapLayer,
+  deps: [],
+})
+
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [EventV2Bridge.node, Config.node, RuntimeFlags.node],
+  deps: [EventV2Bridge.node, Config.node, RuntimeFlags.node, locationServiceMapNode],
 })
 
 export * as Plugin from "."

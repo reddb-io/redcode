@@ -11,6 +11,7 @@ import { FileSystem } from "./filesystem"
 import { FileSystemSearch } from "./filesystem/search"
 import { Watcher } from "./filesystem/watcher"
 import { Image } from "./image"
+import { HookV2 } from "./hook"
 import { Integration } from "./integration"
 import { Location } from "./location"
 import { LocationMutation } from "./location-mutation"
@@ -67,6 +68,7 @@ export const locationServices = LayerNode.group([
   ToolRegistry.node,
   ToolRegistry.toolsNode,
   Image.node,
+  HookV2.node,
   SkillGuidance.node,
   ReferenceGuidance.node,
   SessionTodo.node,

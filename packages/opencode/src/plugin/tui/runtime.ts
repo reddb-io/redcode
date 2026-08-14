@@ -609,6 +609,18 @@ function pluginApi(runtime: RuntimeState, plugin: PluginEntry, scope: PluginScop
     },
   }
 
+  const statusline: TuiPluginApi["statusline"] = {
+    register(contribution) {
+      const handle = runtime.view.registerStatusline(base, contribution)
+      return {
+        update(next) {
+          handle.update(next)
+        },
+        dispose: scope.track(() => handle.dispose()),
+      }
+    },
+  }
+
   return {
     app: api.app,
     attention: createScopedAttention(api.attention, scope, load.plugin_root),
@@ -629,6 +641,7 @@ function pluginApi(runtime: RuntimeState, plugin: PluginEntry, scope: PluginScop
     event,
     renderer: api.renderer,
     slots,
+    statusline,
     plugins: {
       list() {
         return listPluginStatus(runtime)

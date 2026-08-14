@@ -175,6 +175,22 @@ import type {
   QuestionReplyErrors,
   QuestionReplyResponses,
   QuestionV2Reply,
+  RedskilledConsentErrors,
+  RedskilledConsentResponses,
+  RedskilledProjectResizeErrors,
+  RedskilledProjectResizeResponses,
+  RedskilledProjectStopErrors,
+  RedskilledProjectStopResponses,
+  RedskilledStatusErrors,
+  RedskilledStatusResponses,
+  RedskilledWorkerRecycleErrors,
+  RedskilledWorkerRecycleResponses,
+  RedskilledWorkerSteerErrors,
+  RedskilledWorkerSteerResponses,
+  RedskilledWorkerSteerStatusErrors,
+  RedskilledWorkerSteerStatusResponses,
+  RedskilledWorkerStopErrors,
+  RedskilledWorkerStopResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -281,6 +297,14 @@ import type {
   V2FsReadResponses,
   V2HealthGetErrors,
   V2HealthGetResponses,
+  V2HookImportErrors,
+  V2HookImportResponses,
+  V2HookRevokeErrors,
+  V2HookRevokeResponses,
+  V2HookStatusErrors,
+  V2HookStatusResponses,
+  V2HookTrustErrors,
+  V2HookTrustResponses,
   V2IntegrationAttemptCancelErrors,
   V2IntegrationAttemptCancelResponses,
   V2IntegrationAttemptCompleteErrors,
@@ -5021,6 +5045,316 @@ export class Tui extends HeyApiClient {
   }
 }
 
+export class Project2 extends HeyApiClient {
+  /**
+   * Resize this project
+   */
+  public resize<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      target?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "target" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledProjectResizeResponses,
+      RedskilledProjectResizeErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/project/resize",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Stop this project
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledProjectStopResponses,
+      RedskilledProjectStopErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/project/stop",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Worker extends HeyApiClient {
+  /**
+   * Stop a Worker
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worker?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "worker" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledWorkerStopResponses,
+      RedskilledWorkerStopErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/worker/stop",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Recycle a Worker
+   */
+  public recycle<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worker?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "worker" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledWorkerRecycleResponses,
+      RedskilledWorkerRecycleErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/worker/recycle",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Steer a Worker
+   */
+  public steer<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worker?: string
+      text?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "worker" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledWorkerSteerResponses,
+      RedskilledWorkerSteerErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/worker/steer",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read Worker steer status
+   */
+  public steerStatus<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worker?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "worker" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RedskilledWorkerSteerStatusResponses,
+      RedskilledWorkerSteerStatusErrors,
+      ThrowOnError
+    >({
+      url: "/redskilled/worker/steer/status",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Redskilled extends HeyApiClient {
+  /**
+   * Read redskilled status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      scope?: "project" | "host"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "scope" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RedskilledStatusResponses, RedskilledStatusErrors, ThrowOnError>({
+      url: "/redskilled",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Change redskilled consent
+   */
+  public consent<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      decision?: "accepted" | "refused"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "decision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RedskilledConsentResponses, RedskilledConsentErrors, ThrowOnError>({
+      url: "/redskilled/consent",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  private _project?: Project2
+  get project(): Project2 {
+    return (this._project ??= new Project2({ client: this.client }))
+  }
+
+  private _worker?: Worker
+  get worker(): Worker {
+    return (this._worker ??= new Worker({ client: this.client }))
+  }
+}
+
 export class Health extends HeyApiClient {
   /**
    * Check server health
@@ -6987,6 +7321,90 @@ export class ProjectCopy2 extends HeyApiClient {
   }
 }
 
+export class Hook extends HeyApiClient {
+  /**
+   * List hooks
+   *
+   * List declarative hooks, support state, and project trust.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<V2HookStatusResponses, V2HookStatusErrors, ThrowOnError>({
+      url: "/api/hook",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Revoke project hook trust
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).delete<V2HookRevokeResponses, V2HookRevokeErrors, ThrowOnError>({
+      url: "/api/hook/trust",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Trust project hooks
+   */
+  public trust<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).post<V2HookTrustResponses, V2HookTrustErrors, ThrowOnError>({
+      url: "/api/hook/trust",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Import Claude hooks
+   */
+  public import<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).post<V2HookImportResponses, V2HookImportErrors, ThrowOnError>({
+      url: "/api/hook/import/claude",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -7071,6 +7489,11 @@ export class V2 extends HeyApiClient {
   private _projectCopy?: ProjectCopy2
   get projectCopy(): ProjectCopy2 {
     return (this._projectCopy ??= new ProjectCopy2({ client: this.client }))
+  }
+
+  private _hook?: Hook
+  get hook(): Hook {
+    return (this._hook ??= new Hook({ client: this.client }))
   }
 }
 
@@ -7210,6 +7633,11 @@ export class OpencodeClient extends HeyApiClient {
   private _tui?: Tui
   get tui(): Tui {
     return (this._tui ??= new Tui({ client: this.client }))
+  }
+
+  private _redskilled?: Redskilled
+  get redskilled(): Redskilled {
+    return (this._redskilled ??= new Redskilled({ client: this.client }))
   }
 
   private _v2?: V2
