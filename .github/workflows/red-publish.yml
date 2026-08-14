@@ -98,14 +98,25 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
           root="$(mktemp -d)"
           trap 'rm -rf "$root"' EXIT
-          for attempt in 1 2 3 4 5; do
-            if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${VERSION}"; then break; fi
-            if [ "$attempt" = 5 ]; then exit 1; fi
-            sleep $((attempt * 5))
+          export npm_config_cache="$root/npm-cache"
+          # npm read replicas can lag a successful publish by several minutes.
+          # Ten attempts at attempt*15s provide roughly eleven minutes for the
+          # exact public package to become installable before the release ships.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${VERSION}"; then
+              "$root/node_modules/.bin/redcode" --version | grep -Fx "$VERSION"
+              exit 0
+            fi
+            if [ "$attempt" -eq 10 ]; then
+              echo "::error::registry did not serve @reddb-io/redcode@${VERSION} after publish"
+              exit 1
+            fi
+            echo "registry smoke attempt ${attempt}/10 not yet resolvable; sleeping ${attempt}*15s"
+            sleep $((attempt * 15))
           done
-          "$root/node_modules/.bin/redcode" --version | grep -Fx "$VERSION"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
