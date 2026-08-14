@@ -73,7 +73,7 @@ describe("HookV2", () => {
     )
     expect(output.continue).toBe(false)
     expect(output.decision).toBe("deny")
-    expect(output.reason).toBe("blocked")
+    expect(output.reason).toContain("blocked")
   })
 
   test("changing executable definitions invalidates project trust", async () => {

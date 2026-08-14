@@ -15,6 +15,7 @@ const forbidden = [
   "docs-update.yml",
   "duplicate-issues.yml",
   "generate.yml",
+  "nix-eval.yml",
   "nix-hashes.yml",
   "notify-discord.yml",
   "opencode.yml",
