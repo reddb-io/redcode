@@ -69,11 +69,35 @@ for (const required of [
   "@reddb-io/redcode",
   "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
   'npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"',
+  "workflow_dispatch:",
+  "Existing Redcode tag to reconcile",
+  "https://github.com/reddb-io/redcode",
 ]) {
   if (!publish.includes(required)) throw new Error(`red-publish.yml is missing ${required}`)
 }
 for (const banned of ["beta", "docker", "desktop", "sst", "vscode"]) {
   if (publish.toLowerCase().includes(banned)) throw new Error(`red-publish.yml must not mention ${banned}`)
 }
+
+const release = await Bun.file(path.join(workflows, "red-release.yml")).text()
+for (const required of [
+  "branches: [main]",
+  "changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d",
+  "bun run release:version",
+  "bun script/red-tag-release.ts",
+  "createGithubReleases: false",
+]) {
+  if (!release.includes(required)) throw new Error(`red-release.yml is missing ${required}`)
+}
+
+const changesets = await Bun.file(path.join(root, ".changeset", "config.json")).json()
+if (changesets.baseBranch !== "main") throw new Error("Changesets baseBranch must be main")
+if (changesets.privatePackages?.version !== true)
+  throw new Error("Changesets must version the private opencode product package")
+
+const staleDefault = sources.flatMap((source) =>
+  source.text.includes("branches: [dev]") ? [`${source.file}: branches: [dev]`] : [],
+)
+if (staleDefault.length > 0) throw new Error(`workflow still targets dev: ${staleDefault.join(", ")}`)
 
 console.log("Redcode release posture: binary-only")
