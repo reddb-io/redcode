@@ -68,7 +68,7 @@ test("creates a session in a new project, connects OpenCode Go, and selects its 
     localStorage.setItem("opencode.global.dat:server", JSON.stringify({ projects: { local: [] } }))
   })
 
-  await page.goto("/")
+  await page.goto("/?view=home")
   const addProject = page.locator('[data-action="home-add-project-row"]')
   await expectAppVisible(addProject)
   await addProject.click()
@@ -76,6 +76,7 @@ test("creates a session in a new project, connects OpenCode Go, and selects its 
 
   await page.locator('[data-action="home-new-session"]').click()
   await expectAppVisible(page.locator('[data-component="prompt-input-v2"]'))
+  await expect(page).toHaveURL(/\/new-session\?draftId=/)
 
   const modelControl = page.locator('[data-action="prompt-model"]')
   await modelControl.click()
