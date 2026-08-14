@@ -1,21 +1,18 @@
 name: red-release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Exact Redcode semver to propose"
-        required: true
-        type: string
-  pull_request:
-    branches: [dev]
-    types: [closed]
+  push:
+    branches: [main]
 
 permissions: {}
 
+concurrency:
+  group: red-release
+  cancel-in-progress: false
+
 jobs:
-  version-pr:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'reddb-io/redcode'
+  version:
+    if: github.repository == 'reddb-io/redcode'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,64 +22,18 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PAT }}
           fetch-depth: 0
-          ref: dev
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version-file: package.json
-      - name: Validate requested version
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version must be exact semver (major.minor.patch)"
-            exit 1
-          fi
-          node -e 'const requested = process.env.VERSION.split(".").map(Number); const currentVersion = require("./package.json").version; const current = currentVersion.split(".").map(Number); const changed = requested.findIndex((value, index) => value !== current[index]); if (changed === -1 || requested[changed] < current[changed]) { console.error(`requested ${process.env.VERSION} must be newer than ${currentVersion}`); process.exit(1) }'
-      - name: Update version surfaces
-        run: bun script/red-version.ts "${{ inputs.version }}"
-      - name: Open or refresh Version PR
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-          VERSION: ${{ inputs.version }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure git identity
         run: |
           git config user.name "redcode-release[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B red-version-pr
-          git add package.json packages/opencode/package.json
-          git commit -m "chore(release): ${VERSION}"
-          HUSKY=0 git push --force-with-lease origin HEAD:red-version-pr
-          number="$(gh pr list --head red-version-pr --state open --json number --jq '.[0].number')"
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --title "chore(release): ${VERSION}" --body "Publish Redcode ${VERSION} after this PR merges."
-            exit 0
-          fi
-          gh pr create --base dev --head red-version-pr --title "chore(release): ${VERSION}" --body "Publish Redcode ${VERSION} after this PR merges."
-
-  tag:
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'red-version-pr' && github.repository == 'reddb-io/redcode'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Maintain Version PR or tag release
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d
         with:
-          token: ${{ secrets.RELEASE_PAT }}
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version-file: package.json
-      - name: Tag the reviewed version
+          version: bun run release:version
+          publish: bun script/red-tag-release.ts
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+          createGithubReleases: false
         env:
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          bun script/red-version.ts "$version" --check
-          git config user.name "redcode-release[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "v${version}" >/dev/null 2>&1; then
-            test "$(git rev-list -n 1 "v${version}")" = "$MERGE_SHA"
-            exit 0
-          fi
-          git tag -a "v${version}" "$MERGE_SHA" -m "Redcode ${version}"
-          HUSKY=0 git push origin "v${version}"
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}

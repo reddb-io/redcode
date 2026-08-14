@@ -20,16 +20,16 @@ bun install
 bun dev
 ```
 
-The default branch is `dev`. Tests must run from the package that owns them rather than from the repository root.
+The default branch is `main`. Tests must run from the package that owns them rather than from the repository root.
 
 ## Releases
 
 Releases follow one path:
 
-1. Run the `red-release` workflow with an exact semantic version.
-2. Review and merge the generated Version PR.
-3. The merge creates the matching `vX.Y.Z` tag.
-4. `red-publish` builds native binaries, publishes `@reddb-io/redcode`, verifies a clean install, and publishes the GitHub Release.
+1. Every user-visible pull request adds a `.changeset/*.md` file declaring a patch, minor, or major bump for `opencode`.
+2. Merges to `main` update the generated Version PR.
+3. Merging the Version PR creates the matching immutable `vX.Y.Z` tag.
+4. `red-publish` builds native binaries, publishes `@reddb-io/redcode`, verifies a clean install, and publishes the GitHub Release. An incomplete tag can be reconciled by dispatching `red-publish` with that tag.
 
 The workflows use the organization-provided `RELEASE_PAT` and `NPM_TOKEN` secrets; `NPM_TOKEN` publishes the public packages under `@reddb-io`.
 

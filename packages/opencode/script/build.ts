@@ -224,6 +224,7 @@ for (const item of targets) {
       {
         name: `${npmScope}/${name}`,
         version: Script.version,
+        repository: { type: "git", url: "https://github.com/reddb-io/redcode" },
         preferUnplugged: true,
         os: [item.os],
         cpu: [item.arch],
