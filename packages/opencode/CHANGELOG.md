@@ -1,5 +1,11 @@
 # opencode
 
+## 0.3.1
+
+### Patch Changes
+
+- a0279da: Open Redcode directly in the full chat shell, including for profiles that previously selected the legacy interface.
+
 ## 0.3.0
 
 ### Minor Changes
