@@ -1,0 +1,76 @@
+redcode
+Copyright 2026 reddb.io
+
+This product is licensed under the MIT License (see LICENSE).
+
+Redcode is a fork of OpenCode (https://github.com/anomalyco/opencode), which is
+licensed under the MIT License. The overwhelming majority of this repository is
+their work — the agent loop, provider and model integration, the tool system,
+LSP and formatter support, and the terminal UI foundation. The upstream
+copyright notice is preserved verbatim in LICENSE:
+
+    MIT License
+    Copyright (c) 2025 opencode
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Redcode keeps OpenCode's internal package names (@opencode-ai/*), environment
+variable prefixes (OPENCODE_*), and module layout deliberately, so that changes
+made here stay readable against upstream.
+
+Redcode's runtime composition model is adapted from DeepSeek Harness
+(https://github.com/deepseek-ai/deepseek-harness): reversible plugin ownership,
+ordered and awaited profile activation, transactional replacement with rollback,
+package-owned runtime invariants executed at boot readiness, and the practice of
+proving semantic outcomes through real entry points. The audit that decided what
+to adopt, adapt, and reject is recorded in .red/adr/0001 and in three research
+reports under .red/researches/.
+
+This product depends on @deepseek-ai/cordis, licensed under the MIT License.
+Cordis is an independent plugin framework created by Shigma; DeepSeek vendors and
+maintains this build inside the deepseek-harness repository at vendor/cordis. The
+copyright is Shigma's:
+
+    MIT License
+    Copyright (c) 2021-present Shigma
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Redcode integrates with RedSkills and the redskilled execution daemon
+(https://github.com/reddb-io/red-skills), which is reddb.io work licensed under
+Apache-2.0 and is not bundled here.
+
+Neither the OpenCode project nor DeepSeek endorses Redcode. Report Redcode
+issues at https://github.com/reddb-io/redcode/issues.
