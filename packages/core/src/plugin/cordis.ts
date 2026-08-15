@@ -4,6 +4,7 @@ import { Context, type Fiber } from "@deepseek-ai/cordis"
 import type { Plugin as PluginRuntime } from "@opencode-ai/plugin/v2/effect"
 import { Effect, Exit, Semaphore } from "effect"
 import { PluginV2 } from "../plugin"
+import { State } from "../state"
 
 export interface ProfileEntry {
   readonly id: PluginV2.ID
@@ -30,41 +31,42 @@ export interface Interface {
 export const make = Effect.fn("CordisPluginHost.make")(function* (plugins: PluginV2.Interface) {
   const context = new Context()
   const semaphore = yield* Semaphore.make(1)
-  const active = new Map<PluginV2.ID, { entry: ProfileEntry; fiber: Fiber }>()
-  let name: string | undefined
+  let active: { profile: Profile; fiber: Fiber } | undefined
 
-  const dispose = (entries: Iterable<{ fiber: Fiber }>) =>
-    Promise.all(Array.from(entries, (entry) => entry.fiber.dispose())).then(() => undefined)
-
-  const mount = (entry: ProfileEntry) => {
+  const mount = (profile: Profile) => {
     const fiber = context.plugin(() =>
-      Effect.runPromise(plugins.add(entry.id, entry.effect)).then(
-        () => () => Effect.runPromise(plugins.remove(entry.id)),
+      Effect.runPromise(
+        State.batch(
+          Effect.forEach(profile.entries, (entry) => plugins.add(entry.id, entry.effect), { discard: true }),
+        ).pipe(
+          Effect.onExit((exit) => {
+            if (Exit.isSuccess(exit)) return Effect.void
+            return State.batch(
+              Effect.forEach(profile.entries, (entry) => plugins.remove(entry.id), { discard: true }),
+            )
+          }),
+        ),
+      ).then(
+        () => () =>
+          Effect.runPromise(
+            State.batch(
+              Effect.forEach(profile.entries, (entry) => plugins.remove(entry.id), { discard: true }),
+            ),
+          ),
       ),
     )
     return Promise.resolve(fiber).then(
-      () => ({ entry, fiber }),
+      () => ({ profile, fiber }),
       (error) => fiber.dispose().then(() => Promise.reject(error)),
     )
   }
 
   const replace = (profile: Profile) =>
-    dispose(active.values()).then(() => {
-      active.clear()
-      name = undefined
-      return profile.entries
-        .reduce(
-          (pending, entry) =>
-            pending.then(() =>
-              mount(entry).then((mounted) => {
-                active.set(entry.id, mounted)
-              }),
-            ),
-          Promise.resolve(),
-        )
-        .then(() => {
-          name = profile.name
-        })
+    Promise.resolve(active?.fiber.dispose()).then(() => {
+      active = undefined
+      return mount(profile).then((mounted) => {
+        active = mounted
+      })
     })
 
   const apply = (profile: Profile) => {
@@ -73,10 +75,10 @@ export const make = Effect.fn("CordisPluginHost.make")(function* (plugins: Plugi
 
     return semaphore.withPermits(1)(
       Effect.gen(function* () {
-        const previous = { name: name ?? "previous", entries: Array.from(active.values(), (item) => item.entry) }
+        const previous = active?.profile
         const result = yield* Effect.promise(() => replace(profile)).pipe(Effect.exit)
         if (Exit.isSuccess(result)) return
-        yield* Effect.promise(() => replace(previous))
+        if (previous) yield* Effect.promise(() => replace(previous))
         yield* result
       }),
     )
@@ -84,13 +86,15 @@ export const make = Effect.fn("CordisPluginHost.make")(function* (plugins: Plugi
 
   const clear = semaphore.withPermits(1)(
     Effect.promise(() =>
-      dispose(active.values()).then(() => {
-        active.clear()
-        name = undefined
+      Promise.resolve(active?.fiber.dispose()).then(() => {
+        active = undefined
       }),
     ),
   )
-  const snapshot = Effect.sync(() => ({ name, entries: Array.from(active.keys()) }))
+  const snapshot = Effect.sync(() => ({
+    name: active?.profile.name,
+    entries: active?.profile.entries.map((entry) => entry.id) ?? [],
+  }))
   const dump = snapshot.pipe(Effect.map((value) => JSON.stringify(value, undefined, 2)))
 
   yield* Effect.addFinalizer(() => clear)

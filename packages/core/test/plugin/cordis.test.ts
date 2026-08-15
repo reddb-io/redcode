@@ -4,6 +4,7 @@ import type { PluginContext } from "@opencode-ai/plugin/v2/effect"
 import { AgentV2 } from "@opencode-ai/core/agent"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { CordisPluginHost } from "@opencode-ai/core/plugin/cordis"
+import { State } from "@opencode-ai/core/state"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 
@@ -79,6 +80,41 @@ describe("CordisPluginHost", () => {
         expect(yield* plugins.list()).toEqual([PluginV2.ID.make("stable")])
         expect((yield* agents.get(AgentV2.ID.make("configured")))?.description).toBe("stable")
         expect(yield* cordis.snapshot).toEqual({ name: "stable", entries: [PluginV2.ID.make("stable")] })
+      }),
+    ),
+  )
+
+  it.effect("batches profile state materialization across plugin boundaries", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const plugins = yield* PluginV2.Service
+        const cordis = yield* CordisPluginHost.make(plugins)
+        let reloads = 0
+        const values = State.create({
+          initial: () => [] as string[],
+          draft: (state) => ({ add: (value: string) => state.push(value) }),
+          finalize: () =>
+            Effect.sync(() => {
+              reloads++
+            }),
+        })
+        const entry = (id: string) => ({
+          id: PluginV2.ID.make(id),
+          effect: () =>
+            values
+              .transform((draft) => {
+                draft.add(id)
+              })
+              .pipe(Effect.asVoid),
+        })
+        yield* cordis.apply({ name: "batched", entries: [entry("first"), entry("second"), entry("third")] })
+
+        expect(values.get()).toEqual(["first", "second", "third"])
+        expect(reloads).toBe(1)
+
+        yield* cordis.clear
+        expect(values.get()).toEqual([])
+        expect(reloads).toBe(2)
       }),
     ),
   )
