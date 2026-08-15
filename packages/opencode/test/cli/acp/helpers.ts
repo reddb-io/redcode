@@ -23,7 +23,7 @@ export function initialize(acp: AcpClient) {
       yield* acp.request<InitializeResponse>("initialize", {
         protocolVersion: 1,
         clientCapabilities: { _meta: { "terminal-auth": true } },
-        clientInfo: { name: "opencode-local-acp", version: "0.1.0" },
+        clientInfo: { name: "redcode-local-acp", version: "0.1.0" },
       }),
     )
   })
