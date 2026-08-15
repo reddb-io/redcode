@@ -183,6 +183,40 @@ describe("acp permissions", () => {
     expect(harness.replies).toEqual([{ requestID: "perm_1", reply: "once", directory: "/workspace" }])
   })
 
+  it("binds a governed child permission request to the parent ACP session", async () => {
+    const harness = createHarness()
+    await Effect.runPromise(
+      harness.session.create({
+        id: "ses_child",
+        cwd: "/workspace",
+        childAgent: {
+          version: 1,
+          parentSessionId: "workflow-session",
+          workerId: "worker-17",
+          authority: "parent",
+          github: "parent-gateway",
+          permissions: "parent",
+        },
+      }),
+    )
+
+    harness.subscription.handle(
+      permissionAsked("ses_child", "perm_child", { tool: { messageID: "msg_1", callID: "call_1" } }),
+    )
+    await pollUntil(() => harness.requests.length === 1, "child permission was never requested")
+
+    expect(harness.requests[0]?._meta).toEqual({
+      redskills: {
+        childAgent: {
+          version: 1,
+          parentSessionId: "workflow-session",
+          workerId: "worker-17",
+          authority: "parent",
+        },
+      },
+    })
+  })
+
   it("uses permission metadata for non-shell titles", async () => {
     const harness = createHarness()
     await createSession(harness.session, "ses_a")

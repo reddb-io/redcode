@@ -194,6 +194,7 @@ describe("ACP service sessions", () => {
     messages: readonly { info: unknown; parts: readonly unknown[] }[] = [],
     options?: {
       abort?: (input: { sessionID: string }) => Promise<{ data: boolean }>
+      env?: NodeJS.ProcessEnv
       prompt?: (input: unknown) => Promise<{ data: { info: ReturnType<typeof assistantInfo> } }>
       sessionUpdate?: (update: SessionNotification) => Promise<void>
     },
@@ -320,7 +321,7 @@ describe("ACP service sessions", () => {
     })
 
     return {
-      service: ACPService.make({ sdk, connection, usage }),
+      service: ACPService.make({ sdk, connection, usage, env: options?.env }),
       updates,
       mcpAdds,
       aborts,
@@ -355,6 +356,113 @@ describe("ACP service sessions", () => {
     expect(JSON.stringify(updates[0])).toContain("available_commands_update")
     expect(JSON.stringify(updates[0])).toContain("review-skill")
     expect(mcpAdds).toEqual(["tools"])
+  })
+
+  it("binds a governed child Agent session to its parent ACP session", async () => {
+    const { service } = makeService([], { env: {} })
+    const result = await Effect.runPromise(
+      service.newSession({
+        cwd: "/workspace",
+        mcpServers: [],
+        _meta: {
+          redskills: {
+            childAgent: {
+              version: 1,
+              parentSessionId: "workflow-session",
+              workerId: "worker-17",
+              authority: "parent",
+              github: "parent-gateway",
+              permissions: "parent",
+            },
+          },
+        },
+      }),
+    )
+
+    expect(result._meta).toEqual({
+      redskills: {
+        childAgent: {
+          version: 1,
+          parentSessionId: "workflow-session",
+          workerId: "worker-17",
+          authority: "parent",
+        },
+      },
+    })
+  })
+
+  it("keeps the parent binding across related ACP turns", async () => {
+    const { service } = makeService([], { env: {} })
+    const session = await Effect.runPromise(
+      service.newSession({
+        cwd: "/workspace",
+        mcpServers: [],
+        _meta: {
+          redskills: {
+            childAgent: {
+              version: 1,
+              parentSessionId: "workflow-session",
+              workerId: "worker-17",
+              authority: "parent",
+              github: "parent-gateway",
+              permissions: "parent",
+            },
+          },
+        },
+      }),
+    )
+
+    const first = await Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "first" }] }),
+    )
+    const second = await Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "second" }] }),
+    )
+
+    expect([first._meta, second._meta]).toEqual([session._meta, session._meta])
+  })
+
+  it("rejects a governed child Agent that inherits GitHub authority", async () => {
+    const { service } = makeService([], { env: { GITHUB_TOKEN: "leaked" } })
+    const error = await Effect.runPromise(
+      service
+        .newSession({
+          cwd: "/workspace",
+          mcpServers: [],
+          _meta: {
+            redskills: {
+              childAgent: {
+                version: 1,
+                parentSessionId: "workflow-session",
+                workerId: "worker-17",
+                authority: "parent",
+                github: "parent-gateway",
+                permissions: "parent",
+              },
+            },
+          },
+        })
+        .pipe(Effect.mapError(ACPError.toRequestError), Effect.flip),
+    )
+
+    expect(error.code).toBe(-32602)
+    expect(error.message).toContain("GitHub credentials belong to the parent")
+  })
+
+  it("rejects a malformed governed child Agent contract as invalid ACP parameters", async () => {
+    const { service } = makeService([], { env: {} })
+    const error = await Effect.runPromise(
+      service
+        .newSession({
+          cwd: "/workspace",
+          mcpServers: [],
+          _meta: { redskills: { childAgent: { version: 2 } } },
+        })
+        .pipe(Effect.mapError(ACPError.toRequestError), Effect.flip),
+    )
+
+    expect(error.code).toBe(-32602)
+    expect(error.message).toContain("Invalid RedSkills child Agent contract")
   })
 
   it("loads a session and restores model variant and mode from messages", async () => {
