@@ -22,7 +22,19 @@ Bun, pnpm, and Yarn work too. The install resolves one native binary for your pl
 non-AVX2 variants where the architecture needs them.
 
 Redcode ships exactly one artifact: the CLI. There is no beta channel, no container image, no
-desktop build, no package-manager tap, and no hosted deployment.
+desktop build, no package-manager tap, and no hosted deployment. That posture is enforced by a
+CI-blocking contract test (`script/test-redcode-release-contract.ts`) that fails if a deleted
+upstream workflow reappears or if `sst deploy`, `docker buildx build`, or a stray `npm publish`
+shows up outside the one release workflow.
+
+### A note on names
+
+The product is Redcode; most of the source still says OpenCode. Workspace packages are
+`@opencode-ai/*`, the package that becomes the binary is literally named `opencode`, and environment
+variables are `OPENCODE_*`. What *is* renamed is everything a user touches: the `redcode` binary,
+the `redcode` XDG data and cache directories, the npm namespace, and the agent's identity over ACP.
+Renaming the internals is not a goal on its own — expect the mismatch and read `opencode` as "this
+codebase".
 
 ## Use
 
@@ -34,7 +46,7 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 | `redcode run` | Non-interactive prompt; `--format json` emits structured records |
 | `redcode serve` | HTTP server exposing the Protocol API |
 | `redcode acp` | Agent Client Protocol, for editors that speak ACP |
-| `redcode mcp` | Model Context Protocol server management |
+| `redcode mcp` | Manage the MCP servers Redcode connects to (it is an MCP client, not a server) |
 | `redcode attach` | Attach to a running server |
 | `redcode web` | Start the server and open the local web interface |
 | `redcode session` | Manage Sessions |
@@ -96,7 +108,8 @@ Schema ──► Core ──┐
 Runtime dependencies run one way: Schema into Core and Protocol, then Core and Protocol into Server.
 Client runtime code may depend on Schema and Protocol but **never** Core or Server, which is what
 keeps the browser bundle honest. `sdk-next` composes Client, Core, and Server into an in-process
-host.
+host. The TUI's only boundary to the rest of the system is the SDK — it does not import Core, and it
+does not import the CLI that hosts it.
 
 The packages that matter most:
 
@@ -110,9 +123,34 @@ The packages that matter most:
 | `packages/tui` | Terminal UI (OpenTUI + Solid) |
 | `packages/opencode` | The CLI that becomes the `redcode` binary |
 | `packages/plugin` | Public plugin API |
+| `packages/sdk/js` | The SDK the TUI, CLI, and ACP agent all talk through |
+
+Not the product, despite appearances: `packages/cli` is a parallel Effect-native CLI preview whose
+binary is `lildax`, and `packages/desktop`, `packages/web`, `packages/console`, and `packages/stats`
+are inherited from upstream and are not built or published here.
 
 `packages/client/src/generated*` is generated. After changing the public Protocol or Server
 `HttpApi`, run `bun run generate` from `packages/client` rather than editing it.
+
+## Status
+
+Redcode inherits OpenCode mid-rebuild, and the v2 runtime is where the work is. Shipped and load
+bearing today: the Effect `HttpApi` server, durable `EventV2` with sequencing and replay, SessionV2
+durable admission with steer/queue delivery, the Effect-native `SessionRunner`, the System Context
+algebra and registry, Context Epoch persistence, and the Cordis plugin host.
+
+Deliberately not done yet, so you do not have to find out the hard way:
+
+- **Post-crash continuation recovery.** An advisory wake will not retry ambiguous provider work; that
+  needs its own design first.
+- **Clustering.** Session drains stay process-local.
+- **Workspace placement.** Explicit workspace identity is reserved; workspaces sit behind
+  `OPENCODE_EXPERIMENTAL_WORKSPACES`.
+- **A stable client API.** Namespaces and the paginated `Page` shape are still settling.
+- **Dynamic plugins, config HMR, YAML profiles.** Out of scope until the trust and transaction models
+  exist ([ADR 0001](.red/adr/0001-hybrid-cordis-effect-plugin-runtime.md)).
+
+`specs/v2/todo.md` is the working list.
 
 ## Development
 
