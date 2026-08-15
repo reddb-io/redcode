@@ -1,4 +1,6 @@
 import { TextAttributes } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/solid"
+import open from "open"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useRedskilled } from "../context/redskilled"
 import { useTheme } from "../context/theme"
@@ -7,33 +9,138 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 import { useDialog } from "../ui/dialog"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { useToast } from "../ui/toast"
+import {
+  age,
+  bar,
+  clock,
+  formatAge,
+  formatBytes,
+  formatCount,
+  formatDuration,
+  formatPercent,
+  formatRate,
+  fraction,
+  number,
+  progress,
+  sparkline,
+  truncate,
+} from "./workers/format"
+import { empty, rate, record, series, type Activity, type Track, type Worker } from "./workers/history"
+
+type Theme = ReturnType<typeof useTheme>["theme"]
+type Row = { kind: "group"; label: string; count: number } | { kind: "worker"; worker: Worker }
+type Steer = { status: "none" | "pending" | "consumed"; iteration?: number }
+type Status = ReturnType<ReturnType<typeof useRedskilled>["status"]>
+
+/** Heartbeat age at which a Worker stops looking healthy. */
+const HEARTBEAT = { warn: 30_000, error: 120_000 }
+/**
+ * OpenTUI overlaps cells when a flex subtree asks for more rows than the terminal has,
+ * so this page never relies on wrapping: every section is a fixed count of single lines
+ * and both panes get explicit sizes. CHROME_ROWS is what the page spends outside the
+ * panes (tab bar, two header lines, gaps, hint line, statusline); DETAIL_ROWS is what
+ * the detail pane always draws around its activity feed.
+ */
+const CHROME_ROWS = 10
+const DETAIL_ROWS = 13
 
 export function Workers() {
   const redskilled = useRedskilled()
   const { theme } = useTheme()
   const dialog = useDialog()
   const toast = useToast()
-  const [selected, setSelected] = createSignal(0)
-  const [steer, setSteer] = createSignal<{ status: "none" | "pending" | "consumed"; iteration?: number }>()
+  const dimensions = useTerminalDimensions()
+
+  const [selectedID, setSelectedID] = createSignal<string>()
+  const [focused, setFocused] = createSignal(false)
+  const [now, setNow] = createSignal(Date.now())
+  const [history, setHistory] = createSignal(empty())
+  const [steer, setSteer] = createSignal<Steer>()
+
   const status = redskilled.status
-  const workers = createMemo(() => status()?.payload?.workers ?? [])
-  const worker = createMemo(() => workers()[selected()])
+  const payload = () => status()?.payload
+  const workers = createMemo(() => payload()?.workers ?? [])
+  const project = () => status()?.activation?.project
+
+  const width = () => dimensions().width - 4
+  // The detail pane needs room for its widest fixed line before a split is worth it.
+  const detailWidth = () => Math.max(44, Math.floor(width() * 0.42))
+  const split = () => width() >= 92 && !focused() && workers().length > 0
+  const listWidth = () => (split() ? width() - detailWidth() - 2 : width())
+  const contentRows = () => Math.max(3, dimensions().height - CHROME_ROWS)
+  const activityRows = () => Math.max(1, contentRows() - DETAIL_ROWS)
+
+  const rows = createMemo<Row[]>(() => {
+    const list = workers()
+    if (redskilled.scope() !== "host") return list.map((worker) => ({ kind: "worker", worker }))
+    const groups = new Map<string, Worker[]>()
+    for (const worker of list) groups.set(worker.project_label, [...(groups.get(worker.project_label) ?? []), worker])
+    return [...groups.keys()]
+      .sort((a, b) => {
+        if (a === project()) return -1
+        if (b === project()) return 1
+        return a.localeCompare(b)
+      })
+      .flatMap((label) => {
+        const members = groups.get(label) ?? []
+        return [
+          { kind: "group" as const, label, count: members.length },
+          ...members.map((worker) => ({ kind: "worker" as const, worker })),
+        ]
+      })
+  })
+  const selectable = createMemo(() => rows().flatMap((row): Worker[] => (row.kind === "worker" ? [row.worker] : [])))
+  const selectedIndex = createMemo(() =>
+    Math.max(
+      0,
+      selectable().findIndex((item) => item.worker_id === selectedID()),
+    ),
+  )
+  const worker = createMemo(() => selectable()[selectedIndex()])
+  const track = createMemo<Track | undefined>(() => {
+    const current = worker()
+    return current ? history().live[current.worker_id] : undefined
+  })
+  const own = () => redskilled.scope() === "project" || worker()?.project_label === project()
+
+  /** Columns drop off the right as the list pane narrows, so a row never wraps. */
+  const columns = createMemo(() => {
+    const available = listWidth() - 2
+    const fixed = 2 + 8 + 7 + 11 + 8
+    const eta = available >= fixed + 20
+    const heartbeat = available >= fixed + 26
+    const counters = available >= fixed + 45
+    const phase = available - fixed - (eta ? 6 : 0) - (heartbeat ? 5 : 0) - (counters ? 13 : 0)
+    return { eta, heartbeat, counters, phase: Math.max(6, phase) }
+  })
+
+  const select = (index: number) => {
+    const list = selectable()
+    if (!list.length) return
+    setSelectedID(list[Math.min(list.length - 1, Math.max(0, index))].worker_id)
+  }
 
   const run = (action: () => Promise<unknown>, message: string) =>
     action()
       .then(() => toast.show({ variant: "success", message }))
       .catch(toast.error)
 
+  const consent = (decision: "accepted" | "refused") =>
+    void run(
+      () => redskilled.consent(decision),
+      decision === "accepted" ? "RedSkills connected" : "RedSkills disabled for this project",
+    )
+
   const stopWorker = async () => {
     const current = worker()
-    if (!current) return
+    if (!current || !own()) return
     if (!(await DialogConfirm.show(dialog, "Stop Worker", `Stop ${current.worker_id} now?`))) return
     await run(() => redskilled.stopWorker(current.worker_id), `Stopped ${current.worker_id}`)
   }
 
   const recycleWorker = async () => {
     const current = worker()
-    if (!current) return
+    if (!current || !own()) return
     if (!(await DialogConfirm.show(dialog, "Recycle Worker", `Recycle ${current.worker_id} and refill its slot?`)))
       return
     await run(() => redskilled.recycleWorker(current.worker_id), `Recycling ${current.worker_id}`)
@@ -41,12 +148,18 @@ export function Workers() {
 
   const steerWorker = async () => {
     const current = worker()
-    if (!current) return
+    if (!current || !own()) return
     const text = await DialogPrompt.show(dialog, `Steer ${current.worker_id}`, {
       placeholder: "What should this Worker do next?",
     })
     if (!text?.trim()) return
     await run(() => redskilled.steerWorker(current.worker_id, text.trim()), `Steer queued for ${current.worker_id}`)
+  }
+
+  const openIssue = () => {
+    const url = issueURL(worker())
+    if (!url) return toast.show({ variant: "info", message: "This Worker has not published an issue yet" })
+    open(url).catch(() => toast.show({ variant: "error", message: `Could not open ${url}` }))
   }
 
   const resize = async () => {
@@ -79,15 +192,38 @@ export function Workers() {
 
   onMount(() => redskilled.setActive(true))
   onCleanup(() => redskilled.setActive(false))
+
+  // Elapsed time, heartbeat age, and rates keep moving between daemon polls.
+  const ticker = setInterval(() => setNow(Date.now()), 1_000)
+  onCleanup(() => clearInterval(ticker))
+
   createEffect(() => {
-    if (selected() < workers().length) return
-    setSelected(Math.max(0, workers().length - 1))
+    redskilled.scope()
+    setHistory(empty())
   })
+  createEffect(() => {
+    const current = payload()
+    setHistory((previous) => record(previous, current, Date.now()))
+  })
+
+  // Keep the cursor on the same Worker; fall back to its position when it disappears.
+  let lastIndex = 0
+  createEffect(() => {
+    const list = selectable()
+    const found = list.findIndex((item) => item.worker_id === selectedID())
+    if (found >= 0) {
+      lastIndex = found
+      return
+    }
+    if (!list.length) return
+    setSelectedID(list[Math.min(lastIndex, list.length - 1)].worker_id)
+  })
+
   let steerRequest = 0
   createEffect(() => {
-    status()?.payload?.generated_at
+    payload()?.generated_at
     const current = worker()
-    if (!current || redskilled.scope() !== "project") {
+    if (!current || !own()) {
       steerRequest++
       setSteer()
       return
@@ -105,18 +241,25 @@ export function Workers() {
 
   useBindings(() => ({
     bindings: [
+      { key: "j", desc: "Next Worker", group: "Workers", cmd: () => select(selectedIndex() + 1) },
+      { key: "down", desc: "Next Worker", group: "Workers", cmd: () => select(selectedIndex() + 1) },
+      { key: "k", desc: "Previous Worker", group: "Workers", cmd: () => select(selectedIndex() - 1) },
+      { key: "up", desc: "Previous Worker", group: "Workers", cmd: () => select(selectedIndex() - 1) },
+      { key: "g", desc: "First Worker", group: "Workers", cmd: () => select(0) },
+      { key: "G", desc: "Last Worker", group: "Workers", cmd: () => select(selectable().length - 1) },
       {
-        key: "j",
-        desc: "Next Worker",
+        key: "return",
+        desc: "Focus Worker",
         group: "Workers",
-        cmd: () => setSelected(Math.min(workers().length - 1, selected() + 1)),
+        cmd: () => setFocused((value) => !value && !!worker()),
       },
-      { key: "k", desc: "Previous Worker", group: "Workers", cmd: () => setSelected(Math.max(0, selected() - 1)) },
       { key: "s", desc: "Stop Worker", group: "Workers", cmd: () => void stopWorker() },
       { key: "r", desc: "Recycle Worker", group: "Workers", cmd: () => void recycleWorker() },
       { key: "e", desc: "Steer Worker", group: "Workers", cmd: () => void steerWorker() },
+      { key: "o", desc: "Open issue", group: "Workers", cmd: openIssue },
       { key: "z", desc: "Resize project", group: "Workers", cmd: () => void resize() },
       { key: "p", desc: "Stop project", group: "Workers", cmd: () => void stopProject() },
+      { key: "R", desc: "Refresh now", group: "Workers", cmd: () => void redskilled.refresh() },
       {
         key: "h",
         desc: "Toggle host scope",
@@ -128,227 +271,705 @@ export function Workers() {
 
   return (
     <box flexGrow={1} minHeight={0} flexDirection="column" paddingLeft={2} paddingRight={2} gap={1}>
+      <Header
+        theme={theme}
+        now={now()}
+        width={width()}
+        status={status()}
+        scope={redskilled.scope()}
+        loading={redskilled.loading()}
+        onScope={(scope) => redskilled.setScope(scope)}
+        onStart={() => consent("accepted")}
+        onResize={() => void resize()}
+        onStopProject={() => void stopProject()}
+        onDisable={() => void disable()}
+      />
+
+      <Show when={notice(status())}>
+        {(item) => (
+          <box border borderColor={theme.border} paddingLeft={1} paddingRight={1} flexShrink={0}>
+            <text fg={theme.text} attributes={TextAttributes.BOLD}>
+              {item().title}
+            </text>
+            <text fg={theme.textMuted}>{truncate(item().body, width() - 4)}</text>
+            <Show when={item().actions.length > 0}>
+              <box flexDirection="row" gap={1}>
+                <For each={item().actions}>
+                  {(action) => (
+                    <text
+                      fg={action.tone === "primary" ? theme.primary : theme.textMuted}
+                      onMouseUp={() => consent(action.decision)}
+                    >
+                      {action.label}
+                    </text>
+                  )}
+                </For>
+              </box>
+            </Show>
+          </box>
+        )}
+      </Show>
+
+      <Show when={status()?.error && status()?.payload}>
+        <text fg={theme.warning}>{truncate(`⚠ ${status()?.error} · showing the last good snapshot`, width())}</text>
+      </Show>
+
+      <box flexDirection="row" gap={2} height={contentRows()} flexShrink={0}>
+        <Show
+          when={workers().length > 0}
+          fallback={
+            <Idle
+              theme={theme}
+              now={now()}
+              status={status()}
+              loading={redskilled.loading()}
+              departed={history().departed}
+              scope={redskilled.scope()}
+              width={width()}
+            />
+          }
+        >
+          <Show when={!focused()}>
+            <box
+              width={listWidth()}
+              flexShrink={0}
+              flexDirection="column"
+              border
+              borderColor={theme.border}
+              title={` Workers ${workers().length} `}
+              titleColor={theme.textMuted}
+            >
+              <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+                <text width={2} fg={theme.textMuted}>
+                  {" "}
+                </text>
+                <text width={8} fg={theme.textMuted}>
+                  WORKER
+                </text>
+                <text width={7} fg={theme.textMuted}>
+                  ISSUE
+                </text>
+                <text width={columns().phase} fg={theme.textMuted}>
+                  PHASE
+                </text>
+                <text width={11} fg={theme.textMuted}>
+                  PROGRESS
+                </text>
+                <text width={8} fg={theme.textMuted}>
+                  ELAPSED
+                </text>
+                <Show when={columns().eta}>
+                  <text width={6} fg={theme.textMuted}>
+                    ETA
+                  </text>
+                </Show>
+                <Show when={columns().heartbeat}>
+                  <text width={5} fg={theme.textMuted}>
+                    HB
+                  </text>
+                </Show>
+                <Show when={columns().counters}>
+                  <text width={7} fg={theme.textMuted}>
+                    TOKENS
+                  </text>
+                  <text width={6} fg={theme.textMuted}>
+                    TOOLS
+                  </text>
+                </Show>
+              </box>
+              <scrollbox flexGrow={1} minHeight={0} scrollbarOptions={{ visible: false }}>
+                <For each={rows()}>
+                  {(row) => (
+                    <Show
+                      when={row.kind === "worker" ? row : undefined}
+                      fallback={
+                        <box paddingLeft={1} paddingRight={1}>
+                          <text fg={theme.secondary} attributes={TextAttributes.BOLD}>
+                            {row.kind === "group" ? truncate(`${row.label} · ${row.count}`, listWidth() - 2) : ""}
+                          </text>
+                        </box>
+                      }
+                    >
+                      {(item) => (
+                        <WorkerRow
+                          theme={theme}
+                          worker={item().worker}
+                          now={now()}
+                          selected={item().worker.worker_id === worker()?.worker_id}
+                          columns={columns()}
+                          onSelect={() => setSelectedID(item().worker.worker_id)}
+                        />
+                      )}
+                    </Show>
+                  )}
+                </For>
+                <Show when={history().departed.length > 0}>
+                  <box paddingLeft={1} paddingTop={1}>
+                    <text fg={theme.textMuted}>recently ended</text>
+                  </box>
+                  <For each={history().departed}>
+                    {(item) => (
+                      <box paddingLeft={1} paddingRight={1}>
+                        <text fg={theme.textMuted}>{truncate(`  ${ended(item, now())}`, listWidth() - 2)}</text>
+                      </box>
+                    )}
+                  </For>
+                </Show>
+              </scrollbox>
+            </box>
+          </Show>
+
+          <Show when={(split() || focused()) && worker()}>
+            {(current) => (
+              <Detail
+                theme={theme}
+                worker={current()}
+                track={track()}
+                now={now()}
+                width={focused() ? width() : detailWidth()}
+                rows={activityRows()}
+                focused={focused()}
+                own={own()}
+                steer={steer()}
+                onBack={() => setFocused(false)}
+                onStop={() => void stopWorker()}
+                onRecycle={() => void recycleWorker()}
+                onSteer={() => void steerWorker()}
+                onOpen={openIssue}
+              />
+            )}
+          </Show>
+        </Show>
+      </box>
+
+      <text fg={theme.textMuted}>{truncate(hints(focused(), workers().length > 0), width())}</text>
+    </box>
+  )
+}
+
+function Header(props: {
+  theme: Theme
+  now: number
+  width: number
+  status: Status
+  scope: "project" | "host"
+  loading: boolean
+  onScope: (scope: "project" | "host") => void
+  onStart: () => void
+  onResize: () => void
+  onStopProject: () => void
+  onDisable: () => void
+}) {
+  const theme = props.theme
+  const host = () => props.status?.payload?.host
+  const activation = () => props.status?.activation
+  const staleness = () => props.status?.payload?.staleness
+  const registered = () =>
+    !!activation() && !!props.status?.payload?.registered_projects?.includes(activation()!.project)
+
+  const slots = () => {
+    const ceiling = number(host()?.ceiling.worker_count)
+    const used = host()?.worker_count ?? 0
+    const reserved = number(host()?.ceiling.interactive_reservation)
+    return {
+      ratio: ceiling ? used / ceiling : null,
+      text: `${used}/${ceiling ?? "?"}${reserved ? ` (${reserved} reserved)` : ""}`,
+      hot: !!ceiling && used >= ceiling,
+    }
+  }
+  const memory = () => {
+    const used = number(host()?.observed_rss_bytes)
+    const ceiling = number(host()?.ceiling.memory_bytes)
+    const ratio = number(host()?.ceiling_used_fraction) ?? (used !== null && ceiling ? used / ceiling : null)
+    return { ratio, text: `${formatBytes(used)}/${formatBytes(ceiling)}`, hot: (ratio ?? 0) >= 0.85 }
+  }
+
+  /** Only the meters that fit are rendered, so the header stays exactly two lines. */
+  const meters = createMemo(() => {
+    const item = activation()
+    const all = [
+      { id: "project", label: "", text: item?.project ?? "", ratio: null as number | null, hot: false },
+      {
+        id: "runner",
+        label: "",
+        text: item ? `${item.runner} × ${item.target}${item.standing ? " standing" : ""}` : "",
+        ratio: null,
+        hot: false,
+      },
+      { id: "slots", label: "slots", text: slots().text, ratio: slots().ratio, hot: slots().hot },
+      { id: "mem", label: "mem", text: memory().text, ratio: memory().ratio, hot: memory().hot },
+      ...(props.scope === "host"
+        ? [{ id: "projects", label: "", text: `${host()?.project_count ?? 0} projects`, ratio: null, hot: false }]
+        : []),
+    ].filter((entry) => entry.text)
+    const budget = props.width - (props.status?.consent === "accepted" && props.width >= 80 ? 32 : 0)
+    let used = 0
+    return all.filter((entry) => {
+      const size = entry.text.length + (entry.label ? entry.label.length + 1 : 0) + (entry.ratio === null ? 0 : 7) + 2
+      if (used + size > budget) return false
+      used += size
+      return true
+    })
+  })
+
+  const flags = () => {
+    const out: string[] = []
+    if (staleness()?.stale) out.push(`stale ${formatAge(number(staleness()?.age_ms))}`)
+    const daemon = props.status?.payload?.daemon.daemon_version
+    if (daemon && props.width >= 90) out.push(`daemon v${daemon}`)
+    return out
+  }
+
+  return (
+    <box flexDirection="column" flexShrink={0}>
       <box flexDirection="row" justifyContent="space-between">
         <box flexDirection="row" gap={1}>
           <text fg={theme.primary} attributes={TextAttributes.BOLD}>
             RedDB Workers
           </text>
-          <text fg={tone(status()?.lifecycle, theme)}>
-            {mark(status()?.lifecycle)} {status()?.lifecycle ?? "connecting"}
+          <text fg={tone(props.status?.lifecycle, theme)}>
+            {mark(props.status?.lifecycle)} {props.status?.lifecycle ?? "connecting"}
           </text>
-          <Show when={status()?.payload?.staleness.stale}>
-            <text fg={theme.warning}>stale</text>
-          </Show>
+          <For each={flags()}>
+            {(item) => <text fg={item.startsWith("stale") ? theme.warning : theme.textMuted}>{item}</text>}
+          </For>
         </box>
         <box flexDirection="row" gap={1}>
+          <Show when={props.width >= 70}>
+            <text fg={theme.textMuted}>
+              {props.loading ? "⟳ reading" : `⟳ ${formatAge(age(props.status?.payload?.generated_at, props.now))}`}
+            </text>
+            <text fg={theme.textMuted}>·</text>
+          </Show>
           <text
-            fg={redskilled.scope() === "project" ? theme.primary : theme.textMuted}
-            onMouseUp={() => redskilled.setScope("project")}
+            fg={props.scope === "project" ? theme.primary : theme.textMuted}
+            attributes={props.scope === "project" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onScope("project")}
           >
             Project
           </text>
           <text fg={theme.textMuted}>/</text>
           <text
-            fg={redskilled.scope() === "host" ? theme.primary : theme.textMuted}
-            onMouseUp={() => redskilled.setScope("host")}
+            fg={props.scope === "host" ? theme.primary : theme.textMuted}
+            attributes={props.scope === "host" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onScope("host")}
           >
             Host
           </text>
         </box>
       </box>
 
-      <Show when={status()?.activation}>
-        {(activation) => (
-          <box flexDirection="row" gap={2}>
-            <text fg={theme.textMuted}>{activation().project}</text>
-            <text fg={theme.text}>
-              {activation().runner} × {activation().target}
-            </text>
-            <text fg={theme.textMuted}>
-              {status()?.payload?.host.worker_count ?? 0} workers ·{" "}
-              {formatBytes(status()?.payload?.host.observed_rss_bytes)}
-            </text>
-            <Show when={status()?.consent === "accepted"}>
-              <Show when={!status()?.payload?.registered_projects?.includes(activation().project)}>
-                <text
-                  fg={theme.success}
-                  onMouseUp={() => void run(() => redskilled.consent("accepted"), "Project registered")}
-                >
-                  [start]
-                </text>
-              </Show>
-              <text fg={theme.info} onMouseUp={() => void resize()}>
-                [z resize]
+      <box flexDirection="row" justifyContent="space-between">
+        <box flexDirection="row" gap={2}>
+          <For each={meters()}>
+            {(item) => (
+              <text fg={item.label ? theme.textMuted : theme.text}>
+                {item.label ? `${item.label} ` : ""}
+                <Show when={item.ratio !== null}>
+                  <span style={{ fg: item.hot ? theme.warning : theme.success }}>{bar(item.ratio, 6)}</span>{" "}
+                </Show>
+                <span style={{ fg: item.hot ? theme.warning : theme.text }}>{item.text}</span>
               </text>
-              <text fg={theme.warning} onMouseUp={() => void stopProject()}>
-                [p stop project]
-              </text>
-              <text fg={theme.error} onMouseUp={() => void disable()}>
-                [disable]
+            )}
+          </For>
+        </box>
+        <Show when={props.status?.consent === "accepted" && props.width >= 80}>
+          <box flexDirection="row" gap={1}>
+            <Show when={!registered()}>
+              <text fg={theme.success} onMouseUp={props.onStart}>
+                [start]
               </text>
             </Show>
+            <text fg={theme.info} onMouseUp={props.onResize}>
+              [z resize]
+            </text>
+            <text fg={theme.warning} onMouseUp={props.onStopProject}>
+              [p stop]
+            </text>
+            <text fg={theme.error} onMouseUp={props.onDisable}>
+              [disable]
+            </text>
           </box>
-        )}
-      </Show>
-
-      <Show when={status()?.lifecycle === "unavailable" || status()?.lifecycle === "ineligible"}>
-        <box border borderColor={theme.border} padding={1}>
-          <text fg={theme.text} attributes={TextAttributes.BOLD}>
-            RedSkills is ready to connect
-          </text>
-          <text fg={theme.textMuted}>
-            Enable plugins.dev.enabled in .red/config.yaml and connect the redskilled MCP server.
-          </text>
-          <Show when={status()?.error}>
-            <text fg={theme.error}>{status()?.error}</text>
-          </Show>
-        </box>
-      </Show>
-
-      <Show when={status()?.lifecycle === "needs_consent"}>
-        <box border borderColor={theme.border} padding={1} flexDirection="row" gap={1}>
-          <text fg={theme.textMuted}>Let red-code register this project with redskilled?</text>
-          <text
-            fg={theme.primary}
-            onMouseUp={() => void run(() => redskilled.consent("accepted"), "RedSkills connected")}
-          >
-            [Connect]
-          </text>
-          <text
-            fg={theme.textMuted}
-            onMouseUp={() => void run(() => redskilled.consent("refused"), "RedSkills disabled for this project")}
-          >
-            [No thanks]
-          </text>
-        </box>
-      </Show>
-
-      <Show when={status()?.consent === "refused"}>
-        <box border borderColor={theme.border} padding={1} flexDirection="row" gap={1}>
-          <text fg={theme.textMuted}>Automatic registration is disabled for this project.</text>
-          <text
-            fg={theme.primary}
-            onMouseUp={() => void run(() => redskilled.consent("accepted"), "RedSkills enabled")}
-          >
-            [Enable integration]
-          </text>
-        </box>
-      </Show>
-
-      <Show
-        when={workers().length > 0}
-        fallback={
-          <text fg={theme.textMuted}>{redskilled.loading() ? "Reading daemon…" : "No Workers in this scope"}</text>
-        }
-      >
-        <box flexDirection="row" gap={2} flexGrow={1} minHeight={0}>
-          <box width="58%" flexDirection="column" border borderColor={theme.border}>
-            <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
-              <text width={12} fg={theme.textMuted}>
-                WORKER
-              </text>
-              <text width={10} fg={theme.textMuted}>
-                ISSUE
-              </text>
-              <text width={16} fg={theme.textMuted}>
-                PHASE
-              </text>
-              <text flexGrow={1} fg={theme.textMuted}>
-                MODEL
-              </text>
-            </box>
-            <For each={workers()}>
-              {(item, index) => (
-                <box
-                  flexDirection="row"
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={index() === selected() ? theme.backgroundElement : undefined}
-                  onMouseDown={() => setSelected(index())}
-                >
-                  <text width={12} fg={index() === selected() ? theme.primary : theme.text}>
-                    {item.worker_id.slice(0, 10)}
-                  </text>
-                  <text width={10} fg={theme.text}>
-                    {item.display?.issue ?? "—"}
-                  </text>
-                  <text width={16} fg={item.display?.failed ? theme.error : theme.success}>
-                    {item.display?.phase ?? item.display?.step ?? "starting"}
-                  </text>
-                  <text flexGrow={1} fg={theme.textMuted}>
-                    {item.display?.model ?? item.display?.runner ?? "unpublished"}
-                  </text>
-                </box>
-              )}
-            </For>
-          </box>
-
-          <Show when={worker()}>
-            {(current) => (
-              <box flexGrow={1} flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
-                <text fg={theme.text} attributes={TextAttributes.BOLD}>
-                  {current().worker_id}
-                </text>
-                <text fg={theme.textMuted}>
-                  {current().project_label} · pid {current().pid}
-                </text>
-                <text fg={theme.text}>
-                  {current().display?.runner ?? "runner ?"} · {current().display?.model ?? "model ?"} ·{" "}
-                  {current().display?.effort ?? "effort ?"}
-                </text>
-                <text fg={theme.text}>
-                  Phase {progress(current().display?.phase_index, current().display?.phase_total)}{" "}
-                  {current().display?.phase ?? current().display?.step ?? "starting"}
-                </text>
-                <text fg={theme.textMuted}>
-                  elapsed {formatDuration(current().uptime_ms)} · ETA {formatDuration(seconds(current().display?.eta))}
-                </text>
-                <text fg={theme.textMuted}>
-                  RSS {formatBytes(current().vitals.rss_bytes)} · budget {formatPercent(current().budget.used_fraction)}
-                </text>
-                <text fg={theme.textMuted}>
-                  LOC +{current().display?.added ?? 0}/-{current().display?.removed ?? 0} · tokens{" "}
-                  {formatCount(current().display?.tokens)} · tools {formatCount(current().display?.tools)}
-                </text>
-                <Show when={steer()?.status !== "none" && steer()}>
-                  {(state) => (
-                    <text fg={state().status === "pending" ? theme.warning : theme.textMuted}>
-                      steer {state().status}
-                      {state().iteration === undefined ? "" : ` at iteration ${state().iteration}`}
-                    </text>
-                  )}
-                </Show>
-                <Show when={current().log.last_line}>
-                  <text fg={theme.text} wrapMode="word">
-                    {current().log.last_line}
-                  </text>
-                </Show>
-                <Show
-                  when={redskilled.scope() === "project"}
-                  fallback={<text fg={theme.textMuted}>Other projects are read-only.</text>}
-                >
-                  <box flexDirection="row" gap={1}>
-                    <text fg={theme.warning} onMouseUp={() => void stopWorker()}>
-                      [s stop]
-                    </text>
-                    <text fg={theme.info} onMouseUp={() => void recycleWorker()}>
-                      [r recycle]
-                    </text>
-                    <text fg={theme.primary} onMouseUp={() => void steerWorker()}>
-                      [e steer]
-                    </text>
-                  </box>
-                </Show>
-              </box>
-            )}
-          </Show>
-        </box>
-      </Show>
-      <text fg={theme.textMuted}>
-        j/k select · h project/host · s stop · r recycle · e steer · z resize · p stop project
-      </text>
+        </Show>
+      </box>
     </box>
   )
+}
+
+function WorkerRow(props: {
+  theme: Theme
+  worker: Worker
+  now: number
+  selected: boolean
+  columns: { eta: boolean; heartbeat: boolean; counters: boolean; phase: number }
+  onSelect: () => void
+}) {
+  const theme = props.theme
+  const display = () => props.worker.display
+  const heartbeat = () => age(display()?.heartbeat, props.now)
+  const phase = () => {
+    const head = `${display()?.failed ? "✗ " : ""}${display()?.phase ?? display()?.step ?? "starting"}`
+    const step = display()?.phase && display()?.step ? ` · ${display()?.step}` : ""
+    if (head.length + step.length + 1 <= props.columns.phase) return { head, step }
+    return { head: truncate(head, props.columns.phase - 1), step: "" }
+  }
+  return (
+    <box
+      flexDirection="row"
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={props.selected ? theme.backgroundElement : undefined}
+      onMouseDown={props.onSelect}
+    >
+      <text width={2} fg={theme.primary}>
+        {props.selected ? "▶ " : "  "}
+      </text>
+      <text
+        width={8}
+        fg={props.selected ? theme.primary : theme.text}
+        attributes={props.selected ? TextAttributes.BOLD : undefined}
+      >
+        {truncate(props.worker.worker_id, 7)}
+      </text>
+      <text width={7} fg={theme.text}>
+        {issue(props.worker)}
+      </text>
+      <text width={props.columns.phase} fg={display()?.failed ? theme.error : theme.text}>
+        {phase().head}
+        <span style={{ fg: theme.textMuted }}>{phase().step}</span>
+      </text>
+      <text width={11} fg={display()?.failed ? theme.error : theme.success}>
+        {bar(fraction(display()?.phase_index, display()?.phase_total), 5)}{" "}
+        <span style={{ fg: theme.textMuted }}>{progress(display()?.phase_index, display()?.phase_total)}</span>
+      </text>
+      <text width={8} fg={theme.textMuted}>
+        {formatDuration(props.worker.uptime_ms)}
+      </text>
+      <Show when={props.columns.eta}>
+        <text width={6} fg={theme.textMuted}>
+          {formatDuration(seconds(display()?.eta))}
+        </text>
+      </Show>
+      <Show when={props.columns.heartbeat}>
+        <text width={5} fg={heartbeatTone(heartbeat(), theme)}>
+          {formatAge(heartbeat())}
+        </text>
+      </Show>
+      <Show when={props.columns.counters}>
+        <text width={7} fg={theme.textMuted}>
+          {formatCount(display()?.tokens)}
+        </text>
+        <text width={6} fg={theme.textMuted}>
+          {formatCount(display()?.tools)}
+        </text>
+      </Show>
+    </box>
+  )
+}
+
+function Detail(props: {
+  theme: Theme
+  worker: Worker
+  track: Track | undefined
+  now: number
+  width: number
+  rows: number
+  focused: boolean
+  own: boolean
+  steer: Steer | undefined
+  onBack: () => void
+  onStop: () => void
+  onRecycle: () => void
+  onSteer: () => void
+  onOpen: () => void
+}) {
+  const theme = props.theme
+  const display = () => props.worker.display
+  const heartbeat = () => age(display()?.heartbeat, props.now)
+  const samples = () => props.track?.samples ?? []
+  const tokenRate = () => rate(samples(), "tokens", props.now)
+  const toolRate = () => rate(samples(), "tools", props.now)
+  const sparkWidth = () => Math.min(24, inner() - 9)
+  const spark = () =>
+    samples().length > 1 && sparkWidth() >= 8
+      ? sparkline(series(samples(), "tokens", sparkWidth(), 10_000, props.now), sparkWidth())
+      : ""
+  const budget = () => number(props.worker.budget.used_fraction)
+  const activity = () => (props.track?.activity ?? []).slice(-props.rows)
+  /** Columns left inside the border and padding. Every line below is cut to this. */
+  const inner = () => Math.max(12, props.width - 4)
+
+  return (
+    <box
+      flexGrow={1}
+      flexDirection="column"
+      border
+      borderColor={props.focused ? theme.borderActive : theme.border}
+      title={` ${props.worker.worker_id} `}
+      titleColor={props.focused ? theme.primary : theme.textMuted}
+      paddingLeft={1}
+      paddingRight={1}
+    >
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {props.worker.worker_id}{" "}
+          <span style={{ fg: display()?.failed ? theme.error : theme.success }}>
+            {display()?.failed ? "✗ failed" : "● running"}
+          </span>
+          <span style={{ fg: theme.textMuted }}>
+            {truncate(
+              ` · ${issue(props.worker)} · ${props.worker.project_label} · pid ${props.worker.pid}`,
+              Math.max(0, inner() - props.worker.worker_id.length - 10 - (props.focused ? 13 : 0)),
+            )}
+          </span>
+        </text>
+        <Show when={props.focused}>
+          <text fg={theme.textMuted} onMouseUp={props.onBack}>
+            [enter back]
+          </text>
+        </Show>
+      </box>
+      <text fg={theme.text}>
+        {truncate(
+          `${display()?.runner ?? "runner ?"} · ${display()?.model ?? "model ?"} · ${display()?.effort ?? "effort ?"}${
+            display()?.origin ? ` · origin ${display()?.origin}` : ""
+          }`,
+          inner(),
+        )}
+      </text>
+      <text fg={theme.text}>
+        <span style={{ fg: theme.textMuted }}>phase </span>
+        <span style={{ fg: display()?.failed ? theme.error : theme.success }}>
+          {bar(fraction(display()?.phase_index, display()?.phase_total), 10)}
+        </span>{" "}
+        {truncate(
+          `${progress(display()?.phase_index, display()?.phase_total)} ${display()?.phase ?? "starting"}${
+            display()?.step ? ` · step ${display()?.step}` : ""
+          }`,
+          Math.max(4, inner() - 17),
+        )}
+      </text>
+      <text fg={theme.textMuted}>
+        heartbeat <span style={{ fg: heartbeatTone(heartbeat(), theme) }}>{formatAge(heartbeat())}</span>
+        {truncate(
+          ` · elapsed ${formatDuration(props.worker.uptime_ms)} · ETA ${formatDuration(seconds(display()?.eta))}`,
+          Math.max(0, inner() - 10 - formatAge(heartbeat()).length),
+        )}
+      </text>
+      <text fg={theme.textMuted}>
+        tokens <span style={{ fg: theme.text }}>{formatCount(display()?.tokens)}</span>
+        <Show when={tokenRate() !== null}>
+          {" "}
+          <span style={{ fg: theme.info }}>{formatRate(tokenRate())}</span>
+        </Show>{" "}
+        · tools <span style={{ fg: theme.text }}>{formatCount(display()?.tools)}</span>
+        <Show when={toolRate() !== null}>
+          {" "}
+          <span style={{ fg: theme.info }}>{formatRate(toolRate())}</span>
+        </Show>
+      </text>
+      <text fg={theme.textMuted}>
+        {spark() ? "tok/10s " : ""}
+        <span style={{ fg: theme.info }}>{spark()}</span>
+      </text>
+      <text fg={theme.textMuted}>
+        {truncate(
+          `ctx ${formatPercent(display()?.context)} · rss ${formatBytes(props.worker.vitals.rss_bytes)}${
+            props.worker.vitals.fresh ? "" : " (stale)"
+          } · budget `,
+          Math.max(0, inner() - 12),
+        )}
+        <span style={{ fg: (budget() ?? 0) >= 0.85 ? theme.warning : theme.success }}>{bar(budget(), 6)}</span>{" "}
+        <span style={{ fg: theme.text }}>{formatPercent(budget())}</span>
+      </text>
+      <text fg={theme.textMuted}>
+        loc <span style={{ fg: theme.diffAdded }}>+{formatCount(display()?.added ?? 0)}</span>
+        <span style={{ fg: theme.diffRemoved }}> -{formatCount(display()?.removed ?? 0)}</span>
+        {truncate(
+          ` · reasoning ${formatCount(display()?.reasoning)} · text ${formatCount(display()?.text)}`,
+          Math.max(
+            0,
+            inner() - 6 - formatCount(display()?.added ?? 0).length - formatCount(display()?.removed ?? 0).length,
+          ),
+        )}
+      </text>
+      <text fg={props.steer?.status === "pending" ? theme.warning : theme.textMuted}>
+        {props.steer && props.steer.status !== "none"
+          ? truncate(
+              `⇢ steer ${props.steer.status}${
+                props.steer.iteration === undefined ? "" : ` at iteration ${props.steer.iteration}`
+              }`,
+              inner(),
+            )
+          : ""}
+      </text>
+
+      <text fg={theme.textMuted}>
+        {truncate(
+          `── activity (${props.track?.activity.length ?? 0})${props.focused ? "" : " · enter to expand"}`,
+          inner(),
+        )}
+      </text>
+      <box height={props.rows} flexShrink={0} flexDirection="column">
+        <Show
+          when={activity().length > 0}
+          fallback={<text fg={theme.textMuted}>waiting for the first heartbeat…</text>}
+        >
+          <For each={activity()}>{(item) => <ActivityLine theme={theme} item={item} width={inner()} />}</For>
+        </Show>
+      </box>
+
+      <box flexDirection="row" gap={1} flexShrink={0}>
+        <Show
+          when={props.own}
+          fallback={<text fg={theme.textMuted}>{truncate("Other projects are read-only.", inner())}</text>}
+        >
+          <text fg={theme.warning} onMouseUp={props.onStop}>
+            {label("s", "stop", inner())}
+          </text>
+          <text fg={theme.info} onMouseUp={props.onRecycle}>
+            {label("r", "recycle", inner())}
+          </text>
+          <text fg={theme.primary} onMouseUp={props.onSteer}>
+            {label("e", "steer", inner())}
+          </text>
+        </Show>
+        <Show when={issueURL(props.worker)}>
+          <text fg={theme.textMuted} onMouseUp={props.onOpen}>
+            {label("o", "issue", inner())}
+          </text>
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+/** `[s stop]` when the pane is wide enough for the four actions, `[s]` when it is not. */
+function label(key: string, name: string, inner: number) {
+  return inner >= 40 ? `[${key} ${name}]` : `[${key}]`
+}
+
+function ActivityLine(props: { theme: Theme; item: Activity; width: number }) {
+  const theme = props.theme
+  const color = () => {
+    if (props.item.kind === "failed") return theme.error
+    if (props.item.kind === "phase") return theme.success
+    if (props.item.kind === "start") return theme.info
+    if (props.item.kind === "step") return theme.text
+    return theme.textMuted
+  }
+  return (
+    <text fg={color()}>
+      <span style={{ fg: theme.textMuted }}>{clock(props.item.at)}</span>{" "}
+      {truncate(props.item.text, Math.max(4, props.width - 9))}
+    </text>
+  )
+}
+
+function Idle(props: {
+  theme: Theme
+  now: number
+  status: Status
+  loading: boolean
+  departed: Array<Track & { ended: number }>
+  scope: "project" | "host"
+  width: number
+}) {
+  const theme = props.theme
+  const activation = () => props.status?.activation
+  const registered = () =>
+    !!activation() && !!props.status?.payload?.registered_projects?.includes(activation()!.project)
+  const reason = () => {
+    const item = activation()
+    if (!item) return "The daemon has not reported an activation for this project."
+    if (item.target === 0) return "Target is 0 — press z to size the project up."
+    return `Target ${item.target} · ${registered() ? "registered" : "not registered"} · the queue is drained or the daemon has not granted a slot yet.`
+  }
+  return (
+    <box flexGrow={1} border borderColor={theme.border} paddingLeft={1} paddingRight={1} flexDirection="column">
+      <Show when={!props.loading} fallback={<text fg={theme.textMuted}>Reading daemon…</text>}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          No live Workers in this {props.scope}
+        </text>
+        <text fg={theme.textMuted}>{truncate(reason(), props.width - 4)}</text>
+        <Show when={props.departed.length > 0}>
+          <text fg={theme.textMuted}> </text>
+          <text fg={theme.textMuted}>recently ended</text>
+          <For each={props.departed}>
+            {(item) => <text fg={theme.textMuted}>{truncate(ended(item, props.now), props.width - 4)}</text>}
+          </For>
+        </Show>
+      </Show>
+    </box>
+  )
+}
+
+function ended(item: Track & { ended: number }, now: number) {
+  return `${item.worker.worker_id} · ${issue(item.worker)} · ${item.worker.display?.failed ? "failed · " : ""}${
+    item.worker.display?.phase ?? "—"
+  } · ended ${formatAge(now - item.ended)} ago after ${formatDuration(item.worker.uptime_ms)}`
+}
+
+function hints(focused: boolean, hasWorkers: boolean) {
+  if (focused) return "enter back · j/k switch Worker · s stop · r recycle · e steer · o issue · R refresh"
+  if (!hasWorkers) return "h project/host · z resize · p stop project · R refresh"
+  return "j/k select · enter focus · h project/host · s stop · r recycle · e steer · o issue · z resize · p stop project · R refresh"
+}
+
+type Notice = {
+  title: string
+  body: string
+  actions: Array<{ label: string; tone: "primary" | "muted"; decision: "accepted" | "refused" }>
+}
+
+function notice(status: Status): Notice | undefined {
+  const lifecycle = status?.lifecycle
+  if (lifecycle === "unavailable" || lifecycle === "ineligible")
+    return {
+      title: "RedSkills is ready to connect",
+      body: status?.error ?? "Enable plugins.dev.enabled in .red/config.yaml and connect the redskilled MCP server.",
+      actions: [],
+    }
+  if (lifecycle === "needs_consent")
+    return {
+      title: "Connect RedSkills",
+      body: "Let red-code register this project with redskilled?",
+      actions: [
+        { label: "[Connect]", tone: "primary", decision: "accepted" },
+        { label: "[No thanks]", tone: "muted", decision: "refused" },
+      ],
+    }
+  if (status?.consent === "refused")
+    return {
+      title: "RedSkills is disabled here",
+      body: "Automatic registration is disabled for this project.",
+      actions: [{ label: "[Enable integration]", tone: "primary", decision: "accepted" }],
+    }
+  return undefined
+}
+
+function issue(worker: Worker | undefined) {
+  const value = worker?.display?.issue
+  if (!value) return "—"
+  return value.startsWith("#") ? value : `#${value}`
+}
+
+function issueURL(worker: Worker | undefined): string | undefined {
+  const value = worker?.display?.issue?.replace(/^#/, "")
+  if (!worker || !value || !/^\d+$/.test(value) || !/^[\w.-]+\/[\w.-]+$/.test(worker.project_label)) return undefined
+  return `https://github.com/${worker.project_label}/issues/${value}`
+}
+
+function seconds(value: unknown) {
+  const amount = number(value)
+  return amount === null ? null : amount * 1_000
+}
+
+function heartbeatTone(ms: number | null, theme: Theme) {
+  if (ms === null) return theme.textMuted
+  if (ms < HEARTBEAT.warn) return theme.success
+  if (ms < HEARTBEAT.error) return theme.warning
+  return theme.error
 }
 
 function mark(value: string | undefined) {
@@ -357,48 +978,9 @@ function mark(value: string | undefined) {
   return "○"
 }
 
-function tone(value: string | undefined, theme: ReturnType<typeof useTheme>["theme"]) {
+function tone(value: string | undefined, theme: Theme) {
   if (value === "live") return theme.success
   if (value === "degraded" || value === "needs_consent") return theme.warning
   if (value === "unavailable") return theme.error
   return theme.textMuted
-}
-
-function number(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null
-}
-
-function formatBytes(value: unknown) {
-  const bytes = number(value)
-  if (bytes === null) return "?"
-  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)}K`
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)}M`
-  return `${(bytes / 1024 ** 3).toFixed(1)}G`
-}
-
-function formatDuration(value: unknown) {
-  const ms = number(value)
-  if (ms === null) return "?"
-  if (ms < 60_000) return `${Math.round(ms / 1_000)}s`
-  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`
-  return `${(ms / 3_600_000).toFixed(1)}h`
-}
-
-function seconds(value: unknown) {
-  const amount = number(value)
-  return amount === null ? null : amount * 1_000
-}
-
-function formatPercent(value: unknown) {
-  const fraction = number(value)
-  return fraction === null ? "?" : `${Math.round(fraction * 100)}%`
-}
-
-function formatCount(value: unknown) {
-  const amount = number(value)
-  return amount === null ? "?" : amount.toLocaleString()
-}
-
-function progress(index: unknown, total: unknown) {
-  return `${number(index) ?? "?"}/${number(total) ?? "?"}`
 }

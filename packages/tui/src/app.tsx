@@ -376,6 +376,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const tuiConfig = useTuiConfig()
   const redskilled = useRedskilled()
   const [primaryView, setPrimaryView] = createSignal<"session" | "workers">("session")
+  const workerCount = createMemo(() => redskilled.status()?.payload?.workers.length ?? 0)
+  const failedWorkers = createMemo(
+    () => redskilled.status()?.payload?.workers.filter((item) => item.display?.failed).length ?? 0,
+  )
   const route = useRoute()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
@@ -1177,8 +1181,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             attributes={primaryView() === "workers" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => setPrimaryView("workers")}
           >
-            Workers{" "}
-            {redskilled.status()?.payload?.workers.length ? `(${redskilled.status()?.payload?.workers.length})` : ""}
+            Workers
+            <Show when={workerCount() > 0}>
+              <span style={{ fg: failedWorkers() ? theme.error : theme.textMuted }}>
+                {` (${workerCount()}${failedWorkers() ? ` ✗${failedWorkers()}` : ""})`}
+              </span>
+            </Show>
           </text>
         </box>
         <Show when={primaryView() === "session"} fallback={<Workers />}>
