@@ -43,6 +43,25 @@ describe("layer node", () => {
     void check
   })
 
+  test("inspects the effective graph in dependency order", () => {
+    expect(LayerNode.inspect(LayerNode.group([greeting]))).toEqual([
+      { name: Value.key, kind: "layer", tag: "app", dependencies: [] },
+      { name: Greeting.key, kind: "layer", tag: "app", dependencies: [Value.key] },
+    ])
+  })
+
+  test("inspects replacement dependencies instead of the replaced graph", () => {
+    const replacement = make({
+      service: Greeting,
+      layer: Layer.succeed(Greeting, Greeting.of({ value: "replacement" })),
+      deps: [],
+    })
+
+    expect(LayerNode.inspect(LayerNode.group([greeting]), [[greeting, replacement]])).toEqual([
+      { name: Greeting.key, kind: "layer", tag: "app", dependencies: [] },
+    ])
+  })
+
   test("preserves branch-specific implementations across roots", async () => {
     const firstValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "first" })), deps: [] })
     const secondValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "second" })), deps: [] })

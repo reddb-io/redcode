@@ -82,6 +82,8 @@ export const locationServices = LayerNode.group([
   SessionRunnerLLM.node,
 ])
 
+export const serviceInventory = LayerNode.inspect(locationServices)
+
 export type LocationServices = LayerNode.Output<typeof locationServices>
 export type LocationError = LayerNode.Error<typeof locationServices>
 
