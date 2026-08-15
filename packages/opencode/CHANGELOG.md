@@ -1,5 +1,11 @@
 # opencode
 
+## 0.3.0
+
+### Minor Changes
+
+- e5c97af: Boot internal plugins through the transactional Cordis profile host and expose an inspectable Location service graph.
+
 ## 0.2.0
 
 ### Minor Changes
