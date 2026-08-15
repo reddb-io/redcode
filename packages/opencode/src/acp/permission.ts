@@ -12,6 +12,7 @@ import { exists, readText } from "@/util/filesystem"
 import type { ACPSession } from "./session"
 import { pendingToolCall, toLocations, type ToolInput } from "./tool"
 import { Effect } from "effect"
+import { childAgentMetadata } from "./child-agent"
 
 type PermissionEvent = Extract<Event, { type: "permission.asked" }>
 type Reply = "once" | "always" | "reject"
@@ -61,6 +62,7 @@ export class Handler {
     const result = await this.input.connection
       .requestPermission({
         sessionId: permission.sessionID,
+        ...(session.childAgent ? { _meta: childAgentMetadata(session.childAgent) } : {}),
         toolCall: await permissionToolCall({
           toolCallId: permission.tool?.callID ?? permission.id,
           toolName: permission.permission,

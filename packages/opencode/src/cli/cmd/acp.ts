@@ -68,6 +68,6 @@ export const AcpCommand = effectCmd({
           process.stdin.on("end", () => resolve())
           process.stdin.on("error", reject)
         }),
-    )
+    ).pipe(Effect.ensuring(Effect.promise(() => server.stop(true))))
   }),
 })

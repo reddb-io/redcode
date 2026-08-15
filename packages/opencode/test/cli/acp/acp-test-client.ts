@@ -25,6 +25,7 @@ type JsonRpcNotification<T = unknown> = {
 
 export type AcpClient = {
   readonly request: <T>(method: string, params?: unknown) => Effect.Effect<JsonRpcResponse<T>, unknown>
+  readonly notify: (method: string, params?: unknown) => Effect.Effect<void>
   readonly receive: Effect.Effect<unknown>
   readonly waitForNotification: <T>(
     method: string,
@@ -49,6 +50,9 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
       }
     })
 
+  const notify = (method: string, params?: unknown) =>
+    acp.send(params === undefined ? { jsonrpc: "2.0", method } : { jsonrpc: "2.0", method, params })
+
   const waitForNotification = <T>(method: string, predicate: (params: T) => boolean, timeoutMs = 15_000) =>
     Effect.gen(function* () {
       while (true) {
@@ -60,6 +64,7 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
 
   return {
     request,
+    notify,
     receive: acp.receive,
     waitForNotification,
   }

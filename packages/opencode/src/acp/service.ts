@@ -45,6 +45,12 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Provider } from "@/provider/provider"
 import type { Command } from "@/command"
+import {
+  type Contract as ChildAgentContract,
+  childAgentMetadata,
+  parseChildAgentContract,
+  requireGovernedChildBoundary,
+} from "./child-agent"
 
 export const AuthMethodID = "redcode-login"
 
@@ -78,6 +84,7 @@ export function make(input: {
   directory?: Directory.Interface
   session?: ACPSession.Interface
   usage?: UsageService.Interface
+  env?: NodeJS.ProcessEnv
   eventSubscription?: (subscription: ACPEvent.Subscription) => void
 }): Interface {
   const session = input.session ?? makeSessionService()
@@ -162,6 +169,17 @@ export function make(input: {
 
   const newSession = Effect.fn("ACP.newSession")(function* (params: NewSessionRequest) {
     const started = performance.now()
+    const childAgent = yield* Effect.try({
+      try: () => {
+        const contract = parseChildAgentContract(params._meta)
+        if (contract) requireGovernedChildBoundary(contract, params.mcpServers, input.env ?? process.env)
+        return contract
+      },
+      catch: (error) =>
+        new ACPError.InvalidChildAgentBoundaryError({
+          reason: error instanceof Error ? error.message : "Invalid governed child Agent boundary",
+        }),
+    })
     const snapshot = yield* directorySnapshot(params.cwd)
     const selected = selectDefaultModel(snapshot)
     const variant = selectVariant(snapshot, selected)
@@ -190,6 +208,7 @@ export function make(input: {
       model: selected,
       variant,
       modeId,
+      childAgent,
     })
     sessionSnapshots.set(state.id, snapshot)
 
@@ -198,6 +217,7 @@ export function make(input: {
 
     const response = {
       sessionId: state.id,
+      ...(state.childAgent ? { _meta: childAgentMetadata(state.childAgent) } : {}),
       configOptions: configOptions(snapshot, {
         model: state.model ?? selected,
         variant: state.variant,
@@ -525,7 +545,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* promptResponse(response.info, params.messageId, current.childAgent)
       }
 
       const known = snapshot.availableCommands.find((item) => item.name === command.name)
@@ -549,7 +569,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* promptResponse(response.info, params.messageId, current.childAgent)
       }
 
       if (command.name === "compact") {
@@ -571,7 +591,7 @@ export function make(input: {
       }
 
       yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-      return yield* promptResponse(undefined, params.messageId)
+      return yield* promptResponse(undefined, params.messageId, current.childAgent)
     }),
     cancel,
   }
@@ -824,20 +844,22 @@ function detectSlashCommand(parts: ReturnType<typeof promptContentToParts>) {
 const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   info: AssistantInfo,
   messageId: string | null | undefined,
+  childAgent?: ChildAgentContract,
 ) {
+  const metadata = childAgent ? childAgentMetadata(childAgent) : {}
   if (!info?.error) {
     return {
       stopReason: "end_turn" as const,
       ...(info ? { usage: UsageService.buildUsage(info) } : {}),
       ...(messageId ? { userMessageId: messageId } : {}),
-      _meta: {},
+      _meta: metadata,
     }
   }
 
   const base = {
     usage: UsageService.buildUsage(info),
     ...(messageId ? { userMessageId: messageId } : {}),
-    _meta: {},
+    _meta: metadata,
   }
 
   if (info.error.name === "MessageAbortedError") {

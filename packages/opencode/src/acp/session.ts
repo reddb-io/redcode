@@ -5,6 +5,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Context, Effect, Layer, Ref } from "effect"
 import * as ACPError from "./error"
+import type { Contract as ChildAgentContract } from "./child-agent"
 
 export type SelectedModel = {
   providerID: ProviderV2.ID
@@ -30,6 +31,7 @@ export type Info = {
   variant?: string
   modeId?: string
   knownParts: ReadonlyMap<string, KnownMessagePartMetadata>
+  childAgent?: ChildAgentContract
 }
 
 export type StoreInput = {
@@ -40,6 +42,7 @@ export type StoreInput = {
   model?: SelectedModel
   variant?: string
   modeId?: string
+  childAgent?: ChildAgentContract
 }
 
 export type RecordPartMetadataInput = {
@@ -212,6 +215,7 @@ function makeSession(input: StoreInput): Info {
     model: input.model,
     variant: input.variant,
     modeId: input.modeId,
+    childAgent: input.childAgent,
     knownParts: new Map(),
   }
 }
