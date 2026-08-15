@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="rc-hero-title rc-hero-desc">
+  <title id="rc-hero-title">Redcode — RedDB's terminal coding agent</title>
+  <desc id="rc-hero-desc">Redcode is a terminal coding agent built on OpenCode, with a typed Effect service kernel, durable Sessions that admit a prompt before executing it, reversible plugin profiles, and a live console for the RedDB Worker fleet.</desc>
+
+  <defs>
+    <linearGradient id="rc-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="rc-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff2056" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rc-rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff2056"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="rc-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="rc-frame">
+      <rect x="0" y="0" width="1200" height="420" rx="18"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#rc-frame)">
+    <rect width="1200" height="420" fill="url(#rc-bg)"/>
+    <rect width="1200" height="420" fill="url(#rc-grid)"/>
+    <ellipse cx="120" cy="60" rx="420" ry="300" fill="url(#rc-glow)"/>
+    <ellipse cx="1120" cy="410" rx="360" ry="240" fill="url(#rc-glow)" opacity="0.5"/>
+
+    <!-- left: the product and what it is made of -->
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="72" y="150" font-size="88" font-weight="700" letter-spacing="-3">
+        <tspan fill="#ff2056">red</tspan><tspan fill="#f0f6fc">code</tspan>
+      </text>
+
+      <text x="72" y="204" font-size="34" font-weight="600" fill="#ff2056" letter-spacing="-1">terminal coding agent</text>
+
+      <rect x="74" y="230" width="148" height="3" fill="url(#rc-rule)"/>
+
+      <text x="72" y="272" font-size="19" fill="#8b949e">Prompts are durable before they run, the</text>
+      <text x="72" y="298" font-size="19" fill="#8b949e">runtime is reversible, and the fleet is on screen.</text>
+
+      <text x="72" y="332" font-size="11" fill="#6e7681" letter-spacing="2.5">BUILT ON</text>
+      <g font-size="14">
+        <rect x="72" y="342" width="106" height="28" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.35"/>
+        <text x="90" y="361" fill="#c9d1d9">OpenCode</text>
+        <rect x="190" y="342" width="88" height="28" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+        <text x="208" y="361" fill="#c9d1d9">Effect</text>
+        <rect x="290" y="342" width="88" height="28" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+        <text x="308" y="361" fill="#c9d1d9">Cordis</text>
+      </g>
+
+      <text x="72" y="398" font-size="11" fill="#6e7681" letter-spacing="2">RUNS AS</text>
+      <text x="150" y="398" font-size="14" fill="#8b949e">TUI &#183; HTTP server &#183; ACP agent &#183; MCP client</text>
+    </g>
+
+    <!-- right: what happens to a prompt, top to bottom -->
+    <!-- Pill geometry: font-size=15 monospace, ~9px/char advance, 18px side padding (36px total).
+         All pills and arrows centered on x=932 (the panel's own centre: 720 + 424/2).
+         Pill 1: "prompt admitted" 15ch x 9 + 36 = 171, x=846-1017, text at 864.
+         Pill 2: "promoted at boundary" 20ch x 9 + 36 = 216, x=824-1040, text at 842.
+         Pill 3: "one llm.stream per turn" 23ch x 9 + 36 = 243, x=810-1053, text at 828.
+         Pill 4: "durable result" 14ch x 9 + 36 = 162, x=851-1013, text at 869.
+         Panel inner bounds are 744-1120; every pill sits inside 810-1053. -->
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <rect x="720" y="56" width="424" height="308" rx="12" fill="#0b0f15" stroke="#ffffff" stroke-opacity="0.09"/>
+      <text x="744" y="90" font-size="12" fill="#6e7681" letter-spacing="1">A PROMPT'S PATH</text>
+
+      <g font-size="15">
+        <rect x="846" y="106" width="171" height="30" rx="15" fill="#ff2056" fill-opacity="0.14" stroke="#ff2056" stroke-opacity="0.5"/>
+        <text x="864" y="126" fill="#ff2056">prompt admitted</text>
+
+        <line x1="932" y1="140" x2="932" y2="158" stroke="#ff2056" stroke-width="2" stroke-opacity="0.55"/>
+        <path d="M926 158 L932 170 L938 158 Z" fill="#ff2056"/>
+
+        <rect x="824" y="172" width="216" height="30" rx="15" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.09"/>
+        <text x="842" y="192" fill="#c9d1d9">promoted at boundary</text>
+
+        <line x1="932" y1="206" x2="932" y2="224" stroke="#ff2056" stroke-width="2" stroke-opacity="0.55"/>
+        <path d="M926 224 L932 236 L938 224 Z" fill="#ff2056"/>
+
+        <rect x="810" y="238" width="243" height="30" rx="15" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.09"/>
+        <text x="828" y="258" fill="#c9d1d9">one llm.stream per turn</text>
+
+        <line x1="932" y1="272" x2="932" y2="290" stroke="#ff2056" stroke-width="2" stroke-opacity="0.55"/>
+        <path d="M926 290 L932 302 L938 290 Z" fill="#ff2056"/>
+
+        <rect x="851" y="304" width="162" height="30" rx="15" fill="#ffffff" fill-opacity="0.04" stroke="#3fb950" stroke-opacity="0.4"/>
+        <text x="869" y="324" fill="#c9d1d9">durable result</text>
+      </g>
+
+      <text x="744" y="352" font-size="12" fill="#6e7681">a crash between any two of these loses nothing</text>
+    </g>
+  </g>
+</svg>
