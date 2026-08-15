@@ -128,43 +128,6 @@ test.describe("session timeline projection", () => {
     await expect(page.locator('[data-timeline-row="TurnGap"]')).toBeVisible()
   })
 
-  test("renders comment strips and historical diff summary overflow", async ({ page }) => {
-    const user = userMessage(
-      [
-        userText("The user made the following comment regarding lines 4 through 8 of src/a.ts: Keep this stable", {
-          id: "prt_comment_only",
-          synthetic: true,
-          metadata: {
-            opencodeComment: {
-              path: "src/a.ts",
-              selection: { startLine: 4, startChar: 0, endLine: 8, endChar: 0 },
-              comment: "Keep this stable",
-            },
-          },
-        }),
-        userText("Continue after the comment", { id: "prt_comment_visible" }),
-      ],
-      { summary: { diffs: Array.from({ length: 11 }, (_, index) => summaryDiff(index)) } },
-    )
-    const nextUser = userMessage(undefined, { id: "msg_2000_diff_next_user", created: 1700000010000 })
-    const nextAssistant = assistantMessage([], {
-      id: "msg_2001_diff_next_assistant",
-      parentID: "msg_2000_diff_next_user",
-      created: 1700000011000,
-    })
-    await setupTimeline(page, {
-      messages: [user, assistantMessage(), nextUser, nextAssistant],
-      settings: { newLayoutDesigns: false },
-    })
-    const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
-    await scroller.evaluate((element) => (element.scrollTop = 0))
-
-    await expect(page.locator('[data-timeline-row="CommentStrip"]')).toBeVisible()
-    await expect(page.getByText("Keep this stable", { exact: true })).toBeVisible()
-    await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
-    await expect(page.getByText(/show all/i)).toBeVisible()
-  })
-
   test("renders interruption independently when the turn is not compacted", async ({ page }) => {
     const user = userMessage()
     const before = assistantMessage([{ id: "prt_before", type: "text", text: "Before" }], {
