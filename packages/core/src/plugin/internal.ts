@@ -62,22 +62,7 @@ export function define<R>(plugin: Plugin<R>) {
   return plugin
 }
 
-const builtIns = [
-  ConfigReferencePlugin.Plugin,
-  AgentPlugin.Plugin,
-  CommandPlugin.Plugin,
-  SkillPlugin.Plugin,
-  ModelsDevPlugin,
-  ConfigAgentPlugin.Plugin,
-  ConfigCommandPlugin.Plugin,
-  ConfigSkillPlugin.Plugin,
-  ...ProviderPlugins,
-  ConfigExternalPlugin.Plugin,
-  ConfigProviderPlugin.Plugin,
-  VariantPlugin.Plugin,
-] satisfies readonly Plugin<Requirements | Scope.Scope>[]
-
-export const builtInIDs = builtIns.map((item) => PluginV2.ID.make(item.id))
+export const builtInIDs = () => builtIns().map((item) => PluginV2.ID.make(item.id))
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -99,7 +84,7 @@ const layer = Layer.effectDiscard(
     const reference = yield* Reference.Service
     const invariants = yield* RuntimeInvariant.Service
     const cordis = yield* CordisPluginHost.make(plugin)
-    const entries = builtIns.map((input) => {
+    const entries = builtIns().map((input) => {
       return {
         id: PluginV2.ID.make(input.id),
         effect: (context: PluginContext) =>
@@ -131,6 +116,23 @@ const layer = Layer.effectDiscard(
       .pipe(Effect.andThen(invariants.run), Effect.withSpan("PluginInternal.boot"))
   }),
 )
+
+function builtIns() {
+  return [
+    ConfigReferencePlugin.Plugin,
+    AgentPlugin.Plugin,
+    CommandPlugin.Plugin,
+    SkillPlugin.Plugin,
+    ModelsDevPlugin,
+    ConfigAgentPlugin.Plugin,
+    ConfigCommandPlugin.Plugin,
+    ConfigSkillPlugin.Plugin,
+    ...ProviderPlugins,
+    ConfigExternalPlugin.Plugin,
+    ConfigProviderPlugin.Plugin,
+    VariantPlugin.Plugin,
+  ] satisfies readonly Plugin<Requirements | Scope.Scope>[]
+}
 
 export const locationLayer = layer.pipe(
   Layer.provideMerge(Config.locationLayer),

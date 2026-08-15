@@ -236,7 +236,7 @@ describe("LocationServiceMap", () => {
           const plugins = yield* PluginV2.Service
           const invariants = yield* RuntimeInvariant.Service
 
-          expect(yield* plugins.list()).toEqual(PluginInternal.builtInIDs)
+          expect(yield* plugins.list()).toEqual(PluginInternal.builtInIDs())
           yield* invariants.run
         }).pipe(
           Effect.scoped,
