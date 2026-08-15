@@ -1,5 +1,11 @@
 # opencode
 
+## 0.3.2
+
+### Patch Changes
+
+- e66d0ce: Open Redcode directly in a new full TUI session and use Redcode branding in terminal titles.
+
 ## 0.3.1
 
 ### Patch Changes
