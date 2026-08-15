@@ -26,7 +26,7 @@ test("opens directly into an unpersisted RedCode chat draft", async ({ page }) =
   })
   await page.addInitScript(
     ({ directory }) => {
-      localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: true } }))
+      localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: false } }))
       localStorage.setItem("opencode-theme-id", "oc-2")
       localStorage.setItem("opencode-color-scheme", "dark")
       localStorage.setItem(
