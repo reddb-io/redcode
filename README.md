@@ -2,13 +2,15 @@
 
 Redcode is RedDB's terminal coding agent.
 
-It is a fork of [OpenCode](https://github.com/anomalyco/opencode) that takes the codebase in a
-specific direction: a typed Effect service kernel underneath, durable Session semantics that survive
-a crash, a runtime composed of reversible plugin profiles, and native integration with RedSkills so
-an autonomous Worker fleet is a first-class surface rather than a separate dashboard.
+It is built on [OpenCode](https://github.com/anomalyco/opencode), whose codebase gave us a complete,
+well-made coding agent to start from, and it takes that foundation in a specific direction: a typed
+Effect service kernel underneath, durable Session semantics that survive a crash, a runtime composed
+of reversible plugin profiles, and native integration with RedSkills so an autonomous Worker fleet is
+a first-class surface rather than a separate dashboard.
 
-If you want the upstream product, use OpenCode. Redcode exists to be the agent RedDB runs its own
-engineering on.
+We did not set out to replace OpenCode — it remains an excellent agent, and if it fits your work you
+should use it. Redcode exists because RedDB needed those particular runtime properties for the way we
+run our own engineering, and building them on OpenCode was far better than starting over.
 
 ## Install
 
@@ -33,8 +35,10 @@ The product is Redcode; most of the source still says OpenCode. Workspace packag
 `@opencode-ai/*`, the package that becomes the binary is literally named `opencode`, and environment
 variables are `OPENCODE_*`. What *is* renamed is everything a user touches: the `redcode` binary,
 the `redcode` XDG data and cache directories, the npm namespace, and the agent's identity over ACP.
-Renaming the internals is not a goal on its own — expect the mismatch and read `opencode` as "this
-codebase".
+
+Leaving the internals alone is deliberate. A rename would touch every file, bury the real changes in
+noise, and make it harder to read our work against upstream's — so expect the mismatch and read
+`opencode` as "this codebase".
 
 ## Use
 
@@ -84,10 +88,12 @@ explicit `llm.stream(request)` call, and projected history is reloaded before du
 boundary while the current drain continues. An explicit `queue` input waits until the Session would
 otherwise go idle.
 
-**A composed, reversible runtime.** Internal plugins are one named profile mounted through a Cordis
-host: activation is ordered and awaited, teardown is awaited, and a failed replacement restores the
-previous profile. Boot is not "ready" until the profile settles and every registered runtime
-invariant has run. See [ADR 0001](.red/adr/0001-hybrid-cordis-effect-plugin-runtime.md).
+**A composed, reversible runtime**, modelled on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+Internal plugins are one named profile mounted through a Cordis host: activation is ordered and
+awaited, teardown is awaited, and a failed replacement restores the previous profile. Boot is not
+"ready" until the profile settles and every registered runtime invariant has run. See
+[ADR 0001](.red/adr/0001-hybrid-cordis-effect-plugin-runtime.md), which records what we adopted from
+the Harness and, just as deliberately, what we chose not to.
 
 **System Context as data.** What the model sees is assembled from typed Context Sources with stable
 keys and pure renderers, cut by a persisted Context Epoch — not from a string template.
@@ -187,8 +193,26 @@ defines the Session Runtime vocabulary — read it before arguing about what a t
 Released tags are immutable — a broken release is fixed by publishing the next patch, never by
 replacing a tag. An incomplete tag can be reconciled by dispatching `red-publish` with it.
 
-## Upstream
+## Lineage
 
-Redcode is a fork of [OpenCode](https://github.com/anomalyco/opencode), which is licensed under the
-MIT License. Its copyright and license notices are preserved. Redcode does not speak for the
-OpenCode project, and issues found in Redcode should be reported here rather than upstream.
+Redcode stands on two projects we admire, and we would rather name exactly what we owe them than
+thank them vaguely.
+
+**[OpenCode](https://github.com/anomalyco/opencode)** is the codebase Redcode is built from. The
+agent loop, the provider and model integration, the tool system, the LSP and formatter plumbing, the
+terminal UI foundation — that is their work, not ours. Redcode is a fork under the MIT License with
+its copyright and license notices preserved. We keep the divergence narrow on purpose: the internals
+still carry OpenCode's names precisely so our changes stay legible against theirs. Redcode does not
+speak for the OpenCode project; please report Redcode issues here so we do not send our bugs to
+their tracker.
+
+**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** is the architecture we
+studied to get our runtime right. Its insistence that a running system be a reversible, inspectable
+composition — every installed effect with one owner, activation ordered and awaited, invariants owned
+by the package they protect, and tests that prove semantic outcomes through real entry points —
+reshaped how Redcode boots. Their published post-mortems taught us more than most documentation
+does. We also depend on `@deepseek-ai/cordis` (MIT), which they maintain inside that repository, as
+the host for our plugin profiles. Three research reports in `.red/researches/` record the audit
+honestly, including the principles we have not earned yet.
+
+Neither project owes us anything, and any mistakes in how we applied their ideas are ours.
