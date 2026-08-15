@@ -1,5 +1,16 @@
 # opencode
 
+## 0.4.0
+
+### Minor Changes
+
+- 7b8733f: Rebuild the Workers view as a live fleet console: capacity meters for slots and memory, a sortable-by-project table with phase bars, heartbeat freshness and token counters, and a detail pane with throughput rates, a token sparkline, and a per-Worker activity feed. Adds enter to expand one Worker, o to open its issue, R to refresh, g/G to jump, and a tab badge that counts failed Workers.
+
+### Patch Changes
+
+- 13afa51: Publish a real npm package page: what Redcode is, how to install it, the commands you can run, and attribution to OpenCode and DeepSeek Harness. The tarball now also carries NOTICE alongside LICENSE.
+- c5cda51: Identify the native ACP Agent and its terminal authentication flow as Redcode.
+
 ## 0.3.2
 
 ### Patch Changes
