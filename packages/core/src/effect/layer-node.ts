@@ -114,6 +114,13 @@ export function group<const Items extends readonly AnyNode[]>(
 export type Replacement = readonly [source: AnyNode, replacement: AnyNode | Layer.Any]
 export type Replacements = readonly Replacement[]
 
+export interface InspectionEntry {
+  readonly name: string
+  readonly kind: Exclude<AnyNode["kind"], "group">
+  readonly tag?: string
+  readonly dependencies: readonly string[]
+}
+
 type CheckReplacementErrors<SourceError, ReplacementError> = [Exclude<ReplacementError, SourceError>] extends [never]
   ? unknown
   : { readonly "New replacement errors": Exclude<ReplacementError, SourceError> }
@@ -269,6 +276,31 @@ export function compile<A, E, const Items extends Replacements = readonly []>(
   const layers = flatten(root).map((node) => compileNode(node))
   const layer = layers.reduce<RuntimeLayer>((result, layer) => layer.pipe(Layer.provideMerge(result)), Layer.empty)
   return layer as Layer.Layer<A, E>
+}
+
+export function inspect<const Items extends Replacements = readonly []>(
+  root: Node<unknown, unknown, any>,
+  replacements?: ValidReplacements<Items>,
+): readonly InspectionEntry[] {
+  const entries: InspectionEntry[] = []
+  const replacementMap = replacementMapFrom(replacements)
+
+  walk<void>(
+    root,
+    (node, context) => {
+      node.dependencies.flatMap(flatten).forEach(context.visit)
+      if (node.kind === "group") return
+      entries.push({
+        name: node.name,
+        kind: node.kind,
+        tag: node.tag,
+        dependencies: node.dependencies.flatMap(flatten).map((dependency) => dependency.name),
+      })
+    },
+    { resolve: (node) => replacementMap.get(node.name) ?? node },
+  )
+
+  return entries
 }
 
 function replacementMapFrom(replacements?: Replacements) {

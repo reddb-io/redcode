@@ -11,6 +11,8 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { LocationServiceMap } from "@opencode-ai/core/location-services"
 import { Location } from "@opencode-ai/core/location"
 import { PluginV2 } from "@opencode-ai/core/plugin"
+import { PluginInternal } from "@opencode-ai/core/plugin/internal"
+import { RuntimeInvariant } from "@opencode-ai/core/invariant"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -216,6 +218,26 @@ describe("LocationServiceMap", () => {
             description: "Reviews code",
             mode: "subagent",
           })
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(dir.path) }))),
+        ),
+      ),
+    ),
+  )
+
+  it.live("boots the internal Cordis profile and validates its runtime inventory", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((dir) =>
+        Effect.gen(function* () {
+          const plugins = yield* PluginV2.Service
+          const invariants = yield* RuntimeInvariant.Service
+
+          expect(yield* plugins.list()).toEqual(PluginInternal.builtInIDs())
+          yield* invariants.run
         }).pipe(
           Effect.scoped,
           Effect.provide(LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(dir.path) }))),
