@@ -690,6 +690,27 @@ export const RunCommand = effectCmd({
           return false
         }
 
+        // A rejected `session.prompt` / `session.command` request and the
+        // `session.error` event the server publishes for it are the same
+        // failure arriving on two channels. The event loop is already draining
+        // when the request returns, so without coordination the run reports the
+        // failure twice — nondeterministically, because whether the event
+        // subscription attaches before the server publishes decides it. First
+        // reporter wins; the other stays silent, so the run emits exactly one
+        // error record either way.
+        let sessionErrorReported = false
+        let requestErrorReported = false
+
+        // The request never got admitted, so the caller returns immediately
+        // without draining to idle (see #27371 — waiting for an idle that
+        // never arrives used to hang the process).
+        function reportRequestError(error: unknown) {
+          process.exitCode = 1
+          if (sessionErrorReported) return
+          requestErrorReported = true
+          if (!emit("error", { error })) UI.error(formatRunError(error))
+        }
+
         // Consume one subscribed event stream for the active session and mirror it
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
@@ -776,6 +797,8 @@ export const RunCommand = effectCmd({
             if (event.type === "session.error") {
               const props = event.properties
               if (props.sessionID !== sessionID || !props.error) continue
+              if (requestErrorReported) continue
+              sessionErrorReported = true
               let err = String(props.error.name)
               if ("data" in props.error && props.error.data && "message" in props.error.data) {
                 err = String(props.error.data.message)
@@ -847,8 +870,7 @@ export const RunCommand = effectCmd({
               variant: args.variant,
             })
             if (result.error) {
-              if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
-              process.exitCode = 1
+              reportRequestError(result.error)
               return
             }
             await finish()
@@ -864,8 +886,7 @@ export const RunCommand = effectCmd({
             parts: [...files, { type: "text", text: message }],
           })
           if (result.error) {
-            if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
-            process.exitCode = 1
+            reportRequestError(result.error)
             return
           }
           await finish()
