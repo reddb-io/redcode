@@ -65,6 +65,12 @@ class Model extends Schema.Class<Model>("ConfigV2.Model")({
 export class Info extends Schema.Class<Info>("ConfigV2.Provider")({
   name: Schema.String.pipe(Schema.optional),
   env: Schema.String.pipe(Schema.Array, Schema.optional),
+  // Legacy selector kept only so it is rejected instead of silently dropped: the package
+  // and the URL must come from the same source or the request goes to an impossible endpoint.
+  npm: Schema.String.pipe(Schema.optional).annotate({
+    description:
+      "Legacy provider package selector. Not applied on its own; set api.package instead. Startup fails when it disagrees with the resolved provider package.",
+  }),
   api: ProviderV2.Api.pipe(Schema.optional),
   request: Request.pipe(Schema.optional),
   models: Schema.Record(Schema.String, Model).pipe(Schema.optional),
