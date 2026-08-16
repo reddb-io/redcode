@@ -121,6 +121,7 @@ Commands:
   redcode debug skill         list all available skills
   redcode debug snapshot      snapshot debugging utilities
   redcode debug startup       print startup timing
+  redcode debug runtime       show the booted runtime composition
   redcode debug agent <name>  show agent configuration details
   redcode debug v2            debug v2 catalog and built-in plugins
   redcode debug info          show debug information

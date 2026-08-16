@@ -34,6 +34,7 @@ import { ProviderPlugins } from "./provider"
 import { SkillPlugin } from "./skill"
 import { VariantPlugin } from "./variant"
 import { CordisPluginHost } from "./cordis"
+import { PluginProfile } from "./profile"
 
 export type Requirements =
   | AgentV2.Service
@@ -83,6 +84,7 @@ const layer = Layer.effectDiscard(
     const skill = yield* SkillV2.Service
     const reference = yield* Reference.Service
     const invariants = yield* RuntimeInvariant.Service
+    const profile = yield* PluginProfile.Service
     const cordis = yield* CordisPluginHost.make(plugin)
     const entries = builtIns().map((input) => {
       return {
@@ -111,6 +113,11 @@ const layer = Layer.effectDiscard(
       }
     })
 
+    // Share only the host's reader: this boot keeps ownership of `apply`/`clear`, while
+    // RuntimeInspection reads the active profile. The invariant report `run` returns is
+    // recorded by the registry and read back through `RuntimeInvariant.results`; a failing
+    // check still dies here and fails the location boot.
+    yield* profile.attach(cordis.snapshot)
     yield* cordis
       .apply({ name: "internal", entries })
       .pipe(Effect.andThen(invariants.run), Effect.withSpan("PluginInternal.boot"))
@@ -135,6 +142,7 @@ function builtIns() {
 }
 
 export const locationLayer = layer.pipe(
+  Layer.provideMerge(PluginProfile.layer),
   Layer.provideMerge(Config.locationLayer),
   Layer.provideMerge(FetchHttpClient.layer),
 )
@@ -160,5 +168,6 @@ export const node = makeLocationNode({
     SkillV2.node,
     Reference.node,
     RuntimeInvariant.node,
+    PluginProfile.node,
   ],
 })

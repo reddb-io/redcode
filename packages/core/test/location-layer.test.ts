@@ -13,6 +13,7 @@ import { Location } from "@opencode-ai/core/location"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { PluginInternal } from "@opencode-ai/core/plugin/internal"
 import { RuntimeInvariant } from "@opencode-ai/core/invariant"
+import { RuntimeInspection } from "@opencode-ai/core/runtime-inspection"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -237,7 +238,53 @@ describe("LocationServiceMap", () => {
           const invariants = yield* RuntimeInvariant.Service
 
           expect(yield* plugins.list()).toEqual(PluginInternal.builtInIDs())
-          yield* invariants.run
+          expect(yield* invariants.run).toContainEqual({ owner: "@opencode-ai/core/plugin", ok: true })
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(dir.path) }))),
+        ),
+      ),
+    ),
+  )
+
+  it.live("reports the booted composition without leaking configuration", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((dir) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            fs.writeFile(
+              path.join(dir.path, "opencode.json"),
+              JSON.stringify({ username: "runtime-inspection-secret-value" }),
+            ),
+          )
+          const inspection = yield* RuntimeInspection.Service
+          const payload = yield* inspection.inspect
+
+          expect(payload.profile.name).toBe("internal")
+          expect(payload.profile.plugins).toEqual(PluginInternal.builtInIDs())
+          expect(payload.services.map((entry) => entry.name)).toEqual(
+            expect.arrayContaining([
+              "@opencode/Location",
+              "@opencode/v2/Plugin",
+              "@opencode/v2/PluginProfile",
+              "@opencode/v2/RuntimeInspection",
+              "@opencode/v2/RuntimeInvariant",
+              "@opencode/v2/ToolRegistry",
+              "plugin-internal",
+            ]),
+          )
+          expect(
+            payload.services.find((entry) => entry.name === "@opencode/v2/RuntimeInspection")?.dependencies,
+          ).toEqual(["@opencode/v2/PluginProfile", "@opencode/v2/RuntimeInvariant"])
+          expect(payload.invariants).toContainEqual({ owner: "@opencode-ai/core/plugin", ok: true })
+
+          // The payload is identifiers only: no config value, credential, path, or
+          // environment may cross this boundary.
+          expect(JSON.stringify(payload)).not.toContain("runtime-inspection-secret-value")
+          expect(JSON.stringify(payload)).not.toContain(dir.path)
         }).pipe(
           Effect.scoped,
           Effect.provide(LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(dir.path) }))),
