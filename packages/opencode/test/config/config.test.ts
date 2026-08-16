@@ -313,10 +313,86 @@ it.effect("creates global jsonc config with schema when no global configs exist"
     Effect.gen(function* () {
       yield* Config.use.get().pipe(provideInstanceEffect(dir))
 
-      const content = yield* FSUtil.use.readFileString(path.join(dir, "opencode.jsonc"))
+      const content = yield* FSUtil.use.readFileString(path.join(dir, "redcode.jsonc"))
       expect(content).toContain('"$schema": "https://opencode.ai/config.json"')
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
   ),
+)
+
+it.effect("reuses an existing opencode-named global config instead of seeding a second file", () =>
+  withGlobalConfig({ config: { shell: "bash" }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      const config = yield* Config.use.get().pipe(provideInstanceEffect(dir))
+
+      expect(config.shell).toBe("bash")
+      // Seeding a redcode.jsonc here would recreate the duplicate-config confusion this
+      // change exists to remove.
+      expect(yield* FSUtil.use.existsSafe(path.join(dir, "redcode.jsonc"))).toBe(false)
+      expect(yield* FSUtil.use.existsSafe(path.join(dir, "redcode.json"))).toBe(false)
+    }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
+  ),
+)
+
+it.effect("writes global updates into the existing opencode-named file", () =>
+  withGlobalConfig({ config: { shell: "bash", model: "test/model" }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      yield* Config.use.updateGlobal({ model: "changed/model" })
+
+      const file = path.join(dir, "opencode.jsonc")
+      expect(
+        ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file), file).model,
+      ).toBe("changed/model")
+      expect(yield* FSUtil.use.existsSafe(path.join(dir, "redcode.jsonc"))).toBe(false)
+    }),
+  ),
+)
+
+it.effect("prefers the redcode-named global config when both names exist", () =>
+  withGlobalConfig({ config: { shell: "bash", model: "legacy/model" }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      yield* writeConfigEffect(dir, schemaConfig({ model: "current/model" }), "redcode.jsonc")
+
+      const config = yield* Config.use.get().pipe(provideInstanceEffect(dir))
+
+      expect(config.model).toBe("current/model")
+      // Both files merge, so a key only the legacy file defines still applies.
+      expect(config.shell).toBe("bash")
+    }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
+  ),
+)
+
+it.effect("prefers the redcode-named project config and keeps proximity ranked above it", () =>
+  Effect.gen(function* () {
+    const global = yield* tmpdirScoped()
+    const root = yield* tmpdirScoped()
+    const directory = path.join(root, "project")
+    yield* Effect.all([
+      writeConfigEffect(root, schemaConfig({ model: "root/legacy", shell: "legacy-shell" }), "opencode.json"),
+      writeConfigEffect(
+        root,
+        schemaConfig({ model: "root/current", shell: "current-shell", username: "from-redcode" }),
+        "redcode.json",
+      ),
+      writeConfigEffect(directory, schemaConfig({ model: "nested/legacy" }), "opencode.json"),
+    ])
+
+    return yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        directory,
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+
+          // The nested legacy-named file is closer, so it still wins over the
+          // redcode-named file at the root.
+          expect(config.model).toBe("nested/legacy")
+          // Within the root the redcode-named file is read and wins the keys both define.
+          expect(config.shell).toBe("current-shell")
+          expect(config.username).toBe("from-redcode")
+        }),
+      ),
+    )
+  }),
 )
 
 it.effect("does not create global config when OPENCODE_CONFIG_DIR is set", () =>
@@ -329,7 +405,7 @@ it.effect("does not create global config when OPENCODE_CONFIG_DIR is set", () =>
         Effect.gen(function* () {
           yield* Config.use.get().pipe(provideInstanceEffect(dir))
 
-          expect(yield* FSUtil.use.existsSafe(path.join(dir, "opencode.jsonc"))).toBe(false)
+          expect(yield* FSUtil.use.existsSafe(path.join(dir, "redcode.jsonc"))).toBe(false)
         }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
       ),
     )
