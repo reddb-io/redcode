@@ -1516,6 +1516,21 @@ const layer = Layer.effect(
             )
             parsed.models[modelID] = parsedModel
           }
+          // A provider-level npm selects the SDK for every model of that provider, not just the ones
+          // redeclared above. Leaving catalog models on the catalog package pairs them with an
+          // overridden options.baseURL, producing an endpoint neither source describes. Variants are
+          // regenerated for the new package the same way the redeclare path does it.
+          if (provider.npm !== undefined) {
+            for (const [modelID, model] of Object.entries(parsed.models)) {
+              if (provider.models?.[modelID] !== undefined) continue
+              if (model.api.npm === provider.npm) continue
+              const next = { ...model, api: { ...model.api, npm: provider.npm } }
+              parsed.models[modelID] = {
+                ...next,
+                variants: mapValues(ProviderTransform.variants(next), (v) => v),
+              }
+            }
+          }
           database[providerID] = parsed
         }
 
