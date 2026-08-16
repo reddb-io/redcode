@@ -1,5 +1,31 @@
 # opencode
 
+## 0.5.2
+
+### Patch Changes
+
+- 232b6f5: Apply a provider block's `npm` to every model of that provider, not only to models the same block redeclares. A config that set `npm` together with `options.baseURL` but declared no `models` had its `npm` silently ignored while the `baseURL` was applied, so the catalog's SDK was paired with the configured host — for example the Anthropic `/v1/messages` path sent to an OpenAI-compatible host, which 404s. Omitting `npm` still keeps the catalog package while overriding the host, and a per-model `provider.npm` still wins over the provider-level value.
+- e8295f1: Show the provider, model and request URL on provider transport failures.
+
+  A failing provider request used to print only the response body, e.g. `404 Page not found`, which cannot be told apart from a wrong API key, a wrong model id, or a wrong host. The request URL was already recorded on the durable message record but never displayed. It is now shown on both the CLI (`redcode run`, interactive and streaming) and the TUI message panel:
+
+  ```
+  404 Page not found
+    provider minimax/MiniMax-M3
+    request  https://api.minimax.chat/v1/messages
+    status   404
+  ```
+
+  The resolved provider and model are now recorded on the error itself, so `session.error` events and `--format json` carry them too. Request URLs are redacted before display: userinfo, fragments, and all query values outside a small allowlist are withheld, so an API key embedded in a URL cannot leak. Response headers are never displayed.
+
+- ab85ac4: Prefer `redcode.json` / `redcode.jsonc` for global and project configuration, keeping `opencode.json` / `opencode.jsonc` as a fallback.
+
+  The global config directory is already `~/.config/redcode/`, but the file inside it was still OpenCode-named. Both names are now read everywhere, in every scope. Existing configs keep working with no migration and no warning: when a directory holds both names they are merged exactly the way `opencode.json` and `opencode.jsonc` already merge, with the Redcode-named file winning the fields they share. Directory proximity still outranks the file name, so a nested `opencode.json` beats a `redcode.json` further up.
+
+  Files are never created beside an existing config. A global config or an `opencode mcp add` target is only written under the Redcode name when no config exists at all; otherwise the file already on disk is edited in place.
+
+  The `customize-opencode` skill no longer points the agent at `~/.config/opencode/`, which has not been the config directory since the directory rename.
+
 ## 0.5.1
 
 ### Patch Changes
