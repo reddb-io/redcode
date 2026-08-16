@@ -8,7 +8,7 @@ import { effectCmd } from "../../effect-cmd"
 
 export const RuntimeCommand = effectCmd({
   command: "runtime",
-  describe: "debug the booted runtime composition (profile, services, invariants)",
+  describe: "show the booted runtime composition",
   instance: false,
   builder: (yargs) =>
     yargs.option("json", {
