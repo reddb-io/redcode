@@ -605,8 +605,12 @@ function isAfter(info: Info, other?: Info) {
 
 export function fromError(
   e: unknown,
-  ctx: { providerID: ProviderV2.ID; aborted?: boolean },
+  ctx: { providerID: ProviderV2.ID; modelID?: string; aborted?: boolean },
 ): NonNullable<Assistant["error"]> {
+  // Recorded on every transport failure so the persisted error is self-describing:
+  // `session.error` events carry no message, so this is the only place a reader
+  // can learn which provider and model the failed request resolved to.
+  const transport = { providerID: ctx.providerID, ...(ctx.modelID ? { modelID: ctx.modelID } : {}) }
   switch (true) {
     case e instanceof DOMException && e.name === "AbortError":
       return new AbortedError(
@@ -631,6 +635,7 @@ export function fromError(
           message: "Connection reset by server",
           isRetryable: true,
           metadata: {
+            ...transport,
             code: (e as SystemError).code ?? "",
             syscall: (e as SystemError).syscall ?? "",
             message: (e as SystemError).message ?? "",
@@ -647,6 +652,7 @@ export function fromError(
           message: "Response decompression failed",
           isRetryable: true,
           metadata: {
+            ...transport,
             code: (e as FetchDecompressionError).code,
             message: e.message,
           },
@@ -659,6 +665,7 @@ export function fromError(
           message: e.message,
           isRetryable: true,
           metadata: {
+            ...transport,
             code: e.name,
             timeoutMs: String(e.ms),
           },
@@ -671,6 +678,7 @@ export function fromError(
           message: e.message,
           isRetryable: true,
           metadata: {
+            ...transport,
             code: e.name,
           },
         },
@@ -698,7 +706,7 @@ export function fromError(
           isRetryable: parsed.isRetryable,
           responseHeaders: parsed.responseHeaders,
           responseBody: parsed.responseBody,
-          metadata: parsed.metadata,
+          metadata: { ...transport, ...parsed.metadata },
         },
         { cause: e },
       ).toObject()
@@ -722,6 +730,7 @@ export function fromError(
               message: parsed.message,
               isRetryable: parsed.isRetryable,
               responseBody: parsed.responseBody,
+              metadata: transport,
             },
             {
               cause: e,

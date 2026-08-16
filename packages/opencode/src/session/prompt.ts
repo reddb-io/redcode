@@ -1204,6 +1204,7 @@ const layer = Layer.effect(
             if (msg.time.completed) return
             msg.error ??= MessageV2.fromError(new DOMException("Aborted", "AbortError"), {
               providerID: msg.providerID,
+              modelID: msg.modelID,
               aborted: true,
             })
             msg.time.completed = Date.now()

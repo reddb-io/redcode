@@ -1364,6 +1364,35 @@ describe("session.message-v2.toModelMessage", () => {
 })
 
 describe("session.message-v2.fromError", () => {
+  test("records provider, model and request URL on a transport failure", () => {
+    // `session.error` events carry no message, so the persisted error is the
+    // only place a reader can learn where the failed request actually went.
+    const result = MessageV2.fromError(
+      new APICallError({
+        message: "404 Page not found",
+        url: "https://api.minimax.chat/v1/messages",
+        requestBodyValues: {},
+        statusCode: 404,
+        responseBody: "404 page not found",
+        isRetryable: false,
+      }),
+      { providerID, modelID: "MiniMax-M3" },
+    )
+
+    expect(result).toMatchObject({
+      name: "APIError",
+      data: {
+        message: "404 Page not found",
+        statusCode: 404,
+        metadata: {
+          providerID: "test",
+          modelID: "MiniMax-M3",
+          url: "https://api.minimax.chat/v1/messages",
+        },
+      },
+    })
+  })
+
   test("serializes context_length_exceeded as ContextOverflowError", () => {
     const input = {
       type: "error",
@@ -1414,6 +1443,7 @@ describe("session.message-v2.fromError", () => {
           message: item.message,
           isRetryable: false,
           responseBody: JSON.stringify(input),
+          metadata: { providerID },
         },
       })
     })
@@ -1439,6 +1469,7 @@ describe("session.message-v2.fromError", () => {
         message: body.error.message,
         isRetryable: true,
         responseBody: JSON.stringify(body),
+        metadata: { providerID },
       },
     })
   })
