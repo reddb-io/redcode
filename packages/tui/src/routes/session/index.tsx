@@ -58,6 +58,7 @@ import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
+import { ProviderFailure } from "@opencode-ai/core/util/provider-failure"
 import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
@@ -1543,7 +1544,12 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.error}
         >
-          <text fg={theme.textMuted}>{errorMessage(props.message.error)}</text>
+          <text fg={theme.textMuted}>
+            {ProviderFailure.describe(errorMessage(props.message.error), props.message.error, {
+              providerID: props.message.providerID,
+              modelID: props.message.modelID,
+            })}
+          </text>
         </box>
       </Show>
       <Switch>
