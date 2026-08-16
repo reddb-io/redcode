@@ -209,6 +209,112 @@ describe("Config", () => {
     ),
   )
 
+  it.live("loads a directory holding only the legacy opencode names exactly as before", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            fs.writeFile(
+              path.join(tmp.path, "opencode.jsonc"),
+              JSON.stringify({ $schema: "legacy", providers: { legacy: provider } }),
+            ),
+          )
+          return yield* Effect.gen(function* () {
+            const documents = (yield* (yield* Config.Service).entries()).filter((entry) => entry.type === "document")
+
+            expect(documents.map((document) => document.path)).toEqual([path.join(tmp.path, "opencode.jsonc")])
+            expect(documents.map((document) => document.info.$schema)).toEqual(["legacy"])
+            expect(documents[0]?.info.providers?.legacy).toBeInstanceOf(ConfigProvider.Info)
+          }).pipe(Effect.provide(testLayer(tmp.path)))
+        }),
+      ),
+    ),
+  )
+
+  it.live("merges redcode over opencode names in one directory, redcode last", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Promise.all([
+              fs.writeFile(
+                path.join(tmp.path, "opencode.json"),
+                JSON.stringify({ $schema: "opencode-json", model: "legacy/json", providers: { legacy: provider } }),
+              ),
+              fs.writeFile(
+                path.join(tmp.path, "opencode.jsonc"),
+                JSON.stringify({ $schema: "opencode-jsonc", default_agent: "legacy" }),
+              ),
+              fs.writeFile(path.join(tmp.path, "redcode.json"), JSON.stringify({ $schema: "redcode-json" })),
+              fs.writeFile(
+                path.join(tmp.path, "redcode.jsonc"),
+                JSON.stringify({ $schema: "redcode-jsonc", model: "current/jsonc" }),
+              ),
+            ]),
+          )
+          return yield* Effect.gen(function* () {
+            const entries = yield* (yield* Config.Service).entries()
+            const documents = entries.filter((entry) => entry.type === "document")
+
+            expect(documents.map((document) => document.path)).toEqual([
+              path.join(tmp.path, "opencode.json"),
+              path.join(tmp.path, "opencode.jsonc"),
+              path.join(tmp.path, "redcode.json"),
+              path.join(tmp.path, "redcode.jsonc"),
+            ])
+            // Every name is merged rather than shadowed, so keys only the legacy files
+            // define survive while the redcode-named file wins the ones they share.
+            expect(Config.latest(entries, "model")).toBe("current/jsonc")
+            expect(Config.latest(entries, "$schema")).toBe("redcode-jsonc")
+            expect(Config.latest(entries, "default_agent")).toBe("legacy")
+            expect(Config.latest(entries, "providers")?.legacy).toBeInstanceOf(ConfigProvider.Info)
+          }).pipe(Effect.provide(testLayer(tmp.path)))
+        }),
+      ),
+    ),
+  )
+
+  it.live("keeps directory proximity ranked above the file name", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, "global")
+        const root = path.join(tmp.path, "project")
+        const directory = path.join(root, "packages")
+        return Effect.gen(function* () {
+          yield* Effect.promise(async () => {
+            await fs.mkdir(global, { recursive: true })
+            await fs.mkdir(directory, { recursive: true })
+            await Promise.all([
+              fs.writeFile(path.join(global, "opencode.jsonc"), JSON.stringify({ $schema: "global-legacy" })),
+              fs.writeFile(path.join(global, "redcode.jsonc"), JSON.stringify({ $schema: "global-current" })),
+              fs.writeFile(path.join(root, "redcode.jsonc"), JSON.stringify({ $schema: "root-current" })),
+              fs.writeFile(path.join(directory, "opencode.json"), JSON.stringify({ $schema: "nested-legacy" })),
+            ])
+          })
+
+          return yield* Effect.gen(function* () {
+            const entries = yield* (yield* Config.Service).entries()
+
+            // A nested legacy-named file still beats a redcode-named one higher up, and the
+            // global directory still loses to both.
+            expect(
+              entries.filter((entry) => entry.type === "document").map((document) => document.info.$schema),
+            ).toEqual(["global-legacy", "global-current", "root-current", "nested-legacy"])
+          }).pipe(Effect.provide(testLayer(directory, global, root)))
+        })
+      }),
+    ),
+  )
+
   it.live("does not load legacy config.json files", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),

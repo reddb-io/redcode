@@ -143,7 +143,11 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const location = yield* Location.Service
     const policy = yield* Policy.Service
-    const names = ["opencode.json", "opencode.jsonc"]
+    // Ordered from lowest to highest precedence. Every name present in a directory is
+    // loaded and merged, so a Redcode-named file overrides the legacy OpenCode-named
+    // one field by field rather than replacing it. A directory holding only the
+    // OpenCode-named file keeps behaving exactly as before.
+    const names = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"]
     const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
     const decodeInfo = Schema.decodeUnknownOption(Info, decodeOptions)
     const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
