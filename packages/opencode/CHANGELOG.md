@@ -1,5 +1,11 @@
 # opencode
 
+## 0.5.0
+
+### Minor Changes
+
+- 5d89064: Add a governed RedSkills child Agent contract to `redcode acp`, including parent-bound outcomes and permissions, cancellation-safe multi-turn sessions, and authority isolation from GitHub and redskilled.
+
 ## 0.4.0
 
 ### Minor Changes
