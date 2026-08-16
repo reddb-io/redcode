@@ -1,4 +1,6 @@
-export type Contract = {
+import type { McpServer } from "@agentclientprotocol/sdk"
+
+export type ChildAgentContract = {
   readonly version: 1
   readonly parentSessionId: string
   readonly workerId: string
@@ -22,10 +24,10 @@ export function parseChildAgentContract(metadata: Record<string, unknown> | null
   ) {
     throw new Error("Invalid RedSkills child Agent contract")
   }
-  return childAgent as Contract
+  return childAgent as ChildAgentContract
 }
 
-export function childAgentMetadata(contract: Contract) {
+export function childAgentMetadata(contract: ChildAgentContract) {
   return {
     redskills: {
       childAgent: {
@@ -39,7 +41,6 @@ export function childAgentMetadata(contract: Contract) {
 }
 
 export function requireGovernedChildBoundary(
-  _contract: Contract,
   mcpServers: readonly McpServer[],
   env: Readonly<Record<string, string | undefined>>,
 ) {
@@ -65,4 +66,3 @@ function record(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return
   return value as Record<string, unknown>
 }
-import type { McpServer } from "@agentclientprotocol/sdk"

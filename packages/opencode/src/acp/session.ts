@@ -5,7 +5,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Context, Effect, Layer, Ref } from "effect"
 import * as ACPError from "./error"
-import type { Contract as ChildAgentContract } from "./child-agent"
+import type { ChildAgentContract } from "./child-agent"
 
 export type SelectedModel = {
   providerID: ProviderV2.ID

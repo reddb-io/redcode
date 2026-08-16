@@ -31,31 +31,27 @@ describe("RedSkills governed child Agent contract", () => {
 
   it("refuses ambient GitHub authority in a governed child Agent", () => {
     expect(() =>
-      requireGovernedChildBoundary(contract, [], {
+      requireGovernedChildBoundary([], {
         GITHUB_TOKEN: "leaked",
       }),
     ).toThrow(/github.*credential.*parent/i)
   })
 
   it("refuses the GitHub CLI credential alias in a governed child Agent", () => {
-    expect(() => requireGovernedChildBoundary(contract, [], { GH_TOKEN: "leaked" })).toThrow(
+    expect(() => requireGovernedChildBoundary([], { GH_TOKEN: "leaked" })).toThrow(
       /github.*credential.*parent/i,
     )
   })
 
   it("refuses an MCP side channel to redskilled", () => {
     expect(() =>
-      requireGovernedChildBoundary(
-        contract,
-        [{ name: "redskilled", command: "red-skills-redskilled-mcp", args: [], env: [] }],
-        {},
-      ),
+      requireGovernedChildBoundary([{ name: "redskilled", command: "red-skills-redskilled-mcp", args: [], env: [] }], {}),
     ).toThrow(/redskilled.*side channel/i)
   })
 
   it("refuses ambient redskilled authority in a governed child Agent", () => {
     expect(() =>
-      requireGovernedChildBoundary(contract, [], {
+      requireGovernedChildBoundary([], {
         REDSKILLED_SOCKET: "/run/user/1000/redskilled.sock",
       }),
     ).toThrow(/redskilled.*authority.*parent/i)
@@ -63,18 +59,13 @@ describe("RedSkills governed child Agent contract", () => {
 
   it("recognizes a disguised redskilled MCP command as a side channel", () => {
     expect(() =>
-      requireGovernedChildBoundary(
-        contract,
-        [{ name: "workflow", command: "red-skills-redskilled-mcp", args: [], env: [] }],
-        {},
-      ),
+      requireGovernedChildBoundary([{ name: "workflow", command: "red-skills-redskilled-mcp", args: [], env: [] }], {}),
     ).toThrow(/redskilled.*side channel/i)
   })
 
   it("recognizes a disguised redskilled MCP URL as a side channel", () => {
     expect(() =>
       requireGovernedChildBoundary(
-        contract,
         [{ name: "workflow", type: "http", url: "http://redskilled.local/mcp", headers: [] }],
         {},
       ),

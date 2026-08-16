@@ -46,7 +46,7 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { Provider } from "@/provider/provider"
 import type { Command } from "@/command"
 import {
-  type Contract as ChildAgentContract,
+  type ChildAgentContract,
   childAgentMetadata,
   parseChildAgentContract,
   requireGovernedChildBoundary,
@@ -172,7 +172,7 @@ export function make(input: {
     const childAgent = yield* Effect.try({
       try: () => {
         const contract = parseChildAgentContract(params._meta)
-        if (contract) requireGovernedChildBoundary(contract, params.mcpServers, input.env ?? process.env)
+        if (contract) requireGovernedChildBoundary(params.mcpServers, input.env ?? process.env)
         return contract
       },
       catch: (error) =>
