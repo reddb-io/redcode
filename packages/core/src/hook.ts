@@ -176,7 +176,10 @@ const layer = Layer.effect(
           !FSUtil.contains(global.config, entry.path) &&
           FSUtil.contains(location.project.directory, entry.path),
       )
-      const target = documents.at(-1)?.path ?? path.join(location.project.directory, "opencode.json")
+      // Prefer the highest-priority config the project already has, whatever it is named, so
+      // hooks never land in a second file beside an existing one. Only a project with no config
+      // at all gets one created, under the Redcode name.
+      const target = documents.at(-1)?.path ?? path.join(location.project.directory, "redcode.json")
       const current = (yield* fs.readFileStringSafe(target).pipe(Effect.orDie)) ?? "{}\n"
       const next = applyEdits(
         current,

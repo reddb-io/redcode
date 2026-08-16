@@ -122,6 +122,8 @@ describe("HookV2", () => {
       path.join(project.path, "state"),
     )
     const written = await fs.readFile(path.join(project.path, "opencode.jsonc"), "utf8")
+    // The existing legacy-named config is edited in place; no redcode.json appears beside it.
+    expect(result.target).toBe(path.join(project.path, "opencode.jsonc"))
     expect(result.imported).toBe(1)
     expect(result.restart_required).toBe(true)
     expect(written).toContain("// keep me")
@@ -144,7 +146,7 @@ describe("HookV2", () => {
       project.path,
       path.join(project.path, "state"),
     )
-    expect(result.target).toBe(path.join(project.path, "opencode.json"))
+    expect(result.target).toBe(path.join(project.path, "redcode.json"))
     expect(await fs.readFile(global, "utf8")).toBe(JSON.stringify({ model: "global/model" }))
   })
 })
