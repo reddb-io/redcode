@@ -51,7 +51,7 @@ async function renderSidebar(status?: "error") {
       lsp: () => (status ? [{ id: "typescript", root: ".", status }] : []),
     },
     slots: {
-      register(input) {
+      register(input: Parameters<TuiPluginApi["slots"]["register"]>[0]) {
         render = input.slots.sidebar_content as () => JSX.Element
         return "sidebar-lsp"
       },
