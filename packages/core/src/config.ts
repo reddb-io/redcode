@@ -74,7 +74,7 @@ export class Info extends Schema.Class<Info>("Config.Info")({
     description: "Enable built-in formatters or configure formatter overrides",
   }),
   lsp: ConfigLSP.Info.pipe(Schema.optional).annotate({
-    description: "Enable built-in language servers or configure server overrides",
+    description: "Configure language servers, which are enabled by default; set to false to disable",
   }),
   attachments: ConfigAttachments.Info.pipe(Schema.optional).annotate({
     description: "Attachment processing configuration",
