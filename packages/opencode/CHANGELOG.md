@@ -1,5 +1,16 @@
 # opencode
 
+## 0.7.0
+
+### Minor Changes
+
+- ba92896: Enable native language servers and agent semantic tools by default, and surface language-server initialization failures in status views.
+- 813cfe7: Add the RedDB-derived Redcode TUI theme as the default while preserving the legacy OpenCode theme as an explicit option.
+
+### Patch Changes
+
+- af92e75: Finish Redcode branding across terminal surfaces and keep generated session titles focused on user intent instead of unsupported repository findings.
+
 ## 0.6.0
 
 ### Minor Changes
