@@ -33,7 +33,7 @@ test("user-visible branding uses Redcode", async () => {
 
     const visit = (node: ts.Node) => {
       const text =
-        ts.isStringLiteralLike(node) || ts.isJsxText(node) || node.kind === ts.SyntaxKind.TemplateHead
+        ts.isStringLiteralLike(node) || ts.isJsxText(node) || ts.isTemplateLiteralToken(node)
           ? node.getText(source).replace(/^['"`]|['"`]$/g, "")
           : undefined
       if (text && /opencode/i.test(text) && !compatibilityAllowlist.some((item) => item.pattern.test(text))) {
