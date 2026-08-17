@@ -52,11 +52,11 @@ function worker(id: string, issue: string, phase: string, index: number, extra: 
   }
 }
 
-function status(input: { scope?: "project" | "host"; workers: ReturnType<typeof worker>[] }) {
+function status(input: { workers: ReturnType<typeof worker>[]; registered?: boolean }) {
   return {
     lifecycle: "live",
     consent: "accepted",
-    scope: input.scope ?? "project",
+    scope: "project",
     native: true,
     activation: {
       eligible: true,
@@ -87,7 +87,7 @@ function status(input: { scope?: "project" | "host"; workers: ReturnType<typeof 
         ceiling_used_fraction: 0.27,
         ceiling: { memory_bytes: 15.3 * 1024 ** 3, worker_count: 6, interactive_reservation: 1 },
       },
-      registered_projects: ["reddb-io/redcode"],
+      registered_projects: input.registered === false ? [] : ["reddb-io/redcode"],
       workers: input.workers,
     },
     last_success_at: started,
@@ -96,7 +96,7 @@ function status(input: { scope?: "project" | "host"; workers: ReturnType<typeof 
 
 async function mountWorkers(input: {
   workers: ReturnType<typeof worker>[]
-  scope?: "project" | "host"
+  registered?: boolean
   width?: number
   height?: number
 }) {
@@ -109,9 +109,7 @@ async function mountWorkers(input: {
   void mock.module("@opentui/core", () => ({ ...core, createCliRenderer: async () => setup.renderer }))
   const events = createEventSource()
   const calls = createFetch((url) => {
-    if (url.pathname === "/redskilled") return json(status({ scope: input.scope, workers: input.workers }))
-    if (url.pathname === "/redskilled/worker/steer/status")
-      return json({ worker: "h9977", status: "pending", iteration: 3 })
+    if (url.pathname === "/redskilled") return json(status({ workers: input.workers, registered: input.registered }))
     return undefined
   })
   let api: TuiPluginApi | undefined
@@ -179,6 +177,7 @@ test("workers view renders the fleet, its meters, and the selected Worker's deta
 
     // Header: lifecycle and the host capacity meters.
     expect(screen).toContain("RedDB Workers")
+    expect(screen).not.toContain("/ Host")
     expect(screen).toContain("● live")
     expect(screen).toContain("claude × 2")
     expect(screen).toContain("slots ██░░░░ 2/6 (1 reserved)")
@@ -200,7 +199,6 @@ test("workers view renders the fleet, its meters, and the selected Worker's deta
     expect(screen).toContain("+120 -14")
     expect(screen).toContain("── activity (1)")
     expect(screen).toContain("started on #123")
-    await app.waitFor("⇢ steer pending at iteration 3")
 
     // j moves the cursor and the detail pane follows it.
     app.setup.mockInput.pressKey("j")
@@ -222,25 +220,12 @@ test("workers view renders the fleet, its meters, and the selected Worker's deta
   }
 })
 
-test("host scope groups Workers by project and keeps other projects read-only", async () => {
-  const app = await mountWorkers({
-    scope: "host",
-    workers: [
-      worker("h9977", "123", "implement", 0),
-      worker("hZZZ1", "77", "review", 2, { project_label: "reddb-io/red-skills" }),
-    ],
-  })
+test("an empty fleet explains why no Worker is running", async () => {
+  const app = await mountWorkers({ workers: [], width: 110, height: 26 })
   try {
-    app.setup.mockInput.pressKey("h")
-    let screen = await app.waitFor("reddb-io/red-skills · 1")
-    // The current project sorts first, each group labelled with its Worker count.
-    expect(screen.indexOf("reddb-io/redcode · 1")).toBeLessThan(screen.indexOf("reddb-io/red-skills · 1"))
-    expect(screen).toContain("[s stop]")
-
-    app.setup.mockInput.pressKey("j")
-    screen = await app.waitFor("Other projects are read-only.")
-    expect(screen).toContain("▶ hZZZ1")
-    expect(screen).not.toContain("[s stop]")
+    const screen = await app.waitFor("No live Workers in this project")
+    expect(screen).toContain("Target 2 · registered")
+    expect(screen).toContain("z resize · p stop drain")
 
     await app.close()
   } finally {
@@ -248,12 +233,14 @@ test("host scope groups Workers by project and keeps other projects read-only", 
   }
 })
 
-test("an empty fleet explains why no Worker is running", async () => {
-  const app = await mountWorkers({ workers: [], width: 110, height: 26 })
+test("inactive drain is an explicit action without consent or disabled messaging", async () => {
+  const app = await mountWorkers({ workers: [], registered: false, width: 110, height: 26 })
   try {
-    const screen = await app.waitFor("No live Workers in this project")
-    expect(screen).toContain("Target 2 · registered")
-    expect(screen).toContain("h project/host · z resize")
+    const screen = await app.waitFor("Project drain is inactive")
+    expect(screen).toContain("[Start drain]")
+    expect(screen).not.toContain("Connect RedSkills")
+    expect(screen).not.toContain("disabled")
+    expect(screen).not.toContain("Host")
 
     await app.close()
   } finally {

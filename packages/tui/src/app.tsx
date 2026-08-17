@@ -1059,22 +1059,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
   })
 
-  let consentAsked = ""
-  createEffect(() => {
-    const current = redskilled.status()
-    if (!ready() || current?.lifecycle !== "needs_consent" || !current.activation?.eligible) return
-    if (consentAsked === current.activation.project) return
-    consentAsked = current.activation.project
-    void DialogConfirm.show(
-      dialog,
-      "Connect RedSkills",
-      `Register ${current.activation.project} with redskilled using ${current.activation.runner} × ${current.activation.target}?`,
-    ).then((accepted) => {
-      if (accepted === undefined) return
-      return redskilled.consent(accepted ? "accepted" : "refused").catch(toast.error)
-    })
-  })
-
   event.on("session.error", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
     const error = evt.properties.error

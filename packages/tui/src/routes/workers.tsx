@@ -28,8 +28,6 @@ import {
 import { empty, rate, record, series, type Activity, type Track, type Worker } from "./workers/history"
 
 type Theme = ReturnType<typeof useTheme>["theme"]
-type Row = { kind: "group"; label: string; count: number } | { kind: "worker"; worker: Worker }
-type Steer = { status: "none" | "pending" | "consumed"; iteration?: number }
 type Status = ReturnType<ReturnType<typeof useRedskilled>["status"]>
 
 /** Heartbeat age at which a Worker stops looking healthy. */
@@ -42,7 +40,7 @@ const HEARTBEAT = { warn: 30_000, error: 120_000 }
  * the detail pane always draws around its activity feed.
  */
 const CHROME_ROWS = 10
-const DETAIL_ROWS = 13
+const DETAIL_ROWS = 12
 
 export function Workers() {
   const redskilled = useRedskilled()
@@ -55,12 +53,10 @@ export function Workers() {
   const [focused, setFocused] = createSignal(false)
   const [now, setNow] = createSignal(Date.now())
   const [history, setHistory] = createSignal(empty())
-  const [steer, setSteer] = createSignal<Steer>()
 
   const status = redskilled.status
   const payload = () => status()?.payload
   const workers = createMemo(() => payload()?.workers ?? [])
-  const project = () => status()?.activation?.project
 
   const width = () => dimensions().width - 4
   // The detail pane needs room for its widest fixed line before a split is worth it.
@@ -70,26 +66,7 @@ export function Workers() {
   const contentRows = () => Math.max(3, dimensions().height - CHROME_ROWS)
   const activityRows = () => Math.max(1, contentRows() - DETAIL_ROWS)
 
-  const rows = createMemo<Row[]>(() => {
-    const list = workers()
-    if (redskilled.scope() !== "host") return list.map((worker) => ({ kind: "worker", worker }))
-    const groups = new Map<string, Worker[]>()
-    for (const worker of list) groups.set(worker.project_label, [...(groups.get(worker.project_label) ?? []), worker])
-    return [...groups.keys()]
-      .sort((a, b) => {
-        if (a === project()) return -1
-        if (b === project()) return 1
-        return a.localeCompare(b)
-      })
-      .flatMap((label) => {
-        const members = groups.get(label) ?? []
-        return [
-          { kind: "group" as const, label, count: members.length },
-          ...members.map((worker) => ({ kind: "worker" as const, worker })),
-        ]
-      })
-  })
-  const selectable = createMemo(() => rows().flatMap((row): Worker[] => (row.kind === "worker" ? [row.worker] : [])))
+  const selectable = workers
   const selectedIndex = createMemo(() =>
     Math.max(
       0,
@@ -101,8 +78,6 @@ export function Workers() {
     const current = worker()
     return current ? history().live[current.worker_id] : undefined
   })
-  const own = () => redskilled.scope() === "project" || worker()?.project_label === project()
-
   /** Columns drop off the right as the list pane narrows, so a row never wraps. */
   const columns = createMemo(() => {
     const available = listWidth() - 2
@@ -125,22 +100,18 @@ export function Workers() {
       .then(() => toast.show({ variant: "success", message }))
       .catch(toast.error)
 
-  const consent = (decision: "accepted" | "refused") =>
-    void run(
-      () => redskilled.consent(decision),
-      decision === "accepted" ? "RedSkills connected" : "RedSkills disabled for this project",
-    )
+  const startDrain = () => void run(redskilled.startDrain, "Project drain started")
 
   const stopWorker = async () => {
     const current = worker()
-    if (!current || !own()) return
+    if (!current) return
     if (!(await DialogConfirm.show(dialog, "Stop Worker", `Stop ${current.worker_id} now?`))) return
     await run(() => redskilled.stopWorker(current.worker_id), `Stopped ${current.worker_id}`)
   }
 
   const recycleWorker = async () => {
     const current = worker()
-    if (!current || !own()) return
+    if (!current) return
     if (!(await DialogConfirm.show(dialog, "Recycle Worker", `Recycle ${current.worker_id} and refill its slot?`)))
       return
     await run(() => redskilled.recycleWorker(current.worker_id), `Recycling ${current.worker_id}`)
@@ -148,7 +119,7 @@ export function Workers() {
 
   const steerWorker = async () => {
     const current = worker()
-    if (!current || !own()) return
+    if (!current) return
     const text = await DialogPrompt.show(dialog, `Steer ${current.worker_id}`, {
       placeholder: "What should this Worker do next?",
     })
@@ -175,19 +146,9 @@ export function Workers() {
   }
 
   const stopProject = async () => {
-    if (
-      !(await DialogConfirm.show(dialog, "Stop project", "Stop every Worker and release this project's registration?"))
-    )
+    if (!(await DialogConfirm.show(dialog, "Stop project", "Set this Project's redskilled drain intent to stopped?")))
       return
-    await run(redskilled.stopProject, "Project stopped for this session")
-  }
-
-  const disable = async () => {
-    if (
-      !(await DialogConfirm.show(dialog, "Disable RedSkills", "Stop this project and do not reconnect automatically?"))
-    )
-      return
-    await run(() => redskilled.consent("refused"), "RedSkills disabled for this project")
+    await run(redskilled.stopProject, "Project drain stopped")
   }
 
   onMount(() => redskilled.setActive(true))
@@ -197,10 +158,6 @@ export function Workers() {
   const ticker = setInterval(() => setNow(Date.now()), 1_000)
   onCleanup(() => clearInterval(ticker))
 
-  createEffect(() => {
-    redskilled.scope()
-    setHistory(empty())
-  })
   createEffect(() => {
     const current = payload()
     setHistory((previous) => record(previous, current, Date.now()))
@@ -217,26 +174,6 @@ export function Workers() {
     }
     if (!list.length) return
     setSelectedID(list[Math.min(lastIndex, list.length - 1)].worker_id)
-  })
-
-  let steerRequest = 0
-  createEffect(() => {
-    payload()?.generated_at
-    const current = worker()
-    if (!current || !own()) {
-      steerRequest++
-      setSteer()
-      return
-    }
-    const request = ++steerRequest
-    void redskilled
-      .steerStatus(current.worker_id)
-      .then((result) => {
-        if (request === steerRequest) setSteer(result)
-      })
-      .catch(() => {
-        if (request === steerRequest) setSteer()
-      })
   })
 
   useBindings(() => ({
@@ -260,12 +197,6 @@ export function Workers() {
       { key: "z", desc: "Resize project", group: "Workers", cmd: () => void resize() },
       { key: "p", desc: "Stop project", group: "Workers", cmd: () => void stopProject() },
       { key: "R", desc: "Refresh now", group: "Workers", cmd: () => void redskilled.refresh() },
-      {
-        key: "h",
-        desc: "Toggle host scope",
-        group: "Workers",
-        cmd: () => redskilled.setScope(redskilled.scope() === "project" ? "host" : "project"),
-      },
     ],
   }))
 
@@ -276,13 +207,10 @@ export function Workers() {
         now={now()}
         width={width()}
         status={status()}
-        scope={redskilled.scope()}
         loading={redskilled.loading()}
-        onScope={(scope) => redskilled.setScope(scope)}
-        onStart={() => consent("accepted")}
+        onStart={startDrain}
         onResize={() => void resize()}
         onStopProject={() => void stopProject()}
-        onDisable={() => void disable()}
       />
 
       <Show when={notice(status())}>
@@ -292,19 +220,10 @@ export function Workers() {
               {item().title}
             </text>
             <text fg={theme.textMuted}>{truncate(item().body, width() - 4)}</text>
-            <Show when={item().actions.length > 0}>
-              <box flexDirection="row" gap={1}>
-                <For each={item().actions}>
-                  {(action) => (
-                    <text
-                      fg={action.tone === "primary" ? theme.primary : theme.textMuted}
-                      onMouseUp={() => consent(action.decision)}
-                    >
-                      {action.label}
-                    </text>
-                  )}
-                </For>
-              </box>
+            <Show when={item().start}>
+              <text fg={theme.primary} onMouseUp={startDrain}>
+                [Start drain]
+              </text>
             </Show>
           </box>
         )}
@@ -324,7 +243,6 @@ export function Workers() {
               status={status()}
               loading={redskilled.loading()}
               departed={history().departed}
-              scope={redskilled.scope()}
               width={width()}
             />
           }
@@ -378,29 +296,16 @@ export function Workers() {
                 </Show>
               </box>
               <scrollbox flexGrow={1} minHeight={0} scrollbarOptions={{ visible: false }}>
-                <For each={rows()}>
+                <For each={selectable()}>
                   {(row) => (
-                    <Show
-                      when={row.kind === "worker" ? row : undefined}
-                      fallback={
-                        <box paddingLeft={1} paddingRight={1}>
-                          <text fg={theme.secondary} attributes={TextAttributes.BOLD}>
-                            {row.kind === "group" ? truncate(`${row.label} · ${row.count}`, listWidth() - 2) : ""}
-                          </text>
-                        </box>
-                      }
-                    >
-                      {(item) => (
-                        <WorkerRow
-                          theme={theme}
-                          worker={item().worker}
-                          now={now()}
-                          selected={item().worker.worker_id === worker()?.worker_id}
-                          columns={columns()}
-                          onSelect={() => setSelectedID(item().worker.worker_id)}
-                        />
-                      )}
-                    </Show>
+                    <WorkerRow
+                      theme={theme}
+                      worker={row}
+                      now={now()}
+                      selected={row.worker_id === worker()?.worker_id}
+                      columns={columns()}
+                      onSelect={() => setSelectedID(row.worker_id)}
+                    />
                   )}
                 </For>
                 <Show when={history().departed.length > 0}>
@@ -429,8 +334,6 @@ export function Workers() {
                 width={focused() ? width() : detailWidth()}
                 rows={activityRows()}
                 focused={focused()}
-                own={own()}
-                steer={steer()}
                 onBack={() => setFocused(false)}
                 onStop={() => void stopWorker()}
                 onRecycle={() => void recycleWorker()}
@@ -452,13 +355,10 @@ function Header(props: {
   now: number
   width: number
   status: Status
-  scope: "project" | "host"
   loading: boolean
-  onScope: (scope: "project" | "host") => void
   onStart: () => void
   onResize: () => void
   onStopProject: () => void
-  onDisable: () => void
 }) {
   const theme = props.theme
   const host = () => props.status?.payload?.host
@@ -487,22 +387,28 @@ function Header(props: {
   /** Only the meters that fit are rendered, so the header stays exactly two lines. */
   const meters = createMemo(() => {
     const item = activation()
+    const projected = item?.runner === "ACP"
     const all = [
       { id: "project", label: "", text: item?.project ?? "", ratio: null as number | null, hot: false },
       {
         id: "runner",
         label: "",
-        text: item ? `${item.runner} × ${item.target}${item.standing ? " standing" : ""}` : "",
+        text: projected
+          ? "ACP projection"
+          : item
+            ? `${item.runner} × ${item.target}${item.standing ? " standing" : ""}`
+            : "",
         ratio: null,
         hot: false,
       },
-      { id: "slots", label: "slots", text: slots().text, ratio: slots().ratio, hot: slots().hot },
-      { id: "mem", label: "mem", text: memory().text, ratio: memory().ratio, hot: memory().hot },
-      ...(props.scope === "host"
-        ? [{ id: "projects", label: "", text: `${host()?.project_count ?? 0} projects`, ratio: null, hot: false }]
-        : []),
+      ...(projected
+        ? []
+        : [
+            { id: "slots", label: "slots", text: slots().text, ratio: slots().ratio, hot: slots().hot },
+            { id: "mem", label: "mem", text: memory().text, ratio: memory().ratio, hot: memory().hot },
+          ]),
     ].filter((entry) => entry.text)
-    const budget = props.width - (props.status?.consent === "accepted" && props.width >= 80 ? 32 : 0)
+    const budget = props.width - (props.width >= 80 ? 24 : 0)
     let used = 0
     return all.filter((entry) => {
       const size = entry.text.length + (entry.label ? entry.label.length + 1 : 0) + (entry.ratio === null ? 0 : 7) + 2
@@ -515,8 +421,8 @@ function Header(props: {
   const flags = () => {
     const out: string[] = []
     if (staleness()?.stale) out.push(`stale ${formatAge(number(staleness()?.age_ms))}`)
-    const daemon = props.status?.payload?.daemon.daemon_version
-    if (daemon && props.width >= 90) out.push(`daemon v${daemon}`)
+    const daemon = props.status?.payload?.daemon?.daemon_version
+    if (daemon && daemon !== "ACP" && props.width >= 90) out.push(`daemon v${daemon}`)
     return out
   }
 
@@ -541,20 +447,8 @@ function Header(props: {
             </text>
             <text fg={theme.textMuted}>·</text>
           </Show>
-          <text
-            fg={props.scope === "project" ? theme.primary : theme.textMuted}
-            attributes={props.scope === "project" ? TextAttributes.BOLD : undefined}
-            onMouseUp={() => props.onScope("project")}
-          >
+          <text fg={theme.primary} attributes={TextAttributes.BOLD}>
             Project
-          </text>
-          <text fg={theme.textMuted}>/</text>
-          <text
-            fg={props.scope === "host" ? theme.primary : theme.textMuted}
-            attributes={props.scope === "host" ? TextAttributes.BOLD : undefined}
-            onMouseUp={() => props.onScope("host")}
-          >
-            Host
           </text>
         </box>
       </box>
@@ -573,22 +467,21 @@ function Header(props: {
             )}
           </For>
         </box>
-        <Show when={props.status?.consent === "accepted" && props.width >= 80}>
+        <Show when={props.width >= 80}>
           <box flexDirection="row" gap={1}>
             <Show when={!registered()}>
               <text fg={theme.success} onMouseUp={props.onStart}>
-                [start]
+                [start drain]
               </text>
             </Show>
-            <text fg={theme.info} onMouseUp={props.onResize}>
-              [z resize]
-            </text>
-            <text fg={theme.warning} onMouseUp={props.onStopProject}>
-              [p stop]
-            </text>
-            <text fg={theme.error} onMouseUp={props.onDisable}>
-              [disable]
-            </text>
+            <Show when={registered()}>
+              <text fg={theme.info} onMouseUp={props.onResize}>
+                [z resize]
+              </text>
+              <text fg={theme.warning} onMouseUp={props.onStopProject}>
+                [p stop drain]
+              </text>
+            </Show>
           </box>
         </Show>
       </box>
@@ -675,8 +568,6 @@ function Detail(props: {
   width: number
   rows: number
   focused: boolean
-  own: boolean
-  steer: Steer | undefined
   onBack: () => void
   onStop: () => void
   onRecycle: () => void
@@ -793,17 +684,6 @@ function Detail(props: {
           ),
         )}
       </text>
-      <text fg={props.steer?.status === "pending" ? theme.warning : theme.textMuted}>
-        {props.steer && props.steer.status !== "none"
-          ? truncate(
-              `⇢ steer ${props.steer.status}${
-                props.steer.iteration === undefined ? "" : ` at iteration ${props.steer.iteration}`
-              }`,
-              inner(),
-            )
-          : ""}
-      </text>
-
       <text fg={theme.textMuted}>
         {truncate(
           `── activity (${props.track?.activity.length ?? 0})${props.focused ? "" : " · enter to expand"}`,
@@ -820,20 +700,15 @@ function Detail(props: {
       </box>
 
       <box flexDirection="row" gap={1} flexShrink={0}>
-        <Show
-          when={props.own}
-          fallback={<text fg={theme.textMuted}>{truncate("Other projects are read-only.", inner())}</text>}
-        >
-          <text fg={theme.warning} onMouseUp={props.onStop}>
-            {label("s", "stop", inner())}
-          </text>
-          <text fg={theme.info} onMouseUp={props.onRecycle}>
-            {label("r", "recycle", inner())}
-          </text>
-          <text fg={theme.primary} onMouseUp={props.onSteer}>
-            {label("e", "steer", inner())}
-          </text>
-        </Show>
+        <text fg={theme.warning} onMouseUp={props.onStop}>
+          {label("s", "stop", inner())}
+        </text>
+        <text fg={theme.info} onMouseUp={props.onRecycle}>
+          {label("r", "recycle", inner())}
+        </text>
+        <text fg={theme.primary} onMouseUp={props.onSteer}>
+          {label("e", "steer", inner())}
+        </text>
         <Show when={issueURL(props.worker)}>
           <text fg={theme.textMuted} onMouseUp={props.onOpen}>
             {label("o", "issue", inner())}
@@ -872,7 +747,6 @@ function Idle(props: {
   status: Status
   loading: boolean
   departed: Array<Track & { ended: number }>
-  scope: "project" | "host"
   width: number
 }) {
   const theme = props.theme
@@ -882,6 +756,8 @@ function Idle(props: {
   const reason = () => {
     const item = activation()
     if (!item) return "The daemon has not reported an activation for this project."
+    if (item.runner === "ACP")
+      return `${registered() ? "Project drain is active" : "Project drain is not active"} · the public ACP snapshot reports no live Workers.`
     if (item.target === 0) return "Target is 0 — press z to size the project up."
     return `Target ${item.target} · ${registered() ? "registered" : "not registered"} · the queue is drained or the daemon has not granted a slot yet.`
   }
@@ -889,7 +765,7 @@ function Idle(props: {
     <box flexGrow={1} border borderColor={theme.border} paddingLeft={1} paddingRight={1} flexDirection="column">
       <Show when={!props.loading} fallback={<text fg={theme.textMuted}>Reading daemon…</text>}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          No live Workers in this {props.scope}
+          No live Workers in this project
         </text>
         <text fg={theme.textMuted}>{truncate(reason(), props.width - 4)}</text>
         <Show when={props.departed.length > 0}>
@@ -912,38 +788,31 @@ function ended(item: Track & { ended: number }, now: number) {
 
 function hints(focused: boolean, hasWorkers: boolean) {
   if (focused) return "enter back · j/k switch Worker · s stop · r recycle · e steer · o issue · R refresh"
-  if (!hasWorkers) return "h project/host · z resize · p stop project · R refresh"
-  return "j/k select · enter focus · h project/host · s stop · r recycle · e steer · o issue · z resize · p stop project · R refresh"
+  if (!hasWorkers) return "start drain · z resize · p stop drain · R refresh"
+  return "j/k select · enter focus · s stop · r recycle · e steer · o issue · z resize · p stop drain · R refresh"
 }
 
 type Notice = {
   title: string
   body: string
-  actions: Array<{ label: string; tone: "primary" | "muted"; decision: "accepted" | "refused" }>
+  start: boolean
 }
 
 function notice(status: Status): Notice | undefined {
   const lifecycle = status?.lifecycle
   if (lifecycle === "unavailable" || lifecycle === "ineligible")
     return {
-      title: "RedSkills is ready to connect",
-      body: status?.error ?? "Enable plugins.dev.enabled in .red/config.yaml and connect the redskilled MCP server.",
-      actions: [],
+      title: "RedSkills is unavailable",
+      body: status?.error ?? "Start the public red-skills-redskilled acp adapter.",
+      start: false,
     }
-  if (lifecycle === "needs_consent")
+  const project = status?.activation?.project
+  const active = !!project && !!status?.payload?.registered_projects?.includes(project)
+  if (project && !active)
     return {
-      title: "Connect RedSkills",
-      body: "Let red-code register this project with redskilled?",
-      actions: [
-        { label: "[Connect]", tone: "primary", decision: "accepted" },
-        { label: "[No thanks]", tone: "muted", decision: "refused" },
-      ],
-    }
-  if (status?.consent === "refused")
-    return {
-      title: "RedSkills is disabled here",
-      body: "Automatic registration is disabled for this project.",
-      actions: [{ label: "[Enable integration]", tone: "primary", decision: "accepted" }],
+      title: "Project drain is inactive",
+      body: "Start the daemon-owned drain explicitly when you want RedSkills to process this Project.",
+      start: true,
     }
   return undefined
 }
