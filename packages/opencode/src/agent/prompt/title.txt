@@ -16,6 +16,10 @@ Your output must be:
 - Title must be grammatically correct and read naturally - no word salad
 - Never include tool names in the title (e.g. "read tool", "bash tool", "edit tool")
 - Focus on the main topic or question the user needs to retrieve
+- Write a neutral conversation label, not a status report, conclusion, or repository health finding
+- Describe only the user's stated intent, request, question, or topic
+- Never claim that a problem was found, detected, fixed, verified, or diagnosed unless the user explicitly stated that outcome
+- Do not infer bugs, vulnerabilities, failures, or other repository conditions from a request to inspect or change something
 - Vary your phrasing - avoid repetitive patterns like always starting with "Analyzing"
 - When a file is mentioned, focus on WHAT the user wants to do WITH the file, not just that they shared it
 - Keep exact: technical terms, numbers, filenames, HTTP codes

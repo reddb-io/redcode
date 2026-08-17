@@ -38,7 +38,7 @@ export function DialogHooks() {
     const descriptions = {
       trust: ["Trust project hooks", "Run the configured project hook commands until their definitions change?"],
       revoke: ["Revoke project hooks", "Stop running all project hooks for this project?"],
-      import: ["Import Claude hooks", "Copy hooks from .claude/settings*.json into the active OpenCode config?"],
+      import: ["Import Claude hooks", "Copy hooks from .claude/settings*.json into the active Redcode config?"],
     } as const
     const accepted = await DialogConfirm.show(dialog, descriptions[action][0], descriptions[action][1])
     if (!accepted) return dialog.replace(() => <DialogHooks />)
