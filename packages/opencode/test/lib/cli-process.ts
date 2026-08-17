@@ -82,6 +82,7 @@ export type RunResult = {
   readonly stdout: string
   readonly stderr: string
   readonly durationMs: number
+  readonly timedOut: boolean
 }
 
 export type RunHandle = {
@@ -228,23 +229,28 @@ export function withCliFixture<A, E>(
       // Catch AppProcessError (timeout OR spawn failure) and synthesize a
       // non-zero result so the test sees it via the usual `expectExit`
       // path rather than as an unhandled Effect failure.
-      const result = yield* appProc.run(command, { timeout: Duration.millis(timeoutMs) }).pipe(
+      const outcome = yield* appProc.run(command, { timeout: Duration.millis(timeoutMs) }).pipe(
+        Effect.map((result) => ({ result, timedOut: false })),
         Effect.catchTag("AppProcessError", (err) =>
           Effect.succeed({
-            command: err.command,
-            exitCode: err.exitCode ?? -1,
-            stdout: Buffer.alloc(0),
-            stderr: Buffer.from((err.stderr ?? String(err.cause ?? err.message)) + "\n"),
-            stdoutTruncated: false,
-            stderrTruncated: false,
-          } satisfies AppProcess.RunResult),
+            result: {
+              command: err.command,
+              exitCode: err.exitCode ?? -1,
+              stdout: Buffer.alloc(0),
+              stderr: Buffer.from((err.stderr ?? String(err.cause ?? err.message)) + "\n"),
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            } satisfies AppProcess.RunResult,
+            timedOut: err.cause instanceof Error && err.cause.message === "Timed out",
+          }),
         ),
       )
       return {
-        exitCode: result.exitCode,
-        stdout: normalizeLines(result.stdout.toString()),
-        stderr: normalizeLines(result.stderr.toString()),
+        exitCode: outcome.result.exitCode,
+        stdout: normalizeLines(outcome.result.stdout.toString()),
+        stderr: normalizeLines(outcome.result.stderr.toString()),
         durationMs: Date.now() - start,
+        timedOut: outcome.timedOut,
       }
     })
 
@@ -307,6 +313,7 @@ export function withCliFixture<A, E>(
           stdout: normalizeLines(await stdout),
           stderr: normalizeLines(await stderr),
           durationMs: Date.now() - start,
+          timedOut: false,
         })),
       } satisfies RunHandle
     })
