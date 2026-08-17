@@ -22,6 +22,7 @@ import nightowl from "./assets/nightowl.json" with { type: "json" }
 import nord from "./assets/nord.json" with { type: "json" }
 import onedark from "./assets/one-dark.json" with { type: "json" }
 import opencode from "./assets/opencode.json" with { type: "json" }
+import reddbTokens from "./assets/reddb-tokens.json" with { type: "json" }
 import orng from "./assets/orng.json" with { type: "json" }
 import osakaJade from "./assets/osaka-jade.json" with { type: "json" }
 import palenight from "./assets/palenight.json" with { type: "json" }
@@ -127,6 +128,37 @@ export type ThemeJson = {
   }
 }
 
+const redcode: ThemeJson = {
+  ...opencode,
+  defs: {
+    ...opencode.defs,
+    reddbRed400: reddbTokens.color.red["400"],
+    reddbRed500: reddbTokens.color.red["500"],
+    reddbRed600: reddbTokens.color.red["600"],
+    reddbRed700: reddbTokens.color.red["700"],
+    reddbInk: reddbTokens.color.neutral["950"],
+    reddbPaper: reddbTokens.color.neutral["50"],
+  },
+  theme: {
+    ...opencode.theme,
+    primary: "reddbRed500",
+    secondary: "reddbRed500",
+    accent: "reddbRed400",
+    selectedListItemText: "reddbInk",
+    borderActive: "reddbRed600",
+    text: {
+      dark: "reddbPaper",
+      light: "reddbInk",
+    },
+    markdownLink: {
+      dark: "reddbRed400",
+      light: "reddbRed700",
+    },
+  },
+}
+
+export const DEFAULT_THEME = "redcode"
+
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   aura,
   ayu,
@@ -150,6 +182,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   ["one-dark"]: onedark,
   ["osaka-jade"]: osakaJade,
   opencode,
+  redcode,
   orng,
   ["lucent-orng"]: lucentOrng,
   palenight,

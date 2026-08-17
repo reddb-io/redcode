@@ -253,6 +253,8 @@ export interface KnightRiderOptions {
   colors?: ColorInput[]
   /** Single color to derive trail from (alternative to providing colors array) */
   color?: ColorInput
+  /** Optional luminous head color while the trail remains derived from color */
+  headColor?: ColorInput
   /** Number of trail steps when using single color (default: 6) */
   trailSteps?: number
   defaultColor?: ColorInput
@@ -262,6 +264,26 @@ export interface KnightRiderOptions {
   enableFading?: boolean
   /** Minimum alpha value when fading (default: 0, range: 0-1) */
   minAlpha?: number
+}
+
+function trailColors(options: KnightRiderOptions) {
+  if (options.colors) return options.colors
+  if (options.color) {
+    const colors = deriveTrailColors(options.color, options.trailSteps)
+    if (!options.headColor) return colors
+    return [
+      options.headColor instanceof RGBA ? options.headColor : RGBA.fromHex(options.headColor as string),
+      ...colors.slice(1),
+    ]
+  }
+  return [
+    RGBA.fromHex("#ff0000"),
+    RGBA.fromHex("#ff5555"),
+    RGBA.fromHex("#dd0000"),
+    RGBA.fromHex("#aa0000"),
+    RGBA.fromHex("#770000"),
+    RGBA.fromHex("#440000"),
+  ]
 }
 
 /**
@@ -275,18 +297,7 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
   const holdStart = options.holdStart ?? 30
   const holdEnd = options.holdEnd ?? 9
 
-  const colors =
-    options.colors ??
-    (options.color
-      ? deriveTrailColors(options.color, options.trailSteps)
-      : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
-        ])
+  const colors = trailColors(options)
 
   const defaultColor =
     options.defaultColor ??
@@ -337,18 +348,7 @@ export function createColors(options: KnightRiderOptions = {}): ColorGenerator {
   const holdStart = options.holdStart ?? 30
   const holdEnd = options.holdEnd ?? 9
 
-  const colors =
-    options.colors ??
-    (options.color
-      ? deriveTrailColors(options.color, options.trailSteps)
-      : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
-        ])
+  const colors = trailColors(options)
 
   const defaultColor =
     options.defaultColor ??

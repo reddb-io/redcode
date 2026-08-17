@@ -1306,7 +1306,7 @@ export function Prompt(props: PromptProps) {
     () => !!local.agent.current() && store.mode === "normal" && showVariant(),
     animationsEnabled,
   )
-  const borderHighlight = createMemo(() => tint(theme.border, highlight(), agentMetaAlpha()))
+  const borderHighlight = createMemo(() => tint(theme.border, theme.borderActive, agentMetaAlpha()))
 
   const placeholderText = createMemo(() => {
     if (props.showPlaceholder === false) return undefined
@@ -1328,6 +1328,7 @@ export function Prompt(props: PromptProps) {
     return {
       frames: createFrames({
         color,
+        headColor: theme.accent,
         style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
@@ -1335,6 +1336,7 @@ export function Prompt(props: PromptProps) {
       }),
       color: createColors({
         color,
+        headColor: theme.accent,
         style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
@@ -1431,13 +1433,13 @@ export function Prompt(props: PromptProps) {
                 setTimeout(() => {
                   // setTimeout is a workaround and needs to be addressed properly
                   if (!input || input.isDestroyed) return
-                  input.cursorColor = theme.text
+                  input.cursorColor = props.disabled ? theme.backgroundElement : theme.borderActive
                   if (tuiConfig.cursor) input.cursorStyle = tuiConfig.cursor
                 }, 0)
               }}
               onMouseDown={(r: MouseEvent) => r.target?.focus()}
               focusedBackgroundColor={theme.backgroundElement}
-              cursorColor={props.disabled ? theme.backgroundElement : theme.text}
+              cursorColor={props.disabled ? theme.backgroundElement : theme.borderActive}
               cursorStyle={tuiConfig.cursor}
               syntaxStyle={syntax()}
             />
