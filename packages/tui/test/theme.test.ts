@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import type { TerminalColors } from "@opentui/core"
-import { DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
+import { type RGBA, type TerminalColors } from "@opentui/core"
+import { DEFAULT_THEME, DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
 import { createColors } from "../src/ui/spinner"
+import reddbTokens from "../src/theme/assets/reddb-tokens.json"
 import { tmpdir } from "./fixture/fixture"
 
 test("addTheme writes into module theme store", () => {
@@ -82,6 +83,12 @@ test("custom theme precedence follows directory order", async () => {
 })
 
 test("redcode focuses Build and its scanner with the RedDB palette", () => {
+  expect(DEFAULT_THEME).toBe("redcode")
+  expect(reddbTokens.provenance).toEqual({
+    repository: "https://github.com/reddb-io/brand",
+    revision: "8f9c1da8d807c206dac86d618f7c50eabe7b2298",
+    source: "tokens/tokens.json",
+  })
   const source = DEFAULT_THEMES.redcode
   expect(source).toBeDefined()
   if (!source) throw new Error("redcode theme is missing")
@@ -89,18 +96,28 @@ test("redcode focuses Build and its scanner with the RedDB palette", () => {
   for (const mode of ["dark", "light"] as const) {
     const theme = resolveTheme(source, mode)
     const build = theme.secondary
-    const scanner = createColors({ color: build, enableFading: false })
+    const scanner = createColors({ color: build, headColor: theme.accent, enableFading: false })
 
     expect(theme.primary.toInts()).toEqual([255, 32, 86, 255])
     expect(build.toInts()).toEqual([255, 32, 86, 255])
     expect(theme.borderActive.toInts()).toEqual([209, 26, 70, 255])
     expect(scanner(0, 0, 1, 8).toInts()).toEqual([255, 99, 137, 255])
-    expect(new Set([theme.success.toHex(), theme.warning.toHex(), theme.error.toHex()]).size).toBe(3)
-    expect(theme.success.toHex()).not.toBe(theme.primary.toHex())
-    expect(theme.warning.toHex()).not.toBe(theme.primary.toHex())
-    expect(theme.error.toHex()).not.toBe(theme.primary.toHex())
+    const semantic = [theme.success, theme.warning, theme.error].map((color) => color.toInts().join(","))
+    expect(new Set(semantic).size).toBe(3)
+    expect(semantic).not.toContain(theme.primary.toInts().join(","))
+    expect(contrast(theme.text, theme.background)).toBeGreaterThan(7)
   }
 
   expect(resolveTheme(source, "dark").text.toInts()).toEqual([244, 245, 247, 255])
   expect(resolveTheme(source, "light").text.toInts()).toEqual([7, 8, 10, 255])
+  expect(resolveTheme(DEFAULT_THEMES.opencode!, "light").primary.toInts()).toEqual([59, 125, 216, 255])
 })
+
+function contrast(foreground: RGBA, background: RGBA) {
+  const luminance = (color: RGBA) => {
+    const channel = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
+  }
+  const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
+  return (values[0]! + 0.05) / (values[1]! + 0.05)
+}
