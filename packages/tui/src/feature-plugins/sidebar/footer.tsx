@@ -6,7 +6,7 @@ import { useTuiPaths } from "../../context/runtime"
 
 const id = "internal:sidebar-footer"
 
-function View(props: { api: TuiPluginApi; sessionID: string }) {
+export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
   const paths = useTuiPaths()
   const theme = () => props.api.theme.current
   const has = createMemo(() =>
@@ -53,7 +53,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
                 ✕
               </text>
             </box>
-            <text fg={theme().textMuted}>OpenCode includes free models so you can start immediately.</text>
+            <text fg={theme().textMuted}>Free models are included so you can start immediately.</text>
             <text fg={theme().textMuted}>
               Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
             </text>
@@ -68,13 +68,6 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <text fg={theme().textMuted}>
-        <span style={{ fg: theme().success }}>•</span> <b>Open</b>
-        <span style={{ fg: theme().text }}>
-          <b>Code</b>
-        </span>{" "}
-        <span>{props.api.app.version}</span>
-      </text>
     </box>
   )
 }
@@ -84,7 +77,7 @@ const tui: TuiPlugin = async (api) => {
     order: 100,
     slots: {
       sidebar_footer(_ctx, props) {
-        return <View api={api} sessionID={props.session_id} />
+        return <SidebarFooter api={api} sessionID={props.session_id} />
       },
     },
   })
