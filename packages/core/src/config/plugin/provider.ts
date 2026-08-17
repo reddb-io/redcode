@@ -47,9 +47,12 @@ export const Plugin = define({
           const model = ModelV2.parse(configuredDefault)
           catalog.model.default.set(model.providerID, model.modelID)
         }
+        // Collected across every file so the check runs against the api a later file may still replace.
+        const requested = new Map<string, string>()
         for (const file of files) {
           for (const [id, item] of Object.entries(file.info.providers ?? {})) {
             const providerID = id
+            if (item.npm !== undefined) requested.set(providerID, item.npm)
             catalog.provider.update(providerID, (provider) => {
               if (item.name !== undefined) provider.name = item.name
               if (item.api !== undefined) provider.api = { ...item.api }
@@ -107,7 +110,31 @@ export const Plugin = define({
             }
           }
         }
+        for (const [providerID, npm] of requested) {
+          const conflict = describeConflict(providerID, npm, catalog.provider.get(providerID)?.provider.api)
+          if (conflict) return yield* Effect.die(conflict)
+        }
       }),
     )
   }),
 })
+
+/**
+ * A provider block may override the endpoint through `api.url` or `request.body.baseURL`, but `npm`
+ * only names a package the catalog already chose. Honouring one half while dropping the other builds
+ * an endpoint neither source describes, so a disagreement is reported instead of resolved.
+ */
+function describeConflict(providerID: string, npm: string, api: ProviderV2.Api | undefined) {
+  const resolved = api?.type === "aisdk" ? api.package : undefined
+  if (resolved === npm) return
+  const url = api?.url ?? "the package default endpoint"
+  return [
+    `Provider "${providerID}" cannot be resolved: config asks for npm "${npm}"`,
+    resolved === undefined
+      ? `but the provider resolves to a ${api?.type ?? "missing"} api with no package,`
+      : `but the resolved package is "${resolved}",`,
+    `so requests would go to ${url} using the wrong protocol.`,
+    `Set providers.${providerID}.api to { "type": "aisdk", "package": "${npm}", "url": "<endpoint>" } so the package`,
+    `and the URL come from the same source, or remove providers.${providerID}.npm to keep the catalog defaults.`,
+  ].join(" ")
+}
