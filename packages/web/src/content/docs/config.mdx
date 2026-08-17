@@ -695,12 +695,12 @@ Use an object to keep built-ins enabled while configuring overrides or custom fo
 
 ### LSP Servers
 
-You can enable and configure LSP servers through the `lsp` option. Omit it to keep LSP disabled.
+Built-in LSP servers are enabled by default. You can configure them through the `lsp` option or set it to `false` to disable them.
 
 ```json title="opencode.json"
 {
   "$schema": "https://opencode.ai/config.json",
-  "lsp": true
+  "lsp": false
 }
 ```
 

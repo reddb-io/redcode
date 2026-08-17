@@ -228,7 +228,7 @@ const TIPS: Tip[] = [
   'Set {highlight}"formatter": true{/highlight} to enable built-in formatters',
   'Set {highlight}"formatter": false{/highlight} to disable inherited formatters',
   "Define custom formatter commands with file extensions in config",
-  'Set {highlight}"lsp": true{/highlight} to enable built-in LSP code analysis',
+  'Built-in LSP code analysis activates when supported files are read; set {highlight}"lsp": false{/highlight} to disable it',
   "Create {highlight}.ts{/highlight} files in {highlight}.opencode/tools/{/highlight} to define new LLM tools",
   "Tool definitions can invoke scripts written in Python, Go, etc",
   "Add {highlight}.ts{/highlight} files to {highlight}.opencode/plugins/{/highlight} for event hooks",
