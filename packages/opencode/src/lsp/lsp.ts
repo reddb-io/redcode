@@ -112,7 +112,7 @@ type LocInput = { file: string; line: number; character: number }
 interface State {
   clients: LSPClient.Info[]
   servers: Record<string, LSPServer.Info>
-  broken: Set<string>
+  broken: Map<string, Status>
   spawning: Map<string, Promise<LSPClient.Info | undefined>>
 }
 
@@ -148,7 +148,7 @@ const layer = Layer.effect(
 
         const servers: Record<string, LSPServer.Info> = {}
 
-        if (!cfg.lsp) {
+        if (cfg.lsp === false) {
           yield* Effect.logInfo("all LSPs are disabled")
         } else {
           for (const server of Object.values(LSPServer)) {
@@ -157,7 +157,7 @@ const layer = Layer.effect(
 
           filterExperimentalServers(servers, flags)
 
-          if (cfg.lsp !== true) {
+          if (cfg.lsp && cfg.lsp !== true) {
             for (const [name, item] of Object.entries(cfg.lsp)) {
               const existing = servers[name]
               if (item.disabled) {
@@ -191,7 +191,7 @@ const layer = Layer.effect(
         const s: State = {
           clients: [],
           servers,
-          broken: new Set(),
+          broken: new Map(),
           spawning: new Map(),
         }
 
@@ -215,14 +215,22 @@ const layer = Layer.effect(
         let updated = 0
 
         async function schedule(server: LSPServer.Info, root: string, key: string) {
+          const failed = () => {
+            s.broken.set(key, {
+              id: server.id,
+              name: server.id,
+              root: path.relative(ctx.directory, root),
+              status: "error",
+            })
+          }
           const handle = await server
             .spawn(root, ctx, flags)
             .then((value) => {
-              if (!value) s.broken.add(key)
+              if (!value) failed()
               return value
             })
             .catch(() => {
-              s.broken.add(key)
+              failed()
               return undefined
             })
 
@@ -234,7 +242,7 @@ const layer = Layer.effect(
             directory: ctx.directory,
             instance: ctx,
           }).catch(async () => {
-            s.broken.add(key)
+            failed()
             await Process.stop(handle.process)
             return undefined
           })
@@ -282,10 +290,10 @@ const layer = Layer.effect(
           })
 
           const client = await task
+          updated++
           if (!client) continue
 
           result.push(client)
-          updated++
         }
 
         return { result, updated }
@@ -322,6 +330,7 @@ const layer = Layer.effect(
           status: "connected",
         })
       }
+      result.push(...s.broken.values())
       return result
     })
 
