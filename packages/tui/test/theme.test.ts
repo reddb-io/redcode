@@ -4,6 +4,7 @@ import path from "node:path"
 import type { TerminalColors } from "@opentui/core"
 import { DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
+import { createColors } from "../src/ui/spinner"
 import { tmpdir } from "./fixture/fixture"
 
 test("addTheme writes into module theme store", () => {
@@ -78,4 +79,28 @@ test("custom theme precedence follows directory order", async () => {
   await writeFile(path.join(project, "themes", "custom.json"), JSON.stringify({ source: "project" }))
 
   await expect(discoverThemes([global, project])).resolves.toEqual({ custom: { source: "project" } })
+})
+
+test("redcode focuses Build and its scanner with the RedDB palette", () => {
+  const source = DEFAULT_THEMES.redcode
+  expect(source).toBeDefined()
+  if (!source) throw new Error("redcode theme is missing")
+
+  for (const mode of ["dark", "light"] as const) {
+    const theme = resolveTheme(source, mode)
+    const build = theme.secondary
+    const scanner = createColors({ color: build, enableFading: false })
+
+    expect(theme.primary.toInts()).toEqual([255, 32, 86, 255])
+    expect(build.toInts()).toEqual([255, 32, 86, 255])
+    expect(theme.borderActive.toInts()).toEqual([209, 26, 70, 255])
+    expect(scanner(0, 0, 1, 8).toInts()).toEqual([255, 99, 137, 255])
+    expect(new Set([theme.success.toHex(), theme.warning.toHex(), theme.error.toHex()]).size).toBe(3)
+    expect(theme.success.toHex()).not.toBe(theme.primary.toHex())
+    expect(theme.warning.toHex()).not.toBe(theme.primary.toHex())
+    expect(theme.error.toHex()).not.toBe(theme.primary.toHex())
+  }
+
+  expect(resolveTheme(source, "dark").text.toInts()).toEqual([244, 245, 247, 255])
+  expect(resolveTheme(source, "light").text.toInts()).toEqual([7, 8, 10, 255])
 })
