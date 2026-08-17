@@ -1,224 +1,200 @@
-import { Global } from "@opencode-ai/core/global"
 import { Redskilled } from "@opencode-ai/schema/redskilled"
 import { InstanceState } from "@/effect/instance-state"
-import { MCP } from "@/mcp"
-import type { InstanceContext } from "@/project/instance-context"
-import { readPayload, readStatusline } from "@/redskilled/client"
-import { decode, encode, type JsonValue } from "@reddb-io/toon"
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { createSession, type ControlOperation, type Snapshot, type WorkflowOperation } from "@/redskilled/client"
 import { Effect, Schema } from "effect"
-import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
-import { chmod } from "node:fs/promises"
-import path from "node:path"
+import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
+import { RedskilledApiError } from "../groups/redskilled"
 
-const consentFile = path.join(Global.Path.state, "redskilled-consent.toon")
-const lastGood = new Map<string, { payload: Redskilled.Payload; render?: Redskilled.Status["render"]; at: string }>()
-const paused = new Set<string>()
+const lastGood = new Map<
+  string,
+  { payload: Redskilled.Payload; render: NonNullable<Redskilled.Status["render"]>; at: string }
+>()
 
 export const redskilledHandlers = HttpApiBuilder.group(InstanceHttpApi, "redskilled", (handlers) =>
   Effect.gen(function* () {
-    const mcp = yield* MCP.Service
+    const clients = yield* InstanceState.make((context) =>
+      Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () => createSession(context.directory),
+          catch: error,
+        }),
+        (session) => Effect.sync(() => session.close()),
+      ),
+    )
 
     const status = (scope: Redskilled.Scope = "project") =>
       Effect.gen(function* () {
         const context = yield* InstanceState.context
-        const client = (yield* mcp.clients()).redskilled
-        return yield* Effect.tryPromise({
-          try: () => snapshot(context, client, scope),
-          catch: () => new HttpApiError.BadRequest({}),
+        if (scope === "host") {
+          return yield* new RedskilledApiError({
+            message: "redskilled ACP exposes a project-scoped Worker projection; host scope is not available",
+          })
+        }
+        const observed = yield* Effect.gen(function* () {
+          const session = yield* InstanceState.get(clients)
+          return yield* Effect.tryPromise({ try: () => session.snapshot(), catch: error })
         }).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Redskilled.Status)),
-          Effect.mapError(() => new HttpApiError.BadRequest({})),
+          Effect.match({
+            onFailure: (failure) => ({ failure }),
+            onSuccess: (snapshot) => ({ snapshot }),
+          }),
         )
+        if ("failure" in observed) {
+          yield* InstanceState.invalidate(clients)
+          return unavailable(context.project.id, scope, observed.failure.message)
+        }
+        return yield* Schema.decodeUnknownEffect(Redskilled.Status)(
+          project(observed.snapshot, context.project.id, scope),
+        ).pipe(Effect.mapError((failure) => new RedskilledApiError({ message: failure.message })))
       })
 
-    const mutate = (tool: string, input: Record<string, unknown>, worker?: string) =>
+    const control = (operation: ControlOperation) =>
       Effect.gen(function* () {
-        const context = yield* InstanceState.context
-        if ((yield* Effect.promise(() => readConsent(context.project.id))) !== "accepted") {
-          return yield* new HttpApiError.BadRequest({})
-        }
-        if (worker) {
-          const current = yield* status("host")
-          const mine = current.payload?.workers.some(
-            (item) => item.worker_id === worker && item.project_label === current.activation?.project,
-          )
-          if (!mine) return yield* new HttpApiError.BadRequest({})
-        }
-        const client = (yield* mcp.clients()).redskilled
-        yield* Effect.tryPromise({
-          try: () => callTool(client, tool, input, 10_000),
-          catch: () => new HttpApiError.BadRequest({}),
-        })
+        const session = yield* InstanceState.get(clients).pipe(Effect.mapError(apiError))
+        yield* Effect.tryPromise({ try: () => session.control(operation), catch: error }).pipe(
+          Effect.mapError(apiError),
+        )
         return yield* status("project")
       })
 
-    const steerStatus = (worker: string) =>
+    const workflow = (operation: WorkflowOperation, input: Record<string, unknown>, worker?: string) =>
       Effect.gen(function* () {
-        const current = yield* status("host")
-        if (current.consent !== "accepted") return yield* new HttpApiError.BadRequest({})
-        if (
-          !current.payload?.workers.some(
-            (item) => item.worker_id === worker && item.project_label === current.activation?.project,
+        const session = yield* InstanceState.get(clients).pipe(Effect.mapError(apiError))
+        if (worker) {
+          const current = yield* Effect.tryPromise({ try: () => session.snapshot(), catch: error }).pipe(
+            Effect.tapError(() => InstanceState.invalidate(clients)),
+            Effect.mapError(apiError),
           )
+          if (!current.state.workers.some((item) => item.worker_id === worker)) {
+            return yield* new RedskilledApiError({ message: `Worker ${worker} does not belong to this ACP Project` })
+          }
+        }
+        yield* Effect.tryPromise({ try: () => session.workflow(operation, input), catch: error }).pipe(
+          Effect.tapError(() => InstanceState.invalidate(clients)),
+          Effect.mapError(apiError),
         )
-          return yield* new HttpApiError.BadRequest({})
-        const client = (yield* mcp.clients()).redskilled
-        return yield* Effect.tryPromise({
-          try: () => callTool(client, "steer_status", { worker }, 2_000),
-          catch: () => new HttpApiError.BadRequest({}),
-        }).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Redskilled.SteerStatus)),
-          Effect.mapError(() => new HttpApiError.BadRequest({})),
-        )
+        return yield* status("project")
       })
 
     return handlers
       .handle("status", (ctx) => status(ctx.query.scope ?? "project"))
-      .handle("consent", (ctx) =>
-        Effect.gen(function* () {
-          const context = yield* InstanceState.context
-          const previous = yield* Effect.promise(() => readConsent(context.project.id))
-          yield* Effect.promise(() => writeConsent(context.project.id, ctx.payload.decision))
-          if (ctx.payload.decision === "accepted") {
-            paused.delete(context.project.id)
-            const client = (yield* mcp.clients()).redskilled
-            yield* Effect.tryPromise({
-              try: () => callTool(client, "drain", {}, 10_000),
-              catch: () => new HttpApiError.BadRequest({}),
-            })
-            return yield* status("project")
-          }
-          paused.add(context.project.id)
-          if (previous === "accepted") {
-            const client = (yield* mcp.clients()).redskilled
-            yield* Effect.tryPromise({
-              try: () => callTool(client, "project_stop", {}, 10_000),
-              catch: () => new HttpApiError.BadRequest({}),
-            })
-          }
-          return yield* status("project")
-        }),
+      .handle("consent", (ctx) => control(ctx.payload.decision === "accepted" ? "drain" : "stop"))
+      .handle("resize", (ctx) => workflow("resize", { target: ctx.payload.target }))
+      .handle("stopProject", () => control("stop"))
+      .handle("stopWorker", (ctx) => workflow("stopWorker", { worker: ctx.payload.worker }, ctx.payload.worker))
+      .handle("recycleWorker", (ctx) => workflow("recycleWorker", { worker: ctx.payload.worker }, ctx.payload.worker))
+      .handle("steerWorker", (ctx) => workflow("steerWorker", ctx.payload, ctx.payload.worker))
+      .handle("steerStatus", () =>
+        Effect.fail(
+          new RedskilledApiError({
+            message: "redskilled ACP core does not expose a typed steer_status result; polling is unavailable",
+          }),
+        ),
       )
-      .handle("resize", (ctx) => mutate("project_resize", { target: ctx.payload.target }))
-      .handle("stopProject", () =>
-        Effect.gen(function* () {
-          paused.add((yield* InstanceState.context).project.id)
-          return yield* mutate("project_stop", {})
-        }),
-      )
-      .handle("stopWorker", (ctx) => mutate("worker_stop", { worker: ctx.payload.worker }, ctx.payload.worker))
-      .handle("recycleWorker", (ctx) => mutate("worker_recycle", { worker: ctx.payload.worker }, ctx.payload.worker))
-      .handle("steerWorker", (ctx) => mutate("runner_steer", ctx.payload, ctx.payload.worker))
-      .handle("steerStatus", (ctx) => steerStatus(ctx.payload.worker))
   }),
 )
 
-async function snapshot(context: InstanceContext, client: Client | undefined, scope: Redskilled.Scope) {
-  const consent = await readConsent(context.project.id)
-  const activation = await callTool(client, "project_activation", {}, 2_000)
-    .then(Schema.decodeUnknownSync(Redskilled.Activation))
-    .catch(() => undefined)
-  const key = `${context.project.id}:${scope}`
-
-  if (activation?.eligible && consent === "accepted" && !paused.has(context.project.id)) {
-    const observed = await readPayload(activation.project).catch(() => undefined)
-    const decoded = decodePayload(observed, activation.project, scope)
-    if (!decoded || !decoded.registered_projects?.includes(activation.project))
-      await callTool(client, "drain", {}, 10_000)
-  }
-
-  const [raw, render] = await Promise.all([
-    readPayload(activation?.project).catch((error) => error),
-    readStatusline(activation?.project, scope === "host").catch(() => undefined),
-  ])
-  if (!(raw instanceof Error)) {
-    const payload = decodePayload(raw, activation?.project, scope)
-    if (payload) {
-      const at = new Date().toISOString()
-      lastGood.set(key, { payload, ...(render ? { render } : {}), at })
-      return {
-        lifecycle: lifecycle(consent, activation, payload.staleness.stale),
-        consent,
-        scope,
-        native: true as const,
-        ...(activation ? { activation } : {}),
-        payload,
-        ...(render ? { render } : {}),
-        last_success_at: at,
-      }
+function project(snapshot: Snapshot, key: string, scope: Redskilled.Scope): Redskilled.Status {
+  const now = new Date().toISOString()
+  const workers = snapshot.state.workers.flatMap((worker): Redskilled.Worker[] => {
+    if (
+      typeof worker.worker_id !== "string" ||
+      typeof worker.pid !== "number" ||
+      typeof worker.started_at !== "string"
+    ) {
+      return []
     }
+    const budget = record(worker.budget)
+    const declared = typeof budget?.memory_max === "string" ? budget.memory_max : null
+    return [
+      {
+        worker_id: worker.worker_id,
+        project_label: snapshot.state.project_label,
+        pid: worker.pid,
+        started_at: worker.started_at,
+        uptime_ms: Math.max(0, Date.now() - Date.parse(worker.started_at)),
+        vitals: { rss_bytes: null, sampled_at: null, age_ms: null, fresh: false },
+        budget: {
+          declared,
+          bytes: null,
+          used_bytes: null,
+          used_fraction: null,
+          enforceable: worker.isolated === true,
+        },
+        log: { last_line: null, published_at: null },
+      },
+    ]
+  })
+  const registered = snapshot.control.drain_intent === "draining"
+  const payload: Redskilled.Payload = {
+    version: 1,
+    generated_at: now,
+    staleness: {
+      sampled_at: now,
+      age_ms: null,
+      stale: true,
+      measured_worker_count: 0,
+      unmeasured_workers: workers.map((worker) => worker.worker_id),
+      reason: "public redskilled ACP Project projection",
+    },
+    host: {
+      worker_count: workers.length,
+      project_count: 1,
+      measured_worker_count: 0,
+      ceiling_used_fraction: null,
+      ceiling: { memory_bytes: null, worker_count: null, interactive_reservation: 0 },
+    },
+    known_projects: [snapshot.state.project_label],
+    registered_projects: registered ? [snapshot.state.project_label] : [],
+    workers,
   }
-
-  const cached = lastGood.get(key)
+  const render = {
+    line: `${workers.length} Worker${workers.length === 1 ? "" : "s"} · ${snapshot.state.project_label}`,
+    degraded: true,
+    stale: true,
+    generated_at: now,
+  }
+  lastGood.set(key, { payload, render, at: now })
+  const consent: Redskilled.Consent = registered ? "accepted" : "unknown"
   return {
-    lifecycle: activation ? lifecycle(consent, activation, true) : ("unavailable" as const),
+    lifecycle: "degraded",
     consent,
     scope,
-    native: true as const,
-    ...(activation ? { activation } : {}),
-    ...(cached
-      ? { payload: cached.payload, ...(cached.render ? { render: cached.render } : {}), last_success_at: cached.at }
-      : {}),
-    error: raw instanceof Error ? raw.message : "redskilled returned an invalid payload",
+    native: true,
+    activation: {
+      eligible: true,
+      project: snapshot.state.project_label,
+      runner: "ACP",
+    },
+    payload,
+    render,
+    last_success_at: now,
   }
 }
 
-async function callTool(client: Client | undefined, name: string, input: Record<string, unknown>, timeout: number) {
-  if (!client) throw new Error("redskilled MCP is not connected")
-  const result = await client.callTool({ name, arguments: input }, undefined, { timeout })
-  if (result.isError)
-    throw new Error(result.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n"))
-  const text = result.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n")
-  if (!text) throw new Error(`redskilled ${name} returned no structured output`)
-  return text.trimStart().startsWith("{") ? (JSON.parse(text) as unknown) : (decode(text) as unknown)
-}
-
-function decodePayload(value: unknown, project: string | undefined, scope: Redskilled.Scope) {
-  const decoded = Schema.decodeUnknownOption(Redskilled.Payload)(value)
-  if (decoded._tag === "None") return
-  if (scope === "host" || !project) return decoded.value
-  return { ...decoded.value, workers: decoded.value.workers.filter((worker) => worker.project_label === project) }
-}
-
-function lifecycle(
-  consent: Redskilled.Consent,
-  activation: Redskilled.Activation | undefined,
-  stale: boolean,
-): Redskilled.Lifecycle {
-  if (!activation) return "unavailable"
-  if (!activation.eligible) return "ineligible"
-  if (consent === "refused") return "refused"
-  if (consent === "unknown") return "needs_consent"
-  return stale ? "degraded" : "live"
-}
-
-async function readConsent(projectID: string): Promise<Redskilled.Consent> {
-  const file = Bun.file(consentFile)
-  if (!(await file.exists())) return "unknown"
-  const value = decodeConsent(await file.text())
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return "unknown"
-  const consent = (value as Record<string, unknown>)[projectID]
-  return consent === "accepted" || consent === "refused" ? consent : "unknown"
-}
-
-async function writeConsent(projectID: string, consent: Exclude<Redskilled.Consent, "unknown">) {
-  const file = Bun.file(consentFile)
-  const current = (await file.exists()) ? decodeConsent(await file.text()) : {}
-  const values = typeof current === "object" && current !== null && !Array.isArray(current) ? current : {}
-  await Bun.write(consentFile, `${encode({ ...values, [projectID]: consent } as JsonValue)}\n`)
-  await chmod(consentFile, 0o600)
-}
-
-function decodeConsent(text: string): unknown {
-  try {
-    return decode(text) as unknown
-  } catch {
-    try {
-      return JSON.parse(text) as unknown
-    } catch {
-      return {}
-    }
+function unavailable(key: string, scope: Redskilled.Scope, message: string): Redskilled.Status {
+  const cached = lastGood.get(key)
+  return {
+    lifecycle: "unavailable",
+    consent: "unknown",
+    scope,
+    native: true,
+    ...(cached ? { payload: cached.payload, render: cached.render, last_success_at: cached.at } : {}),
+    error: message,
   }
+}
+
+function apiError(value: Error) {
+  return new RedskilledApiError({ message: value.message })
+}
+
+function error(value: unknown) {
+  return value instanceof Error ? value : new Error(String(value))
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
 }

@@ -5239,7 +5239,7 @@ export class Worker extends HeyApiClient {
   }
 
   /**
-   * Read Worker steer status
+   * Report typed Worker steer status as unavailable over ACP core
    */
   public steerStatus<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -5310,7 +5310,7 @@ export class Redskilled extends HeyApiClient {
   }
 
   /**
-   * Change redskilled consent
+   * Change the Project drain intent
    */
   public consent<ThrowOnError extends boolean = false>(
     parameters?: {

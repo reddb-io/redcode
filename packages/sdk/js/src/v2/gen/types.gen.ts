@@ -2677,6 +2677,10 @@ export type WorkspaceWarpError = {
   }
 }
 
+export type RedskilledError = {
+  message: string
+}
+
 export type UnauthorizedError = {
   _tag: "UnauthorizedError"
   message: string
@@ -11240,9 +11244,9 @@ export type RedskilledStatusData = {
 
 export type RedskilledStatusErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledStatusError = RedskilledStatusErrors[keyof RedskilledStatusErrors]
@@ -11260,14 +11264,14 @@ export type RedskilledStatusResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11276,7 +11280,7 @@ export type RedskilledStatusResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11285,7 +11289,7 @@ export type RedskilledStatusResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -11371,9 +11375,9 @@ export type RedskilledConsentData = {
 
 export type RedskilledConsentErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledConsentError = RedskilledConsentErrors[keyof RedskilledConsentErrors]
@@ -11391,14 +11395,14 @@ export type RedskilledConsentResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11407,7 +11411,7 @@ export type RedskilledConsentResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11416,7 +11420,7 @@ export type RedskilledConsentResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -11502,9 +11506,9 @@ export type RedskilledProjectResizeData = {
 
 export type RedskilledProjectResizeErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledProjectResizeError = RedskilledProjectResizeErrors[keyof RedskilledProjectResizeErrors]
@@ -11522,14 +11526,14 @@ export type RedskilledProjectResizeResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11538,7 +11542,7 @@ export type RedskilledProjectResizeResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11547,7 +11551,7 @@ export type RedskilledProjectResizeResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -11631,9 +11635,9 @@ export type RedskilledProjectStopData = {
 
 export type RedskilledProjectStopErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledProjectStopError = RedskilledProjectStopErrors[keyof RedskilledProjectStopErrors]
@@ -11651,14 +11655,14 @@ export type RedskilledProjectStopResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11667,7 +11671,7 @@ export type RedskilledProjectStopResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11676,7 +11680,7 @@ export type RedskilledProjectStopResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -11762,9 +11766,9 @@ export type RedskilledWorkerStopData = {
 
 export type RedskilledWorkerStopErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledWorkerStopError = RedskilledWorkerStopErrors[keyof RedskilledWorkerStopErrors]
@@ -11782,14 +11786,14 @@ export type RedskilledWorkerStopResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11798,7 +11802,7 @@ export type RedskilledWorkerStopResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11807,7 +11811,7 @@ export type RedskilledWorkerStopResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -11893,9 +11897,9 @@ export type RedskilledWorkerRecycleData = {
 
 export type RedskilledWorkerRecycleErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledWorkerRecycleError = RedskilledWorkerRecycleErrors[keyof RedskilledWorkerRecycleErrors]
@@ -11913,14 +11917,14 @@ export type RedskilledWorkerRecycleResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -11929,7 +11933,7 @@ export type RedskilledWorkerRecycleResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -11938,7 +11942,7 @@ export type RedskilledWorkerRecycleResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -12025,9 +12029,9 @@ export type RedskilledWorkerSteerData = {
 
 export type RedskilledWorkerSteerErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledWorkerSteerError = RedskilledWorkerSteerErrors[keyof RedskilledWorkerSteerErrors]
@@ -12045,14 +12049,14 @@ export type RedskilledWorkerSteerResponses = {
       eligible: boolean
       project: string
       runner: string
-      target: number
-      standing: boolean
-      config: string
+      target?: number
+      standing?: boolean
+      config?: string
     }
     payload?: {
       version: 1
       generated_at: string
-      daemon: {
+      daemon?: {
         pid: number
         daemon_version: string
         protocol_version: number
@@ -12061,7 +12065,7 @@ export type RedskilledWorkerSteerResponses = {
       staleness: {
         sampled_at: string
         age_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-        threshold_ms: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        threshold_ms?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         stale: boolean
         measured_worker_count: number
         unmeasured_workers: Array<string>
@@ -12070,7 +12074,7 @@ export type RedskilledWorkerSteerResponses = {
       host: {
         worker_count: number
         project_count: number
-        observed_rss_bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        observed_rss_bytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         measured_worker_count: number
         ceiling_used_fraction: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         ceiling: {
@@ -12156,9 +12160,9 @@ export type RedskilledWorkerSteerStatusData = {
 
 export type RedskilledWorkerSteerStatusErrors = {
   /**
-   * BadRequest | InvalidRequestError
+   * RedskilledError | InvalidRequestError
    */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  400: RedskilledError | InvalidRequestError
 }
 
 export type RedskilledWorkerSteerStatusError =

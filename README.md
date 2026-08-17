@@ -144,22 +144,22 @@ Redcode integrates natively with [RedSkills](https://github.com/reddb-io/red-ski
 host-scoped `redskilled` daemon, so the autonomous fleet is a tab in your session rather than a
 separate dashboard.
 
-The **Workers** view is a live console over the daemon:
+The **Workers** view is a live, project-scoped console over the daemon's public ACP session:
 
-- **Capacity** — `slots ██░░░░ 2/6 (1 reserved)` and `mem ██░░░░ 4.1G/15.3G`, turning warning as the
-  host commits.
-- **Per Worker** — phase bar, heartbeat freshness coloured against 30s and 120s thresholds, elapsed
-  and ETA, token and tool counters.
-- **Velocity** — the daemon reports absolute counters; the view differences successive polls into
-  rates and a token sparkline.
-- **History** — phase, step, failure, and log-line transitions accumulate into a per-Worker activity
-  feed, and departed Workers stay listed with how they ended.
-- **Control** — stop, recycle, and steer a Worker in place; `enter` expands one to full width, `o`
-  opens its issue.
+- **Per Worker** — identity, process, start time, elapsed time, and declared memory budget from the
+  public Project projection. Rich phase, heartbeat, log, and host-capacity details remain blank
+  because the public ACP snapshot does not expose them.
+- **History** — arrivals and departures observed through successive ACP snapshots remain visible in
+  the local activity feed.
+- **Control** — Project drain, stop, and status use redskilled's advertised typed methods. Resize and
+  Worker stop, recycle, and steer run as generic ACP Project turns (`/project_resize`, `/worker_stop`,
+  `/worker_recycle`, and `/runner_steer`); `enter` expands one Worker to full width and `o` opens its
+  issue. Redcode does not poll `steer_status`, because ACP core exposes no typed result for that read.
 
-Host scope groups every Worker on the machine by project, current project first, with other projects
-read-only. The integration is **consent-gated per project** and speaks to the daemon over a local
-unix socket — nothing leaves the machine to make it work.
+Redcode stores no separate consent, registration, or Project-control state. Drain intent and policy
+remain daemon-owned, and status comes from the Project projection reached through the supported
+`red-skills-redskilled acp` stdio adapter. Host-wide statusline details are not presented because the
+public ACP session deliberately binds each connection to one Project.
 
 ## Install
 

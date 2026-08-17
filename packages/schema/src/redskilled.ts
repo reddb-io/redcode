@@ -24,9 +24,9 @@ export const Activation = Schema.Struct({
   eligible: Schema.Boolean,
   project: Schema.String,
   runner: Schema.String,
-  target: Schema.Int,
-  standing: Schema.Boolean,
-  config: Schema.String,
+  target: Schema.Int.pipe(optional),
+  standing: Schema.Boolean.pipe(optional),
+  config: Schema.String.pipe(optional),
 })
 export type Activation = typeof Activation.Type
 
@@ -90,11 +90,11 @@ export const Payload = Schema.Struct({
     daemon_version: Schema.String,
     protocol_version: Schema.Int,
     started_at: Schema.String,
-  }),
+  }).pipe(optional),
   staleness: Schema.Struct({
     sampled_at: Schema.NullOr(Schema.String),
     age_ms: Schema.NullOr(Schema.Number),
-    threshold_ms: Schema.Number,
+    threshold_ms: Schema.Number.pipe(optional),
     stale: Schema.Boolean,
     measured_worker_count: Schema.Int,
     unmeasured_workers: Schema.Array(Schema.String),
@@ -103,7 +103,7 @@ export const Payload = Schema.Struct({
   host: Schema.Struct({
     worker_count: Schema.Int,
     project_count: Schema.Int,
-    observed_rss_bytes: Schema.Number,
+    observed_rss_bytes: Schema.Number.pipe(optional),
     measured_worker_count: Schema.Int,
     ceiling_used_fraction: Schema.NullOr(Schema.Number),
     ceiling: Schema.Struct({
