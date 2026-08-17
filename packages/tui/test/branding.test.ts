@@ -11,7 +11,10 @@ const compatibilityAllowlist = [
     pattern:
       /^(?:opencode|opencode-go|opencode\.default|opencode\.(?:status|debug|mode)|opencode-plain-text|opencode-clipboard\.png|__opencode_custom_provider__|opencode-version)$/,
   },
-  { reason: "real external OpenCode services", pattern: /(?:https?:\/\/|ghcr\.io\/)\S*opencode|\/opencode\b/ },
+  {
+    reason: "real external OpenCode services",
+    pattern: /(?:https?:\/\/|ghcr\.io\/)\S*opencode|(?:^|\s)opencode\.ai|\/opencode\b/,
+  },
   { reason: "real external OpenCode provider names", pattern: /OpenCode (?:Zen|Go)\b/ },
 ] as const
 
