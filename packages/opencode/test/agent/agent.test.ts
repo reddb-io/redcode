@@ -69,6 +69,15 @@ it.instance("build agent has correct default properties", () =>
   }),
 )
 
+it.instance("title agent produces labels without unsupported diagnostic claims", () =>
+  Effect.gen(function* () {
+    const title = yield* load((svc) => svc.get("title"))
+    expect(title?.prompt).toContain("conversation label")
+    expect(title?.prompt).toContain("Never claim that a problem was found, detected, fixed, verified, or diagnosed")
+    expect(title?.prompt).toContain("unless the user explicitly stated that outcome")
+  }),
+)
+
 it.instance("plan agent denies edits except .opencode/plans/*", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
