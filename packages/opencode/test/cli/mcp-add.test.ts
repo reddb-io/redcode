@@ -76,7 +76,7 @@ describe("opencode mcp add (non-interactive subprocess)", () => {
     "edits an existing opencode-named global config instead of creating a second file",
     ({ home, opencode }) =>
       Effect.gen(function* () {
-        const dir = path.join(home, ".config", "redcode")
+        const dir = path.join(home, ".red", "redcode")
         const legacy = path.join(dir, "opencode.json")
         yield* Effect.promise(() => Bun.write(legacy, JSON.stringify({ username: "existing" })))
 
