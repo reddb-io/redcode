@@ -139,8 +139,8 @@ export const use = serviceUse(Service)
 function globalConfigFile() {
   // Highest precedence first: an existing file is always reused, so a user who only has
   // the legacy OpenCode-named file keeps writing to it instead of gaining a second file.
-  // Only a fresh install with no config at all creates the Redcode-named one.
-  const candidates = ["redcode.jsonc", "redcode.json", "opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+  // Only a fresh install with no config at all creates the primary `config.jsonc` one.
+  const candidates = ["config.jsonc", "config.json", "redcode.jsonc", "redcode.json", "opencode.jsonc", "opencode.json"].map((file) =>
     path.join(Global.Path.config, file),
   )
   for (const file of candidates) {
@@ -258,23 +258,31 @@ const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "config.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.jsonc"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "redcode.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "redcode.jsonc"), env))
+      // Ordered lowest to highest: legacy XDG-named files first so the primary Redcode-named
+      // ones override them field by field rather than replacing them. An existing install with
+      // only the legacy OpenCode-named file keeps behaving exactly as before.
+      const legacyDir = Global.Path.legacyConfig
+      const legacyFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
+      for (const file of legacyFiles) {
+        result = mergeConfig(result, yield* loadFile(path.join(legacyDir, file), env))
+      }
+      const primary = Global.Path.config
+      const primaryFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
+      for (const file of primaryFiles) {
+        result = mergeConfig(result, yield* loadFile(path.join(primary, file), env))
+      }
 
-      const legacy = path.join(Global.Path.config, "config")
-      if (existsSync(legacy)) {
+      const legacyToml = path.join(Global.Path.config, "config")
+      if (existsSync(legacyToml)) {
         yield* Effect.promise(() =>
-          import(pathToFileURL(legacy).href, { with: { type: "toml" } })
+          import(pathToFileURL(legacyToml).href, { with: { type: "toml" } })
             .then(async (mod) => {
               const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
               result["$schema"] = "https://opencode.ai/config.json"
               result = mergeConfig(result, rest)
               await fsNode.writeFile(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
-              await fsNode.unlink(legacy)
+              await fsNode.unlink(legacyToml)
             })
             .catch(() => {}),
         )
@@ -430,7 +438,14 @@ const layer = Layer.effect(
 
         for (const dir of directories) {
           if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"]) {
+            for (const file of [
+              "opencode.json",
+              "opencode.jsonc",
+              "redcode.json",
+              "redcode.jsonc",
+              "config.json",
+              "config.jsonc",
+            ]) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source, authEnv))
@@ -522,7 +537,14 @@ const layer = Layer.effect(
 
         const managedDir = ConfigManaged.managedConfigDir()
         if (existsSync(managedDir)) {
-          for (const file of ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"]) {
+          for (const file of [
+            "opencode.json",
+            "opencode.jsonc",
+            "redcode.json",
+            "redcode.jsonc",
+            "config.json",
+            "config.jsonc",
+          ]) {
             const source = path.join(managedDir, file)
             yield* merge(source, yield* loadFile(source), "global")
           }

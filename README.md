@@ -235,7 +235,11 @@ does not import the CLI that hosts it.
 The product is Redcode; most of the source still says OpenCode. Workspace packages are
 `@opencode-ai/*`, the package that becomes the binary is literally named `opencode`, and environment
 variables are `OPENCODE_*`. What *is* renamed is everything a user touches: the `redcode` binary, the
-`redcode` XDG data and cache directories, the npm namespace, and the agent's identity over ACP.
+`~/.red/redcode/` data, cache, state, and config directories (with the `~/.config/redcode/` XDG directory
+still read as a fallback so existing installs keep working), the npm namespace, and the agent's identity
+over ACP. The global config file is `~/.red/redcode/config.jsonc` (or `config.json`); the transitional
+`redcode.json` / `redcode.jsonc` and the legacy `opencode.json` / `opencode.jsonc` names are still read
+everywhere the primary `config.*` name is, and the primary file always wins on merge.
 
 Leaving the internals alone is deliberate. A rename would touch every file, bury the real changes in
 noise, and make our work harder to read against upstream's — so expect the mismatch and read
