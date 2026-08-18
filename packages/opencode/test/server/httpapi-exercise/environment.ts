@@ -10,9 +10,11 @@ process.env.XDG_DATA_HOME = path.join(exerciseGlobalRoot, "data")
 process.env.XDG_CONFIG_HOME = path.join(exerciseGlobalRoot, "config")
 process.env.XDG_STATE_HOME = path.join(exerciseGlobalRoot, "state")
 process.env.XDG_CACHE_HOME = path.join(exerciseGlobalRoot, "cache")
-// Pin HOME so the new RedDB config home (`~/.red/redcode/`) resolves under the test
-// scratch directory instead of the real user home.
+// Pin HOME and OPENCODE_TEST_HOME so the new RedDB config home (`~/.red/redcode/`)
+// resolves under the test scratch directory instead of the real user home. `OPENCODE_TEST_HOME`
+// wins in `@opencode-ai/core/global` so it takes precedence here.
 process.env.HOME = exerciseGlobalRoot
+process.env.OPENCODE_TEST_HOME = exerciseGlobalRoot
 process.env.OPENCODE_DISABLE_SHARE = "true"
 export const exerciseConfigDirectory = path.join(exerciseGlobalRoot, "config", "opencode")
 export const exerciseDataDirectory = path.join(exerciseGlobalRoot, ".red", "redcode", "data")
