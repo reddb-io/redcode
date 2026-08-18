@@ -52,7 +52,7 @@ async function renderSidebar(status?: "error") {
     },
     slots: {
       register(input: Parameters<TuiPluginApi["slots"]["register"]>[0]) {
-        render = input.slots.sidebar_content as () => JSX.Element
+        render = input.slots.sidebar_project as () => JSX.Element
         return "sidebar-lsp"
       },
     },
