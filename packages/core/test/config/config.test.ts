@@ -26,6 +26,7 @@ function testLayer(
   globalDirectory = path.join(directory, "global"),
   projectDirectory = directory,
   vcs?: Project.Vcs,
+  legacyConfigDirectory = path.join(directory, "legacy-config"),
 ) {
   const locationLayer = Layer.succeed(
     Location.Service,
@@ -38,7 +39,7 @@ function testLayer(
   )
   return AppNodeBuilder.build(LayerNode.group([Config.node, Policy.node]), [
     [Location.node, locationLayer],
-    [Global.node, Global.layerWith({ config: globalDirectory })],
+    [Global.node, Global.layerWith({ config: globalDirectory, legacyConfig: legacyConfigDirectory })],
   ])
 }
 
@@ -315,7 +316,7 @@ describe("Config", () => {
     ),
   )
 
-  it.live("does not load legacy config.json files", () =>
+  it.live("loads the primary config.jsonc at the project level", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
@@ -323,14 +324,14 @@ describe("Config", () => {
       Effect.flatMap((tmp) =>
         Effect.gen(function* () {
           yield* Effect.promise(() =>
-            fs.writeFile(path.join(tmp.path, "config.json"), JSON.stringify({ $schema: "legacy" })),
+            fs.writeFile(path.join(tmp.path, "config.jsonc"), JSON.stringify({ $schema: "primary" })),
           )
 
           return yield* Effect.gen(function* () {
             const config = yield* Config.Service
             const documents = (yield* config.entries()).filter((entry) => entry.type === "document")
 
-            expect(documents).toHaveLength(0)
+            expect(documents.map((document) => document.info.$schema)).toEqual(["primary"])
           }).pipe(Effect.provide(testLayer(tmp.path)))
         }),
       ),
