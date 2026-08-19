@@ -361,11 +361,17 @@ function ApiMethod(props: ApiMethodProps) {
   const sync = useSync()
   const toast = useToast()
   const { theme } = useTheme()
+  // Saving a key disposes and re-bootstraps the instance, which can take tens of seconds when
+  // plugins or provider packages are (re)installed. Without a busy state the dialog looks frozen
+  // and every extra enter re-submits the key.
+  const [busy, setBusy] = createSignal(false)
 
   return (
     <DialogPrompt
       title={props.title}
       placeholder="API key"
+      busy={busy()}
+      busyText="Saving credential and reloading providers..."
       description={() =>
         ({
           opencode: (
@@ -393,17 +399,32 @@ function ApiMethod(props: ApiMethodProps) {
         })[props.providerID] ?? undefined
       }
       onConfirm={async (value) => {
-        if (!value) return
-        await sdk.client.auth.set({
-          providerID: props.providerID,
-          auth: {
-            type: "api",
-            key: value,
-            ...(props.metadata ? { metadata: props.metadata } : {}),
-          },
-        })
-        await sdk.client.instance.dispose()
-        await sync.bootstrap()
+        if (!value || busy()) return
+        setBusy(true)
+        try {
+          const result = await sdk.client.auth.set({
+            providerID: props.providerID,
+            auth: {
+              type: "api",
+              key: value,
+              ...(props.metadata ? { metadata: props.metadata } : {}),
+            },
+          })
+          if (result.error) {
+            toast.show({ variant: "error", message: JSON.stringify(result.error) })
+            return
+          }
+          await sdk.client.instance.dispose()
+          await sync.bootstrap()
+        } catch (error) {
+          toast.show({
+            variant: "error",
+            message: `Failed to save credential: ${error instanceof Error ? error.message : String(error)}`,
+          })
+          return
+        } finally {
+          setBusy(false)
+        }
         if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
           toast.show({
             variant: "info",
