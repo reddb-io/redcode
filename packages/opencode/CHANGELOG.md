@@ -1,5 +1,12 @@
 # opencode
 
+## 0.8.1
+
+### Patch Changes
+
+- ccaf6e3: Stop reading the legacy `~/.config/redcode/` XDG directory. Global config now comes only from `~/.red/redcode/` (`config.jsonc` primary, `redcode.*` / `opencode.*` still merged beneath it). Stale generated files left in the XDG directory — e.g. a `provider.minimax` block pointing at the dead `api.minimax.chat` endpoint — no longer leak into the merged config.
+- 9d9ae8e: TUI: the `/connect` API key dialog now shows a busy spinner while the credential is saved and the instance re-bootstraps, and surfaces save failures as a toast. Previously the dialog looked frozen for the duration of the reload (tens of seconds when plugins or provider packages are reinstalled) and every extra `enter` re-submitted the key.
+
 ## 0.8.0
 
 ### Minor Changes
