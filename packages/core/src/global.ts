@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
-import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
+import { xdgData, xdgCache, xdgState } from "xdg-basedir"
 import os from "os"
 import { Context, Effect, Layer } from "effect"
 import { Flock } from "./util/flock"
@@ -31,7 +31,6 @@ const paths = {
   config,
   state,
   tmp,
-  legacyConfig: path.join(xdgConfig!, app),
 }
 
 export const Path = paths
@@ -60,7 +59,6 @@ export interface Interface {
   readonly bin: string
   readonly log: string
   readonly repos: string
-  readonly legacyConfig?: string
 }
 
 export function make(input: Partial<Interface> = {}): Interface {
@@ -74,7 +72,6 @@ export function make(input: Partial<Interface> = {}): Interface {
     bin: Path.bin,
     log: Path.log,
     repos: Path.repos,
-    legacyConfig: Path.legacyConfig,
     ...input,
   }
 }
