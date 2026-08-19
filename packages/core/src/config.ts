@@ -186,14 +186,6 @@ const layer = Layer.effect(
     })
 
     const globalDirectory = AbsolutePath.make(global.config)
-    const legacyConfigDir = global.legacyConfig
-    // Read the legacy XDG-style directory as a fallback so existing installs that still
-    // hold their config at `~/.config/redcode/` keep working without manual migration.
-    // A directory holding only the legacy `opencode.jsonc` keeps behaving exactly as before.
-    const legacyGlobalDirectory =
-      legacyConfigDir && path.resolve(legacyConfigDir) !== path.resolve(global.config)
-        ? AbsolutePath.make(legacyConfigDir)
-        : null
     const locationIsGlobal = path.resolve(location.directory) === path.resolve(global.config)
     // Read configuration once when this location opens. Later calls reuse these
     // values until the location is reopened.
