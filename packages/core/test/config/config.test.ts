@@ -26,7 +26,6 @@ function testLayer(
   globalDirectory = path.join(directory, "global"),
   projectDirectory = directory,
   vcs?: Project.Vcs,
-  legacyConfigDirectory = path.join(directory, "legacy-config"),
 ) {
   const locationLayer = Layer.succeed(
     Location.Service,
@@ -39,7 +38,7 @@ function testLayer(
   )
   return AppNodeBuilder.build(LayerNode.group([Config.node, Policy.node]), [
     [Location.node, locationLayer],
-    [Global.node, Global.layerWith({ config: globalDirectory, legacyConfig: legacyConfigDirectory })],
+    [Global.node, Global.layerWith({ config: globalDirectory })],
   ])
 }
 

@@ -56,9 +56,8 @@ The legacy `redcode.json` / `redcode.jsonc` and the older `opencode.json` /
 `opencode.jsonc` names are still read everywhere the primary `config.jsonc` /
 `config.json` names are. When a directory holds several, they are merged and the
 primary `config.*` file wins. The XDG-style `~/.config/redcode/` directory is
-also still searched as a fallback so existing installs keep working without
-manual migration; edit the file that already exists rather than creating a second
-one beside it.
+not read; only `~/.red/redcode/` is. Edit the file that already exists there
+rather than creating a second one beside it.
 
 ## Config file fields
 

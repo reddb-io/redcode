@@ -258,14 +258,8 @@ const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      // Ordered lowest to highest: legacy XDG-named files first so the primary Redcode-named
-      // ones override them field by field rather than replacing them. An existing install with
-      // only the legacy OpenCode-named file keeps behaving exactly as before.
-      const legacyDir = Global.Path.legacyConfig
-      const legacyFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
-      for (const file of legacyFiles) {
-        result = mergeConfig(result, yield* loadFile(path.join(legacyDir, file), env))
-      }
+      // Only the primary directory (~/.red/redcode by default) is read. Ordered lowest to highest
+      // so the Redcode-named files override the legacy OpenCode-named ones field by field.
       const primary = Global.Path.config
       const primaryFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
       for (const file of primaryFiles) {
