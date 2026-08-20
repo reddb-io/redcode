@@ -119,7 +119,7 @@ export const McpListCommand = effectCmd({
 
     if (servers.length === 0) {
       prompts.log.warn("No MCP servers configured")
-      prompts.outro("Add servers with: opencode mcp add")
+      prompts.outro("Add servers with: redcode mcp add")
       return
     }
 
@@ -392,11 +392,15 @@ export const McpLogoutCommand = effectCmd({
 })
 
 async function resolveConfigPath(baseDir: string, global = false) {
-  // Check for existing config files (prefer .jsonc over .json, check .opencode/ subdirectory too)
-  const candidates = [path.join(baseDir, "opencode.json"), path.join(baseDir, "opencode.jsonc")]
+  // Check for existing config files (check the .opencode/ subdirectory too). Primary Redcode names
+  // come first so that when both exist the edit lands on the file that also wins when config is read;
+  // a legacy-only directory still gets edited in place rather than gaining a second file, and only
+  // a directory with no config at all gets a `config.jsonc` created.
+  const names = ["config.jsonc", "config.json", "redcode.jsonc", "redcode.json", "opencode.jsonc", "opencode.json"]
+  const candidates = names.map((name) => path.join(baseDir, name))
 
   if (!global) {
-    candidates.push(path.join(baseDir, ".opencode", "opencode.json"), path.join(baseDir, ".opencode", "opencode.jsonc"))
+    candidates.push(...names.map((name) => path.join(baseDir, ".opencode", name)))
   }
 
   for (const candidate of candidates) {
@@ -405,8 +409,8 @@ async function resolveConfigPath(baseDir: string, global = false) {
     }
   }
 
-  // Default to opencode.json if none exist
-  return candidates[0]
+  // Default to the primary `config.jsonc` if none exist
+  return path.join(baseDir, "config.jsonc")
 }
 
 async function addMcpToConfig(name: string, mcpConfig: ConfigMCPV1.Info, configPath: string) {
@@ -559,7 +563,7 @@ export const McpAddCommand = effectCmd({
       if (type === "local") {
         const command = await prompts.text({
           message: "Enter command to run",
-          placeholder: "e.g., opencode x @modelcontextprotocol/server-filesystem",
+          placeholder: "e.g., redcode x @modelcontextprotocol/server-filesystem",
           validate: (x) => (x && x.length > 0 ? undefined : "Required"),
         })
         if (prompts.isCancel(command)) throw new UI.CancelledError()

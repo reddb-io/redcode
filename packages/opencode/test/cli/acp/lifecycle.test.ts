@@ -3,9 +3,11 @@ import type {
   CloseSessionResponse,
   ListSessionsResponse,
   LoadSessionResponse,
+  NewSessionResponse,
+  PromptResponse,
   ResumeSessionResponse,
 } from "@agentclientprotocol/sdk"
-import { Duration, Effect } from "effect"
+import { Duration, Effect, Fiber } from "effect"
 import { cliIt } from "../../lib/cli-process"
 import { expectOk, selectConfigOption } from "./acp-test-client"
 import { createAcpClient, initialize, newSession, verifierConfig } from "./helpers"
@@ -20,6 +22,61 @@ describe("opencode acp lifecycle subprocess", () => {
 
         const code = yield* Effect.promise(() => acp.exited).pipe(Effect.timeout(Duration.seconds(5)))
         expect(code).toBe(0)
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "governed child cancellation stays bound to the parent session",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        const acp = yield* createAcpClient(
+          { opencode },
+          { OPENCODE_CONFIG_CONTENT: JSON.stringify(verifierConfig(llm.url)) },
+        )
+        yield* initialize(acp)
+        const session = expectOk(
+          yield* acp.request<NewSessionResponse>("session/new", {
+            cwd: home,
+            mcpServers: [],
+            _meta: {
+              redskills: {
+                childAgent: {
+                  version: 1,
+                  parentSessionId: "workflow-session",
+                  workerId: "worker-17",
+                  authority: "parent",
+                  github: "parent-gateway",
+                  permissions: "parent",
+                },
+              },
+            },
+          }),
+        )
+
+        yield* llm.hang
+        const running = yield* acp
+          .request<PromptResponse>("session/prompt", {
+            sessionId: session.sessionId,
+            prompt: [{ type: "text", text: "keep working" }],
+          })
+          .pipe(Effect.forkChild)
+        yield* llm.wait(1)
+        yield* acp.notify("session/cancel", { sessionId: session.sessionId })
+        const cancelled = expectOk(yield* Fiber.join(running))
+
+        expect(cancelled.stopReason).toBe("cancelled")
+        expect(cancelled._meta).toEqual(session._meta)
+
+        yield* llm.text("continued")
+        const continued = expectOk(
+          yield* acp.request<PromptResponse>("session/prompt", {
+            sessionId: session.sessionId,
+            prompt: [{ type: "text", text: "continue" }],
+          }),
+        )
+        expect(continued.stopReason).toBe("end_turn")
+        expect(continued._meta).toEqual(session._meta)
       }),
     60_000,
   )

@@ -4,7 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import yargs from "yargs"
 import { tmpdir } from "../../fixture/fixture"
-import { TuiThreadCommand, resolveThreadDirectory } from "../../../src/cli/cmd/tui"
+import { resolveStartupSession, TuiThreadCommand, resolveThreadDirectory } from "../../../src/cli/cmd/tui"
 import { cliIt } from "../../lib/cli-process"
 
 describe("tui thread", () => {
@@ -49,6 +49,29 @@ describe("tui thread", () => {
 
     expect(resolveThreadDirectory(".", pwd.path, cwd.path)).toBe(pwd.path)
     expect(resolveThreadDirectory(undefined, pwd.path, cwd.path)).toBe(cwd.path)
+  })
+
+  test("creates a session before opening the default TUI route", async () => {
+    const calls: string[] = []
+    const sessionID = await resolveStartupSession({
+      create: async () => {
+        calls.push("create")
+        return "ses_direct"
+      },
+    })
+
+    expect(sessionID).toBe("ses_direct")
+    expect(calls).toEqual(["create"])
+  })
+
+  test("preserves explicit startup routing", async () => {
+    const create = async () => {
+      throw new Error("should not create a session")
+    }
+
+    expect(await resolveStartupSession({ sessionID: "ses_existing", create })).toBe("ses_existing")
+    expect(await resolveStartupSession({ continue: true, create })).toBeUndefined()
+    expect(await resolveStartupSession({ prompt: "fix it", create })).toBeUndefined()
   })
 
   test("parses supported --no-replay forms", async () => {

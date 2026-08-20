@@ -45,9 +45,41 @@ await rm(meta, { recursive: true, force: true })
 await $`mkdir -p ${path.join(meta, "bin")}`
 await $`cp ./bin/opencode ${path.join(meta, "bin", product)}`
 await Bun.file(path.join(meta, "LICENSE")).write(await Bun.file("../../LICENSE").text())
-await Bun.file(path.join(meta, "README.md")).write(
-  `# Redcode\n\nInstall with \`npm install -g @reddb-io/redcode\`, then run \`redcode\`.\n`,
-)
+await Bun.file(path.join(meta, "NOTICE")).write(await Bun.file("../../NOTICE").text())
+// The registry page is written here rather than copied from the repository README,
+// which is full of relative links and a hero image that only resolve on GitHub.
+await Bun.file(path.join(meta, "README.md")).write(`# Redcode
+
+RedDB's terminal coding agent. Prompts are durable before they run, the runtime is reversible, and
+the autonomous Worker fleet is on screen next to your session.
+
+## Install
+
+\`\`\`bash
+npm install -g @reddb-io/redcode
+redcode
+\`\`\`
+
+One native binary for Linux (glibc and musl), macOS, and Windows on x64 and arm64.
+
+## Use
+
+| Command | What it does |
+| --- | --- |
+| \`redcode\` | Terminal UI — sessions, diffs, permissions, and the Worker fleet |
+| \`redcode run\` | Non-interactive prompt |
+| \`redcode serve\` | Headless HTTP server |
+| \`redcode acp\` | Agent Client Protocol agent, for editors that speak ACP |
+| \`redcode --help\` | Everything else |
+
+Full documentation: https://github.com/reddb-io/redcode
+
+## Built on
+
+Redcode is built on [OpenCode](https://github.com/anomalyco/opencode), and its runtime composition is
+modelled on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). MIT licensed; see
+[NOTICE](https://github.com/reddb-io/redcode/blob/main/NOTICE) for full attribution.
+`)
 await Bun.file(path.join(meta, "package.json")).write(
   JSON.stringify(
     {

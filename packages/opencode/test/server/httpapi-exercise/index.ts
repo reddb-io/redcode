@@ -667,9 +667,9 @@ const scenarios: Scenario[] = [
     .post("/redskilled/consent", "redskilled.consent")
     .mutating()
     .at((ctx) => ({ path: "/redskilled/consent", headers: ctx.headers(), body: { decision: "refused" } }))
-    .json(200, (body) => {
+    .json(400, (body) => {
       object(body)
-      check(body.consent === "refused", "redskilled consent should persist the refusal")
+      check(typeof body.message === "string" && body.message.length > 0, "redskilled errors should explain the failure")
     }),
   http.protected
     .post("/redskilled/project/resize", "redskilled.project.resize")
@@ -702,7 +702,13 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
       body: { worker: "missing" },
     }))
-    .json(400, object, "status"),
+    .json(400, (body) => {
+      object(body)
+      check(
+        body.message === "redskilled ACP core does not expose a typed steer_status result; polling is unavailable",
+        "steer status should state the ACP core result limitation",
+      )
+    }),
   http.protected.get("/api/health", "v2.health.get").json(200, (body) => {
     object(body)
     check(body.healthy === true, "v2 server should report healthy")

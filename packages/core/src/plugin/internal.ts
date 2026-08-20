@@ -23,9 +23,9 @@ import { Location } from "../location"
 import { ModelsDev } from "../models-dev"
 import { Npm } from "../npm"
 import { PluginV2 } from "../plugin"
+import { RuntimeInvariant } from "../invariant"
 import { Reference } from "../reference"
 import { SkillV2 } from "../skill"
-import { State } from "../state"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { AgentPlugin } from "./agent"
 import { CommandPlugin } from "./command"
@@ -33,6 +33,8 @@ import { ModelsDevPlugin } from "./models-dev"
 import { ProviderPlugins } from "./provider"
 import { SkillPlugin } from "./skill"
 import { VariantPlugin } from "./variant"
+import { CordisPluginHost } from "./cordis"
+import { PluginProfile } from "./profile"
 
 export type Requirements =
   | AgentV2.Service
@@ -49,6 +51,7 @@ export type Requirements =
   | ModelsDev.Service
   | Npm.Service
   | Reference.Service
+  | RuntimeInvariant.Service
   | SkillV2.Service
 
 export interface Plugin<R = never> {
@@ -59,6 +62,8 @@ export interface Plugin<R = never> {
 export function define<R>(plugin: Plugin<R>) {
   return plugin
 }
+
+export const builtInIDs = () => builtIns().map((item) => PluginV2.ID.make(item.id))
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -78,9 +83,12 @@ const layer = Layer.effectDiscard(
     const http = yield* HttpClient.HttpClient
     const skill = yield* SkillV2.Service
     const reference = yield* Reference.Service
-    const add = <R>(input: Plugin<R>) => {
-      const loaded = {
-        id: input.id,
+    const invariants = yield* RuntimeInvariant.Service
+    const profile = yield* PluginProfile.Service
+    const cordis = yield* CordisPluginHost.make(plugin)
+    const entries = builtIns().map((input) => {
+      return {
+        id: PluginV2.ID.make(input.id),
         effect: (context: PluginContext) =>
           input
             .effect(context)
@@ -100,31 +108,41 @@ const layer = Layer.effectDiscard(
               Effect.provideService(HttpClient.HttpClient, http),
               Effect.provideService(SkillV2.Service, skill),
               Effect.provideService(Reference.Service, reference),
+              Effect.provideService(RuntimeInvariant.Service, invariants),
             ),
       }
-      return plugin.add(PluginV2.ID.make(loaded.id), loaded.effect)
-    }
+    })
 
-    yield* State.batch(
-      Effect.gen(function* () {
-        yield* add(ConfigReferencePlugin.Plugin)
-        yield* add(AgentPlugin.Plugin)
-        yield* add(CommandPlugin.Plugin)
-        yield* add(SkillPlugin.Plugin)
-        yield* add(ModelsDevPlugin)
-        yield* add(ConfigAgentPlugin.Plugin)
-        yield* add(ConfigCommandPlugin.Plugin)
-        yield* add(ConfigSkillPlugin.Plugin)
-        for (const item of ProviderPlugins) yield* add(item)
-        yield* add(ConfigExternalPlugin.Plugin)
-        yield* add(ConfigProviderPlugin.Plugin)
-        yield* add(VariantPlugin.Plugin)
-      }),
-    ).pipe(Effect.withSpan("PluginInternal.boot"), Effect.forkScoped({ startImmediately: true }))
+    // Share only the host's reader: this boot keeps ownership of `apply`/`clear`, while
+    // RuntimeInspection reads the active profile. The invariant report `run` returns is
+    // recorded by the registry and read back through `RuntimeInvariant.results`; a failing
+    // check still dies here and fails the location boot.
+    yield* profile.attach(cordis.snapshot)
+    yield* cordis
+      .apply({ name: "internal", entries })
+      .pipe(Effect.andThen(invariants.run), Effect.withSpan("PluginInternal.boot"))
   }),
 )
 
+function builtIns() {
+  return [
+    ConfigReferencePlugin.Plugin,
+    AgentPlugin.Plugin,
+    CommandPlugin.Plugin,
+    SkillPlugin.Plugin,
+    ModelsDevPlugin,
+    ConfigAgentPlugin.Plugin,
+    ConfigCommandPlugin.Plugin,
+    ConfigSkillPlugin.Plugin,
+    ...ProviderPlugins,
+    ConfigExternalPlugin.Plugin,
+    ConfigProviderPlugin.Plugin,
+    VariantPlugin.Plugin,
+  ] satisfies readonly Plugin<Requirements | Scope.Scope>[]
+}
+
 export const locationLayer = layer.pipe(
+  Layer.provideMerge(PluginProfile.layer),
   Layer.provideMerge(Config.locationLayer),
   Layer.provideMerge(FetchHttpClient.layer),
 )
@@ -149,5 +167,7 @@ export const node = makeLocationNode({
     httpClient,
     SkillV2.node,
     Reference.node,
+    RuntimeInvariant.node,
+    PluginProfile.node,
   ],
 })

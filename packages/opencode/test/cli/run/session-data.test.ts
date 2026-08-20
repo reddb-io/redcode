@@ -590,4 +590,77 @@ describe("run session data", () => {
       }),
     ])
   })
+
+  test("shows provider, model and request URL on a provider transport failure", () => {
+    const out = reduce(createSessionData(), {
+      type: "session.error",
+      properties: {
+        sessionID: "session-1",
+        error: {
+          name: "APIError",
+          data: {
+            message: "404 Page not found",
+            statusCode: 404,
+            isRetryable: false,
+            responseHeaders: { authorization: "Bearer sk-live-do-not-print-me" },
+            responseBody: "404 page not found",
+            metadata: {
+              providerID: "minimax",
+              modelID: "MiniMax-M3",
+              url: "https://api.minimax.chat/v1/messages",
+            },
+          },
+        },
+      },
+    })
+
+    expect(out.commits).toEqual([
+      expect.objectContaining({
+        kind: "error",
+        text: [
+          "404 Page not found",
+          "  provider minimax/MiniMax-M3",
+          "  request  https://api.minimax.chat/v1/messages",
+          "  status   404",
+        ].join("\n"),
+      }),
+    ])
+  })
+
+  test("never writes a credential into the scrollback", () => {
+    const out = reduce(createSessionData(), {
+      type: "session.error",
+      properties: {
+        sessionID: "session-1",
+        error: {
+          name: "APIError",
+          data: {
+            message: "401 Unauthorized",
+            statusCode: 401,
+            responseHeaders: { authorization: "Bearer sk-live-header-secret" },
+            metadata: {
+              providerID: "google",
+              modelID: "gemini-3-pro",
+              url: "https://generativelanguage.googleapis.com/v1/models:generate?key=AIzaSyQUERYSECRET",
+            },
+          },
+        },
+      },
+    })
+
+    expect(out.commits).toEqual([
+      expect.objectContaining({
+        kind: "error",
+        text: expect.not.stringContaining("AIzaSyQUERYSECRET"),
+      }),
+    ])
+    expect(out.commits).toEqual([
+      expect.objectContaining({ text: expect.not.stringContaining("sk-live-header-secret") }),
+    ])
+    expect(out.commits).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("https://generativelanguage.googleapis.com/v1/models:generate"),
+      }),
+    ])
+  })
 })

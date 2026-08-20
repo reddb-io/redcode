@@ -22,7 +22,7 @@ describe("opencode mcp add (non-interactive subprocess)", () => {
         opencode.expectExit(result, 0)
 
         const config = yield* Effect.promise(() =>
-          Bun.file(path.join(home, ".config", "redcode", "opencode.json")).json(),
+          Bun.file(path.join(home, ".red", "redcode", "config.jsonc")).json(),
         )
         expect(config.mcp.github).toEqual({
           type: "remote",
@@ -58,7 +58,7 @@ describe("opencode mcp add (non-interactive subprocess)", () => {
         opencode.expectExit(result, 0)
 
         const config = yield* Effect.promise(() =>
-          Bun.file(path.join(home, ".config", "redcode", "opencode.json")).json(),
+          Bun.file(path.join(home, ".red", "redcode", "config.jsonc")).json(),
         )
         expect(config.mcp.local).toEqual({
           type: "local",
@@ -68,6 +68,24 @@ describe("opencode mcp add (non-interactive subprocess)", () => {
             VALUE: "one=two",
           },
         })
+      }),
+    60_000,
+  )
+
+  cliIt.concurrent(
+    "edits an existing opencode-named global config instead of creating a second file",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const dir = path.join(home, ".red", "redcode")
+        const legacy = path.join(dir, "opencode.json")
+        yield* Effect.promise(() => Bun.write(legacy, JSON.stringify({ username: "existing" })))
+
+        opencode.expectExit(yield* opencode.spawn(["mcp", "add", "github", "--url", "https://example.com/mcp"]), 0)
+
+        const config = yield* Effect.promise(() => Bun.file(legacy).json())
+        expect(config.username).toBe("existing")
+        expect(config.mcp.github.url).toBe("https://example.com/mcp")
+        expect(yield* Effect.promise(() => Bun.file(path.join(dir, "redcode.json")).exists())).toBe(false)
       }),
     60_000,
   )

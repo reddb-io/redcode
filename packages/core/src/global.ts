@@ -8,10 +8,15 @@ import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
 
 const app = "redcode"
-const data = path.join(xdgData!, app)
-const cache = path.join(xdgCache!, app)
-const config = path.join(xdgConfig!, app)
-const state = path.join(xdgState!, app)
+const home = process.env.OPENCODE_TEST_HOME ?? os.homedir()
+
+// Primary paths live under the RedDB family alongside redskilled
+// (`~/.red/redskilled`), so `redcode` joins it instead of splitting across XDG.
+const redcodeHome = path.join(home, ".red", app)
+const data = path.join(redcodeHome, "data")
+const cache = path.join(redcodeHome, "cache")
+const config = redcodeHome
+const state = path.join(redcodeHome, "state")
 const tmp = path.join(os.tmpdir(), app)
 
 const paths = {
@@ -26,6 +31,7 @@ const paths = {
   config,
   state,
   tmp,
+  legacyConfig: path.join(xdgConfig!, app),
 }
 
 export const Path = paths
@@ -54,6 +60,7 @@ export interface Interface {
   readonly bin: string
   readonly log: string
   readonly repos: string
+  readonly legacyConfig?: string
 }
 
 export function make(input: Partial<Interface> = {}): Interface {
@@ -67,6 +74,7 @@ export function make(input: Partial<Interface> = {}): Interface {
     bin: Path.bin,
     log: Path.log,
     repos: Path.repos,
+    legacyConfig: Path.legacyConfig,
     ...input,
   }
 }

@@ -50,7 +50,7 @@ describe("lsp.spawn", () => {
     { config: { lsp: true } },
   )
 
-  it.instance("does not spawn builtin LSP for files inside instance when LSP is unset", () =>
+  it.instance("spawns builtin LSP for files inside instance when LSP is unset", () =>
     LSP.Service.use((lsp) =>
       Effect.gen(function* () {
         const dir = (yield* TestInstance).directory
@@ -62,12 +62,96 @@ describe("lsp.spawn", () => {
             line: 0,
             character: 0,
           })
-          expect(spy).toHaveBeenCalledTimes(0)
+          expect(spy).toHaveBeenCalledTimes(1)
+          expect(yield* lsp.status()).toContainEqual({
+            id: "typescript",
+            name: "typescript",
+            root: "",
+            status: "error",
+          })
         } finally {
           spy.mockRestore()
         }
       }),
     ),
+  )
+
+  for (const [name, server, extension] of [
+    ["TypeScript", LSPServer.Typescript, ".ts"],
+    ["Rust", LSPServer.RustAnalyzer, ".rs"],
+    ["Go", LSPServer.Gopls, ".go"],
+    ["Python", LSPServer.Pyright, ".py"],
+  ] as const) {
+    it.instance(`starts at most one ${name} server per root`, () =>
+      LSP.Service.use((lsp) =>
+        Effect.gen(function* () {
+          const dir = (yield* TestInstance).directory
+          const root = spyOn(server, "root").mockResolvedValue(dir)
+          const spawn = spyOn(server, "spawn").mockResolvedValue(undefined)
+          const file = path.join(dir, "src", `inside${extension}`)
+
+          try {
+            yield* Effect.all(
+              [
+                lsp.hover({ file, line: 0, character: 0 }),
+                lsp.definition({ file, line: 0, character: 0 }),
+                lsp.references({ file, line: 0, character: 0 }),
+              ],
+              { concurrency: "unbounded" },
+            )
+            expect(spawn).toHaveBeenCalledTimes(1)
+          } finally {
+            root.mockRestore()
+            spawn.mockRestore()
+          }
+        }),
+      ),
+    )
+  }
+
+  it.instance("publishes lsp.updated after failed initialization", () =>
+    Effect.gen(function* () {
+      const dir = (yield* TestInstance).directory
+      const lsp = yield* LSP.Service
+      const updated = yield* Deferred.make<void>()
+      const events = yield* EventV2Bridge.Service
+      const unsubscribe = yield* events.listen((event) => {
+        if (event.type === LSP.Event.Updated.type) Deferred.doneUnsafe(updated, Effect.void)
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const spy = spyOn(LSPServer.Typescript, "spawn").mockResolvedValue(undefined)
+
+      try {
+        yield* lsp.touchFile(path.join(dir, "src", "inside.ts"))
+        yield* awaitWithTimeout(Deferred.await(updated), "lsp.updated event was not published")
+      } finally {
+        spy.mockRestore()
+      }
+    }),
+  )
+
+  it.instance(
+    "does not spawn builtin LSP when explicitly disabled",
+    () =>
+      LSP.Service.use((lsp) =>
+        Effect.gen(function* () {
+          const dir = (yield* TestInstance).directory
+          const spy = spyOn(LSPServer.Typescript, "spawn").mockResolvedValue(undefined)
+
+          try {
+            yield* lsp.hover({
+              file: path.join(dir, "src", "inside.ts"),
+              line: 0,
+              character: 0,
+            })
+            expect(spy).toHaveBeenCalledTimes(0)
+          } finally {
+            spy.mockRestore()
+          }
+        }),
+      ),
+    { config: { lsp: false } },
   )
 
   it.instance(

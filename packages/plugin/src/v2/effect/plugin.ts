@@ -13,4 +13,5 @@ export function define<R = Scope.Scope>(plugin: Plugin<R>) {
 export interface PluginDomain {
   readonly add: (plugin: Plugin) => Effect.Effect<void>
   readonly remove: (id: string) => Effect.Effect<void>
+  readonly list: () => Effect.Effect<readonly string[]>
 }

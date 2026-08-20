@@ -18,6 +18,7 @@
 // without changing the fixture. Long-lived commands like `serve` will need a
 // different return shape — see the TODO at the bottom of OpencodeCli.
 import { test, type TestOptions } from "bun:test"
+import { existsSync } from "node:fs"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -32,6 +33,31 @@ import { it } from "./effect"
 
 const opencodeRoot = path.resolve(import.meta.dir, "../../")
 const cliEntry = path.join(opencodeRoot, "src/index.ts")
+
+// Prefer the compiled `redcode` binary when the build has produced one — bun's
+// transpile + plugin init costs ~20s per spawn on CI, which trips the 30s
+// per-test timeout when many tests run concurrently. Fall back to the bun
+// invocation when no built binary exists yet (e.g. first test run before the
+// build step).
+const cliCandidates = (() => {
+  const exeExt = process.platform === "win32" ? ".exe" : ""
+  const built = path.join(opencodeRoot, "dist", "redcode-linux-x64", "bin", "redcode" + exeExt)
+  return [built, cliEntry] as const
+})()
+
+function pickCliCommand(): { command: string; argsPrefix: ReadonlyArray<string> } {
+  for (const candidate of cliCandidates) {
+    if (existsSync(candidate)) {
+      if (candidate.endsWith(".ts")) {
+        return { command: "bun", argsPrefix: ["run", "--conditions=browser", candidate] }
+      }
+      return { command: candidate, argsPrefix: [] }
+    }
+  }
+  // Default to the bun path so error messages remain meaningful even if the
+  // binary check races with a partial dist/ tree.
+  return { command: "bun", argsPrefix: ["run", "--conditions=browser", cliEntry] }
+}
 
 export const testModelID = "test/test-model"
 
@@ -82,6 +108,7 @@ export type RunResult = {
   readonly stdout: string
   readonly stderr: string
   readonly durationMs: number
+  readonly timedOut: boolean
 }
 
 export type RunHandle = {
@@ -207,11 +234,12 @@ export function withCliFixture<A, E>(
     const spawn = Effect.fn("opencode.spawn")(function* (args: string[], opts?: SpawnOpts) {
       const start = Date.now()
       const timeoutMs = opts?.timeoutMs ?? 30_000
+      const cli = pickCliCommand()
       // stdin: "ignore" so the child doesn't see a piped stdin and block
       // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
       // consumed as the prompt). The old Process.run wrapper defaulted to
       // ignore; ChildProcess.make defaults to pipe, so we set it explicitly.
-      const command = ChildProcess.make("bun", ["run", "--conditions=browser", cliEntry, ...args], {
+      const command = ChildProcess.make(cli.command, [...cli.argsPrefix, ...args], {
         cwd: home,
         env: { ...env, ...opts?.env },
         extendEnv: true,
@@ -228,23 +256,28 @@ export function withCliFixture<A, E>(
       // Catch AppProcessError (timeout OR spawn failure) and synthesize a
       // non-zero result so the test sees it via the usual `expectExit`
       // path rather than as an unhandled Effect failure.
-      const result = yield* appProc.run(command, { timeout: Duration.millis(timeoutMs) }).pipe(
+      const outcome = yield* appProc.run(command, { timeout: Duration.millis(timeoutMs) }).pipe(
+        Effect.map((result) => ({ result, timedOut: false })),
         Effect.catchTag("AppProcessError", (err) =>
           Effect.succeed({
-            command: err.command,
-            exitCode: err.exitCode ?? -1,
-            stdout: Buffer.alloc(0),
-            stderr: Buffer.from((err.stderr ?? String(err.cause ?? err.message)) + "\n"),
-            stdoutTruncated: false,
-            stderrTruncated: false,
-          } satisfies AppProcess.RunResult),
+            result: {
+              command: err.command,
+              exitCode: err.exitCode ?? -1,
+              stdout: Buffer.alloc(0),
+              stderr: Buffer.from((err.stderr ?? String(err.cause ?? err.message)) + "\n"),
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            } satisfies AppProcess.RunResult,
+            timedOut: err.cause instanceof Error && err.cause.message === "Timed out",
+          }),
         ),
       )
       return {
-        exitCode: result.exitCode,
-        stdout: normalizeLines(result.stdout.toString()),
-        stderr: normalizeLines(result.stderr.toString()),
+        exitCode: outcome.result.exitCode,
+        stdout: normalizeLines(outcome.result.stdout.toString()),
+        stderr: normalizeLines(outcome.result.stderr.toString()),
         durationMs: Date.now() - start,
+        timedOut: outcome.timedOut,
       }
     })
 
@@ -281,9 +314,10 @@ export function withCliFixture<A, E>(
     const startRun = Effect.fn("opencode.startRun")(function* (message: string, opts?: RunOpts) {
       const start = Date.now()
       const options = runOpts(opts)
+      const cli = pickCliCommand()
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", "--conditions=browser", cliEntry, ...runArgs(message, opts)], {
+          Bun.spawn([cli.command, ...cli.argsPrefix, ...runArgs(message, opts)], {
             cwd: home,
             env: { ...process.env, ...env, ...options?.env },
             stdin: "ignore",
@@ -307,6 +341,7 @@ export function withCliFixture<A, E>(
           stdout: normalizeLines(await stdout),
           stderr: normalizeLines(await stderr),
           durationMs: Date.now() - start,
+          timedOut: false,
         })),
       } satisfies RunHandle
     })
@@ -322,9 +357,10 @@ export function withCliFixture<A, E>(
       // Acquire the subprocess; release sends SIGTERM and awaits exit on
       // scope close. Wrapped in Effect.ignore so a flaky kill doesn't surface
       // as a finalizer error during test teardown.
+      const cli = pickCliCommand()
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", "--conditions=browser", cliEntry, ...argv], {
+          Bun.spawn([cli.command, ...cli.argsPrefix, ...argv], {
             cwd: home,
             env: { ...process.env, ...env, ...opts?.env },
             stdout: "pipe",
@@ -393,9 +429,10 @@ export function withCliFixture<A, E>(
       // Acquire the subprocess. Release ends stdin (clean shutdown — ACP exits
       // on stdin EOF) and falls back to SIGTERM if it doesn't exit promptly.
       // Either way we await proc.exited so the test scope doesn't leak.
+      const cli = pickCliCommand()
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", "--conditions=browser", cliEntry, ...argv], {
+          Bun.spawn([cli.command, ...cli.argsPrefix, ...argv], {
             cwd: opts?.cwd ?? home,
             env: { ...process.env, ...env, ...opts?.env },
             stdin: "pipe",

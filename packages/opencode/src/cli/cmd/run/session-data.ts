@@ -27,6 +27,7 @@
 import type { Event, Part, PermissionRequest, QuestionRequest, ToolPart } from "@opencode-ai/sdk/v2"
 import * as Locale from "@/util/locale"
 import { toolView } from "./tool"
+import { ProviderFailure } from "@opencode-ai/core/util/provider-failure"
 import type { FooterOutput, FooterPatch, FooterView, StreamCommit } from "./types"
 
 const money = new Intl.NumberFormat("en-US", {
@@ -167,6 +168,10 @@ export function formatError(error: {
     message?: string
   }
 }): string {
+  return ProviderFailure.describe(headline(error), error)
+}
+
+function headline(error: { name?: string; message?: string; data?: { message?: string } }) {
   if (error.data?.message) {
     return error.data.message
   }

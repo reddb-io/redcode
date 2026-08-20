@@ -367,10 +367,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         }
         if (input.current) {
           setRecentKey(tabKey(input.current))
-          navigate("/")
+          navigate("/?view=home")
           return
         }
-        navigate("/")
+        navigate("/?view=home")
       },
       state<T>(tab: Tab, name: string, init: () => T) {
         return memory.ensure(tabKey(tab), name, init)

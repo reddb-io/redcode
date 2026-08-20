@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing draft Redcode tag to reconcile, e.g. v0.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -25,6 +31,22 @@ jobs:
           token: ${{ secrets.RELEASE_PAT }}
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Resolve release tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release tag must match v<major>.<minor>.<patch>"
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-bun
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -32,45 +54,81 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Verify tag contract
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: bun script/red-version.ts "${TAG#v}" --check
-      - name: Create draft GitHub Release
+      - name: Create or resume draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --verify-tag --draft --generate-notes --title "Redcode ${{ github.ref_name }}"
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --generate-notes --title "Redcode $TAG"
+            exit 0
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
+            echo "::error::released tags are immutable; publish a new patch version instead of replacing $TAG"
+            exit 1
+          fi
+          echo "resuming existing draft $TAG"
       - name: Build and upload native binaries
         env:
           GH_REPO: reddb-io/redcode
           GH_TOKEN: ${{ github.token }}
           OPENCODE_RELEASE: "1"
-        run: OPENCODE_VERSION="${GITHUB_REF_NAME#v}" ./packages/opencode/script/build.ts
+          VERSION: ${{ steps.release.outputs.version }}
+        run: OPENCODE_VERSION="$VERSION" ./packages/opencode/script/build.ts
+      - name: Normalize native npm metadata
+        run: |
+          bun -e '
+          import path from "path"
+          const root = "packages/opencode/dist"
+          const files = Array.from(new Bun.Glob("*/package.json").scanSync({ cwd: root }))
+          if (files.length === 0) throw new Error("no native package manifests were built")
+          await Promise.all(files.map(async (file) => {
+            const target = path.join(root, file)
+            const manifest = await Bun.file(target).json()
+            await Bun.write(target, `${JSON.stringify({ ...manifest, repository: { type: "git", url: "https://github.com/reddb-io/redcode" } }, null, 2)}\n`)
+          }))
+          '
       - name: Publish native packages and @reddb-io/redcode
         env:
           NPM_CONFIG_PROVENANCE: "true"
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN secret absent — cannot publish @reddb-io/redcode@${version}"
+            echo "::error::NPM_TOKEN secret absent — cannot publish @reddb-io/redcode@${VERSION}"
             exit 1
           fi
           npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
-          OPENCODE_VERSION="$version" ./packages/opencode/script/publish.ts
+          OPENCODE_VERSION="$VERSION" ./packages/opencode/script/publish.ts
       - name: Smoke the published package
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
           root="$(mktemp -d)"
           trap 'rm -rf "$root"' EXIT
-          version="${VERSION#v}"
-          for attempt in 1 2 3 4 5; do
-            if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${version}"; then break; fi
-            if [ "$attempt" = 5 ]; then exit 1; fi
-            sleep $((attempt * 5))
+          export npm_config_cache="$root/npm-cache"
+          # npm read replicas can lag a successful publish by several minutes.
+          # Ten attempts at attempt*15s provide roughly eleven minutes for the
+          # exact public package to become installable before the release ships.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${VERSION}"; then
+              "$root/node_modules/.bin/redcode" --version | grep -Fx "$VERSION"
+              exit 0
+            fi
+            if [ "$attempt" -eq 10 ]; then
+              echo "::error::registry did not serve @reddb-io/redcode@${VERSION} after publish"
+              exit 1
+            fi
+            echo "registry smoke attempt ${attempt}/10 not yet resolvable; sleeping ${attempt}*15s"
+            sleep $((attempt * 15))
           done
-          "$root/node_modules/.bin/redcode" --version | grep -Fx "$version"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest

@@ -45,8 +45,14 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Provider } from "@/provider/provider"
 import type { Command } from "@/command"
+import {
+  type Contract as ChildAgentContract,
+  childAgentMetadata,
+  parseChildAgentContract,
+  requireGovernedChildBoundary,
+} from "./child-agent"
 
-export const AuthMethodID = "opencode-login"
+export const AuthMethodID = "redcode-login"
 
 export type Error = ACPError.Error
 type ServiceConnection = Pick<AgentSideConnection, "sessionUpdate"> &
@@ -78,6 +84,7 @@ export function make(input: {
   directory?: Directory.Interface
   session?: ACPSession.Interface
   usage?: UsageService.Interface
+  env?: NodeJS.ProcessEnv
   eventSubscription?: (subscription: ACPEvent.Subscription) => void
 }): Interface {
   const session = input.session ?? makeSessionService()
@@ -94,17 +101,17 @@ export function make(input: {
   const initialize = Effect.fn("ACP.initialize")(function* (params: InitializeRequest) {
     const started = performance.now()
     const authMethod: AuthMethod = {
-      description: "Run `opencode auth login` in the terminal",
-      name: "Login with opencode",
+      description: "Run `redcode auth login` in the terminal",
+      name: "Login with Redcode",
       id: AuthMethodID,
     }
 
     if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
       authMethod._meta = {
         "terminal-auth": {
-          command: "opencode",
+          command: "redcode",
           args: ["auth", "login"],
-          label: "OpenCode Login",
+          label: "Redcode Login",
         },
       }
     }
@@ -130,7 +137,7 @@ export function make(input: {
       },
       authMethods: [authMethod],
       agentInfo: {
-        name: "OpenCode",
+        name: "Redcode",
         version: InstallationVersion,
       },
     }
@@ -162,6 +169,17 @@ export function make(input: {
 
   const newSession = Effect.fn("ACP.newSession")(function* (params: NewSessionRequest) {
     const started = performance.now()
+    const childAgent = yield* Effect.try({
+      try: () => {
+        const contract = parseChildAgentContract(params._meta)
+        if (contract) requireGovernedChildBoundary(contract, params.mcpServers, input.env ?? process.env)
+        return contract
+      },
+      catch: (error) =>
+        new ACPError.InvalidChildAgentBoundaryError({
+          reason: error instanceof Error ? error.message : "Invalid governed child Agent boundary",
+        }),
+    })
     const snapshot = yield* directorySnapshot(params.cwd)
     const selected = selectDefaultModel(snapshot)
     const variant = selectVariant(snapshot, selected)
@@ -190,6 +208,7 @@ export function make(input: {
       model: selected,
       variant,
       modeId,
+      childAgent,
     })
     sessionSnapshots.set(state.id, snapshot)
 
@@ -198,6 +217,7 @@ export function make(input: {
 
     const response = {
       sessionId: state.id,
+      ...(state.childAgent ? { _meta: childAgentMetadata(state.childAgent) } : {}),
       configOptions: configOptions(snapshot, {
         model: state.model ?? selected,
         variant: state.variant,
@@ -525,7 +545,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* promptResponse(response.info, params.messageId, current.childAgent)
       }
 
       const known = snapshot.availableCommands.find((item) => item.name === command.name)
@@ -549,7 +569,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* promptResponse(response.info, params.messageId, current.childAgent)
       }
 
       if (command.name === "compact") {
@@ -571,7 +591,7 @@ export function make(input: {
       }
 
       yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-      return yield* promptResponse(undefined, params.messageId)
+      return yield* promptResponse(undefined, params.messageId, current.childAgent)
     }),
     cancel,
   }
@@ -787,18 +807,15 @@ function defaultModelFromConfig(
   providers: Record<ProviderV2.ID, Provider.Info>,
 ): Directory.DefaultModel | undefined {
   const configured = configuredModel ? Provider.parseModel(configuredModel) : undefined
-  if (configured && providers[configured.providerID]?.models[configured.modelID]) return configured
-
-  // First-session ACP startup must not scan historical sessions just to infer
-  // a default. Configured model, opencode provider, then sorted best model keep
-  // the protocol response deterministic without extra session/message reads.
-  const opencodeProvider = providers[ProviderV2.ID.make("opencode")]
-  const opencodeModel = opencodeProvider ? Provider.sort(Object.values(opencodeProvider.models))[0] : undefined
-  if (opencodeProvider && opencodeModel) return { providerID: opencodeProvider.id, modelID: opencodeModel.id }
+  if (configured) {
+    if (providers[configured.providerID]?.models[configured.modelID]) return configured
+    // Provider not loaded yet (e.g. env var not set at startup). Still honor
+    // the user's explicit choice so mode switches don't snap to a fallback.
+    return configured
+  }
 
   const best = Provider.sort(Object.values(providers).flatMap((provider) => Object.values(provider.models)))[0]
   if (best) return { providerID: best.providerID, modelID: best.id }
-  if (configured) return configured
 }
 
 function selectDefaultModel(snapshot: Directory.Snapshot) {
@@ -824,20 +841,22 @@ function detectSlashCommand(parts: ReturnType<typeof promptContentToParts>) {
 const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   info: AssistantInfo,
   messageId: string | null | undefined,
+  childAgent?: ChildAgentContract,
 ) {
+  const metadata = childAgent ? childAgentMetadata(childAgent) : {}
   if (!info?.error) {
     return {
       stopReason: "end_turn" as const,
       ...(info ? { usage: UsageService.buildUsage(info) } : {}),
       ...(messageId ? { userMessageId: messageId } : {}),
-      _meta: {},
+      _meta: metadata,
     }
   }
 
   const base = {
     usage: UsageService.buildUsage(info),
     ...(messageId ? { userMessageId: messageId } : {}),
-    _meta: {},
+    _meta: metadata,
   }
 
   if (info.error.name === "MessageAbortedError") {
@@ -874,7 +893,7 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
 
 function promptErrorMessage(error: AssistantError) {
   if ("message" in error.data && typeof error.data.message === "string") return error.data.message
-  return "OpenCode prompt failed"
+  return "Redcode prompt failed"
 }
 
 function sendUsageUpdate(
@@ -1067,7 +1086,7 @@ function fromUnknownError(error: unknown, service?: string): Error {
   if (isAuthRequired(error)) {
     return new ACPError.AuthRequiredError({ providerId: findProviderID(error) })
   }
-  return new ACPError.ServiceFailureError({ safeMessage: "OpenCode service failure", service })
+  return new ACPError.ServiceFailureError({ safeMessage: "Redcode service failure", service })
 }
 
 function isACPError(error: unknown): error is Error {

@@ -59,6 +59,7 @@ describe("PluginV2", () => {
       yield* plugins.add(PluginV2.ID.make("managed"), managed().effect)
 
       expect((yield* agents.get(AgentV2.ID.make("configured")))?.description).toBe("first")
+      expect(yield* plugins.list()).toEqual([PluginV2.ID.make("managed")])
 
       description = "second"
       yield* plugins.add(PluginV2.ID.make("managed"), managed().effect)
@@ -66,6 +67,21 @@ describe("PluginV2", () => {
 
       yield* plugins.remove(PluginV2.ID.make("managed"))
       expect(yield* agents.get(AgentV2.ID.make("configured"))).toBeUndefined()
+      expect(yield* plugins.list()).toEqual([])
+    }),
+  )
+
+  it.effect("keeps plugin inventory order stable across replacement", () =>
+    Effect.gen(function* () {
+      const plugins = yield* PluginV2.Service
+      const first = PluginV2.ID.make("first")
+      const second = PluginV2.ID.make("second")
+
+      yield* plugins.add(first, () => Effect.void)
+      yield* plugins.add(second, () => Effect.void)
+      yield* plugins.add(first, () => Effect.void)
+
+      expect(yield* plugins.list()).toEqual([first, second])
     }),
   )
 })

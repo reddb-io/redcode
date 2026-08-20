@@ -890,6 +890,70 @@ it.instance(
   },
 )
 
+it.instance(
+  "provider-level npm applies to catalog models the config does not redeclare",
+  Effect.gen(function* () {
+    yield* set("ANTHROPIC_API_KEY", "test-api-key")
+    const providers = yield* list
+    const models = providers[ProviderV2.ID.anthropic].models
+    // Without this the catalog package (@ai-sdk/anthropic) would stay paired with the overridden
+    // baseURL, sending the Anthropic /messages path to an OpenAI-compatible host.
+    for (const model of Object.values(models)) expect(model.api.npm).toBe("@ai-sdk/openai-compatible")
+    expect(providers[ProviderV2.ID.anthropic].options.baseURL).toBe("https://proxy.test/v1")
+  }),
+  {
+    config: {
+      provider: {
+        anthropic: {
+          npm: "@ai-sdk/openai-compatible",
+          options: { baseURL: "https://proxy.test/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "omitting npm keeps the catalog package while overriding the host",
+  Effect.gen(function* () {
+    yield* set("ANTHROPIC_API_KEY", "test-api-key")
+    const providers = yield* list
+    const models = providers[ProviderV2.ID.anthropic].models
+    for (const model of Object.values(models)) expect(model.api.npm).toBe("@ai-sdk/anthropic")
+    expect(providers[ProviderV2.ID.anthropic].options.baseURL).toBe("https://proxy.test/v1")
+  }),
+  {
+    config: {
+      provider: {
+        anthropic: {
+          options: { baseURL: "https://proxy.test/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "per-model npm still wins over the provider-level value",
+  Effect.gen(function* () {
+    yield* set("ANTHROPIC_API_KEY", "test-api-key")
+    const providers = yield* list
+    const models = providers[ProviderV2.ID.anthropic].models
+    expect(models["claude-opus-4-5"].api.npm).toBe("@ai-sdk/anthropic")
+    expect(models["claude-haiku-4-5-20251001"].api.npm).toBe("@ai-sdk/openai-compatible")
+  }),
+  {
+    config: {
+      provider: {
+        anthropic: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { "claude-opus-4-5": { provider: { npm: "@ai-sdk/anthropic" } } },
+        },
+      },
+    },
+  },
+)
+
 // Edge cases for model configuration
 
 it.instance(

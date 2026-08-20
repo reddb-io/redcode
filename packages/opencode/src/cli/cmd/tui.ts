@@ -8,7 +8,7 @@ import { errorMessage } from "@opencode-ai/tui/util/error"
 import { withTimeout } from "@/util/timeout"
 import { withNetworkOptions, resolveNetworkOptionsNoConfig, hasArg } from "@/cli/network"
 import { Filesystem } from "@/util/filesystem"
-import type { GlobalEvent } from "@opencode-ai/sdk/v2"
+import { createOpencodeClient, type GlobalEvent } from "@opencode-ai/sdk/v2"
 import type { EventSource } from "@opencode-ai/tui/context/sdk"
 import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
@@ -69,14 +69,25 @@ export function resolveThreadDirectory(project?: string, envPWD = process.env.PW
   return Filesystem.resolve(cwd)
 }
 
+export async function resolveStartupSession(input: {
+  sessionID?: string
+  continue?: boolean
+  prompt?: string
+  create: () => Promise<string>
+}) {
+  if (input.sessionID) return input.sessionID
+  if (input.continue || input.prompt) return
+  return input.create()
+}
+
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
-  describe: "start opencode tui",
+  describe: "start Redcode TUI",
   builder: (yargs) =>
     withNetworkOptions(yargs)
       .positional("project", {
         type: "string",
-        describe: "path to start opencode in",
+        describe: "path to start Redcode in",
       })
       .option("model", {
         type: "string",
@@ -248,10 +259,26 @@ export const TuiThreadCommand = cmd({
             events: createEventSource(client),
           }
 
+      const sessionID = await resolveStartupSession({
+        sessionID: args.session,
+        continue: args.continue,
+        prompt,
+        create: async () => {
+          const result = await createOpencodeClient({
+            baseUrl: transport.url,
+            directory: cwd,
+            fetch: transport.fetch,
+            headers: transport.headers,
+          }).session.create({ directory: cwd }, { throwOnError: true })
+          if (!result.data?.id) throw new Error("Failed to create startup session")
+          return result.data.id
+        },
+      })
+
       try {
         await validateSession({
           url: transport.url,
-          sessionID: args.session,
+          sessionID,
           directory: cwd,
           fetch: transport.fetch,
           headers,
@@ -286,7 +313,7 @@ export const TuiThreadCommand = cmd({
             events: transport.events,
             args: {
               continue: args.continue,
-              sessionID: args.session,
+              sessionID,
               agent: args.agent,
               model: args.model,
               prompt,

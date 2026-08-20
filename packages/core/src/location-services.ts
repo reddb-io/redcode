@@ -13,18 +13,21 @@ import { Watcher } from "./filesystem/watcher"
 import { Image } from "./image"
 import { HookV2 } from "./hook"
 import { Integration } from "./integration"
+import { RuntimeInvariant } from "./invariant"
 import { Location } from "./location"
 import { LocationMutation } from "./location-mutation"
 import { LocationServiceMap } from "./location-service-map"
 import { PermissionV2 } from "./permission"
 import { PluginV2 } from "./plugin"
 import { PluginInternal } from "./plugin/internal"
+import { PluginProfile } from "./plugin/profile"
 import { Policy } from "./policy"
 import { ProjectCopy } from "./project/copy"
 import { Pty } from "./pty"
 import { QuestionV2 } from "./question"
 import { Reference } from "./reference"
 import { ReferenceGuidance } from "./reference/guidance"
+import { RuntimeInspection } from "./runtime-inspection"
 import * as SessionRunnerLLM from "./session/runner/llm"
 import { SessionRunnerModel } from "./session/runner/model"
 import { SessionTodo } from "./session/todo"
@@ -40,6 +43,10 @@ import { ToolOutputStore } from "./tool-output-store"
 
 export { LocationServiceMap } from "./location-service-map"
 
+// The inspection node reports the very graph it belongs to, so it reads the derived
+// inventory lazily instead of taking it as a value the group cannot produce yet.
+export const runtimeInspectionNode = RuntimeInspection.makeNode(() => serviceInventory)
+
 export const locationServices = LayerNode.group([
   Location.node,
   Policy.node,
@@ -50,8 +57,11 @@ export const locationServices = LayerNode.group([
   Integration.node,
   Catalog.node,
   AISDK.node,
+  RuntimeInvariant.node,
   PluginV2.node,
+  PluginProfile.node,
   PluginInternal.node,
+  runtimeInspectionNode,
   ProjectCopy.node,
   ProjectCopy.refreshNode,
   FileSystemSearch.node,
@@ -79,6 +89,8 @@ export const locationServices = LayerNode.group([
   Snapshot.node,
   SessionRunnerLLM.node,
 ])
+
+export const serviceInventory = LayerNode.inspect(locationServices)
 
 export type LocationServices = LayerNode.Output<typeof locationServices>
 export type LocationError = LayerNode.Error<typeof locationServices>

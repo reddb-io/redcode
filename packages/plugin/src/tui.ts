@@ -480,6 +480,12 @@ export type TuiHostSlotMap = {
   sidebar_content: {
     session_id: string
   }
+  // Secondary typed slot that renders inside the wide Project column. Plugins that target
+  // `sidebar_content` continue to land in the Session column; new Project-scoped surfaces
+  // (MCP, LSP, RedSkills, Workers) register here.
+  sidebar_project: {
+    session_id: string
+  }
   sidebar_footer: {
     session_id: string
   }

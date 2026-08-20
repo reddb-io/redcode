@@ -376,6 +376,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const tuiConfig = useTuiConfig()
   const redskilled = useRedskilled()
   const [primaryView, setPrimaryView] = createSignal<"session" | "workers">("session")
+  const workerCount = createMemo(() => redskilled.status()?.payload?.workers.length ?? 0)
+  const failedWorkers = createMemo(
+    () => redskilled.status()?.payload?.workers.filter((item) => item.display?.failed).length ?? 0,
+  )
   const route = useRoute()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
@@ -465,24 +469,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle("Redcode")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle("Redcode")
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`OC | ${title}`)
+      renderer.setTerminalTitle(`Redcode | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`Redcode | ${route.data.id}`)
     }
   })
 
@@ -1055,22 +1059,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
   })
 
-  let consentAsked = ""
-  createEffect(() => {
-    const current = redskilled.status()
-    if (!ready() || current?.lifecycle !== "needs_consent" || !current.activation?.eligible) return
-    if (consentAsked === current.activation.project) return
-    consentAsked = current.activation.project
-    void DialogConfirm.show(
-      dialog,
-      "Connect RedSkills",
-      `Register ${current.activation.project} with redskilled using ${current.activation.runner} × ${current.activation.target}?`,
-    ).then((accepted) => {
-      if (accepted === undefined) return
-      return redskilled.consent(accepted ? "accepted" : "refused").catch(toast.error)
-    })
-  })
-
   event.on("session.error", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
     const error = evt.properties.error
@@ -1126,7 +1114,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to OpenCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to Redcode v${result.data.version}. Please restart the application.`,
     )
 
     void exit()
@@ -1177,8 +1165,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             attributes={primaryView() === "workers" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => setPrimaryView("workers")}
           >
-            Workers{" "}
-            {redskilled.status()?.payload?.workers.length ? `(${redskilled.status()?.payload?.workers.length})` : ""}
+            Workers
+            <Show when={workerCount() > 0}>
+              <span style={{ fg: failedWorkers() ? theme.error : theme.textMuted }}>
+                {` (${workerCount()}${failedWorkers() ? ` ✗${failedWorkers()}` : ""})`}
+              </span>
+            </Show>
           </text>
         </box>
         <Show when={primaryView() === "session"} fallback={<Workers />}>

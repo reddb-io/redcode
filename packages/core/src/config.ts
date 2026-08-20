@@ -74,7 +74,7 @@ export class Info extends Schema.Class<Info>("Config.Info")({
     description: "Enable built-in formatters or configure formatter overrides",
   }),
   lsp: ConfigLSP.Info.pipe(Schema.optional).annotate({
-    description: "Enable built-in language servers or configure server overrides",
+    description: "Configure language servers, which are enabled by default; set to false to disable",
   }),
   attachments: ConfigAttachments.Info.pipe(Schema.optional).annotate({
     description: "Attachment processing configuration",
@@ -143,7 +143,18 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const location = yield* Location.Service
     const policy = yield* Policy.Service
-    const names = ["opencode.json", "opencode.jsonc"]
+    // Ordered from lowest to highest precedence. Every name present in a directory is
+    // loaded and merged, so a primary `config.json[c]` overrides the legacy `opencode.*`
+    // and transitional `redcode.*` ones field by field rather than replacing them. A
+    // directory holding only the OpenCode-named file keeps behaving exactly as before.
+    const names = [
+      "opencode.json",
+      "opencode.jsonc",
+      "redcode.json",
+      "redcode.jsonc",
+      "config.json",
+      "config.jsonc",
+    ]
     const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
     const decodeInfo = Schema.decodeUnknownOption(Info, decodeOptions)
     const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
@@ -175,6 +186,14 @@ const layer = Layer.effect(
     })
 
     const globalDirectory = AbsolutePath.make(global.config)
+    const legacyConfigDir = global.legacyConfig
+    // Read the legacy XDG-style directory as a fallback so existing installs that still
+    // hold their config at `~/.config/redcode/` keep working without manual migration.
+    // A directory holding only the legacy `opencode.jsonc` keeps behaving exactly as before.
+    const legacyGlobalDirectory =
+      legacyConfigDir && path.resolve(legacyConfigDir) !== path.resolve(global.config)
+        ? AbsolutePath.make(legacyConfigDir)
+        : null
     const locationIsGlobal = path.resolve(location.directory) === path.resolve(global.config)
     // Read configuration once when this location opens. Later calls reuse these
     // values until the location is reopened.
