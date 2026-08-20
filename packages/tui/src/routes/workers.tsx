@@ -53,6 +53,7 @@ export function Workers() {
   const [focused, setFocused] = createSignal(false)
   const [now, setNow] = createSignal(Date.now())
   const [history, setHistory] = createSignal(empty())
+  const [trackingSince, setTrackingSince] = createSignal<number>()
 
   const status = redskilled.status
   const payload = () => status()?.payload
@@ -160,6 +161,8 @@ export function Workers() {
 
   createEffect(() => {
     const current = payload()
+    if (!current) return
+    if (!trackingSince()) setTrackingSince(Date.now())
     setHistory((previous) => record(previous, current, Date.now()))
   })
 
@@ -208,6 +211,7 @@ export function Workers() {
         width={width()}
         status={status()}
         loading={redskilled.loading()}
+        trackingSince={trackingSince()}
         onStart={startDrain}
         onResize={() => void resize()}
         onStopProject={() => void stopProject()}
@@ -244,6 +248,8 @@ export function Workers() {
               loading={redskilled.loading()}
               departed={history().departed}
               width={width()}
+              onStart={startDrain}
+              onResize={() => void resize()}
             />
           }
         >
@@ -356,6 +362,7 @@ function Header(props: {
   width: number
   status: Status
   loading: boolean
+  trackingSince: number | undefined
   onStart: () => void
   onResize: () => void
   onStopProject: () => void
@@ -423,8 +430,13 @@ function Header(props: {
     if (staleness()?.stale) out.push(`stale ${formatAge(number(staleness()?.age_ms))}`)
     const daemon = props.status?.payload?.daemon?.daemon_version
     if (daemon && daemon !== "ACP" && props.width >= 90) out.push(`daemon v${daemon}`)
+    const since = props.trackingSince
+    if (since && props.width >= 110) out.push(`tracking ${formatAge(props.now - since)}`)
     return out
   }
+
+  const failed = () => props.status?.payload?.workers.filter((item) => item.display?.failed).length ?? 0
+  const live = () => props.status?.lifecycle === "live"
 
   return (
     <box flexDirection="column" flexShrink={0}>
@@ -436,6 +448,16 @@ function Header(props: {
           <text fg={tone(props.status?.lifecycle, theme)}>
             {mark(props.status?.lifecycle)} {props.status?.lifecycle ?? "connecting"}
           </text>
+          <Show when={live()}>
+            <text fg={theme.success} attributes={TextAttributes.BLINK}>
+              ●
+            </text>
+          </Show>
+          <Show when={failed() > 0}>
+            <text fg={theme.error} attributes={TextAttributes.BOLD}>
+              ✗ {failed()} failed
+            </text>
+          </Show>
           <For each={flags()}>
             {(item) => <text fg={item.startsWith("stale") ? theme.warning : theme.textMuted}>{item}</text>}
           </For>
@@ -748,11 +770,14 @@ function Idle(props: {
   loading: boolean
   departed: Array<Track & { ended: number }>
   width: number
+  onStart: () => void
+  onResize: () => void
 }) {
   const theme = props.theme
   const activation = () => props.status?.activation
   const registered = () =>
     !!activation() && !!props.status?.payload?.registered_projects?.includes(activation()!.project)
+  const lifecycle = () => props.status?.lifecycle
   const reason = () => {
     const item = activation()
     if (!item) return "The daemon has not reported an activation for this project."
@@ -761,6 +786,9 @@ function Idle(props: {
     if (item.target === 0) return "Target is 0 — press z to size the project up."
     return `Target ${item.target} · ${registered() ? "registered" : "not registered"} · the queue is drained or the daemon has not granted a slot yet.`
   }
+  const showStart = () => lifecycle() !== "unavailable" && lifecycle() !== "ineligible" && !registered()
+  const showResize = () =>
+    lifecycle() !== "unavailable" && lifecycle() !== "ineligible" && activation()?.target === 0
   return (
     <box flexGrow={1} border borderColor={theme.border} paddingLeft={1} paddingRight={1} flexDirection="column">
       <Show when={!props.loading} fallback={<text fg={theme.textMuted}>Reading daemon…</text>}>
@@ -768,6 +796,24 @@ function Idle(props: {
           No live Workers in this project
         </text>
         <text fg={theme.textMuted}>{truncate(reason(), props.width - 4)}</text>
+        <Show when={lifecycle() === "unavailable" || lifecycle() === "ineligible"}>
+          <text fg={theme.textMuted}> </text>
+          <text fg={theme.warning}>{truncate(props.status?.error ?? "Start the public red-skills-redskilled acp adapter.", props.width - 4)}</text>
+        </Show>
+        <Show when={showStart() || showResize()}>
+          <box flexDirection="row" gap={2} paddingTop={1}>
+            <Show when={showStart()}>
+              <text fg={theme.success} onMouseUp={props.onStart}>
+                [start drain]
+              </text>
+            </Show>
+            <Show when={showResize()}>
+              <text fg={theme.info} onMouseUp={props.onResize}>
+                [z resize]
+              </text>
+            </Show>
+          </box>
+        </Show>
         <Show when={props.departed.length > 0}>
           <text fg={theme.textMuted}> </text>
           <text fg={theme.textMuted}>recently ended</text>
