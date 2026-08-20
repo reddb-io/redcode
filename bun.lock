@@ -110,6 +110,7 @@
         "@opentui/core": "catalog:",
         "@opentui/solid": "catalog:",
         "@parcel/watcher": "2.5.1",
+        "@reddb-io/toon": "0.26.2",
         "effect": "catalog:",
         "solid-js": "catalog:",
       },
@@ -564,7 +565,7 @@
     },
     "packages/opencode": {
       "name": "opencode",
-      "version": "0.1.0",
+      "version": "0.8.1",
       "bin": {
         "redcode": "./bin/opencode",
       },
