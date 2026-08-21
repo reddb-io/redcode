@@ -1,5 +1,6 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { DateTime } from "effect"
 import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { SessionEvent } from "@opencode-ai/core/session/event"
@@ -1086,6 +1087,11 @@ const layer = Layer.effect(
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
+        // Turn lifecycle: fire `Turn.Started` once per turn (before any step).
+        yield* events
+          .publish(SessionEvent.Turn.Started, { sessionID, timestamp: DateTime.makeUnsafe(Date.now()) })
+          .pipe(Effect.ignore)
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
@@ -1349,6 +1355,15 @@ const layer = Layer.effect(
           if (outcome === "break") break
           continue
         }
+
+        // Turn lifecycle: fire `Turn.Ended` once when the loop exits.
+        yield* events
+          .publish(SessionEvent.Turn.Ended, {
+            sessionID,
+            timestamp: DateTime.makeUnsafe(Date.now()),
+            finished: true,
+          })
+          .pipe(Effect.ignore)
 
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)

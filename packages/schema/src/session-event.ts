@@ -139,6 +139,31 @@ export const PromptAdmitted = Event.define({
 })
 export type PromptAdmitted = typeof PromptAdmitted.Type
 
+export namespace Turn {
+  /**
+   * Live event fired once per turn, before any step runs. Marks the start of
+   * the agent loop processing a single user prompt (which may span multiple
+   * steps). Observation only — plugins use this for telemetry / turn-level
+   * bookkeeping.
+   */
+  export const Started = Event.define({
+    type: "session.next.turn.started",
+    schema: Base,
+  })
+  export type Started = typeof Started.Type
+
+  /**
+   * Live event fired once when a turn ends (loop exit, before the last
+   * assistant is returned). Marks the natural boundary for telemetry and
+   * for any plugin that wants to run a side effect at the end of a turn.
+   */
+  export const Ended = Event.define({
+    type: "session.next.turn.ended",
+    schema: { ...Base, finished: Schema.Boolean },
+  })
+  export type Ended = typeof Ended.Type
+}
+
 export const ContextUpdated = Event.define({
   type: "session.next.context.updated",
   ...options,
