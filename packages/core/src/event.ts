@@ -671,7 +671,7 @@ export const layerWith = (options?: LayerOptions) =>
           const event = placeholderEvent<D>(_definition)
           return head(event, () =>
             tail.length === 0
-              ? Effect.die(new Error(`waterfall short-circuited without a terminal listener`))
+              ? Effect.succeed(event as unknown as R)
               : waterfall(_definition, tail),
           )
         })
