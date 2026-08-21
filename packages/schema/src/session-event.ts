@@ -270,6 +270,24 @@ export namespace Text {
     },
   })
   export type Ended = typeof Ended.Type
+
+  /**
+   * Live waterfall fired when a text part's stream completes, before the
+   * final value is persisted. Listeners return `{ text }` to transform the
+   * final text or throw to veto. This is the V2 replacement for the legacy
+   * V1 `experimental.text.complete` hook and gives plugins proper
+   * `next()`-based mutation semantics.
+   */
+  export const Complete = Event.define({
+    type: "session.next.text.complete",
+    schema: {
+      ...Base,
+      messageID: SessionMessage.ID,
+      partID: Schema.String,
+      text: Schema.String,
+    },
+  })
+  export type Complete = typeof Complete.Type
 }
 
 export namespace Reasoning {

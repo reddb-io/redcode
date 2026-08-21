@@ -23,6 +23,7 @@ import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 import { Database } from "@opencode-ai/core/database/database"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
 
@@ -514,7 +515,7 @@ const layer = Layer.effect(
             if (!ctx.currentText) return
             // oxlint-disable-next-line no-self-assign -- reactivity trigger
             ctx.currentText.text = ctx.currentText.text
-            ctx.currentText.text = (yield* plugin.trigger(
+            const textCompleteV1 = yield* plugin.trigger(
               "experimental.text.complete",
               {
                 sessionID: ctx.sessionID,
@@ -522,7 +523,16 @@ const layer = Layer.effect(
                 partID: ctx.currentText.id,
               },
               { text: ctx.currentText.text },
-            )).text
+            )
+            const textCompleteV2 = yield* events.waterfall(SessionEvent.Text.Complete, [
+              (_e, next) =>
+                Effect.gen(function* () {
+                  const downstream = yield* next()
+                  const downstreamText = (downstream as { text?: string } | undefined)?.text
+                  return { text: downstreamText ?? textCompleteV1.text }
+                }),
+            ])
+            ctx.currentText.text = (textCompleteV2 as { text: string }).text
             {
               const end = Date.now()
               ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
