@@ -12,6 +12,7 @@ import { SessionID } from "./session-id"
 import { Location } from "./location"
 import { SessionMessage } from "./session-message"
 import { Revert } from "./revert"
+import { PermissionV1 } from "./v1/permission"
 
 export { FileAttachment }
 
@@ -457,6 +458,24 @@ export const RetryError = Schema.Struct({
   identifier: "session.next.retry_error",
 })
 export interface RetryError extends Schema.Schema.Type<typeof RetryError> {}
+
+export namespace Permission {
+  /**
+   * Live event fired when a permission request is queued for the user. Plugins
+   * observe (no veto — the ask already happened). This is the V2 surface for
+   * the legacy V1 `permission.ask` hook; subscribe via `events.subscribe` or
+   * `events.subscribeAll` to attach audit/telemetry without registering a V1
+   * plugin.
+   */
+  export const Requested = Event.define({
+    type: "session.next.permission.requested",
+    schema: {
+      ...Base,
+      ...PermissionV1.Request.fields,
+    },
+  })
+  export type Requested = typeof Requested.Type
+}
 
 export const Retried = Event.define({
   type: "session.next.retried",
