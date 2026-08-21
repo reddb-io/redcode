@@ -114,7 +114,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
                     { args },
                   )
-                  return yield* next()
+                  const downstream = yield* next()
+                  const downstreamArgs = (downstream as { args?: typeof args } | undefined)?.args
+                  return { args: downstreamArgs ?? args }
                 }),
             ])
             const finalArgs = (decided as { args: typeof args }).args
