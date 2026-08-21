@@ -495,6 +495,29 @@ export namespace Permission {
   export type Requested = typeof Requested.Type
 }
 
+export namespace Command {
+  const CommandBase = {
+    ...Base,
+    command: Schema.String,
+  }
+
+  /**
+   * Live waterfall fired before a slash command runs. Listeners return
+   * `{ parts }` to rewrite the prompt payload, or throw to veto. This is
+   * the V2 replacement for the legacy V1 `command.execute.before` hook
+   * and gives plugins proper deny/transform semantics with `next()`.
+   */
+  export const PreExecute = Event.define({
+    type: "session.next.command.pre_execute",
+    schema: {
+      ...CommandBase,
+      arguments: Schema.String,
+      parts: Schema.Array(Schema.Unknown),
+    },
+  })
+  export type PreExecute = typeof PreExecute.Type
+}
+
 export const Retried = Event.define({
   type: "session.next.retried",
   ...options,
