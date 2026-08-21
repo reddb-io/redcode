@@ -522,39 +522,6 @@ export type TuiSlots = {
   }
 }
 
-export type TuiStatuslineTone = "default" | "muted" | "info" | "success" | "warning" | "error"
-
-export type TuiStatuslineImportance = "required" | "normal" | "optional"
-
-export type TuiStatuslineSegment = {
-  id: string
-  text: string
-  short?: string
-  tone?: TuiStatuslineTone
-  order?: number
-  importance?: TuiStatuslineImportance
-}
-
-export type TuiStatuslineRow = {
-  id: string
-  segments: ReadonlyArray<TuiStatuslineSegment>
-  order?: number
-}
-
-export type TuiStatuslineContribution = {
-  segments?: ReadonlyArray<TuiStatuslineSegment>
-  rows?: ReadonlyArray<TuiStatuslineRow>
-}
-
-export type TuiStatuslineHandle = {
-  update: (contribution: TuiStatuslineContribution) => void
-  dispose: () => void
-}
-
-export type TuiStatuslineApi = {
-  register: (contribution: TuiStatuslineContribution) => TuiStatuslineHandle
-}
-
 export type TuiEventBus = {
   on: <Type extends Event["type"]>(type: Type, handler: (event: Extract<Event, { type: Type }>) => void) => () => void
 }
@@ -654,7 +621,6 @@ export type TuiPluginApi = {
   event: TuiEventBus
   renderer: CliRenderer
   slots: TuiSlots
-  statusline: TuiStatuslineApi
   plugins: {
     list: () => ReadonlyArray<TuiPluginStatus>
     activate: (id: string) => Promise<boolean>

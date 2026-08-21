@@ -158,8 +158,8 @@ The **Workers** view is a live, project-scoped console over the daemon's public 
 
 Redcode stores no separate consent, registration, or Project-control state. Drain intent and policy
 remain daemon-owned, and status comes from the Project projection reached through the supported
-`red-skills-redskilled acp` stdio adapter. Host-wide statusline details are not presented because the
-public ACP session deliberately binds each connection to one Project.
+`red-skills-redskilled acp` stdio adapter. Host-wide details are not presented because the public ACP
+session deliberately binds each connection to one Project.
 
 ## Install
 

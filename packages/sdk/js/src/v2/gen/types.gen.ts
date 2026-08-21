@@ -1976,7 +1976,7 @@ export type Config = {
         }
       }
   /**
-   * Enable or configure LSP servers. Omit or set to false to disable, true to enable built-ins, or an object to enable built-ins with overrides.
+   * Configure LSP servers. Omit or set to true to enable built-ins, set to false to disable, or use an object for overrides.
    */
   lsp?:
     | boolean
@@ -11348,12 +11348,6 @@ export type RedskilledStatusResponses = {
         }
       }>
     }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
-    }
     last_success_at?: string
     error?: string
   }
@@ -11478,12 +11472,6 @@ export type RedskilledConsentResponses = {
           text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         }
       }>
-    }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
     }
     last_success_at?: string
     error?: string
@@ -11610,12 +11598,6 @@ export type RedskilledProjectResizeResponses = {
         }
       }>
     }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
-    }
     last_success_at?: string
     error?: string
   }
@@ -11738,12 +11720,6 @@ export type RedskilledProjectStopResponses = {
           text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         }
       }>
-    }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
     }
     last_success_at?: string
     error?: string
@@ -11870,12 +11846,6 @@ export type RedskilledWorkerStopResponses = {
         }
       }>
     }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
-    }
     last_success_at?: string
     error?: string
   }
@@ -12000,12 +11970,6 @@ export type RedskilledWorkerRecycleResponses = {
           text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         }
       }>
-    }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
     }
     last_success_at?: string
     error?: string
@@ -12132,12 +12096,6 @@ export type RedskilledWorkerSteerResponses = {
           text: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         }
       }>
-    }
-    render?: {
-      line: string
-      degraded: boolean
-      stale: boolean
-      generated_at: string
     }
     last_success_at?: string
     error?: string

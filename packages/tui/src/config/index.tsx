@@ -58,10 +58,6 @@ export const Prompt = Schema.Struct({
   }),
 }).annotate({ description: "Prompt size settings" })
 
-export const Statusline = Schema.Struct({
-  enabled: Schema.optional(Schema.Boolean).annotate({ description: "Show the global TUI statusline" }),
-}).annotate({ description: "Global statusline settings" })
-
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
   theme: Schema.optional(Schema.String),
@@ -71,7 +67,6 @@ export const Info = Schema.Struct({
   leader_timeout: Schema.optional(LeaderTimeout),
   attention: Schema.optional(Attention),
   prompt: Schema.optional(Prompt),
-  statusline: Schema.optional(Statusline),
   scroll_speed: Schema.optional(ScrollSpeed).annotate({ description: "TUI scroll speed" }),
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
@@ -80,7 +75,7 @@ export const Info = Schema.Struct({
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "cursor" | "statusline"> & {
+export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "cursor"> & {
   attention: {
     enabled: boolean
     notifications: boolean
@@ -92,9 +87,6 @@ export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | 
   keybinds: TuiKeybind.BindingLookupView
   leader_timeout: number
   mouse: boolean
-  statusline: {
-    enabled: boolean
-  }
   cursor?: {
     style: "block" | "underline" | "line" | "default"
     blinking: boolean
@@ -134,9 +126,6 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
-    statusline: {
-      enabled: input.statusline?.enabled ?? true,
-    },
     cursor: input.cursor
       ? {
           style: input.cursor.style ?? "block",

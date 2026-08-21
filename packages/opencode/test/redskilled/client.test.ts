@@ -309,7 +309,6 @@ describe("public redskilled ACP client", () => {
       "../../src/server/routes/instance/httpapi/handlers/redskilled.ts",
       "../../../schema/src/redskilled.ts",
       "../../../tui/src/app.tsx",
-      "../../../tui/src/component/statusline.tsx",
       "../../../tui/src/context/redskilled.tsx",
       "../../../tui/src/routes/workers.tsx",
       "../../../tui/src/routes/workers/history.ts",

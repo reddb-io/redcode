@@ -36,10 +36,10 @@ const HEARTBEAT = { warn: 30_000, error: 120_000 }
  * OpenTUI overlaps cells when a flex subtree asks for more rows than the terminal has,
  * so this page never relies on wrapping: every section is a fixed count of single lines
  * and both panes get explicit sizes. CHROME_ROWS is what the page spends outside the
- * panes (tab bar, two header lines, gaps, hint line, statusline); DETAIL_ROWS is what
+ * panes (tab bar, two header lines, gaps, and hint line); DETAIL_ROWS is what
  * the detail pane always draws around its activity feed.
  */
-const CHROME_ROWS = 10
+const CHROME_ROWS = 7
 const DETAIL_ROWS = 12
 
 export function Workers() {

@@ -1,22 +1,12 @@
-import type {
-  TuiStatuslineContribution,
-  TuiPluginApi,
-  TuiPluginInstallOptions,
-  TuiPluginInstallResult,
-  TuiPluginStatus,
-} from "@opencode-ai/plugin/tui"
+import type { TuiPluginApi, TuiPluginInstallOptions, TuiPluginInstallResult, TuiPluginStatus } from "@opencode-ai/plugin/tui"
 import type { TuiConfig } from "../config"
 import { createContext, createSignal, useContext, type JSX, type ParentProps } from "solid-js"
 import { createPluginRoutes } from "./api"
 import { createSlots, type HostSlots } from "./slots"
 
 export function createPluginRuntime() {
-  let statuslineCount = 0
   const [commands, setCommands] = createSignal<PluginRuntimeCommands>(emptyCommands)
   const [status, setStatus] = createSignal<ReadonlyArray<TuiPluginStatus>>([])
-  const [statusline, setStatusline] = createSignal<
-    ReadonlyArray<{ id: string; contribution: TuiStatuslineContribution }>
-  >([])
   const slots = createSlots()
 
   return {
@@ -24,26 +14,6 @@ export function createPluginRuntime() {
     routes: createPluginRoutes(),
     commands,
     status,
-    statusline,
-    registerStatusline(id: string, contribution: TuiStatuslineContribution) {
-      const key = `${id}:${statuslineCount++}`
-      let active = true
-      const replace = (next: TuiStatuslineContribution) => {
-        setStatusline((items) => [...items.filter((item) => item.id !== key), { id: key, contribution: next }])
-      }
-      replace(contribution)
-      return {
-        update(next: TuiStatuslineContribution) {
-          if (!active) return
-          replace(next)
-        },
-        dispose() {
-          if (!active) return
-          active = false
-          setStatusline((items) => items.filter((item) => item.id !== key))
-        },
-      }
-    },
     update(input: { commands?: PluginRuntimeCommands; status?: ReadonlyArray<TuiPluginStatus> }) {
       if (input.commands) setCommands(input.commands)
       if (input.status) setStatus(input.status)
@@ -51,7 +21,6 @@ export function createPluginRuntime() {
     clear() {
       setCommands(emptyCommands)
       setStatus([])
-      setStatusline([])
       slots.clear()
     },
     setupSlots(api: TuiPluginApi): HostSlots {
