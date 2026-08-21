@@ -57,6 +57,11 @@ export function host(overrides: Overrides = {}): PluginContext {
         resolve: () => Effect.die("unused integration.connection.resolve"),
       },
     },
+    hook: overrides.hook ?? {
+      waterfall: () => Effect.die("unused hook.waterfall"),
+      serial: () => Effect.die("unused hook.serial"),
+      parallel: () => Effect.die("unused hook.parallel"),
+    },
     plugin: overrides.plugin ?? {
       add: () => Effect.die("unused plugin.add"),
       remove: () => Effect.die("unused plugin.remove"),

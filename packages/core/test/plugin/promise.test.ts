@@ -1,10 +1,11 @@
 import { describe, expect } from "bun:test"
-import { Effect } from "effect"
+import { DateTime, Effect } from "effect"
 import { AgentV2 } from "@opencode-ai/core/agent"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { PluginHost } from "@opencode-ai/core/plugin/host"
 import { PluginPromise } from "@opencode-ai/core/plugin/promise"
-import { define } from "@opencode-ai/plugin/v2/promise"
+import { define, Operation } from "@opencode-ai/plugin/v2/promise"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 
@@ -62,6 +63,35 @@ describe("fromPromise", () => {
       yield* adapted.effect(host)
 
       expect(yield* agents.get(AgentV2.ID.make("temp"))).toBeUndefined()
+    }),
+  )
+
+  it.effect("composes promise waterfall middleware", () =>
+    Effect.gen(function* () {
+      const plugin = yield* PluginV2.Service
+      const host = yield* PluginHost.make(plugin)
+      const hooks = yield* OperationHook.Service
+
+      yield* PluginPromise.fromPromise(
+        define({
+          id: "promise-waterfall",
+          setup: async (ctx) => {
+            await ctx.hook.waterfall(Operation.Text.Complete, async (event, next) => {
+              const result = await next({ ...event.data, text: `${event.data.text}:before` })
+              return { ...result, text: `${result.text}:after` }
+            })
+          },
+        }),
+      ).effect(host)
+
+      const result = yield* hooks.waterfall(Operation.Text.Complete, {
+        timestamp: yield* DateTime.now,
+        sessionID: "session",
+        messageID: "message",
+        partID: "part",
+        text: "original",
+      })
+      expect(result.text).toBe("original:before:after")
     }),
   )
 })

@@ -2,6 +2,7 @@ import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { eq } from "drizzle-orm"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -58,6 +59,10 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
+import { Location } from "@opencode-ai/core/location"
+import { PluginV2 } from "@opencode-ai/core/plugin"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { define, Operation } from "@opencode-ai/plugin/v2/effect"
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -207,6 +212,7 @@ const promptRoot = LayerNode.group([
   SystemPrompt.node,
   CrossSpawnSpawner.node,
   RuntimeFlags.node,
+  LocationServiceMap.node,
 ])
 
 function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
@@ -217,9 +223,9 @@ function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; proces
     [RuntimeFlags.node, runtimeFlags],
   ] as const
   if (input?.processor === "blocking") {
-    return LayerNode.compile(promptRoot, [...replacements, [SessionProcessor.node, blockingProcessor]])
+    return AppNodeBuilder.build(promptRoot, [...replacements, [SessionProcessor.node, blockingProcessor]])
   }
-  return LayerNode.compile(promptRoot, replacements)
+  return AppNodeBuilder.build(promptRoot, replacements)
 }
 
 function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
@@ -231,9 +237,9 @@ function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; processo
     [RuntimeFlags.node, runtimeFlags],
   ] as const
   if (input?.processor === "blocking") {
-    return LayerNode.compile(root, [...replacements, [SessionProcessor.node, blockingProcessor]])
+    return AppNodeBuilder.build(root, [...replacements, [SessionProcessor.node, blockingProcessor]])
   }
-  return LayerNode.compile(root, replacements)
+  return AppNodeBuilder.build(root, replacements)
 }
 
 function makeHttpNoLLMServer(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
@@ -613,6 +619,68 @@ it.instance("loop emits successful turn lifecycle events", () =>
       { type: SessionEvent.Turn.Started.type },
       { type: SessionEvent.Turn.Ended.type, finished: true },
     ])
+  }),
+)
+
+it.instance("runs Location-scoped V2 operation hooks", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const test = yield* TestInstance
+    const locations = yield* LocationServiceMap.Service
+    let started = 0
+    const post = new Array<{ failed: boolean; command: unknown }>()
+    const output = path.join(test.directory, "operation-hook.txt")
+    yield* Effect.gen(function* () {
+      const plugins = yield* PluginV2.Service
+      yield* plugins.add(
+        PluginV2.ID.make("prompt-operation-hooks"),
+        define({
+          id: "prompt-operation-hooks",
+          effect: (ctx) =>
+            Effect.gen(function* () {
+              yield* ctx.hook.parallel(Operation.Turn.Started, () => {
+                started += 1
+              })
+              yield* ctx.hook.waterfall(Operation.Agent.PreSystem, (event, next) =>
+                next({ ...event.data, system: [...event.data.system, "V2 operation hook marker"] }),
+              )
+              yield* ctx.hook.waterfall(Operation.Tool.PreExecute, (event, next) =>
+                next({ ...event.data, args: { ...event.data.args, command: `printf hook > ${JSON.stringify(output)}` } }),
+              )
+              yield* ctx.hook.parallel(Operation.Tool.PostExecute, (event) => {
+                post.push({ failed: event.data.failed, command: event.data.args.command })
+              })
+            }),
+        }).effect,
+      )
+    }).pipe(
+      Effect.provide(
+        locations.get(Location.Ref.make({ directory: AbsolutePath.make(test.directory) })),
+      ),
+      Effect.orDie,
+    )
+
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({
+      title: "Pinned",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello" }],
+    })
+    yield* llm.toolMatch((hit) => JSON.stringify(hit.body).includes("hello"), "bash", { command: "printf wrong" })
+    yield* llm.text("world")
+
+    yield* prompt.loop({ sessionID: chat.id })
+
+    expect(started).toBe(1)
+    expect(JSON.stringify((yield* llm.hits)[0]?.body)).toContain("V2 operation hook marker")
+    expect(yield* Effect.promise(() => Bun.file(output).text())).toBe("hook")
+    expect(post).toEqual([{ failed: false, command: `printf hook > ${JSON.stringify(output)}` }])
   }),
 )
 

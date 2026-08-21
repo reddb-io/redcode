@@ -13,7 +13,7 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { Effect, Layer, Context } from "effect"
+import { DateTime, Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
@@ -23,6 +23,8 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { OperationHookBridge } from "@/operation-hook-bridge"
 
 export const Event = SessionCompactionEvent
 
@@ -199,6 +201,7 @@ const layer = Layer.effect(
     const processors = yield* SessionProcessor.Service
     const provider = yield* Provider.Service
     const events = yield* EventV2Bridge.Service
+    const hooks = yield* OperationHookBridge.Service
     const flags = yield* RuntimeFlags.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
@@ -376,19 +379,12 @@ const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const compactingV2 = yield* events.waterfall(SessionEvent.Compaction.PreCompact, [
-        (_e, next) =>
-          Effect.gen(function* () {
-            const downstream = yield* next()
-            const downstreamCtx = (downstream as { context?: unknown[] } | undefined)?.context
-            const downstreamPrompt = (downstream as { prompt?: string } | undefined)?.prompt
-            return {
-              context: downstreamCtx ?? compacting.context,
-              prompt: downstreamPrompt ?? compacting.prompt,
-            }
-          }),
-      ])
-      const compactingFinal = compactingV2 as { context: unknown[]; prompt: string | undefined }
+      const compactingFinal = yield* hooks.waterfall(OperationHook.Operation.Compaction.PreCompact, {
+        timestamp: yield* DateTime.now,
+        sessionID: input.sessionID,
+        context: compacting.context,
+        prompt: compacting.prompt,
+      })
       // Mutate the V1 trigger result with the V2-decided context/prompt so the
       // downstream code keeps working with a single source of truth.
       ;(compacting as { context: unknown[] }).context = compactingFinal.context
@@ -619,6 +615,7 @@ export const node = LayerNode.make({
     SessionProcessor.node,
     Provider.node,
     EventV2Bridge.node,
+    OperationHookBridge.node,
     RuntimeFlags.node,
   ],
 })

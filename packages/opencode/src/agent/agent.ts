@@ -2,8 +2,6 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Config } from "@/config/config"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
-import { EventV2Bridge } from "@/event-v2-bridge"
-import { SessionEvent } from "@opencode-ai/core/session/event"
 import { Provider } from "@/provider/provider"
 
 import { generateObject, streamObject, type ModelMessage } from "ai"
@@ -77,8 +75,7 @@ export interface Interface {
       whenToUse: string
       systemPrompt: string
     },
-    Provider.DefaultModelError,
-    EventV2Bridge.Service
+    Provider.DefaultModelError
   >
 }
 
@@ -374,7 +371,6 @@ const layer = Layer.effect(
       }) {
         const cfg = yield* config.get()
         const model = input.model ?? (yield* provider.defaultModel())
-        const events = yield* EventV2Bridge.Service
         const resolved = yield* provider.getModel(model.providerID, model.modelID)
         const language = yield* provider.getLanguage(resolved)
         const tracer = cfg.experimental?.openTelemetry
@@ -383,15 +379,6 @@ const layer = Layer.effect(
 
         let system = [PROMPT_GENERATE]
         yield* plugin.trigger("experimental.chat.system.transform", { model: resolved }, { system })
-        const decidedSystem = yield* events.waterfall(SessionEvent.Agent.PreSystem, [
-          (_e, next) =>
-            Effect.gen(function* () {
-              const downstream = yield* next()
-              const downstreamSystem = (downstream as { system?: typeof system } | undefined)?.system
-              return { system: downstreamSystem ?? system }
-            }),
-        ])
-        system = (decidedSystem as { system: typeof system }).system
         const existing = yield* InstanceState.useEffect(state, (s) => s.list())
 
         // TODO: clean this up so provider specific logic doesnt bleed over
@@ -460,7 +447,7 @@ const locationServiceMapNode = LayerNode.make({
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Config.node, Auth.node, Plugin.node, Skill.node, Provider.node, locationServiceMapNode, EventV2Bridge.node],
+  deps: [Config.node, Auth.node, Plugin.node, Skill.node, Provider.node, locationServiceMapNode],
 })
 
 export * as Agent from "./agent"

@@ -2,11 +2,13 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ConfigPermissionV1 } from "@opencode-ai/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@opencode-ai/core/util/wildcard"
-import { Deferred, Effect, Layer, Context } from "effect"
+import { DateTime, Deferred, Effect, Layer, Context } from "effect"
 import os from "os"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionEvent } from "@opencode-ai/core/session/event"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { OperationHookBridge } from "@/operation-hook-bridge"
 
 export const Event = PermissionV1.Event
 
@@ -44,6 +46,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
+    const hooks = yield* OperationHookBridge.Service
     const state = yield* InstanceState.make<State>(
       Effect.fn("Permission.state")(function* (ctx) {
         void ctx
@@ -99,7 +102,9 @@ const layer = Layer.effect(
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
       yield* events.publish(Event.Asked, info)
-      yield* events.publish(SessionEvent.Permission.Requested, info as never).pipe(Effect.ignore)
+      const requested = { timestamp: yield* DateTime.now, ...info }
+      yield* hooks.parallel(OperationHook.Operation.Permission.Requested, requested)
+      yield* events.publish(SessionEvent.Permission.Requested, requested).pipe(Effect.ignore)
       return yield* Effect.ensuring(
         Deferred.await(deferred),
         Effect.sync(() => {
@@ -220,6 +225,10 @@ export function visibleTools<T>(tools: Record<string, T>, ruleset: PermissionV1.
   return Object.fromEntries(Object.entries(tools).filter(([name]) => !hidden.has(name)))
 }
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [EventV2Bridge.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [EventV2Bridge.node, OperationHookBridge.node],
+})
 
 export * as Permission from "."

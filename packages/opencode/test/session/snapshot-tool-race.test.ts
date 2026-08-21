@@ -13,6 +13,7 @@
  */
 import { expect } from "bun:test"
 import { Effect, Layer } from "effect"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import fs from "fs/promises"
 import path from "path"
@@ -87,7 +88,7 @@ const root = LayerNode.group([
   LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
 ])
 const it = testEffect(
-  LayerNode.compile(root, [
+  AppNodeBuilder.build(root, [
     [MCP.node, mcp],
     [LSP.node, lsp],
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
@@ -154,6 +155,16 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       const result = yield* prompt.loop({ sessionID: session.id })
       expect(result.info.role).toBe("assistant")
 
+      // Verify the tool call completed (in the first assistant message)
+      const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
+      const user = allMsgs.find(
+        (msg): msg is SessionV1.WithParts & { info: SessionV1.User } => msg.info.role === "user",
+      )
+      const tool = allMsgs
+        .flatMap((m) => m.parts)
+        .find((p): p is SessionV1.ToolPart => p.type === "tool" && p.tool === "bash")
+      expect(tool?.state).toMatchObject({ status: "completed" })
+
       // Verify the file was created
       const filePath = path.join(dir, "race-test.txt")
       const fileExists = yield* Effect.promise(() =>
@@ -164,15 +175,6 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       )
       expect(fileExists).toBe(true)
 
-      // Verify the tool call completed (in the first assistant message)
-      const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
-      const user = allMsgs.find(
-        (msg): msg is SessionV1.WithParts & { info: SessionV1.User } => msg.info.role === "user",
-      )
-      const tool = allMsgs
-        .flatMap((m) => m.parts)
-        .find((p): p is SessionV1.ToolPart => p.type === "tool" && p.tool === "bash")
-      expect(tool?.state.status).toBe("completed")
       if (!user) throw new Error("Expected user message")
 
       // Poll for the turn diff — summarize() is fire-and-forget.
