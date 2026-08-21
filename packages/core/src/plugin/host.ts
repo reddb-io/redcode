@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { AISDK } from "../aisdk"
 import { Catalog } from "../catalog"
+import { CapabilityRegistry } from "../capability"
 import { CommandV2 } from "../command"
 import { Credential } from "../credential"
 import { Integration } from "../integration"
@@ -20,6 +21,7 @@ const mutable = <T>(value: T) => value as DeepMutable<T>
 export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Interface) {
   const agents = yield* AgentV2.Service
   const aisdk = yield* AISDK.Service
+  const capability = yield* CapabilityRegistry.Service
   const catalog = yield* Catalog.Service
   const commands = yield* CommandV2.Service
   const integration = yield* Integration.Service
@@ -40,6 +42,68 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             remove: (id) => draft.remove(AgentV2.ID.make(id)),
           }),
         ),
+    },
+    capability: {
+      filesystem: {
+        list: () =>
+          capability.filesystem.list().map((entry) => ({
+            name: entry.name,
+            spec: {
+              name: entry.backend.name,
+              label: entry.backend.label,
+              accepts: entry.backend.accepts,
+            },
+          })),
+        register: (backend) =>
+          capability.filesystem.register({
+            name: backend.name,
+            label: backend.label,
+            accepts: backend.accepts,
+            build: () => {
+              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+            },
+          }),
+      },
+      shell: {
+        list: () =>
+          capability.shell.list().map((entry) => ({
+            name: entry.name,
+            spec: {
+              name: entry.backend.name,
+              label: entry.backend.label,
+              accepts: entry.backend.accepts,
+            },
+          })),
+        register: (backend) =>
+          capability.shell.register({
+            name: backend.name,
+            label: backend.label,
+            accepts: backend.accepts,
+            build: () => {
+              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+            },
+          }),
+      },
+      process: {
+        list: () =>
+          capability.process.list().map((entry) => ({
+            name: entry.name,
+            spec: {
+              name: entry.backend.name,
+              label: entry.backend.label,
+              accepts: entry.backend.accepts,
+            },
+          })),
+        register: (backend) =>
+          capability.process.register({
+            name: backend.name,
+            label: backend.label,
+            accepts: backend.accepts,
+            build: () => {
+              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+            },
+          }),
+      },
     },
     aisdk: {
       sdk: (callback) =>
