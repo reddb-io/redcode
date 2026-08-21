@@ -1,5 +1,11 @@
 # opencode
 
+## 0.12.0
+
+### Minor Changes
+
+- 6e41f4b: Add Location-scoped V2 operation hooks with waterfall, serial, and parallel dispatch, deterministic plugin ordering, scoped disposal, and real operation payloads. Migrate agent, command, compaction, permission, text, tool, and turn lifecycle hooks off the EventV2 placeholder dispatch.
+
 ## 0.11.1
 
 ### Patch Changes
