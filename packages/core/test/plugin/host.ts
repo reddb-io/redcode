@@ -21,6 +21,26 @@ export function host(overrides: Overrides = {}): PluginContext {
       sdk: () => Effect.die("unused aisdk.sdk"),
       language: () => Effect.die("unused aisdk.language"),
     },
+    capability: overrides.capability ?? {
+      filesystem: {
+        list: () => {
+          throw new Error("unused capability.filesystem.list")
+        },
+        register: () => Effect.die("unused capability.filesystem.register"),
+      },
+      shell: {
+        list: () => {
+          throw new Error("unused capability.shell.list")
+        },
+        register: () => Effect.die("unused capability.shell.register"),
+      },
+      process: {
+        list: () => {
+          throw new Error("unused capability.process.list")
+        },
+        register: () => Effect.die("unused capability.process.register"),
+      },
+    },
     catalog: overrides.catalog ?? {
       transform: () => Effect.die("unused catalog.transform"),
       reload: () => Effect.die("unused catalog.reload"),

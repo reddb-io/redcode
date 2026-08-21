@@ -119,6 +119,9 @@ async function applyPlugin(load: PluginLoader.Loaded, input: PluginInput, hooks:
   const plugin = readV1Plugin(load.mod, load.spec, "server", "detect")
   if (plugin) {
     await resolvePluginId(load.source, load.spec, load.target, readPluginId(plugin.id, load.spec), load.pkg)
+    Effect.logWarning(
+      `[plugin] V1 plugin "${readPluginId(plugin.id, load.spec)}" loaded via legacy server() hook — V1 hooks (chat.message, tool.execute.before, etc.) are deprecated and will be removed in the next major release. Migrate to the V2 plugin context: ctx.agent, ctx.command, ctx.skill, ctx.capability.`,
+    ).pipe(Effect.runSync)
     hooks.push(await (plugin as PluginModule).server(input, load.options))
     return
   }

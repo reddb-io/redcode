@@ -1,6 +1,7 @@
 import type { PluginOptions } from "../options.js"
 import type { AgentHooks } from "./agent.js"
 import type { AISDKHooks } from "./aisdk.js"
+import type { CapabilityHooks } from "./capability.js"
 import type { CatalogHooks } from "./catalog.js"
 import type { CommandHooks } from "./command.js"
 import type { IntegrationHooks } from "./integration.js"
@@ -13,6 +14,7 @@ export interface PluginContext {
   readonly options: PluginOptions
   readonly agent: AgentHooks & Reload
   readonly aisdk: AISDKHooks
+  readonly capability: CapabilityHooks
   readonly catalog: CatalogHooks & Reload
   readonly command: CommandHooks & Reload
   readonly integration: IntegrationHooks & Reload
