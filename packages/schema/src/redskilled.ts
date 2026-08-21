@@ -125,12 +125,6 @@ export const Status = Schema.Struct({
   native: Schema.Literal(true),
   activation: Activation.pipe(optional),
   payload: Payload.pipe(optional),
-  render: Schema.Struct({
-    line: Schema.String,
-    degraded: Schema.Boolean,
-    stale: Schema.Boolean,
-    generated_at: Schema.String,
-  }).pipe(optional),
   last_success_at: Schema.String.pipe(optional),
   error: Schema.String.pipe(optional),
 })

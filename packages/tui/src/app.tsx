@@ -70,7 +70,6 @@ import { TuiConfigProvider, useTuiConfig, type TuiConfig } from "./config"
 import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
 import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
-import { Statusline } from "./component/statusline"
 import { RedskilledProvider, useRedskilled } from "./context/redskilled"
 import { Workers } from "./routes/workers"
 import { CommandPaletteDialog } from "./component/command-palette"
@@ -1187,9 +1186,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             </Switch>
             {plugin()}
           </box>
-        </Show>
-        <Show when={tuiConfig.statusline.enabled}>
-          <Statusline version={InstallationVersion} />
         </Show>
         <box flexShrink={0}>
           <pluginRuntime.Slot name="app_bottom" />

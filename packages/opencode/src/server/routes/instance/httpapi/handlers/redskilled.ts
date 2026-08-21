@@ -6,10 +6,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { RedskilledApiError } from "../groups/redskilled"
 
-const lastGood = new Map<
-  string,
-  { payload: Redskilled.Payload; render: NonNullable<Redskilled.Status["render"]>; at: string }
->()
+const lastGood = new Map<string, { payload: Redskilled.Payload; at: string }>()
 
 export const redskilledHandlers = HttpApiBuilder.group(InstanceHttpApi, "redskilled", (handlers) =>
   Effect.gen(function* () {
@@ -149,13 +146,7 @@ function project(snapshot: Snapshot, key: string, scope: Redskilled.Scope): Reds
     registered_projects: registered ? [snapshot.state.project_label] : [],
     workers,
   }
-  const render = {
-    line: `${workers.length} Worker${workers.length === 1 ? "" : "s"} · ${snapshot.state.project_label}`,
-    degraded: true,
-    stale: true,
-    generated_at: now,
-  }
-  lastGood.set(key, { payload, render, at: now })
+  lastGood.set(key, { payload, at: now })
   const consent: Redskilled.Consent = registered ? "accepted" : "unknown"
   return {
     lifecycle: "degraded",
@@ -168,7 +159,6 @@ function project(snapshot: Snapshot, key: string, scope: Redskilled.Scope): Reds
       runner: "ACP",
     },
     payload,
-    render,
     last_success_at: now,
   }
 }
@@ -180,7 +170,7 @@ function unavailable(key: string, scope: Redskilled.Scope, message: string): Red
     consent: "unknown",
     scope,
     native: true,
-    ...(cached ? { payload: cached.payload, render: cached.render, last_success_at: cached.at } : {}),
+    ...(cached ? { payload: cached.payload, last_success_at: cached.at } : {}),
     error: message,
   }
 }
