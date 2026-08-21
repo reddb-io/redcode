@@ -51,6 +51,30 @@ const stepSettlementOptions = {
 export const UnknownError = SessionMessage.UnknownError
 export type UnknownError = SessionMessage.UnknownError
 
+export namespace Agent {
+  const AgentBase = {
+    ...Base,
+    agent: Schema.String,
+    messageID: SessionMessage.ID,
+  }
+
+  /**
+   * Live waterfall fired before each step's model request. Listeners return
+   * `{ messages }` to rewrite the history that reaches the LLM, or throw to
+   * abort the turn. This is the V2 replacement for the legacy V1
+   * `experimental.chat.messages.transform` hook and gives plugins proper
+   * `next()`-based mutation semantics with short-circuit.
+   */
+  export const PreStep = Event.define({
+    type: "session.next.agent.pre_step",
+    schema: {
+      ...AgentBase,
+      messages: Schema.Array(Schema.Unknown),
+    },
+  })
+  export type PreStep = typeof PreStep.Type
+}
+
 export const AgentSwitched = Event.define({
   type: "session.next.agent.switched",
   ...options,
