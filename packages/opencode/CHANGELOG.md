@@ -1,5 +1,16 @@
 # opencode
 
+## 0.11.0
+
+### Minor Changes
+
+- 3f7128c: Add observable start and end lifecycle events around each agent turn.
+
+### Patch Changes
+
+- 0df4500: Run EventV2 serial dispatch listeners sequentially instead of concurrently.
+- 3b8372f: Expose V2 compatibility surfaces alongside legacy plugin hooks for agent pre-step and pre-system transforms, tool post-execution, command pre-execution, permission requests, compaction preparation, and completed text. Preserve mutations produced by legacy hooks as the default input for the new waterfall stages.
+
 ## 0.10.0
 
 ### Minor Changes
