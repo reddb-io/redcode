@@ -317,6 +317,24 @@ export namespace Tool {
   })
   export type PreExecute = typeof PreExecute.Type
 
+  /**
+   * Live event fired after a tool's `execute` completes (success or failure).
+   * Listeners observe the call input and the output; no veto (the call already
+   * happened). This is the V2 replacement for the legacy V1 `tool.execute.after`
+   * hook and gives plugins proper parallel dispatch with result collection.
+   */
+  export const PostExecute = Event.define({
+    type: "session.next.tool.post_execute",
+    schema: {
+      ...ToolBase,
+      tool: Schema.String,
+      args: Schema.Record(Schema.String, Schema.Unknown),
+      output: Schema.Unknown,
+      failed: Schema.Boolean,
+    },
+  })
+  export type PostExecute = typeof PostExecute.Type
+
   export namespace Input {
     export const Started = Event.define({
       type: "session.next.tool.input.started",

@@ -135,6 +135,19 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
               output,
             )
+            // V2 shim: live observation event. Plugins subscribe via `events.subscribe`
+            // or `events.subscribeAll`; no veto (the call already happened).
+            const postPayload = {
+              tool: item.id,
+              sessionID: ctx.sessionID,
+              callID: ctx.callID ?? "",
+              args,
+              output,
+              failed: false,
+            }
+            yield* events
+              .publish(SessionEvent.Tool.PostExecute, postPayload as never)
+              .pipe(Effect.ignore)
             if (options.abortSignal?.aborted) {
               yield* input.processor.completeToolCall(options.toolCallId, output)
             }
