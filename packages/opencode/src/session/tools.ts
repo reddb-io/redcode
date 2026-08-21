@@ -117,7 +117,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   return yield* next()
                 }),
             ])
-            const finalArgs = decided.args as typeof args
+            const finalArgs = (decided as { args: typeof args }).args
             const result = yield* item.execute(finalArgs, ctx)
             const output = {
               ...result,
