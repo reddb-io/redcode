@@ -12,7 +12,7 @@ import { SessionID } from "./session-id"
 import { Location } from "./location"
 import { SessionMessage } from "./session-message"
 import { Revert } from "./revert"
-import { PermissionV1 } from "./v1/permission"
+import { PermissionV1 } from "./permission-v1"
 
 export { FileAttachment }
 
