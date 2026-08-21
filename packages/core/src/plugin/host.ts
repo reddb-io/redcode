@@ -10,6 +10,7 @@ import { CommandV2 } from "../command"
 import { Credential } from "../credential"
 import { Integration } from "../integration"
 import { ModelV2 } from "../model"
+import { OperationHook } from "../operation-hook"
 import { PluginV2 } from "../plugin"
 import { ProviderV2 } from "../provider"
 import { Reference } from "../reference"
@@ -25,6 +26,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
   const catalog = yield* Catalog.Service
   const commands = yield* CommandV2.Service
   const integration = yield* Integration.Service
+  const operationHooks = yield* OperationHook.Service
   const reference = yield* Reference.Service
   const skill = yield* SkillV2.Service
 
@@ -254,6 +256,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
           }),
         ),
     },
+    hook: operationHooks.register,
     plugin: {
       add: (input) => plugin.add(PluginV2.ID.make(input.id), input.effect),
       remove: (id) => plugin.remove(PluginV2.ID.make(id)),

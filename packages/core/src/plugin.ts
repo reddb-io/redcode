@@ -11,6 +11,7 @@ import { Catalog } from "./catalog"
 import { CommandV2 } from "./command"
 import { EventV2 } from "./event"
 import { Integration } from "./integration"
+import { OperationHook } from "./operation-hook"
 import { KeyedMutex } from "./effect/keyed-mutex"
 import { PluginHost } from "./plugin/host"
 import { Reference } from "./reference"
@@ -180,6 +181,7 @@ export const locationLayer = layer.pipe(
   Layer.provideMerge(Catalog.locationLayer),
   Layer.provideMerge(CommandV2.locationLayer),
   Layer.provideMerge(Integration.locationLayer),
+  Layer.provideMerge(OperationHook.locationLayer),
   Layer.provideMerge(Reference.locationLayer),
 )
 
@@ -195,6 +197,7 @@ export const node = makeLocationNode({
     Catalog.node,
     CommandV2.node,
     Integration.node,
+    OperationHook.node,
     Reference.node,
     SkillV2.node,
   ],

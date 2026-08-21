@@ -29,6 +29,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { OperationHookBridge } from "@/operation-hook-bridge"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -70,6 +71,7 @@ const live: Layer.Layer<
   | EventV2Bridge.Service
   | LLMClientService
   | RuntimeFlags.Service
+  | OperationHookBridge.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -81,6 +83,7 @@ const live: Layer.Layer<
     const events = yield* EventV2Bridge.Service
     const llmClient = yield* LLMClient.Service
     const flags = yield* RuntimeFlags.Service
+    const hooks = yield* OperationHookBridge.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
       yield* Effect.logInfo("stream", {
@@ -110,6 +113,7 @@ const live: Layer.Layer<
         plugin,
         flags,
         isWorkflow,
+        hooks,
       })
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
@@ -398,6 +402,7 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     llmClient,
     RuntimeFlags.node,
+    OperationHookBridge.node,
   ],
 })
 

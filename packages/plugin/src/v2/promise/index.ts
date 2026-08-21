@@ -10,3 +10,12 @@ export type { CommandDraft, CommandHooks } from "./command.js"
 export type { IntegrationDraft, IntegrationHooks, IntegrationMethodRegistration } from "./integration.js"
 export type { ReferenceDraft, ReferenceHooks } from "./reference.js"
 export type { SkillDraft, SkillHooks } from "./skill.js"
+export { Definition as OperationDefinition, Operation } from "./operation-hook.js"
+export type {
+  Data as OperationData,
+  Hooks as OperationHooks,
+  Next as OperationNext,
+  Observer as OperationObserver,
+  Payload as OperationPayload,
+  WaterfallHandler as OperationWaterfallHandler,
+} from "./operation-hook.js"

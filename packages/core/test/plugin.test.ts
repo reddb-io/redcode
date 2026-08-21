@@ -1,8 +1,9 @@
 import { describe, expect } from "bun:test"
-import { Effect, Exit, Fiber } from "effect"
-import { define } from "@opencode-ai/plugin/v2/effect"
+import { DateTime, Effect, Exit, Fiber } from "effect"
+import { define, Operation } from "@opencode-ai/plugin/v2/effect"
 import { AgentV2 } from "@opencode-ai/core/agent"
 import { PluginV2 } from "@opencode-ai/core/plugin"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
 
@@ -82,6 +83,36 @@ describe("PluginV2", () => {
       yield* plugins.add(first, () => Effect.void)
 
       expect(yield* plugins.list()).toEqual([first, second])
+    }),
+  )
+
+  it.effect("disposes operation hooks when a plugin is removed", () =>
+    Effect.gen(function* () {
+      const plugins = yield* PluginV2.Service
+      const hooks = yield* OperationHook.Service
+      const id = PluginV2.ID.make("operation-hook")
+      yield* plugins.add(
+        id,
+        define({
+          id,
+          effect: (ctx) =>
+            ctx.hook
+              .waterfall(Operation.Text.Complete, (event) => ({ ...event.data, text: "plugin" }))
+              .pipe(Effect.asVoid),
+        }).effect,
+      )
+
+      const input = {
+        timestamp: yield* DateTime.now,
+        sessionID: "session",
+        messageID: "message",
+        partID: "part",
+        text: "original",
+      }
+      expect((yield* hooks.waterfall(Operation.Text.Complete, input)).text).toBe("plugin")
+
+      yield* plugins.remove(id)
+      expect((yield* hooks.waterfall(Operation.Text.Complete, input)).text).toBe("original")
     }),
   )
 })

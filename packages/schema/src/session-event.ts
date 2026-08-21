@@ -60,11 +60,10 @@ export namespace Agent {
   }
 
   /**
-   * Live waterfall fired before each step's model request. Listeners return
-   * `{ messages }` to rewrite the history that reaches the LLM, or throw to
-   * abort the turn. This is the V2 replacement for the legacy V1
-   * `experimental.chat.messages.transform` hook and gives plugins proper
-   * `next()`-based mutation semantics with short-circuit.
+   * Live waterfall fired before each step's model request. V2 plugins return
+   * transformed data to rewrite the history that reaches the LLM, or throw to
+   * abort the turn. Calling `next()` continues the Location-scoped waterfall;
+   * skipping it short-circuits.
    */
   export const PreStep = Event.define({
     type: "session.next.agent.pre_step",
@@ -77,10 +76,9 @@ export namespace Agent {
 
   /**
    * Live waterfall fired when assembling the system prompt for a model call.
-   * Listeners return `{ system }` to rewrite the system prompt that reaches
-   * the LLM, or throw to abort. This is the V2 replacement for the legacy V1
-   * `experimental.chat.system.transform` hook and gives plugins proper
-   * `next()`-based mutation semantics with short-circuit.
+   * V2 plugins return transformed data to rewrite the system prompt that
+   * reaches the LLM, or throw to abort. Calling `next()` continues the
+   * Location-scoped waterfall; skipping it short-circuits.
    */
   export const PreSystem = Event.define({
     type: "session.next.agent.pre_system",
@@ -298,10 +296,8 @@ export namespace Text {
 
   /**
    * Live waterfall fired when a text part's stream completes, before the
-   * final value is persisted. Listeners return `{ text }` to transform the
-   * final text or throw to veto. This is the V2 replacement for the legacy
-   * V1 `experimental.text.complete` hook and gives plugins proper
-   * `next()`-based mutation semantics.
+   * final value is persisted. V2 plugins register through
+   * `ctx.hook.waterfall` to transform the final text or throw to veto.
    */
   export const Complete = Event.define({
     type: "session.next.text.complete",
@@ -363,9 +359,8 @@ export namespace Tool {
 
   /**
    * Live waterfall fired immediately before a tool's `execute` runs.
-   * Listeners return `{ args }` to transform the call input, or throw to veto.
-   * This is the V2 replacement for the legacy V1 `tool.execute.before` hook
-   * and gives plugins proper deny/transform semantics with `next()`.
+   * V2 plugins register through `ctx.hook.waterfall` to transform the call
+   * input or throw to veto before execution.
    */
   export const PreExecute = Event.define({
     type: "session.next.tool.pre_execute",
@@ -381,7 +376,7 @@ export namespace Tool {
    * Live event fired after a tool's `execute` completes (success or failure).
    * Listeners observe the call input and the output; no veto (the call already
    * happened). This is the V2 replacement for the legacy V1 `tool.execute.after`
-   * hook and gives plugins proper parallel dispatch with result collection.
+   * hook and dispatches Location-scoped observers in parallel.
    */
   export const PostExecute = Event.define({
     type: "session.next.tool.post_execute",
@@ -506,9 +501,8 @@ export namespace Permission {
   /**
    * Live event fired when a permission request is queued for the user. Plugins
    * observe (no veto — the ask already happened). This is the V2 surface for
-   * the legacy V1 `permission.ask` hook; subscribe via `events.subscribe` or
-   * `events.subscribeAll` to attach audit/telemetry without registering a V1
-   * plugin.
+   * the legacy V1 `permission.ask` hook; V2 plugins register a parallel
+   * observer through `ctx.hook.parallel`.
    */
   export const Requested = Event.define({
     type: "session.next.permission.requested",
@@ -527,10 +521,9 @@ export namespace Command {
   }
 
   /**
-   * Live waterfall fired before a slash command runs. Listeners return
-   * `{ parts }` to rewrite the prompt payload, or throw to veto. This is
-   * the V2 replacement for the legacy V1 `command.execute.before` hook
-   * and gives plugins proper deny/transform semantics with `next()`.
+   * Live waterfall fired before a slash command runs. V2 plugins return
+   * transformed data to rewrite the prompt payload, or throw to veto through
+   * `ctx.hook.waterfall`.
    */
   export const PreExecute = Event.define({
     type: "session.next.command.pre_execute",
@@ -569,8 +562,8 @@ export namespace Compaction {
   /**
    * Live waterfall fired right before a compaction runs. Listeners return
    * `{ context, prompt }` to inject context or replace the compaction prompt.
-   * This is the V2 replacement for the legacy V1 `experimental.session.compacting`
-   * hook and gives plugins proper `next()`-based mutation semantics.
+   * V2 plugins register through `ctx.hook.waterfall` and use `next()` to
+   * compose transformations in registration order.
    */
   export const PreCompact = Event.define({
     type: "session.next.compaction.pre_compact",

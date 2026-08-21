@@ -15,7 +15,7 @@ import { Truncate } from "@/tool/truncate"
 import { Plugin } from "@/plugin"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
-import { Effect } from "effect"
+import { Cause, DateTime, Effect, Exit } from "effect"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
@@ -25,6 +25,9 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { OperationHookBridge } from "@/operation-hook-bridge"
+import { SessionMessage } from "@opencode-ai/schema/session-message"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -48,6 +51,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   bypassAgentCheck: boolean
   messages: SessionV1.WithParts[]
   promptOps: TaskPromptOps
+  publishEvent: EventV2.Interface["publish"]
+  structuredOutputTool?: AITool
 }) {
   const tools: Record<string, AITool> = {}
   const run = yield* EffectBridge.make()
@@ -57,6 +62,62 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
+  const hooks = yield* OperationHookBridge.Service
+
+  const withOperationHooks = (toolID: string, item: AITool): AITool => {
+    const execute = item.execute
+    if (!execute) return item
+    return {
+      ...item,
+      execute(args, options) {
+        return run.promise(
+          Effect.gen(function* () {
+            const hookArgs = toRecord(args)
+            yield* plugin.trigger(
+              "tool.execute.before",
+              { tool: toolID, sessionID: input.session.id, callID: options.toolCallId },
+              { args: hookArgs },
+            )
+            const decided = yield* hooks.waterfall(OperationHook.Operation.Tool.PreExecute, {
+              timestamp: yield* DateTime.now,
+              sessionID: input.session.id,
+              assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
+              callID: options.toolCallId ?? "",
+              tool: toolID,
+              args: hookArgs,
+            })
+            const publishPost = (output: unknown, failed: boolean) =>
+              Effect.gen(function* () {
+                const payload = {
+                  timestamp: yield* DateTime.now,
+                  tool: toolID,
+                  sessionID: input.session.id,
+                  assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
+                  callID: options.toolCallId ?? "",
+                  args: decided.args,
+                  output,
+                  failed,
+                }
+                yield* hooks.parallel(OperationHook.Operation.Tool.PostExecute, payload)
+                yield* input.publishEvent(SessionEvent.Tool.PostExecute, payload).pipe(Effect.ignore)
+              })
+            const executed = yield* Effect.promise(() => Promise.resolve(execute(decided.args, options))).pipe(
+              Effect.exit,
+            )
+            if (Exit.isFailure(executed)) {
+              yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
+              return yield* Effect.failCause(executed.cause)
+            }
+            yield* publishPost(executed.value, false)
+            return executed.value
+          }),
+        )
+      },
+    }
+  }
+
+  const withAllOperationHooks = () =>
+    Object.fromEntries(Object.entries(tools).map(([toolID, item]) => [toolID, withOperationHooks(toolID, item)]))
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -105,22 +166,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return run.promise(
           Effect.gen(function* () {
             const ctx = context(args, options)
-            const events = yield* EventV2.Service
-            const decided = yield* events.waterfall(SessionEvent.Tool.PreExecute, [
-              (_e, next) =>
-                Effect.gen(function* () {
-                  yield* plugin.trigger(
-                    "tool.execute.before",
-                    { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-                    { args },
-                  )
-                  const downstream = yield* next()
-                  const downstreamArgs = (downstream as { args?: typeof args } | undefined)?.args
-                  return { args: downstreamArgs ?? args }
-                }),
-            ])
-            const finalArgs = (decided as { args: typeof args }).args
-            const result = yield* item.execute(finalArgs, ctx)
+            const result = yield* item.execute(args, ctx)
             const output = {
               ...result,
               attachments: result.attachments?.map((attachment) => ({
@@ -135,19 +181,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
               output,
             )
-            // V2 shim: live observation event. Plugins subscribe via `events.subscribe`
-            // or `events.subscribeAll`; no veto (the call already happened).
-            const postPayload = {
-              tool: item.id,
-              sessionID: ctx.sessionID,
-              callID: ctx.callID ?? "",
-              args,
-              output,
-              failed: false,
-            }
-            yield* events
-              .publish(SessionEvent.Tool.PostExecute, postPayload as never)
-              .pipe(Effect.ignore)
             if (options.abortSignal?.aborted) {
               yield* input.processor.completeToolCall(options.toolCallId, output)
             }
@@ -197,11 +230,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             const permissionPatterns = parsed.server
               ? [`mcp:${parsed.server}:*`]
               : resourceServers.map((server) => `mcp:${server}:*`)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: MCP_RESOURCE_TOOLS.list, sessionID: ctx.sessionID, callID: opts.toolCallId },
-              { args },
-            )
             yield* ctx.ask({
               permission: "read",
               metadata: parsed.server ? { server: parsed.server } : {},
@@ -280,11 +308,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             const permissionPatterns = parsed.server
               ? [`mcp:${parsed.server}:*`]
               : resourceServers.map((server) => `mcp:${server}:*`)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: MCP_RESOURCE_TOOLS.listTemplates, sessionID: ctx.sessionID, callID: opts.toolCallId },
-              { args },
-            )
             yield* ctx.ask({
               permission: "read",
               metadata: parsed.server ? { server: parsed.server } : {},
@@ -360,11 +383,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             if (!client.getServerCapabilities()?.resources) {
               throw new Error(`MCP server "${parsed.server}" does not support resources`)
             }
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: MCP_RESOURCE_TOOLS.read, sessionID: ctx.sessionID, callID: opts.toolCallId },
-              { args },
-            )
             yield* ctx.ask({
               permission: "read",
               metadata: { server: parsed.server, uri: parsed.uri },
@@ -410,7 +428,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     })
   }
 
-  if (flags.experimentalCodeMode) return tools
+  if (input.structuredOutputTool) tools.StructuredOutput = input.structuredOutputTool
+  if (flags.experimentalCodeMode) return withAllOperationHooks()
 
   for (const [key, entry] of Object.entries(yield* mcp.tools())) {
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
@@ -424,11 +443,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
-          yield* plugin.trigger(
-            "tool.execute.before",
-            { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
-            { args },
-          )
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
             return yield* Effect.promise(() => execute(args, opts))
@@ -514,7 +528,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     tools[key] = item
   }
 
-  return tools
+  return withAllOperationHooks()
 })
 
 function toRecord(value: unknown) {

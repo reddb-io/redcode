@@ -86,6 +86,6 @@ export const Plugin = define({
           })
         }).pipe(Effect.ignoreCause)
       }
-    }).pipe(Effect.forkScoped({ startImmediately: true }))
+    })
   }),
 })

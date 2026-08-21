@@ -16,6 +16,7 @@ import { Integration } from "./integration"
 import { RuntimeInvariant } from "./invariant"
 import { Location } from "./location"
 import { LocationMutation } from "./location-mutation"
+import { OperationHook } from "./operation-hook"
 import { LocationServiceMap } from "./location-service-map"
 import { PermissionV2 } from "./permission"
 import { PluginV2 } from "./plugin"
@@ -72,6 +73,7 @@ export const locationServices = LayerNode.group([
   SystemContextRegistry.node,
   SystemContextBuiltIns.node,
   LocationMutation.node,
+  OperationHook.node,
   FileMutation.node,
   PermissionV2.node,
   ToolOutputStore.node,

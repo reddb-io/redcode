@@ -57,6 +57,8 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { OperationHookBridge } from "@/operation-hook-bridge"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -139,6 +141,7 @@ const layer = Layer.effect(
     const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
     const events = yield* EventV2Bridge.Service
+    const hooks = yield* OperationHookBridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const { db } = database
@@ -1087,9 +1090,9 @@ const layer = Layer.effect(
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         // Turn lifecycle: fire `Turn.Started` once per turn (before any step).
-        yield* events
-          .publish(SessionEvent.Turn.Started, { sessionID, timestamp: yield* DateTime.now })
-          .pipe(Effect.ignore)
+        const turnStarted = { sessionID, timestamp: yield* DateTime.now }
+        yield* hooks.parallel(OperationHook.Operation.Turn.Started, turnStarted)
+        yield* events.publish(SessionEvent.Turn.Started, turnStarted).pipe(Effect.ignore)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
@@ -1230,6 +1233,19 @@ const layer = Layer.effect(
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
             const promptOps = yield* ops()
 
+            if (step === 1)
+              yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
+
+            yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
+            const decided = yield* hooks.waterfall(OperationHook.Operation.Agent.PreStep, {
+              timestamp: yield* DateTime.now,
+              sessionID,
+              agent: agent.name,
+              messageID: handle.message.id,
+              messages: msgs,
+            })
+            msgs = decided.messages as typeof msgs
+
             const tools = yield* SessionTools.resolve({
               agent,
               session,
@@ -1238,6 +1254,17 @@ const layer = Layer.effect(
               bypassAgentCheck,
               messages: msgs,
               promptOps,
+              publishEvent: events.publish,
+              ...(lastUser.format?.type === "json_schema"
+                ? {
+                    structuredOutputTool: createStructuredOutputTool({
+                      schema: lastUser.format.schema,
+                      onSuccess(output) {
+                        structured = output
+                      },
+                    }),
+                  }
+                : {}),
             }).pipe(
               Effect.provideService(Plugin.Service, plugin),
               Effect.provideService(Permission.Service, permission),
@@ -1245,34 +1272,8 @@ const layer = Layer.effect(
               Effect.provideService(MCP.Service, mcp),
               Effect.provideService(Truncate.Service, truncate),
               Effect.provideService(RuntimeFlags.Service, flags),
+              Effect.provideService(OperationHookBridge.Service, hooks),
             )
-
-            if (lastUser.format?.type === "json_schema") {
-              tools["StructuredOutput"] = createStructuredOutputTool({
-                schema: lastUser.format.schema,
-                onSuccess(output) {
-                  structured = output
-                },
-              })
-            }
-
-            if (step === 1)
-              yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
-
-            const decided = yield* events.waterfall(SessionEvent.Agent.PreStep, [
-              (_e, next) =>
-                Effect.gen(function* () {
-                  yield* plugin.trigger(
-                    "experimental.chat.messages.transform",
-                    {},
-                    { messages: msgs },
-                  )
-                  const downstream = yield* next()
-                  const downstreamMsgs = (downstream as { messages?: typeof msgs } | undefined)?.messages
-                  return { messages: downstreamMsgs ?? msgs }
-                }),
-            ])
-            msgs = (decided as { messages: typeof msgs }).messages
 
             const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
@@ -1369,13 +1370,13 @@ const layer = Layer.effect(
         runLoop(input.sessionID).pipe(
           Effect.onExit((exit) =>
             Effect.gen(function* () {
-              yield* events
-                .publish(SessionEvent.Turn.Ended, {
-                  sessionID: input.sessionID,
-                  timestamp: yield* DateTime.now,
-                  finished: Exit.isSuccess(exit),
-                })
-                .pipe(Effect.ignore)
+              const turnEnded = {
+                sessionID: input.sessionID,
+                timestamp: yield* DateTime.now,
+                finished: Exit.isSuccess(exit),
+              }
+              yield* hooks.parallel(OperationHook.Operation.Turn.Ended, turnEnded)
+              yield* events.publish(SessionEvent.Turn.Ended, turnEnded).pipe(Effect.ignore)
             }),
           ),
         ),
@@ -1498,15 +1499,14 @@ const layer = Layer.effect(
         { command: input.command, sessionID: input.sessionID, arguments: input.arguments },
         { parts },
       )
-      const decidedCommand = yield* events.waterfall(SessionEvent.Command.PreExecute, [
-        (_e, next) =>
-          Effect.gen(function* () {
-            const downstream = yield* next()
-            const downstreamParts = (downstream as { parts?: typeof parts } | undefined)?.parts
-            return { parts: downstreamParts ?? parts }
-          }),
-      ])
-      parts = (decidedCommand as { parts: typeof parts }).parts
+      const decidedCommand = yield* hooks.waterfall(OperationHook.Operation.Command.PreExecute, {
+        timestamp: yield* DateTime.now,
+        sessionID: input.sessionID,
+        command: input.command,
+        arguments: input.arguments,
+        parts,
+      })
+      parts = decidedCommand.parts as typeof parts
 
       const result = yield* prompt({
         sessionID: input.sessionID,
@@ -1668,6 +1668,7 @@ export const node = LayerNode.make({
     SystemPrompt.node,
     LLM.node,
     EventV2Bridge.node,
+    OperationHookBridge.node,
     RuntimeFlags.node,
     Database.node,
   ],

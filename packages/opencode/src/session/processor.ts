@@ -2,7 +2,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
-import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
+import { Cause, DateTime, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
@@ -26,6 +26,8 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionEvent } from "@opencode-ai/core/session/event"
 import { Database } from "@opencode-ai/core/database/database"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
+import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { OperationHookBridge } from "@/operation-hook-bridge"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -94,6 +96,7 @@ const layer = Layer.effect(
     const status = yield* SessionStatus.Service
     const image = yield* Image.Service
     const events = yield* EventV2Bridge.Service
+    const hooks = yield* OperationHookBridge.Service
     const database = yield* Database.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
@@ -524,15 +527,14 @@ const layer = Layer.effect(
               },
               { text: ctx.currentText.text },
             )
-            const textCompleteV2 = yield* events.waterfall(SessionEvent.Text.Complete, [
-              (_e, next) =>
-                Effect.gen(function* () {
-                  const downstream = yield* next()
-                  const downstreamText = (downstream as { text?: string } | undefined)?.text
-                  return { text: downstreamText ?? textCompleteV1.text }
-                }),
-            ])
-            ctx.currentText.text = (textCompleteV2 as { text: string }).text
+            const textCompleteV2 = yield* hooks.waterfall(OperationHook.Operation.Text.Complete, {
+              timestamp: yield* DateTime.now,
+              sessionID: ctx.sessionID,
+              messageID: ctx.assistantMessage.id,
+              partID: ctx.currentText.id,
+              text: textCompleteV1.text,
+            })
+            ctx.currentText.text = textCompleteV2.text
             {
               const end = Date.now()
               ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
@@ -722,6 +724,7 @@ export const node = LayerNode.make({
     SessionStatus.node,
     Image.node,
     EventV2Bridge.node,
+    OperationHookBridge.node,
     Database.node,
   ],
 })

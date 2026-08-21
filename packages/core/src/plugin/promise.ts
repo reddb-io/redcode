@@ -70,6 +70,29 @@ export function fromPromise(plugin: Plugin) {
               resolve: (connection) => Effect.runPromiseWith(context)(host.integration.connection.resolve(connection)),
             },
           },
+          hook: {
+            waterfall: (definition, callback) =>
+              register(
+                host.hook.waterfall(definition, (event, next) =>
+                  Effect.gen(function* () {
+                    const dispatchContext = yield* Effect.context<never>()
+                    return yield* Effect.promise((signal) =>
+                      Promise.resolve(
+                        callback(event, (data) => Effect.runPromiseWith(dispatchContext)(next(data), { signal })),
+                      ),
+                    )
+                  }),
+                ),
+              ),
+            serial: (definition, callback) =>
+              register(
+                host.hook.serial(definition, (event) => Effect.promise((_signal) => Promise.resolve(callback(event)))),
+              ),
+            parallel: (definition, callback) =>
+              register(
+                host.hook.parallel(definition, (event) => Effect.promise((_signal) => Promise.resolve(callback(event)))),
+              ),
+          },
           plugin: {
             add: (input) => {
               const child = fromPromise(input)
