@@ -8,6 +8,7 @@ import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
 import { Agent } from "@/agent/agent"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
@@ -375,6 +376,23 @@ const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
+      const compactingV2 = yield* events.waterfall(SessionEvent.Compaction.PreCompact, [
+        (_e, next) =>
+          Effect.gen(function* () {
+            const downstream = yield* next()
+            const downstreamCtx = (downstream as { context?: unknown[] } | undefined)?.context
+            const downstreamPrompt = (downstream as { prompt?: string } | undefined)?.prompt
+            return {
+              context: downstreamCtx ?? compacting.context,
+              prompt: downstreamPrompt ?? compacting.prompt,
+            }
+          }),
+      ])
+      const compactingFinal = compactingV2 as { context: unknown[]; prompt: string | undefined }
+      // Mutate the V1 trigger result with the V2-decided context/prompt so the
+      // downstream code keeps working with a single source of truth.
+      ;(compacting as { context: unknown[] }).context = compactingFinal.context
+      ;(compacting as { prompt: string | undefined }).prompt = compactingFinal.prompt
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
