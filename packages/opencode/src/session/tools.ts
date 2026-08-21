@@ -1,5 +1,7 @@
 import { Agent } from "@/agent/agent"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { EventV2 } from "@opencode-ai/core/event"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 import { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import { MCP } from "@/mcp"
@@ -103,12 +105,20 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return run.promise(
           Effect.gen(function* () {
             const ctx = context(args, options)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-              { args },
-            )
-            const result = yield* item.execute(args, ctx)
+            const events = yield* EventV2.Service
+            const decided = yield* events.waterfall(SessionEvent.Tool.PreExecute, [
+              (_e, next) =>
+                Effect.gen(function* () {
+                  yield* plugin.trigger(
+                    "tool.execute.before",
+                    { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
+                    { args },
+                  )
+                  return yield* next()
+                }),
+            ])
+            const finalArgs = (decided as { args: typeof args }).args
+            const result = yield* item.execute(finalArgs, ctx)
             const output = {
               ...result,
               attachments: result.attachments?.map((attachment) => ({
