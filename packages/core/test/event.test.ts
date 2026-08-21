@@ -268,6 +268,57 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("runs serial dispatch listeners one at a time", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const firstStarted = yield* Deferred.make<void>()
+      const releaseFirst = yield* Deferred.make<void>()
+      const secondStarted = yield* Deferred.make<void>()
+      const dispatch = yield* events
+        .serial(Message, [
+          () =>
+            Deferred.succeed(firstStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseFirst)),
+              Effect.as("first"),
+            ),
+          () => Deferred.succeed(secondStarted, undefined).pipe(Effect.as("second")),
+        ])
+        .pipe(Effect.forkChild)
+
+      yield* Deferred.await(firstStarted)
+      yield* Effect.yieldNow
+      expect(yield* Deferred.isDone(secondStarted)).toBe(false)
+
+      yield* Deferred.succeed(releaseFirst, undefined)
+      expect(yield* Fiber.join(dispatch)).toEqual(["first", "second"])
+      expect(yield* Deferred.isDone(secondStarted)).toBe(true)
+    }),
+  )
+
+  it.effect("runs parallel dispatch listeners concurrently", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const firstStarted = yield* Deferred.make<void>()
+      const releaseFirst = yield* Deferred.make<void>()
+      const secondStarted = yield* Deferred.make<void>()
+      const dispatch = yield* events
+        .parallel(Message, [
+          () =>
+            Deferred.succeed(firstStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseFirst)),
+              Effect.as("first"),
+            ),
+          () => Deferred.succeed(secondStarted, undefined).pipe(Effect.as("second")),
+        ])
+        .pipe(Effect.forkChild)
+
+      yield* Deferred.await(firstStarted)
+      yield* Deferred.await(secondStarted)
+      yield* Deferred.succeed(releaseFirst, undefined)
+      expect(yield* Fiber.join(dispatch)).toEqual(["first", "second"])
+    }),
+  )
+
   it.effect("isolates observer defects after durable events commit", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

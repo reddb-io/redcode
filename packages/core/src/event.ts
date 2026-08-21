@@ -683,10 +683,7 @@ export const layerWith = (options?: LayerOptions) =>
       ): Effect.Effect<ReadonlyArray<R>> =>
         Effect.suspend(() => {
           const event = placeholderEvent<D>(definition)
-          return Effect.forEach(listeners, (listener) => listener(event), {
-            concurrency: "unbounded",
-            discard: false,
-          })
+          return Effect.forEach(listeners, (listener) => listener(event))
         })
 
       const parallel = <D extends Definition, R>(
