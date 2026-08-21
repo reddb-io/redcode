@@ -145,6 +145,36 @@ export interface Interface {
   ) => Effect.Effect<string | undefined>
   readonly remove: (aggregateID: string) => Effect.Effect<void>
   readonly claim: (aggregateID: string, ownerID: string) => Effect.Effect<void>
+  /**
+   * Waterfall dispatch: listeners run sequentially in registration order. Each
+   * listener receives the event and a `next()` callback that delegates to the
+   * downstream listener. Skipping `next()` short-circuits and the listener's
+   * return value replaces whatever `next` would have produced. Mirrors the
+   * dsh `ctx.waterfall` semantics and is the right shape for `tool.execute.before`,
+   * `command.execute.before`, and `experimental.chat.messages.transform`.
+   */
+  readonly waterfall: <D extends Definition, R>(
+    definition: D,
+    listeners: ReadonlyArray<(event: Payload<D>, next: () => Effect.Effect<R>) => Effect.Effect<R>>,
+  ) => Effect.Effect<R>
+  /**
+   * Serial dispatch: listeners run sequentially in registration order, each
+   * awaits the previous, and the dispatch collects every listener's value. Use
+   * when every listener must run (decision aggregation, telemetry stages).
+   */
+  readonly serial: <D extends Definition, R>(
+    definition: D,
+    listeners: ReadonlyArray<(event: Payload<D>) => Effect.Effect<R>>,
+  ) => Effect.Effect<ReadonlyArray<R>>
+  /**
+   * Parallel dispatch: listeners run concurrently with `Effect.forEach`'s
+   * concurrency=unbounded. Returns every listener's value, never short-circuits.
+   * Use for observation-only subscribers that must not block each other.
+   */
+  readonly parallel: <D extends Definition, R>(
+    definition: D,
+    listeners: ReadonlyArray<(event: Payload<D>) => Effect.Effect<R>>,
+  ) => Effect.Effect<ReadonlyArray<R>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Event") {}
@@ -619,6 +649,58 @@ export const layerWith = (options?: LayerOptions) =>
           projectors.set(definition.type, list)
         })
 
+      /**
+       * `waterfall`/`serial`/`parallel` don't take a published event; the
+       * listeners synthesise the shape they need. We pass a placeholder with
+       * the right `type` so `Payload<D>` typechecks; listeners that read fields
+       * are expected to gate themselves on the dispatch they subscribed to.
+       */
+      const placeholderEvent = <D extends Definition>(definition: D): Payload<D> =>
+        ({ id: ID.create(), type: definition.type, data: undefined }) as Payload<D>
+
+      const waterfall = <D extends Definition, R>(
+        _definition: D,
+        listeners: ReadonlyArray<(event: Payload<D>, next: () => Effect.Effect<R>) => Effect.Effect<R>>,
+      ): Effect.Effect<R> => {
+        if (listeners.length === 0) {
+          return Effect.die(new Error(`waterfall called with zero listeners`))
+        }
+        const head = listeners[0]!
+        const tail = listeners.slice(1)
+        return Effect.suspend(() => {
+          const event = placeholderEvent<D>(_definition)
+          return head(event, () =>
+            tail.length === 0
+              ? Effect.die(new Error(`waterfall short-circuited without a terminal listener`))
+              : waterfall(_definition, tail),
+          )
+        })
+      }
+
+      const serial = <D extends Definition, R>(
+        definition: D,
+        listeners: ReadonlyArray<(event: Payload<D>) => Effect.Effect<R>>,
+      ): Effect.Effect<ReadonlyArray<R>> =>
+        Effect.suspend(() => {
+          const event = placeholderEvent<D>(definition)
+          return Effect.forEach(listeners, (listener) => listener(event), {
+            concurrency: "unbounded",
+            discard: false,
+          })
+        })
+
+      const parallel = <D extends Definition, R>(
+        definition: D,
+        listeners: ReadonlyArray<(event: Payload<D>) => Effect.Effect<R>>,
+      ): Effect.Effect<ReadonlyArray<R>> =>
+        Effect.suspend(() => {
+          const event = placeholderEvent<D>(definition)
+          return Effect.forEach(listeners, (listener) => listener(event), {
+            concurrency: "unbounded",
+            discard: false,
+          })
+        })
+
       return Service.of({
         publish,
         subscribe,
@@ -627,6 +709,9 @@ export const layerWith = (options?: LayerOptions) =>
         listen,
         project,
         replay,
+        waterfall,
+        serial,
+        parallel,
         replayAll,
         remove,
         claim,
