@@ -1,5 +1,11 @@
 # opencode
 
+## 0.11.1
+
+### Patch Changes
+
+- 68f163c: Remove the experimental global TUI statusline, its configuration, and its plugin extension API.
+
 ## 0.11.0
 
 ### Minor Changes
