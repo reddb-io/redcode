@@ -2,7 +2,7 @@ export * as OperationHookBridge from "./operation-hook-bridge"
 
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Location } from "@opencode-ai/core/location"
-import { LocationServiceMap } from "@opencode-ai/core/location-service-map"
+import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
 import { OperationHook } from "@opencode-ai/core/operation-hook"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Context, Effect, Layer } from "effect"
@@ -47,8 +47,6 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer, deps: [LocationServiceMap.node] })
-
 export const passthroughLayer = Layer.succeed(
   Service,
   Service.of({
@@ -57,3 +55,11 @@ export const passthroughLayer = Layer.succeed(
     parallel: () => Effect.void,
   }),
 )
+
+const locationServiceMapNode = LayerNode.make({
+  service: LocationServiceMap.Service,
+  layer: locationServiceMapLayer,
+  deps: [],
+})
+
+export const node = LayerNode.make({ service: Service, layer, deps: [locationServiceMapNode] })
