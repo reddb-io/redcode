@@ -277,6 +277,22 @@ export namespace Tool {
     callID: Schema.String,
   }
 
+  /**
+   * Live waterfall fired immediately before a tool's `execute` runs.
+   * Listeners return `{ args }` to transform the call input, or throw to veto.
+   * This is the V2 replacement for the legacy V1 `tool.execute.before` hook
+   * and gives plugins proper deny/transform semantics with `next()`.
+   */
+  export const PreExecute = Event.define({
+    type: "session.next.tool.pre_execute",
+    schema: {
+      ...ToolBase,
+      tool: Schema.String,
+      args: Schema.Record(Schema.String, Schema.Unknown),
+    },
+  })
+  export type PreExecute = typeof PreExecute.Type
+
   export namespace Input {
     export const Started = Event.define({
       type: "session.next.tool.input.started",
