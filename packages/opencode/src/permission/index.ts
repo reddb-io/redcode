@@ -6,6 +6,7 @@ import { Deferred, Effect, Layer, Context } from "effect"
 import os from "os"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 
 export const Event = PermissionV1.Event
 
@@ -98,6 +99,7 @@ const layer = Layer.effect(
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
       yield* events.publish(Event.Asked, info)
+      yield* events.publish(SessionEvent.Permission.Requested, info as never).pipe(Effect.ignore)
       return yield* Effect.ensuring(
         Deferred.await(deferred),
         Effect.sync(() => {
