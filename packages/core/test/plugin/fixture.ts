@@ -1,5 +1,6 @@
 import { AgentV2 } from "@opencode-ai/core/agent"
 import { AISDK } from "@opencode-ai/core/aisdk"
+import { CapabilityRegistry } from "@opencode-ai/core/capability"
 import { Catalog } from "@opencode-ai/core/catalog"
 import { CommandV2 } from "@opencode-ai/core/command"
 import { Credential } from "@opencode-ai/core/credential"
@@ -27,6 +28,8 @@ const npmLayer = Layer.succeed(
   }),
 )
 
+const capabilityLayer = CapabilityRegistry.defaultLayer
+
 export const PluginTestLayer = AppNodeBuilder.build(
   LayerNode.group([
     FileSystem.node,
@@ -39,6 +42,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     PluginV2.node,
     AgentV2.node,
     AISDK.node,
+    CapabilityRegistry.node,
     Catalog.node,
     CommandV2.node,
     Integration.node,
@@ -48,5 +52,6 @@ export const PluginTestLayer = AppNodeBuilder.build(
   [
     [Location.node, tempLocationLayer],
     [Npm.node, npmLayer],
+    [CapabilityRegistry.node, capabilityLayer],
   ],
 )
