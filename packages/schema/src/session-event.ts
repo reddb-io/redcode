@@ -500,6 +500,22 @@ export namespace Compaction {
   })
   export type Started = typeof Started.Type
 
+  /**
+   * Live waterfall fired right before a compaction runs. Listeners return
+   * `{ context, prompt }` to inject context or replace the compaction prompt.
+   * This is the V2 replacement for the legacy V1 `experimental.session.compacting`
+   * hook and gives plugins proper `next()`-based mutation semantics.
+   */
+  export const PreCompact = Event.define({
+    type: "session.next.compaction.pre_compact",
+    schema: {
+      ...Base,
+      context: Schema.Array(Schema.Unknown),
+      prompt: Schema.optional(Schema.String),
+    },
+  })
+  export type PreCompact = typeof PreCompact.Type
+
   export const Delta = Event.define({
     type: "session.next.compaction.delta",
     schema: {
