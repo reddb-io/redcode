@@ -1452,7 +1452,7 @@ const layer = Layer.effect(
         (part) => part.type !== "file" || !inputFiles.has(fileURLToPath(part.url)),
       )
       const isSubtask = (agent.mode === "subagent" && cmd.subtask !== false) || cmd.subtask === true
-      const parts = isSubtask
+      let parts = isSubtask
         ? [
             {
               type: "subtask" as const,
@@ -1477,6 +1477,15 @@ const layer = Layer.effect(
         { command: input.command, sessionID: input.sessionID, arguments: input.arguments },
         { parts },
       )
+      const decidedCommand = yield* events.waterfall(SessionEvent.Command.PreExecute, [
+        (_e, next) =>
+          Effect.gen(function* () {
+            const downstream = yield* next()
+            const downstreamParts = (downstream as { parts?: typeof parts } | undefined)?.parts
+            return { parts: downstreamParts ?? parts }
+          }),
+      ])
+      parts = (decidedCommand as { parts: typeof parts }).parts
 
       const result = yield* prompt({
         sessionID: input.sessionID,
