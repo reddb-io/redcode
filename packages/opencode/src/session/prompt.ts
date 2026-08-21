@@ -2,6 +2,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
@@ -1253,7 +1254,18 @@ const layer = Layer.effect(
             if (step === 1)
               yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-            yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
+            const decided = yield* events.waterfall(SessionEvent.Agent.PreStep, [
+              (_e, next) =>
+                Effect.gen(function* () {
+                  yield* plugin.trigger(
+                    "experimental.chat.messages.transform",
+                    {},
+                    { messages: msgs },
+                  )
+                  return yield* next()
+                }),
+            ])
+            msgs = (decided as { messages: typeof msgs }).messages
 
             const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
