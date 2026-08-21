@@ -40,6 +40,7 @@ import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { SessionV2 } from "@opencode-ai/core/session"
+import { SessionEvent } from "@opencode-ai/core/session/event"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
 import { Skill } from "../../src/skill"
 import { SystemPrompt } from "../../src/session/system"
@@ -578,6 +579,74 @@ withMcpInstructions.instance(
       yield* Fiber.interrupt(fiber)
     }),
   15_000,
+)
+
+it.instance("loop emits successful turn lifecycle events", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const events = yield* EventV2Bridge.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const lifecycle = new Array<{ type: string; finished?: boolean }>()
+    const off = yield* events.listen((event) => {
+      if (event.type === SessionEvent.Turn.Started.type) lifecycle.push({ type: event.type })
+      if (event.type === SessionEvent.Turn.Ended.type)
+        lifecycle.push({
+          type: event.type,
+          finished: (event.data as typeof SessionEvent.Turn.Ended.data.Type).finished,
+        })
+      return Effect.void
+    })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello" }],
+    })
+    yield* llm.text("world")
+
+    yield* prompt.loop({ sessionID: chat.id })
+    yield* off
+
+    expect(lifecycle).toEqual([
+      { type: SessionEvent.Turn.Started.type },
+      { type: SessionEvent.Turn.Ended.type, finished: true },
+    ])
+  }),
+)
+
+it.instance("loop emits interrupted turn lifecycle events", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const events = yield* EventV2Bridge.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const lifecycle = new Array<{ type: string; finished?: boolean }>()
+    const off = yield* events.listen((event) => {
+      if (event.type === SessionEvent.Turn.Started.type) lifecycle.push({ type: event.type })
+      if (event.type === SessionEvent.Turn.Ended.type)
+        lifecycle.push({
+          type: event.type,
+          finished: (event.data as typeof SessionEvent.Turn.Ended.data.Type).finished,
+        })
+      return Effect.void
+    })
+    yield* llm.hang
+    yield* user(chat.id, "hello")
+    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+    yield* awaitWithTimeout(llm.wait(1), "timed out waiting for turn request", "10 seconds")
+
+    yield* prompt.cancel(chat.id)
+    yield* Fiber.await(fiber)
+    yield* off
+
+    expect(lifecycle).toEqual([
+      { type: SessionEvent.Turn.Started.type },
+      { type: SessionEvent.Turn.Ended.type, finished: false },
+    ])
+  }),
 )
 
 it.instance("legacy prompt emits message events without session.next events", () =>

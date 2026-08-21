@@ -1,6 +1,5 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
-import { DateTime } from "effect"
 import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { SessionEvent } from "@opencode-ai/core/session/event"
@@ -44,7 +43,7 @@ import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
-import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
+import { Cause, DateTime, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
@@ -1089,7 +1088,7 @@ const layer = Layer.effect(
 
         // Turn lifecycle: fire `Turn.Started` once per turn (before any step).
         yield* events
-          .publish(SessionEvent.Turn.Started, { sessionID, timestamp: DateTime.makeUnsafe(Date.now()) })
+          .publish(SessionEvent.Turn.Started, { sessionID, timestamp: yield* DateTime.now })
           .pipe(Effect.ignore)
 
         while (true) {
@@ -1356,15 +1355,6 @@ const layer = Layer.effect(
           continue
         }
 
-        // Turn lifecycle: fire `Turn.Ended` once when the loop exits.
-        yield* events
-          .publish(SessionEvent.Turn.Ended, {
-            sessionID,
-            timestamp: DateTime.makeUnsafe(Date.now()),
-            finished: true,
-          })
-          .pipe(Effect.ignore)
-
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
       },
@@ -1373,7 +1363,23 @@ const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      return yield* state.ensureRunning(
+        input.sessionID,
+        lastAssistant(input.sessionID),
+        runLoop(input.sessionID).pipe(
+          Effect.onExit((exit) =>
+            Effect.gen(function* () {
+              yield* events
+                .publish(SessionEvent.Turn.Ended, {
+                  sessionID: input.sessionID,
+                  timestamp: yield* DateTime.now,
+                  finished: Exit.isSuccess(exit),
+                })
+                .pipe(Effect.ignore)
+            }),
+          ),
+        ),
+      )
     })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
