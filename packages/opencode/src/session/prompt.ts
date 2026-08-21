@@ -1262,7 +1262,9 @@ const layer = Layer.effect(
                     {},
                     { messages: msgs },
                   )
-                  return yield* next()
+                  const downstream = yield* next()
+                  const downstreamMsgs = (downstream as { messages?: typeof msgs } | undefined)?.messages
+                  return { messages: downstreamMsgs ?? msgs }
                 }),
             ])
             msgs = (decided as { messages: typeof msgs }).messages
