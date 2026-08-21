@@ -73,6 +73,22 @@ export namespace Agent {
     },
   })
   export type PreStep = typeof PreStep.Type
+
+  /**
+   * Live waterfall fired when assembling the system prompt for a model call.
+   * Listeners return `{ system }` to rewrite the system prompt that reaches
+   * the LLM, or throw to abort. This is the V2 replacement for the legacy V1
+   * `experimental.chat.system.transform` hook and gives plugins proper
+   * `next()`-based mutation semantics with short-circuit.
+   */
+  export const PreSystem = Event.define({
+    type: "session.next.agent.pre_system",
+    schema: {
+      ...AgentBase,
+      system: Schema.Array(Schema.Unknown),
+    },
+  })
+  export type PreSystem = typeof PreSystem.Type
 }
 
 export const AgentSwitched = Event.define({

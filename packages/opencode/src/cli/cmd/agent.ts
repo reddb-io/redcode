@@ -10,6 +10,7 @@ import { EOL } from "os"
 import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
+import { EventV2Bridge } from "@/event-v2-bridge"
 
 type AgentMode = "all" | "primary" | "subagent"
 
@@ -66,8 +67,11 @@ const AgentCreateCommand = effectCmd({
     if (!maybeCtx) return yield* Effect.die("InstanceRef not provided")
     const ctx = maybeCtx
     const agentSvc = yield* Agent.Service
-    const runLocalEffect = <A, E>(effect: Effect.Effect<A, E>) =>
-      Effect.runPromise(effect.pipe(Effect.provideService(InstanceRef, ctx)))
+    const events = yield* EventV2Bridge.Service
+    const runLocalEffect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.runPromise(
+        effect.pipe(Effect.provideService(InstanceRef, ctx), Effect.provideService(EventV2Bridge.Service, events)) as unknown as Effect.Effect<Promise<A>, E>,
+      )
     yield* Effect.promise(async () => {
       const cliPath = args.path
       const cliDescription = args.description
