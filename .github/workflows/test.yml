@@ -74,6 +74,11 @@ jobs:
         working-directory: packages/client
         run: bun run check:generated
 
+      - name: Build native RPC sidecar
+        if: runner.os == 'Linux'
+        working-directory: packages/rpc-sidecar
+        run: bun run test:native
+
       - name: Run HttpApi exerciser gates
         if: runner.os == 'Linux'
         working-directory: packages/opencode

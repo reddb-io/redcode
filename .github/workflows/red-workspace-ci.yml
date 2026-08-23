@@ -17,8 +17,17 @@ jobs:
       - uses: ./.github/actions/setup-bun
       - name: Check binary-only workflow posture
         run: bun script/test-redcode-release-contract.ts
+      - name: Build the current RPC sidecar
+        working-directory: packages/rpc-sidecar
+        env:
+          REDCODE_RPC_SIDECAR_OUTPUT: dist/release/redcode-rpc-sidecar-linux-x64
+        run: bun run build
       - name: Build the current native binary
+        env:
+          REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: OPENCODE_VERSION="$(node -p "require('./package.json').version")" OPENCODE_CHANNEL=latest OPENCODE_RELEASE=1 ./packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui --skip-upload
+      - name: Verify the native package contains the RPC sidecar
+        run: test -x packages/opencode/dist/redcode-linux-x64/bin/redcode-rpc-sidecar
       - name: Pack the npm distribution without publishing
         run: OPENCODE_VERSION="$(node -p "require('./package.json').version")" OPENCODE_CHANNEL=latest ./packages/opencode/script/publish.ts --pack-only
       - name: Inspect packed package identity
@@ -26,4 +35,4 @@ jobs:
           tarball="$(find packages/opencode/dist/redcode-package -maxdepth 1 -name 'reddb-io-redcode-*.tgz' -print -quit)"
           test -n "$tarball"
           tar -xOf "$tarball" package/package.json |
-            node -e 'let text=""; process.stdin.on("data", (chunk) => text += chunk); process.stdin.on("end", () => { const pkg = JSON.parse(text); const expected = require("./package.json").version; if (pkg.name !== "@reddb-io/redcode" || pkg.version !== expected || pkg.bin.redcode === undefined) process.exit(1) })'
+            node -e 'let text=""; process.stdin.on("data", (chunk) => text += chunk); process.stdin.on("end", () => { const pkg = JSON.parse(text); const expected = require("./package.json").version; if (pkg.name !== "@reddb-io/redcode" || pkg.version !== expected || pkg.bin.redcode === undefined || pkg.bin["redcode-rpc-sidecar"] === undefined) process.exit(1) })'

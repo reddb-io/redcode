@@ -263,7 +263,7 @@ export type SessionsListOutput = {
       }>
     }
   }>
-  readonly cursor: { readonly previous?: string | null; readonly next?: string | null }
+  readonly cursor: { readonly previous?: string; readonly next?: string }
 }
 
 export type SessionsCreateInput = {

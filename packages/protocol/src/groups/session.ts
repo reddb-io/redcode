@@ -3,7 +3,7 @@ import { SessionInput } from "@opencode-ai/schema/session-input"
 import { PromptInput } from "@opencode-ai/schema/prompt-input"
 import { Session } from "@opencode-ai/schema/session"
 import { Project } from "@opencode-ai/schema/project"
-import { AbsolutePath, NonNegativeInt, PositiveInt, RelativePath, statics } from "@opencode-ai/schema/schema"
+import { AbsolutePath, NonNegativeInt, PositiveInt, RelativePath, optional, statics } from "@opencode-ai/schema/schema"
 import { Workspace } from "@opencode-ai/schema/workspace"
 import { Context, Effect, Encoding, Result, Schema, Struct } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
@@ -80,9 +80,34 @@ export const SessionsCursor = Schema.String.pipe(
 )
 export type SessionsCursor = typeof SessionsCursor.Type
 
-const SessionActive = Schema.Struct({
+export const DefaultSessionsLimit = 50
+
+export const SessionActive = Schema.Struct({
   type: Schema.Literal("running"),
 }).annotate({ identifier: "SessionActive" })
+
+export const SessionListInput = Schema.Struct({
+  workspace: Workspace.ID.pipe(Schema.optional),
+  limit: PositiveInt.pipe(Schema.optional),
+  order: Schema.optional(Schema.Union([Schema.Literal("asc"), Schema.Literal("desc")])),
+  search: Schema.optional(Schema.String),
+  directory: AbsolutePath.pipe(Schema.optional),
+  project: Project.ID.pipe(Schema.optional),
+  subpath: RelativePath.pipe(Schema.optional),
+  cursor: SessionsCursor.pipe(Schema.optional),
+}).annotate({ identifier: "SessionListInput" })
+
+export const SessionsResponse = Schema.Struct({
+  data: Schema.Array(Session.Info),
+  cursor: Schema.Struct({
+    previous: optional(SessionsCursor),
+    next: optional(SessionsCursor),
+  }),
+}).annotate({ identifier: "SessionsResponse" })
+
+export const ActiveSessionsResponse = Schema.Struct({ data: Schema.Record(Session.ID, SessionActive) }).annotate({
+  identifier: "ActiveSessionsResponse",
+})
 
 const SessionHistoryLimit = PositiveInt.check(Schema.isLessThanOrEqualTo(100))
 
@@ -108,13 +133,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
     .add(
       HttpApiEndpoint.get("session.list", "/api/session", {
         query: SessionsQuery,
-        success: Schema.Struct({
-          data: Schema.Array(Session.Info),
-          cursor: Schema.Struct({
-            previous: SessionsCursor.pipe(Schema.optional),
-            next: SessionsCursor.pipe(Schema.optional),
-          }),
-        }).annotate({ identifier: "SessionsResponse" }),
+        success: SessionsResponse,
         error: [InvalidCursorError, InvalidRequestError],
       }).annotateMerge(
         OpenApi.annotations({
@@ -144,7 +163,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
     )
     .add(
       HttpApiEndpoint.get("session.active", "/api/session/active", {
-        success: Schema.Struct({ data: Schema.Record(Session.ID, SessionActive) }),
+        success: ActiveSessionsResponse,
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "v2.session.active",

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@opencode-ai/rpc-sidecar",
+  "version": "0.12.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun script/build.ts",
+    "test": "bun test",
+    "test:native": "bun script/test-native.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "scriptc": "0.0.35"
+  }
+}

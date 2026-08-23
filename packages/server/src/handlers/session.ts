@@ -1,20 +1,18 @@
 import { SessionV2 } from "@opencode-ai/core/session"
-import { DateTime, Effect, Stream } from "effect"
+import { Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { SessionsCursor } from "@opencode-ai/protocol/groups/session"
 import {
   ConflictError,
   InvalidRequestError,
-  InvalidCursorError,
   MessageNotFoundError,
   ServiceUnavailableError,
   SessionNotFoundError,
   UnknownError,
 } from "@opencode-ai/protocol/errors"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { activeSessions, listSessions } from "../session-read"
 
-const DefaultSessionsLimit = 50
 const DefaultSessionHistoryLimit = 50
 
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
@@ -24,46 +22,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     return handlers
       .handle(
         "session.list",
-        Effect.fn(function* (ctx) {
-          const query =
-            ctx.query.cursor !== undefined
-              ? yield* SessionsCursor.parse(ctx.query.cursor).pipe(
-                  Effect.mapError(() => new InvalidCursorError({ message: "Invalid cursor" })),
-                )
-              : ctx.query
-          const sessions = yield* session.list({
-            ...query,
-            workspaceID: query.workspace,
-            limit: ctx.query.limit ?? DefaultSessionsLimit,
-          })
-          const first = sessions[0]
-          const last = sessions.at(-1)
-          return {
-            data: sessions,
-            cursor: {
-              previous: first
-                ? SessionsCursor.make({
-                    ...query,
-                    anchor: {
-                      id: first.id,
-                      time: DateTime.toEpochMillis(first.time.created),
-                      direction: "previous",
-                    },
-                  })
-                : undefined,
-              next: last
-                ? SessionsCursor.make({
-                    ...query,
-                    anchor: {
-                      id: last.id,
-                      time: DateTime.toEpochMillis(last.time.created),
-                      direction: "next",
-                    },
-                  })
-                : undefined,
-            },
-          }
-        }),
+        Effect.fn((ctx) => listSessions(session, ctx.query)),
       )
       .handle(
         "session.create",
@@ -80,13 +39,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       )
       .handle(
         "session.active",
-        Effect.fn(function* () {
-          return {
-            data: Object.fromEntries(
-              Array.from(yield* session.active, (sessionID) => [sessionID, { type: "running" as const }]),
-            ),
-          }
-        }),
+        Effect.fn(() => activeSessions(session)),
       )
       .handle(
         "session.get",

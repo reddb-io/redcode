@@ -22,6 +22,7 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { AppProcess } from "@opencode-ai/core/process"
+import { decode, encode } from "@reddb-io/toon"
 import { Deferred, Duration, Effect, Layer, Queue, Schedule, Scope, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
@@ -131,18 +132,20 @@ export type ServeHandle = {
   readonly exited: Promise<number>
 }
 
-// `opencode acp` speaks newline-delimited JSON-RPC over stdin/stdout. It is
+// `opencode acp` speaks newline-delimited JSON-RPC by default and opt-in TOON-RPC. It is
 // long-lived and exits cleanly when stdin is closed. The handle exposes the
 // duplex stream as send/receive rather than raw pipes so tests don't have to
 // reimplement framing on every call site.
 export type AcpOpts = SpawnOpts & {
   readonly cwd?: string
   readonly extraArgs?: string[]
+  readonly experimentalToon?: boolean
 }
 
 export type AcpHandle = {
   // Writes a single JSON-RPC message to the child's stdin as one ndjson line.
   readonly send: (msg: object) => Effect.Effect<void>
+  readonly sendRaw: (frame: string) => Effect.Effect<void>
   // Resolves with the next parsed JSON-RPC line from the child's stdout.
   // Lines are buffered in a queue so multiple receives in a row won't drop
   // anything. Pair with `Effect.timeout` if a test wants a deadline.
@@ -395,6 +398,7 @@ export function withCliFixture<A, E>(
     const acp = Effect.fn("opencode.acp")(function* (opts?: AcpOpts) {
       const argv = ["acp"]
       if (opts?.cwd) argv.push("--cwd", opts.cwd)
+      if (opts?.experimentalToon) argv.push("--experimental-toon")
       if (opts?.extraArgs) argv.push(...opts.extraArgs)
 
       // Acquire the subprocess. Release ends stdin (clean shutdown — ACP exits
@@ -432,23 +436,18 @@ export function withCliFixture<A, E>(
       const stderrChunks: string[] = []
       yield* forkStderrDrain(proc.stderr, stderrChunks)
 
-      // Each ndjson line becomes one queue entry. JSON.parse failures are
-      // surfaced as the raw string so a malformed protocol message doesn't
-      // silently wedge the test in `receive`.
       const responses = yield* Queue.unbounded<unknown>()
+      const responseState = { buffer: "" }
       yield* Effect.forkScoped(
         fromBunStream("stdout", () => proc.stdout).pipe(
           Stream.decodeText(),
-          Stream.splitLines,
-          Stream.runForEach((line) => {
-            if (line.length === 0) return Effect.void
-            let parsed: unknown
-            try {
-              parsed = JSON.parse(line)
-            } catch {
-              parsed = { _rawLine: line }
-            }
-            return Queue.offer(responses, parsed)
+          Stream.runForEach((chunk) => {
+            responseState.buffer += chunk
+            return Effect.forEach(
+              drainAcpFrames(responseState, opts?.experimentalToon === true),
+              (frame) => Queue.offer(responses, decodeAcpFrame(frame, opts?.experimentalToon === true)),
+              { discard: true },
+            )
           }),
           Effect.ignore({ log: true }),
         ),
@@ -461,7 +460,16 @@ export function withCliFixture<A, E>(
         // and corrupt the ndjson framing.
         send: (msg: object) =>
           Effect.promise(async () => {
-            const ret = proc.stdin.write(JSON.stringify(msg) + "\n")
+            const ret = proc.stdin.write(
+              opts?.experimentalToon
+                ? `${encode({ toonrpc: "1.0", ...stripJsonRpc(msg) })}\n\n`
+                : `${JSON.stringify(msg)}\n`,
+            )
+            if (typeof ret !== "number") await ret
+          }),
+        sendRaw: (frame: string) =>
+          Effect.promise(async () => {
+            const ret = proc.stdin.write(frame)
             if (typeof ret !== "number") await ret
           }),
         receive: Queue.take(responses),
@@ -485,6 +493,45 @@ export function withCliFixture<A, E>(
       ),
     ),
   )
+}
+
+function drainAcpFrames(state: { buffer: string }, toon: boolean) {
+  const frames: string[] = []
+  const delimiter = toon ? /\r?\n\r?\n/ : /\r?\n/
+  for (;;) {
+    const match = delimiter.exec(state.buffer)
+    if (!match) return frames
+    frames.push(state.buffer.slice(0, match.index))
+    state.buffer = state.buffer.slice(match.index + match[0].length)
+  }
+}
+
+function decodeAcpFrame(frame: string, toon: boolean) {
+  if (!toon) {
+    try {
+      return JSON.parse(frame) as unknown
+    } catch {
+      return { _rawFrame: frame }
+    }
+  }
+  const input: unknown = (() => {
+    try {
+      return decode(frame)
+    } catch {
+      return undefined
+    }
+  })()
+  if (!input || typeof input !== "object" || Array.isArray(input) || !("toonrpc" in input) || input.toonrpc !== "1.0") {
+    return { _rawFrame: frame }
+  }
+  return {
+    jsonrpc: "2.0",
+    ...Object.fromEntries(Object.entries(input).filter(([key]) => key !== "toonrpc")),
+  }
+}
+
+function stripJsonRpc(input: object) {
+  return Object.fromEntries(Object.entries(input).filter(([key]) => key !== "jsonrpc"))
 }
 
 function parseJsonEvents(stdout: string): Array<Record<string, unknown>> {

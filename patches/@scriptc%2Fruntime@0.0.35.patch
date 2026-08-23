@@ -1,0 +1,68 @@
+diff --git a/src/scr_runtime.h b/src/scr_runtime.h
+index 95f9cb8..344897f 100644
+--- a/src/scr_runtime.h
++++ b/src/scr_runtime.h
+@@ -26,5 +26,5 @@
+ struct tm *gmtime_r(const time_t *t, struct tm *out);
+ char *strcasestr(const char *hay, const char *needle);
+-#elif defined(SCR_MUSL)
++#elif defined(SCR_MUSL) || defined(__linux__)
+ void arc4random_buf(void *buf, size_t n);
+ #endif
+diff --git a/src/scr_lib.c b/src/scr_lib.c
+index b2348db..1016f43 100644
+--- a/src/scr_lib.c
++++ b/src/scr_lib.c
+@@ -89,3 +89,52 @@
+ #elif defined(__linux__)
+ #include <netpacket/packet.h>
+ #endif
++
++#if defined(__linux__) && !defined(SCR_MUSL)
++#include <features.h>
++#if defined(__GLIBC__) && !__GLIBC_PREREQ(2, 36)
++#include <fcntl.h>
++#include <sys/random.h>
++#include <unistd.h>
++
++static void scr_urandom(unsigned char *p, size_t n) {
++  int fd;
++  do {
++    fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
++  } while (fd < 0 && errno == EINTR);
++  if (fd < 0) scr_trap("scriptc: open /dev/urandom failed\n");
++  while (n > 0) {
++    ssize_t got = read(fd, p, n);
++    if (got > 0) {
++      p += (size_t)got;
++      n -= (size_t)got;
++      continue;
++    }
++    if (got < 0 && errno == EINTR) continue;
++    close(fd);
++    scr_trap("scriptc: read /dev/urandom failed\n");
++  }
++  close(fd);
++}
++
++/* glibc exposed arc4random_buf in 2.36. Older supported targets use the
++ * same infallible contract as scriptc's musl shim. */
++void arc4random_buf(void *buf, size_t n) {
++  unsigned char *p = buf;
++  while (n > 0) {
++    ssize_t got = getrandom(p, n, 0);
++    if (got > 0) {
++      p += (size_t)got;
++      n -= (size_t)got;
++      continue;
++    }
++    if (got < 0 && errno == EINTR) continue;
++    if (got < 0 && errno == ENOSYS) {
++      scr_urandom(p, n);
++      return;
++    }
++    scr_trap("scriptc: getrandom failed\n");
++  }
++}
++#endif
++#endif

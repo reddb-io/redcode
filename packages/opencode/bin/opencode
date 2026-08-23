@@ -43,10 +43,12 @@ function run(target) {
   })
 }
 
-const envPath = process.env.REDCODE_BIN_PATH || process.env.OPENCODE_BIN_PATH
-
 const scriptPath = fs.realpathSync(__filename)
 const scriptDir = path.dirname(scriptPath)
+const sidecar = path.basename(scriptPath).startsWith("redcode-rpc-sidecar")
+const envPath = sidecar
+  ? process.env.REDCODE_RPC_SIDECAR_PATH
+  : process.env.REDCODE_BIN_PATH || process.env.OPENCODE_BIN_PATH
 
 //
 const cached = path.join(scriptDir, ".redcode")
@@ -71,7 +73,13 @@ if (!arch) {
   arch = os.arch()
 }
 const base = "@reddb-io/redcode-" + platform + "-" + arch
-const binary = platform === "windows" ? "redcode.exe" : "redcode"
+const binary = sidecar
+  ? platform === "windows"
+    ? "redcode-rpc-sidecar.exe"
+    : "redcode-rpc-sidecar"
+  : platform === "windows"
+    ? "redcode.exe"
+    : "redcode"
 
 function supportsAvx2() {
   if (arch !== "x64") return false
@@ -186,10 +194,10 @@ function findBinary(startDir) {
   }
 }
 
-const resolved = envPath || (fs.existsSync(cached) ? cached : findBinary(scriptDir))
+const resolved = envPath || (!sidecar && fs.existsSync(cached) ? cached : findBinary(scriptDir))
 if (!resolved) {
   console.error(
-    "It seems that your package manager failed to install the right version of the Redcode CLI for your platform. You can try manually installing " +
+    `It seems that your package manager failed to install the right version of ${sidecar ? "the Redcode RPC sidecar" : "the Redcode CLI"} for your platform. You can try manually installing ` +
       names.map((n) => `\"${n}\"`).join(" or ") +
       " package",
   )
