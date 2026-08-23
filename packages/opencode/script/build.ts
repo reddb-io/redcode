@@ -26,6 +26,7 @@ const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
 const skipUpload = process.argv.includes("--skip-upload")
+const sidecarDir = process.env.REDCODE_RPC_SIDECAR_DIR
 
 const createEmbeddedWebUIBundle = async () => {
   console.log(`Building Web UI to embed in the binary`)
@@ -219,6 +220,19 @@ for (const item of targets) {
   }
 
   await $`rm -rf ./dist/${name}/bin/tui`
+  if (sidecarDir) {
+    const sidecarKey = ["redcode-rpc-sidecar", item.os === "win32" ? "windows" : item.os, item.arch, item.abi]
+      .filter(Boolean)
+      .join("-")
+    const extension = item.os === "win32" ? ".exe" : ""
+    const source = path.resolve(sidecarDir, `${sidecarKey}${extension}`)
+    if (!(await Bun.file(source).exists())) throw new Error(`missing staged RPC sidecar: ${source}`)
+    const destination = `dist/${name}/bin/redcode-rpc-sidecar${extension}`
+    await Bun.write(destination, Bun.file(source))
+    if (item.os !== "win32") await $`chmod 755 ${destination}`
+  } else if (Script.release) {
+    throw new Error("REDCODE_RPC_SIDECAR_DIR is required for release builds")
+  }
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

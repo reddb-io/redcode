@@ -44,6 +44,7 @@ const meta = `./dist/${product}-package`
 await rm(meta, { recursive: true, force: true })
 await $`mkdir -p ${path.join(meta, "bin")}`
 await $`cp ./bin/opencode ${path.join(meta, "bin", product)}`
+await $`cp ./bin/opencode ${path.join(meta, "bin", "redcode-rpc-sidecar")}`
 await Bun.file(path.join(meta, "LICENSE")).write(await Bun.file("../../LICENSE").text())
 await Bun.file(path.join(meta, "NOTICE")).write(await Bun.file("../../NOTICE").text())
 // The registry page is written here rather than copied from the repository README,
@@ -60,7 +61,8 @@ npm install -g @reddb-io/redcode
 redcode
 \`\`\`
 
-One native binary for Linux (glibc and musl), macOS, and Windows on x64 and arm64.
+One native package for Linux (glibc and musl), macOS, and Windows on x64 and arm64. It includes the
+\`redcode-rpc-sidecar\` companion for framed JSON/TOON RPC integrations.
 
 ## Use
 
@@ -88,7 +90,7 @@ await Bun.file(path.join(meta, "package.json")).write(
       description: "RedDB's AI coding agent for the terminal",
       license: "MIT",
       repository: { type: "git", url: "https://github.com/reddb-io/redcode" },
-      bin: { [product]: `./bin/${product}` },
+      bin: { [product]: `./bin/${product}`, "redcode-rpc-sidecar": "./bin/redcode-rpc-sidecar" },
       os: ["darwin", "linux", "win32"],
       cpu: ["arm64", "x64"],
       optionalDependencies: Object.fromEntries(

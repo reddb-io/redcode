@@ -59,6 +59,30 @@ describe("redcode acp initialize/auth subprocess", () => {
   )
 
   cliIt.live(
+    "initialize responds over opt-in TOON-RPC",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const initialized = yield* initialize(
+          yield* createAcpClient({ opencode }, undefined, { experimentalToon: true }),
+        )
+        expect(initialized.protocolVersion).toBe(1)
+        expect(initialized.agentInfo?.name).toBe("Redcode")
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "exits on malformed TOON-RPC input",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const acp = yield* opencode.acp({ experimentalToon: true })
+        yield* acp.sendRaw('{"jsonrpc":"2.0","method":"initialize","id":1}\n\n')
+        expect(yield* Effect.promise(() => acp.exited)).toBe(1)
+      }),
+    60_000,
+  )
+
+  cliIt.live(
     "initialize without terminal-auth metadata keeps auth command implicit",
     ({ opencode }) =>
       Effect.gen(function* () {

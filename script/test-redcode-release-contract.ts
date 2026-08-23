@@ -73,6 +73,29 @@ for (const required of [
   "Existing draft Redcode tag to reconcile",
   "released tags are immutable",
   "https://github.com/reddb-io/redcode",
+  "REDCODE_RPC_SIDECAR_DIR",
+  "redcode-rpc-sidecar-linux-x64",
+  "redcode-rpc-sidecar-linux-arm64",
+  "redcode-rpc-sidecar-linux-x64-musl",
+  "redcode-rpc-sidecar-linux-arm64-musl",
+  "redcode-rpc-sidecar-windows-x64.exe",
+  "redcode-rpc-sidecar-windows-arm64.exe",
+  "redcode-rpc-sidecar-darwin-x64",
+  "redcode-rpc-sidecar-darwin-arm64",
+  "x86_64-linux-gnu.2.29",
+  "aarch64-linux-gnu.2.29",
+  "x86_64-linux-musl",
+  "aarch64-linux-musl",
+  "x86_64-windows-gnu",
+  "aarch64-windows-gnu",
+  "macos-15-intel",
+  "macos-15",
+  'deployment: "11.0"',
+  "/Applications/Xcode_16.4.app/Contents/Developer",
+  "node-version: 24.11.1",
+  "Verify RPC sidecar target",
+  "zig-x86_64-linux-0.17.0-dev.1857+3c46da14d.tar.xz",
+  "0825e4a55baf4a6647c3ce3077a7236c9ffec5b17e1ca0102a930fe33d631bc6",
 ]) {
   if (!publish.includes(required)) throw new Error(`red-publish.yml is missing ${required}`)
 }
@@ -80,6 +103,34 @@ for (const required of [
 const build = await Bun.file(path.join(root, "packages", "opencode", "script", "build.ts")).text()
 for (const required of ["SHA256SUMS", 'new Bun.CryptoHasher("sha256")', "./dist/SHA256SUMS"]) {
   if (!build.includes(required)) throw new Error(`build.ts is missing release integrity contract ${required}`)
+}
+for (const required of [
+  "REDCODE_RPC_SIDECAR_DIR",
+  "missing staged RPC sidecar",
+  'throw new Error("REDCODE_RPC_SIDECAR_DIR is required for release builds")',
+  "redcode-rpc-sidecar",
+]) {
+  if (!build.includes(required)) throw new Error(`build.ts is missing RPC sidecar contract ${required}`)
+}
+
+const sidecarBuild = await Bun.file(path.join(root, "packages", "rpc-sidecar", "script", "build.ts")).text()
+for (const required of ["REDCODE_RPC_SIDECAR_TARGET", "SCRIPTC_TARGET", 'SCRIPTC_CC = "zigcc"']) {
+  if (!sidecarBuild.includes(required))
+    throw new Error(`RPC sidecar build is missing cross-target contract ${required}`)
+}
+if (publish.includes("@ziglang/cli")) throw new Error("red-publish.yml must not use the mutable @ziglang/cli download")
+
+const publishScript = await Bun.file(path.join(root, "packages", "opencode", "script", "publish.ts")).text()
+for (const required of [
+  '"redcode-rpc-sidecar": "./bin/redcode-rpc-sidecar"',
+  'cp ./bin/opencode ${path.join(meta, "bin", "redcode-rpc-sidecar")}',
+]) {
+  if (!publishScript.includes(required)) throw new Error(`publish.ts is missing RPC sidecar contract ${required}`)
+}
+
+const launcher = await Bun.file(path.join(root, "packages", "opencode", "bin", "opencode")).text()
+for (const required of ["REDCODE_RPC_SIDECAR_PATH", 'startsWith("redcode-rpc-sidecar")']) {
+  if (!launcher.includes(required)) throw new Error(`npm launcher is missing RPC sidecar contract ${required}`)
 }
 for (const banned of ["beta", "docker", "desktop", "sst", "vscode"]) {
   if (publish.toLowerCase().includes(banned)) throw new Error(`red-publish.yml must not mention ${banned}`)

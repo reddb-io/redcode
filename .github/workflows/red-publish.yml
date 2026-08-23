@@ -20,8 +20,104 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sidecar:
+    if: github.repository == 'reddb-io/redcode'
+    name: sidecar (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            host: ubuntu-latest
+            target: x86_64-linux-gnu.2.29
+            file: redcode-rpc-sidecar-linux-x64
+            identity: "ELF 64-bit LSB executable, x86-64"
+            linkage: dynamically linked
+          - name: linux-arm64
+            host: ubuntu-latest
+            target: aarch64-linux-gnu.2.29
+            file: redcode-rpc-sidecar-linux-arm64
+            identity: "ELF 64-bit LSB executable, ARM aarch64"
+            linkage: dynamically linked
+          - name: linux-x64-musl
+            host: ubuntu-latest
+            target: x86_64-linux-musl
+            file: redcode-rpc-sidecar-linux-x64-musl
+            identity: "ELF 64-bit LSB executable, x86-64"
+            linkage: statically linked
+          - name: linux-arm64-musl
+            host: ubuntu-latest
+            target: aarch64-linux-musl
+            file: redcode-rpc-sidecar-linux-arm64-musl
+            identity: "ELF 64-bit LSB executable, ARM aarch64"
+            linkage: statically linked
+          - name: windows-x64
+            host: ubuntu-latest
+            target: x86_64-windows-gnu
+            file: redcode-rpc-sidecar-windows-x64.exe
+            identity: "PE32+ executable (console) x86-64"
+            linkage: ""
+          - name: windows-arm64
+            host: ubuntu-latest
+            target: aarch64-windows-gnu
+            file: redcode-rpc-sidecar-windows-arm64.exe
+            identity: "PE32+ executable (console) Aarch64"
+            linkage: ""
+          - name: darwin-x64
+            host: macos-15-intel
+            target: ""
+            deployment: "11.0"
+            developer: /Applications/Xcode_16.4.app/Contents/Developer
+            file: redcode-rpc-sidecar-darwin-x64
+            identity: "Mach-O 64-bit executable x86_64"
+            linkage: ""
+          - name: darwin-arm64
+            host: macos-15
+            target: ""
+            deployment: "11.0"
+            developer: /Applications/Xcode_16.4.app/Contents/Developer
+            file: redcode-rpc-sidecar-darwin-arm64
+            identity: "Mach-O 64-bit executable arm64"
+            linkage: ""
+    runs-on: ${{ matrix.host }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.11.1
+      - name: Install pinned Zig toolchain
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          curl --fail --location --output /tmp/zig.tar.xz https://ziglang.org/builds/zig-x86_64-linux-0.17.0-dev.1857+3c46da14d.tar.xz
+          echo "0825e4a55baf4a6647c3ce3077a7236c9ffec5b17e1ca0102a930fe33d631bc6  /tmp/zig.tar.xz" | sha256sum --check -
+          tar -xf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.17.0-dev.1857+3c46da14d" >> "$GITHUB_PATH"
+      - name: Build RPC sidecar
+        working-directory: packages/rpc-sidecar
+        env:
+          DEVELOPER_DIR: ${{ matrix.developer }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment }}
+          REDCODE_RPC_SIDECAR_OUTPUT: dist/release/${{ matrix.file }}
+          REDCODE_RPC_SIDECAR_TARGET: ${{ matrix.target }}
+        run: bun run build
+      - name: Verify RPC sidecar target
+        run: |
+          set -euo pipefail
+          metadata="$(file "packages/rpc-sidecar/dist/release/${{ matrix.file }}")"
+          grep -F "${{ matrix.identity }}" <<<"$metadata"
+          if [ -n "${{ matrix.linkage }}" ]; then grep -F "${{ matrix.linkage }}" <<<"$metadata"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rpc-sidecar-${{ matrix.name }}
+          path: packages/rpc-sidecar/dist/release/${{ matrix.file }}
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     if: github.repository == 'reddb-io/redcode'
+    needs: sidecar
     runs-on: ubuntu-latest
     environment:
       name: red-release
@@ -71,11 +167,17 @@ jobs:
             exit 1
           fi
           echo "resuming existing draft $TAG"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: rpc-sidecar-*
+          path: packages/rpc-sidecar/dist/release
+          merge-multiple: true
       - name: Build and upload native binaries
         env:
           GH_REPO: reddb-io/redcode
           GH_TOKEN: ${{ github.token }}
           OPENCODE_RELEASE: "1"
+          REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
           VERSION: ${{ steps.release.outputs.version }}
         run: OPENCODE_VERSION="$VERSION" ./packages/opencode/script/build.ts
       - name: Normalize native npm metadata
@@ -118,6 +220,7 @@ jobs:
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${VERSION}"; then
               "$root/node_modules/.bin/redcode" --version | grep -Fx "$VERSION"
+              REDCODE_RPC_URL=http://127.0.0.1:1/rpc "$root/node_modules/.bin/redcode-rpc-sidecar" </dev/null
               exit 0
             fi
             if [ "$attempt" -eq 10 ]; then

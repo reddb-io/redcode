@@ -72,6 +72,8 @@ import { serveUIEffect } from "@/server/shared/ui"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@opencode-ai/server/api"
+import { RpcApi } from "@opencode-ai/protocol/rpc"
+import { RpcHandler } from "@opencode-ai/server/rpc"
 import { PublicApi } from "./public"
 import {
   authorizationLayer,
@@ -181,6 +183,10 @@ const serverRoutes = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(PluginPtyEnvironment.layer),
   Layer.provide([serverHttpApiAuthLayer, v2SchemaErrorLayer]),
 )
+const rpcRoutes = HttpApiBuilder.layer(RpcApi).pipe(
+  Layer.provide(RpcHandler),
+  Layer.provide([serverHttpApiAuthLayer, v2SchemaErrorLayer]),
+)
 
 // `OpenApi.fromApi` is non-trivial; defer until /doc is actually hit so
 // processes that never serve it (CLI, scripts) don't pay at module load.
@@ -281,6 +287,7 @@ export function createRoutes(
     ptyConnectApiRoutes,
     instanceRoutes,
     serverRoutes,
+    rpcRoutes,
     docRoute,
     uiRoute,
   ).pipe(

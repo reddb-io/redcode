@@ -22,6 +22,8 @@ import { schemaErrorLayer } from "./middleware/schema-error"
 import { PtyEnvironment } from "./pty-environment"
 import { layer as locationLayer } from "./location"
 import { sessionLocationLayer } from "./middleware/session-location"
+import { RpcApi } from "@opencode-ai/protocol/rpc"
+import { RpcHandler } from "./rpc"
 
 const applicationServices = LayerNode.group([
   Database.node,
@@ -51,8 +53,10 @@ export function createEmbeddedRoutes() {
 function makeRoutes<AuthError, AuthServices>(auth: Layer.Layer<ServerAuth.Config, AuthError, AuthServices>) {
   const serviceLayer = AppNodeBuilder.build(applicationServices, [[SessionExecution.node, SessionExecutionLocal.node]])
 
-  return HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
-    Layer.provide(handlers),
+  return Layer.mergeAll(
+    HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(Layer.provide(handlers)),
+    HttpApiBuilder.layer(RpcApi).pipe(Layer.provide(RpcHandler)),
+  ).pipe(
     Layer.provide(sessionLocationLayer),
     Layer.provide(locationLayer),
     Layer.provide(authorizationLayer),

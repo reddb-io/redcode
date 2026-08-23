@@ -5,16 +5,24 @@ import { ServerAuth } from "@/server/auth"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { ACPProfile } from "@/acp/profile"
+import { toonStream } from "@/acp/toon-stream"
+import { Readable, Writable } from "node:stream"
 
 export const AcpCommand = effectCmd({
   command: "acp",
   describe: "start ACP (Agent Client Protocol) server",
   builder: (yargs) => {
-    return withNetworkOptions(yargs).option("cwd", {
-      describe: "working directory",
-      type: "string",
-      default: process.cwd(),
-    })
+    return withNetworkOptions(yargs)
+      .option("cwd", {
+        describe: "working directory",
+        type: "string",
+        default: process.cwd(),
+      })
+      .option("experimental-toon", {
+        describe: "use TOON-RPC framing for ACP stdio",
+        type: "boolean",
+        default: false,
+      })
   },
   handler: Effect.fn("Cli.acp")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("@/server/server"))
@@ -29,45 +37,32 @@ export const AcpCommand = effectCmd({
       headers: ServerAuth.headers(),
     })
 
-    const input = new WritableStream<Uint8Array>({
-      write(chunk) {
-        return new Promise<void>((resolve, reject) => {
-          process.stdout.write(chunk, (err) => {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          })
-        })
-      },
-    })
-    const output = new ReadableStream<Uint8Array>({
-      start(controller) {
-        process.stdin.on("data", (chunk: Buffer) => {
-          controller.enqueue(new Uint8Array(chunk))
-        })
-        process.stdin.on("end", () => controller.close())
-        process.stdin.on("error", (err) => controller.error(err))
-      },
-    })
-
-    const stream = ndJsonStream(input, output)
+    const input = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>
+    const output = Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>
+    const transport = args.experimentalToon
+      ? toonStream(input, output)
+      : {
+          ...ndJsonStream(input, output),
+          closed: new Promise<void>((resolve, reject) => {
+            process.stdin.once("end", resolve)
+            process.stdin.once("close", resolve)
+            process.stdin.once("error", reject)
+          }),
+        }
+    const stream = transport
     const agent = ACP.init({ sdk })
 
-    new AgentSideConnection((conn) => {
+    const connection = new AgentSideConnection((conn) => {
       ACPProfile.mark("cli.acp.connection.create")
       return agent.create(conn)
     }, stream)
 
     yield* Effect.logInfo("setup connection")
     process.stdin.resume()
-    yield* Effect.promise(
-      () =>
-        new Promise<void>((resolve, reject) => {
-          process.stdin.on("end", () => resolve())
-          process.stdin.on("error", reject)
-        }),
-    ).pipe(Effect.ensuring(Effect.promise(() => server.stop(true))))
+    const transportFailure = transport.closed.then(() => new Promise<never>(() => undefined))
+    const outputFailure = new Promise<never>((_, reject) => process.stdout.once("error", reject))
+    yield* Effect.promise(() => Promise.race([connection.closed, transportFailure, outputFailure])).pipe(
+      Effect.ensuring(Effect.promise(() => server.stop(true))),
+    )
   }),
 })

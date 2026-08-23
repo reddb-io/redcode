@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "@opencode-ai/core/flag/flag"
+import { RpcPath } from "@opencode-ai/protocol/rpc"
 
 export const ServeCommand = effectCmd({
   command: "serve",
@@ -18,6 +19,7 @@ export const ServeCommand = effectCmd({
     const opts = yield* resolveNetworkOptions(args)
     const server = yield* Effect.promise(() => Server.listen(opts))
     console.log(`Redcode server listening on http://${server.hostname}:${server.port}`)
+    console.log(`Redcode RPC endpoint: http://${server.hostname}:${server.port}${RpcPath}`)
 
     yield* Effect.never
   }),

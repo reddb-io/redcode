@@ -64,7 +64,7 @@ larger surface than Redcode targets. Telling the two apart is the fastest way to
 
 | Piece | What it is | Where |
 | --- | --- | --- |
-| `@reddb-io/redcode` | One native CLI binary, `redcode`. The whole product. | [Install](#install) |
+| `@reddb-io/redcode` | The native `redcode` CLI and its `redcode-rpc-sidecar` companion. | [Install](#install) |
 | The TUI | Sessions, diffs, permissions, and the Worker fleet | [Use](#use) |
 | The server, ACP agent, MCP client | The same binary, other entry points | [Use](#use) |
 
@@ -168,9 +168,10 @@ npm install -g @reddb-io/redcode
 redcode
 ```
 
-Bun, pnpm, and Yarn work too. The install resolves one native binary for your platform — Linux
+Bun, pnpm, and Yarn work too. The install resolves one native package for your platform — Linux
 (glibc and musl, x64 and arm64), macOS (x64 and arm64), and Windows (x64 and arm64), with non-AVX2
-variants where the architecture needs them.
+variants where the architecture needs them. Each package contains `redcode` and the matching
+`redcode-rpc-sidecar` companion.
 
 There is no beta channel, no container image, no desktop build, no package-manager tap, and no
 hosted deployment. See [What Ships And What Doesn't](#what-ships-and-what-doesnt) for why that is
@@ -185,7 +186,7 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 | `redcode` | Terminal UI — sessions, diffs, permissions, and the Workers fleet |
 | `redcode run` | Non-interactive prompt; `--format json` emits structured records |
 | `redcode serve` | Headless HTTP server exposing the Protocol API |
-| `redcode acp` | Agent Client Protocol over stdio, for editors that speak ACP |
+| `redcode acp` | Agent Client Protocol over stdio; `--experimental-toon` selects TOON-RPC framing |
 | `redcode mcp` | Manage the MCP servers Redcode connects to — it is an MCP client, not a server |
 | `redcode attach` | Attach to a running server |
 | `redcode web` | Start the server and open the local web interface |
@@ -197,6 +198,16 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 | `redcode db` / `debug` | A sqlite shell over the durable store, and dumps for config, agents, skills, LSP, and the V2 catalog |
 
 `redcode --help` lists everything, including `upgrade`, `uninstall`, `generate`, and `console`.
+
+`redcode serve` prints both its base URL and the exact `POST /rpc` endpoint. That endpoint accepts
+JSON-RPC 2.0 (`application/json`) and TOON-RPC 1.0 (`application/toon`) for the same typed read-only
+methods: `health.get`, `session.list`, and `session.active`. `session.list` accepts the same filters,
+ordering, limit, and cursor semantics as `GET /api/session`.
+
+The sibling `redcode-rpc-sidecar` bridges bounded `Content-Length` frames on stdin/stdout to that
+HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
+`OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`, or accepts a complete
+`REDCODE_AUTHORIZATION` header.
 
 ## Architecture
 
@@ -224,6 +235,7 @@ does not import the CLI that hosts it.
 | `packages/client` | Generated clients — zero-Effect root, `/effect` variant |
 | `packages/tui` | Terminal UI (OpenTUI + Solid) |
 | `packages/opencode` | The CLI that becomes the `redcode` binary |
+| `packages/rpc-sidecar` | Static native companion that bridges framed JSON/TOON RPC to `/rpc` |
 | `packages/plugin` | Public plugin API |
 | `packages/sdk/js` | The SDK the TUI, CLI, and ACP agent all talk through |
 
