@@ -1,5 +1,11 @@
 # opencode
 
+## 0.13.0
+
+### Minor Changes
+
+- 0459ebc: Add typed JSON/TOON RPC session reads, opt-in TOON-RPC ACP framing, and a native framed RPC sidecar in every Redcode platform package.
+
 ## 0.12.0
 
 ### Minor Changes
