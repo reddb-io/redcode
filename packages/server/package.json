@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/server",
+  "name": "@reddb-io/redcode-server",
   "version": "1.18.18",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/core": "workspace:*",
-    "@opencode-ai/protocol": "workspace:*",
+    "@reddb-io/redcode-core": "workspace:*",
+    "@reddb-io/redcode-protocol": "workspace:*",
     "@reddb-io/multi-rpc": "0.29.6",
     "@reddb-io/toon": "0.29.6",
     "@reddb-io/toon-rpc": "0.29.6",

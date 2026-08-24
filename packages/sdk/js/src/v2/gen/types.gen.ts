@@ -1644,7 +1644,7 @@ export type GlobalEvent = {
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 /**
- * Server configuration for opencode serve and web commands
+ * Server configuration for redcode serve and web commands
  */
 export type ServerConfig = {
   port?: number
@@ -2374,6 +2374,7 @@ export type LspStatus = {
   name: string
   root: string
   status: "connected" | "error"
+  error?: string
 }
 
 export type FormatterStatus = {
@@ -2701,6 +2702,12 @@ export type InvalidCursorError = {
 
 export type SessionActive = {
   type: "running"
+}
+
+export type ActiveSessionsResponse = {
+  data: {
+    [key: string]: unknown | SessionActive
+  }
 }
 
 export type SessionNotFoundError = {
@@ -12341,13 +12348,9 @@ export type V2SessionActiveError = V2SessionActiveErrors[keyof V2SessionActiveEr
 
 export type V2SessionActiveResponses = {
   /**
-   * Success
+   * ActiveSessionsResponse
    */
-  200: {
-    data: {
-      [key: string]: unknown | SessionActive
-    }
-  }
+  200: ActiveSessionsResponse
 }
 
 export type V2SessionActiveResponse = V2SessionActiveResponses[keyof V2SessionActiveResponses]

@@ -1,7 +1,7 @@
 export * as CordisPluginHost from "./cordis"
 
 import { Context, type Fiber } from "@deepseek-ai/cordis"
-import type { Plugin as PluginRuntime } from "@opencode-ai/plugin/v2/effect"
+import type { Plugin as PluginRuntime } from "@reddb-io/redcode-plugin/v2/effect"
 import { Effect, Exit, Semaphore } from "effect"
 import { PluginV2 } from "../plugin"
 import { State } from "../state"

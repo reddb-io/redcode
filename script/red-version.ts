@@ -8,7 +8,7 @@ const check = process.argv.includes("--check")
 
 if (!version) throw new Error("usage: bun script/red-version.ts <major.minor.patch> [--check]")
 
-const files = ["package.json", "packages/opencode/package.json"]
+const files = ["package.json", "packages/redcode/package.json"]
 const manifests = await Promise.all(
   files.map(async (file) => ({ file, value: await Bun.file(path.join(root, file)).json() })),
 )

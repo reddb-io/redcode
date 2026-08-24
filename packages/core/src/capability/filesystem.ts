@@ -52,7 +52,7 @@ export namespace Filesystem {
     readonly build: () => Layer.Layer<Service>
   }
 
-  export class Service extends Context.Service<Service, Interface>()("@opencode/Filesystem") {}
+  export class Service extends Context.Service<Service, Interface>()("@redcode/Filesystem") {}
 
   /** Re-exported as a service tag; `Backend` describes provider implementations. */
   export const BackendTag = Service;

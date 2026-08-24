@@ -1,6 +1,6 @@
-import { FileIcon } from "@opencode-ai/ui/file-icon"
-import { useI18n } from "@opencode-ai/ui/context/i18n"
-import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
+import { FileIcon } from "@reddb-io/redcode-ui/file-icon"
+import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
+import { ButtonV2 } from "@reddb-io/redcode-ui/v2/button-v2"
 import "./session-review-v2.css"
 
 export type SessionReviewEmptyNoGitV2Props = {

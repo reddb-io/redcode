@@ -1,11 +1,11 @@
-import { ToolOutput, type LLMEvent, type ProviderMetadata, type ToolResultValue, type Usage } from "@opencode-ai/llm"
+import { ToolOutput, type LLMEvent, type ProviderMetadata, type ToolResultValue, type Usage } from "@reddb-io/redcode-llm"
 import { DateTime, Effect } from "effect"
 import { EventV2 } from "../../event"
 import { ModelV2 } from "../../model"
 import { SessionEvent } from "../event"
 import { SessionMessage } from "../message"
 import { SessionSchema } from "../schema"
-import type { Hook } from "@opencode-ai/schema/hook"
+import type { Hook } from "@reddb-io/redcode-schema/hook"
 
 type Input = {
   readonly sessionID: SessionSchema.ID

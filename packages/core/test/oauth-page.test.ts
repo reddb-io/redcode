@@ -12,4 +12,12 @@ describe("OauthCallbackPage", () => {
     expect(html).toContain(`xAI\\u003c/script>\\u003cscript>alert(\\\"provider\\\")\\u003c/script>`)
     expect(html).toContain(`/token\\u003c/script>\\u003cscript>alert(\\\"path\\\")\\u003c/script>`)
   })
+
+  test("uses Redcode product branding", () => {
+    const html = OauthCallbackPage.success({ provider: "GitHub" })
+
+    expect(html).toContain("Redcode is now connected to GitHub.")
+    expect(html).toContain("aria-label=\"Redcode\"")
+    expect(html).not.toContain("OpenCode")
+  })
 })

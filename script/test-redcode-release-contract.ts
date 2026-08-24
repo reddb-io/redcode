@@ -64,8 +64,8 @@ for (const required of [
   "group: red-publish",
   "name: red-release",
   "token: ${{ secrets.RELEASE_PAT }}",
-  "./packages/opencode/script/build.ts",
-  "./packages/opencode/script/publish.ts",
+  "./packages/redcode/script/build.ts",
+  "./packages/redcode/script/publish.ts",
   "@reddb-io/redcode",
   "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
   'npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"',
@@ -100,7 +100,7 @@ for (const required of [
   if (!publish.includes(required)) throw new Error(`red-publish.yml is missing ${required}`)
 }
 
-const build = await Bun.file(path.join(root, "packages", "opencode", "script", "build.ts")).text()
+const build = await Bun.file(path.join(root, "packages", "redcode", "script", "build.ts")).text()
 for (const required of ["SHA256SUMS", 'new Bun.CryptoHasher("sha256")', "./dist/SHA256SUMS"]) {
   if (!build.includes(required)) throw new Error(`build.ts is missing release integrity contract ${required}`)
 }
@@ -120,15 +120,15 @@ for (const required of ["REDCODE_RPC_SIDECAR_TARGET", "SCRIPTC_TARGET", 'SCRIPTC
 }
 if (publish.includes("@ziglang/cli")) throw new Error("red-publish.yml must not use the mutable @ziglang/cli download")
 
-const publishScript = await Bun.file(path.join(root, "packages", "opencode", "script", "publish.ts")).text()
+const publishScript = await Bun.file(path.join(root, "packages", "redcode", "script", "publish.ts")).text()
 for (const required of [
   '"redcode-rpc-sidecar": "./bin/redcode-rpc-sidecar"',
-  'cp ./bin/opencode ${path.join(meta, "bin", "redcode-rpc-sidecar")}',
+  'cp ./bin/redcode ${path.join(meta, "bin", "redcode-rpc-sidecar")}',
 ]) {
   if (!publishScript.includes(required)) throw new Error(`publish.ts is missing RPC sidecar contract ${required}`)
 }
 
-const launcher = await Bun.file(path.join(root, "packages", "opencode", "bin", "opencode")).text()
+const launcher = await Bun.file(path.join(root, "packages", "redcode", "bin", "redcode")).text()
 for (const required of ["REDCODE_RPC_SIDECAR_PATH", 'startsWith("redcode-rpc-sidecar")']) {
   if (!launcher.includes(required)) throw new Error(`npm launcher is missing RPC sidecar contract ${required}`)
 }

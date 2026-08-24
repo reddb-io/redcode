@@ -21,7 +21,7 @@ export interface Interface {
   readonly inspect: Effect.Effect<Payload>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/RuntimeInspection") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/RuntimeInspection") {}
 
 /**
  * Read-only view of the composition a Location actually booted: the active Cordis profile,

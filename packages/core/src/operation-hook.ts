@@ -11,7 +11,7 @@ import {
   type SerialDefinition,
   type WaterfallDefinition,
   type WaterfallHandler,
-} from "@opencode-ai/plugin/v2/effect/operation-hook"
+} from "@reddb-io/redcode-plugin/v2/effect/operation-hook"
 import { Context, Effect, Layer, Scope } from "effect"
 import { makeLocationNode } from "./effect/app-node"
 import { EventV2 } from "./event"
@@ -26,7 +26,7 @@ export interface Interface {
   readonly parallel: <D extends ParallelDefinition>(definition: D, data: Data<D>) => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/OperationHook") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/OperationHook") {}
 
 type InternalPayload = {
   readonly id: string

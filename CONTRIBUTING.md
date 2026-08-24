@@ -59,7 +59,7 @@ bun dev
 
    ```markdown
    ---
-   "opencode": patch
+   "@reddb-io/redcode": patch
    ---
 
    Describe the user-visible change.
@@ -76,8 +76,8 @@ Run tests and typechecks from the package that owns them, never from the reposit
 root `test` script exits 1 on purpose:
 
 ```bash
-cd packages/opencode && bun test
-cd packages/opencode && bun typecheck
+cd packages/redcode && bun test
+cd packages/redcode && bun typecheck
 ```
 
 ## Style guide

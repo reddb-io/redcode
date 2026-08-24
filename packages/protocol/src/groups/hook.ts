@@ -1,5 +1,5 @@
-import { Hook } from "@opencode-ai/schema/hook"
-import { Location } from "@opencode-ai/schema/location"
+import { Hook } from "@reddb-io/redcode-schema/hook"
+import { Location } from "@reddb-io/redcode-schema/location"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidRequestError } from "../errors"
 import { LocationQuery, locationQueryOpenApi } from "./location"

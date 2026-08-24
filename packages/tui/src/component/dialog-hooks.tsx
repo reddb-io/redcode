@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { createSignal, For, onMount, Show } from "solid-js"
-import type { V2HookStatusResponse } from "@opencode-ai/sdk/v2"
+import type { V2HookStatusResponse } from "@reddb-io/redcode-sdk/v2"
 import { useSDK } from "../context/sdk"
 import { useLocation } from "../context/location"
 import { useTheme } from "../context/theme"

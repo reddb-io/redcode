@@ -234,7 +234,7 @@ does not import the CLI that hosts it.
 | `packages/server` | Hosts Protocol's groups; owns protocol/domain adaptation |
 | `packages/client` | Generated clients — zero-Effect root, `/effect` variant |
 | `packages/tui` | Terminal UI (OpenTUI + Solid) |
-| `packages/opencode` | The CLI that becomes the `redcode` binary |
+| `packages/redcode` | The CLI that becomes the `redcode` binary |
 | `packages/rpc-sidecar` | Static native companion that bridges framed JSON/TOON RPC to `/rpc` |
 | `packages/plugin` | Public plugin API |
 | `packages/sdk/js` | The SDK the TUI, CLI, and ACP agent all talk through |
@@ -245,7 +245,7 @@ does not import the CLI that hosts it.
 ## A Note On Names
 
 The product is Redcode; most of the source still says OpenCode. Workspace packages are
-`@opencode-ai/*`, the package that becomes the binary is literally named `opencode`, and environment
+`@reddb-io/redcode-*`, the package that becomes the binary is literally named `opencode`, and environment
 variables are `OPENCODE_*`. What *is* renamed is everything a user touches: the `redcode` binary, the
 `~/.red/redcode/` data, cache, state, and config directories (the `~/.config/redcode/` XDG directory
 is no longer read), the npm namespace, and the agent's identity
@@ -297,7 +297,7 @@ cd packages/tui  && bun run typecheck
 The default branch is `main`. Branch names are at most three hyphenated words with no type prefix
 (`session-recovery`, not `feat/session-recovery`). Commits and PR titles are conventional:
 `type(scope): summary`. Every user-visible pull request adds a `.changeset/*.md` entry targeting
-`opencode`.
+`@reddb-io/redcode`.
 
 `AGENTS.md` carries the full style guide and the runtime rules that reviews enforce.
 

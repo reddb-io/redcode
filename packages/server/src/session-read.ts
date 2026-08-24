@@ -1,6 +1,6 @@
-import { SessionV2 } from "@opencode-ai/core/session"
-import { DefaultSessionsLimit, SessionsCursor, SessionListInput } from "@opencode-ai/protocol/groups/session"
-import { InvalidCursorError } from "@opencode-ai/protocol/errors"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { DefaultSessionsLimit, SessionsCursor, SessionListInput } from "@reddb-io/redcode-protocol/groups/session"
+import { InvalidCursorError } from "@reddb-io/redcode-protocol/errors"
 import { DateTime, Effect } from "effect"
 
 export function listSessions(session: SessionV2.Interface, input: typeof SessionListInput.Type) {

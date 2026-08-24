@@ -1,11 +1,11 @@
-import { AISDK } from "@opencode-ai/core/aisdk"
+import { AISDK } from "@reddb-io/redcode-core/aisdk"
 import { describe, expect, mock } from "bun:test"
 import { Effect } from "effect"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { PluginV2 } from "@opencode-ai/core/plugin"
-import { PluginHost } from "@opencode-ai/core/plugin/host"
-import { CloudflareAIGatewayPlugin } from "@opencode-ai/core/plugin/provider/cloudflare-ai-gateway"
-import { ProviderV2 } from "@opencode-ai/core/provider"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { PluginV2 } from "@reddb-io/redcode-core/plugin"
+import { PluginHost } from "@reddb-io/redcode-core/plugin/host"
+import { CloudflareAIGatewayPlugin } from "@reddb-io/redcode-core/plugin/provider/cloudflare-ai-gateway"
+import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 
@@ -164,7 +164,7 @@ describe("CloudflareAIGatewayPlugin", () => {
             skipCache: true,
             collectLog: false,
             headers: {
-              "User-Agent": expect.stringContaining("opencode/"),
+              "User-Agent": expect.stringContaining("redcode/"),
             },
           },
         })

@@ -3,10 +3,10 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Schema } from "effect"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { ProjectV2 } from "@opencode-ai/core/project"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { Hash } from "@opencode-ai/core/util/hash"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { ProjectV2 } from "@reddb-io/redcode-core/project"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
+import { Hash } from "@reddb-io/redcode-core/util/hash"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
@@ -175,6 +175,22 @@ describe("ProjectV2.resolve", () => {
 
       yield* project.resolve(abs(tmp.path))
 
+      expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, ".git", "redcode")).exists())).toBe(false)
+    }),
+  )
+
+  it.live("writes new cached ids under the redcode name", () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      yield* Effect.promise(() => initRepo(tmp.path))
+      const project = yield* ProjectV2.Service
+
+      yield* project.commit({ store: abs(path.join(tmp.path, ".git")), id: ProjectV2.ID.make("new-id") })
+
+      expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, ".git", "redcode")).text())).toBe("new-id")
       expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, ".git", "opencode")).exists())).toBe(false)
     }),
   )

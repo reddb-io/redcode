@@ -12,14 +12,14 @@ import {
 } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
-import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Icon } from "@opencode-ai/ui/icon"
-import { Button } from "@opencode-ai/ui/button"
-import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
-import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
-import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
-import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
-import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
+import { IconButton } from "@reddb-io/redcode-ui/icon-button"
+import { Icon } from "@reddb-io/redcode-ui/icon"
+import { Button } from "@reddb-io/redcode-ui/button"
+import { Tooltip, TooltipKeybind } from "@reddb-io/redcode-ui/tooltip"
+import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
+import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
+import { KeybindV2 } from "@reddb-io/redcode-ui/v2/keybind-v2"
+import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 
 import { LayoutRoute, useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
@@ -39,7 +39,7 @@ import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
 import { newTabTooltipKeybind } from "./command-tooltip-keybind"
 import { normalizeSessionInfo } from "@/utils/session"
-import { RedCodeWordmark } from "./redcode-wordmark"
+import { RedcodeWordmark } from "./redcode-wordmark"
 
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
@@ -373,7 +373,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 <Show when={windows() || linux()}>
                   <WindowsAppMenu command={command} platform={platform} variant="v2" />
                 </Show>
-                <RedCodeWordmark class="h-6 px-1.5" onClick={openNewTab} />
+                <RedcodeWordmark class="h-6 px-1.5" onClick={openNewTab} />
                 <TooltipV2
                   placement="bottom"
                   value={
@@ -451,7 +451,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
               <Show when={windows() || linux()}>
                 <WindowsAppMenu command={command} platform={platform} />
               </Show>
-              <RedCodeWordmark
+              <RedcodeWordmark
                 class="mx-2 h-6 px-1.5"
                 onClick={() => navigate(params.dir ? `/${params.dir}/session` : "/")}
               />

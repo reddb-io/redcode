@@ -176,15 +176,15 @@ jobs:
         env:
           GH_REPO: reddb-io/redcode
           GH_TOKEN: ${{ github.token }}
-          OPENCODE_RELEASE: "1"
+          REDCODE_RELEASE: "1"
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
           VERSION: ${{ steps.release.outputs.version }}
-        run: OPENCODE_VERSION="$VERSION" ./packages/opencode/script/build.ts
+        run: REDCODE_VERSION="$VERSION" ./packages/redcode/script/build.ts
       - name: Normalize native npm metadata
         run: |
           bun -e '
           import path from "path"
-          const root = "packages/opencode/dist"
+          const root = "packages/redcode/dist"
           const files = Array.from(new Bun.Glob("*/package.json").scanSync({ cwd: root }))
           if (files.length === 0) throw new Error("no native package manifests were built")
           await Promise.all(files.map(async (file) => {
@@ -205,7 +205,7 @@ jobs:
             exit 1
           fi
           npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
-          OPENCODE_VERSION="$VERSION" ./packages/opencode/script/publish.ts
+          REDCODE_VERSION="$VERSION" ./packages/redcode/script/publish.ts
       - name: Smoke the published package
         env:
           VERSION: ${{ steps.release.outputs.version }}

@@ -1,0 +1,65 @@
+export * as OperationHookBridge from "./operation-hook-bridge"
+
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Location } from "@reddb-io/redcode-core/location"
+import { LocationServiceMap, locationServiceMapLayer } from "@reddb-io/redcode-core/location-services"
+import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
+import { Context, Effect, Layer } from "effect"
+import { InstanceState } from "./effect/instance-state"
+
+export interface Interface {
+  readonly waterfall: OperationHook.Interface["waterfall"]
+  readonly serial: OperationHook.Interface["serial"]
+  readonly parallel: OperationHook.Interface["parallel"]
+}
+
+export class Service extends Context.Service<Service, Interface>()("@redcode/OperationHookBridge") {}
+
+const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const locations = yield* LocationServiceMap.Service
+
+    const route = <A>(effect: Effect.Effect<A, never, OperationHook.Service>) =>
+      Effect.gen(function* () {
+        const context = yield* InstanceState.context
+        const workspaceID = yield* InstanceState.workspaceID
+        return yield* effect.pipe(
+          Effect.provide(
+            locations.get(
+              Location.Ref.make({
+                directory: AbsolutePath.make(context.directory),
+                ...(workspaceID ? { workspaceID } : {}),
+              }),
+            ),
+          ),
+          Effect.orDie,
+        )
+      })
+
+    return Service.of({
+      waterfall: (definition, data) =>
+        route(OperationHook.Service.use((hooks) => hooks.waterfall(definition, data))),
+      serial: (definition, data) => route(OperationHook.Service.use((hooks) => hooks.serial(definition, data))),
+      parallel: (definition, data) => route(OperationHook.Service.use((hooks) => hooks.parallel(definition, data))),
+    })
+  }),
+)
+
+export const passthroughLayer = Layer.succeed(
+  Service,
+  Service.of({
+    waterfall: (_definition, data) => Effect.succeed(data),
+    serial: () => Effect.void,
+    parallel: () => Effect.void,
+  }),
+)
+
+const locationServiceMapNode = LayerNode.make({
+  service: LocationServiceMap.Service,
+  layer: locationServiceMapLayer,
+  deps: [],
+})
+
+export const node = LayerNode.make({ service: Service, layer, deps: [locationServiceMapNode] })

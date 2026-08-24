@@ -1,8 +1,8 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
-import { ModelStatRepo } from "@opencode-ai/stats-core/domain/model"
-import { R2Sql } from "@opencode-ai/stats-core/r2-sql"
-import { layer as statsLayer } from "@opencode-ai/stats-core/runtime"
-import { syncStats } from "@opencode-ai/stats-core/stat-sync"
+import { ModelStatRepo } from "@reddb-io/redcode-stats-core/domain/model"
+import { R2Sql } from "@reddb-io/redcode-stats-core/r2-sql"
+import { layer as statsLayer } from "@reddb-io/redcode-stats-core/runtime"
+import { syncStats } from "@reddb-io/redcode-stats-core/stat-sync"
 import { Cause, Duration, Effect, Layer, Schedule } from "effect"
 
 const SYNC_INTERVAL = "1 hour"

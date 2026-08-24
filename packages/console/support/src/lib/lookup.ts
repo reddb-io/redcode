@@ -1,8 +1,8 @@
 "use server"
 
-import { Database, and, eq, isNull, sql } from "@opencode-ai/console-core/drizzle/index.js"
-import { AuthTable } from "@opencode-ai/console-core/schema/auth.sql.js"
-import { UserTable } from "@opencode-ai/console-core/schema/user.sql.js"
+import { Database, and, eq, isNull, sql } from "@reddb-io/redcode-console-core/drizzle/index.js"
+import { AuthTable } from "@reddb-io/redcode-console-core/schema/auth.sql.js"
+import { UserTable } from "@reddb-io/redcode-console-core/schema/user.sql.js"
 import {
   BillingTable,
   PaymentTable,
@@ -10,15 +10,15 @@ import {
   BlackPlans,
   UsageTable,
   LiteTable,
-} from "@opencode-ai/console-core/schema/billing.sql.js"
-import { WorkspaceTable } from "@opencode-ai/console-core/schema/workspace.sql.js"
-import { KeyTable } from "@opencode-ai/console-core/schema/key.sql.js"
-import { ModelTable } from "@opencode-ai/console-core/schema/model.sql.js"
-import { BlackData } from "@opencode-ai/console-core/black.js"
-import { LiteData } from "@opencode-ai/console-core/lite.js"
-import { Subscription } from "@opencode-ai/console-core/subscription.js"
-import { centsToMicroCents } from "@opencode-ai/console-core/util/price.js"
-import { getWeekBounds } from "@opencode-ai/console-core/util/date.js"
+} from "@reddb-io/redcode-console-core/schema/billing.sql.js"
+import { WorkspaceTable } from "@reddb-io/redcode-console-core/schema/workspace.sql.js"
+import { KeyTable } from "@reddb-io/redcode-console-core/schema/key.sql.js"
+import { ModelTable } from "@reddb-io/redcode-console-core/schema/model.sql.js"
+import { BlackData } from "@reddb-io/redcode-console-core/black.js"
+import { LiteData } from "@reddb-io/redcode-console-core/lite.js"
+import { Subscription } from "@reddb-io/redcode-console-core/subscription.js"
+import { centsToMicroCents } from "@reddb-io/redcode-console-core/util/price.js"
+import { getWeekBounds } from "@reddb-io/redcode-console-core/util/date.js"
 
 export type LookupResult = {
   identifier: string

@@ -1,5 +1,5 @@
 {
-  "name": "@opencode-ai/function",
+  "name": "@reddb-io/redcode-function",
   "version": "1.18.18",
   "$schema": "https://json.schemastore.org/package.json",
   "private": true,

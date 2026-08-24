@@ -1,9 +1,9 @@
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Exit, Fiber } from "effect"
-import { define, Operation } from "@opencode-ai/plugin/v2/effect"
-import { AgentV2 } from "@opencode-ai/core/agent"
-import { PluginV2 } from "@opencode-ai/core/plugin"
-import { OperationHook } from "@opencode-ai/core/operation-hook"
+import { define, Operation } from "@reddb-io/redcode-plugin/v2/effect"
+import { AgentV2 } from "@reddb-io/redcode-core/agent"
+import { PluginV2 } from "@reddb-io/redcode-core/plugin"
+import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
 

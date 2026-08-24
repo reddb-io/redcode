@@ -2,7 +2,7 @@ export * as PermissionV2 from "./permission"
 
 import { makeLocationNode } from "./effect/app-node"
 import { Context, Deferred, Effect as EffectRuntime, Layer, Schema } from "effect"
-import { Permission } from "@opencode-ai/schema/permission"
+import { Permission } from "@reddb-io/redcode-schema/permission"
 import { EventV2 } from "./event"
 import { Location } from "./location"
 import { AgentV2 } from "./agent"
@@ -12,7 +12,7 @@ import { Wildcard } from "./util/wildcard"
 import { PermissionSaved } from "./permission/saved"
 import { HookV2 } from "./hook"
 
-export { Effect, Rule, Ruleset } from "@opencode-ai/schema/permission"
+export { Effect, Rule, Ruleset } from "@reddb-io/redcode-schema/permission"
 const missingAgentPermissions: Permission.Ruleset = [{ action: "*", resource: "*", effect: "deny" }]
 
 export const ID = Permission.ID
@@ -99,7 +99,7 @@ export interface Interface {
   readonly list: () => EffectRuntime.Effect<ReadonlyArray<Request>>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Permission") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/Permission") {}
 
 interface Pending {
   readonly request: Request

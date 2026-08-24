@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js"
 
-export function RedCodeWordmark(props: {
+export function RedcodeWordmark(props: {
   class?: string
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>
 }) {

@@ -1,7 +1,7 @@
-import { Event } from "@opencode-ai/schema/event"
-import { EventManifest } from "@opencode-ai/schema/event-manifest"
-import { Location } from "@opencode-ai/schema/location"
-import type { Definition } from "@opencode-ai/schema/event"
+import { Event } from "@reddb-io/redcode-schema/event"
+import { EventManifest } from "@reddb-io/redcode-schema/event-manifest"
+import { Location } from "@reddb-io/redcode-schema/location"
+import type { Definition } from "@reddb-io/redcode-schema/event"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 
@@ -51,6 +51,6 @@ export const makeEventGroup = <const Definitions extends ReadonlyArray<Definitio
 
 const event = make(EventManifest.ServerDefinitions)
 export const EventGroup = event.group
-export const OpenCodeEvent = event.schema
-export type OpenCodeEvent = typeof OpenCodeEvent.Type
-export type OpenCodeEventEncoded = typeof OpenCodeEvent.Encoded
+export const RedcodeEvent = event.schema
+export type RedcodeEvent = typeof RedcodeEvent.Type
+export type RedcodeEventEncoded = typeof RedcodeEvent.Encoded

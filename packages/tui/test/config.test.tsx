@@ -63,6 +63,9 @@ test("resolves host-neutral defaults", () => {
   expect(config.mouse).toBe(true)
   expect(config.keybinds.has("terminal.suspend")).toBe(true)
   expect(config.keybinds.has("session.list")).toBe(true)
+  expect(config.keybinds.get("session.sidebar.tab.cycle")).toMatchObject([{ key: "<leader>w" }])
+  expect(config.keybinds.get("session.sidebar.width.decrease")).toMatchObject([{ key: "<leader>[" }])
+  expect(config.keybinds.get("session.sidebar.width.increase")).toMatchObject([{ key: "<leader>]" }])
   expect(config.cursor).toBeUndefined()
 })
 

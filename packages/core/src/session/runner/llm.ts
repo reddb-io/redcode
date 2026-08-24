@@ -7,7 +7,7 @@ import {
   SystemPart,
   isContextOverflowFailure,
   type ProviderErrorEvent,
-} from "@opencode-ai/llm"
+} from "@reddb-io/redcode-llm"
 import { Cause, DateTime, Effect, FiberSet, Layer, Option, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
 import { Config } from "../../config"
@@ -31,6 +31,8 @@ import { SessionHistory } from "../history"
 import { SessionInput } from "../input"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
+import { SessionMessage } from "../message"
+import { SessionTodo } from "../todo"
 import { type RunError, Service } from "./index"
 import { SessionRunnerModel } from "./model"
 import { createLLMEventPublisher } from "./publish-llm-event"
@@ -60,7 +62,7 @@ import { HookV2 } from "../../hook"
  *
  * - One provider turn
  *   - [x] Translate every projected V2 Session message variant into canonical
- *     `@opencode-ai/llm` messages.
+ *     `@reddb-io/redcode-llm` messages.
  *   - [ ] Resolve policy-filtered built-in, MCP, plugin, and structured-output tool definitions.
  *   - [x] Stream exactly one `llm.stream(request)` provider turn.
  *   - [x] Persist assistant text and usage events incrementally as they arrive.
@@ -107,6 +109,7 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
     const hooks = yield* HookV2.Service
+    const todos = yield* SessionTodo.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({
       events,
@@ -214,6 +217,7 @@ const layer = Layer.effect(
         model,
         providerOptions: { openai: { promptCacheKey } },
         system: [agent.info?.system, system.baseline]
+          .concat(toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [])
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
@@ -373,7 +377,15 @@ const layer = Layer.effect(
           if (stream._tag === "Failure") return yield* Effect.failCause(stream.cause)
           if (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
             return yield* Effect.failCause(settled.cause)
-          return { needsContinuation: !publisher.hasProviderError() && needsContinuation, step: currentStep }
+          return {
+            needsContinuation: !publisher.hasProviderError() && needsContinuation,
+            todoEligible:
+              !publisher.hasProviderError() &&
+              stepSettlement?.finish === "stop" &&
+              !isLastStep &&
+              (toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ?? false),
+            step: currentStep,
+          }
         }),
       )
     }, Effect.scoped)
@@ -381,7 +393,10 @@ const layer = Layer.effect(
       sessionID: SessionSchema.ID,
       promotion: SessionInput.Delivery | undefined,
       step: number,
-    ) => Effect.Effect<{ readonly needsContinuation: boolean; readonly step: number }, RunError>
+    ) => Effect.Effect<
+      { readonly needsContinuation: boolean; readonly todoEligible: boolean; readonly step: number },
+      RunError
+    >
 
     const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step) {
       return yield* runTurnAttempt(sessionID, promotion, step).pipe(
@@ -436,12 +451,31 @@ const layer = Layer.effect(
       while (shouldRun) {
         let needsContinuation = true
         let step = 1
+        let todoContinuations = 0
         while (needsContinuation) {
           const result = yield* runTurn(input.sessionID, promotion, step)
           needsContinuation = result.needsContinuation
           step = result.step + 1
           promotion = "steer"
           if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+          if (!needsContinuation && result.todoEligible) {
+            const reminder = SessionTodo.reminder(yield* todos.get(input.sessionID))
+            if (reminder && todoContinuations < 7) {
+              yield* events.publish(SessionEvent.Synthetic, {
+                sessionID: input.sessionID,
+                messageID: SessionMessage.ID.create(),
+                timestamp: yield* DateTime.now,
+                text: reminder,
+              })
+              todoContinuations++
+              needsContinuation = true
+            } else if (reminder) {
+              yield* Effect.logWarning("Todo continuation limit reached", {
+                sessionID: input.sessionID,
+                attempts: todoContinuations,
+              })
+            }
+          }
         }
         shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
         promotion = shouldRun ? "queue" : undefined
@@ -473,5 +507,6 @@ export const node = makeLocationNode({
     Snapshot.node,
     Database.node,
     HookV2.node,
+    SessionTodo.node,
   ],
 })

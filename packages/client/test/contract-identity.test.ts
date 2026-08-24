@@ -1,24 +1,24 @@
 import { expect, test } from "bun:test"
 import { Schema } from "effect"
-import { AgentV2 } from "@opencode-ai/core/agent"
-import { Location as CoreLocation } from "@opencode-ai/core/location"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { SessionV2 } from "@opencode-ai/core/session"
-import { SessionInput as CoreSessionInput } from "@opencode-ai/core/session/input"
-import { SessionMessage as CoreSessionMessage } from "@opencode-ai/core/session/message"
-import { Prompt as CorePrompt } from "@opencode-ai/core/session/prompt"
-import { Agent } from "@opencode-ai/schema/agent"
-import { Location } from "@opencode-ai/schema/location"
-import { Model } from "@opencode-ai/schema/model"
-import { Project } from "@opencode-ai/schema/project"
-import { Provider } from "@opencode-ai/schema/provider"
-import { Prompt } from "@opencode-ai/schema/prompt"
-import { Session } from "@opencode-ai/schema/session"
-import { SessionInput } from "@opencode-ai/schema/session-input"
-import { SessionMessage } from "@opencode-ai/schema/session-message"
-import { Workspace } from "@opencode-ai/schema/workspace"
-import { Api } from "@opencode-ai/server/api"
-import { compile, emitPromise } from "@opencode-ai/httpapi-codegen"
+import { AgentV2 } from "@reddb-io/redcode-core/agent"
+import { Location as CoreLocation } from "@reddb-io/redcode-core/location"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionInput as CoreSessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionMessage as CoreSessionMessage } from "@reddb-io/redcode-core/session/message"
+import { Prompt as CorePrompt } from "@reddb-io/redcode-core/session/prompt"
+import { Agent } from "@reddb-io/redcode-schema/agent"
+import { Location } from "@reddb-io/redcode-schema/location"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Project } from "@reddb-io/redcode-schema/project"
+import { Provider } from "@reddb-io/redcode-schema/provider"
+import { Prompt } from "@reddb-io/redcode-schema/prompt"
+import { Session } from "@reddb-io/redcode-schema/session"
+import { SessionInput } from "@reddb-io/redcode-schema/session-input"
+import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
+import { Workspace } from "@reddb-io/redcode-schema/workspace"
+import { Api } from "@reddb-io/redcode-server/api"
+import { compile, emitPromise } from "@reddb-io/redcode-httpapi-codegen"
 import { ClientApi, endpointNames, groupNames, omitEndpoints } from "../src/contract"
 
 test("Core and Server reuse the authoritative Schema and Protocol values", () => {
@@ -40,8 +40,13 @@ test("Core and Server reuse the authoritative Schema and Protocol values", () =>
 test("client and Server contracts generate identically", () => {
   const server = compile(Api, { groupNames, endpointNames, omitEndpoints })
   const client = compile(ClientApi, { groupNames, endpointNames, omitEndpoints })
+  const output = emitPromise(client)
 
-  expect(emitPromise(client)).toEqual(emitPromise(server))
+  expect(output).toEqual(emitPromise(server))
+  expect(output.files.find((file) => file.path === "index.ts")?.content).toContain(
+    'export * as Redcode from "./client"',
+  )
+  expect(output.files.find((file) => file.path === "index.ts")?.content).not.toContain("OpenCode")
 })
 
 test("shared DTO schemas construct and decode plain objects", () => {

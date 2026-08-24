@@ -1,5 +1,5 @@
-import { HookV2 } from "@opencode-ai/core/hook"
-import { InvalidRequestError } from "@opencode-ai/protocol/errors"
+import { HookV2 } from "@reddb-io/redcode-core/hook"
+import { InvalidRequestError } from "@reddb-io/redcode-protocol/errors"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"

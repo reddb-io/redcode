@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
 import open from "open"
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { useRedskilled } from "../context/redskilled"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
@@ -32,40 +32,23 @@ type Status = ReturnType<ReturnType<typeof useRedskilled>["status"]>
 
 /** Heartbeat age at which a Worker stops looking healthy. */
 const HEARTBEAT = { warn: 30_000, error: 120_000 }
-/**
- * OpenTUI overlaps cells when a flex subtree asks for more rows than the terminal has,
- * so this page never relies on wrapping: every section is a fixed count of single lines
- * and both panes get explicit sizes. CHROME_ROWS is what the page spends outside the
- * panes (tab bar, two header lines, gaps, and hint line); DETAIL_ROWS is what
- * the detail pane always draws around its activity feed.
- */
-const CHROME_ROWS = 7
-const DETAIL_ROWS = 12
 
-export function Workers() {
+export function Workers(props: { active?: boolean; width: number }) {
   const redskilled = useRedskilled()
   const { theme } = useTheme()
   const dialog = useDialog()
   const toast = useToast()
-  const dimensions = useTerminalDimensions()
+  const renderer = useRenderer()
 
   const [selectedID, setSelectedID] = createSignal<string>()
   const [focused, setFocused] = createSignal(false)
   const [now, setNow] = createSignal(Date.now())
   const [history, setHistory] = createSignal(empty())
-  const [trackingSince, setTrackingSince] = createSignal<number>()
 
   const status = redskilled.status
   const payload = () => status()?.payload
   const workers = createMemo(() => payload()?.workers ?? [])
-
-  const width = () => dimensions().width - 4
-  // The detail pane needs room for its widest fixed line before a split is worth it.
-  const detailWidth = () => Math.max(44, Math.floor(width() * 0.42))
-  const split = () => width() >= 92 && !focused() && workers().length > 0
-  const listWidth = () => (split() ? width() - detailWidth() - 2 : width())
-  const contentRows = () => Math.max(3, dimensions().height - CHROME_ROWS)
-  const activityRows = () => Math.max(1, contentRows() - DETAIL_ROWS)
+  const innerWidth = () => Math.max(12, props.width - 4)
 
   const selectable = workers
   const selectedIndex = createMemo(() =>
@@ -79,17 +62,6 @@ export function Workers() {
     const current = worker()
     return current ? history().live[current.worker_id] : undefined
   })
-  /** Columns drop off the right as the list pane narrows, so a row never wraps. */
-  const columns = createMemo(() => {
-    const available = listWidth() - 2
-    const fixed = 2 + 8 + 7 + 11 + 8
-    const eta = available >= fixed + 20
-    const heartbeat = available >= fixed + 26
-    const counters = available >= fixed + 45
-    const phase = available - fixed - (eta ? 6 : 0) - (heartbeat ? 5 : 0) - (counters ? 13 : 0)
-    return { eta, heartbeat, counters, phase: Math.max(6, phase) }
-  })
-
   const select = (index: number) => {
     const list = selectable()
     if (!list.length) return
@@ -152,7 +124,7 @@ export function Workers() {
     await run(redskilled.stopProject, "Project drain stopped")
   }
 
-  onMount(() => redskilled.setActive(true))
+  createEffect(() => redskilled.setActive(props.active !== false))
   onCleanup(() => redskilled.setActive(false))
 
   // Elapsed time, heartbeat age, and rates keep moving between daemon polls.
@@ -162,7 +134,6 @@ export function Workers() {
   createEffect(() => {
     const current = payload()
     if (!current) return
-    if (!trackingSince()) setTrackingSince(Date.now())
     setHistory((previous) => record(previous, current, Date.now()))
   })
 
@@ -180,6 +151,7 @@ export function Workers() {
   })
 
   useBindings(() => ({
+    enabled: () => props.active !== false && renderer.currentFocusedEditor === null,
     bindings: [
       { key: "j", desc: "Next Worker", group: "Workers", cmd: () => select(selectedIndex() + 1) },
       { key: "down", desc: "Next Worker", group: "Workers", cmd: () => select(selectedIndex() + 1) },
@@ -204,156 +176,239 @@ export function Workers() {
   }))
 
   return (
-    <box flexGrow={1} minHeight={0} flexDirection="column" paddingLeft={2} paddingRight={2} gap={1}>
-      <Header
-        theme={theme}
-        now={now()}
-        width={width()}
-        status={status()}
-        loading={redskilled.loading()}
-        trackingSince={trackingSince()}
-        onStart={startDrain}
-        onResize={() => void resize()}
-        onStopProject={() => void stopProject()}
-      />
+      <box flexGrow={1} minHeight={0} flexDirection="column" gap={1}>
+        <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
+          <text fg={tone(status()?.lifecycle, theme)} attributes={TextAttributes.BOLD}>
+            {mark(status()?.lifecycle)} {status()?.lifecycle ?? "connecting"}
+          </text>
+          <text fg={workers().some((item) => item.display?.failed) ? theme.error : theme.textMuted}>
+            {workers().length} worker{workers().length === 1 ? "" : "s"}
+          </text>
+        </box>
 
-      <Show when={notice(status())}>
-        {(item) => (
-          <box border borderColor={theme.border} paddingLeft={1} paddingRight={1} flexShrink={0}>
-            <text fg={theme.text} attributes={TextAttributes.BOLD}>
-              {item().title}
-            </text>
-            <text fg={theme.textMuted}>{truncate(item().body, width() - 4)}</text>
-            <Show when={item().start}>
-              <text fg={theme.primary} onMouseUp={startDrain}>
-                [Start drain]
+        <Show when={status()?.activation}>
+          {(activation) => (
+            <box flexShrink={0}>
+              <text fg={theme.text}>{truncate(activation().project, props.width)}</text>
+              <text fg={theme.textMuted}>
+                {truncate(
+                  `${activation().runner} × ${activation().target}${activation().standing ? " standing" : ""}`,
+                  props.width,
+                )}
               </text>
-            </Show>
-          </box>
-        )}
-      </Show>
+            </box>
+          )}
+        </Show>
 
-      <Show when={status()?.error && status()?.payload}>
-        <text fg={theme.warning}>{truncate(`⚠ ${status()?.error} · showing the last good snapshot`, width())}</text>
-      </Show>
+        <Show when={status()?.error}>
+          {(error) => <text fg={theme.warning}>{truncate(error(), props.width)}</text>}
+        </Show>
 
-      <box flexDirection="row" gap={2} height={contentRows()} flexShrink={0}>
         <Show
           when={workers().length > 0}
           fallback={
-            <Idle
-              theme={theme}
-              now={now()}
-              status={status()}
-              loading={redskilled.loading()}
-              departed={history().departed}
-              width={width()}
-              onStart={startDrain}
-              onResize={() => void resize()}
-            />
+            <box flexGrow={1} minHeight={0} border borderColor={theme.border} paddingLeft={1} paddingRight={1}>
+              <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                No live Workers
+              </text>
+              <text fg={theme.textMuted}>{truncate(compactIdleReason(status()), innerWidth())}</text>
+              <Show when={status()?.lifecycle !== "unavailable" && status()?.lifecycle !== "ineligible"}>
+                <box flexDirection="row" gap={1} paddingTop={1}>
+                  <text fg={theme.success} onMouseUp={startDrain}>
+                    [start]
+                  </text>
+                  <text fg={theme.info} onMouseUp={() => void resize()}>
+                    [z resize]
+                  </text>
+                </box>
+              </Show>
+            </box>
           }
         >
-          <Show when={!focused()}>
-            <box
-              width={listWidth()}
-              flexShrink={0}
-              flexDirection="column"
-              border
-              borderColor={theme.border}
-              title={` Workers ${workers().length} `}
-              titleColor={theme.textMuted}
-            >
-              <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
-                <text width={2} fg={theme.textMuted}>
-                  {" "}
-                </text>
-                <text width={8} fg={theme.textMuted}>
-                  WORKER
-                </text>
-                <text width={7} fg={theme.textMuted}>
-                  ISSUE
-                </text>
-                <text width={columns().phase} fg={theme.textMuted}>
-                  PHASE
-                </text>
-                <text width={11} fg={theme.textMuted}>
-                  PROGRESS
-                </text>
-                <text width={8} fg={theme.textMuted}>
-                  ELAPSED
-                </text>
-                <Show when={columns().eta}>
-                  <text width={6} fg={theme.textMuted}>
-                    ETA
-                  </text>
-                </Show>
-                <Show when={columns().heartbeat}>
-                  <text width={5} fg={theme.textMuted}>
-                    HB
-                  </text>
-                </Show>
-                <Show when={columns().counters}>
-                  <text width={7} fg={theme.textMuted}>
-                    TOKENS
-                  </text>
-                  <text width={6} fg={theme.textMuted}>
-                    TOOLS
-                  </text>
-                </Show>
-              </box>
-              <scrollbox flexGrow={1} minHeight={0} scrollbarOptions={{ visible: false }}>
-                <For each={selectable()}>
-                  {(row) => (
-                    <WorkerRow
-                      theme={theme}
-                      worker={row}
-                      now={now()}
-                      selected={row.worker_id === worker()?.worker_id}
-                      columns={columns()}
-                      onSelect={() => setSelectedID(row.worker_id)}
-                    />
-                  )}
+          <Show
+            when={!focused()}
+            fallback={
+              <Show when={worker()}>
+                {(current) => (
+                  <CompactDetail
+                    theme={theme}
+                    worker={current()}
+                    track={track()}
+                    now={now()}
+                    width={props.width}
+                    onBack={() => setFocused(false)}
+                    onStop={() => void stopWorker()}
+                    onRecycle={() => void recycleWorker()}
+                    onSteer={() => void steerWorker()}
+                    onOpen={openIssue}
+                  />
+                )}
+              </Show>
+            }
+          >
+            <scrollbox flexGrow={1} minHeight={0} scrollbarOptions={{ visible: false }}>
+              <For each={selectable()}>
+                {(row) => (
+                  <CompactWorkerRow
+                    theme={theme}
+                    worker={row}
+                    now={now()}
+                    width={props.width}
+                    selected={row.worker_id === worker()?.worker_id}
+                    onSelect={() => {
+                      renderer.currentFocusedEditor?.blur()
+                      setSelectedID(row.worker_id)
+                    }}
+                  />
+                )}
+              </For>
+              <Show when={history().departed.length > 0}>
+                <text fg={theme.textMuted}>recently ended</text>
+                <For each={history().departed}>
+                  {(item) => <text fg={theme.textMuted}>{truncate(ended(item, now()), props.width)}</text>}
                 </For>
-                <Show when={history().departed.length > 0}>
-                  <box paddingLeft={1} paddingTop={1}>
-                    <text fg={theme.textMuted}>recently ended</text>
-                  </box>
-                  <For each={history().departed}>
-                    {(item) => (
-                      <box paddingLeft={1} paddingRight={1}>
-                        <text fg={theme.textMuted}>{truncate(`  ${ended(item, now())}`, listWidth() - 2)}</text>
-                      </box>
-                    )}
-                  </For>
-                </Show>
-              </scrollbox>
-            </box>
-          </Show>
-
-          <Show when={(split() || focused()) && worker()}>
-            {(current) => (
-              <Detail
-                theme={theme}
-                worker={current()}
-                track={track()}
-                now={now()}
-                width={focused() ? width() : detailWidth()}
-                rows={activityRows()}
-                focused={focused()}
-                onBack={() => setFocused(false)}
-                onStop={() => void stopWorker()}
-                onRecycle={() => void recycleWorker()}
-                onSteer={() => void steerWorker()}
-                onOpen={openIssue}
-              />
-            )}
+              </Show>
+            </scrollbox>
           </Show>
         </Show>
-      </box>
 
-      <text fg={theme.textMuted}>{truncate(hints(focused(), workers().length > 0), width())}</text>
+        <text fg={theme.textMuted}>{truncate(compactHints(focused(), workers().length > 0), props.width)}</text>
+      </box>
+  )
+}
+
+function CompactWorkerRow(props: {
+  theme: Theme
+  worker: Worker
+  now: number
+  width: number
+  selected: boolean
+  onSelect: () => void
+}) {
+  const display = () => props.worker.display
+  const heartbeat = () => age(display()?.heartbeat, props.now)
+  const inner = () => Math.max(12, props.width - 4)
+  return (
+    <box
+      flexDirection="column"
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={props.selected ? props.theme.backgroundElement : undefined}
+      onMouseDown={props.onSelect}
+    >
+      <text fg={display()?.failed ? props.theme.error : props.selected ? props.theme.primary : props.theme.text}>
+        {props.selected ? "▶ " : "  "}
+        <span style={{ attributes: props.selected ? TextAttributes.BOLD : undefined }}>
+          {truncate(props.worker.worker_id, 8)}
+        </span>{" "}
+        <span style={{ fg: props.theme.textMuted }}>{issue(props.worker)}</span>
+      </text>
+      <text fg={display()?.failed ? props.theme.error : props.theme.text}>
+        {truncate(
+          `${display()?.phase ?? display()?.step ?? "starting"} ${progress(display()?.phase_index, display()?.phase_total)}`,
+          inner(),
+        )}
+      </text>
+      <text fg={props.theme.textMuted}>
+        {truncate(
+          `${formatDuration(props.worker.uptime_ms)} · hb ${formatAge(heartbeat())} · ctx ${formatPercent(display()?.context)}`,
+          inner(),
+        )}
+      </text>
     </box>
   )
+}
+
+function CompactDetail(props: {
+  theme: Theme
+  worker: Worker
+  track: Track | undefined
+  now: number
+  width: number
+  onBack: () => void
+  onStop: () => void
+  onRecycle: () => void
+  onSteer: () => void
+  onOpen: () => void
+}) {
+  const display = () => props.worker.display
+  const heartbeat = () => age(display()?.heartbeat, props.now)
+  const activity = () => (props.track?.activity ?? []).slice(-5)
+  const inner = () => Math.max(12, props.width - 4)
+  return (
+    <box flexGrow={1} minHeight={0} border borderColor={props.theme.borderActive} paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
+        <text fg={display()?.failed ? props.theme.error : props.theme.primary} attributes={TextAttributes.BOLD}>
+          {truncate(props.worker.worker_id, 18)}
+        </text>
+        <text fg={props.theme.textMuted} onMouseUp={props.onBack}>
+          [enter]
+        </text>
+      </box>
+      <scrollbox flexGrow={1} minHeight={0} scrollbarOptions={{ visible: false }}>
+        <text fg={props.theme.text}>
+          {truncate(`${display()?.runner ?? "runner ?"} · ${display()?.model ?? "model ?"}`, inner())}
+        </text>
+        <text fg={props.theme.text}>
+          {truncate(
+            `${progress(display()?.phase_index, display()?.phase_total)} ${display()?.phase ?? "starting"}${display()?.step ? ` · ${display()?.step}` : ""}`,
+            inner(),
+          )}
+        </text>
+        <text fg={props.theme.textMuted}>
+          hb <span style={{ fg: heartbeatTone(heartbeat(), props.theme) }}>{formatAge(heartbeat())}</span> · elapsed{" "}
+          {formatDuration(props.worker.uptime_ms)}
+        </text>
+        <text fg={props.theme.textMuted}>
+          tok <span style={{ fg: props.theme.text }}>{formatCount(display()?.tokens)}</span> · tools{" "}
+          <span style={{ fg: props.theme.text }}>{formatCount(display()?.tools)}</span>
+        </text>
+        <text fg={props.theme.textMuted}>
+          ctx <span style={{ fg: props.theme.text }}>{formatPercent(display()?.context)}</span> · rss{" "}
+          <span style={{ fg: props.theme.text }}>{formatBytes(props.worker.vitals.rss_bytes)}</span>
+        </text>
+        <text fg={props.theme.textMuted}>
+          loc <span style={{ fg: props.theme.diffAdded }}>+{formatCount(display()?.added ?? 0)}</span>
+          <span style={{ fg: props.theme.diffRemoved }}> -{formatCount(display()?.removed ?? 0)}</span>
+        </text>
+        <text fg={props.theme.textMuted}>activity</text>
+        <Show when={activity().length > 0} fallback={<text fg={props.theme.textMuted}>waiting for heartbeat…</text>}>
+          <For each={activity()}>{(item) => <ActivityLine theme={props.theme} item={item} width={inner()} />}</For>
+        </Show>
+      </scrollbox>
+      <box flexDirection="row" gap={1} flexShrink={0}>
+        <text fg={props.theme.warning} onMouseUp={props.onStop}>
+          [s]
+        </text>
+        <text fg={props.theme.info} onMouseUp={props.onRecycle}>
+          [r]
+        </text>
+        <text fg={props.theme.primary} onMouseUp={props.onSteer}>
+          [e]
+        </text>
+        <Show when={issueURL(props.worker)}>
+          <text fg={props.theme.textMuted} onMouseUp={props.onOpen}>
+            [o]
+          </text>
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+function compactIdleReason(status: Status) {
+  const message = notice(status)
+  if (message) return `${message.title} · ${message.body}`
+  const activation = status?.activation
+  if (!activation) return "The daemon has not reported a project activation."
+  if (activation.target === 0) return "Target is 0. Resize the project to start Workers."
+  return `Target ${activation.target}; the queue is drained or waiting for a slot.`
+}
+
+function compactHints(focused: boolean, hasWorkers: boolean) {
+  if (focused) return "enter back · j/k select · s/r/e/o"
+  if (!hasWorkers) return "z resize · p stop · R refresh"
+  return "j/k select · enter details · R refresh"
 }
 
 function Header(props: {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Script } from "@opencode-ai/script"
+import { Script } from "@reddb-io/redcode-script"
 import { $ } from "bun"
 
 const output = [`version=${Script.version}`]

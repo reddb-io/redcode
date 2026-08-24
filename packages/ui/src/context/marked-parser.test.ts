@@ -4,8 +4,8 @@ import { createMarkdownParser } from "./marked-parser"
 const parser = createMarkdownParser((code, language) => `<pre data-language="${language}">${code}</pre>`)
 
 test("renders links with application attributes", async () => {
-  expect(await parser.parse("[OpenCode](https://opencode.ai)")).toBe(
-    '<p><a href="https://opencode.ai" class="external-link" target="_blank" rel="noopener noreferrer">OpenCode</a></p>\n',
+  expect(await parser.parse("[Redcode](https://github.com/reddb-io/redcode)")).toBe(
+    '<p><a href="https://github.com/reddb-io/redcode" class="external-link" target="_blank" rel="noopener noreferrer">Redcode</a></p>\n',
   )
 })
 

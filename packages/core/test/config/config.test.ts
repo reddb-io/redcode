@@ -3,18 +3,18 @@ import fs from "fs/promises"
 import { describe, expect } from "bun:test"
 import { Effect, Layer, Schema } from "effect"
 import { FastCheck } from "effect/testing"
-import { Config } from "@opencode-ai/core/config"
-import { ConfigProvider } from "@opencode-ai/core/config/provider"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { ConfigMigrateV1 } from "@opencode-ai/core/v1/config/migrate"
-import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
-import { FSUtil } from "@opencode-ai/core/fs-util"
-import { Global } from "@opencode-ai/core/global"
-import { Location } from "@opencode-ai/core/location"
-import { Policy } from "@opencode-ai/core/policy"
-import { Project } from "@opencode-ai/core/project"
-import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Config } from "@reddb-io/redcode-core/config"
+import { ConfigProvider } from "@reddb-io/redcode-core/config/provider"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { ConfigMigrateV1 } from "@reddb-io/redcode-core/v1/config/migrate"
+import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { Global } from "@reddb-io/redcode-core/global"
+import { Location } from "@reddb-io/redcode-core/location"
+import { Policy } from "@reddb-io/redcode-core/policy"
+import { Project } from "@reddb-io/redcode-core/project"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { location } from "../fixture/location"
 import { tmpdir } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
@@ -830,7 +830,7 @@ describe("Config", () => {
     ),
   )
 
-  it.live("loads global, ancestor, and .opencode configuration up to the project boundary", () =>
+  it.live("loads .redcode before legacy .opencode configuration up to the project boundary", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
@@ -845,7 +845,9 @@ describe("Config", () => {
             await fs.mkdir(global, { recursive: true })
             await fs.mkdir(directory, { recursive: true })
             await fs.mkdir(path.join(root, ".opencode"), { recursive: true })
+            await fs.mkdir(path.join(root, ".redcode"), { recursive: true })
             await fs.mkdir(path.join(directory, ".opencode"), { recursive: true })
+            await fs.mkdir(path.join(directory, ".redcode"), { recursive: true })
             await Promise.all([
               fs.writeFile(path.join(tmp.path, "opencode.json"), JSON.stringify({ $schema: "outside" })),
               fs.writeFile(path.join(global, "opencode.json"), JSON.stringify({ $schema: "global" })),
@@ -853,9 +855,14 @@ describe("Config", () => {
               fs.writeFile(path.join(parent, "opencode.jsonc"), JSON.stringify({ $schema: "parent" })),
               fs.writeFile(path.join(directory, "opencode.json"), JSON.stringify({ $schema: "directory" })),
               fs.writeFile(path.join(root, ".opencode", "opencode.json"), JSON.stringify({ $schema: "root-dot" })),
+              fs.writeFile(path.join(root, ".redcode", "config.json"), JSON.stringify({ $schema: "root-redcode" })),
               fs.writeFile(
                 path.join(directory, ".opencode", "opencode.jsonc"),
                 JSON.stringify({ $schema: "directory-dot" }),
+              ),
+              fs.writeFile(
+                path.join(directory, ".redcode", "config.jsonc"),
+                JSON.stringify({ $schema: "directory-redcode" }),
               ),
             ])
           })
@@ -868,7 +875,9 @@ describe("Config", () => {
             expect(entries.filter((entry) => entry.type === "directory").map((entry) => entry.path)).toEqual([
               AbsolutePath.make(global),
               AbsolutePath.make(path.join(root, ".opencode")),
+              AbsolutePath.make(path.join(root, ".redcode")),
               AbsolutePath.make(path.join(directory, ".opencode")),
+              AbsolutePath.make(path.join(directory, ".redcode")),
             ])
             expect(documents.map((document) => document.info.$schema)).toEqual([
               "global",
@@ -876,7 +885,9 @@ describe("Config", () => {
               "parent",
               "directory",
               "root-dot",
+              "root-redcode",
               "directory-dot",
+              "directory-redcode",
             ])
             expect(entries.map((entry) => (entry.type === "document" ? entry.info.$schema : entry.path))).toEqual([
               "global",
@@ -886,8 +897,12 @@ describe("Config", () => {
               "directory",
               "root-dot",
               AbsolutePath.make(path.join(root, ".opencode")),
+              "root-redcode",
+              AbsolutePath.make(path.join(root, ".redcode")),
               "directory-dot",
               AbsolutePath.make(path.join(directory, ".opencode")),
+              "directory-redcode",
+              AbsolutePath.make(path.join(directory, ".redcode")),
             ])
           }).pipe(
             Effect.provide(

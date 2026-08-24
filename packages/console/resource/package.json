@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/console-resource",
+  "name": "@reddb-io/redcode-console-resource",
   "version": "1.18.18",
   "license": "MIT",
   "dependencies": {

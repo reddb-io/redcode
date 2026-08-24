@@ -1,6 +1,6 @@
-import { Location } from "@opencode-ai/core/location"
-import { Project } from "@opencode-ai/core/project"
-import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Location } from "@reddb-io/redcode-core/location"
+import { Project } from "@reddb-io/redcode-core/project"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { Effect, Layer } from "effect"
 import { tmpdir } from "./tmpdir"
 

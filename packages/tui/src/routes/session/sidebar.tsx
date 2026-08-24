@@ -1,27 +1,35 @@
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
 import { createMemo, Show } from "solid-js"
+import { MouseButton, type MouseEvent, TextAttributes } from "@opentui/core"
+import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useTuiConfig } from "../../config"
-import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { InstallationChannel } from "@reddb-io/redcode-core/installation/version"
 import { usePluginRuntime } from "../../plugin/runtime"
-import { useTerminalDimensions } from "@opentui/solid"
 
 import { getScrollAcceleration } from "../../util/scroll"
 import { WorkspaceLabel } from "../../component/workspace-label"
+import { useRedskilled } from "../../context/redskilled"
+import { Workers } from "../workers"
 
-// Threshold under which a single-column sidebar is the only sensible layout: the
-// conversation needs room to breathe even after we deduct the sidebar width.
-const SINGLE_COLUMN_MAX_WIDTH = 120
-const COLUMN_WIDTH = 36
+export type SidebarTab = "context" | "workers"
 
-export function Sidebar(props: { sessionID: string; overlay?: boolean; wide?: boolean }) {
+export function Sidebar(props: {
+  sessionID: string
+  overlay?: boolean
+  tab: SidebarTab
+  onTabChange: (tab: SidebarTab) => void
+  width: number
+  onWidthDragStart: (x: number) => void
+}) {
   const pluginRuntime = usePluginRuntime()
   const project = useProject()
   const sync = useSync()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
-  const dimensions = useTerminalDimensions()
+  const redskilled = useRedskilled()
+  const renderer = useRenderer()
   const session = createMemo(() => sync.session.get(props.sessionID))
   const workspace = () => {
     const workspaceID = session()?.workspaceID
@@ -29,19 +37,17 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean; wide?: bo
     return project.workspace.get(workspaceID)
   }
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
-  // Two columns only when the caller signals wide AND the terminal can host both
-  // columns without starving the conversation; overlay mode keeps a single column.
-  const useTwoColumns = createMemo(() => {
-    if (props.overlay) return false
-    if (!props.wide) return false
-    return dimensions().width > SINGLE_COLUMN_MAX_WIDTH
-  })
+  const workerCount = createMemo(() => redskilled.status()?.payload?.workers.length ?? 0)
+  const failedWorkers = createMemo(
+    () => redskilled.status()?.payload?.workers.filter((item) => item.display?.failed).length ?? 0,
+  )
 
   return (
     <Show when={session()}>
       <box
+        id="session-sidebar"
         backgroundColor={theme.backgroundPanel}
-        width={useTwoColumns() ? COLUMN_WIDTH * 2 + 1 : COLUMN_WIDTH}
+        width={props.width}
         height="100%"
         paddingTop={1}
         paddingBottom={1}
@@ -49,6 +55,25 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean; wide?: bo
         paddingRight={2}
         position={props.overlay ? "absolute" : "relative"}
       >
+        <box
+          id="session-sidebar-resize"
+          position="absolute"
+          left={0}
+          top={0}
+          width={1}
+          height="100%"
+          zIndex={10}
+          backgroundColor={theme.backgroundPanel}
+          onMouseOver={() => renderer.setMousePointer("move")}
+          onMouseOut={() => renderer.setMousePointer("default")}
+          onMouseDown={(event: MouseEvent) => {
+            if (event.button !== MouseButton.LEFT) return
+            props.onWidthDragStart(event.x)
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+        />
+
         <box flexShrink={0} gap={1} paddingRight={1}>
           <pluginRuntime.Slot
             name="sidebar_title"
@@ -88,38 +113,52 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean; wide?: bo
           </pluginRuntime.Slot>
         </box>
 
-        <scrollbox
-          flexGrow={1}
-          scrollAcceleration={scrollAcceleration()}
-          verticalScrollbarOptions={{
-            trackOptions: {
-              backgroundColor: theme.background,
-              foregroundColor: theme.borderActive,
-            },
-          }}
-        >
-          <Show
-            when={useTwoColumns()}
-            fallback={
-              <box flexShrink={0} gap={1} paddingRight={1}>
-                <pluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
-                <pluginRuntime.Slot name="sidebar_project" session_id={props.sessionID} />
-              </box>
-            }
+        <box flexDirection="row" flexShrink={0} gap={2} paddingTop={1} paddingBottom={1}>
+          <text
+            fg={props.tab === "context" ? theme.primary : theme.textMuted}
+            attributes={props.tab === "context" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onTabChange("context")}
           >
-            <box flexDirection="row" flexShrink={0} gap={1} paddingRight={1}>
-              <box width={COLUMN_WIDTH} gap={1}>
-                <pluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
-              </box>
-              <box width={COLUMN_WIDTH} gap={1}>
-                <pluginRuntime.Slot name="sidebar_project" session_id={props.sessionID} />
-              </box>
-            </box>
-          </Show>
-        </scrollbox>
+            Context
+          </text>
+          <text
+            fg={props.tab === "workers" ? theme.primary : theme.textMuted}
+            attributes={props.tab === "workers" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onTabChange("workers")}
+          >
+            Workers
+            <Show when={workerCount() > 0}>
+              <span style={{ fg: failedWorkers() ? theme.error : theme.textMuted }}>
+                {` (${workerCount()}${failedWorkers() ? ` ✗${failedWorkers()}` : ""})`}
+              </span>
+            </Show>
+          </text>
+        </box>
 
-        <box flexShrink={0} gap={1} paddingTop={1}>
-          <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID} />
+        <box visible={props.tab === "context"} flexGrow={1} minHeight={0}>
+          <scrollbox
+            flexGrow={1}
+            scrollAcceleration={scrollAcceleration()}
+            verticalScrollbarOptions={{
+              trackOptions: {
+                backgroundColor: theme.background,
+                foregroundColor: theme.borderActive,
+              },
+            }}
+          >
+            <box flexShrink={0} gap={1} paddingRight={1}>
+              <pluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
+              <pluginRuntime.Slot name="sidebar_project" session_id={props.sessionID} />
+            </box>
+          </scrollbox>
+
+          <box flexShrink={0} gap={1} paddingTop={1}>
+            <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID} />
+          </box>
+        </box>
+
+        <box visible={props.tab === "workers"} flexGrow={1} minHeight={0}>
+          <Workers active={props.tab === "workers"} width={props.width - 4} />
         </box>
       </box>
     </Show>

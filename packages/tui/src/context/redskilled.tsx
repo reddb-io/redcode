@@ -1,7 +1,17 @@
-import type { RedskilledStatusResponse } from "@opencode-ai/sdk/v2"
+import type { RedskilledStatusResponse } from "@reddb-io/redcode-sdk/v2"
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
+
+export function isRedskilledConnected(status: RedskilledStatusResponse | undefined) {
+  return status?.lifecycle === "live" || status?.lifecycle === "degraded"
+}
+
+export function redskilledConnectionTone(status: RedskilledStatusResponse | undefined) {
+  if (status?.lifecycle === "live") return "connected" as const
+  if (status?.lifecycle === "degraded") return "degraded" as const
+  return "disconnected" as const
+}
 
 export const { use: useRedskilled, provider: RedskilledProvider } = createSimpleContext({
   name: "Redskilled",
@@ -37,6 +47,8 @@ export const { use: useRedskilled, provider: RedskilledProvider } = createSimple
 
     return {
       status,
+      connected: () => isRedskilledConnected(status()),
+      connectionTone: () => redskilledConnectionTone(status()),
       loading,
       setActive,
       refresh: load,

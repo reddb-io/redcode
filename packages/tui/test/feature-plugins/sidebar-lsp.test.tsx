@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { expect, test } from "bun:test"
 import { testRender, type JSX } from "@opentui/solid"
-import type { TuiPluginApi, TuiPluginMeta } from "@opencode-ai/plugin/tui"
+import type { TuiPluginApi, TuiPluginMeta } from "@reddb-io/redcode-plugin/tui"
 import sidebarLsp from "../../src/feature-plugins/sidebar/lsp"
 import { createTuiPluginApi } from "../fixture/tui-plugin"
 
@@ -33,7 +33,7 @@ test("initialization errors are distinct from waiting for file activation", asyn
   const app = await renderSidebar("error")
 
   try {
-    expect(app.captureCharFrame()).toContain("typescript . (failed)")
+    expect(app.captureCharFrame()).toContain("typescript . (failed: initialize timed out)")
     expect(app.captureCharFrame()).not.toContain("LSPs will activate as files are read")
   } finally {
     app.renderer.destroy()
@@ -48,7 +48,7 @@ async function renderSidebar(status?: "error") {
     state: {
       ...base.state,
       config: { lsp: undefined },
-      lsp: () => (status ? [{ id: "typescript", root: ".", status }] : []),
+      lsp: () => (status ? [{ id: "typescript", root: ".", status, error: "initialize timed out" }] : []),
     },
     slots: {
       register(input: Parameters<TuiPluginApi["slots"]["register"]>[0]) {

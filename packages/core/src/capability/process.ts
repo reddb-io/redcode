@@ -66,7 +66,7 @@ export namespace ProcessService {
     readonly build: () => Layer.Layer<Service>
   }
 
-  export class Service extends Context.Service<Service, Interface>()("@opencode/Process") {}
+  export class Service extends Context.Service<Service, Interface>()("@redcode/Process") {}
 
   /** `Backend` describes provider implementations; consumers depend on `Service`. */
   export type BackendTag = Backend
@@ -79,7 +79,7 @@ export namespace ProcessService {
   }
 
   /**
-   * `LocalLayer` exposes the opencode `AppProcess.Service` as the
+   * `LocalLayer` exposes the Redcode `AppProcess.Service` as the
    * `ProcessService.Service`. The interface is identical; the cast is
    * the seam boundary.
    */

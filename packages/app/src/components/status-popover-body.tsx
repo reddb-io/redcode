@@ -1,8 +1,8 @@
-import { Button } from "@opencode-ai/ui/button"
-import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Icon } from "@opencode-ai/ui/icon"
-import { Switch } from "@opencode-ai/ui/switch"
-import { Tabs } from "@opencode-ai/ui/tabs"
+import { Button } from "@reddb-io/redcode-ui/button"
+import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
+import { Icon } from "@reddb-io/redcode-ui/icon"
+import { Switch } from "@reddb-io/redcode-ui/switch"
+import { Tabs } from "@reddb-io/redcode-ui/tabs"
 import { showToast } from "@/utils/toast"
 import { useNavigate } from "@solidjs/router"
 import { type Accessor, createEffect, createMemo, For, type JSXElement, onCleanup, Show } from "solid-js"
@@ -478,7 +478,16 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
                           "bg-icon-critical-base": item.status === "error",
                         }}
                       />
-                      <span class="text-14-regular text-text-base truncate">{item.name || item.id}</span>
+                      <span class="flex flex-col min-w-0">
+                        <span class="text-14-regular text-text-base truncate">{item.name || item.id}</span>
+                        <Show when={item.error}>
+                          {(error) => (
+                            <span dir="auto" class="text-11-regular text-text-weaker truncate" title={error()}>
+                              {error()}
+                            </span>
+                          )}
+                        </Show>
+                      </span>
                     </div>
                   )}
                 </For>

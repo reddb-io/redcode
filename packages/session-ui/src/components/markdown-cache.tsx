@@ -1,4 +1,4 @@
-import { checksum } from "@opencode-ai/core/util/encode"
+import { checksum } from "@reddb-io/redcode-core/util/encode"
 import DOMPurify from "dompurify"
 import { parseMarkdown } from "./markdown-worker"
 
