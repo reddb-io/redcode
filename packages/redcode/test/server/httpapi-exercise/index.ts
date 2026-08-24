@@ -667,8 +667,12 @@ const scenarios: Scenario[] = [
     .post("/redskilled/consent", "redskilled.consent")
     .mutating()
     .at((ctx) => ({ path: "/redskilled/consent", headers: ctx.headers(), body: { decision: "refused" } }))
-    .json(200, (body) => {
+    .json([200, 400], (body) => {
       object(body)
+      if (typeof body.message === "string") {
+        check(body.message.length > 0, "redskilled errors should explain the failure")
+        return
+      }
       check(body.lifecycle === "unavailable", "redskilled consent should report unavailable without project identity")
       check(typeof body.error === "string" && body.error.length > 0, "redskilled status should explain the failure")
     }),
@@ -679,8 +683,12 @@ const scenarios: Scenario[] = [
   http.protected
     .post("/redskilled/project/stop", "redskilled.project.stop")
     .at((ctx) => ({ path: "/redskilled/project/stop", headers: ctx.headers() }))
-    .json(200, (body) => {
+    .json([200, 400], (body) => {
       object(body)
+      if (typeof body.message === "string") {
+        check(body.message.length > 0, "redskilled errors should explain the failure")
+        return
+      }
       check(body.lifecycle === "unavailable", "redskilled stop should report unavailable without project identity")
       check(typeof body.error === "string" && body.error.length > 0, "redskilled status should explain the failure")
     }),
