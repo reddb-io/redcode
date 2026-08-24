@@ -2,8 +2,8 @@ export * as PluginV2 from "./plugin"
 
 import { makeLocationNode } from "./effect/app-node"
 import { Context, Deferred, Effect, Exit, Layer, Scope } from "effect"
-import type { Plugin as PluginRuntime } from "@opencode-ai/plugin/v2/effect"
-import { Plugin } from "@opencode-ai/schema/plugin"
+import type { Plugin as PluginRuntime } from "@reddb-io/redcode-plugin/v2/effect"
+import { Plugin } from "@reddb-io/redcode-schema/plugin"
 import { AgentV2 } from "./agent"
 import { AISDK } from "./aisdk"
 import { CapabilityRegistry } from "./capability"
@@ -30,7 +30,7 @@ export interface Interface {
   readonly list: () => Effect.Effect<readonly ID[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Plugin") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/Plugin") {}
 
 const layer = Layer.effect(
   Service,
@@ -147,7 +147,7 @@ const layer = Layer.effect(
       return order.filter((id) => active.has(id))
     })
 
-    yield* invariants.register("@opencode-ai/core/plugin", () =>
+    yield* invariants.register("@reddb-io/redcode-core/plugin", () =>
       Effect.sync(() => {
         if (new Set(order).size !== order.length) throw new Error("Plugin inventory contains duplicate ids")
         if (order.some((id) => !active.has(id))) throw new Error("Plugin inventory contains an inactive id")

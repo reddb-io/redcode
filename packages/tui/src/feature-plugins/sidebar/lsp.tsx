@@ -1,4 +1,4 @@
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 
@@ -37,7 +37,7 @@ function View(props: { api: TuiPluginApi }) {
               </text>
               <text fg={theme().textMuted}>
                 {item.id} {item.root}
-                {item.status === "error" ? " (failed)" : ""}
+                {item.status === "error" ? ` (failed${item.error ? `: ${item.error}` : ""})` : ""}
               </text>
             </box>
           )}

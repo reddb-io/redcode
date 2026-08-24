@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Cause, Effect, Exit } from "effect"
-import { RuntimeInvariant } from "@opencode-ai/core/invariant"
+import { RuntimeInvariant } from "@reddb-io/redcode-core/invariant"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(RuntimeInvariant.layer)
@@ -13,9 +13,9 @@ describe("RuntimeInvariant", () => {
 
       yield* Effect.scoped(
         Effect.gen(function* () {
-          yield* invariants.register("@opencode-ai/core/example", () => Effect.sync(() => runs++))
-          expect(yield* invariants.list).toEqual(["@opencode-ai/core/example"])
-          expect(yield* invariants.run).toEqual([{ owner: "@opencode-ai/core/example", ok: true }])
+          yield* invariants.register("@reddb-io/redcode-core/example", () => Effect.sync(() => runs++))
+          expect(yield* invariants.list).toEqual(["@reddb-io/redcode-core/example"])
+          expect(yield* invariants.run).toEqual([{ owner: "@reddb-io/redcode-core/example", ok: true }])
           expect(runs).toBe(1)
         }),
       )
@@ -30,8 +30,8 @@ describe("RuntimeInvariant", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const invariants = yield* RuntimeInvariant.Service
-        yield* invariants.register("@opencode-ai/core/healthy", () => Effect.void)
-        yield* invariants.register("@opencode-ai/core/broken", () =>
+        yield* invariants.register("@reddb-io/redcode-core/healthy", () => Effect.void)
+        yield* invariants.register("@reddb-io/redcode-core/broken", () =>
           Effect.sync(() => {
             throw new Error("plugin inventory drifted")
           }),
@@ -39,15 +39,15 @@ describe("RuntimeInvariant", () => {
 
         const exit = yield* Effect.exit(invariants.run)
         if (Exit.isSuccess(exit)) throw new Error("expected the broken invariant to fail the run")
-        expect(Cause.pretty(exit.cause)).toContain("@opencode-ai/core/broken")
-        expect(Cause.pretty(exit.cause)).not.toContain("@opencode-ai/core/healthy")
+        expect(Cause.pretty(exit.cause)).toContain("@reddb-io/redcode-core/broken")
+        expect(Cause.pretty(exit.cause)).not.toContain("@reddb-io/redcode-core/healthy")
 
         const results = yield* invariants.results
-        expect(results.find((result) => result.owner === "@opencode-ai/core/healthy")).toEqual({
-          owner: "@opencode-ai/core/healthy",
+        expect(results.find((result) => result.owner === "@reddb-io/redcode-core/healthy")).toEqual({
+          owner: "@reddb-io/redcode-core/healthy",
           ok: true,
         })
-        const broken = results.find((result) => result.owner === "@opencode-ai/core/broken")
+        const broken = results.find((result) => result.owner === "@reddb-io/redcode-core/broken")
         expect(broken?.ok).toBe(false)
         expect(broken?.error).toContain("plugin inventory drifted")
       }),

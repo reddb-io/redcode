@@ -34,11 +34,11 @@ async function post(url: URL, body: Uint8Array) {
     accept: dialect(body),
   }
   const authorization = "REDCODE_AUTHORIZATION" in process.env ? process.env.REDCODE_AUTHORIZATION : undefined
-  const password = "OPENCODE_SERVER_PASSWORD" in process.env ? process.env.OPENCODE_SERVER_PASSWORD : undefined
+  const password = "REDCODE_SERVER_PASSWORD" in process.env ? process.env.REDCODE_SERVER_PASSWORD : undefined
   if (authorization) headers.authorization = authorization
   if (!authorization && password) {
     const username =
-      ("OPENCODE_SERVER_USERNAME" in process.env ? process.env.OPENCODE_SERVER_USERNAME : undefined) ?? "opencode"
+      ("REDCODE_SERVER_USERNAME" in process.env ? process.env.REDCODE_SERVER_USERNAME : undefined) ?? "redcode"
     headers.authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
   }
 

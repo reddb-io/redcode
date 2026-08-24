@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectAppVisible } from "../utils/waits"
 
-const directory = "C:/RedCode/Entry"
+const directory = "C:/Redcode/Entry"
 
-test("opens directly into an unpersisted RedCode chat draft", async ({ page }) => {
+test("opens directly into an unpersisted Redcode chat draft", async ({ page }) => {
   let sessionWrites = 0
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname
@@ -54,7 +54,7 @@ test("opens directly into an unpersisted RedCode chat draft", async ({ page }) =
 
   const panel = await page.locator('[data-component="session-new-design"]').boundingBox()
   const prompt = await composer.boundingBox()
-  if (!panel || !prompt) throw new Error("RedCode draft geometry is unavailable")
+  if (!panel || !prompt) throw new Error("Redcode draft geometry is unavailable")
   expect(prompt.y).toBeGreaterThan(panel.y + panel.height / 2)
 
   await page.getByRole("button", { name: "Home" }).click()

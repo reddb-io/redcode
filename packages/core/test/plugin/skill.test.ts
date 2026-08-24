@@ -1,8 +1,8 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { SkillPlugin } from "@opencode-ai/core/plugin/skill"
-import { SkillV2 } from "@opencode-ai/core/skill"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { SkillPlugin } from "@reddb-io/redcode-core/plugin/skill"
+import { SkillV2 } from "@reddb-io/redcode-core/skill"
 import { testEffect } from "../lib/effect"
 import { host } from "./host"
 
@@ -17,7 +17,7 @@ describe("SkillPlugin.Plugin", () => {
       expect(yield* skill.list()).toContainEqual(
         expect.objectContaining({
           name: "customize-opencode",
-          description: expect.stringContaining("opencode's own configuration"),
+          description: expect.stringContaining("Redcode's own configuration"),
         }),
       )
     }),

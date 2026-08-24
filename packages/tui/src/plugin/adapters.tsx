@@ -1,4 +1,4 @@
-import type { TuiDialogSelectOption, TuiPluginApi, TuiSlotProps } from "@opencode-ai/plugin/tui"
+import type { TuiDialogSelectOption, TuiPluginApi, TuiSlotProps } from "@reddb-io/redcode-plugin/tui"
 import type { TuiConfig } from "../config"
 import type { useEvent } from "../context/event"
 import type { useRoute } from "../context/route"
@@ -148,7 +148,7 @@ function stateApi(sync: ReturnType<typeof useSync>): TuiPluginApi["state"] {
       return sync.data.part[messageID] ?? []
     },
     lsp() {
-      return sync.data.lsp.map((item) => ({ id: item.id, root: item.root, status: item.status }))
+      return sync.data.lsp.map((item) => ({ id: item.id, root: item.root, status: item.status, error: item.error }))
     },
     mcp() {
       return Object.entries(sync.data.mcp)

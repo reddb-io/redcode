@@ -1,6 +1,6 @@
 export * as HookV2 from "./hook"
 
-import { Hook } from "@opencode-ai/schema/hook"
+import { Hook } from "@reddb-io/redcode-schema/hook"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
@@ -41,7 +41,7 @@ export interface Interface {
   readonly run: (input: Omit<Hook.Input, "cwd">) => Effect.Effect<Hook.Output>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Hook") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/Hook") {}
 
 export class ImportError extends Schema.TaggedErrorClass<ImportError>()("Hook.ImportError", {
   message: Schema.String,
@@ -204,7 +204,7 @@ const layer = Layer.effect(
     })
 
     const run = Effect.fn("Hook.run")(function* (raw: Omit<Hook.Input, "cwd">) {
-      const currentDepth = Number.parseInt(processEnv("OPENCODE_HOOK_DEPTH") ?? "0", 10)
+      const currentDepth = Number.parseInt(processEnv("REDCODE_HOOK_DEPTH") ?? "0", 10)
       if (currentDepth >= MAX_RECURSION) return blocked(`Hook recursion limit reached (${MAX_RECURSION})`)
       const state = yield* status()
       const input = { ...raw, cwd: location.directory }
@@ -308,7 +308,7 @@ function executeCommand(handler: typeof Hook.CommandHandler.Type, input: Hook.In
       extendEnv: true,
       env: {
         CLAUDE_PROJECT_DIR: input.cwd,
-        OPENCODE_HOOK_DEPTH: String(Number.parseInt(processEnv("OPENCODE_HOOK_DEPTH") ?? "0", 10) + 1),
+        REDCODE_HOOK_DEPTH: String(Number.parseInt(processEnv("REDCODE_HOOK_DEPTH") ?? "0", 10) + 1),
       },
     }),
     {

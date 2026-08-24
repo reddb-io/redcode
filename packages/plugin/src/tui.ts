@@ -1,6 +1,6 @@
 import type {
   AgentPart,
-  OpencodeClient,
+  RedcodeClient,
   Event,
   FilePart,
   LspStatus,
@@ -15,7 +15,7 @@ import type {
   SessionStatus,
   TextPart,
   Config as SdkConfig,
-} from "@opencode-ai/sdk/v2"
+} from "@reddb-io/redcode-sdk/v2"
 import type { CliRenderer, KeyEvent, RGBA, Renderable, SlotMode } from "@opentui/core"
 import type { Binding, Keymap } from "@opentui/keymap"
 import {
@@ -442,7 +442,7 @@ export type TuiSidebarMcpItem = {
   error?: string
 }
 
-export type TuiSidebarLspItem = Pick<LspStatus, "id" | "root" | "status">
+export type TuiSidebarLspItem = Pick<LspStatus, "id" | "root" | "status" | "error">
 
 export type TuiSidebarTodoItem = Pick<Todo, "content" | "status">
 
@@ -617,7 +617,7 @@ export type TuiPluginApi = {
   kv: TuiKV
   state: TuiState
   theme: TuiTheme
-  client: OpencodeClient
+  client: RedcodeClient
   event: TuiEventBus
   renderer: CliRenderer
   slots: TuiSlots

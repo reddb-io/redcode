@@ -5,11 +5,11 @@ import path from "path"
 import os from "os"
 import { Cause, Effect, Exit } from "effect"
 import { testEffect } from "../lib/effect"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { EffectFlock } from "@opencode-ai/core/util/effect-flock"
-import { Global } from "@opencode-ai/core/global"
-import { Hash } from "@opencode-ai/core/util/hash"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { EffectFlock } from "@reddb-io/redcode-core/util/effect-flock"
+import { Global } from "@reddb-io/redcode-core/global"
+import { Hash } from "@reddb-io/redcode-core/util/hash"
 
 function lock(dir: string, key: string) {
   return path.join(dir, Hash.fast(key) + ".lock")
@@ -334,12 +334,12 @@ describe("util.effect-flock", () => {
         const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "eflock-stress-"))
         const dir = path.join(tmp, "locks")
         const done = path.join(tmp, "done.log")
-        const active = path.join(tmp, "active")
         const n = 16
 
+        // The serialized work and done log prove exclusion without racing on an out-of-lock marker.
         try {
           const out = await Promise.all(
-            Array.from({ length: n }, () => run({ key: "eflock:stress", dir, done, active, holdMs: 30 })),
+            Array.from({ length: n }, () => run({ key: "eflock:stress", dir, done, holdMs: 30 })),
           )
 
           expect(out.map((x) => x.code)).toEqual(Array.from({ length: n }, () => 0))

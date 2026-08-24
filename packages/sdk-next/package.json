@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/sdk-next",
+  "name": "@reddb-io/redcode-sdk-next",
   "version": "1.18.18",
   "private": true,
   "type": "module",
@@ -13,9 +13,9 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/client": "workspace:*",
-    "@opencode-ai/core": "workspace:*",
-    "@opencode-ai/server": "workspace:*",
+    "@reddb-io/redcode-client": "workspace:*",
+    "@reddb-io/redcode-core": "workspace:*",
+    "@reddb-io/redcode-server": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

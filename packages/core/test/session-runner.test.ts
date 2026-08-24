@@ -8,53 +8,54 @@ import {
   InvalidRequestReason,
   type LLMClientShape,
   type LLMRequest,
-} from "@opencode-ai/llm"
-import * as OpenAIChat from "@opencode-ai/llm/protocols/openai-chat"
-import { Database } from "@opencode-ai/core/database/database"
-import { makeLocationNode } from "@opencode-ai/core/effect/app-node"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { EventV2 } from "@opencode-ai/core/event"
-import { PermissionV2 } from "@opencode-ai/core/permission"
-import { EventTable } from "@opencode-ai/core/event/sql"
-import { Project } from "@opencode-ai/core/project"
-import { ProjectTable } from "@opencode-ai/core/project/sql"
-import { QuestionV2 } from "@opencode-ai/core/question"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { SessionV2 } from "@opencode-ai/core/session"
-import { Snapshot } from "@opencode-ai/core/snapshot"
-import { ContextSnapshotDecodeError } from "@opencode-ai/core/session/error"
-import { SessionEvent } from "@opencode-ai/core/session/event"
-import { SessionInput } from "@opencode-ai/core/session/input"
-import { SessionMessage } from "@opencode-ai/core/session/message"
-import { Prompt } from "@opencode-ai/core/session/prompt"
-import { SessionProjector } from "@opencode-ai/core/session/projector"
-import { SessionExecution } from "@opencode-ai/core/session/execution"
-import { SessionRunCoordinator } from "@opencode-ai/core/session/run-coordinator"
-import { SessionRunner } from "@opencode-ai/core/session/runner"
-import * as SessionRunnerLLM from "@opencode-ai/core/session/runner/llm"
-import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
-import { ToolRegistry } from "@opencode-ai/core/tool/registry"
-import { ApplicationTools } from "@opencode-ai/core/tool/application-tools"
-import { AgentV2 } from "@opencode-ai/core/agent"
-import { Config } from "@opencode-ai/core/config"
-import { ConfigCompaction } from "@opencode-ai/core/config/compaction"
-import { Tool } from "@opencode-ai/core/tool/tool"
+} from "@reddb-io/redcode-llm"
+import * as OpenAIChat from "@reddb-io/redcode-llm/protocols/openai-chat"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { makeLocationNode } from "@reddb-io/redcode-core/effect/app-node"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { LayerNodePlatform } from "@reddb-io/redcode-core/effect/app-node-platform"
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { EventV2 } from "@reddb-io/redcode-core/event"
+import { PermissionV2 } from "@reddb-io/redcode-core/permission"
+import { EventTable } from "@reddb-io/redcode-core/event/sql"
+import { Project } from "@reddb-io/redcode-core/project"
+import { ProjectTable } from "@reddb-io/redcode-core/project/sql"
+import { QuestionV2 } from "@reddb-io/redcode-core/question"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { Snapshot } from "@reddb-io/redcode-core/snapshot"
+import { ContextSnapshotDecodeError } from "@reddb-io/redcode-core/session/error"
+import { SessionEvent } from "@reddb-io/redcode-core/session/event"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { Prompt } from "@reddb-io/redcode-core/session/prompt"
+import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
+import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
+import { SessionRunCoordinator } from "@reddb-io/redcode-core/session/run-coordinator"
+import { SessionRunner } from "@reddb-io/redcode-core/session/runner"
+import * as SessionRunnerLLM from "@reddb-io/redcode-core/session/runner/llm"
+import { SessionRunnerModel } from "@reddb-io/redcode-core/session/runner/model"
+import { ToolRegistry } from "@reddb-io/redcode-core/tool/registry"
+import { ApplicationTools } from "@reddb-io/redcode-core/tool/application-tools"
+import { AgentV2 } from "@reddb-io/redcode-core/agent"
+import { Config } from "@reddb-io/redcode-core/config"
+import { ConfigCompaction } from "@reddb-io/redcode-core/config/compaction"
+import { Tool } from "@reddb-io/redcode-core/tool/tool"
 import {
   SessionContextEpochTable,
   SessionInputTable,
   SessionMessageTable,
   SessionTable,
-} from "@opencode-ai/core/session/sql"
-import { SessionStore } from "@opencode-ai/core/session/store"
-import { SystemContext } from "@opencode-ai/core/system-context"
-import { SystemContextRegistry } from "@opencode-ai/core/system-context/registry"
-import { SkillGuidance } from "@opencode-ai/core/skill/guidance"
-import { ReferenceGuidance } from "@opencode-ai/core/reference/guidance"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { Location } from "@opencode-ai/core/location"
-import { ProviderV2 } from "@opencode-ai/core/provider"
+} from "@reddb-io/redcode-core/session/sql"
+import { SessionStore } from "@reddb-io/redcode-core/session/store"
+import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { SystemContext } from "@reddb-io/redcode-core/system-context"
+import { SystemContextRegistry } from "@reddb-io/redcode-core/system-context/registry"
+import { SkillGuidance } from "@reddb-io/redcode-core/skill/guidance"
+import { ReferenceGuidance } from "@reddb-io/redcode-core/reference/guidance"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { Location } from "@reddb-io/redcode-core/location"
+import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
@@ -259,6 +260,7 @@ const it = testEffect(
       QuestionV2.node,
       SessionProjector.node,
       SessionStore.node,
+      SessionTodo.node,
       ApplicationTools.node,
       AgentV2.node,
       ToolRegistry.node,
@@ -1514,6 +1516,88 @@ describe("SessionRunnerLLM", () => {
         },
         { type: "assistant", finish: "stop", content: [{ type: "text", id: "text-final", text: "Done" }] },
       ])
+    }),
+  )
+
+  it.effect("continues a natural stop while persisted todos are unfinished", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.steps = 2
+        }),
+      )
+      const session = yield* SessionV2.Service
+      const todos = yield* SessionTodo.Service
+      const applicationTools = yield* ApplicationTools.Service
+      yield* applicationTools.register({
+        todowrite: Tool.make({
+          description: "Update todos",
+          input: Schema.Struct({}),
+          output: Schema.Struct({}),
+          execute: () => Effect.succeed({}),
+        }),
+      })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Finish the task" }), resume: false })
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "verify the result", status: "pending", priority: "high" }],
+      })
+
+      requests.length = 0
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "text-premature" }),
+          LLMEvent.textDelta({ id: "text-premature", text: "Premature" }),
+          LLMEvent.textEnd({ id: "text-premature" }),
+          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+          LLMEvent.finish({ reason: "stop" }),
+        ],
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "text-final" }),
+          LLMEvent.textDelta({ id: "text-final", text: "Final" }),
+          LLMEvent.textEnd({ id: "text-final" }),
+          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+          LLMEvent.finish({ reason: "stop" }),
+        ],
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(JSON.stringify(requests[1]?.messages)).toContain("unfinished todo items")
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Finish the task" },
+        { type: "assistant", finish: "stop" },
+        { type: "synthetic", text: expect.stringContaining("verify the result") },
+        { type: "assistant", finish: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("does not continue unfinished todos when todowrite is unavailable", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const todos = yield* SessionTodo.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Finish the task" }), resume: false })
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "blocked item", status: "pending", priority: "high" }],
+      })
+      requests.length = 0
+      response = [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
     }),
   )
 

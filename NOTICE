@@ -30,7 +30,7 @@ copyright notice is preserved verbatim in LICENSE:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-Redcode keeps OpenCode's internal package names (@opencode-ai/*), environment
+Redcode keeps OpenCode's internal package names (@reddb-io/redcode-*), environment
 variable prefixes (OPENCODE_*), and module layout deliberately, so that changes
 made here stay readable against upstream.
 

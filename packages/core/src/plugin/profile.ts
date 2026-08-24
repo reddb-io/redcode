@@ -15,7 +15,7 @@ export interface Interface {
   readonly attach: (source: Effect.Effect<CordisPluginHost.ProfileSnapshot>) => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/PluginProfile") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/PluginProfile") {}
 
 export const layer = Layer.sync(Service, () => {
   let source: Effect.Effect<CordisPluginHost.ProfileSnapshot> | undefined

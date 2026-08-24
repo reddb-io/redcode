@@ -1,13 +1,13 @@
 import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { createSimpleContext } from "@opencode-ai/ui/context"
-import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { createSimpleContext } from "@reddb-io/redcode-ui/context"
+import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { persisted } from "@/utils/persist"
 import { DialogReleaseNotes, type Highlight } from "@/components/dialog-release-notes"
 
-const CHANGELOG_URL = "https://opencode.ai/changelog.json"
+const CHANGELOG_URL = "https://api.github.com/repos/reddb-io/redcode/releases"
 
 type Store = {
   version?: string
@@ -66,7 +66,7 @@ function parseRelease(value: unknown): ParsedRelease | undefined {
   const tag = getText(value.tag) ?? getText(value.tag_name) ?? getText(value.name)
 
   if (!Array.isArray(value.highlights)) {
-    return { tag, highlights: [] }
+    return { tag, highlights: parseGithubHighlights(value, tag) }
   }
 
   const highlights = value.highlights.flatMap((group) => {
@@ -86,6 +86,25 @@ function parseRelease(value: unknown): ParsedRelease | undefined {
   })
 
   return { tag, highlights }
+}
+
+function parseGithubHighlights(value: Record<string, unknown>, tag: string | undefined) {
+  const body = getText(value.body)
+  const release = getText(value.name) ?? tag
+  if (!body || !release) return []
+
+  return body.split("\n").flatMap((line) => {
+    const item = line.match(/^\s*[-*]\s+(.+)$/)?.[1]
+    if (!item) return []
+
+    const text = item.replace(/\s+by\s+@\S+\s+in\s+https?:\/\/\S+\s*$/i, "").trim()
+    if (/^chore\(release\):/i.test(text)) return []
+
+    const title = text.replace(/^[a-z]+(?:\([^)]+\))?!?:\s*/i, "").trim()
+    if (!title) return []
+
+    return [{ title: title[0].toUpperCase() + title.slice(1), description: release }]
+  })
 }
 
 function parseChangelog(value: unknown): ParsedRelease[] | undefined {
@@ -131,7 +150,7 @@ function dedupeKey(highlight: Highlight) {
   return [highlight.title, highlight.description, highlight.media?.type ?? "", highlight.media?.src ?? ""].join("\n")
 }
 
-function loadReleaseHighlights(value: unknown, current?: string, previous?: string) {
+export function loadReleaseHighlights(value: unknown, current?: string, previous?: string) {
   const releases = parseChangelog(value)
   if (!releases?.length) return []
   return sliceHighlights({ releases, current, previous })

@@ -86,8 +86,8 @@ describe(`RPC sidecar (${command[0].endsWith("cli.ts") ? "source" : "native"})`,
     })
     const result = await execute(endpoint.url, frame('toonrpc: "1.0"\nmethod: health.get\nid: 2'), {
       REDCODE_AUTHORIZATION: "",
-      OPENCODE_SERVER_USERNAME: "alice",
-      OPENCODE_SERVER_PASSWORD: "secret",
+      REDCODE_SERVER_USERNAME: "alice",
+      REDCODE_SERVER_PASSWORD: "secret",
     })
 
     expect(result.exitCode).toBe(0)

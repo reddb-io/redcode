@@ -1,4 +1,4 @@
-import { SessionV2 } from "@opencode-ai/core/session"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -9,8 +9,8 @@ import {
   ServiceUnavailableError,
   SessionNotFoundError,
   UnknownError,
-} from "@opencode-ai/protocol/errors"
-import { AbsolutePath } from "@opencode-ai/core/schema"
+} from "@reddb-io/redcode-protocol/errors"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { activeSessions, listSessions } from "../session-read"
 
 const DefaultSessionHistoryLimit = 50

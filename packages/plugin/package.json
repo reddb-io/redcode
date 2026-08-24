@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/plugin",
+  "name": "@reddb-io/redcode-plugin",
   "version": "1.18.18",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
   ],
   "dependencies": {
     "@ai-sdk/provider": "3.0.8",
-    "@opencode-ai/sdk": "workspace:*",
+    "@reddb-io/redcode-sdk": "workspace:*",
     "effect": "catalog:",
     "zod": "catalog:"
   },

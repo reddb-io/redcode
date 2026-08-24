@@ -9,9 +9,16 @@ import path from "path"
 
 import { createClient } from "@hey-api/openapi-ts"
 
-const opencode = path.resolve(dir, "../../opencode")
+const redcode = path.resolve(dir, "../../redcode")
 
-await $`bun dev generate > ${dir}/openapi.json`.cwd(opencode)
+// Break the source/codegen bootstrap cycle when migrating the generated client identity.
+for (const generatedPath of ["./src/gen/sdk.gen.ts", "./src/v2/gen/sdk.gen.ts"]) {
+  const generated = await Bun.file(generatedPath).text()
+  const migrated = generated.replaceAll("OpencodeClient", "RedcodeClient")
+  if (migrated !== generated) await Bun.write(generatedPath, migrated)
+}
+
+await $`bun dev generate > ${dir}/openapi.json`.cwd(redcode)
 
 const document = (await Bun.file("./openapi.json").json()) as {
   components?: { schemas?: Record<string, unknown> }
@@ -58,7 +65,7 @@ await createClient({
     },
     {
       name: "@hey-api/sdk",
-      instance: "OpencodeClient",
+      instance: "RedcodeClient",
       exportFromIndex: false,
       auth: false,
       paramsStructure: "flat",

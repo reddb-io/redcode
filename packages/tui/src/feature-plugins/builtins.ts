@@ -1,4 +1,4 @@
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginModule } from "@reddb-io/redcode-plugin/tui"
 import HomeTips from "./home/tips"
 import SidebarContext from "./sidebar/context"
 import SidebarFiles from "./sidebar/files"

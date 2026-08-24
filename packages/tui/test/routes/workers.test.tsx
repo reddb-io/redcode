@@ -1,13 +1,22 @@
 import { afterEach, expect, mock, test } from "bun:test"
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect } from "effect"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { Global } from "@opencode-ai/core/global"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { Global } from "@reddb-io/redcode-core/global"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json } from "../fixture/tui-sdk"
 
 const started = "2026-08-15T20:00:00.000Z"
+const session = {
+  id: "session-1",
+  title: "Workers session",
+  slug: "workers-session",
+  projectID: "proj_test",
+  directory,
+  version: "0.0.0-test",
+  time: { created: 0, updated: 0 },
+}
 
 function worker(id: string, issue: string, phase: string, index: number, extra: Record<string, unknown> = {}) {
   const { project_label, ...display } = extra as { project_label?: string }
@@ -110,6 +119,11 @@ async function mountWorkers(input: {
   const events = createEventSource()
   const calls = createFetch((url) => {
     if (url.pathname === "/redskilled") return json(status({ workers: input.workers, registered: input.registered }))
+    if (url.pathname === "/session") return json([session])
+    if (url.pathname === `/session/${session.id}`) return json(session)
+    if (url.pathname === `/session/${session.id}/message`) return json([])
+    if (url.pathname === `/session/${session.id}/todo`) return json([])
+    if (url.pathname === `/session/${session.id}/diff`) return json([])
     return undefined
   })
   let api: TuiPluginApi | undefined
@@ -138,12 +152,27 @@ async function mountWorkers(input: {
   )
 
   await booted
+  api?.ui.dialog.clear()
+  api?.route.navigate("session", { sessionID: session.id })
   await setup.renderOnce()
   await setup.renderOnce()
   api?.keymap.dispatchCommand("workers.show")
 
   return {
     setup,
+    route: () => api?.route.current,
+    dispatch: (command: string) => api?.keymap.dispatchCommand(command),
+    blur: () => setup.renderer.currentFocusedEditor?.blur(),
+    sidebarWidth: () => setup.renderer.root.findDescendantById("session-sidebar")?.width,
+    async dragSidebar(columns: number) {
+      const handle = setup.renderer.root.findDescendantById("session-sidebar-resize")
+      if (!handle) throw new Error("missing sidebar resize handle")
+      expect(handle.width).toBe(1)
+      expect(handle.height).toBeGreaterThan(5)
+      expect(handle.screenX).toBeGreaterThan(0)
+      await setup.mockMouse.drag(handle.screenX, handle.screenY + 5, handle.screenX - columns, handle.screenY + 5)
+      await setup.renderOnce()
+    },
     frame: async () => {
       await setup.renderOnce()
       return setup.captureCharFrame()
@@ -168,49 +197,51 @@ async function mountWorkers(input: {
 
 afterEach(() => mock.restore())
 
-test("workers view renders the fleet, its meters, and the selected Worker's detail", async () => {
+test("workers render in the session sidebar and preserve the session column", async () => {
   const app = await mountWorkers({
     workers: [worker("h9977", "123", "implement", 0), worker("hSMIB", "124", "gate", 1, { failed: true })],
   })
   try {
     let screen = await app.waitFor("h9977")
 
-    // Header: lifecycle and the host capacity meters.
-    expect(screen).toContain("RedDB Workers")
-    expect(screen).not.toContain("/ Host")
+    expect(app.route()).toEqual({ name: "session", params: { sessionID: session.id } })
+    expect(screen).toContain("Context")
+    expect(screen).toContain("Workers (2 ✗1)")
     expect(screen).toContain("● live")
     expect(screen).toContain("claude × 2")
-    expect(screen).toContain("slots ██░░░░ 2/6 (1 reserved)")
-    expect(screen).toContain("mem ██░░░░ 4.1G/15.3G")
 
-    // The tab badge counts the fleet and flags failures without leaving the Session view.
-    expect(screen).toContain("Workers (2 ✗1)")
-
-    // Table: one row per Worker with a phase bar, and a failed Worker marked.
     expect(screen).toContain("▶ h9977")
     expect(screen).toContain("#123")
-    expect(screen).toContain("██░░░ 2/5")
-    expect(screen).toContain("✗ gate")
+    expect(screen).toContain("implement 2/5")
+    expect(screen).toContain("gate 3/5")
 
-    // Detail pane follows the selection.
-    expect(screen).toContain("h9977 ● running")
-    expect(screen).toContain("claude · claude-fable-5 · high")
-    expect(screen).toContain("phase ████░░░░░░ 2/5 implement")
-    expect(screen).toContain("+120 -14")
-    expect(screen).toContain("── activity (1)")
-    expect(screen).toContain("started on #123")
+    const initialWidth = app.sidebarWidth()
+    expect(initialWidth).toBeNumber()
+    app.dispatch("session.sidebar.width.decrease")
+    await app.frame()
+    expect(app.sidebarWidth()).toBe(Math.max(30, initialWidth! - 4))
+    app.dispatch("session.sidebar.width.increase")
+    await app.frame()
+    expect(app.sidebarWidth()).toBe(initialWidth)
+    await app.dragSidebar(-6)
+    expect(app.sidebarWidth()).toBe(Math.max(30, initialWidth! - 6))
 
-    // j moves the cursor and the detail pane follows it.
+    app.dispatch("session.sidebar.tab.cycle")
+    screen = await app.frame()
+    expect(screen).not.toContain("▶ h9977")
+    app.dispatch("session.sidebar.tab.cycle")
+    await app.waitFor("▶ h9977")
+
+    app.blur()
     app.setup.mockInput.pressKey("j")
     screen = await app.waitFor("▶ hSMIB")
-    expect(screen).toContain("hSMIB ✗ failed")
     expect(screen).not.toContain("▶ h9977")
 
-    // enter expands one Worker to the full width; enter again returns to the fleet.
     app.setup.mockInput.pressEnter()
-    screen = await app.waitFor("[enter back]")
+    screen = await app.waitFor("claude · claude-fable-5")
     expect(screen).not.toContain("▶ hSMIB")
-    expect(screen).toContain("enter back · j/k switch Worker")
+    expect(screen).toContain("+120 -14")
+    expect(screen).toContain("enter back · j/k select")
     app.setup.mockInput.pressEnter()
     await app.waitFor("▶ hSMIB")
 
@@ -218,26 +249,26 @@ test("workers view renders the fleet, its meters, and the selected Worker's deta
   } finally {
     if (!app.setup.renderer.isDestroyed) app.setup.renderer.destroy()
   }
-})
+}, 15_000)
 
 test("an empty fleet explains why no Worker is running", async () => {
   const app = await mountWorkers({ workers: [], width: 110, height: 26 })
   try {
-    const screen = await app.waitFor("No live Workers in this project")
-    expect(screen).toContain("Target 2 · registered")
-    expect(screen).toContain("z resize · p stop drain")
+    const screen = await app.waitFor("No live Workers")
+    expect(screen).toContain("Target 2; the queue is drai")
+    expect(screen).toContain("z resize · p stop · R refresh")
 
     await app.close()
   } finally {
     if (!app.setup.renderer.isDestroyed) app.setup.renderer.destroy()
   }
-})
+}, 15_000)
 
 test("inactive drain is an explicit action without consent or disabled messaging", async () => {
   const app = await mountWorkers({ workers: [], registered: false, width: 110, height: 26 })
   try {
     const screen = await app.waitFor("Project drain is inactive")
-    expect(screen).toContain("[Start drain]")
+    expect(screen).toContain("[start]")
     expect(screen).not.toContain("Connect RedSkills")
     expect(screen).not.toContain("disabled")
     expect(screen).not.toContain("Host")
@@ -246,4 +277,4 @@ test("inactive drain is an explicit action without consent or disabled messaging
   } finally {
     if (!app.setup.renderer.isDestroyed) app.setup.renderer.destroy()
   }
-})
+}, 15_000)

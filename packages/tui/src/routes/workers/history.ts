@@ -1,4 +1,4 @@
-import type { RedskilledStatusResponse } from "@opencode-ai/sdk/v2"
+import type { RedskilledStatusResponse } from "@reddb-io/redcode-sdk/v2"
 import { number, timestamp } from "./format"
 
 export type Payload = NonNullable<RedskilledStatusResponse["payload"]>

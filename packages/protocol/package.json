@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/protocol",
+  "name": "@reddb-io/redcode-protocol",
   "version": "1.18.18",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/schema": "workspace:*",
+    "@reddb-io/redcode-schema": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

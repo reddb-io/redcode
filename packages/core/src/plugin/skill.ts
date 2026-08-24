@@ -20,7 +20,7 @@ export const Plugin = define({
           skill: SkillV2.Info.make({
             name: "customize-opencode",
             description:
-              "Use ONLY when the user is editing or creating opencode's own configuration: redcode.json, redcode.jsonc, the legacy opencode.json and opencode.jsonc, files under .opencode/, or files under ~/.red/redcode/. Also use when creating or fixing opencode agents, subagents, commands, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring opencode itself.",
+              "Use ONLY when the user is editing or creating Redcode's own configuration: config.jsonc, config.json, redcode.json, redcode.jsonc, legacy opencode.json and opencode.jsonc, files under .redcode/ or legacy .opencode/, or files under ~/.red/redcode/. Also use when creating or fixing Redcode agents, subagents, commands, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring Redcode itself.",
             location: AbsolutePath.make("/builtin/customize-opencode.md"),
             content: CustomizeOpencodeContent,
           }),

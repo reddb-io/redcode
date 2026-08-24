@@ -29,7 +29,7 @@ export interface Interface {
   readonly list: Effect.Effect<readonly string[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/RuntimeInvariant") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/RuntimeInvariant") {}
 
 export const layer = Layer.effect(
   Service,

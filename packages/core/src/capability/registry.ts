@@ -14,7 +14,7 @@ import { ShellService } from "./shell"
  * subprocess. Each `register` returns a `Registration` whose `dispose` runs on
  * scope exit; consumers never see the registry directly.
  *
- * LSP lives in the opencode server because `LSP.Service` is bound there; the
+ * LSP lives in the Redcode server because `LSP.Service` is bound there; the
  * equivalent V2 hook is wired into the server-side host, not core.
  */
 
@@ -41,7 +41,7 @@ export interface Interface {
   }
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Capability") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/v2/Capability") {}
 
 interface RegistryState {
   readonly filesystem: Map<string, FilesystemBackend>

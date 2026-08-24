@@ -25,7 +25,7 @@ import { SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useTheme } from "../../context/theme"
-import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, TextAttributes, RGBA } from "@opentui/core"
+import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, type MouseEvent, TextAttributes, RGBA } from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
 import type {
   AssistantMessage,
@@ -36,7 +36,7 @@ import type {
   TextPart,
   ReasoningPart,
   SessionStatus,
-} from "@opencode-ai/sdk/v2"
+} from "@reddb-io/redcode-sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
@@ -54,11 +54,16 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
+import {
+  clampSidebarWidth,
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_STEP,
+} from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
-import { ProviderFailure } from "@opencode-ai/core/util/provider-failure"
+import { ProviderFailure } from "@reddb-io/redcode-core/util/provider-failure"
 import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
@@ -124,6 +129,9 @@ const sessionBindingCommands = [
   "session.undo",
   "session.redo",
   "session.sidebar.toggle",
+  "session.sidebar.tab.cycle",
+  "session.sidebar.width.decrease",
+  "session.sidebar.width.increase",
   "session.toggle.conceal",
   "session.toggle.timestamps",
   "session.toggle.thinking",
@@ -257,6 +265,10 @@ export function Session() {
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
+  const [sidebarTab, setSidebarTab] = kv.signal<"context" | "workers">("sidebar_tab", "context")
+  const [storedSidebarWidth, setStoredSidebarWidth] = kv.signal("sidebar_width", SIDEBAR_WIDTH_DEFAULT)
+  const [dragSidebarWidth, setDragSidebarWidth] = createSignal<number>()
+  const [sidebarDrag, setSidebarDrag] = createSignal<{ x: number; width: number }>()
   const [conceal, setConceal] = createSignal(true)
   const thinking = useThinkingMode()
   const thinkingMode = thinking.mode
@@ -276,8 +288,15 @@ export function Session() {
     if (sidebar() === "auto" && wide()) return true
     return false
   })
+  const sidebarWidth = createMemo(() =>
+    clampSidebarWidth({
+      width: dragSidebarWidth() ?? storedSidebarWidth(),
+      available: dimensions().width,
+      overlay: !wide(),
+    }),
+  )
   const showTimestamps = createMemo(() => timestamps() === "show")
-  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
+  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? sidebarWidth() + 6 : 0) - 4)
   const providers = createMemo(() => Model.index(sync.data.provider))
 
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
@@ -355,6 +374,35 @@ export function Session() {
   const keymap = useOpencodeKeymap()
   const dialog = useDialog()
   const renderer = useRenderer()
+
+  const selectSidebarTab = (tab: "context" | "workers") => {
+    setSidebarTab(() => tab)
+    if (tab === "context") prompt?.focus()
+  }
+  const resizeSidebar = (width: number) => {
+    setStoredSidebarWidth(() =>
+      clampSidebarWidth({ width, available: dimensions().width, overlay: !wide() }),
+    )
+  }
+  const adjustSidebarWidth = (delta: number) => {
+    batch(() => {
+      resizeSidebar(sidebarWidth() + delta)
+      setSidebar(() => "auto")
+      setSidebarOpen(true)
+    })
+  }
+  const finishSidebarDrag = (event: MouseEvent) => {
+    if (!sidebarDrag()) return
+    batch(() => {
+      const width = dragSidebarWidth()
+      if (width !== undefined) setStoredSidebarWidth(() => width)
+      setDragSidebarWidth()
+      setSidebarDrag()
+    })
+    renderer.setMousePointer("default")
+    event.preventDefault()
+    event.stopPropagation()
+  }
 
   event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
@@ -680,6 +728,63 @@ export function Session() {
           const isVisible = sidebarVisible()
           setSidebar(() => (isVisible ? "hide" : "auto"))
           setSidebarOpen(!isVisible)
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Switch sidebar tab",
+      value: "session.sidebar.tab.cycle",
+      category: "Session",
+      run: () => {
+        batch(() => {
+          selectSidebarTab(sidebarTab() === "context" ? "workers" : "context")
+          setSidebar(() => "auto")
+          setSidebarOpen(true)
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Decrease sidebar width",
+      value: "session.sidebar.width.decrease",
+      category: "Session",
+      run: () => adjustSidebarWidth(-SIDEBAR_WIDTH_STEP),
+    },
+    {
+      title: "Increase sidebar width",
+      value: "session.sidebar.width.increase",
+      category: "Session",
+      run: () => adjustSidebarWidth(SIDEBAR_WIDTH_STEP),
+    },
+    {
+      title: "Open Workers",
+      value: "workers.show",
+      category: "RedDB",
+      slash: {
+        name: "workers",
+      },
+      run: () => {
+        batch(() => {
+          selectSidebarTab("workers")
+          setSidebar(() => "auto")
+          setSidebarOpen(true)
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Open Context",
+      value: "context.show",
+      category: "Session",
+      slash: {
+        name: "context",
+      },
+      run: () => {
+        batch(() => {
+          selectSidebarTab("context")
+          setSidebar(() => "auto")
+          setSidebarOpen(true)
         })
         dialog.clear()
       },
@@ -1176,7 +1281,26 @@ export function Session() {
           tui: tuiConfig,
         }}
       >
-        <box flexDirection="row" flexGrow={1} minHeight={0}>
+        <box
+          flexDirection="row"
+          flexGrow={1}
+          minHeight={0}
+          onMouseDrag={(event: MouseEvent) => {
+            const drag = sidebarDrag()
+            if (!drag) return
+            setDragSidebarWidth(
+              clampSidebarWidth({
+                width: drag.width + drag.x - event.x,
+                available: dimensions().width,
+                overlay: !wide(),
+              }),
+            )
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+          onMouseDragEnd={finishSidebarDrag}
+          onMouseUp={finishSidebarDrag}
+        >
           <box flexGrow={1} minHeight={0} paddingBottom={1} paddingLeft={2} paddingRight={2} gap={1}>
             <Show when={session()}>
               <scrollbox
@@ -1340,7 +1464,13 @@ export function Session() {
           <Show when={sidebarVisible()}>
             <Switch>
               <Match when={wide()}>
-                <Sidebar sessionID={route.sessionID} wide />
+                <Sidebar
+                  sessionID={route.sessionID}
+                  tab={sidebarTab()}
+                  onTabChange={selectSidebarTab}
+                  width={sidebarWidth()}
+                  onWidthDragStart={(x) => setSidebarDrag({ x, width: sidebarWidth() })}
+                />
               </Match>
               <Match when={!wide()}>
                 <box
@@ -1352,7 +1482,14 @@ export function Session() {
                   alignItems="flex-end"
                   backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
                 >
-                  <Sidebar sessionID={route.sessionID} overlay />
+                  <Sidebar
+                    sessionID={route.sessionID}
+                    overlay
+                    tab={sidebarTab()}
+                    onTabChange={selectSidebarTab}
+                    width={sidebarWidth()}
+                    onWidthDragStart={(x) => setSidebarDrag({ x, width: sidebarWidth() })}
+                  />
                 </box>
               </Match>
             </Switch>

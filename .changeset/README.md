@@ -4,7 +4,7 @@ Every user-visible Redcode change includes a Changesets-compatible Markdown file
 
 ```markdown
 ---
-"opencode": patch
+"@reddb-io/redcode": patch
 ---
 
 Describe the user-visible change.

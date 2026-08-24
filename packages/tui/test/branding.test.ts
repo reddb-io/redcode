@@ -13,8 +13,9 @@ const compatibilityAllowlist = [
   },
   {
     reason: "real external OpenCode services",
-    pattern: /(?:https?:\/\/|ghcr\.io\/)\S*opencode|(?:^|\s)opencode\.ai|\/opencode\b/,
+    pattern: /https:\/\/opencode\.ai\/(?:go|zen)(?:\b|\/)/,
   },
+  { reason: "legacy GitHub action triggers", pattern: /\/(?:opencode|oc)\b/ },
   { reason: "real external OpenCode provider names", pattern: /OpenCode (?:Zen|Go)\b/ },
 ] as const
 
@@ -46,4 +47,13 @@ test("user-visible branding uses Redcode", async () => {
   }
 
   expect(violations).toEqual([])
+})
+
+test("tips do not advertise obsolete upstream resources", async () => {
+  const tips = await Bun.file(path.resolve(import.meta.dir, "../src/feature-plugins/home/tips-view.tsx")).text()
+
+  expect(tips).not.toContain("~/.config/opencode")
+  expect(tips).not.toContain(".opencode/")
+  expect(tips).not.toContain("ghcr.io/anomalyco/opencode")
+  expect(tips).not.toContain("opencode.ai/docs")
 })

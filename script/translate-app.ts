@@ -416,8 +416,8 @@ async function translate(
   )
   const agent = `translate-app-${plan.locale}-${process.pid}`
   const env = isolatedEnvironment()
-  env.OPENCODE_DISABLE_PROJECT_CONFIG = "1"
-  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(
+  env.REDCODE_DISABLE_PROJECT_CONFIG = "1"
+  env.REDCODE_CONFIG_CONTENT = JSON.stringify(
     translationConfig(
       agent,
       model,
@@ -530,7 +530,7 @@ async function resolveModelVariant(model: string, variant: string) {
   const provider = model.split("/")[0]
   if (!provider || !model.includes("/")) throw new Error(`Model must use provider/model syntax: ${model}`)
   const env = isolatedEnvironment()
-  env.OPENCODE_DISABLE_PROJECT_CONFIG = "1"
+  env.REDCODE_DISABLE_PROJECT_CONFIG = "1"
   const proc = Bun.spawn(["opencode", "--pure", "models", provider, "--verbose"], {
     cwd: root,
     env,
@@ -547,11 +547,11 @@ async function resolveModelVariant(model: string, variant: string) {
 
 function isolatedEnvironment() {
   const env = { ...process.env }
-  delete env.OPENCODE_CONFIG
-  delete env.OPENCODE_CONFIG_DIR
-  delete env.OPENCODE_CONFIG_CONTENT
-  delete env.OPENCODE_PERMISSION
-  delete env.OPENCODE_AUTO_SHARE
+  delete env.REDCODE_CONFIG
+  delete env.REDCODE_CONFIG_DIR
+  delete env.REDCODE_CONFIG_CONTENT
+  delete env.REDCODE_PERMISSION
+  delete env.REDCODE_AUTO_SHARE
   return env
 }
 

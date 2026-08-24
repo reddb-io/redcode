@@ -38,7 +38,7 @@ export namespace ShellService {
     readonly build: () => Layer.Layer<Service>
   }
 
-  export class Service extends Context.Service<Service, Interface>()("@opencode/Shell") {}
+  export class Service extends Context.Service<Service, Interface>()("@redcode/Shell") {}
 
   /** `Backend` describes provider implementations; consumers depend on `Service`. */
   export type BackendTag = Backend

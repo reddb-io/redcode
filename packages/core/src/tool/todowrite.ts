@@ -1,6 +1,6 @@
 export * as TodoWriteTool from "./todowrite"
 
-import { ToolFailure } from "@opencode-ai/llm"
+import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Effect, Layer, Schema } from "effect"
 import { makeLocationNode } from "../effect/app-node"
 import { PermissionV2 } from "../permission"
@@ -32,7 +32,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Create and maintain a structured task list for the current coding session. Use it to track progress during multi-step work and keep todo statuses current.",
+            "Create and maintain a structured task list for multi-step work. Keep exactly one item in progress while work remains, update statuses as work happens, and complete or cancel every item before the final response. Skip this tool for simple or purely informational requests. Each call replaces the full list.",
           input: Input,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],

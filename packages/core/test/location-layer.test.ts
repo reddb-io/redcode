@@ -2,24 +2,24 @@ import fs from "fs/promises"
 import path from "path"
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Equal, Hash, Schema } from "effect"
-import { Tool } from "@opencode-ai/core/tool/tool"
-import { define } from "@opencode-ai/plugin/v2/effect"
-import { AgentV2 } from "@opencode-ai/core/agent"
-import { Catalog } from "@opencode-ai/core/catalog"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { LocationServiceMap } from "@opencode-ai/core/location-services"
-import { Location } from "@opencode-ai/core/location"
-import { PluginV2 } from "@opencode-ai/core/plugin"
-import { PluginInternal } from "@opencode-ai/core/plugin/internal"
-import { RuntimeInvariant } from "@opencode-ai/core/invariant"
-import { RuntimeInspection } from "@opencode-ai/core/runtime-inspection"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { ProjectV2 } from "@opencode-ai/core/project"
-import { ProviderV2 } from "@opencode-ai/core/provider"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { SessionV2 } from "@opencode-ai/core/session"
-import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
+import { Tool } from "@reddb-io/redcode-core/tool/tool"
+import { define } from "@reddb-io/redcode-plugin/v2/effect"
+import { AgentV2 } from "@reddb-io/redcode-core/agent"
+import { Catalog } from "@reddb-io/redcode-core/catalog"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { LocationServiceMap } from "@reddb-io/redcode-core/location-services"
+import { Location } from "@reddb-io/redcode-core/location"
+import { PluginV2 } from "@reddb-io/redcode-core/plugin"
+import { PluginInternal } from "@reddb-io/redcode-core/plugin/internal"
+import { RuntimeInvariant } from "@reddb-io/redcode-core/invariant"
+import { RuntimeInspection } from "@reddb-io/redcode-core/runtime-inspection"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { ProjectV2 } from "@reddb-io/redcode-core/project"
+import { ProviderV2 } from "@reddb-io/redcode-core/provider"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionRunnerModel } from "@reddb-io/redcode-core/session/runner/model"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 import { toolDefinitions } from "./lib/tool"
@@ -238,7 +238,7 @@ describe("LocationServiceMap", () => {
           const invariants = yield* RuntimeInvariant.Service
 
           expect(yield* plugins.list()).toEqual(PluginInternal.builtInIDs())
-          expect(yield* invariants.run).toContainEqual({ owner: "@opencode-ai/core/plugin", ok: true })
+          expect(yield* invariants.run).toContainEqual({ owner: "@reddb-io/redcode-core/plugin", ok: true })
         }).pipe(
           Effect.scoped,
           Effect.provide(LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(dir.path) }))),
@@ -267,19 +267,19 @@ describe("LocationServiceMap", () => {
           expect(payload.profile.plugins).toEqual(PluginInternal.builtInIDs())
           expect(payload.services.map((entry) => entry.name)).toEqual(
             expect.arrayContaining([
-              "@opencode/Location",
-              "@opencode/v2/Plugin",
-              "@opencode/v2/PluginProfile",
-              "@opencode/v2/RuntimeInspection",
-              "@opencode/v2/RuntimeInvariant",
-              "@opencode/v2/ToolRegistry",
+              "@redcode/Location",
+              "@redcode/v2/Plugin",
+              "@redcode/v2/PluginProfile",
+              "@redcode/v2/RuntimeInspection",
+              "@redcode/v2/RuntimeInvariant",
+              "@redcode/v2/ToolRegistry",
               "plugin-internal",
             ]),
           )
           expect(
-            payload.services.find((entry) => entry.name === "@opencode/v2/RuntimeInspection")?.dependencies,
-          ).toEqual(["@opencode/v2/PluginProfile", "@opencode/v2/RuntimeInvariant"])
-          expect(payload.invariants).toContainEqual({ owner: "@opencode-ai/core/plugin", ok: true })
+            payload.services.find((entry) => entry.name === "@redcode/v2/RuntimeInspection")?.dependencies,
+          ).toEqual(["@redcode/v2/PluginProfile", "@redcode/v2/RuntimeInvariant"])
+          expect(payload.invariants).toContainEqual({ owner: "@reddb-io/redcode-core/plugin", ok: true })
 
           // The payload is identifiers only: no config value, credential, path, or
           // environment may cross this boundary.

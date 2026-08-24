@@ -8,14 +8,14 @@ import { fileLogger } from "../../src/observability/logging"
 import { resource } from "../../src/observability/otlp"
 
 const otelResourceAttributes = process.env.OTEL_RESOURCE_ATTRIBUTES
-const opencodeClient = process.env.OPENCODE_CLIENT
+const redcodeClient = process.env.REDCODE_CLIENT
 
 afterEach(() => {
   if (otelResourceAttributes === undefined) delete process.env.OTEL_RESOURCE_ATTRIBUTES
   else process.env.OTEL_RESOURCE_ATTRIBUTES = otelResourceAttributes
 
-  if (opencodeClient === undefined) delete process.env.OPENCODE_CLIENT
-  else process.env.OPENCODE_CLIENT = opencodeClient
+  if (redcodeClient === undefined) delete process.env.REDCODE_CLIENT
+  else process.env.REDCODE_CLIENT = redcodeClient
 })
 
 describe("resource", () => {
@@ -35,20 +35,20 @@ describe("resource", () => {
     process.env.OTEL_RESOURCE_ATTRIBUTES = "service.namespace=anomalyco,broken"
 
     expect(resource().attributes["service.namespace"]).toBeUndefined()
-    expect(resource().attributes["opencode.client"]).toBeDefined()
+    expect(resource().attributes["redcode.client"]).toBeDefined()
   })
 
   test("keeps built-in attributes when env values conflict", () => {
-    process.env.OPENCODE_CLIENT = "cli"
+    process.env.REDCODE_CLIENT = "cli"
     process.env.OTEL_RESOURCE_ATTRIBUTES =
-      "opencode.client=web,service.instance.id=override,service.namespace=anomalyco"
+      "redcode.client=web,service.instance.id=override,service.namespace=anomalyco"
 
     expect(resource().attributes).toMatchObject({
-      "opencode.client": "cli",
+      "redcode.client": "cli",
       "service.namespace": "anomalyco",
     })
     expect(resource().attributes["service.instance.id"]).not.toBe("override")
-    expect(resource().attributes["opencode.run"]).toMatch(/^[0-9a-f]{8}$/)
+    expect(resource().attributes["redcode.run"]).toMatch(/^[0-9a-f]{8}$/)
   })
 })
 

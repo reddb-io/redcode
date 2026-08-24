@@ -8,7 +8,7 @@ import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
 
 const app = "redcode"
-const home = process.env.OPENCODE_TEST_HOME ?? os.homedir()
+const home = process.env.REDCODE_TEST_HOME ?? os.homedir()
 
 // Primary paths live under the RedDB family alongside redskilled
 // (`~/.red/redskilled`), so `redcode` joins it instead of splitting across XDG.
@@ -21,7 +21,7 @@ const tmp = path.join(os.tmpdir(), app)
 
 const paths = {
   get home() {
-    return process.env.OPENCODE_TEST_HOME ?? os.homedir()
+    return process.env.REDCODE_TEST_HOME ?? os.homedir()
   },
   data,
   bin: path.join(cache, "bin"),
@@ -47,7 +47,7 @@ await Promise.all([
   fs.mkdir(Path.repos, { recursive: true }),
 ])
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Global") {}
+export class Service extends Context.Service<Service, Interface>()("@redcode/Global") {}
 
 export interface Interface {
   readonly home: string
@@ -66,7 +66,7 @@ export function make(input: Partial<Interface> = {}): Interface {
     home: Path.home,
     data: Path.data,
     cache: Path.cache,
-    config: Flag.OPENCODE_CONFIG_DIR ?? Path.config,
+    config: Flag.REDCODE_CONFIG_DIR ?? Path.config,
     state: Path.state,
     tmp: Path.tmp,
     bin: Path.bin,

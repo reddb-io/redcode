@@ -1,11 +1,11 @@
 import "@/index.css"
 import * as Sentry from "@sentry/solid"
-import { I18nProvider } from "@opencode-ai/ui/context"
-import { DialogProvider } from "@opencode-ai/ui/context/dialog"
-import { FileComponentProvider } from "@opencode-ai/ui/context/file"
-import { File } from "@opencode-ai/session-ui/file"
-import { Font } from "@opencode-ai/ui/font"
-import { ThemeProvider } from "@opencode-ai/ui/theme/context"
+import { I18nProvider } from "@reddb-io/redcode-ui/context"
+import { DialogProvider } from "@reddb-io/redcode-ui/context/dialog"
+import { FileComponentProvider } from "@reddb-io/redcode-ui/context/file"
+import { File } from "@reddb-io/redcode-session-ui/file"
+import { Font } from "@reddb-io/redcode-ui/font"
+import { ThemeProvider } from "@reddb-io/redcode-ui/theme/context"
 import { MetaProvider } from "@solidjs/meta"
 import {
   type BaseRouterProps,
@@ -19,7 +19,7 @@ import {
 } from "@solidjs/router"
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
 import { Effect } from "effect"
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode } from "@reddb-io/redcode-core/util/encode"
 import {
   type Component,
   createEffect,
@@ -63,7 +63,7 @@ import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
 import { legacySessionHref, legacySessionServer, requireServerKey, sessionHref } from "./utils/session-route"
 import { createSessionLineage } from "@/pages/session/session-lineage"
-import { RedCodeWordmark } from "@/components/redcode-wordmark"
+import { RedcodeWordmark } from "@/components/redcode-wordmark"
 
 import { SessionPage, SessionRouteErrorBoundary, TargetSessionRouteContent } from "@/pages/session"
 import { NewHome } from "@/pages/home"
@@ -515,7 +515,7 @@ function ConnectionShell(props: ParentProps<{ loading?: boolean }>) {
   return (
     <div class="fixed inset-0 z-[9999] flex flex-col bg-v2-background-bg-deep">
       <header class="flex h-9 shrink-0 items-center px-4" data-tauri-drag-region>
-        <RedCodeWordmark class="h-6 px-1.5" />
+        <RedcodeWordmark class="h-6 px-1.5" />
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
         <Show when={!props.loading} fallback={<DraftPanelSkeleton />}>
