@@ -1,5 +1,16 @@
 # opencode
 
+## 0.13.1
+
+### Patch Changes
+
+- 4fd7ecc: Replace stale upstream product branding, links, assets, and TUI guidance with Redcode equivalents.
+- 4fd7ecc: Make `REDCODE_*`, Redcode service identity, and `.redcode` paths canonical while safely adopting persisted legacy configuration and databases.
+- 4fd7ecc: Rename the public API and SDK product identity from OpenCode to Redcode.
+- 4fd7ecc: Avoid reporting unavailable language servers as failures, reduce duplicate monorepo roots, and surface actionable startup and process-exit errors in LSP status views.
+- 4fd7ecc: Improve long-session responsiveness by bounding compacted history reads and coalescing shell progress updates. Keep unfinished todo work active across natural model stops when the todo tool is available.
+- 4fd7ecc: Move the TUI Workers view into a switchable Context and Workers session sidebar with keyboard and mouse resizing, and show Redskilled connectivity beside the prompt directory.
+
 ## 0.13.0
 
 ### Minor Changes
