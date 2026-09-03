@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { expandTrackedPastedText, stripPromptPartIDs } from "../../src/prompt/part"
+import { expandTrackedPastedText, promptMessageText, stripPromptPartIDs } from "../../src/prompt/part"
 
 describe("prompt part", () => {
   test("strips persisted IDs from reused parts", () => {
@@ -49,5 +49,21 @@ describe("prompt part", () => {
         },
       ]),
     ).toBe(`keep ${marker} then alpha\nbeta\ngamma tail`)
+  })
+})
+
+describe("promptMessageText", () => {
+  test("drops the whitespace the editor left around the message", () => {
+    expect(promptMessageText("  hello \n\n")).toBe("hello")
+    expect(promptMessageText("first line\nsecond line\n")).toBe("first line\nsecond line")
+  })
+
+  test("keeps whitespace inside the message", () => {
+    expect(promptMessageText("  fix this:\n\n    indented code\n")).toBe("fix this:\n\n    indented code")
+  })
+
+  test("reports whitespace-only input as nothing to send", () => {
+    expect(promptMessageText("   \n\t ")).toBe("")
+    expect(promptMessageText("")).toBe("")
   })
 })
