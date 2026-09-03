@@ -77,8 +77,15 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       directory: sdk.directory ?? process.cwd(),
     })
 
+    // Only sessions a consumer actually asked for are mirrored here. Every session that
+    // produces an event used to be kept in full, forever — subagent sessions included —
+    // which is a second permanent copy of the whole conversation that nothing reads until
+    // someone calls message.refresh() for that session.
+    const tracked = new Set<string>()
+
     const message = {
       update(sessionID: string, fn: (messages: SessionMessage[]) => void) {
+        if (!tracked.has(sessionID)) return
         setStore(
           "session",
           "message",
@@ -427,8 +434,14 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             return store.session.message[sessionID]
           },
           async refresh(sessionID: string) {
+            // Asking for a session's messages is what starts mirroring its events.
+            tracked.add(sessionID)
             const result = await sdk.client.v2.session.messages({ sessionID }, { throwOnError: true })
             setStore("session", "message", sessionID, result.data.data)
+          },
+          forget(sessionID: string) {
+            tracked.delete(sessionID)
+            setStore("session", "message", produce((draft) => void delete draft[sessionID]))
           },
         },
         permission: {

@@ -884,6 +884,35 @@ it.instance(
 )
 
 it.instance(
+  "diffFull keeps a huge file's patch proportional to the change",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    // Over the 2MB guard, so the patch must not carry a second copy of the file.
+    // Committed first: track() keeps large *untracked* files out of the snapshot entirely,
+    // so only a tracked file reaches the patch path this guards.
+    const lines = Array.from({ length: 60_000 }, (_, i) => `line ${i} of a tracked source file`)
+    yield* write(`${tmp.path}/huge.txt`, lines.join("\n") + "\n")
+    yield* exec(tmp.path, ["git", "add", "huge.txt"])
+    yield* exec(tmp.path, ["git", "commit", "-m", "add huge"])
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    lines[10] = "line 10 changed"
+    yield* write(`${tmp.path}/huge.txt`, lines.join("\n") + "\n")
+    const after = yield* snapshot.track()
+    expect(after).toBeTruthy()
+    const diffs = yield* snapshot.diffFull(before!, after!)
+    const huge = diffs.find((d) => d.file === "huge.txt")!
+    const patch = huge.patch ?? ""
+    expect(patch).toContain("+line 10 changed")
+    expect(huge.additions).toBe(1)
+    expect(huge.deletions).toBe(1)
+    expect(patch.length).toBeLessThan(4096)
+  }),
+  { git: true },
+)
+
+it.instance(
   "diffFull with new file additions",
   withTrackedSnapshot(({ tmp, snapshot, before }) =>
     Effect.gen(function* () {
