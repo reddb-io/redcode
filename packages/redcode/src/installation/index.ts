@@ -9,12 +9,17 @@ import { errorMessage } from "@/util/error"
 import { ChildProcess } from "effect/unstable/process"
 import { AppProcess } from "@reddb-io/redcode-core/process"
 import { makeRuntime } from "@reddb-io/redcode-core/effect/runtime"
+import path from "path"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { NpmConfig } from "@reddb-io/redcode-core/npm-config"
 import { InstallationEvent } from "@reddb-io/redcode-schema/installation-event"
 
-export type Method = "npm" | "yarn" | "pnpm" | "bun" | "unknown"
+export type Method = "npm" | "yarn" | "pnpm" | "bun" | "mise" | "unknown"
+
+// red-dev installs Redcode through mise's GitHub backend, which unpacks the release
+// binary under <MISE_DATA_DIR>/installs/github-reddb-io-redcode/<version>/.
+export const MISE_TOOL = "github:reddb-io/redcode"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
@@ -127,13 +132,17 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       }),
       method: Effect.fn("Installation.method")(function* () {
         const exec = process.execPath.toLowerCase()
+        if (exec.includes(path.join("mise", "installs").toLowerCase())) return "mise" as Method
 
-        const checks: Array<{ name: Method; command: () => Effect.Effect<string> }> = [
-          { name: "npm", command: () => text(["npm", "list", "-g", "--depth=0"]) },
-          { name: "yarn", command: () => text(["yarn", "global", "list"]) },
-          { name: "pnpm", command: () => text(["pnpm", "list", "-g", "--depth=0"]) },
-          { name: "bun", command: () => text(["bun", "pm", "ls", "-g"]) },
-        ]
+        const checks: Array<{ name: Method; command: () => Effect.Effect<string>; installed: (output: string) => boolean }> =
+          [
+            { name: "npm", command: () => text(["npm", "list", "-g", "--depth=0"]), installed: hasPackage },
+            { name: "yarn", command: () => text(["yarn", "global", "list"]), installed: hasPackage },
+            { name: "pnpm", command: () => text(["pnpm", "list", "-g", "--depth=0"]), installed: hasPackage },
+            { name: "bun", command: () => text(["bun", "pm", "ls", "-g"]), installed: hasPackage },
+            // `mise ls --json <tool>` prints `[]` when mise knows nothing about the tool.
+            { name: "mise", command: () => text(["mise", "ls", "--json", MISE_TOOL]), installed: hasMiseVersion },
+          ]
 
         checks.sort((a, b) => {
           const aMatches = exec.includes(a.name)
@@ -145,9 +154,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
         for (const check of checks) {
           const output = yield* check.command()
-          if (output.includes("@reddb-io/redcode")) {
-            return check.name
-          }
+          if (check.installed(output)) return check.name
         }
 
         return "unknown" as Method
@@ -193,11 +200,23 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           case "yarn":
             upgradeResult = yield* run(["yarn", "global", "add", `@reddb-io/redcode@${target}`])
             break
+          case "mise":
+            // mise caches the remote version list; with a stale list `mise upgrade` decides there is
+            // nothing to do. Clearing it is best-effort, the upgrade below is what matters.
+            yield* run(["mise", "cache", "clear", MISE_TOOL])
+            upgradeResult = yield* run(["mise", "upgrade", MISE_TOOL])
+            break
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })
         }
         if (!upgradeResult || upgradeResult.code !== 0) {
           return yield* new UpgradeFailedError({ stderr: upgradeFailure(m, upgradeResult) })
+        }
+        // `mise upgrade` exits 0 when it keeps the pinned version, so confirm the target landed.
+        if (m === "mise" && !hasMiseVersion(yield* text(["mise", "ls", "--json", MISE_TOOL]), target)) {
+          return yield* new UpgradeFailedError({
+            stderr: `mise did not install v${target}. Run "mise use -g ${MISE_TOOL}@latest" and try again.`,
+          })
         }
         yield* Effect.logInfo("upgraded", {
           method: m,
@@ -214,6 +233,25 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 )
 
 export const node = LayerNode.make({ service: Service, layer: layer, deps: [httpClient, AppProcess.node] })
+
+function hasPackage(output: string) {
+  return output.includes("@reddb-io/redcode")
+}
+
+function hasMiseVersion(output: string, version?: string) {
+  try {
+    const parsed: unknown = JSON.parse(output)
+    if (!Array.isArray(parsed)) return false
+    const versions = parsed.flatMap((item) =>
+      item && typeof item === "object" && typeof (item as { version?: unknown }).version === "string"
+        ? [(item as { version: string }).version]
+        : [],
+    )
+    return version === undefined ? versions.length > 0 : versions.includes(version)
+  } catch {
+    return false
+  }
+}
 
 const { runPromise } = makeRuntime(Service, AppNodeBuilder.build(node))
 

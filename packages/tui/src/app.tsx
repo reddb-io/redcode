@@ -1075,7 +1075,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       toast.show({
         variant: "error",
         title: "Update Failed",
-        message: "Update failed",
+        message: result.data && !result.data.success ? result.data.error : "Update failed",
         duration: 10000,
       })
       return
