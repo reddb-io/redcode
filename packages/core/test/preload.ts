@@ -4,7 +4,8 @@ import os from "os"
 
 // Core's tests used the developer's real ~/.red/redcode: the same cache, the same lock
 // directory. That is contention with every other suite and with a running redcode, and it
-// leaves state behind on the machine that ran them.
+// leaves state behind on the machine that ran them. The cost is that npm work starts from a
+// cold cache, which is why this package's tests get a longer timeout.
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-core-test-"))
 const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
