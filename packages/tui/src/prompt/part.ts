@@ -21,6 +21,16 @@ function isPastedTextPart(part: unknown): part is { type: "text"; text: string; 
   return Boolean(text && typeof text === "object" && "value" in text && typeof text.value === "string")
 }
 
+/**
+ * What is actually sent for a typed message. The editor keeps whatever whitespace the person
+ * left behind — a trailing newline from shift+enter, indentation from an abandoned edit — and
+ * none of it is part of what they said. Whitespace alone is not a message: the guard before
+ * sending and the text being sent both go through here so they cannot disagree.
+ */
+export function promptMessageText(text: string) {
+  return text.trim()
+}
+
 export function expandTrackedPastedText(text: string, ranges: { start: number; end: number; text: string }[]) {
   return ranges
     .slice()

@@ -92,7 +92,7 @@ export const WriteTool = Tool.define(
           return {
             title: path.relative(instance.worktree, filepath),
             metadata: {
-              diagnostics,
+              diagnostics: LSP.Diagnostic.pick(diagnostics, [normalizedFilepath]),
               filepath,
               exists: exists,
             },

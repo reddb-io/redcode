@@ -22,6 +22,7 @@ export type FileDiff = typeof FileDiff.Type
 
 const prune = "7.days"
 const limit = 2 * 1024 * 1024
+const PATCH_CONTEXT_LINES = 3
 const core = ["-c", "core.longpaths=true", "-c", "core.symlinks=true"]
 const cfg = ["-c", "core.autocrlf=false", ...core]
 const quote = [...cfg, "-c", "core.quotepath=false"]
@@ -733,8 +734,17 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               }
 
               const step = 100
+              // Full-file context is deliberate: the diff viewer renders the whole file around the
+              // change. On a large file it turns a one-line edit into a second copy of the file,
+              // which is then held in the message row, in the event payload and in every client for
+              // the life of the session — the shape behind long-session OOMs. Past `limit` those
+              // files fall back to ordinary hunk context; the patch stays valid, just less roomy.
               const patch = (file: string, before: string, after: string) =>
-                formatPatch(structuredPatch(file, file, before, after, "", "", { context: Number.MAX_SAFE_INTEGER }))
+                formatPatch(
+                  structuredPatch(file, file, before, after, "", "", {
+                    context: before.length + after.length > limit ? PATCH_CONTEXT_LINES : Number.MAX_SAFE_INTEGER,
+                  }),
+                )
 
               for (let i = 0; i < rows.length; i += step) {
                 const run = rows.slice(i, i + step)

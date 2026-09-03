@@ -114,6 +114,9 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const { db } = yield* Database.Service
 
+    // Generous: a cold git on a large repository over a Windows mount is slow but finite.
+    const GIT_DEADLINE = "30 seconds"
+
     const git = Effect.fnUntraced(
       function* (args: string[], opts?: { cwd?: string }) {
         const handle = yield* spawner.spawn(
@@ -127,6 +130,11 @@ const layer = Layer.effect(
         return { code, text, stderr } satisfies GitResult
       },
       Effect.scoped,
+      // This runs during instance boot, before the first frame. A git that stalls — a
+      // credential or askpass helper waiting on a GUI, a repository on a stalled mount —
+      // would otherwise hold the whole startup with nothing on screen. The catch below
+      // already treats a failed git as "not a repository"; a hung one means the same.
+      Effect.timeout(GIT_DEADLINE),
       Effect.catch(() => Effect.succeed({ code: 1, text: "", stderr: "" } satisfies GitResult)),
     )
 

@@ -37,14 +37,33 @@ export const Path = paths
 
 Flock.setGlobal({ state })
 
-await Promise.all([
-  fs.mkdir(Path.data, { recursive: true }),
-  fs.mkdir(Path.config, { recursive: true }),
-  fs.mkdir(Path.state, { recursive: true }),
-  fs.mkdir(Path.tmp, { recursive: true }),
-  fs.mkdir(Path.log, { recursive: true }),
-  fs.mkdir(Path.bin, { recursive: true }),
-  fs.mkdir(Path.repos, { recursive: true }),
+// This is module-level, so it runs before argv is even parsed — `redcode --version`
+// included. When the home directory sits on a stalled mount (a dropped network drive, a
+// Windows filesystem seen through WSL) these calls block with nothing printed and no way
+// to tell what is wrong. Say what is stuck and let the process continue: whatever needs a
+// directory will fail with its own error, which is far easier to act on than a freeze.
+const MKDIR_DEADLINE_MS = 10_000
+
+await Promise.race([
+  Promise.all([
+    fs.mkdir(Path.data, { recursive: true }),
+    fs.mkdir(Path.config, { recursive: true }),
+    fs.mkdir(Path.state, { recursive: true }),
+    fs.mkdir(Path.tmp, { recursive: true }),
+    fs.mkdir(Path.log, { recursive: true }),
+    fs.mkdir(Path.bin, { recursive: true }),
+    fs.mkdir(Path.repos, { recursive: true }),
+  ]),
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      process.stderr.write(
+        `redcode: still waiting on ${redcodeHome} after ${MKDIR_DEADLINE_MS / 1000}s — ` +
+          `the filesystem holding it may be unavailable. Set REDCODE_TEST_HOME or HOME to a local path.\n`,
+      )
+      resolve()
+    }, MKDIR_DEADLINE_MS)
+    timer.unref?.()
+  }),
 ])
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/Global") {}

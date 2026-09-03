@@ -3,6 +3,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
 import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
 import { Process } from "@/util/process"
+import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { LANGUAGE_EXTENSIONS } from "./language"
 import { Effect, Schema } from "effect"
 import type * as LSPServer from "./server"
@@ -275,7 +276,40 @@ export async function create(input: {
     })
   }
 
+  // Every file the agent reads or edits used to stay resident here in full, in every client
+  // that matches it — and a .ts file matches typescript, eslint, oxlint and biome at once.
+  // Over a long session that is unbounded. Documents past the cap are closed on the server
+  // and dropped here; the next touch reopens them, which is the same didOpen a first touch
+  // would have sent.
+  const OPEN_FILE_LIMIT = (() => {
+    const configured = Number(Flag.REDCODE_LSP_OPEN_FILE_LIMIT)
+    return Number.isInteger(configured) && configured > 0 ? configured : 200
+  })()
   const files: Record<string, { version: number; text: string }> = {}
+  const opened: string[] = []
+
+  const forget = (filePath: string) => {
+    delete files[filePath]
+    pushDiagnostics.delete(filePath)
+    pullDiagnostics.delete(filePath)
+    published.delete(filePath)
+  }
+
+  const touched = async (filePath: string) => {
+    const at = opened.indexOf(filePath)
+    if (at >= 0) opened.splice(at, 1)
+    opened.push(filePath)
+    while (opened.length > OPEN_FILE_LIMIT) {
+      const evict = opened.shift()
+      if (evict === undefined || evict === filePath) continue
+      forget(evict)
+      await connection
+        .sendNotification("textDocument/didClose", {
+          textDocument: { uri: pathToFileURL(evict).href },
+        })
+        .catch(() => {})
+    }
+  }
 
   // --- Diagnostic helpers ---
 
@@ -589,6 +623,7 @@ export async function create(input: {
 
           const next = document.version + 1
           files[request.path] = { version: next, text }
+          await touched(request.path)
           await connection.sendNotification("textDocument/didChange", {
             textDocument: {
               uri: pathToFileURL(request.path).href,
@@ -630,6 +665,7 @@ export async function create(input: {
           },
         })
         files[request.path] = { version: 0, text }
+        await touched(request.path)
         return 0
       },
     },

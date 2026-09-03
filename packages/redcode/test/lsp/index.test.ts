@@ -11,6 +11,7 @@ import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { TestInstance, withTestInstance } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { spawn } from "@/lsp/launch"
+import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import fs from "fs/promises"
 
 const lspLayer = (flags: Parameters<typeof RuntimeFlags.layer>[0] = {}) =>
@@ -305,6 +306,40 @@ describe("lsp.spawn", () => {
             command: [process.execPath, fakeServerPath],
             extensions: [".repro"],
           },
+        },
+      },
+    },
+  )
+
+  it.instance(
+    "keeps the number of language servers under the cap",
+    () =>
+      LSP.Service.use((lsp) =>
+        Effect.gen(function* () {
+          const dir = (yield* TestInstance).directory
+          const previous = process.env["REDCODE_LSP_MAX_CLIENTS"]
+          process.env["REDCODE_LSP_MAX_CLIENTS"] = "2"
+          Flag.REDCODE_LSP_MAX_CLIENTS = "2"
+          try {
+            const file = path.join(dir, "sample.repro")
+            yield* Effect.promise(() => Bun.write(file, "sample\n"))
+            // Three servers claim this extension, so three clients want to exist at once.
+            yield* lsp.touchFile(file)
+            const connected = (yield* lsp.status()).filter((item) => item.status === "connected")
+            expect(connected.length).toBe(2)
+          } finally {
+            if (previous === undefined) delete process.env["REDCODE_LSP_MAX_CLIENTS"]
+            else process.env["REDCODE_LSP_MAX_CLIENTS"] = previous
+            Flag.REDCODE_LSP_MAX_CLIENTS = previous
+          }
+        }),
+      ),
+    {
+      config: {
+        lsp: {
+          fakeA: { command: [process.execPath, fakeServerPath], extensions: [".repro"] },
+          fakeB: { command: [process.execPath, fakeServerPath], extensions: [".repro"] },
+          fakeC: { command: [process.execPath, fakeServerPath], extensions: [".repro"] },
         },
       },
     },

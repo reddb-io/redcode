@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import * as LSPClient from "./client"
@@ -114,8 +115,50 @@ const filterExperimentalServers = (servers: Record<string, LSPServer.Info>, flag
 
 type LocInput = { file: string; line: number; character: number }
 
+function clientKey(client: { serverID: string; root: string }) {
+  return `${client.serverID}\0${client.root}`
+}
+
+/**
+ * Shut down the least recently used servers until the population is back under the cap.
+ * The one just spawned is never the victim, and a client already gone from the list (its
+ * process exited) is simply skipped.
+ */
+function evict(s: State, keep: string) {
+  const limit = maxClients()
+  while (s.clients.length > limit) {
+    let victim: LSPClient.Info | undefined
+    let oldest = Number.POSITIVE_INFINITY
+    for (const client of s.clients) {
+      const key = clientKey(client)
+      if (key === keep) continue
+      const at = s.used.get(key) ?? 0
+      if (at < oldest) {
+        oldest = at
+        victim = client
+      }
+    }
+    if (!victim) return
+    const index = s.clients.indexOf(victim)
+    if (index === -1) return
+    s.clients.splice(index, 1)
+    s.used.delete(clientKey(victim))
+    void victim.shutdown().catch(() => undefined)
+  }
+}
+
+// Roots are resolved per file, and eslint, oxlint and biome all treat a package-local config
+// as a root — so a monorepo can spawn one language server per package, each of them hundreds
+// of megabytes, with nothing to stop it. Past this many, the least recently used one is shut
+// down. It respawns on demand, which is the same spawn its first use would have paid for.
+function maxClients() {
+  const configured = Number(Flag.REDCODE_LSP_MAX_CLIENTS)
+  return Number.isInteger(configured) && configured > 0 ? configured : 8
+}
+
 interface State {
   clients: LSPClient.Info[]
+  used: Map<string, number>
   servers: Record<string, LSPServer.Info>
   broken: Map<string, Status>
   unavailable: Set<string>
@@ -197,6 +240,7 @@ const layer = Layer.effect(
 
         const s: State = {
           clients: [],
+          used: new Map(),
           servers,
           broken: new Map(),
           unavailable: new Set(),
@@ -270,6 +314,8 @@ const layer = Layer.effect(
           }
 
           s.clients.push(client)
+          s.used.set(key, Date.now())
+          evict(s, key)
           void handle.process.exited.then((code) => {
             if (s.disposing) return
             const index = s.clients.indexOf(client)
@@ -294,6 +340,7 @@ const layer = Layer.effect(
 
           const match = s.clients.find((x) => x.root === root && x.serverID === server.id)
           if (match) {
+            s.used.set(key, Date.now())
             result.push(match)
             continue
           }

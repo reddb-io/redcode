@@ -3,6 +3,7 @@
 let nextId = 1
 let readBuffer = Buffer.alloc(0)
 let lastChange = null
+const closed = []
 let initializeParams = null
 let diagnosticRequestCount = 0
 let registeredCapability = false
@@ -143,6 +144,11 @@ function handle(raw) {
     return
   }
 
+  if (data.method === "textDocument/didClose") {
+    closed.push(data.params?.textDocument?.uri)
+    return
+  }
+
   if (data.method === "textDocument/didChange") {
     lastChange = data.params
     maybeRegister("didChange")
@@ -203,6 +209,11 @@ function handle(raw) {
 
   if (data.method === "test/get-last-change") {
     sendResponse(data.id, lastChange)
+    return
+  }
+
+  if (data.method === "test/get-closed") {
+    sendResponse(data.id, closed)
     return
   }
 

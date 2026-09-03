@@ -124,9 +124,45 @@ export namespace Flock {
     }
   }
 
+  async function readMeta(metaPath: string) {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(metaPath, "utf8"))
+      if (!parsed || typeof parsed !== "object") return
+      const { pid, hostname } = parsed as { pid?: unknown; hostname?: unknown }
+      if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return
+      if (typeof hostname !== "string") return
+      return { pid, hostname }
+    } catch {
+      return
+    }
+  }
+
+  // Signal 0 tests for existence without delivering anything. EPERM means the process is
+  // alive and owned by someone else, which still counts as alive.
+  function alive(pid: number) {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (err) {
+      return code(err) === "EPERM"
+    }
+  }
+
+  // A lock whose owner is gone is stale now, not staleMs from now. Waiting out the
+  // heartbeat window after a crash or a kill is a minute of a frozen app for nothing.
+  // Only decided on this host: a pid from another machine says nothing about this one.
+  async function abandoned(metaPath: string) {
+    const meta = await readMeta(metaPath)
+    if (!meta) return false
+    if (meta.hostname !== os.hostname()) return false
+    if (meta.pid === process.pid) return false
+    return !alive(meta.pid)
+  }
+
   async function stale(lockDir: string, heartbeatPath: string, metaPath: string, staleMs: number) {
     // Stale detection allows automatic recovery after crashed owners.
     const now = wall()
+    if (await abandoned(metaPath)) return true
     const heartbeat = await stats(heartbeatPath)
     if (heartbeat) {
       return now - heartbeat.mtimeMs > staleMs

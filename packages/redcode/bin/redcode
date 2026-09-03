@@ -144,7 +144,10 @@ const names = (() => {
       }
 
       try {
-        const result = childProcess.spawnSync("ldd", ["--version"], { encoding: "utf8" })
+        // Bounded like the darwin and windows probes above. Under WSL a spawn whose PATH
+        // resolution crosses /mnt/c or a dropped network mount can block in uninterruptible
+        // IO, and this runs before anything else, so an unbounded probe hangs even `-v`.
+        const result = childProcess.spawnSync("ldd", ["--version"], { encoding: "utf8", timeout: 1500 })
         const text = ((result.stdout || "") + (result.stderr || "")).toLowerCase()
         if (text.includes("musl")) return true
       } catch {

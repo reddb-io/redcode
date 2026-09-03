@@ -1,5 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Effect, Layer, Context, Schema, Semaphore } from "effect"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Snapshot } from "@/snapshot"
@@ -63,6 +63,20 @@ function unquoteGitPath(input: string) {
   return Buffer.from(bytes).toString()
 }
 
+// One summarize at a time per session. It is forked at every step-finish, and each run
+// hydrates the whole session and diffs the whole turn, so overlapping runs used to hold
+// several full copies of the session at once. Coalescing keeps the same end state — the
+// run that follows the last request still sees the final messages — with one copy live.
+const locks = new Map<string, Semaphore.Semaphore>()
+
+function lock(sessionID: string) {
+  const hit = locks.get(sessionID)
+  if (hit) return hit
+  const next = Semaphore.makeUnsafe(1)
+  locks.set(sessionID, next)
+  return next
+}
+
 export interface Interface {
   readonly summarize: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<void>
   readonly diff: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Snapshot.FileDiff[]>
@@ -99,7 +113,7 @@ const layer = Layer.effect(
       return []
     })
 
-    const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {
+    const summarizeOne = Effect.fn("SessionSummary.summarizeOne")(function* (input: {
       sessionID: SessionID
       messageID: MessageID
     }) {
@@ -124,6 +138,27 @@ const layer = Layer.effect(
       const msgDiffs = yield* computeDiff({ messages })
       target.info.summary = { ...target.info.summary, diffs: msgDiffs }
       yield* sessions.updateMessage(target.info)
+    })
+
+    // Requests that arrive while a run is in flight collapse into a single follow-up run
+    // rather than queueing one full-session pass each.
+    const pending = new Set<string>()
+    const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {
+      sessionID: SessionID
+      messageID: MessageID
+    }) {
+      const key = `${input.sessionID}:${input.messageID}`
+      if (pending.has(key)) return
+      pending.add(key)
+      yield* lock(input.sessionID)
+        .withPermits(1)(
+          Effect.suspend(() => {
+            pending.delete(key)
+            return summarizeOne(input)
+          }),
+        )
+        // Also on interrupt or failure: a key left behind would drop every later request.
+        .pipe(Effect.ensuring(Effect.sync(() => pending.delete(key))))
     })
 
     const diff = Effect.fn("SessionSummary.diff")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {

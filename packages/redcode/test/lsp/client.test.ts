@@ -5,6 +5,7 @@ import { tmpdir, withTestInstance } from "../fixture/fixture"
 import { LSPClient } from "@/lsp/client"
 import * as LSPServer from "@/lsp/server"
 import { spawn } from "@/lsp/launch"
+import { Flag } from "@reddb-io/redcode-core/flag/flag"
 
 function spawnFakeServer(env?: NodeJS.ProcessEnv) {
   const serverPath = path.join(__dirname, "../fixture/lsp/fake-lsp-server.js")
@@ -205,6 +206,47 @@ describe("LSPClient interop", () => {
         await client.shutdown()
       },
     })
+  })
+
+  test("closes the least recently touched documents once the open cap is reached", async () => {
+    const handle = spawnFakeServer() as any
+    await using tmp = await tmpdir()
+    const files: string[] = []
+    for (let i = 0; i < 5; i++) {
+      const file = path.join(tmp.path, `f${i}.ts`)
+      await Bun.write(file, `const x${i} = ${i}\n`)
+      files.push(file)
+    }
+
+    const previous = process.env["REDCODE_LSP_OPEN_FILE_LIMIT"]
+    process.env["REDCODE_LSP_OPEN_FILE_LIMIT"] = "3"
+    Flag.REDCODE_LSP_OPEN_FILE_LIMIT = "3"
+    try {
+      await withTestInstance({
+        directory: tmp.path,
+        fn: async (ctx) => {
+          const client = await LSPClient.create({
+            serverID: "fake",
+            server: handle as unknown as LSPServer.Handle,
+            root: tmp.path,
+            directory: tmp.path,
+            instance: ctx,
+          })
+
+          for (const file of files) await client.notify.open({ path: file })
+
+          const closed = await client.connection.sendRequest<string[]>("test/get-closed", {})
+          // The two oldest are closed on the server; the cap keeps the rest resident.
+          expect(closed).toEqual([pathToFileURL(files[0]).href, pathToFileURL(files[1]).href])
+
+          await client.shutdown()
+        },
+      })
+    } finally {
+      if (previous === undefined) delete process.env["REDCODE_LSP_OPEN_FILE_LIMIT"]
+      else process.env["REDCODE_LSP_OPEN_FILE_LIMIT"] = previous
+      Flag.REDCODE_LSP_OPEN_FILE_LIMIT = previous
+    }
   })
 
   test("document mode falls back to push diagnostics", async () => {

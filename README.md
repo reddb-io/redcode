@@ -173,6 +173,34 @@ Bun, pnpm, and Yarn work too. The install resolves one native package for your p
 variants where the architecture needs them. Each package contains `redcode` and the matching
 `redcode-rpc-sidecar` companion.
 
+### With mise
+
+mise installs the release binary straight from GitHub, no Node required. This is what
+[red-dev](https://github.com/reddb-io/red-dev) sets up, so a machine provisioned by it already has
+Redcode this way.
+
+```bash
+mise use -g github:reddb-io/redcode@latest
+redcode
+```
+
+Upgrade the same install with:
+
+```bash
+mise upgrade github:reddb-io/redcode
+```
+
+Two notes worth knowing:
+
+- Pin `@latest` rather than an exact version. `mise upgrade` keeps whatever range the tool was
+  installed with, so an exact pin never moves on its own.
+- If an upgrade reports success but `redcode --version` does not change, mise served a cached
+  version list. Run `mise cache clear github:reddb-io/redcode` and upgrade again.
+
+Keep one installation method per machine. An npm global and a mise install can both provide
+`redcode`, and then `$PATH` order decides which one runs — updating the one you are not running
+looks like an update that did nothing. `which redcode` tells you which copy is live.
+
 There is no beta channel, no container image, no desktop build, no package-manager tap, and no
 hosted deployment. See [What Ships And What Doesn't](#what-ships-and-what-doesnt) for why that is
 enforced rather than merely intended.

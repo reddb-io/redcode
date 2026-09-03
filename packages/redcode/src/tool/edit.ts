@@ -202,7 +202,7 @@ export const EditTool = Tool.define(
 
           return {
             metadata: {
-              diagnostics,
+              diagnostics: LSP.Diagnostic.pick(diagnostics, [normalizedFilePath]),
               diff,
               filediff,
             },

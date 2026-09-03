@@ -297,7 +297,12 @@ export const ApplyPatchTool = Tool.define(
         metadata: {
           diff: totalDiff,
           files,
-          diagnostics,
+          diagnostics: LSP.Diagnostic.pick(
+            diagnostics,
+            fileChanges
+              .filter((change) => change.type !== "delete")
+              .map((change) => FSUtil.normalizePath(change.movePath ?? change.filePath)),
+          ),
         },
         output,
       }
