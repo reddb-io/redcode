@@ -11,6 +11,7 @@ import { Plugin } from "../plugin"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
+import { EventV2 } from "@reddb-io/redcode-core/event"
 import { Auth } from "../auth"
 import { Env } from "../env"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
@@ -18,7 +19,7 @@ import { iife } from "@/util/iife"
 import { Global } from "@reddb-io/redcode-core/global"
 import path from "path"
 import { pathToFileURL } from "url"
-import { Effect, Layer, Context, Schema, Types } from "effect"
+import { Effect, Layer, Context, Schema, ScopedCache, Types } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { EffectPromise } from "@/effect/promise"
@@ -1366,6 +1367,7 @@ const layer = Layer.effect(
     const plugin = yield* Plugin.Service
     const modelsDevSvc = yield* ModelsDev.Service
     const runtimeFlags = yield* RuntimeFlags.Service
+    const events = yield* EventV2.Service
 
     const state = yield* InstanceState.make<State>(() =>
       Effect.gen(function* () {
@@ -1714,6 +1716,17 @@ const layer = Layer.effect(
       }),
     )
 
+    // The models catalog refreshes in the background (ModelsDev.refresh). The state above
+    // captured the catalog at build time, so drop it when the catalog changes and let the
+    // next Provider call rebuild from the new data instead of serving the startup snapshot.
+    const unsubscribe = yield* events.listen((event) => {
+      if (event.type !== ModelsDev.Event.Refreshed.type) return Effect.void
+      return ScopedCache.invalidateAll(state.cache).pipe(
+        Effect.andThen(Effect.logInfo("models catalog refreshed, provider state invalidated")),
+      )
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+
     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
 
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
@@ -2051,7 +2064,7 @@ export function parseModel(model: string) {
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node],
+  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node, EventV2.node],
 })
 
 export * as Provider from "./provider"

@@ -7,6 +7,7 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Global } from "@reddb-io/redcode-core/global"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
+import { EventV2 } from "@reddb-io/redcode-core/event"
 import { it } from "./lib/effect"
 import { readFile, rm, writeFile, utimes, mkdir } from "fs/promises"
 import path from "path"
@@ -93,6 +94,14 @@ const buildLayer = (state: Ref.Ref<MockState>) =>
   // every test would reuse the cachedInvalidateWithTTL state from the first run.
   Layer.fresh(
     AppNodeBuilder.build(ModelsDev.node, [
+      [LayerNodePlatform.httpClient, Layer.succeed(HttpClient.HttpClient, makeMockClient(state))],
+    ]),
+  )
+
+// Same graph as buildLayer, but also exposes the EventV2 instance ModelsDev publishes on.
+const buildEventLayer = (state: Ref.Ref<MockState>) =>
+  Layer.fresh(
+    AppNodeBuilder.build(LayerNode.group([ModelsDev.node, EventV2.node]), [
       [LayerNodePlatform.httpClient, Layer.succeed(HttpClient.HttpClient, makeMockClient(state))],
     ]),
   )
@@ -233,6 +242,27 @@ describe("ModelsDev Service", () => {
       expect(final.calls.length).toBe(1)
       expect(final.calls[0].url).toContain("/api.json")
       expect(final.calls[0].userAgent).toContain("/cli")
+    }),
+  )
+
+  it.live("refresh(true) publishes models-dev.refreshed after updating the cache", () =>
+    Effect.gen(function* () {
+      yield* writeCache(fixture)
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const seen = yield* Ref.make<string[]>([])
+      const result = yield* Effect.gen(function* () {
+        const svc = yield* ModelsDev.Service
+        const events = yield* EventV2.Service
+        const unsubscribe = yield* events.listen((event) => Ref.update(seen, (list) => [...list, event.type]))
+        const before = yield* svc.get()
+        yield* svc.refresh(true)
+        yield* unsubscribe
+        const after = yield* svc.get()
+        return { before, after }
+      }).pipe(Effect.provide(buildEventLayer(state)))
+      expect(result.before).toEqual(fixture)
+      expect(result.after).toEqual(fixture2)
+      expect(yield* Ref.get(seen)).toEqual([ModelsDev.Event.Refreshed.type])
     }),
   )
 
