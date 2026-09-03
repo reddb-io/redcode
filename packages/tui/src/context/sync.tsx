@@ -173,10 +173,34 @@ export const {
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
     }
 
+    // The server refreshes the models catalog in the background and drops its provider
+    // state; pull the provider list again so newly published models show up without a restart.
+    let providerReloadPending = false
+    async function reloadProviders() {
+      if (store.status === "loading") {
+        providerReloadPending = true
+        return
+      }
+      const workspace = project.workspace.current()
+      const [providers, providerList] = await Promise.all([
+        sdk.client.config.providers({ workspace }, { throwOnError: true }).then((x) => x.data!),
+        sdk.client.provider.list({ workspace }, { throwOnError: true }).then((x) => x.data!),
+      ]).catch(() => [undefined, undefined] as const)
+      if (!providers || !providerList) return
+      batch(() => {
+        setStore("provider", reconcile(providers.providers))
+        setStore("provider_default", reconcile(providers.default))
+        setStore("provider_next", reconcile(providerList))
+      })
+    }
+
     event.subscribe((event, { directory, workspace }) => {
       switch (event.type) {
         case "server.instance.disposed":
           void bootstrap()
+          break
+        case "models-dev.refreshed":
+          void reloadProviders()
           break
         case "permission.replied": {
           const requests = store.permission[event.properties.sessionID]
@@ -516,6 +540,10 @@ export const {
         })
         .then(() => {
           if (store.status !== "complete") setStore("status", "partial")
+          if (providerReloadPending) {
+            providerReloadPending = false
+            void reloadProviders()
+          }
           // non-blocking
           void Promise.all([
             ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),

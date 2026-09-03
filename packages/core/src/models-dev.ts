@@ -177,7 +177,7 @@ const layer = Layer.effect(
         HttpClientRequest.setHeader("User-Agent", USER_AGENT),
         http.execute,
         Effect.flatMap((res) => res.text),
-        Effect.timeout("10 seconds"),
+        Effect.timeout("30 seconds"),
       )
     })
 

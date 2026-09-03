@@ -5,6 +5,7 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { Effect, Layer } from "effect"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
+import { EventV2 } from "@reddb-io/redcode-core/event"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Global } from "@reddb-io/redcode-core/global"
@@ -86,6 +87,7 @@ const languageBaseURL = (language: unknown) => (language as { config: { baseURL:
 
 const it = testEffect(LayerNode.compile(LayerNode.group([Provider.node, Env.node, Plugin.node])))
 const experimentalModels = testEffect(providerLayer({ enableExperimentalModels: true }))
+const catalog = testEffect(LayerNode.compile(LayerNode.group([Provider.node, Env.node, Plugin.node, EventV2.node])))
 
 const alphaProviderConfig = {
   provider: {
@@ -108,6 +110,22 @@ const alphaProviderConfig = {
     },
   },
 }
+
+catalog.instance("provider state rebuilds after the models catalog refreshes", () =>
+  Effect.gen(function* () {
+    yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")
+    const before = yield* list
+    expect(before[ProviderV2.ID.anthropic]).toBeDefined()
+    // The state is cached per instance, so dropping the env var alone changes nothing.
+    yield* remove("ANTHROPIC_API_KEY")
+    const cached = yield* list
+    expect(cached[ProviderV2.ID.anthropic]).toBeDefined()
+    // A catalog refresh invalidates the state and the next call rebuilds it from scratch.
+    yield* EventV2.Service.use((events) => events.publish(ModelsDev.Event.Refreshed, {}))
+    const after = yield* list
+    expect(after[ProviderV2.ID.anthropic]).toBeUndefined()
+  }),
+)
 
 it.instance("provider loaded from env variable", () =>
   Effect.gen(function* () {
