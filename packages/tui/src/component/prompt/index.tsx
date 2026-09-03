@@ -267,13 +267,32 @@ export function Prompt(props: PromptProps) {
   // While a turn runs the footer used to be a bare spinner: no way to tell thinking from a
   // shell command from a request that has stalled. The parts already streaming in say what is
   // happening, so the label comes from them.
-  const activity = createMemo(() => {
+  const activeAssistant = createMemo(() => {
     if (!props.sessionID) return
     const messages = sync.data.message[props.sessionID]
     if (!messages) return
-    const last = messages.findLast((item): item is AssistantMessage => item.role === "assistant")
+    return messages.findLast((item): item is AssistantMessage => item.role === "assistant")
+  })
+
+  const activity = createMemo(() => {
+    const last = activeAssistant()
     if (!last) return
     return describeActivity((sync.data.part[last.id] ?? []) as ActivityPart[])
+  })
+
+  // A turn that has been going for minutes with nothing to show is the thing people read as a
+  // freeze, so the clock is on screen the whole time rather than only once something arrives.
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(() => {
+    if (status().type === "idle") return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
+  })
+
+  const elapsed = createMemo(() => {
+    const started = activeAssistant()?.time.created
+    if (!started) return
+    return formatDuration(Math.max(0, Math.round((now() - started) / 1000)))
   })
 
   const usage = createMemo(() => {
@@ -1545,7 +1564,12 @@ export function Prompt(props: PromptProps) {
                     </Show>
                   </box>
                   <Show when={status().type === "busy" && activity()}>
-                    {(label) => <text fg={theme.textMuted}>{label()}</text>}
+                    {(label) => (
+                      <text fg={theme.textMuted}>
+                        {label()}
+                        <Show when={elapsed()}>{(value) => <span>{" · " + value()}</span>}</Show>
+                      </text>
+                    )}
                   </Show>
                   <box flexDirection="row" gap={1} flexShrink={0}>
                     {(() => {

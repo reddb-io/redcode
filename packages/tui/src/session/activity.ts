@@ -72,10 +72,10 @@ function describeTool(part: ActivityPart, width: number) {
 }
 
 /**
- * `undefined` means there is nothing more specific to say than "working", which is what the
- * caller was already showing.
+ * Never `undefined` while a turn is running: silence is what made a stalled request look the
+ * same as a working one. When nothing has come back yet, that fact is itself the answer.
  */
-export function describeActivity(parts: readonly ActivityPart[], width = 48): string | undefined {
+export function describeActivity(parts: readonly ActivityPart[], width = 48): string {
   // The most recent unfinished tool is the most informative thing on screen.
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i]
@@ -89,5 +89,7 @@ export function describeActivity(parts: readonly ActivityPart[], width = 48): st
   const last = [...parts].reverse().find((part) => part.type === "reasoning" || part.type === "text")
   if (last?.type === "reasoning") return "Thinking"
   if (last?.type === "text") return "Responding"
-  return
+  // A turn with no parts yet is a request the provider has not answered, which is exactly the
+  // state that used to show a bare spinner for half an hour.
+  return "Waiting for the model"
 }

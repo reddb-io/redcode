@@ -40,9 +40,10 @@ describe("describeActivity", () => {
     ).toBe("Writing a.ts")
   })
 
-  test("says nothing when a finished tool is all there is", () => {
-    expect(describeActivity([tool("bash", "completed", { command: "ls" })])).toBeUndefined()
-    expect(describeActivity([])).toBeUndefined()
+  test("says it is waiting when nothing has come back yet", () => {
+    // The stalled-request case: a spinner alone is indistinguishable from progress.
+    expect(describeActivity([])).toBe("Waiting for the model")
+    expect(describeActivity([tool("bash", "completed", { command: "ls" })])).toBe("Waiting for the model")
   })
 
   test("describes an unknown tool by its own title", () => {
