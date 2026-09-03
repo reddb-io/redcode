@@ -1,5 +1,14 @@
 # opencode
 
+## 0.13.3
+
+### Patch Changes
+
+- 9988bc7: Stop long sessions from growing without bound and being OOM-killed: turn diffs no longer embed a whole copy of every large file they touch, concurrent turn summaries collapse into one run instead of hydrating the session several times over, edit tool metadata carries diagnostics only for the files it touched, and the TUI mirrors a session's messages only once something asks for that session. Also documents installing and upgrading with mise.
+- 9988bc7: Cap how many language servers run at once (`REDCODE_LSP_MAX_CLIENTS`, default 8) so a monorepo with per-package linter configs stops spawning one server per package, put a deadline on the npm install that plugin loading holds a cross-process lock across, and trim the whitespace around a typed message so a trailing newline is not part of what you said and a blank input is not sent at all.
+- 550623f: Recognize Redcode installs managed by mise (`github:reddb-io/redcode`, the way red-dev installs it) so the update prompt and background auto-update upgrade through mise instead of failing with "Unknown installation method", and show the real reason in the TUI when an update fails.
+- 9988bc7: Recover from stuck states without the user having to diagnose them: a worker thread that throws or dies now fails the waiting call instead of freezing the UI, a lock whose owning process is gone is taken over immediately rather than after a minute, startup no longer waits forever on a stalled home directory, a piped stdin that never closes, a hung git, or an unbounded musl probe, and language servers close documents past an open-file cap instead of holding every file the session ever touched.
+
 ## 0.13.2
 
 ### Patch Changes
