@@ -129,7 +129,67 @@ describe("installation", () => {
     )
   })
 
+  describe("method", () => {
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          if (cmd === "mise" && args[0] === "ls")
+            return JSON.stringify([{ version: "1.0.0", install_path: "/home/u/.local/share/mise/installs/x/1.0.0" }])
+          return ""
+        },
+      ),
+    ).effect("detects a mise-managed install from mise ls", () =>
+      Effect.gen(function* () {
+        expect(yield* Installation.use.method()).toBe("mise")
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => (cmd === "mise" && args[0] === "ls" ? "[]" : ""),
+      ),
+    ).effect("stays unknown when mise does not know the tool", () =>
+      Effect.gen(function* () {
+        expect(yield* Installation.use.method()).toBe("unknown")
+      }),
+    )
+  })
+
   describe("upgrade", () => {
+    const miseCalls: string[][] = []
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          miseCalls.push([cmd, ...args])
+          if (cmd === "mise" && args[0] === "ls") return JSON.stringify([{ version: "9.9.9" }])
+          return ""
+        },
+      ),
+    ).effect("upgrades a mise install and confirms the target version", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("mise", "9.9.9")
+        expect(miseCalls).toContainEqual(["mise", "cache", "clear", Installation.MISE_TOOL])
+        expect(miseCalls).toContainEqual(["mise", "upgrade", Installation.MISE_TOOL])
+        expect(miseCalls).toContainEqual(["mise", "ls", "--json", Installation.MISE_TOOL])
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => (cmd === "mise" && args[0] === "ls" ? JSON.stringify([{ version: "1.0.0" }]) : ""),
+      ),
+    ).effect("fails when mise keeps the old version after upgrading", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(Installation.use.upgrade("mise", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toContain("did not install v9.9.9")
+      }),
+    )
+
     testEffect(
       testLayer(
         () => jsonResponse({}),
