@@ -56,8 +56,16 @@ async function target() {
   return new URL("../tui/worker.ts", import.meta.url)
 }
 
+// A non-TTY stdin is not always a finite pipe: launched from a wrapper, an editor task or a
+// Windows console shim, the child can inherit a pipe nobody ever closes, and reading it to
+// EOF then blocks the TUI before its first frame with nothing on screen. Waiting briefly and
+// carrying on costs a caller who really did pipe a slow prompt; hanging costs the session.
+const STDIN_DEADLINE_MS = 2000
+
 async function input(value?: string) {
-  const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
+  const piped = process.stdin.isTTY
+    ? undefined
+    : await withTimeout(Bun.stdin.text(), STDIN_DEADLINE_MS, "stdin").catch(() => undefined)
   if (!value) return piped
   if (!piped) return value
   return piped + "\n" + value
@@ -218,18 +226,28 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
+      let stopped = false
       const worker = new Worker(file, {
         env: Object.fromEntries(
           Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
         ),
       })
       const client = Rpc.client<typeof rpc>(worker)
+      // A worker that fails to load, or dies, posts nothing back. Without these the calls
+      // waiting on it stay pending and the UI shows an empty screen with no error.
+      worker.addEventListener("error", (event) => {
+        const detail = event instanceof ErrorEvent && event.message ? event.message : "worker failed to start"
+        client.fail(`Redcode server thread failed: ${detail}`)
+      })
+      worker.addEventListener("close", () => {
+        if (stopped) return
+        client.fail("Redcode server thread exited unexpectedly")
+      })
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
       }
       process.on("SIGUSR2", reload)
 
-      let stopped = false
       const stop = async () => {
         if (stopped) return
         stopped = true
