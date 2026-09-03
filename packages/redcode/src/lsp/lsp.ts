@@ -8,7 +8,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import * as LSPServer from "./server"
 import { Config } from "@/config/config"
 import { Process } from "@/util/process"
-import { spawn as lspspawn } from "./launch"
+import { spawn as lspspawn, noteRejectedNodeOption } from "./launch"
 import { Effect, Layer, Context, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { containsPath } from "@/project/instance-context"
@@ -281,9 +281,16 @@ const layer = Layer.effect(
             })
             bridge.fork(Effect.logWarning("LSP server failed", { serverID: server.id, root, error }))
           }
-          const handle = await server
-            .spawn(root, ctx, flags)
-            .catch((error) => {
+          // A server that died because the environment handed it a Node flag it refuses is not
+          // a broken server: drop the flag and start it again, once.
+          const start = async () => server.spawn(root, ctx, flags)
+          let handle = await start().catch((error) => {
+            if (noteRejectedNodeOption(error)) return "retry" as const
+            failed(error)
+            return undefined
+          })
+          if (handle === "retry")
+            handle = await start().catch((error) => {
               failed(error)
               return undefined
             })
@@ -300,8 +307,25 @@ const layer = Layer.effect(
             directory: ctx.directory,
             instance: ctx,
           }).catch(async (error) => {
-            failed(error)
             await Process.stop(handle.process)
+            // The flag is only named once the server has started and refused, so the rejection
+            // usually lands here, during initialization, rather than on spawn.
+            if (noteRejectedNodeOption(error)) {
+              const again = await start().catch(() => undefined)
+              if (again)
+                return await LSPClient.create({
+                  serverID: server.id,
+                  server: again,
+                  root,
+                  directory: ctx.directory,
+                  instance: ctx,
+                }).catch(async (retryError) => {
+                  failed(retryError)
+                  await Process.stop(again.process)
+                  return undefined
+                })
+            }
+            failed(error)
             return undefined
           })
 

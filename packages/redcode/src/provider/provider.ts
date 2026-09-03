@@ -34,6 +34,8 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
 
 const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
+// Applies to every provider, not just the one that happened to set its own. `false` opts out.
+const STREAM_TIMEOUT_DEFAULT = 300_000
 
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
@@ -1794,8 +1796,11 @@ const layer = Layer.effect(
         if (existing) return existing
 
         const customFetch = options["fetch"]
-        const chunkTimeout = options["chunkTimeout"]
-        const headerTimeout = options["headerTimeout"]
+        // Without a default, a stream that stalls with the connection still open hangs the
+        // turn forever: no chunk, no error, nothing for the retry layer to see. `false` still
+        // opts out for anyone who wants an unbounded stream.
+        const chunkTimeout = options["chunkTimeout"] ?? STREAM_TIMEOUT_DEFAULT
+        const headerTimeout = options["headerTimeout"] ?? STREAM_TIMEOUT_DEFAULT
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
 

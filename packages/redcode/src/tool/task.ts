@@ -210,6 +210,20 @@ export const TaskTool = Tool.define(
           agent: next.name,
           parts,
         })
+        // A subagent that died on an API error, auth failure or a failed tool used to return
+        // "", which the parent model reads as "finished, nothing to report" — so it proceeds
+        // confidently on work that never happened. Failing the tool is what makes it visible.
+        if (result.info.role === "assistant" && result.info.error) {
+          const message =
+            "message" in result.info.error.data && typeof result.info.error.data.message === "string"
+              ? result.info.error.data.message
+              : result.info.error.name
+          return yield* Effect.fail(new Error(`Subagent failed (task_id: ${nextSession.id}): ${message}`))
+        }
+        const failed = result.parts.findLast((item) => item.type === "tool" && item.state.status === "error")
+        if (failed?.type === "tool" && failed.state.status === "error") {
+          return yield* Effect.fail(new Error(`Subagent failed (task_id: ${nextSession.id}): ${failed.state.error}`))
+        }
         return result.parts.findLast((item) => item.type === "text")?.text ?? ""
       })
 

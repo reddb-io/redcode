@@ -33,6 +33,7 @@ import { createStore, produce, unwrap } from "solid-js/store"
 import { usePromptHistory, type PromptInfo } from "../../prompt/history"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText, promptMessageText } from "../../prompt/part"
+import { describeActivity, type ActivityPart } from "../../session/activity"
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
@@ -261,6 +262,18 @@ export function Prompt(props: PromptProps) {
     const messages = sync.data.message[props.sessionID]
     if (!messages) return undefined
     return messages.findLast((m): m is UserMessage => m.role === "user")
+  })
+
+  // While a turn runs the footer used to be a bare spinner: no way to tell thinking from a
+  // shell command from a request that has stalled. The parts already streaming in say what is
+  // happening, so the label comes from them.
+  const activity = createMemo(() => {
+    if (!props.sessionID) return
+    const messages = sync.data.message[props.sessionID]
+    if (!messages) return
+    const last = messages.findLast((item): item is AssistantMessage => item.role === "assistant")
+    if (!last) return
+    return describeActivity((sync.data.part[last.id] ?? []) as ActivityPart[])
   })
 
   const usage = createMemo(() => {
@@ -1531,6 +1544,9 @@ export function Prompt(props: PromptProps) {
                       <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
                     </Show>
                   </box>
+                  <Show when={status().type === "busy" && activity()}>
+                    {(label) => <text fg={theme.textMuted}>{label()}</text>}
+                  </Show>
                   <box flexDirection="row" gap={1} flexShrink={0}>
                     {(() => {
                       const retry = createMemo(() => {

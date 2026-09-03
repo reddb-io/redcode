@@ -1,32 +1,52 @@
 {
   "$schema": "https://v2-8-13.turborepo.dev/schema.json",
-  "globalEnv": ["CI", "OPENCODE_DISABLE_SHARE"],
-  "globalPassThroughEnv": ["CI", "OPENCODE_DISABLE_SHARE"],
+  "globalEnv": [
+    "CI",
+    "OPENCODE_DISABLE_SHARE"
+  ],
+  "globalPassThroughEnv": [
+    "CI",
+    "OPENCODE_DISABLE_SHARE"
+  ],
   "tasks": {
     "typecheck": {},
     "build": {
       "dependsOn": [],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
     },
-    "opencode#test": {
-      "dependsOn": ["^build"],
+    "test": {
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [],
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@reddb-io/redcode-core#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@reddb-io/redcode-app#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@reddb-io/redcode-ui#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@reddb-io/redcode-session-ui#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     }
   }

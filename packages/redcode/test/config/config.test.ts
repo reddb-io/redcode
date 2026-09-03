@@ -447,6 +447,34 @@ it.instance("updates config and preserves empty shell sentinel", () =>
   }),
 )
 
+it.instance("updates config without erasing keys the schema does not model", () =>
+  Effect.gen(function* () {
+    const test = yield* TestInstance
+    yield* writeConfigEffect(
+      test.directory,
+      {
+        $schema: "https://opencode.ai/config.json",
+        shell: "bash",
+        // A key this version's schema knows nothing about — a newer option, or one a plugin
+        // reads. Updating an unrelated setting must not throw it away.
+        experimental_future_option: { enabled: true },
+      },
+      "config.json",
+    )
+
+    yield* Config.Service.use((svc) =>
+      svc.update(ConfigParse.schema(ConfigV1.Info, { model: "acme/one" }, "test:config")),
+    )
+
+    const written = yield* FSUtil.use.readJson(path.join(test.directory, "config.json"))
+    expect(written).toMatchObject({
+      shell: "bash",
+      model: "acme/one",
+      experimental_future_option: { enabled: true },
+    })
+  }),
+)
+
 it.effect("updates global config and omits empty shell key in json", () =>
   withGlobalConfig({ config: { shell: "bash" } }, ({ dir }) =>
     Effect.gen(function* () {
