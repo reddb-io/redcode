@@ -229,6 +229,14 @@ describe("SessionStatus.Info", () => {
     expect(decode({ type: "busy" })).toEqual({ type: "busy" })
   })
 
+  test("busy says what it is doing, and an old client's bare busy still decodes", () => {
+    // The fields are additive on purpose: the event is not durable and every reader
+    // discriminates on `type` alone, so nothing that ignores them breaks.
+    const busy = { type: "busy" as const, phase: "tool" as const, tool: "bash", step: 3, since: 1700000000000 }
+    expect(decode(busy)).toEqual(busy)
+    expect(decode({ type: "busy" })).toEqual({ type: "busy" })
+  })
+
   test("retry carries attempt/message/action/next", () => {
     const input = {
       type: "retry" as const,

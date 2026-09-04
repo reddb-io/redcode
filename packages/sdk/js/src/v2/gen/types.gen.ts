@@ -690,6 +690,10 @@ export type SessionStatus =
     }
   | {
       type: "busy"
+      phase?: "preparing" | "thinking" | "writing" | "tool" | "compacting"
+      tool?: string
+      step?: number
+      since?: number
     }
 
 export type QuestionOption = {
@@ -2028,6 +2032,28 @@ export type Config = {
     primary_tools?: Array<string>
     continue_loop_on_deny?: boolean
     mcp_timeout?: number
+    /**
+     * How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). Set to false to disable.
+     */
+    loop_guard?:
+      | false
+      | {
+          correct_at?: number
+          stop_at?: number
+        }
+    /**
+     * Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.
+     */
+    tool_timeout?: false | number
+    /**
+     * How long a turn may produce nothing before it is reported and, where nothing is watching, ended. Time a tool spends running or a permission spends awaiting an answer does not count. Set to false to disable.
+     */
+    turn_stall?:
+      | false
+      | {
+          warn_ms?: number
+          abort_ms?: number
+        }
     policies?: Array<ConfigV2ExperimentalPolicy>
   }
 }
