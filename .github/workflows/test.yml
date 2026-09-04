@@ -64,7 +64,9 @@ jobs:
             turbo-${{ runner.os }}-
 
       - name: Run unit tests
-        timeout-minutes: 20
+        # Raised with the scope: this used to run five packages and now runs every suite that
+        # has one, including the two largest.
+        timeout-minutes: 35
         run: GITHUB_ACTIONS=false bun turbo test
         env:
           REDCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}

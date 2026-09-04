@@ -8,26 +8,10 @@
       "dependsOn": [],
       "outputs": ["dist/**"]
     },
-    "opencode#test": {
+    "test": {
       "dependsOn": ["^build"],
       "outputs": [],
       "passThroughEnv": ["*"]
-    },
-    "@reddb-io/redcode-core#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@reddb-io/redcode-app#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@reddb-io/redcode-ui#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@reddb-io/redcode-session-ui#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
     }
   }
 }

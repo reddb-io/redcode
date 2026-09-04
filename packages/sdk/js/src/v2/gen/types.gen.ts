@@ -2033,6 +2033,15 @@ export type Config = {
     continue_loop_on_deny?: boolean
     mcp_timeout?: number
     /**
+     * Steps one turn may run before the model is asked to stop and report what it did (wrap_up_at, default 198) and before the turn is stopped outright (stop_at, default 200). Set to false to remove the ceiling.
+     */
+    turn_steps?:
+      | false
+      | {
+          wrap_up_at?: number
+          stop_at?: number
+        }
+    /**
      * How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). Set to false to disable.
      */
     loop_guard?:

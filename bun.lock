@@ -605,7 +605,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.13.3",
+      "version": "0.13.4",
       "bin": {
         "redcode": "./bin/redcode",
       },
