@@ -251,6 +251,11 @@ export function Session() {
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
 
   const pending = createMemo(() => {
+    // An open assistant message alone is not a queue. A process killed mid-turn — an OOM, a
+    // machine asleep — never writes `time.completed`, so the message stays open forever and every
+    // later message read as QUEUED, across restarts, with nothing running behind it. The session
+    // has to actually be working for anything to be waiting on it.
+    if ((sync.data.session_status[route.sessionID]?.type ?? "idle") === "idle") return undefined
     const completed = messages().findLastIndex((message) => message.role === "assistant" && message.time.completed)
     const pending = messages().findLastIndex(
       (message, index) => index > completed && message.role === "assistant" && !message.time.completed,
