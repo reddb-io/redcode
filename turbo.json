@@ -12,6 +12,10 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    "@reddb-io/redcode#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "@reddb-io/redcode-core#test": {
       "dependsOn": ["^build"],
       "outputs": []
