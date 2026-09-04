@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { realpathSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { join, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const directory = resolve(import.meta.dir, "..")
-const effect = realpathSync(resolve(import.meta.dir, "../node_modules/effect"))
+// Resolved through the module graph rather than assumed to sit in this package's own
+// node_modules: the installer is free to hoist it to the workspace root, and on Windows it does —
+// which made this file throw before a single test ran.
+const effect = realpathSync(resolve(fileURLToPath(import.meta.resolve("effect")), "../.."))
 const schema = resolve(import.meta.dir, "../../schema")
 const protocol = resolve(import.meta.dir, "../../protocol")
 const core = resolve(import.meta.dir, "../../core")
