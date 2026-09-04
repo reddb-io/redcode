@@ -15,6 +15,26 @@ test("matches only the scroll element or an ancestor containing it", () => {
   expect(mutationNodesContainElement([child, sibling], viewport)).toBe(false)
 })
 
+// happy-dom decides for itself when a MutationObserver batch is delivered and in what order, and
+// that scheduling is noise here: adding a console.log to the component was enough to flip this
+// test between passing and failing, and it failed on Windows CI for the same reason. The reconnect
+// tests therefore drive the observer themselves — each pins one arrangement a browser is allowed
+// to produce — so what is under test is our reaction to it, not the emulator's timing.
+function withObserver(
+  deliver: (callback: MutationCallback, records: MutationRecord[], observer: MutationObserver) => void,
+) {
+  const real = window.MutationObserver
+  class Controlled extends real {
+    constructor(callback: MutationCallback) {
+      super((records, observer) => deliver(callback, [...records], observer))
+    }
+  }
+  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = Controlled
+  return () => {
+    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+  }
+}
+
 test("reports a divergent native offset once and ignores equal offsets and unrelated mutations", async () => {
   const route = document.createElement("section")
   const viewport = document.createElement("div")
@@ -33,6 +53,8 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
     },
   } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
   const calls: [number, boolean][] = []
+  // Delivered as a browser reports it: every record of a batch, in order.
+  const restoreObserver = withObserver((callback, records, observer) => callback(records, observer))
   const cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
     calls.push([offset, isScrolling])
     instance.scrollOffset = offset
@@ -58,6 +80,7 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
   // Still one call: the offset now matches, so there is nothing new to report.
   expect(calls).toEqual([[0, false]])
 
+  restoreObserver()
   cleanup?.()
   route.remove()
 })
@@ -237,6 +260,49 @@ test("reconnects when the batch reports the addition before the removal", async 
 })
 
 /** Waits for a condition across animation frames, up to a generous deadline. */
+test("reconnects when the addition is delivered in an earlier batch than the removal", async () => {
+  // The cross-batch twin of the reversed-order case: nothing guarantees a batch carrying the
+  // re-insertion arrives after the one carrying the removal.
+  const route = document.createElement("section")
+  const viewport = document.createElement("div")
+  route.append(viewport)
+  document.body.append(route)
+  const instance = {
+    scrollElement: viewport,
+    targetWindow: window,
+    scrollOffset: 79_400,
+    options: { horizontal: false, isRtl: false, isScrollingResetDelay: 0, useScrollendEvent: false },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+  const calls: [number, boolean][] = []
+
+  const real = window.MutationObserver
+  class OneBatchLate extends real {
+    constructor(callback: MutationCallback) {
+      // Every record is delivered in its own batch, in reverse order: addition first.
+      super((records, observer) => {
+        for (const record of [...records].reverse()) callback([record], observer)
+      })
+    }
+  }
+  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = OneBatchLate
+  let cleanup: (() => void) | undefined
+  try {
+    cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
+      calls.push([offset, isScrolling])
+      instance.scrollOffset = offset
+    })
+    route.remove()
+    document.body.append(route)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await until(() => calls.length > 0)
+    expect(calls).toEqual([[0, false]])
+  } finally {
+    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+    cleanup?.()
+    route.remove()
+  }
+})
+
 async function until(condition: () => boolean, budgetMs = 2_000) {
   const deadline = Date.now() + budgetMs
   while (!condition() && Date.now() < deadline) {

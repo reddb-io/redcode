@@ -219,8 +219,15 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
         // `mise upgrade` exits 0 when it keeps the pinned version, so confirm the target landed.
         if (m === "mise" && !hasMiseVersion(yield* text(["mise", "ls", "--json", MISE_TOOL]), target)) {
+          // The usual cause is not a failed download. mise refuses to install a release younger
+          // than `minimum_release_age`, and says so only as a line on stderr nobody sees: the
+          // update prompt offers a version mise has quietly decided not to see, the upgrade exits
+          // 0 having done nothing, and it looks like the update button is broken.
+          const offered = yield* text(["mise", "ls-remote", MISE_TOOL])
           return yield* new UpgradeFailedError({
-            stderr: `mise did not install v${target}. Run "mise use -g ${MISE_TOOL}@latest" and try again.`,
+            stderr: offersVersion(offered, target)
+              ? `mise did not install v${target}. Run "mise use -g ${MISE_TOOL}@latest" and try again.`
+              : releaseAgeMessage(target),
           })
         }
         yield* Effect.logInfo("upgraded", {
@@ -241,6 +248,25 @@ export const node = LayerNode.make({ service: Service, layer: layer, deps: [http
 
 function hasPackage(output: string) {
   return output.includes("@reddb-io/redcode")
+}
+
+/** Whether `mise ls-remote` is willing to offer this version at all. */
+export function offersVersion(output: string, version: string) {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .includes(version)
+}
+
+export function releaseAgeMessage(target: string) {
+  return [
+    `mise will not install v${target} yet: it holds back releases younger than its \`minimum_release_age\`,`,
+    `so the version this update offers is one mise has decided not to see.`,
+    ``,
+    `To let Redcode's own releases through, keeping the delay for everything else:`,
+    `  mise settings add minimum_release_age_excludes "${MISE_TOOL}"`,
+    `  mise use -g ${MISE_TOOL}@latest`,
+  ].join("\n")
 }
 
 function hasMiseVersion(output: string, version?: string) {

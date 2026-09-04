@@ -56,7 +56,10 @@ export function observeElementOffsetReconnectAware<TScrollElement extends Elemen
       clearCheck()
     }
     if (!removed || !element.isConnected) return
-    if (!outside.some((record) => mutationNodesContainElement(record.addedNodes, element))) return
+    // Being connected again is the evidence that it came back. Requiring the addition to appear in
+    // a batch is what kept breaking: within one batch the records can be ordered either way, and
+    // across batches the addition can be delivered before the removal it followed — either way the
+    // element ends up back on the page with nothing watching it.
     removed = false
     startCheck()
   })
