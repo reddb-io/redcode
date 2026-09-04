@@ -36,6 +36,12 @@ export interface Handle {
   readonly message: SessionV1.Assistant
   /** When the provider last sent anything, for the turn loop's stall watchdog. */
   readonly lastEventAt: number
+  /**
+   * Tool calls the model is waiting on right now. Tools run inside the SDK, between the
+   * `tool-call` and `tool-result` events, so a long command or a subagent emits nothing at all:
+   * silence with a tool in flight is work, and only silence with none is a stall.
+   */
+  readonly activeToolCount: number
   readonly updateToolCall: (
     toolCallID: string,
     update: (part: SessionV1.ToolPart) => SessionV1.ToolPart,
@@ -708,6 +714,9 @@ const layer = Layer.effect(
         /** Read by the turn loop's watchdog: silence here is what a stall looks like. */
         get lastEventAt() {
           return ctx.lastEventAt
+        },
+        get activeToolCount() {
+          return Object.keys(ctx.toolcalls).length
         },
         get message() {
           return ctx.assistantMessage

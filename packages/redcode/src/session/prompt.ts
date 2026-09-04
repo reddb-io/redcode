@@ -1114,6 +1114,34 @@ const layer = Layer.effect(
         yield* hooks.parallel(OperationHook.Operation.Turn.Started, turnStarted)
         yield* events.publish(SessionEvent.Turn.Started, turnStarted).pipe(Effect.ignore)
 
+        // A turn that goes quiet leaves no trace today: no event, no log, and a spinner that
+        // looks exactly like progress. Saying so on a schedule is what turns "it hung for half an
+        // hour" into something anyone can look up afterwards.
+        //
+        // One fiber for the whole turn, reading whichever step's handle is current. Forked as a
+        // child of this fiber, so it dies when the turn does — `scope` above belongs to the
+        // service layer and outlives every turn, which would leave a poller behind per step.
+        let watched: SessionProcessor.Handle | undefined
+        yield* Effect.forkChild(
+          Effect.repeat(
+            Effect.suspend(() => {
+              const handle = watched
+              if (!handle) return Effect.void
+              const quiet = Math.round((Date.now() - handle.lastEventAt) / 1000)
+              if (quiet < STALL_LOG_SECONDS) return Effect.void
+              // Tools run inside the SDK and emit nothing while they work, so silence with one in
+              // flight is progress, not a stall.
+              if (handle.activeToolCount > 0) return Effect.void
+              return Effect.logWarning("turn has produced nothing", {
+                "session.id": sessionID,
+                messageID: handle.message.id,
+                quietSeconds: quiet,
+              })
+            }),
+            Schedule.spaced(Duration.seconds(STALL_LOG_SECONDS)),
+          ),
+        )
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
@@ -1298,26 +1326,7 @@ const layer = Layer.effect(
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 
-          // A turn that goes quiet leaves no trace today: no event, no log, and a spinner that
-          // looks exactly like progress. Saying so on a schedule is what turns "it hung for
-          // half an hour" into something anyone can look up afterwards. Forked into the turn's
-          // scope, so it dies with the turn.
-          yield* Effect.forkIn(
-            Effect.repeat(
-              Effect.suspend(() => {
-                const quiet = Math.round((Date.now() - handle.lastEventAt) / 1000)
-                if (quiet < STALL_LOG_SECONDS) return Effect.void
-                return Effect.logWarning("turn has produced nothing", {
-                  "session.id": sessionID,
-                  messageID: handle.message.id,
-                  step,
-                  quietSeconds: quiet,
-                })
-              }),
-              Schedule.spaced(Duration.seconds(STALL_LOG_SECONDS)),
-            ),
-            scope,
-          )
+          watched = handle
 
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
             const lastUserMsg = msgs.findLast((m) => m.info.role === "user")

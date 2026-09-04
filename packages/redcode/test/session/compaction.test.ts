@@ -203,6 +203,7 @@ function fake(
       return msg
     },
     lastEventAt: Date.now(),
+    activeToolCount: 0,
     updateToolCall: Effect.fn("TestSessionProcessor.updateToolCall")(() => Effect.succeed(undefined)),
     completeToolCall: Effect.fn("TestSessionProcessor.completeToolCall")(() => Effect.void),
     process: Effect.fn("TestSessionProcessor.process")(() => Effect.succeed(result)),
