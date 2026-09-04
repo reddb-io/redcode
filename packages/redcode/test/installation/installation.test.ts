@@ -1,11 +1,11 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { Effect, Layer, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import { Installation } from "../../src/installation"
+import { Installation, offersVersion, releaseAgeMessage } from "../../src/installation"
 import { InstallationChannel } from "@reddb-io/redcode-core/installation/version"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
@@ -157,6 +157,28 @@ describe("installation", () => {
     )
   })
 
+  describe("a release mise refuses to see", () => {
+    test("names the release-age gate instead of blaming the download", () => {
+      // The gate reports itself as one line on stderr nobody reads: the update prompt offers a
+      // version mise has decided not to see, `mise upgrade` exits 0 having done nothing, and the
+      // button looks broken. This is the difference between that and a real failure.
+      expect(offersVersion("0.13.1\n0.13.2\n", "0.14.0")).toBe(false)
+      expect(offersVersion("0.13.1\n0.13.2\n0.14.0\n", "0.14.0")).toBe(true)
+      // Whitespace and a missing trailing newline are how this actually arrives.
+      expect(offersVersion("  0.14.0", "0.14.0")).toBe(true)
+      // A prefix is not a match: 0.14.0 is not on offer because 0.14.0-beta.1 is.
+      expect(offersVersion("0.14.0-beta.1\n", "0.14.0")).toBe(false)
+    })
+
+    test("the message says what to run, not just what went wrong", () => {
+      const message = releaseAgeMessage("0.14.0")
+      expect(message).toContain("minimum_release_age")
+      expect(message).toContain('mise settings add minimum_release_age_excludes "github:reddb-io/redcode"')
+      // Keeping the delay for everything else is the point: this is a supply-chain gate.
+      expect(message).toContain("keeping the delay for everything else")
+    })
+  })
+
   describe("upgrade", () => {
     const miseCalls: string[][] = []
     testEffect(
@@ -180,13 +202,41 @@ describe("installation", () => {
     testEffect(
       testLayer(
         () => jsonResponse({}),
-        (cmd, args) => (cmd === "mise" && args[0] === "ls" ? JSON.stringify([{ version: "1.0.0" }]) : ""),
+        (cmd, args) => {
+          if (cmd !== "mise") return ""
+          if (args[0] === "ls") return JSON.stringify([{ version: "1.0.0" }])
+          // mise is willing to install it; it just did not.
+          if (args[0] === "ls-remote") return "1.0.0\n9.9.9\n"
+          return ""
+        },
       ),
     ).effect("fails when mise keeps the old version after upgrading", () =>
       Effect.gen(function* () {
         const error = yield* Effect.flip(Installation.use.upgrade("mise", "9.9.9"))
         expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
         expect(error.stderr).toContain("did not install v9.9.9")
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          if (cmd !== "mise") return ""
+          if (args[0] === "ls") return JSON.stringify([{ version: "1.0.0" }])
+          // The gate at work: the release exists, and mise will not offer it yet.
+          if (args[0] === "ls-remote") return "1.0.0\n"
+          return ""
+        },
+      ),
+    ).effect("blames the release-age gate when mise will not even offer the version", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(Installation.use.upgrade("mise", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toContain("minimum_release_age")
+        expect(error.stderr).toContain("minimum_release_age_excludes")
+        // The other message would send the user to run a command that changes nothing.
+        expect(error.stderr).not.toContain("did not install")
       }),
     )
 
