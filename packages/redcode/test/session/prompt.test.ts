@@ -1605,6 +1605,38 @@ it.instance("writes down that a guard intervened, so the thresholds can be argue
   60_000,
 )
 
+it.instance("closes a turn left open by a process that died, instead of carrying it forever", () =>
+  Effect.gen(function* () {
+    // `time.completed` is written by the process running the turn. Killed mid-turn — an OOM, a
+    // machine asleep — nobody writes it, and the message stays open for the rest of the session's
+    // life: the TUI reads open as "in progress" and stamps QUEUED on everything typed after it,
+    // across restarts, with nothing running.
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const guards = yield* SessionGuardLog.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+
+    const seeded = yield* seed(chat.id)
+    // Exactly what a killed process leaves behind: an assistant message with no completion.
+    const abandoned = { ...seeded.assistant, time: { created: seeded.assistant.time.created } }
+    yield* sessions.updateMessage(abandoned)
+    expect((yield* sessions.messages({ sessionID: chat.id })).some((m) => m.info.id === abandoned.id)).toBe(true)
+
+    yield* llm.text("carrying on")
+    yield* user(chat.id, "still there?")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+
+    const messages = yield* sessions.messages({ sessionID: chat.id })
+    const reaped = messages.find((item) => item.info.id === abandoned.id)
+    expect(reaped?.info.role === "assistant" && reaped.info.time.completed).toBeTruthy()
+    expect((reaped?.info as SessionV1.Assistant).error?.name).toBe("MessageAbortedError")
+    // And it is counted, so a week of these says the OOM came back.
+    expect((yield* guards.summary()).some((row) => row.guard === "orphan")).toBe(true)
+  }),
+  60_000,
+)
+
 it.instance("cancel records MessageAbortedError on interrupted process", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

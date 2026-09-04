@@ -43,6 +43,7 @@ import { SessionProcessor } from "./processor"
 import { StepBudget } from "./step-budget"
 import { AuxDeadline } from "./aux-deadline"
 import { SessionGuardLog } from "./guard-log"
+import { SessionOrphan } from "./orphan"
 import { SessionStall } from "./stall"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
@@ -1137,6 +1138,31 @@ const layer = Layer.effect(
         let step = 0
         let todoContinuations = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+
+        // Only one run exists per session at a time, so an assistant message still open here was
+        // left by a run that is gone — a process that died before it could close it. Left alone it
+        // reads as a turn in progress for the rest of the session's life, and everything typed
+        // after it is stamped QUEUED, across restarts, with nothing running.
+        const abandoned = SessionOrphan.orphans(
+          yield* MessageV2.filterCompactedEffect(sessionID).pipe(Effect.provideService(Database.Service, database)),
+        )
+        for (const message of abandoned) {
+          message.error ??= new SessionV1.AbortedError({ message: SessionOrphan.ORPHAN_MESSAGE }).toObject()
+          message.time.completed = Date.now()
+          yield* sessions.updateMessage(message).pipe(Effect.ignore)
+          yield* guards.record({
+            sessionID,
+            guard: "orphan",
+            action: "stop",
+            detail: SessionOrphan.ORPHAN_MESSAGE,
+          })
+        }
+        if (abandoned.length > 0) {
+          yield* Effect.logWarning("closed turns left behind by a process that died", {
+            "session.id": sessionID,
+            count: abandoned.length,
+          })
+        }
 
         // Turn lifecycle: fire `Turn.Started` once per turn (before any step).
         const turnStarted = { sessionID, timestamp: yield* DateTime.now }
