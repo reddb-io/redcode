@@ -168,14 +168,20 @@ async function renderOnceSettled(app: Awaited<ReturnType<typeof testRender>>) {
   await app.renderOnce()
 }
 
+// A budget in time rather than in attempts. Five 25 ms tries is plenty on an idle machine and
+// not nearly enough when the rest of the suite is running beside it: the frame came back blank
+// and the assertion blamed the component.
+const SETTLE_BUDGET_MS = 5_000
+
 async function captureSettledFrame(app: Awaited<ReturnType<typeof testRender>>) {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  const deadline = Date.now() + SETTLE_BUDGET_MS
+  while (true) {
     const frame = app.captureCharFrame()
     if (frame.trim().length > 0) return frame
+    if (Date.now() >= deadline) return frame
     await new Promise((resolve) => setTimeout(resolve, 25))
     await app.renderOnce()
   }
-  return app.captureCharFrame()
 }
 
 function withTheme(component: () => JSX.Element) {

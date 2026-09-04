@@ -19,7 +19,15 @@ describe("tui thread", () => {
   test("forwards the CLI environment to the TUI worker", async () => {
     const source = await Bun.file(new URL("../../../src/cli/cmd/tui.ts", import.meta.url)).text()
 
-    expect(source).toMatch(/new Worker\(file, \{\s*env: Object\.fromEntries\(\s*Object\.entries\(process\.env\)/)
+    // Asserted on the two things that matter rather than on the exact shape of the literal: the
+    // previous regex pinned the formatting and broke the moment another key joined `env`, which
+    // says nothing about whether the environment still reaches the worker.
+    const spawn = source.indexOf("new Worker(file")
+    expect(spawn).toBeGreaterThan(-1)
+    const worker = source.slice(spawn, spawn + 600)
+    expect(worker).toContain("Object.entries(process.env)")
+    // The worker is where the server runs, and it must be able to tell a person is watching.
+    expect(worker).toContain('REDCODE_CLIENT: "tui"')
   })
 
   async function check(project?: string) {

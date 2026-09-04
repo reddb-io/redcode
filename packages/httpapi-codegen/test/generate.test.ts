@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import path from "path"
+import { fileURLToPath } from "url"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -23,6 +25,8 @@ function api(endpoint: HttpApiEndpoint.Any) {
 function compile<Id extends string, Groups extends HttpApiGroup.Any>(source: HttpApi.HttpApi<Id, Groups>) {
   return emitEffect(compileContract(source))
 }
+
+const eol = (value: string) => value.replace(/\r\n/g, "\n")
 
 describe("HttpApiCodegen.generate", () => {
   test("compiles one contract for Promise and Effect emitters", () => {
@@ -606,19 +610,24 @@ describe("HttpApiCodegen.generate", () => {
   it.effect("keeps the strict generated-consumer fixture current", () =>
     Effect.gen(function* () {
       const output = compile(FixtureApi)
-      const actual = yield* Effect.promise(() =>
-        Array.fromAsync(new Bun.Glob("*.ts").scan(new URL("generated", import.meta.url).pathname)),
-      )
+      // `URL.pathname` is not a filesystem path on Windows — it comes back as "/C:/..." — so the
+      // scan looked in a directory that cannot exist. This suite had never run there.
+      const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "generated")
+      const actual = yield* Effect.promise(() => Array.fromAsync(new Bun.Glob("*.ts").scan(dir)))
       expect(actual.sort((a, b) => a.localeCompare(b))).toEqual(
         output.files.map((file) => file.path).sort((a, b) => a.localeCompare(b)),
       )
       yield* Effect.forEach(output.files, (file) =>
         Effect.tryPromise(() =>
           Promise.all([
-            Bun.file(new URL(`generated/${file.path}`, import.meta.url)).text(),
+            Bun.file(path.join(dir, file.path)).text(),
             format(file.content, { parser: "typescript", semi: false, printWidth: 120 }),
           ]),
-        ).pipe(Effect.map(([content, expected]) => expect(content).toBe(expected))),
+        ).pipe(
+          // Git hands these files over with CRLF on Windows while the formatter produces LF, so a
+          // raw comparison fails on a difference no reader can see and no consumer cares about.
+          Effect.map(([content, expected]) => expect(eol(content)).toBe(eol(expected))),
+        ),
       )
     }),
   )

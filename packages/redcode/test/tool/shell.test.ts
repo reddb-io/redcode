@@ -113,14 +113,16 @@ const cmdShell = shells.find((item) => item.label === "cmd")
 const sh = () => Shell.name(Shell.acceptable())
 const evalarg = (text: string) => (sh() === "cmd" ? quote(text) : squote(text))
 
+// PowerShell needs the call operator in front of a quoted executable, or it reads the path as a
+// string and the first flag as a syntax error. Every command built here goes through this.
+const invoke = (text: string) => (PS.has(sh()) ? `& ${text}` : text)
+
 const fill = (mode: "lines" | "bytes", n: number) => {
   const code =
     mode === "lines"
       ? "console.log(Array.from({length:Number(Bun.argv[1])},(_,i)=>i+1).join(String.fromCharCode(10)))"
       : "process.stdout.write(String.fromCharCode(97).repeat(Number(Bun.argv[1])))"
-  const text = `${bin} -e ${evalarg(code)} ${n}`
-  if (PS.has(sh())) return `& ${text}`
-  return text
+  return invoke(`${bin} -e ${evalarg(code)} ${n}`)
 }
 const glob = (p: string) =>
   process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
@@ -1137,7 +1139,7 @@ describe("tool.shell abort", () => {
         const updates: string[] = []
         const script = "for (let i = 0; i < 64; i++) { console.log(i); await Bun.sleep(10) }"
         const result = yield* run(
-          { command: `${bin} -e ${evalarg(script)}` },
+          { command: invoke(`${bin} -e ${evalarg(script)}`) },
           {
             ...ctx,
             metadata: (input) =>

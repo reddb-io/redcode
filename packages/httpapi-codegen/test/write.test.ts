@@ -1,7 +1,12 @@
 import { describe, expect } from "bun:test"
+import path from "path"
 import { Effect, FileSystem, Option } from "effect"
 import { write, type Output } from "../src"
 import { it } from "./effect"
+
+// The writer joins with the platform's separator, so the expectations do too: pinning "/" here
+// only proved that the tests had never run on Windows.
+const at = (...parts: string[]) => path.join("/generated", ...parts)
 
 describe("HttpApiCodegen.write", () => {
   it.effect("writes compiled files beneath the output directory", () => {
@@ -15,8 +20,8 @@ describe("HttpApiCodegen.write", () => {
       yield* write(output, "/generated")
 
       expect(writes).toEqual([
-        { path: "/generated/session.ts", content: "export const session = {}\n" },
-        { path: "/generated/.httpapi-codegen.json", content: '[\n  "session.ts"\n]\n' },
+        { path: at("session.ts"), content: "export const session = {}\n" },
+        { path: at(".httpapi-codegen.json"), content: '[\n  "session.ts"\n]\n' },
       ])
     }).pipe(
       Effect.provideService(
@@ -55,7 +60,7 @@ describe("HttpApiCodegen.write", () => {
           writeFileString: () => Effect.void,
         }),
       ),
-      Effect.tap(() => Effect.sync(() => expect(removed).toEqual(["/generated/old.ts"]))),
+      Effect.tap(() => Effect.sync(() => expect(removed).toEqual([at("old.ts")]))),
     )
   })
 

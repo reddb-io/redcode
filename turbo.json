@@ -8,10 +8,13 @@
       "dependsOn": [],
       "outputs": ["dist/**"]
     },
-    "opencode#test": {
-      "dependsOn": ["^build"],
+    "test": {
       "outputs": [],
       "passThroughEnv": ["*"]
+    },
+    "@reddb-io/redcode#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
     },
     "@reddb-io/redcode-core#test": {
       "dependsOn": ["^build"],

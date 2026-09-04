@@ -1,13 +1,19 @@
 import { expect, test } from "bun:test"
+import path from "path"
 import { testRender } from "@opentui/solid"
 import { abbreviateHome } from "../src/runtime"
 import { TuiPathsProvider, useTuiPaths } from "../src/context/runtime"
 
 test("abbreviates paths within home boundaries", () => {
-  expect(abbreviateHome("/home/test", "/home/test")).toBe("~")
-  expect(abbreviateHome("/home/test/project", "/home/test")).toBe("~/project")
-  expect(abbreviateHome("/home/tester/project", "/home/test")).toBe("/home/tester/project")
-  expect(abbreviateHome("/tmp/project", "/home/test")).toBe("/tmp/project")
+  // The separator comes from the platform, so the expectation has to as well: pinning "/" only
+  // proved this had never run on Windows.
+  const home = path.join(path.sep, "home", "test")
+  expect(abbreviateHome(home, home)).toBe("~")
+  expect(abbreviateHome(path.join(home, "project"), home)).toBe("~" + path.sep + "project")
+  const sibling = path.join(path.sep, "home", "tester", "project")
+  expect(abbreviateHome(sibling, home)).toBe(sibling)
+  const elsewhere = path.join(path.sep, "tmp", "project")
+  expect(abbreviateHome(elsewhere, home)).toBe(elsewhere)
 })
 
 test("provides focused immutable runtime inputs", async () => {

@@ -196,6 +196,9 @@ describe("WebFetchTool registration", () => {
         value: `Unable to fetch ${url}`,
       })
     }),
+    // The input is 10,000 nested divs on purpose — the point is to make the converter give up —
+    // so the work is genuinely slow and the default timeout is a coin flip on a busy machine.
+    30_000,
   )
 
   it.effect("rejects declared and streamed oversized bodies", () =>

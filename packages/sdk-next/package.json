@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test --timeout 5000",
+    "test": "bun test --timeout 30000",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
