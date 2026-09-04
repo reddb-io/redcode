@@ -21,6 +21,9 @@ export type Method = "npm" | "yarn" | "pnpm" | "bun" | "mise" | "unknown"
 // binary under <MISE_DATA_DIR>/installs/github-reddb-io-redcode/<version>/.
 export const MISE_TOOL = "github:reddb-io/redcode"
 
+/** What mise names that backend's install directory on disk. */
+export const MISE_INSTALL_DIR = "github-reddb-io-redcode"
+
 export type ReleaseType = "patch" | "minor" | "major"
 
 export const Event = InstallationEvent
@@ -132,7 +135,9 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       }),
       method: Effect.fn("Installation.method")(function* () {
         const exec = process.execPath.toLowerCase()
-        if (exec.includes(path.join("mise", "installs").toLowerCase())) return "mise" as Method
+        // The tool's own install directory, not any mise install: a machine whose *bun* comes
+        // from mise was reporting every Redcode install as mise-managed.
+        if (exec.includes(path.join("installs", MISE_INSTALL_DIR).toLowerCase())) return "mise" as Method
 
         const checks: Array<{ name: Method; command: () => Effect.Effect<string>; installed: (output: string) => boolean }> =
           [
