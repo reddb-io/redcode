@@ -93,6 +93,12 @@ const layer = Layer.effect(
           progress: false,
           savePrefix: "",
           ignoreScripts: true,
+          // Installing a plugin is not the moment to ask the registry for an advisory report.
+          // The audit request is a second network round-trip nobody reads here, and when the
+          // endpoint is slow or unreachable it hangs the install — and the lock it holds —
+          // rather than failing.
+          audit: false,
+          fund: false,
         })
         return yield* Effect.tryPromise({
           try: () =>

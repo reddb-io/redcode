@@ -648,8 +648,17 @@ const layer = Layer.effect(
       const dir = yield* InstanceState.directory
       const file = path.join(dir, "config.json")
       const existing = yield* loadFile(file)
+      // Merge into the file as written, not into its schema-decoded shape. Decoding drops
+      // every key the v1 schema does not know, so writing the decoded object back erased
+      // those keys from the user's config the first time anything called update — picking a
+      // model in the TUI was enough to lose them.
+      const text = yield* readConfigFile(file)
+      const original = text ? ConfigParse.jsonc(text, file) : writable(existing)
       yield* fs
-        .writeFileString(file, JSON.stringify(mergeDeep(writable(existing), writable(config)), null, 2))
+        .writeFileString(
+          file,
+          JSON.stringify(mergeDeep(isRecord(original) ? original : writable(existing), writable(config)), null, 2),
+        )
         .pipe(Effect.orDie)
     })
 
@@ -665,8 +674,10 @@ const layer = Layer.effect(
       let next: Info
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
-        const existing = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeDeep(writable(existing), patch)
+        // Same reason as update() above: keep the keys the schema does not model.
+        const existing = ConfigParse.jsonc(before, file)
+        ConfigParse.schema(ConfigV1.Info, existing, file)
+        const merged = mergeDeep(isRecord(existing) ? existing : {}, patch)
         const serialized = JSON.stringify(merged, null, 2)
         changed = serialized !== before
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)

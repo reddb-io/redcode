@@ -144,6 +144,16 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
         responseBody,
       }
   }
+
+  // A mid-stream error object with a code we do not recognise is still an error, and
+  // gateways invent codes freely. Falling off the end returned undefined, which the caller
+  // reads as "not an error worth retrying", so the turn died instead of backing off.
+  return {
+    type: "api_error",
+    message: typeof body?.error?.message === "string" ? body.error.message : "Server error.",
+    isRetryable: true,
+    responseBody,
+  }
 }
 
 export type ParsedAPICallError =

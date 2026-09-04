@@ -77,20 +77,36 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       directory: sdk.directory ?? process.cwd(),
     })
 
-    // Only sessions a consumer actually asked for are mirrored here. Every session that
-    // produces an event used to be kept in full, forever — subagent sessions included —
-    // which is a second permanent copy of the whole conversation that nothing reads until
-    // someone calls message.refresh() for that session.
-    const tracked = new Set<string>()
+    // Every session that produced an event used to be mirrored here in full, forever —
+    // subagent sessions included. Projection itself is the point of this store, so it stays;
+    // what it must not do is grow without limit. Sessions age out least-recently-touched
+    // first, and each keeps a bounded window of its most recent messages.
+    const SESSION_LIMIT = 8
+    const MESSAGE_LIMIT = 100
+    const touched: string[] = []
+
+    function retain(sessionID: string, draft: Record<string, SessionMessage[]>) {
+      const at = touched.indexOf(sessionID)
+      if (at >= 0) touched.splice(at, 1)
+      touched.push(sessionID)
+      while (touched.length > SESSION_LIMIT) {
+        const evict = touched.shift()
+        if (evict === undefined || evict === sessionID) continue
+        delete draft[evict]
+      }
+    }
 
     const message = {
       update(sessionID: string, fn: (messages: SessionMessage[]) => void) {
-        if (!tracked.has(sessionID)) return
         setStore(
           "session",
           "message",
           produce((draft) => {
-            fn((draft[sessionID] ??= []))
+            retain(sessionID, draft)
+            const messages = (draft[sessionID] ??= [])
+            fn(messages)
+            // Newest first: prepend() unshifts, so the tail is the oldest.
+            if (messages.length > MESSAGE_LIMIT) messages.splice(MESSAGE_LIMIT)
           }),
         )
       },
@@ -434,13 +450,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             return store.session.message[sessionID]
           },
           async refresh(sessionID: string) {
-            // Asking for a session's messages is what starts mirroring its events.
-            tracked.add(sessionID)
             const result = await sdk.client.v2.session.messages({ sessionID }, { throwOnError: true })
             setStore("session", "message", sessionID, result.data.data)
           },
           forget(sessionID: string) {
-            tracked.delete(sessionID)
             setStore("session", "message", produce((draft) => void delete draft[sessionID]))
           },
         },

@@ -44,6 +44,7 @@ Flock.setGlobal({ state })
 // directory will fail with its own error, which is far easier to act on than a freeze.
 const MKDIR_DEADLINE_MS = 10_000
 
+let mkdirTimer: ReturnType<typeof setTimeout> | undefined
 await Promise.race([
   Promise.all([
     fs.mkdir(Path.data, { recursive: true }),
@@ -53,16 +54,18 @@ await Promise.race([
     fs.mkdir(Path.log, { recursive: true }),
     fs.mkdir(Path.bin, { recursive: true }),
     fs.mkdir(Path.repos, { recursive: true }),
-  ]),
+    // Promise.race leaves the loser running, and this process outlives the deadline by hours,
+    // so the warning has to be cancelled rather than merely lost the race.
+  ]).finally(() => clearTimeout(mkdirTimer)),
   new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
+    mkdirTimer = setTimeout(() => {
       process.stderr.write(
         `redcode: still waiting on ${redcodeHome} after ${MKDIR_DEADLINE_MS / 1000}s — ` +
           `the filesystem holding it may be unavailable. Set REDCODE_TEST_HOME or HOME to a local path.\n`,
       )
       resolve()
     }, MKDIR_DEADLINE_MS)
-    timer.unref?.()
+    mkdirTimer.unref?.()
   }),
 ])
 
