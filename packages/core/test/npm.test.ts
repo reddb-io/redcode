@@ -35,6 +35,8 @@ describe("Npm.sanitize", () => {
   })
 })
 
+// These perform real package installs, so they are minutes-scale work on a cold or busy
+// runner rather than the sub-second work bun's default timeout assumes.
 describe("Npm.add", () => {
   test("reifies when package cache directory exists without the package installed", async () => {
     await using tmp = await tmpdir()
