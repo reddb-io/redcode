@@ -24,6 +24,7 @@ import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { LoopGuard } from "./loop-guard"
+import { SessionGuardLog } from "./guard-log"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { Usage, type LLMEvent } from "@reddb-io/redcode-llm"
@@ -114,6 +115,7 @@ const layer = Layer.effect(
     const agents = yield* Agent.Service
     const llm = yield* LLM.Service
     const permission = yield* Permission.Service
+    const guards = yield* SessionGuardLog.Service
     const plugin = yield* Plugin.Service
     const summary = yield* SessionSummary.Service
     const scope = yield* Scope.Scope
@@ -744,6 +746,13 @@ const layer = Layer.effect(
         const parts = turn.flatMap((item) => item.parts)
         const decision = LoopGuard.assess({ parts, next: input, limits: bounds })
         if (decision.type === "ok") return decision
+        yield* guards.record({
+          sessionID: ctx.sessionID,
+          guard: "loop",
+          action: decision.type === "stop" ? "stop" : "correct",
+          subject: input.tool,
+          detail: decision.message,
+        })
         yield* Effect.logWarning("model is repeating itself", {
           sessionID: ctx.sessionID,
           tool: input.tool,
@@ -783,6 +792,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    SessionGuardLog.node,
     Session.node,
     Config.node,
     Snapshot.node,

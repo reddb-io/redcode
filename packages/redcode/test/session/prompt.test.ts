@@ -36,6 +36,7 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { SessionGuardLog } from "../../src/session/guard-log"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -176,6 +177,7 @@ const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLL
 
 const promptRoot = LayerNode.group([
   SessionPrompt.node,
+  SessionGuardLog.node,
   Session.node,
   SessionProjector.node,
   MessageV2.node,
@@ -1560,6 +1562,45 @@ it.instance("does not let naming the session hold up the turn", () =>
     // The turn produced its answer; only the name was given up on.
     expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
     expect((yield* sessions.get(chat.id)).title).toBe(title)
+  }),
+  60_000,
+)
+
+it.instance("writes down that a guard intervened, so the thresholds can be argued from evidence", () =>
+  Effect.gen(function* () {
+    // Every threshold in the guards was chosen by argument. This is the record that lets the next
+    // one be chosen by measurement: which guard fired, on what, how often.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { tool_timeout: 500 },
+    }))
+    const registry = yield* ToolRegistry.Service
+    const { read } = yield* registry.named()
+    const { ready, restore } = yield* hangUntilAborted(read)
+    yield* restore
+
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const guards = yield* SessionGuardLog.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id)
+
+    yield* llm.tool("read", { filePath: "/tmp/whatever" })
+    yield* llm.text("that path does not answer")
+    yield* user(chat.id, "more")
+
+    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+    yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
+    yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
+
+    const trips = yield* guards.recent()
+    const timeout = trips.find((trip) => trip.guard === "tool_timeout")
+    expect(timeout).toBeDefined()
+    expect(timeout?.action).toBe("stop")
+    expect(timeout?.subject).toBe("read")
+    expect(timeout?.sessionID).toBe(chat.id)
+    // And it aggregates, which is what makes a week of use readable.
+    expect(yield* guards.summary()).toContainEqual({ guard: "tool_timeout", action: "stop", count: 1 })
   }),
   60_000,
 )

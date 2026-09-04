@@ -137,6 +137,34 @@ export const SessionMessageTable = sqliteTable(
   ],
 )
 
+/**
+ * Every time one of the turn's guards intervened.
+ *
+ * Diagnostics, deliberately not a durable session event: this is how we find out whether the
+ * watchdog, the tool deadlines, the loop guard and the step budget ever fire in real use, and
+ * whether they fire when they should not. Thresholds were chosen by argument; this is what lets
+ * them be chosen by evidence. Deleting the table loses nothing but the record.
+ */
+export const SessionGuardTripTable = sqliteTable(
+  "session_guard_trip",
+  {
+    id: text().primaryKey(),
+    session_id: text().$type<SessionSchema.ID>().notNull(),
+    /** stall | tool_timeout | loop | steps | aux */
+    guard: text().notNull(),
+    /** warn | correct | stop */
+    action: text().notNull(),
+    /** The tool, the phase, or whatever names the thing that tripped it. */
+    subject: text(),
+    detail: text().notNull(),
+    ...Timestamps,
+  },
+  (table) => [
+    index("session_guard_trip_session_idx").on(table.session_id),
+    index("session_guard_trip_created_idx").on(table.time_created),
+  ],
+)
+
 export const SessionInputTable = sqliteTable(
   "session_input",
   {

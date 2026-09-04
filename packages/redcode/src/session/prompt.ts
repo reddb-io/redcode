@@ -42,6 +42,7 @@ import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { SessionProcessor } from "./processor"
 import { StepBudget } from "./step-budget"
 import { AuxDeadline } from "./aux-deadline"
+import { SessionGuardLog } from "./guard-log"
 import { SessionStall } from "./stall"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
@@ -138,6 +139,7 @@ const layer = Layer.effect(
     const plugin = yield* Plugin.Service
     const commands = yield* Command.Service
     const config = yield* Config.Service
+    const guards = yield* SessionGuardLog.Service
     const permission = yield* Permission.Service
     const fsys = yield* FSUtil.Service
     const mcp = yield* MCP.Service
@@ -266,9 +268,19 @@ const layer = Layer.effect(
             : Effect.timeoutOrElse({
                 duration: Duration.millis(titleMs),
                 orElse: () =>
-                  Effect.logWarning(AuxDeadline.message("title", titleMs), {
-                    "session.id": input.session.id,
-                  }).pipe(Effect.as("")),
+                  Effect.gen(function* () {
+                    yield* guards.record({
+                      sessionID: input.session.id,
+                      guard: "aux",
+                      action: "stop",
+                      subject: "title",
+                      detail: AuxDeadline.message("title", titleMs),
+                    })
+                    yield* Effect.logWarning(AuxDeadline.message("title", titleMs), {
+                      "session.id": input.session.id,
+                    })
+                    return ""
+                  }),
               }),
         )
       const cleaned = text
@@ -1176,6 +1188,12 @@ const layer = Layer.effect(
                   // Said once per quiet stretch, not on every poll.
                   if (!warned) {
                     warned = true
+                    yield* guards.record({
+                      sessionID,
+                      guard: "stall",
+                      action: "warn",
+                      detail: SessionStall.warning(decision.quietMs, limits),
+                    })
                     yield* Effect.logWarning(SessionStall.warning(decision.quietMs, limits), {
                       "session.id": sessionID,
                       messageID: handle.message.id,
@@ -1184,6 +1202,12 @@ const layer = Layer.effect(
                   yield* nap
                   return
                 }
+                yield* guards.record({
+                  sessionID,
+                  guard: "stall",
+                  action: "stop",
+                  detail: `stopped: ${decision.reason}`,
+                })
                 yield* Effect.logWarning("ending a turn that stopped producing output", {
                   "session.id": sessionID,
                   messageID: handle.message.id,
@@ -1219,6 +1243,7 @@ const layer = Layer.effect(
             limits: StepBudget.limits((yield* config.get()).experimental?.turn_steps),
           })
           if (budget.type === "stop") {
+            yield* guards.record({ sessionID, guard: "steps", action: "stop", detail: budget.message })
             yield* Effect.logWarning("turn exceeded the step ceiling", {
               "session.id": sessionID,
               steps: step,
@@ -1230,6 +1255,13 @@ const layer = Layer.effect(
             break
           }
           if (budget.type === "wrap-up") {
+            yield* guards.record({
+              sessionID,
+              guard: "steps",
+              action: "correct",
+              subject: `step ${step + 1}`,
+              detail: `asked for a final report with ${budget.remaining} steps left before the ceiling`,
+            })
             yield* Effect.logWarning("turn is near the step ceiling; asking for a final report", {
               "session.id": sessionID,
               steps: step,
@@ -1434,6 +1466,7 @@ const layer = Layer.effect(
               promptOps,
               publishEvent: events.publish,
               toolTimeout: (yield* config.get()).experimental?.tool_timeout,
+              recordGuard: guards.record,
               ...(lastUser.format?.type === "json_schema"
                 ? {
                     structuredOutputTool: createStructuredOutputTool({
@@ -1829,6 +1862,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    SessionGuardLog.node,
     SessionStatus.node,
     Session.node,
     Agent.node,
