@@ -23,8 +23,13 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 // Agents that want a tighter bound set `agent.steps`.
 const TURN_STEP_CEILING = 200
 
-/** How long a turn may send nothing before each further interval is recorded. */
-const STALL_LOG_SECONDS = 60
+/** How often the watchdog looks. Well below the thresholds it is checking against. */
+const STALL_POLL_SECONDS = 15
+
+/** Surfaces where a person is present to read a warning and stop the turn themselves. */
+function attendedClient(client: string) {
+  return client === "tui" || client === "app" || client === "desktop"
+}
 import { ToolRegistry } from "@/tool/registry"
 import { MCP } from "../mcp"
 import { LSP } from "@/lsp/lsp"
@@ -39,6 +44,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { SessionProcessor } from "./processor"
+import { SessionStall } from "./stall"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
 import { SessionStatus } from "./status"
@@ -1114,31 +1120,76 @@ const layer = Layer.effect(
         yield* hooks.parallel(OperationHook.Operation.Turn.Started, turnStarted)
         yield* events.publish(SessionEvent.Turn.Started, turnStarted).pipe(Effect.ignore)
 
-        // A turn that goes quiet leaves no trace today: no event, no log, and a spinner that
-        // looks exactly like progress. Saying so on a schedule is what turns "it hung for half an
-        // hour" into something anyone can look up afterwards.
+        // A turn that goes quiet used to leave no trace at all: no event, no log, and a spinner
+        // indistinguishable from progress. This watches for that, says so, and — where nobody is
+        // sitting in front of it — ends the turn rather than letting it burn.
         //
         // One fiber for the whole turn, reading whichever step's handle is current. Forked as a
-        // child of this fiber, so it dies when the turn does — `scope` above belongs to the
-        // service layer and outlives every turn, which would leave a poller behind per step.
+        // child of this fiber, so it dies when the turn does: `scope` above belongs to the service
+        // layer and outlives every turn, which would leave a poller behind per step.
         let watched: SessionProcessor.Handle | undefined
+        let warned = false
         yield* Effect.forkChild(
-          Effect.repeat(
-            Effect.suspend(() => {
-              const handle = watched
-              if (!handle) return Effect.void
-              const quiet = Math.round((Date.now() - handle.lastEventAt) / 1000)
-              if (quiet < STALL_LOG_SECONDS) return Effect.void
-              // Tools run inside the SDK and emit nothing while they work, so silence with one in
-              // flight is progress, not a stall.
-              if (handle.activeToolCount > 0) return Effect.void
-              return Effect.logWarning("turn has produced nothing", {
-                "session.id": sessionID,
-                messageID: handle.message.id,
-                quietSeconds: quiet,
-              })
-            }),
-            Schedule.spaced(Duration.seconds(STALL_LOG_SECONDS)),
+          Effect.forever(
+            Effect.suspend(() =>
+              Effect.gen(function* () {
+                const handle = watched
+                if (!handle) {
+                  // Before the first step has a handle there is nothing to measure, and the
+                  // configured cadence has not been read yet. Look again shortly rather than
+                  // sleeping a full interval and missing the start of the turn.
+                  yield* Effect.sleep(Duration.millis(SessionStall.POLL_MIN_MS))
+                  return
+                }
+                // Read on first use rather than before the loop: the turn's opening is a
+                // cancellation-sensitive stretch and this has no business being on it.
+                const limits = SessionStall.limits((yield* config.get()).experimental?.turn_stall, {
+                  // A person watching can read the warning and press escape; a scripted run, an
+                  // editor speaking ACP or a scheduled job cannot.
+                  attended: attendedClient(flags.client),
+                })
+                const pending = yield* permission.list()
+                const decision = SessionStall.decide({
+                  quietMs: Date.now() - handle.lastEventAt,
+                  activeToolCount: handle.activeToolCount,
+                  permissionPending: pending.some((item) => item.sessionID === sessionID),
+                  limits,
+                })
+                const nap = Effect.sleep(Duration.millis(SessionStall.pollMs(limits)))
+                if (decision.type === "working") {
+                  warned = false
+                  yield* nap
+                  return
+                }
+                if (decision.type === "warn") {
+                  // Said once per quiet stretch, not on every poll.
+                  if (!warned) {
+                    warned = true
+                    yield* Effect.logWarning(SessionStall.warning(decision.quietMs, limits), {
+                      "session.id": sessionID,
+                      messageID: handle.message.id,
+                    })
+                  }
+                  yield* nap
+                  return
+                }
+                yield* Effect.logWarning("ending a turn that stopped producing output", {
+                  "session.id": sessionID,
+                  messageID: handle.message.id,
+                  reason: decision.reason,
+                })
+                // The reason has to be written before the interrupt lands: every later writer on
+                // the abort path guards with `??=`, so whoever gets there first decides what the
+                // message says, and otherwise this reads as an ordinary user interrupt.
+                handle.message.error ??= new SessionV1.AbortedError({
+                  message: `stopped: ${decision.reason}`,
+                }).toObject()
+                yield* sessions.updateMessage(handle.message).pipe(Effect.ignore)
+                // Detached deliberately: cancel interrupts this very fiber partway through, and
+                // the part that returns the session to idle runs after that point.
+                yield* state.cancel(sessionID).pipe(Effect.ignore, Effect.forkIn(scope))
+              }),
+            ),
           ),
         )
 

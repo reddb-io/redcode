@@ -493,6 +493,15 @@ export class Reply {
     return this
   }
 
+  /** An arbitrary finish reason, including ones the schema does not recognise. */
+  finish(reason: string) {
+    this.#finish = reason
+    this.#hang = false
+    this.#error = undefined
+    this.#reset = false
+    return this
+  }
+
   contentFilter() {
     this.#finish = "content_filter"
     this.#hang = false

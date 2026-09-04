@@ -182,6 +182,22 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      turn_stall: Schema.optional(
+        Schema.Union([
+          Schema.Literal(false),
+          Schema.Struct({
+            warn_ms: Schema.optional(PositiveInt).annotate({
+              description: "Say the turn has gone quiet after this long (default: 300000)",
+            }),
+            abort_ms: Schema.optional(PositiveInt).annotate({
+              description: "End a turn that has produced nothing for this long (default: 600000)",
+            }),
+          }),
+        ]),
+      ).annotate({
+        description:
+          "How long a turn may produce nothing before it is reported and, where nothing is watching, ended. Time a tool spends running or a permission spends awaiting an answer does not count. Set to false to disable.",
+      }),
       policies: Schema.optional(Schema.mutable(Schema.Array(ConfigExperimental.Policy))).annotate({
         description: "Policy statements applied to supported resources, such as provider access",
       }),
