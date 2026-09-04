@@ -192,6 +192,47 @@ test("cleanup cancels reconnect checks and delegated offset observation", async 
   route.remove()
 })
 
+test("reconnects when the batch reports the addition before the removal", async () => {
+  // A batch carrying both records can present them either way round, and reading them in order
+  // meant the addition was judged while the removal had not been seen yet: the element came back
+  // to the page with nothing watching its offset. This is the failing order, on purpose.
+  const route = document.createElement("section")
+  const viewport = document.createElement("div")
+  route.append(viewport)
+  document.body.append(route)
+  const instance = {
+    scrollElement: viewport,
+    targetWindow: window,
+    scrollOffset: 79_400,
+    options: { horizontal: false, isRtl: false, isScrollingResetDelay: 0, useScrollendEvent: false },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+  const calls: [number, boolean][] = []
+
+  const real = window.MutationObserver
+  class Reversed extends real {
+    constructor(callback: MutationCallback) {
+      super((records, observer) => callback([...records].reverse(), observer))
+    }
+  }
+  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = Reversed
+  let cleanup: (() => void) | undefined
+  try {
+    cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
+      calls.push([offset, isScrolling])
+      instance.scrollOffset = offset
+    })
+    route.remove()
+    document.body.append(route)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await frames(3)
+    expect(calls).toEqual([[0, false]])
+  } finally {
+    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+    cleanup?.()
+    route.remove()
+  }
+})
+
 async function frames(count: number) {
   for (let index = 0; index < count; index++) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
