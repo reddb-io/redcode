@@ -1,5 +1,45 @@
 # opencode
 
+## 0.14.0
+
+### Minor Changes
+
+- 78d1b03: Bound the model calls a turn makes that are not the turn itself
+
+  Naming a session and compacting the conversation both call a provider outside the step loop, where the turn's inactivity watchdog cannot see them: one runs before any step handle exists, the other creates a processor of its own. A provider that stopped answering during either held the turn open with nothing on screen and no error. Both now give up — naming after two minutes, compacting after ten — and say so. A session keeping its default name is a far smaller loss than a turn that never starts. Configurable via `experimental.aux_timeout`.
+
+- 82bb18a: Say what a busy session is actually doing
+
+  `session.status` reported `busy` as a bare tag, so the TUI had to reverse-engineer the phase from message parts and every other client got nothing at all. `busy` now carries an optional phase (preparing, thinking, writing, tool, compacting), the tool being run, the step number, and when the phase started. The fields are additive: readers that discriminate on `type` alone are unaffected. The TUI uses them for the window the parts cannot describe — before the first byte arrives — and shows the step number, so a turn on its eighth step no longer looks the same as one that just started.
+
+- 8c43207: Notice when the model is repeating itself, and say so instead of asking the user
+
+  The old detector compared the last three parts of a single assistant message and required byte-identical serialized input, so one interleaved reasoning part — which reasoning models emit constantly — reset it permanently, a loop spanning steps was invisible, and when it did fire it asked a question whose wait had no bound: the only defence against a loop was itself a way to hang. It now looks across the whole turn, counts only calls that returned the same result (identical calls with different results are polling, and are left alone), and answers the repeated call itself with a correction quoting the model's own arguments and the answer it keeps ignoring. If the correction changes nothing, the turn ends. Nobody is asked anything. Configurable via `experimental.loop_guard`; a `doom_loop: "allow"` permission rule still turns it off.
+
+- 071c47d: Stop turns from stalling or looping in silence: a turn now has a hard step ceiling, a stream that goes quiet is aborted whatever content type it uses, auto-compaction can no longer paste your prompt back into the transcript over and over, the TUI re-reads the session after the event stream reconnects instead of waiting on a message it never received, and the status line says when nothing has arrived for a while rather than spinning as if it were working.
+- 603d8c7: Ask for a report before the step ceiling instead of cutting the turn off at it
+
+  The turn ceiling was a cliff: at step 200 the turn stopped and everything the model had worked out but not yet written down went with it, leaving the user told to "send another message to continue" with nothing to base it on. The last steps before the wall are now spent the way `agent.steps` already spends its own: tools off, a summary of what was done, what is left, and what to do next. The wall itself is unchanged, for a model that will not yield. Configurable via `experimental.turn_steps`.
+
+- 86b2250: Stop a tool that never returns instead of letting it hold the turn open
+
+  Most tools carry no bound of their own, so a read on a dead mount or an MCP call to a process that went away kept a turn running with no output and no error — and the turn's inactivity watchdog could not help, because a tool in flight is deliberately counted as work. Tool calls now have a ten minute backstop, reported to the model as an ordinary tool failure it can react to. Tools that legitimately take as long as they take are exempt (`shell`, `bash`, `question`, `task`), and time spent waiting on a permission prompt is not charged against the tool. Configurable via `experimental.tool_timeout`, `false` to disable.
+
+- de65b16: End a turn that has stopped producing anything, where nobody is watching to end it themselves. Time a tool spends running or a permission spends awaiting an answer does not count as silence, so a long build is never mistaken for a provider that went away. In the TUI and the desktop app the turn is reported rather than ended, since a person is there to read it and press escape; a scripted run, an editor speaking ACP or a scheduled job ends it. Configurable through `experimental.turn_stall`, or `false` to disable.
+
+### Patch Changes
+
+- 95297f3: Only treat an install as mise-managed when Redcode itself came from mise
+
+  The check matched any `mise/installs` path in the running executable, so a machine whose Bun comes from mise reported every Redcode install as mise-managed — and self-update would then try `mise upgrade` on a tool mise does not have. It now matches Redcode's own install directory.
+
+- Updated dependencies [82bb18a]
+  - @reddb-io/redcode-schema@1.19.0
+  - @reddb-io/redcode-server@1.18.19
+  - @reddb-io/redcode-tui@1.18.19
+  - @reddb-io/redcode-llm@1.18.19
+  - @reddb-io/redcode-protocol@1.18.19
+
 ## 0.13.4
 
 ### Patch Changes

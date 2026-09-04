@@ -1,6 +1,6 @@
 {
   "name": "@reddb-io/redcode-app",
-  "version": "1.18.18",
+  "version": "1.18.19",
   "description": "",
   "type": "module",
   "exports": {
