@@ -173,7 +173,7 @@ describe("tool.write", () => {
   })
 
   describe("file permissions", () => {
-    it.instance("sets file permissions when writing sensitive data", () =>
+    it.instance("leaves permissions to the user's umask, and never makes the file executable", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "sensitive.json")
@@ -181,7 +181,13 @@ describe("tool.write", () => {
 
         if (process.platform !== "win32") {
           const stats = yield* Effect.promise(() => fs.stat(filepath))
-          expect(stats.mode & 0o777).toBe(0o644)
+          const mode = stats.mode & 0o777
+          // This used to assert 0644, which is only what a umask of 022 produces: the test passed
+          // on CI and failed on any machine set to 002. Forcing a mode would be worse than the
+          // bug — it would loosen a file for someone whose umask is deliberately stricter.
+          const umask = process.umask()
+          expect(mode).toBe(0o666 & ~umask)
+          expect(mode & 0o111).toBe(0)
         }
       }),
     )

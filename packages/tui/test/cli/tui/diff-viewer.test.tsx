@@ -242,12 +242,18 @@ test("last-turn diff source requests session diff", async () => {
   }
 })
 
+// Ten 25 ms attempts is a quarter of a second, which is fine on an idle machine and not enough
+// when the rest of the suite runs beside it: the command had not registered yet and the test
+// read that as the viewer never offering it.
+const COMMAND_BUDGET_MS = 5_000
+
 async function waitForCommand(
   app: Awaited<ReturnType<typeof testRender>>,
   commands: Map<string, unknown>,
   command: string,
 ) {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  const deadline = Date.now() + COMMAND_BUDGET_MS
+  while (Date.now() < deadline) {
     await app.renderOnce()
     if (commands.has(command)) return
     await new Promise((resolve) => setTimeout(resolve, 25))

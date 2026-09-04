@@ -26,6 +26,8 @@ function compile<Id extends string, Groups extends HttpApiGroup.Any>(source: Htt
   return emitEffect(compileContract(source))
 }
 
+const eol = (value: string) => value.replace(/\r\n/g, "\n")
+
 describe("HttpApiCodegen.generate", () => {
   test("compiles one contract for Promise and Effect emitters", () => {
     const contract = compileContract(
@@ -621,7 +623,11 @@ describe("HttpApiCodegen.generate", () => {
             Bun.file(path.join(dir, file.path)).text(),
             format(file.content, { parser: "typescript", semi: false, printWidth: 120 }),
           ]),
-        ).pipe(Effect.map(([content, expected]) => expect(content).toBe(expected))),
+        ).pipe(
+          // Git hands these files over with CRLF on Windows while the formatter produces LF, so a
+          // raw comparison fails on a difference no reader can see and no consumer cares about.
+          Effect.map(([content, expected]) => expect(eol(content)).toBe(eol(expected))),
+        ),
       )
     }),
   )
