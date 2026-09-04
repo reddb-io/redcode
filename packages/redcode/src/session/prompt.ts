@@ -1406,6 +1406,7 @@ const layer = Layer.effect(
               messages: msgs,
               promptOps,
               publishEvent: events.publish,
+              toolTimeout: (yield* config.get()).experimental?.tool_timeout,
               ...(lastUser.format?.type === "json_schema"
                 ? {
                     structuredOutputTool: createStructuredOutputTool({

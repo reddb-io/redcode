@@ -26,6 +26,7 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
+import { ToolDeadline } from "./tool-deadline"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 
@@ -53,6 +54,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
   publishEvent: EventV2.Interface["publish"]
   structuredOutputTool?: AITool
+  toolTimeout?: number | false
 }) {
   const tools: Record<string, AITool> = {}
   const run = yield* EffectBridge.make()
@@ -63,6 +65,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
   const hooks = yield* OperationHookBridge.Service
+
+  // One global override rather than a knob per tool: the failure this guards against is a tool
+  // that never returns, and that is not a per-tool judgement.
+  const toolTimeout = input.toolTimeout
+  const permissionWaits = new Map<string, number>()
+  const permissionWaitMs = (callID?: string) => permissionWaits.get(callID ?? "") ?? 0
 
   const withOperationHooks = (toolID: string, item: AITool): AITool => {
     const execute = item.execute
@@ -101,9 +109,20 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 yield* hooks.parallel(OperationHook.Operation.Tool.PostExecute, payload)
                 yield* input.publishEvent(SessionEvent.Tool.PostExecute, payload).pipe(Effect.ignore)
               })
-            const executed = yield* Effect.promise(() => Promise.resolve(execute(decided.args, options))).pipe(
-              Effect.exit,
-            )
+            // Most tools carry no bound of their own, so one that never returns holds the whole
+            // turn with no output and no error — and the turn's watchdog cannot help, because a
+            // tool in flight is deliberately counted as work. A timeout here lands in the same
+            // failure branch as any other tool error, so the model reads it and can react.
+            const deadline = ToolDeadline.deadlineMs({ tool: toolID, configured: toolTimeout })
+            const call = Effect.promise(() => Promise.resolve(execute(decided.args, options)))
+            const executed = yield* (deadline === undefined
+              ? call
+              : ToolDeadline.guard(call, {
+                  tool: toolID,
+                  ms: deadline,
+                  waitedMs: () => permissionWaitMs(options.toolCallId),
+                })
+            ).pipe(Effect.exit)
             if (Exit.isFailure(executed)) {
               yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
               return yield* Effect.failCause(executed.cause)
@@ -142,14 +161,27 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         }
       }),
     ask: (req) =>
-      permission
-        .ask({
-          ...req,
-          sessionID: input.session.id,
-          tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-          ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
-        })
-        .pipe(Effect.orDie),
+      // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
+      // deadline rather than counted against it.
+      Effect.suspend(() => {
+        const started = Date.now()
+        return permission
+          .ask({
+            ...req,
+            sessionID: input.session.id,
+            tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+            ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
+          })
+          .pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                const key = options.toolCallId ?? ""
+                permissionWaits.set(key, (permissionWaits.get(key) ?? 0) + (Date.now() - started))
+              }),
+            ),
+            Effect.orDie,
+          )
+      }),
   })
 
   for (const item of yield* registry.tools({

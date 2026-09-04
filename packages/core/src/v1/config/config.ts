@@ -182,6 +182,10 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
+        description:
+          "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",
+      }),
       turn_stall: Schema.optional(
         Schema.Union([
           Schema.Literal(false),
