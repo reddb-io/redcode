@@ -204,11 +204,12 @@ export const Info = Schema.Struct({
           Schema.Struct({
             correct_at: Schema.optional(PositiveInt),
             stop_at: Schema.optional(PositiveInt),
+            nudge_at: Schema.optional(PositiveInt),
           }),
         ]),
       ).annotate({
         description:
-          "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). Set to false to disable.",
+          "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable.",
       }),
       tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
         description:

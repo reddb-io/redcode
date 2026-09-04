@@ -17,16 +17,28 @@ export interface Limits {
   readonly correctAt: number
   /** Calls in a row before the turn ends. Reached only if the correction was ignored. */
   readonly stopAt: number
+  /**
+   * Identical calls in a row before the model is told so even though the answers keep differing.
+   *
+   * Comparing results is what keeps polling out of trouble, and it is also a way through: an
+   * answer carrying a timestamp, a pid, or a temporary path never repeats byte for byte, so the
+   * same call can run forever without ever counting as repetition. Well above any reasonable poll,
+   * and it only ever says something — it never ends the turn.
+   */
+  readonly nudgeAt: number
 }
 
-export const LIMITS: Limits = { correctAt: 3, stopAt: 5 }
+export const LIMITS: Limits = { correctAt: 3, stopAt: 5, nudgeAt: 12 }
 
-export function limits(config?: false | { correct_at?: number; stop_at?: number }): Limits | undefined {
+export function limits(
+  config?: false | { correct_at?: number; stop_at?: number; nudge_at?: number },
+): Limits | undefined {
   if (config === false) return undefined
   const correctAt = config?.correct_at ?? LIMITS.correctAt
   const stopAt = config?.stop_at ?? LIMITS.stopAt
+  const nudgeAt = config?.nudge_at ?? LIMITS.nudgeAt
   if (correctAt <= 1) return undefined
-  return { correctAt, stopAt: Math.max(stopAt, correctAt) }
+  return { correctAt, stopAt: Math.max(stopAt, correctAt), nudgeAt: Math.max(nudgeAt, correctAt) }
 }
 
 /** The shape this needs from a message part. Anything that is not a settled tool call is skipped. */
@@ -84,6 +96,25 @@ export function streak(parts: readonly Part[], next: { tool: string; input: unkn
   return count
 }
 
+/**
+ * The same call, made again and again, whatever came back.
+ *
+ * Counted only to notice a call that never stops being made; a differing answer still keeps it out
+ * of `streak`, which is what decides a correction or a stop.
+ */
+export function repeats(parts: readonly Part[], next: { tool: string; input: unknown }): number {
+  const wanted = JSON.stringify(next.input ?? null)
+  let count = 0
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i]!
+    if (!settled(part)) continue
+    if (part.tool !== next.tool) break
+    if (JSON.stringify(part.state?.input ?? null) !== wanted) break
+    count++
+  }
+  return count
+}
+
 export function assess(input: {
   parts: readonly Part[]
   next: { tool: string; input: unknown }
@@ -93,7 +124,12 @@ export function assess(input: {
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
   const count = streak(input.parts, input.next) + 1
   if (count >= input.limits.stopAt) return { type: "stop", streak: count, message: stopped(input.next, count) }
-  if (count >= input.limits.correctAt) return { type: "correct", streak: count, message: correction(input.parts, input.next, count) }
+  if (count >= input.limits.correctAt)
+    return { type: "correct", streak: count, message: correction(input.parts, input.next, count) }
+  // Said once, at the threshold rather than after it: a call whose answer keeps changing is
+  // allowed to be made again, and being told about it every time from then on would be noise.
+  const made = repeats(input.parts, input.next) + 1
+  if (made === input.limits.nudgeAt) return { type: "correct", streak: made, message: nudge(input.next, made) }
   return { type: "ok" }
 }
 
@@ -131,6 +167,21 @@ export function correction(parts: readonly Part[], next: { tool: string; input: 
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+/**
+ * For the call that keeps being made while the answer keeps changing.
+ *
+ * Not an accusation of looping — polling looks exactly like this and is sometimes right — so it
+ * asks rather than refuses, and the call still runs.
+ */
+export function nudge(next: { tool: string; input: unknown }, count: number) {
+  return [
+    `You have called \`${next.tool}\` ${count} times in a row with the same arguments: ${args(next.input)}`,
+    `The answer has been different each time, so this has been left alone, but nothing else has`,
+    `happened in this turn either. If you are waiting for something, say what and wait for it`,
+    `deliberately; if you are not, do something else.`,
+  ].join("\n")
 }
 
 export function stopped(next: { tool: string }, count: number) {
