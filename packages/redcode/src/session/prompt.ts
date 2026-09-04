@@ -19,10 +19,6 @@ import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-steps"
 
-// Deliberately far above any real turn: this is the wall that stops a runaway, not a budget.
-// Agents that want a tighter bound set `agent.steps`.
-const TURN_STEP_CEILING = 200
-
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
 
@@ -44,6 +40,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { SessionProcessor } from "./processor"
+import { StepBudget } from "./step-budget"
 import { SessionStall } from "./stall"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
@@ -1199,19 +1196,31 @@ const layer = Layer.effect(
 
           // A ceiling the model cannot talk its way past. `agent.steps` only appends a prompt
           // asking it to stop, which a model that has stopped making progress ignores — and
-          // then the turn runs until someone notices the spend.
-          if (step >= TURN_STEP_CEILING) {
+          // then the turn runs until someone notices the spend. Cutting the turn off at the wall
+          // also throws away everything worked out but not yet written down, so the last steps
+          // before it are spent asking for that instead.
+          const budget = StepBudget.decide({
+            // `step` counts steps already finished, so this is the one about to run.
+            step: step + 1,
+            limits: StepBudget.limits((yield* config.get()).experimental?.turn_steps),
+          })
+          if (budget.type === "stop") {
             yield* Effect.logWarning("turn exceeded the step ceiling", {
               "session.id": sessionID,
               steps: step,
             })
             yield* events.publish(Session.Event.Error, {
               sessionID,
-              error: new NamedError.Unknown({
-                message: `This turn ran ${step} steps without finishing and was stopped. Send another message to continue it.`,
-              }).toObject(),
+              error: new NamedError.Unknown({ message: budget.message }).toObject(),
             })
             break
+          }
+          if (budget.type === "wrap-up") {
+            yield* Effect.logWarning("turn is near the step ceiling; asking for a final report", {
+              "session.id": sessionID,
+              steps: step,
+              remaining: budget.remaining,
+            })
           }
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
@@ -1334,7 +1343,9 @@ const layer = Layer.effect(
             throw error
           }
           const maxSteps = agent.steps ?? Infinity
-          const isLastStep = step >= maxSteps
+          // The agent's own bound and the turn's wall ask for the same thing at the end: stop
+          // using tools and say what happened.
+          const isLastStep = step >= maxSteps || budget.type === "wrap-up"
           msgs = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),

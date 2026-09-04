@@ -182,6 +182,18 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      turn_steps: Schema.optional(
+        Schema.Union([
+          Schema.Literal(false),
+          Schema.Struct({
+            wrap_up_at: Schema.optional(PositiveInt),
+            stop_at: Schema.optional(PositiveInt),
+          }),
+        ]),
+      ).annotate({
+        description:
+          "Steps one turn may run before the model is asked to stop and report what it did (wrap_up_at, default 198) and before the turn is stopped outright (stop_at, default 200). Set to false to remove the ceiling.",
+      }),
       loop_guard: Schema.optional(
         Schema.Union([
           Schema.Literal(false),
