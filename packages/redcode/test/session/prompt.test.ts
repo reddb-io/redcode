@@ -1377,11 +1377,13 @@ it.instance("cancel interrupts loop and resolves with an assistant message", () 
 
 it.instance("ends a turn whose provider goes quiet, and says so on the message", () =>
   Effect.gen(function* () {
-    // Thresholds in milliseconds so the test runs in a second rather than ten minutes. The
-    // watchdog polls on a fixed cadence, so this waits for that rather than for the threshold.
+    // Short enough for a test, long enough to survive the gap between creating the step handle and
+    // the provider's first byte. At 1 ms and 2 ms the watchdog was correct and the test was wrong:
+    // it ended the turn during that gap — which is exactly the case it exists for — before the
+    // request went out at all, so on a slow machine the provider was never called.
     const { llm } = yield* useServerConfig((url) => ({
       ...providerCfg(url),
-      experimental: { turn_stall: { warn_ms: 1, abort_ms: 2 } },
+      experimental: { turn_stall: { warn_ms: 500, abort_ms: 1500 } },
     }))
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
@@ -1392,11 +1394,13 @@ it.instance("ends a turn whose provider goes quiet, and says so on the message",
     yield* user(chat.id, "more")
 
     const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-    yield* llm.wait(1)
-    yield* waitForBusy(chat.id)
+    // Each stage names itself: an unadorned wait here reports only bun's "timed out", which says
+    // nothing about whether the provider was ever called or the turn ever started.
+    yield* awaitWithTimeout(llm.wait(1), "the provider was never called", "20 seconds")
+    yield* awaitWithTimeout(waitForBusy(chat.id), "the session never went busy", "20 seconds")
 
     // No cancel of our own: the watchdog is the only thing that can end this.
-    const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "40 seconds")
+    const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "20 seconds")
     expect(Exit.isSuccess(exit)).toBe(true)
 
     const messages = yield* sessions.messages({ sessionID: chat.id })
@@ -1407,6 +1411,10 @@ it.instance("ends a turn whose provider goes quiet, and says so on the message",
     // The reason is what keeps this from reading as though the user pressed escape.
     expect((assistant?.info.error?.data as { message?: string } | undefined)?.message).toMatch(/^stopped: no output/)
   }),
+  // The inner guard was 40 s against a 30 s test timeout, so it could never fire: a slow instance
+  // setup killed the test with bun's own message instead of the one that says what went wrong.
+  // Room for the setup, and the guard now reports first.
+  60_000,
 )
 
 it.instance("leaves a turn alone while a tool is still running", () =>
