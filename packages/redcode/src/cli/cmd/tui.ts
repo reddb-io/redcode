@@ -228,9 +228,15 @@ export const TuiThreadCommand = cmd({
 
       let stopped = false
       const worker = new Worker(file, {
-        env: Object.fromEntries(
-          Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-        ),
+        env: {
+          ...Object.fromEntries(
+            Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+          ),
+          // The server runs inside this worker and otherwise cannot tell itself apart from a
+          // scripted run: both default to "cli". Anything that should behave differently when a
+          // person is watching — ending a stalled turn, for one — needs to know which this is.
+          REDCODE_CLIENT: "tui",
+        },
       })
       const client = Rpc.client<typeof rpc>(worker)
       // A worker that fails to load, or dies, posts nothing back. Without these the calls

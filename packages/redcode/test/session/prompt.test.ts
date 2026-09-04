@@ -1339,6 +1339,84 @@ it.instance("cancel interrupts loop and resolves with an assistant message", () 
   }),
 )
 
+it.instance("ends a turn whose provider goes quiet, and says so on the message", () =>
+  Effect.gen(function* () {
+    // Thresholds in milliseconds so the test runs in a second rather than ten minutes. The
+    // watchdog polls on a fixed cadence, so this waits for that rather than for the threshold.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { turn_stall: { warn_ms: 1, abort_ms: 2 } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id)
+
+    yield* llm.hang
+    yield* user(chat.id, "more")
+
+    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    yield* waitForBusy(chat.id)
+
+    // No cancel of our own: the watchdog is the only thing that can end this.
+    const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "40 seconds")
+    expect(Exit.isSuccess(exit)).toBe(true)
+
+    const messages = yield* sessions.messages({ sessionID: chat.id })
+    const assistant = messages.findLast(
+      (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
+    )
+    expect(assistant?.info.error?.name).toBe("MessageAbortedError")
+    // The reason is what keeps this from reading as though the user pressed escape.
+    expect((assistant?.info.error?.data as { message?: string } | undefined)?.message).toMatch(/^stopped: no output/)
+  }),
+)
+
+it.instance("leaves a turn alone while a tool is still running", () =>
+  Effect.gen(function* () {
+    // The case that protects real work: a tool runs inside the provider SDK and emits nothing
+    // while it works, so a long command looks exactly like a provider that has gone away.
+    // Short enough for a test, long enough that the gap before the provider's first byte is not
+    // itself read as a stall.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { turn_stall: { warn_ms: 500, abort_ms: 1500 } },
+    }))
+    const registry = yield* ToolRegistry.Service
+    const { read } = yield* registry.named()
+    const { ready, restore } = yield* hangUntilAborted(read)
+    yield* restore
+
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const status = yield* SessionStatus.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id)
+
+    yield* llm.tool("read", { filePath: "/tmp/whatever" })
+    yield* user(chat.id, "more")
+
+    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+    yield* awaitWithTimeout(llm.wait(1), "provider was never called", "10 seconds")
+    yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
+
+    // Several times the abort threshold, with the tool still running throughout.
+    yield* Effect.sleep("5 seconds")
+    expect((yield* status.get(chat.id)).type).toBe("busy")
+    // The discriminating assertion: had the watchdog fired it would have stamped its reason on
+    // the message before interrupting.
+    const during = yield* sessions.messages({ sessionID: chat.id })
+    const running = during.findLast(
+      (item): item is (typeof during)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
+    )
+    expect(running?.info.error).toBeUndefined()
+
+    yield* prompt.cancel(chat.id)
+    yield* Fiber.await(fiber)
+  }),
+)
+
 it.instance("cancel records MessageAbortedError on interrupted process", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
