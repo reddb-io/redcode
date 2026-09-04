@@ -84,8 +84,13 @@ describe("opencode run (non-interactive subprocess)", () => {
   // The test provider's SSE error item is interpreted by the SDK as an unknown
   // finish, not a fatal provider/session error. Lock that distinction in so it
   // is not accidentally used as the failure compatibility oracle.
+  //
+  // An unknown finish is a provider that stopped mid-stream, not a turn that is
+  // over, so the loop asks again rather than ending in silence with whatever
+  // happened to have arrived. What must not change is the rest: partial output
+  // survives, the provider's message stays out of stderr, and the exit is clean.
   cliIt.live(
-    "unknown stream finish preserves partial output and exits 0",
+    "unknown stream finish recovers and keeps the partial output",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
         yield* llm.push(
@@ -97,7 +102,9 @@ describe("opencode run (non-interactive subprocess)", () => {
         yield* llm.fail("upstream provider exploded mid-stream")
         const result = yield* opencode.run("trigger midstream error", { timeoutMs: 30_000 })
         expect(result.exitCode).toBe(0)
-        expect(result.stdout).toBe("partial response\n")
+        // "ok" is what the fake provider answers once its queue is empty: the text from the
+        // step that ran after the interrupted one.
+        expect(result.stdout).toBe("partial response\nok\n")
         expect(result.stderr).not.toContain("upstream provider exploded mid-stream")
       }),
     60_000,
@@ -232,11 +239,16 @@ describe("opencode run (non-interactive subprocess)", () => {
           "text",
           "tool_use",
           "step_finish",
+          // The step the provider cut short, then the one that recovers it.
           "step_start",
+          "step_finish",
+          "step_start",
+          "text",
           "step_finish",
         ])
         expect(events[1]?.part).toEqual(expect.objectContaining({ type: "text", text: "partial json" }))
-        expect(events.at(-1)?.part).toEqual(expect.objectContaining({ type: "step-finish", reason: "unknown" }))
+        // The unknown finish is still recorded rather than smoothed over.
+        expect(events.map((event) => (event.part as { reason?: string } | undefined)?.reason)).toContain("unknown")
       }),
     60_000,
   )
