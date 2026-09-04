@@ -37,17 +37,29 @@ const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
 // Applies to every provider, not just the one that happened to set its own. `false` opts out.
 const STREAM_TIMEOUT_DEFAULT = 300_000
 
+// Not every streaming provider speaks SSE: Bedrock answers with its own event stream, and some
+// gateways use plain chunked JSON. Those bodies were left unwatched, so a connection that stays
+// open and stops sending hung the turn with no chunk, no error and nothing on screen.
+function isStreaming(res: Response) {
+  const type = res.headers.get("content-type")?.toLowerCase() ?? ""
+  if (type.includes("text/event-stream")) return true
+  if (type.includes("application/vnd.amazon.eventstream")) return true
+  if (type.includes("application/x-ndjson") || type.includes("application/jsonl")) return true
+  if (type.includes("application/json") && res.headers.get("transfer-encoding")?.includes("chunked")) return true
+  return false
+}
+
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
   if (!res.body) return res
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+  if (!isStreaming(res)) return res
 
   const reader = res.body.getReader()
   const body = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
       const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
         const id = setTimeout(() => {
-          const err = new ProviderError.ResponseStreamError("SSE read timed out")
+          const err = new ProviderError.ResponseStreamError("Provider stopped sending data")
           ctl.abort(err)
           void reader.cancel(err).catch(() => {})
           reject(err)

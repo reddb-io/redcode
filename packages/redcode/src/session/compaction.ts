@@ -97,6 +97,12 @@ function summaryText(message: SessionV1.WithParts) {
   return text || undefined
 }
 
+/** A message we wrote ourselves by replaying the person's prompt after a compaction. */
+function isReplay(parts: readonly SessionV1.Part[]) {
+  const text = parts.filter((part) => part.type === "text")
+  return text.length > 0 && text.every((part) => "synthetic" in part && part.synthetic === true)
+}
+
 function completedCompactions(messages: SessionV1.WithParts[]) {
   const users = new Map<MessageID, number>()
   for (let i = 0; i < messages.length; i++) {
@@ -351,6 +357,14 @@ const layer = Layer.effect(
             break
           }
         }
+        // A replay is itself a user message, so a second overflow finds it and replays it again,
+        // and the transcript grows another copy of what the person actually typed every time.
+        // One replay per overflow chain: if the last thing we would replay is already one,
+        // the content is in the summary and repeating it cannot make it fit.
+        if (replay && isReplay(replay.parts)) {
+          replay = undefined
+          messages = input.messages
+        }
         const hasContent =
           replay && messages.some((m) => m.info.role === "user" && !m.parts.some((p) => p.type === "compaction"))
         if (!hasContent) {
@@ -501,6 +515,9 @@ const layer = Layer.effect(
                 : part
             yield* session.updatePart({
               ...replayPart,
+              // Marked synthetic: the model still reads it, and the transcript stops showing
+              // the person's own prompt a second time.
+              ...(replayPart.type === "text" ? { synthetic: true } : {}),
               id: PartID.ascending(),
               messageID: replayMsg.id,
               sessionID: input.sessionID,

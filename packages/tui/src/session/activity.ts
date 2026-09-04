@@ -72,6 +72,30 @@ function describeTool(part: ActivityPart, width: number) {
 }
 
 /**
+ * How long a turn may show no new part before the footer says so rather than implying progress.
+ * Well past a slow model's thinking time, well short of the timeouts that eventually fire.
+ */
+export const STALL_NOTICE_SECONDS = 90
+
+/**
+ * A cheap fingerprint of how far the turn has got. Any new part, any further text, any tool
+ * changing state moves it — which is what "still working" means, as opposed to the label
+ * staying the same while a stream pours in.
+ */
+export function progressMark(parts: readonly ActivityPart[]): string {
+  const last = parts[parts.length - 1]
+  const tail = last ? `${last.type}:${last.state?.status ?? ""}:${last.text?.length ?? 0}` : ""
+  return `${parts.length}|${tail}`
+}
+
+/** What to say when nothing has changed for a while. The wording admits it, rather than spinning. */
+export function describeStall(seconds: number, activity: string): string | undefined {
+  if (seconds < STALL_NOTICE_SECONDS) return
+  if (activity.startsWith("Waiting")) return "no response from the model yet"
+  return "no new output yet"
+}
+
+/**
  * Never `undefined` while a turn is running: silence is what made a stalled request look the
  * same as a working one. When nothing has come back yet, that fact is itself the answer.
  */

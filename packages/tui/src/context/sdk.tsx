@@ -33,6 +33,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     let sdk = createSDK()
 
     const handlers = new Set<(event: GlobalEvent) => void>()
+    const reconnects = new Set<() => void>()
     const emitter = {
       emit(_type: "event", event: GlobalEvent) {
         for (const handler of handlers) handler(event)
@@ -93,6 +94,12 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
             sseMaxRetryAttempts: 0,
           })
 
+          // Events emitted while the stream was down are gone: this route has no cursor and no
+          // replay. Anything that arrived in the gap — a permission request, the status going
+          // idle — leaves the client waiting on something that already happened, which is how a
+          // session ends up spinning with everything the user types piling up behind it.
+          if (attempt > 0) for (const handler of reconnects) handler()
+
           if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) {
             // Start syncing workspaces, it's important to do this after
             // we've started listening to events
@@ -144,6 +151,13 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       },
       directory: props.directory,
       event: emitter,
+      /** Called after the event stream comes back, so consumers can re-read what they missed. */
+      onReconnect(handler: () => void) {
+        reconnects.add(handler)
+        return () => {
+          reconnects.delete(handler)
+        }
+      },
       fetch: props.fetch ?? fetch,
       url: props.url,
     }

@@ -18,6 +18,13 @@ import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-steps"
+
+// Deliberately far above any real turn: this is the wall that stops a runaway, not a budget.
+// Agents that want a tighter bound set `agent.steps`.
+const TURN_STEP_CEILING = 200
+
+/** How long a turn may send nothing before each further interval is recorded. */
+const STALL_LOG_SECONDS = 60
 import { ToolRegistry } from "@/tool/registry"
 import { MCP } from "../mcp"
 import { LSP } from "@/lsp/lsp"
@@ -43,7 +50,7 @@ import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
-import { Cause, DateTime, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
+import { Cause, DateTime, Duration, Effect, Exit, Latch, Layer, Option, Schedule, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
@@ -1107,9 +1114,54 @@ const layer = Layer.effect(
         yield* hooks.parallel(OperationHook.Operation.Turn.Started, turnStarted)
         yield* events.publish(SessionEvent.Turn.Started, turnStarted).pipe(Effect.ignore)
 
+        // A turn that goes quiet leaves no trace today: no event, no log, and a spinner that
+        // looks exactly like progress. Saying so on a schedule is what turns "it hung for half an
+        // hour" into something anyone can look up afterwards.
+        //
+        // One fiber for the whole turn, reading whichever step's handle is current. Forked as a
+        // child of this fiber, so it dies when the turn does — `scope` above belongs to the
+        // service layer and outlives every turn, which would leave a poller behind per step.
+        let watched: SessionProcessor.Handle | undefined
+        yield* Effect.forkChild(
+          Effect.repeat(
+            Effect.suspend(() => {
+              const handle = watched
+              if (!handle) return Effect.void
+              const quiet = Math.round((Date.now() - handle.lastEventAt) / 1000)
+              if (quiet < STALL_LOG_SECONDS) return Effect.void
+              // Tools run inside the SDK and emit nothing while they work, so silence with one in
+              // flight is progress, not a stall.
+              if (handle.activeToolCount > 0) return Effect.void
+              return Effect.logWarning("turn has produced nothing", {
+                "session.id": sessionID,
+                messageID: handle.message.id,
+                quietSeconds: quiet,
+              })
+            }),
+            Schedule.spaced(Duration.seconds(STALL_LOG_SECONDS)),
+          ),
+        )
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
+
+          // A ceiling the model cannot talk its way past. `agent.steps` only appends a prompt
+          // asking it to stop, which a model that has stopped making progress ignores — and
+          // then the turn runs until someone notices the spend.
+          if (step >= TURN_STEP_CEILING) {
+            yield* Effect.logWarning("turn exceeded the step ceiling", {
+              "session.id": sessionID,
+              steps: step,
+            })
+            yield* events.publish(Session.Event.Error, {
+              sessionID,
+              error: new NamedError.Unknown({
+                message: `This turn ran ${step} steps without finishing and was stopped. Send another message to continue it.`,
+              }).toObject(),
+            })
+            break
+          }
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
@@ -1273,6 +1325,8 @@ const layer = Layer.effect(
               model,
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
+
+          watched = handle
 
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
             const lastUserMsg = msgs.findLast((m) => m.info.role === "user")

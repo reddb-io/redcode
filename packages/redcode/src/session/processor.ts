@@ -34,6 +34,14 @@ export type Result = "compact" | "stop" | "continue"
 
 export interface Handle {
   readonly message: SessionV1.Assistant
+  /** When the provider last sent anything, for the turn loop's stall watchdog. */
+  readonly lastEventAt: number
+  /**
+   * Tool calls the model is waiting on right now. Tools run inside the SDK, between the
+   * `tool-call` and `tool-result` events, so a long command or a subagent emits nothing at all:
+   * silence with a tool in flight is work, and only silence with none is a stall.
+   */
+  readonly activeToolCount: number
   readonly updateToolCall: (
     toolCallID: string,
     update: (part: SessionV1.ToolPart) => SessionV1.ToolPart,
@@ -75,6 +83,8 @@ interface ProcessorContext extends Input {
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
+  /** When the provider last sent anything. A stalled turn is one where this stops moving. */
+  lastEventAt: number
 }
 
 type StreamEvent = LLMEvent
@@ -115,6 +125,7 @@ const layer = Layer.effect(
         needsCompaction: false,
         currentText: undefined,
         reasoningMap: {},
+        lastEventAt: Date.now(),
       }
       let aborted = false
 
@@ -652,8 +663,12 @@ const layer = Layer.effect(
             yield* status.set(ctx.sessionID, { type: "busy" })
             const stream = llm.stream(streamInput)
 
+            ctx.lastEventAt = Date.now()
             yield* stream.pipe(
-              Stream.tap((event) => handleEvent(event)),
+              Stream.tap((event) => {
+                ctx.lastEventAt = Date.now()
+                return handleEvent(event)
+              }),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
             )
@@ -696,6 +711,13 @@ const layer = Layer.effect(
       })
 
       return {
+        /** Read by the turn loop's watchdog: silence here is what a stall looks like. */
+        get lastEventAt() {
+          return ctx.lastEventAt
+        },
+        get activeToolCount() {
+          return Object.keys(ctx.toolcalls).length
+        },
         get message() {
           return ctx.assistantMessage
         },
