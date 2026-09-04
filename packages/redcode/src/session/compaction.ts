@@ -7,13 +7,14 @@ import { Provider } from "@/provider/provider"
 import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
+import { AuxDeadline } from "./aux-deadline"
 import { Agent } from "@/agent/agent"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { DateTime, Effect, Layer, Context } from "effect"
+import { DateTime, Duration, Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
@@ -450,6 +451,10 @@ const layer = Layer.effect(
         sessionID: input.sessionID,
         model,
       })
+      // The turn's watchdog reads the step handle, and this processor is not it, so a provider
+      // that stops answering here holds the turn open with nothing to show. A compaction that did
+      // not happen is reported as itself rather than as silence.
+      const compactionMs = AuxDeadline.deadlineMs("compaction", (yield* config.get()).experimental?.aux_timeout)
       const result = yield* processor.process({
         user: userMessage,
         agent,
@@ -473,7 +478,25 @@ const layer = Layer.effect(
           },
         ],
         model,
-      })
+      }).pipe(
+        compactionMs === undefined
+          ? (self) => self
+          : Effect.timeoutOrElse({
+              duration: Duration.millis(compactionMs),
+              orElse: () =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(AuxDeadline.message("compaction", compactionMs), {
+                    "session.id": input.sessionID,
+                  })
+                  processor.message.error = new SessionV1.ContextOverflowError({
+                    message: AuxDeadline.message("compaction", compactionMs),
+                  }).toObject()
+                  processor.message.finish = "error"
+                  yield* session.updateMessage(processor.message)
+                  return "stop" as const
+                }),
+            }),
+      )
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({

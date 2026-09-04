@@ -1531,6 +1531,39 @@ it.instance("corrects a model that repeats itself, then ends the turn if nothing
   60_000,
 )
 
+it.instance("does not let naming the session hold up the turn", () =>
+  Effect.gen(function* () {
+    // Naming happens inside the turn loop against a small model, and it is not covered by the
+    // turn's watchdog, so a provider that stops answering there used to hold up the work the user
+    // actually asked for with nothing on screen.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { aux_timeout: 500 },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    // The name is only generated for a session still carrying its default one.
+    const title = `New session - ${new Date().toISOString()}`
+    const chat = yield* sessions.create({ title })
+
+    yield* llm.hangTitles
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "say something" }],
+    })
+    yield* llm.text("done")
+
+    const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "20 seconds")
+
+    // The turn produced its answer; only the name was given up on.
+    expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
+    expect((yield* sessions.get(chat.id)).title).toBe(title)
+  }),
+  60_000,
+)
+
 it.instance("cancel records MessageAbortedError on interrupted process", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

@@ -41,6 +41,7 @@ import { SessionSummary } from "./summary"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { SessionProcessor } from "./processor"
 import { StepBudget } from "./step-budget"
+import { AuxDeadline } from "./aux-deadline"
 import { SessionStall } from "./stall"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
@@ -239,6 +240,7 @@ const layer = Layer.effect(
       const msgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
         : yield* MessageV2.toModelMessagesEffect(context, mdl)
+      const titleMs = AuxDeadline.deadlineMs("title", (yield* config.get()).experimental?.aux_timeout)
       const text = yield* llm
         .stream({
           agent: ag,
@@ -256,6 +258,18 @@ const layer = Layer.effect(
           Stream.map((e) => e.text),
           Stream.mkString,
           Effect.orDie,
+          // Naming the session happens inside the turn loop, so a small model that stops answering
+          // holds up the work the user actually asked for. A session keeping its default name is a
+          // far smaller loss than a turn that never starts.
+          titleMs === undefined
+            ? (self) => self
+            : Effect.timeoutOrElse({
+                duration: Duration.millis(titleMs),
+                orElse: () =>
+                  Effect.logWarning(AuxDeadline.message("title", titleMs), {
+                    "session.id": input.session.id,
+                  }).pipe(Effect.as("")),
+              }),
         )
       const cleaned = text
         .replace(/<think>[\s\S]*?<\/think>\s*/g, "")

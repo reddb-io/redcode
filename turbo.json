@@ -5,7 +5,10 @@
   "tasks": {
     "typecheck": {},
     "build": {
-      "dependsOn": [],
+      // Topological, not arbitrary: the CLI build bundles the app, which imports sources the SDK
+      // build generates. An empty `dependsOn` disabled that ordering, so the two raced and the
+      // loser read a file that did not exist yet.
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "test": {
