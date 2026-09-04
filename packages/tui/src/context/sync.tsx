@@ -28,7 +28,7 @@ import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
-import { batch, onMount } from "solid-js"
+import { batch, onCleanup, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
@@ -199,6 +199,7 @@ export const {
         case "server.instance.disposed":
           void bootstrap()
           break
+
         case "models-dev.refreshed":
           void reloadProviders()
           break
@@ -581,6 +582,9 @@ export const {
 
     onMount(() => {
       void bootstrap()
+      // The stream dropped and came back, so whatever happened in between was never delivered.
+      // Re-read rather than trust a picture assembled from a stream with a hole in it.
+      onCleanup(sdk.onReconnect(() => void bootstrap({ fatal: false }).catch(() => {})))
     })
 
     const result = {

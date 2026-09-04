@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { describeActivity, type ActivityPart } from "../../src/session/activity"
+import { describeActivity, describeStall, STALL_NOTICE_SECONDS, type ActivityPart } from "../../src/session/activity"
 
 const tool = (tool: string, status: string, input?: Record<string, unknown>): ActivityPart => ({
   type: "tool",
@@ -50,5 +50,17 @@ describe("describeActivity", () => {
     expect(describeActivity([{ type: "tool", tool: "mcp_thing", state: { status: "running", title: "Sync repo" } }])).toBe(
       "Sync repo",
     )
+  })
+})
+
+describe("describeStall", () => {
+  test("stays quiet while a turn is still young", () => {
+    expect(describeStall(0, "Thinking")).toBeUndefined()
+    expect(describeStall(STALL_NOTICE_SECONDS - 1, "Thinking")).toBeUndefined()
+  })
+
+  test("says plainly that nothing has arrived once it has been a while", () => {
+    expect(describeStall(STALL_NOTICE_SECONDS, "Waiting for the model")).toBe("no response from the model yet")
+    expect(describeStall(600, "Running cargo build")).toBe("no new output yet")
   })
 })

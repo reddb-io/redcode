@@ -33,7 +33,7 @@ import { createStore, produce, unwrap } from "solid-js/store"
 import { usePromptHistory, type PromptInfo } from "../../prompt/history"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText, promptMessageText } from "../../prompt/part"
-import { describeActivity, type ActivityPart } from "../../session/activity"
+import { describeActivity, describeStall, progressMark, type ActivityPart } from "../../session/activity"
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
@@ -293,6 +293,28 @@ export function Prompt(props: PromptProps) {
     const started = activeAssistant()?.time.created
     if (!started) return
     return formatDuration(Math.max(0, Math.round((now() - started) / 1000)))
+  })
+
+  // Elapsed time alone still reads as progress. What tells a stall from work is how long the
+  // picture has been identical, so that is measured separately: the label changes whenever the
+  // turn produces anything, and the clock for the notice restarts from there.
+  const [quietSince, setQuietSince] = createSignal(Date.now())
+  createEffect(
+    on(
+      () => {
+        const last = activeAssistant()
+        const parts = last ? ((sync.data.part[last.id] ?? []) as ActivityPart[]) : []
+        return [status().type, progressMark(parts)] as const
+      },
+      () => setQuietSince(Date.now()),
+    ),
+  )
+
+  const stalled = createMemo(() => {
+    if (status().type !== "busy") return
+    const label = activity()
+    if (!label) return
+    return describeStall(Math.round((now() - quietSince()) / 1000), label)
   })
 
   const usage = createMemo(() => {
@@ -1568,6 +1590,9 @@ export function Prompt(props: PromptProps) {
                       <text fg={theme.textMuted}>
                         {label()}
                         <Show when={elapsed()}>{(value) => <span>{" · " + value()}</span>}</Show>
+                        <Show when={stalled()}>
+                          {(notice) => <span style={{ fg: theme.warning }}>{" · " + notice()}</span>}
+                        </Show>
                       </text>
                     )}
                   </Show>
