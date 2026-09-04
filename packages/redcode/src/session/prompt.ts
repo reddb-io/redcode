@@ -1194,7 +1194,7 @@ const layer = Layer.effect(
         )
 
         while (true) {
-          yield* status.set(sessionID, { type: "busy" })
+          yield* status.set(sessionID, { type: "busy", phase: "preparing", step: step + 1, since: Date.now() })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
 
           // A ceiling the model cannot talk its way past. `agent.steps` only appends a prompt
@@ -1373,7 +1373,9 @@ const layer = Layer.effect(
             .create({
               assistantMessage: msg,
               sessionID,
+              // Already incremented for this iteration, so this is the 1-based step number.
               model,
+              step,
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 

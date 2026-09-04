@@ -33,7 +33,7 @@ import { createStore, produce, unwrap } from "solid-js/store"
 import { usePromptHistory, type PromptInfo } from "../../prompt/history"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText, promptMessageText } from "../../prompt/part"
-import { describeActivity, describeStall, progressMark, type ActivityPart } from "../../session/activity"
+import { describeActivity, describeBusy, describeStall, progressMark, type ActivityPart } from "../../session/activity"
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
@@ -276,8 +276,8 @@ export function Prompt(props: PromptProps) {
 
   const activity = createMemo(() => {
     const last = activeAssistant()
-    if (!last) return
-    return describeActivity((sync.data.part[last.id] ?? []) as ActivityPart[])
+    const fromParts = last ? describeActivity((sync.data.part[last.id] ?? []) as ActivityPart[]) : undefined
+    return describeBusy(status(), fromParts)
   })
 
   // A turn that has been going for minutes with nothing to show is the thing people read as a

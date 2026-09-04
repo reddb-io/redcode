@@ -117,3 +117,30 @@ export function describeActivity(parts: readonly ActivityPart[], width = 48): st
   // state that used to show a bare spinner for half an hour.
   return "Waiting for the model"
 }
+
+/**
+ * What the server itself says it is doing, for the cases the parts cannot answer.
+ *
+ * The parts are the better source while output is arriving; before the first byte there are none,
+ * and the step number never appears in them at all. A turn on its eighth step with nothing to show
+ * is a very different picture from a turn that just started, and that difference is what people
+ * read as a freeze.
+ */
+export function describeBusy(
+  status: { type: string; phase?: string; tool?: string; step?: number } | undefined,
+  fromParts: string | undefined,
+): string | undefined {
+  if (!status || status.type !== "busy") return fromParts
+  const label =
+    fromParts ??
+    (status.phase === "tool" && status.tool
+      ? "Running " + status.tool
+      : status.phase === "thinking"
+        ? "Thinking"
+        : status.phase === "writing"
+          ? "Responding"
+          : status.phase === "compacting"
+            ? "Compacting the conversation"
+            : "Waiting for the model")
+  return status.step && status.step > 1 ? `${label} · step ${status.step}` : label
+}

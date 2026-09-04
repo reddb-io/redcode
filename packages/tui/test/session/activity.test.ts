@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { describeActivity, describeStall, STALL_NOTICE_SECONDS, type ActivityPart } from "../../src/session/activity"
+import { describeBusy, describeActivity, describeStall, STALL_NOTICE_SECONDS, type ActivityPart } from "../../src/session/activity"
 
 const tool = (tool: string, status: string, input?: Record<string, unknown>): ActivityPart => ({
   type: "tool",
@@ -62,5 +62,19 @@ describe("describeStall", () => {
   test("says plainly that nothing has arrived once it has been a while", () => {
     expect(describeStall(STALL_NOTICE_SECONDS, "Waiting for the model")).toBe("no response from the model yet")
     expect(describeStall(600, "Running cargo build")).toBe("no new output yet")
+  })
+
+  test("says which step a long turn is on, which no part ever carries", () => {
+    // Eight steps in with nothing on screen is a very different picture from a turn that just
+    // started, and it is the one people read as a freeze.
+    expect(describeBusy({ type: "busy", phase: "thinking", step: 8 }, "Thinking")).toBe("Thinking · step 8")
+    expect(describeBusy({ type: "busy", phase: "thinking", step: 1 }, "Thinking")).toBe("Thinking")
+  })
+
+  test("falls back to what the server says before any part has arrived", () => {
+    // The window this covers is exactly the silent one: request sent, nothing back yet.
+    expect(describeBusy({ type: "busy", phase: "tool", tool: "bash" }, undefined)).toBe("Running bash")
+    expect(describeBusy({ type: "busy" }, undefined)).toBe("Waiting for the model")
+    expect(describeBusy({ type: "idle" }, undefined)).toBeUndefined()
   })
 })

@@ -71,6 +71,8 @@ type Input = {
   assistantMessage: SessionV1.Assistant
   sessionID: SessionID
   model: Provider.Model
+  /** Which step of the turn this handle serves, counting from 1. Reported in the busy status. */
+  step?: number
 }
 
 export interface Interface {
@@ -86,6 +88,9 @@ type ToolCall = {
 
 interface ProcessorContext extends Input {
   toolcalls: Record<string, ToolCall>
+  /** Last phase published, so the same one is not published twice. */
+  phase?: "preparing" | "thinking" | "writing" | "tool" | "compacting"
+  phaseTool?: string
   shouldBreak: boolean
   snapshot: string | undefined
   blocked: boolean
@@ -317,6 +322,7 @@ const layer = Layer.effect(
             return
 
           case "reasoning-delta":
+            yield* phase("thinking")
             // Match dev: silently drop orphan deltas (no preceding reasoning-start).
             if (!(value.id in ctx.reasoningMap)) return
             ctx.reasoningMap[value.id].text += value.text
@@ -375,6 +381,7 @@ const layer = Layer.effect(
                 : value.providerMetadata,
             }))
 
+            yield* phase("tool", value.name)
             // Repetition is judged in guardLoop, before the tool runs, so the model reads the
             // correction as an ordinary tool result instead of the user being asked a question.
             return
@@ -497,6 +504,7 @@ const layer = Layer.effect(
             return
 
           case "text-delta":
+            yield* phase("writing")
             if (!ctx.currentText) return
             ctx.currentText.text += value.text
             if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
@@ -644,7 +652,9 @@ const layer = Layer.effect(
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.reasoningMap = {}
-            yield* status.set(ctx.sessionID, { type: "busy" })
+            ctx.phase = undefined
+            ctx.phaseTool = undefined
+            yield* phase("preparing")
             const stream = llm.stream(streamInput)
 
             ctx.lastEventAt = Date.now()
@@ -691,6 +701,25 @@ const layer = Layer.effect(
           if (ctx.needsCompaction) return "compact"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           return "continue"
+        })
+      })
+
+      // Publishing a phase only when it actually changes: the status event is how every client
+      // other than the TUI learns what is happening, and the TUI had to reverse-engineer it from
+      // message parts. Emitting on every delta would be a flood for no extra information.
+      const phase = Effect.fn("SessionProcessor.phase")(function* (
+        next: "preparing" | "thinking" | "writing" | "tool" | "compacting",
+        tool?: string,
+      ) {
+        if (ctx.phase === next && ctx.phaseTool === tool) return
+        ctx.phase = next
+        ctx.phaseTool = tool
+        yield* status.set(ctx.sessionID, {
+          type: "busy",
+          phase: next,
+          ...(tool ? { tool } : {}),
+          ...(ctx.step ? { step: ctx.step } : {}),
+          since: Date.now(),
         })
       })
 
