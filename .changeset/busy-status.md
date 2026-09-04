@@ -1,6 +1,6 @@
 ---
-"@reddb-io/redcode": patch
-"@reddb-io/redcode-schema": patch
+"@reddb-io/redcode": minor
+"@reddb-io/redcode-schema": minor
 ---
 
 Say what a busy session is actually doing

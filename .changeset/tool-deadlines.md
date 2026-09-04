@@ -1,5 +1,5 @@
 ---
-"@reddb-io/redcode": patch
+"@reddb-io/redcode": minor
 "@reddb-io/redcode-core": patch
 ---
 
