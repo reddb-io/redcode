@@ -6,7 +6,7 @@ import { Cause, DateTime, Deferred, Effect, Exit, Layer, Context, Scope, Schema 
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
-import { Permission } from "@/permission"
+import { Permission, evaluate } from "@/permission"
 import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
@@ -23,13 +23,15 @@ import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { LoopGuard } from "./loop-guard"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { Usage, type LLMEvent } from "@reddb-io/redcode-llm"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 
-const DOOM_LOOP_THRESHOLD = 3
+/** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
+const LOOP_WINDOW = 16
 export type Result = "compact" | "stop" | "continue"
 
 export interface Handle {
@@ -55,6 +57,13 @@ export interface Handle {
       attachments?: SessionV1.FilePart[]
     },
   ) => Effect.Effect<void>
+  /**
+   * Whether this call has already been made, with these arguments, to the same answer.
+   *
+   * Asked before the tool runs, so a call that cannot produce anything new is never run at all.
+   * A `stop` decision also ends the turn after this step.
+   */
+  readonly guardLoop: (input: { tool: string; input: unknown }) => Effect.Effect<LoopGuard.Decision>
   readonly process: (streamInput: LLM.StreamInput) => Effect.Effect<Result>
 }
 
@@ -366,33 +375,8 @@ const layer = Layer.effect(
                 : value.providerMetadata,
             }))
 
-            const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
-              Effect.provideService(Database.Service, database),
-            )
-            const recentParts = parts.slice(-DOOM_LOOP_THRESHOLD)
-
-            if (
-              recentParts.length !== DOOM_LOOP_THRESHOLD ||
-              !recentParts.every(
-                (part) =>
-                  part.type === "tool" &&
-                  part.tool === value.name &&
-                  part.state.status !== "pending" &&
-                  JSON.stringify(part.state.input) === JSON.stringify(input),
-              )
-            ) {
-              return
-            }
-
-            const agent = yield* agents.get(ctx.assistantMessage.agent)
-            yield* permission.ask({
-              permission: "doom_loop",
-              patterns: [value.name],
-              sessionID: ctx.assistantMessage.sessionID,
-              metadata: { tool: value.name, input },
-              always: [value.name],
-              ruleset: agent.permission,
-            })
+            // Repetition is judged in guardLoop, before the tool runs, so the model reads the
+            // correction as an ordinary tool result instead of the user being asked a question.
             return
           }
 
@@ -710,6 +694,40 @@ const layer = Layer.effect(
         })
       })
 
+      const guardLoop = Effect.fn("SessionProcessor.guardLoop")(function* (input: {
+        tool: string
+        input: unknown
+      }) {
+        const configured = (yield* config.get()).experimental?.loop_guard
+        const bounds = LoopGuard.limits(configured)
+        if (!bounds) return { type: "ok" } as LoopGuard.Decision
+        // The `doom_loop` permission predates this guard and is how people already say "let it
+        // repeat"; allowing it keeps meaning that, rather than becoming a dead config key.
+        const agent = yield* agents.get(ctx.assistantMessage.agent)
+        if (evaluate("doom_loop", input.tool, agent.permission).action === "allow") {
+          return { type: "ok" } as LoopGuard.Decision
+        }
+        // Every step of a turn is its own assistant message, so looking at the current message
+        // alone can never see a loop that spans steps — which is what a loop actually looks like.
+        // Read back a bounded window and cut it at the last thing the user said.
+        const recent = yield* session.messages({ sessionID: ctx.sessionID, limit: LOOP_WINDOW }).pipe(Effect.orElseSucceed(() => []))
+        const turn = recent.slice(recent.findLastIndex((item) => item.info.role === "user") + 1)
+        const parts = turn.flatMap((item) => item.parts)
+        const decision = LoopGuard.assess({ parts, next: input, limits: bounds })
+        if (decision.type === "ok") return decision
+        yield* Effect.logWarning("model is repeating itself", {
+          sessionID: ctx.sessionID,
+          tool: input.tool,
+          streak: decision.streak,
+          action: decision.type,
+        })
+        // A loop that survived its own correction ends the turn: continuing only spends money to
+        // reach the same place. Unlike a denied permission this is not the user's call, so it does
+        // not go through `shouldBreak`.
+        if (decision.type === "stop") ctx.blocked = true
+        return decision
+      })
+
       return {
         /** Read by the turn loop's watchdog: silence here is what a stall looks like. */
         get lastEventAt() {
@@ -723,6 +741,7 @@ const layer = Layer.effect(
         },
         updateToolCall,
         completeToolCall,
+        guardLoop,
         process,
       } satisfies Handle
     })

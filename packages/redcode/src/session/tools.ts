@@ -48,7 +48,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
   model: Provider.Model
   session: Session.Info
-  processor: Pick<SessionProcessor.Handle, "message" | "updateToolCall" | "completeToolCall">
+  processor: Pick<SessionProcessor.Handle, "message" | "updateToolCall" | "completeToolCall" | "guardLoop">
   bypassAgentCheck: boolean
   messages: SessionV1.WithParts[]
   promptOps: TaskPromptOps
@@ -114,6 +114,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             // tool in flight is deliberately counted as work. A timeout here lands in the same
             // failure branch as any other tool error, so the model reads it and can react.
             const deadline = ToolDeadline.deadlineMs({ tool: toolID, configured: toolTimeout })
+            // Asked before the call is made: a call whose answer is already known cannot become
+            // useful by being made again, and the correction reaches the model as this tool's
+            // own result, so it can change course without anyone being asked a question.
+            const loop = yield* input.processor.guardLoop({ tool: toolID, input: decided.args })
+            if (loop.type !== "ok") {
+              yield* publishPost({ error: loop.message }, true).pipe(Effect.ignoreCause)
+              return yield* Effect.fail(new Error(loop.message))
+            }
             const call = Effect.promise(() => Promise.resolve(execute(decided.args, options)))
             const executed = yield* (deadline === undefined
               ? call

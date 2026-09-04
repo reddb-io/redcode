@@ -182,6 +182,18 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      loop_guard: Schema.optional(
+        Schema.Union([
+          Schema.Literal(false),
+          Schema.Struct({
+            correct_at: Schema.optional(PositiveInt),
+            stop_at: Schema.optional(PositiveInt),
+          }),
+        ]),
+      ).annotate({
+        description:
+          "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). Set to false to disable.",
+      }),
       tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
         description:
           "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",

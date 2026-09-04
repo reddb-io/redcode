@@ -1461,6 +1461,42 @@ it.instance("stops a tool that never returns and hands the failure to the model"
   30_000,
 )
 
+it.instance("corrects a model that repeats itself, then ends the turn if nothing changes", () =>
+  Effect.gen(function* () {
+    // The old detector needed three byte-identical parts in a row, so one reasoning part hid the
+    // loop, and when it did fire it asked the user a question that could wait forever.
+    const { llm, dir } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { loop_guard: { correct_at: 2, stop_at: 3 } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id)
+
+    // Inside the instance directory: an external path would stop on a permission prompt instead.
+    const same = { filePath: path.join(dir, "not-here.txt") }
+    yield* llm.tool("read", same)
+    yield* llm.tool("read", same)
+    yield* llm.tool("read", same)
+    yield* llm.text("giving up")
+    yield* user(chat.id, "read that file")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+
+    const parts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((item) => item.parts)
+    const errors = parts.flatMap((part) =>
+      part.type === "tool" && part.state.status === "error" ? [part.state.error] : [],
+    )
+    // The second identical call is answered by the guard, not by running the tool again, and the
+    // model is told exactly what it repeated.
+    expect(errors.some((text) => text.includes("identical arguments"))).toBe(true)
+    // The third ends the turn rather than asking anyone whether to keep going.
+    expect(errors.some((text) => text.startsWith("Stopped:"))).toBe(true)
+  }),
+  60_000,
+)
+
 it.instance("cancel records MessageAbortedError on interrupted process", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
