@@ -467,6 +467,40 @@ noLLMServer.instance(
   { config: cfg },
 )
 
+it.instance("asks for a report before the step ceiling instead of cutting the turn off at it", () =>
+  Effect.gen(function* () {
+    // The ceiling used to be a cliff: at the wall the turn was cut off and everything worked out
+    // but not written down went with it, leaving the user told to "send another message" with
+    // nothing to send it about.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { turn_steps: { stop_at: 3, wrap_up_at: 2 } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "keep going" }],
+    })
+    // Never finishing on its own: only the budget ends this turn.
+    yield* llm.tool("todowrite", { todos: [{ content: "one", status: "in_progress", priority: "high" }] })
+    yield* llm.tool("todowrite", { todos: [{ content: "two", status: "in_progress", priority: "high" }] })
+    yield* llm.text("here is what I did and what is left")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+
+    const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
+    // First step runs normally; the step before the wall carries the request for a final report.
+    expect(bodies[0]).not.toContain("MAXIMUM STEPS REACHED")
+    expect(bodies[1]).toContain("MAXIMUM STEPS REACHED")
+  }),
+  60_000,
+)
+
 it.instance("loop continues a natural stop while persisted todos are unfinished", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => ({
