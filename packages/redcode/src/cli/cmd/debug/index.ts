@@ -6,6 +6,7 @@ import { Duration, Effect } from "effect"
 import { effectCmd } from "../../effect-cmd"
 import { cmd } from "../cmd"
 import { ConfigCommand } from "./config"
+import { GuardsCommand } from "./guards"
 import { FileCommand } from "./file"
 import { LSPCommand } from "./lsp"
 import { RipgrepCommand } from "./ripgrep"
@@ -23,6 +24,7 @@ export const DebugCommand = cmd({
   builder: (yargs) =>
     yargs
       .command(ConfigCommand)
+      .command(GuardsCommand)
       .command(LSPCommand)
       .command(RipgrepCommand)
       .command(FileCommand)

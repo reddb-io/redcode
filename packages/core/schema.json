@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "f14a9b18-8207-487e-a3d3-227e629ba9ad",
-  "prevIds": ["169a0f0f-d58f-479f-b024-fa1c7b9a09db"],
+  "id": "36772f61-4ca4-48df-b27c-6aa39eb59ba1",
+  "prevIds": ["f14a9b18-8207-487e-a3d3-227e629ba9ad"],
   "ddl": [
     {
       "name": "workspace",
@@ -58,6 +58,10 @@
     },
     {
       "name": "session_context_epoch",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_guard_trip",
       "entityType": "tables"
     },
     {
@@ -928,6 +932,86 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "guard",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "action",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "detail",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
       "table": "session_input"
     },
     {
@@ -1731,6 +1815,13 @@
     {
       "columns": ["id"],
       "nameExplicit": false,
+      "name": "session_guard_trip_pk",
+      "table": "session_guard_trip",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
       "name": "session_input_pk",
       "table": "session_input",
       "entityType": "pks"
@@ -1871,6 +1962,34 @@
       "name": "part_session_idx",
       "entityType": "indexes",
       "table": "part"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_guard_trip_session_idx",
+      "entityType": "indexes",
+      "table": "session_guard_trip"
+    },
+    {
+      "columns": [
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_guard_trip_created_idx",
+      "entityType": "indexes",
+      "table": "session_guard_trip"
     },
     {
       "columns": [

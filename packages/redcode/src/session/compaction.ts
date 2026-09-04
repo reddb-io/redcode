@@ -8,6 +8,7 @@ import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
 import { AuxDeadline } from "./aux-deadline"
+import { SessionGuardLog } from "./guard-log"
 import { Agent } from "@/agent/agent"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { Plugin } from "@/plugin"
@@ -202,6 +203,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const config = yield* Config.Service
+    const guards = yield* SessionGuardLog.Service
     const session = yield* Session.Service
     const agents = yield* Agent.Service
     const plugin = yield* Plugin.Service
@@ -485,6 +487,13 @@ const layer = Layer.effect(
               duration: Duration.millis(compactionMs),
               orElse: () =>
                 Effect.gen(function* () {
+                  yield* guards.record({
+                    sessionID: input.sessionID,
+                    guard: "aux",
+                    action: "stop",
+                    subject: "compaction",
+                    detail: AuxDeadline.message("compaction", compactionMs),
+                  })
                   yield* Effect.logWarning(AuxDeadline.message("compaction", compactionMs), {
                     "session.id": input.sessionID,
                   })
@@ -648,6 +657,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    SessionGuardLog.node,
     Config.node,
     Session.node,
     Agent.node,

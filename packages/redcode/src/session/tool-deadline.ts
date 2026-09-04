@@ -50,7 +50,7 @@ export const POLL_MS = 250
  */
 export const guard = <A, E, R>(
   self: Effect.Effect<A, E, R>,
-  input: { tool: string; ms: number; waitedMs: () => number },
+  input: { tool: string; ms: number; waitedMs: () => number; onExpire?: Effect.Effect<void> },
 ): Effect.Effect<A, E, R> =>
   Effect.raceFirst(
     self,
@@ -58,6 +58,7 @@ export const guard = <A, E, R>(
       const start = Date.now()
       const step = Duration.millis(Math.max(1, Math.min(input.ms, POLL_MS)))
       while (Date.now() - start - input.waitedMs() < input.ms) yield* Effect.sleep(step)
+      if (input.onExpire) yield* input.onExpire
       return yield* Effect.die(new Error(message(input)))
     }),
   )

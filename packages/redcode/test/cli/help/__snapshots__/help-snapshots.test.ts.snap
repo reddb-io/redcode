@@ -113,6 +113,7 @@ debugging and troubleshooting tools
 
 Commands:
   redcode debug config        show resolved configuration
+  redcode debug guards        how often the turn guards intervened, and on what
   redcode debug lsp           LSP debugging utilities
   redcode debug rg            ripgrep debugging utilities
   redcode debug file          file system debugging utilities

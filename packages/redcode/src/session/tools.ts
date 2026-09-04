@@ -27,6 +27,7 @@ import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { ToolDeadline } from "./tool-deadline"
+import type { SessionGuardLog } from "./guard-log"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 
@@ -55,6 +56,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   publishEvent: EventV2.Interface["publish"]
   structuredOutputTool?: AITool
   toolTimeout?: number | false
+  /** Passed in rather than resolved here: this module is used from callers that own the service. */
+  recordGuard: (trip: SessionGuardLog.Trip) => Effect.Effect<void>
 }) {
   const tools: Record<string, AITool> = {}
   const run = yield* EffectBridge.make()
@@ -129,6 +132,13 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   tool: toolID,
                   ms: deadline,
                   waitedMs: () => permissionWaitMs(options.toolCallId),
+                  onExpire: input.recordGuard({
+                    sessionID: input.session.id,
+                    guard: "tool_timeout",
+                    action: "stop",
+                    subject: toolID,
+                    detail: ToolDeadline.message({ tool: toolID, ms: deadline }),
+                  }),
                 })
             ).pipe(Effect.exit)
             if (Exit.isFailure(executed)) {

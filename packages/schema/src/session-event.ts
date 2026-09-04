@@ -162,6 +162,30 @@ export namespace Turn {
   export type Ended = typeof Ended.Type
 }
 
+export namespace Guard {
+  /**
+   * One of the turn's guards intervened.
+   *
+   * Live and observational: the guard has already acted by the time this is published, and the
+   * action itself reaches the user through the transcript. This exists so the intervention can be
+   * counted — thresholds were argued into place, and only evidence can argue them out.
+   */
+  export const Tripped = Event.define({
+    type: "session.next.guard.tripped",
+    schema: {
+      ...Base,
+      /** Which guard: stall, tool_timeout, loop, steps, aux. */
+      guard: Schema.String,
+      /** What it did: warn (said so, changed nothing), correct (answered the model), stop (ended it). */
+      action: Schema.String,
+      /** The tool, phase, or call it acted on, when there is one. */
+      subject: optional(Schema.String),
+      detail: Schema.String,
+    },
+  })
+  export type Tripped = typeof Tripped.Type
+}
+
 export const ContextUpdated = Event.define({
   type: "session.next.context.updated",
   ...options,
@@ -645,6 +669,7 @@ export const DurableDefinitions = Event.inventory(
 )
 
 export const Definitions = Event.inventory(
+  Guard.Tripped,
   AgentSwitched,
   ModelSwitched,
   Moved,

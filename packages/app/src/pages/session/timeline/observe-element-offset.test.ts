@@ -46,13 +46,16 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
   route.remove()
   document.body.append(route)
   await new Promise((resolve) => setTimeout(resolve, 0))
-  await frames(3)
+  // Waited for rather than counted in frames: three frames is plenty on a quiet machine and not
+  // enough on a loaded CI runner, and the difference has nothing to do with what is being tested.
+  await until(() => calls.length > 0)
   expect(calls).toEqual([[0, false]])
 
   route.remove()
   document.body.append(route)
   await new Promise((resolve) => setTimeout(resolve, 0))
   await frames(3)
+  // Still one call: the offset now matches, so there is nothing new to report.
   expect(calls).toEqual([[0, false]])
 
   cleanup?.()
@@ -232,6 +235,17 @@ test("reconnects when the batch reports the addition before the removal", async 
     route.remove()
   }
 })
+
+/** Waits for a condition across animation frames, up to a generous deadline. */
+async function until(condition: () => boolean, budgetMs = 2_000) {
+  const deadline = Date.now() + budgetMs
+  while (!condition() && Date.now() < deadline) {
+    await frames(1)
+    // A macrotask between frames: the observer's callback is delivered on one, and a loop of
+    // nothing but animation frames can starve it.
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+}
 
 async function frames(count: number) {
   for (let index = 0; index < count; index++) {
