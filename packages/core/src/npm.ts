@@ -69,6 +69,9 @@ interface ArboristTree {
   edgesOut: Map<string, { to?: ArboristNode }>
 }
 
+// Generous: a cold install of a large plugin over a slow link is minutes, not seconds.
+const REIFY_DEADLINE = "5 minutes"
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -105,7 +108,22 @@ const layer = Layer.effect(
               add,
               dir: input.dir,
             }),
-        }) as Effect.Effect<ArboristTree, InstallFailedError>
+        }).pipe(
+          // The install lock is held across this, and the heartbeat keeps refreshing while it
+          // runs, so a registry connection that never answers looks alive forever: the stale
+          // breaker never fires and every other process waits out the full lock timeout. A
+          // deadline turns that into a failure this caller can report and retry.
+          Effect.timeout(REIFY_DEADLINE),
+          Effect.catchTag("TimeoutError", () =>
+            Effect.fail(
+              new InstallFailedError({
+                cause: new Error(`npm install in ${input.dir} exceeded ${REIFY_DEADLINE}`),
+                add,
+                dir: input.dir,
+              }),
+            ),
+          ),
+        ) as Effect.Effect<ArboristTree, InstallFailedError>
       }).pipe(
         Effect.withSpan("Npm.reify", {
           attributes: input,
