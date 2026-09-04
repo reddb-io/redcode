@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { assess, LIMITS, limits, streak, type Part } from "@/session/loop-guard"
+import { assess, LIMITS, limits, repeats, streak, type Part } from "@/session/loop-guard"
 
 const call = (tool: string, input: unknown, output: string, status = "completed"): Part => ({
   type: "tool",
@@ -85,6 +85,45 @@ describe("loop guard", () => {
     expect(limits({ correct_at: 1 })).toBeUndefined()
     expect(limits()).toEqual(LIMITS)
     // A stop threshold below the warning would abort without ever correcting.
-    expect(limits({ correct_at: 4, stop_at: 2 })).toEqual({ correctAt: 4, stopAt: 4 })
+    expect(limits({ correct_at: 4, stop_at: 2 })).toEqual({ correctAt: 4, stopAt: 4, nudgeAt: LIMITS.nudgeAt })
+  })
+
+  test("notices a call that never stops being made, even when the answer keeps changing", () => {
+    // Comparing answers is what keeps polling out of trouble, and it is also the way through: an
+    // answer carrying a timestamp never repeats byte for byte, so this call would otherwise run
+    // forever without ever counting as repetition.
+    const ticking = (n: number) => call("bash", { command: "date" }, `now is ${n}`)
+    const next = { tool: "bash", input: { command: "date" } }
+    const parts = Array.from({ length: LIMITS.nudgeAt - 1 }, (_, i) => ticking(i))
+
+    // Never a repetition by the strict rule, at any point.
+    expect(streak(parts, next)).toBe(1)
+    const decision = assess({ parts, next, limits: LIMITS })
+    expect(decision.type).toBe("correct")
+    if (decision.type !== "correct") return
+    expect(decision.message).toContain(`${LIMITS.nudgeAt} times in a row`)
+    // It asks rather than refuses: polling looks exactly like this and is sometimes right.
+    expect(decision.message).toContain("If you are waiting for something")
+  })
+
+  test("says it once, not on every call from then on", () => {
+    const ticking = (n: number) => call("bash", { command: "date" }, `now is ${n}`)
+    const next = { tool: "bash", input: { command: "date" } }
+    const before = Array.from({ length: LIMITS.nudgeAt - 2 }, (_, i) => ticking(i))
+    const after = Array.from({ length: LIMITS.nudgeAt }, (_, i) => ticking(i))
+    expect(assess({ parts: before, next, limits: LIMITS }).type).toBe("ok")
+    expect(assess({ parts: after, next, limits: LIMITS }).type).toBe("ok")
+  })
+
+  test("a different call in between starts the count over", () => {
+    const ticking = (n: number) => call("bash", { command: "date" }, `now is ${n}`)
+    const next = { tool: "bash", input: { command: "date" } }
+    const parts = [
+      ...Array.from({ length: LIMITS.nudgeAt }, (_, i) => ticking(i)),
+      call("read", { path: "/a" }, "x"),
+      ...Array.from({ length: 2 }, (_, i) => ticking(i)),
+    ]
+    expect(repeats(parts, next)).toBe(2)
+    expect(assess({ parts, next, limits: LIMITS }).type).toBe("ok")
   })
 })

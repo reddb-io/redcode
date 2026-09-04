@@ -897,7 +897,7 @@ of spinning. Every one of them accepts `false` to remove the bound entirely.
   "experimental": {
     "turn_stall": { "warn_ms": 120000, "abort_ms": 600000 },
     "tool_timeout": 600000,
-    "loop_guard": { "correct_at": 3, "stop_at": 5 },
+    "loop_guard": { "correct_at": 3, "stop_at": 5, "nudge_at": 12 },
     "turn_steps": { "wrap_up_at": 198, "stop_at": 200 },
     "aux_timeout": 600000
   }
@@ -908,7 +908,7 @@ of spinning. Every one of them accepts `false` to remove the bound entirely.
 | --- | --- |
 | `turn_stall` | How long a turn may produce nothing before it is reported and, where nobody is watching, ended. Time a tool spends running or a permission spends awaiting an answer is not silence. In the TUI and desktop app the turn is reported rather than ended, since a person is there to read it. |
 | `tool_timeout` | How long a single tool may run. Tools that carry their own deadline, wait for a person, or run a whole child turn are exempt, and time spent waiting on a permission prompt is not charged against it. |
-| `loop_guard` | How many identical tool calls in a row — same arguments, same result — before the model is told it is repeating itself, and before the turn ends. Identical calls that return different results are polling, and are left alone. |
+| `loop_guard` | How many identical tool calls in a row — same arguments, same result — before the model is told it is repeating itself, and before the turn ends. Identical calls that return different results are polling, and are left alone — up to `nudge_at`, where the repetition is mentioned once and the call still runs, so an answer carrying a timestamp cannot repeat forever unnoticed. |
 | `turn_steps` | How many steps a turn may run before the model is asked to stop and report what it did, and before the turn is stopped outright. |
 | `aux_timeout` | How long the calls around a turn — naming the session, compacting the conversation — may wait for a provider. Neither failure fails the turn. |
 
