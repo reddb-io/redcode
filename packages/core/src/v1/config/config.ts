@@ -182,6 +182,10 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      aux_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
+        description:
+          "Milliseconds the calls around a turn - naming the session, compacting the conversation - may wait for a provider before being given up on (defaults: 120000 and 600000). Set to false to remove the bound.",
+      }),
       turn_steps: Schema.optional(
         Schema.Union([
           Schema.Literal(false),
