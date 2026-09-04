@@ -206,6 +206,7 @@ function fake(
     activeToolCount: 0,
     updateToolCall: Effect.fn("TestSessionProcessor.updateToolCall")(() => Effect.succeed(undefined)),
     completeToolCall: Effect.fn("TestSessionProcessor.completeToolCall")(() => Effect.void),
+    guardLoop: Effect.fn("TestSessionProcessor.guardLoop")(() => Effect.succeed({ type: "ok" as const })),
     process: Effect.fn("TestSessionProcessor.process")(() => Effect.succeed(result)),
   } satisfies SessionProcessorModule.SessionProcessor.Handle
 }
