@@ -1417,6 +1417,50 @@ it.instance("leaves a turn alone while a tool is still running", () =>
   }),
 )
 
+it.instance("stops a tool that never returns and hands the failure to the model", () =>
+  Effect.gen(function* () {
+    // The gap the turn watchdog cannot close: a tool in flight counts as work, so a tool that
+    // never returns holds the turn open forever with no output and no error.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      experimental: { tool_timeout: 500 },
+    }))
+    const registry = yield* ToolRegistry.Service
+    const { read } = yield* registry.named()
+    const { ready, restore } = yield* hangUntilAborted(read)
+    yield* restore
+
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id)
+
+    yield* llm.tool("read", { filePath: "/tmp/whatever" })
+    yield* llm.text("that path does not answer")
+    yield* user(chat.id, "more")
+
+    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+    yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
+
+    // The turn finishes on its own: no cancel, no interrupt, well inside a timeout that would
+    // catch the old wedge.
+    yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
+
+    const messages = yield* sessions.messages({ sessionID: chat.id })
+    const assistant = messages.findLast(
+      (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
+    )
+    // Not an aborted turn — an ordinary tool failure the model was free to answer.
+    expect(assistant?.info.error).toBeUndefined()
+    const failed = messages
+      .flatMap((item) => item.parts)
+      .find((part) => part.type === "tool" && part.state.status === "error")
+    expect(failed).toBeDefined()
+    expect((failed as { state: { error: string } }).state.error).toMatch(/read tool was still running/)
+  }),
+  30_000,
+)
+
 it.instance("cancel records MessageAbortedError on interrupted process", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
