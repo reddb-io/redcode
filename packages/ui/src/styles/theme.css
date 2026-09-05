@@ -278,6 +278,7 @@
   --icon-on-brand-selected: rgba(0, 0, 0, 0.915);
   --icon-on-interactive-base: #fcfcfc;
   --icon-agent-plan-base: #a753ae;
+  --icon-agent-design-base: #0e8ea3;
   --icon-agent-docs-base: #fcb239;
   --icon-agent-ask-base: #2090f5;
   --icon-agent-build-base: #034cff;
@@ -549,6 +550,7 @@
     --icon-on-brand-selected: rgba(255, 255, 255, 0.928);
     --icon-on-interactive-base: #ededed;
     --icon-agent-plan-base: #edb2f1;
+    --icon-agent-design-base: #2ab3c8;
     --icon-agent-docs-base: #fbb73c;
     --icon-agent-ask-base: #2090f5;
     --icon-agent-build-base: #9dbefe;

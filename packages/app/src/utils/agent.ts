@@ -1,6 +1,7 @@
 const defaults: Record<string, string> = {
   ask: "var(--icon-agent-ask-base)",
   build: "var(--icon-agent-build-base)",
+  design: "var(--icon-agent-design-base)",
   docs: "var(--icon-agent-docs-base)",
   plan: "var(--icon-agent-plan-base)",
 }
@@ -27,7 +28,9 @@ function tone(name: string) {
 }
 
 export function agentColor(name: string, custom?: string) {
-  if (custom) return custom
+  // A hex is a colour; a theme name ("accent") is the TUI's vocabulary and means nothing to CSS,
+  // so it falls through to the app's own token for that agent.
+  if (custom?.startsWith("#")) return custom
   return defaults[name] ?? defaults[name.toLowerCase()] ?? tone(name.toLowerCase())
 }
 

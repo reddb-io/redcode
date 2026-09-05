@@ -196,6 +196,16 @@ function createKnightRiderTrail(options: AdvancedGradientOptions): ColorGenerato
  * @param steps Number of gradient steps (default: 6)
  * @returns Array of RGBA colors with alpha-based trail fade (background-independent)
  */
+/**
+ * The bright head of a scanner, from the colour of its body: the same hue, pulled toward white.
+ * Each agent's loading bar keeps its own colour end to end, instead of every bar sharing the
+ * theme's accent for a head.
+ */
+export function deriveHeadColor(color: RGBA, amount = 0.35): RGBA {
+  const up = (c: number) => Math.min(1, c + (1 - c) * amount)
+  return RGBA.fromValues(up(color.r), up(color.g), up(color.b), color.a)
+}
+
 export function deriveTrailColors(brightColor: ColorInput, steps: number = 6): RGBA[] {
   const baseRgba = brightColor instanceof RGBA ? brightColor : RGBA.fromHex(brightColor as string)
 

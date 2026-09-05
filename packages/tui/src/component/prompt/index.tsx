@@ -42,7 +42,7 @@ import type { AssistantMessage, FilePart, UserMessage } from "@reddb-io/redcode-
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
-import { createColors, createFrames } from "../../ui/spinner"
+import { createColors, createFrames, deriveHeadColor } from "../../ui/spinner"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
@@ -1386,7 +1386,7 @@ export function Prompt(props: PromptProps) {
     return {
       frames: createFrames({
         color,
-        headColor: theme.accent,
+        headColor: deriveHeadColor(color),
         style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
@@ -1394,7 +1394,7 @@ export function Prompt(props: PromptProps) {
       }),
       color: createColors({
         color,
-        headColor: theme.accent,
+        headColor: deriveHeadColor(color),
         style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
