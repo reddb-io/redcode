@@ -28,17 +28,25 @@ test.beforeEach(async ({ page }) => {
     session.title = payload.title
     await route.fulfill({ json: session, headers: { "access-control-allow-origin": "*" } })
   })
-  await page.addInitScript((directory) => {
-    localStorage.setItem(
-      "opencode.global.dat:server",
-      JSON.stringify({
-        projects: { local: [{ worktree: directory, expanded: true }] },
-        lastProject: { local: directory },
-      }),
-    )
-  }, fixture.directory)
+  // Upstream reaches the session by clicking a row on its home page. Ours opens straight into a
+  // new-session composer, so the session is opened the way our other specs do it: as a tab.
+  const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"}`
+  await page.addInitScript(
+    ({ directory, server, sessionId }) => {
+      localStorage.setItem(
+        "opencode.global.dat:server",
+        JSON.stringify({
+          projects: { local: [{ worktree: directory, expanded: true }] },
+          lastProject: { local: directory },
+        }),
+      )
+      localStorage.setItem("opencode.window.browser.dat:tabs", JSON.stringify([{ type: "session", server, sessionId }]))
+    },
+    { directory: fixture.directory, server, sessionId: fixture.targetID },
+  )
   await page.goto("/")
-  await page.locator('[data-component="home-session-row"]').filter({ hasText: fixture.expected.targetTitle }).click()
+  // Our entry lands on a fresh composer tab even with a session tab restored; switch to it.
+  await page.locator('[data-slot="titlebar-tabs"] a').filter({ hasText: fixture.expected.targetTitle }).click()
   await expect(page.getByRole("heading", { name: fixture.expected.targetTitle, exact: true })).toBeVisible()
 })
 
