@@ -74,7 +74,8 @@ export async function git(args: string[], opts: { cwd?: string; check?: boolean 
 /** Full SHAs of every upstream commit our history says it ported, from trailers and the seed file. */
 export async function ported(root: string): Promise<Set<string>> {
   const out = new Set<string>()
-  const log = await git(["log", "--format=%B", "main"], { cwd: root })
+  // HEAD, not main: a port on a branch counts while the branch is being worked on.
+  const log = await git(["log", "--format=%B", "HEAD"], { cwd: root })
   const trailer = new RegExp(`^${TRAILER}:\\s*([0-9a-f]{7,40})\\s*$`, "gim")
   const short = new Set<string>()
   for (const m of log.stdout.matchAll(trailer)) short.add(m[1]!)
