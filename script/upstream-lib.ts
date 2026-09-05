@@ -82,8 +82,11 @@ export async function ported(root: string): Promise<Set<string>> {
   const seed = await Bun.file(`${root}/script/upstream-ported.txt`)
     .text()
     .catch(() => "")
+  // A line is a SHA, optionally followed by `# why` — ported elsewhere, superseded, or declined.
+  // Declined counts as accounted for: the ledger's question is "did someone decide?", not "did
+  // the code come across?".
   for (const line of seed.split("\n")) {
-    const sha = line.trim()
+    const sha = line.trim().split(/\s+/)[0] ?? ""
     if (sha && !sha.startsWith("#")) short.add(sha)
   }
   for (const sha of short) {
