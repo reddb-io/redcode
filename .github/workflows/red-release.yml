@@ -17,12 +17,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    env:
-      # The version commit and the tag are pushed by the changesets action, and a push runs the
-      # husky pre-push hook: a typecheck of every package, for a commit that only bumps versions.
-      # It was killed for memory mid-run and took the release with it. Hooks are for developers;
-      # this workflow's inputs were typechecked on the PR that produced them.
-      HUSKY: 0
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:

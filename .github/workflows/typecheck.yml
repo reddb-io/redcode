@@ -9,7 +9,12 @@ on:
 
 jobs:
   typecheck:
+    name: typecheck (${{ matrix.shard }}/5)
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -17,5 +22,8 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
+      # One slice of the workspace per job: all 37 packages at once is more than a 4-vCPU runner
+      # can hold, and the job that tried used to die mid-run. Assignment is by sorted package
+      # name (see script/typecheck-shard.ts), so a failure names the package.
       - name: Run typecheck
-        run: bun typecheck
+        run: bun script/typecheck-shard.ts $((${{ matrix.shard }} - 1)) 5
