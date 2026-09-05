@@ -4,7 +4,7 @@ import path from "node:path"
 import { RGBA, type TerminalColors } from "@opentui/core"
 import { DEFAULT_THEME, DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
-import { createColors } from "../src/ui/spinner"
+import { createColors, deriveHeadColor } from "../src/ui/spinner"
 import reddbTokens from "../src/theme/assets/reddb-tokens.json"
 import { tmpdir } from "./fixture/fixture"
 
@@ -96,7 +96,7 @@ test("redcode focuses Build and its scanner with the RedDB palette", () => {
   for (const mode of ["dark", "light"] as const) {
     const theme = resolveTheme(source, mode)
     const build = theme.secondary
-    const scanner = createColors({ color: build, headColor: theme.accent, enableFading: false })
+    const scanner = createColors({ color: build, headColor: deriveHeadColor(build), enableFading: false })
 
     expect(theme.primary.toInts()).toEqual([255, 32, 86, 255])
     expect(build.toInts()).toEqual([255, 32, 86, 255])
@@ -104,7 +104,12 @@ test("redcode focuses Build and its scanner with the RedDB palette", () => {
     const scannerHead = scanner(0, 0, 1, 8)
     expect(scannerHead).toBeInstanceOf(RGBA)
     if (!(scannerHead instanceof RGBA)) throw new Error("scanner head did not resolve to RGBA")
-    expect(scannerHead.toInts()).toEqual([255, 99, 137, 255])
+    // The head is the build red pulled toward white, not the theme's accent: plan is gold and
+    // design is cyan now, and each one's scanner stays its own colour end to end.
+    expect(scannerHead.toInts()).toEqual(deriveHeadColor(build).toInts())
+    expect(scannerHead.toInts()).not.toEqual(theme.accent.toInts())
+    const agents = [theme.secondary, theme.accent, theme.info].map((color) => color.toInts().join(","))
+    expect(new Set(agents).size).toBe(3)
     const semantic = [theme.success, theme.warning, theme.error].map((color) => color.toInts().join(","))
     expect(new Set(semantic).size).toBe(3)
     expect(semantic).not.toContain(theme.primary.toInts().join(","))

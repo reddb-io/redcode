@@ -315,6 +315,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-on-interactive-base"] = on(interb)
 
   tokens["icon-agent-plan-base"] = info[8]
+  tokens["icon-agent-design-base"] = isDark ? "#2ab3c8" : "#0e8ea3"
   tokens["icon-agent-docs-base"] = amber[8]
   tokens["icon-agent-ask-base"] = blue[8]
   tokens["icon-agent-build-base"] = interactive[isDark ? 10 : 8]

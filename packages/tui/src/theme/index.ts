@@ -138,12 +138,22 @@ const redcode: ThemeJson = {
     reddbRed700: reddbTokens.color.red["700"],
     reddbInk: reddbTokens.color.neutral["950"],
     reddbPaper: reddbTokens.color.neutral["50"],
+    // The two colours beside the brand red: gold for plan, a cyan a shade under bright for design.
+    // Each agent is named by its slot below, so the palette never depends on list order again.
+    reddbGoldDark: "#e3b341",
+    reddbGoldLight: "#b8860b",
+    reddbCyanDark: "#2ab3c8",
+    reddbCyanLight: "#0e8ea3",
   },
   theme: {
     ...opencode.theme,
     primary: "reddbRed500",
+    // build
     secondary: "reddbRed500",
-    accent: "reddbRed400",
+    // plan
+    accent: { dark: "reddbGoldDark", light: "reddbGoldLight" },
+    // design
+    info: { dark: "reddbCyanDark", light: "reddbCyanLight" },
     selectedListItemText: "reddbInk",
     borderActive: "reddbRed600",
     text: {
