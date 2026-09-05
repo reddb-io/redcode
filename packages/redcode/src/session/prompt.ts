@@ -702,7 +702,19 @@ const layer = Layer.effect(
     })
 
     const createUserMessage = Effect.fn("SessionPrompt.createUserMessage")(function* (input: PromptInput) {
-      const agentName = input.agent
+      // A prompt that names no agent continues the conversation it lands in: the agent of the
+      // last user message, not the default. Callers that inject messages — design feedback from
+      // the browser, orphan recovery, plugins — must not flip a plan or design session to build.
+      const agentName =
+        input.agent ??
+        (yield* sessions
+          .findMessage(input.sessionID, (m) => m.info.role === "user" && !!m.info.agent)
+          .pipe(
+            Effect.map((match) =>
+              Option.isSome(match) && match.value.info.role === "user" ? match.value.info.agent : undefined,
+            ),
+            Effect.orElseSucceed(() => undefined),
+          ))
       const ag = agentName ? yield* agents.get(agentName) : yield* agents.defaultInfo()
       if (!ag) {
         const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)

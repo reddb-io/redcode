@@ -469,37 +469,71 @@ noLLMServer.instance(
   { config: cfg },
 )
 
-it.instance("asks for a report before the step ceiling instead of cutting the turn off at it", () =>
+it.instance("a prompt that names no agent continues the conversation's agent, not the default", () =>
   Effect.gen(function* () {
-    // The ceiling used to be a cliff: at the wall the turn was cut off and everything worked out
-    // but not written down went with it, leaving the user told to "send another message" with
-    // nothing to send it about.
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { turn_steps: { stop_at: 3, wrap_up_at: 2 } },
-    }))
+    // Injected messages — design feedback from the browser, orphan recovery, plugins — arrive
+    // without an agent. They must not flip a plan or design session to build.
+    yield* useServerConfig((url) => providerCfg(url))
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
+    const chat = yield* sessions.create({ title: "Continuity" })
 
     yield* prompt.prompt({
       sessionID: chat.id,
-      agent: "build",
+      agent: "plan",
       noReply: true,
-      parts: [{ type: "text", text: "keep going" }],
+      parts: [{ type: "text", text: "plan this" }],
     })
-    // Never finishing on its own: only the budget ends this turn.
-    yield* llm.tool("todowrite", { todos: [{ content: "one", status: "in_progress", priority: "high" }] })
-    yield* llm.tool("todowrite", { todos: [{ content: "two", status: "in_progress", priority: "high" }] })
-    yield* llm.text("here is what I did and what is left")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "a note from the browser" }],
+    })
 
-    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+    const users = (yield* sessions.messages({ sessionID: chat.id })).filter((m) => m.info.role === "user")
+    expect(users.map((m) => (m.info.role === "user" ? m.info.agent : undefined))).toEqual(["plan", "plan"])
 
-    const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
-    // First step runs normally; the step before the wall carries the request for a final report.
-    expect(bodies[0]).not.toContain("MAXIMUM STEPS REACHED")
-    expect(bodies[1]).toContain("MAXIMUM STEPS REACHED")
+    // With no history at all, the default still applies.
+    const fresh = yield* sessions.create({ title: "Fresh" })
+    yield* prompt.prompt({ sessionID: fresh.id, noReply: true, parts: [{ type: "text", text: "hi" }] })
+    const first = (yield* sessions.messages({ sessionID: fresh.id })).find((m) => m.info.role === "user")
+    expect(first?.info.role === "user" ? first.info.agent : undefined).toBe("build")
   }),
+)
+
+it.instance(
+  "asks for a report before the step ceiling instead of cutting the turn off at it",
+  () =>
+    Effect.gen(function* () {
+      // The ceiling used to be a cliff: at the wall the turn was cut off and everything worked out
+      // but not written down went with it, leaving the user told to "send another message" with
+      // nothing to send it about.
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { turn_steps: { stop_at: 3, wrap_up_at: 2 } },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "keep going" }],
+      })
+      // Never finishing on its own: only the budget ends this turn.
+      yield* llm.tool("todowrite", { todos: [{ content: "one", status: "in_progress", priority: "high" }] })
+      yield* llm.tool("todowrite", { todos: [{ content: "two", status: "in_progress", priority: "high" }] })
+      yield* llm.text("here is what I did and what is left")
+
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+
+      const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
+      // First step runs normally; the step before the wall carries the request for a final report.
+      expect(bodies[0]).not.toContain("MAXIMUM STEPS REACHED")
+      expect(bodies[1]).toContain("MAXIMUM STEPS REACHED")
+    }),
   60_000,
 )
 
@@ -739,7 +773,10 @@ it.instance("runs Location-scoped V2 operation hooks", () =>
                 next({ ...event.data, system: [...event.data.system, "V2 operation hook marker"] }),
               )
               yield* ctx.hook.waterfall(Operation.Tool.PreExecute, (event, next) =>
-                next({ ...event.data, args: { ...event.data.args, command: `printf hook > ${JSON.stringify(output)}` } }),
+                next({
+                  ...event.data,
+                  args: { ...event.data.args, command: `printf hook > ${JSON.stringify(output)}` },
+                }),
               )
               yield* ctx.hook.parallel(Operation.Tool.PostExecute, (event) => {
                 post.push({ failed: event.data.failed, command: event.data.args.command })
@@ -748,9 +785,7 @@ it.instance("runs Location-scoped V2 operation hooks", () =>
         }).effect,
       )
     }).pipe(
-      Effect.provide(
-        locations.get(Location.Ref.make({ directory: AbsolutePath.make(test.directory) })),
-      ),
+      Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(test.directory) }))),
       Effect.orDie,
     )
 
@@ -1375,42 +1410,44 @@ it.instance("cancel interrupts loop and resolves with an assistant message", () 
   }),
 )
 
-it.instance("ends a turn whose provider goes quiet, and says so on the message", () =>
-  Effect.gen(function* () {
-    // Short enough for a test, long enough to survive the gap between creating the step handle and
-    // the provider's first byte. At 1 ms and 2 ms the watchdog was correct and the test was wrong:
-    // it ended the turn during that gap — which is exactly the case it exists for — before the
-    // request went out at all, so on a slow machine the provider was never called.
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { turn_stall: { warn_ms: 500, abort_ms: 1500 } },
-    }))
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
-    yield* seed(chat.id)
+it.instance(
+  "ends a turn whose provider goes quiet, and says so on the message",
+  () =>
+    Effect.gen(function* () {
+      // Short enough for a test, long enough to survive the gap between creating the step handle and
+      // the provider's first byte. At 1 ms and 2 ms the watchdog was correct and the test was wrong:
+      // it ended the turn during that gap — which is exactly the case it exists for — before the
+      // request went out at all, so on a slow machine the provider was never called.
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { turn_stall: { warn_ms: 500, abort_ms: 1500 } },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      yield* seed(chat.id)
 
-    yield* llm.hang
-    yield* user(chat.id, "more")
+      yield* llm.hang
+      yield* user(chat.id, "more")
 
-    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-    // Each stage names itself: an unadorned wait here reports only bun's "timed out", which says
-    // nothing about whether the provider was ever called or the turn ever started.
-    yield* awaitWithTimeout(llm.wait(1), "the provider was never called", "20 seconds")
-    yield* awaitWithTimeout(waitForBusy(chat.id), "the session never went busy", "20 seconds")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      // Each stage names itself: an unadorned wait here reports only bun's "timed out", which says
+      // nothing about whether the provider was ever called or the turn ever started.
+      yield* awaitWithTimeout(llm.wait(1), "the provider was never called", "20 seconds")
+      yield* awaitWithTimeout(waitForBusy(chat.id), "the session never went busy", "20 seconds")
 
-    // No cancel of our own: the watchdog is the only thing that can end this.
-    const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "20 seconds")
-    expect(Exit.isSuccess(exit)).toBe(true)
+      // No cancel of our own: the watchdog is the only thing that can end this.
+      const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "20 seconds")
+      expect(Exit.isSuccess(exit)).toBe(true)
 
-    const messages = yield* sessions.messages({ sessionID: chat.id })
-    const assistant = messages.findLast(
-      (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
-    )
-    expect(assistant?.info.error?.name).toBe("MessageAbortedError")
-    // The reason is what keeps this from reading as though the user pressed escape.
-    expect((assistant?.info.error?.data as { message?: string } | undefined)?.message).toMatch(/^stopped: no output/)
-  }),
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const assistant = messages.findLast(
+        (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
+      )
+      expect(assistant?.info.error?.name).toBe("MessageAbortedError")
+      // The reason is what keeps this from reading as though the user pressed escape.
+      expect((assistant?.info.error?.data as { message?: string } | undefined)?.message).toMatch(/^stopped: no output/)
+    }),
   // The inner guard was 40 s against a 30 s test timeout, so it could never fire: a slow instance
   // setup killed the test with bun's own message instead of the one that says what went wrong.
   // Room for the setup, and the guard now reports first.
@@ -1461,187 +1498,201 @@ it.instance("leaves a turn alone while a tool is still running", () =>
   }),
 )
 
-it.instance("stops a tool that never returns and hands the failure to the model", () =>
-  Effect.gen(function* () {
-    // The gap the turn watchdog cannot close: a tool in flight counts as work, so a tool that
-    // never returns holds the turn open forever with no output and no error.
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { tool_timeout: 500 },
-    }))
-    const registry = yield* ToolRegistry.Service
-    const { read } = yield* registry.named()
-    const { ready, restore } = yield* hangUntilAborted(read)
-    yield* restore
+it.instance(
+  "stops a tool that never returns and hands the failure to the model",
+  () =>
+    Effect.gen(function* () {
+      // The gap the turn watchdog cannot close: a tool in flight counts as work, so a tool that
+      // never returns holds the turn open forever with no output and no error.
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { tool_timeout: 500 },
+      }))
+      const registry = yield* ToolRegistry.Service
+      const { read } = yield* registry.named()
+      const { ready, restore } = yield* hangUntilAborted(read)
+      yield* restore
 
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
-    yield* seed(chat.id)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      yield* seed(chat.id)
 
-    yield* llm.tool("read", { filePath: "/tmp/whatever" })
-    yield* llm.text("that path does not answer")
-    yield* user(chat.id, "more")
+      yield* llm.tool("read", { filePath: "/tmp/whatever" })
+      yield* llm.text("that path does not answer")
+      yield* user(chat.id, "more")
 
-    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-    yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
 
-    // The turn finishes on its own: no cancel, no interrupt, well inside a timeout that would
-    // catch the old wedge.
-    yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
+      // The turn finishes on its own: no cancel, no interrupt, well inside a timeout that would
+      // catch the old wedge.
+      yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
 
-    const messages = yield* sessions.messages({ sessionID: chat.id })
-    const assistant = messages.findLast(
-      (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
-    )
-    // Not an aborted turn — an ordinary tool failure the model was free to answer.
-    expect(assistant?.info.error).toBeUndefined()
-    const failed = messages
-      .flatMap((item) => item.parts)
-      .find((part) => part.type === "tool" && part.state.status === "error")
-    expect(failed).toBeDefined()
-    expect((failed as { state: { error: string } }).state.error).toMatch(/read tool was still running/)
-  }),
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const assistant = messages.findLast(
+        (item): item is (typeof messages)[number] & { info: SessionV1.Assistant } => item.info.role === "assistant",
+      )
+      // Not an aborted turn — an ordinary tool failure the model was free to answer.
+      expect(assistant?.info.error).toBeUndefined()
+      const failed = messages
+        .flatMap((item) => item.parts)
+        .find((part) => part.type === "tool" && part.state.status === "error")
+      expect(failed).toBeDefined()
+      expect((failed as { state: { error: string } }).state.error).toMatch(/read tool was still running/)
+    }),
   30_000,
 )
 
-it.instance("corrects a model that repeats itself, then ends the turn if nothing changes", () =>
-  Effect.gen(function* () {
-    // The old detector needed three byte-identical parts in a row, so one reasoning part hid the
-    // loop, and when it did fire it asked the user a question that could wait forever.
-    const { llm, dir } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { loop_guard: { correct_at: 2, stop_at: 3 } },
-    }))
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
-    yield* seed(chat.id)
+it.instance(
+  "corrects a model that repeats itself, then ends the turn if nothing changes",
+  () =>
+    Effect.gen(function* () {
+      // The old detector needed three byte-identical parts in a row, so one reasoning part hid the
+      // loop, and when it did fire it asked the user a question that could wait forever.
+      const { llm, dir } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { loop_guard: { correct_at: 2, stop_at: 3 } },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      yield* seed(chat.id)
 
-    // Inside the instance directory: an external path would stop on a permission prompt instead.
-    const same = { filePath: path.join(dir, "not-here.txt") }
-    yield* llm.tool("read", same)
-    yield* llm.tool("read", same)
-    yield* llm.tool("read", same)
-    yield* llm.text("giving up")
-    yield* user(chat.id, "read that file")
+      // Inside the instance directory: an external path would stop on a permission prompt instead.
+      const same = { filePath: path.join(dir, "not-here.txt") }
+      yield* llm.tool("read", same)
+      yield* llm.tool("read", same)
+      yield* llm.tool("read", same)
+      yield* llm.text("giving up")
+      yield* user(chat.id, "read that file")
 
-    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
 
-    const parts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((item) => item.parts)
-    const errors = parts.flatMap((part) =>
-      part.type === "tool" && part.state.status === "error" ? [part.state.error] : [],
-    )
-    // The second identical call is answered by the guard, not by running the tool again, and the
-    // model is told exactly what it repeated.
-    expect(errors.some((text) => text.includes("identical arguments"))).toBe(true)
-    // The third ends the turn rather than asking anyone whether to keep going.
-    expect(errors.some((text) => text.startsWith("Stopped:"))).toBe(true)
-  }),
+      const parts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((item) => item.parts)
+      const errors = parts.flatMap((part) =>
+        part.type === "tool" && part.state.status === "error" ? [part.state.error] : [],
+      )
+      // The second identical call is answered by the guard, not by running the tool again, and the
+      // model is told exactly what it repeated.
+      expect(errors.some((text) => text.includes("identical arguments"))).toBe(true)
+      // The third ends the turn rather than asking anyone whether to keep going.
+      expect(errors.some((text) => text.startsWith("Stopped:"))).toBe(true)
+    }),
   60_000,
 )
 
-it.instance("does not let naming the session hold up the turn", () =>
-  Effect.gen(function* () {
-    // Naming happens inside the turn loop against a small model, and it is not covered by the
-    // turn's watchdog, so a provider that stops answering there used to hold up the work the user
-    // actually asked for with nothing on screen.
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { aux_timeout: 500 },
-    }))
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    // The name is only generated for a session still carrying its default one.
-    const title = `New session - ${new Date().toISOString()}`
-    const chat = yield* sessions.create({ title })
+it.instance(
+  "does not let naming the session hold up the turn",
+  () =>
+    Effect.gen(function* () {
+      // Naming happens inside the turn loop against a small model, and it is not covered by the
+      // turn's watchdog, so a provider that stops answering there used to hold up the work the user
+      // actually asked for with nothing on screen.
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { aux_timeout: 500 },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      // The name is only generated for a session still carrying its default one.
+      const title = `New session - ${new Date().toISOString()}`
+      const chat = yield* sessions.create({ title })
 
-    yield* llm.hangTitles
-    yield* prompt.prompt({
-      sessionID: chat.id,
-      agent: "build",
-      noReply: true,
-      parts: [{ type: "text", text: "say something" }],
-    })
-    yield* llm.text("done")
+      yield* llm.hangTitles
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "say something" }],
+      })
+      yield* llm.text("done")
 
-    const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "20 seconds")
+      const result = yield* awaitWithTimeout(
+        prompt.loop({ sessionID: chat.id }),
+        "the turn never finished",
+        "20 seconds",
+      )
 
-    // The turn produced its answer; only the name was given up on.
-    expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
-    expect((yield* sessions.get(chat.id)).title).toBe(title)
-  }),
+      // The turn produced its answer; only the name was given up on.
+      expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
+      expect((yield* sessions.get(chat.id)).title).toBe(title)
+    }),
   60_000,
 )
 
-it.instance("writes down that a guard intervened, so the thresholds can be argued from evidence", () =>
-  Effect.gen(function* () {
-    // Every threshold in the guards was chosen by argument. This is the record that lets the next
-    // one be chosen by measurement: which guard fired, on what, how often.
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      experimental: { tool_timeout: 500 },
-    }))
-    const registry = yield* ToolRegistry.Service
-    const { read } = yield* registry.named()
-    const { ready, restore } = yield* hangUntilAborted(read)
-    yield* restore
+it.instance(
+  "writes down that a guard intervened, so the thresholds can be argued from evidence",
+  () =>
+    Effect.gen(function* () {
+      // Every threshold in the guards was chosen by argument. This is the record that lets the next
+      // one be chosen by measurement: which guard fired, on what, how often.
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { tool_timeout: 500 },
+      }))
+      const registry = yield* ToolRegistry.Service
+      const { read } = yield* registry.named()
+      const { ready, restore } = yield* hangUntilAborted(read)
+      yield* restore
 
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const guards = yield* SessionGuardLog.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
-    yield* seed(chat.id)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      yield* seed(chat.id)
 
-    yield* llm.tool("read", { filePath: "/tmp/whatever" })
-    yield* llm.text("that path does not answer")
-    yield* user(chat.id, "more")
+      yield* llm.tool("read", { filePath: "/tmp/whatever" })
+      yield* llm.text("that path does not answer")
+      yield* user(chat.id, "more")
 
-    const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-    yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
-    yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
+      yield* awaitWithTimeout(Fiber.await(fiber), "the turn never finished", "20 seconds")
 
-    const trips = yield* guards.recent()
-    const timeout = trips.find((trip) => trip.guard === "tool_timeout")
-    expect(timeout).toBeDefined()
-    expect(timeout?.action).toBe("stop")
-    expect(timeout?.subject).toBe("read")
-    expect(timeout?.sessionID).toBe(chat.id)
-    // And it aggregates, which is what makes a week of use readable.
-    expect(yield* guards.summary()).toContainEqual({ guard: "tool_timeout", action: "stop", count: 1 })
-  }),
+      const trips = yield* guards.recent()
+      const timeout = trips.find((trip) => trip.guard === "tool_timeout")
+      expect(timeout).toBeDefined()
+      expect(timeout?.action).toBe("stop")
+      expect(timeout?.subject).toBe("read")
+      expect(timeout?.sessionID).toBe(chat.id)
+      // And it aggregates, which is what makes a week of use readable.
+      expect(yield* guards.summary()).toContainEqual({ guard: "tool_timeout", action: "stop", count: 1 })
+    }),
   60_000,
 )
 
-it.instance("closes a turn left open by a process that died, instead of carrying it forever", () =>
-  Effect.gen(function* () {
-    // `time.completed` is written by the process running the turn. Killed mid-turn — an OOM, a
-    // machine asleep — nobody writes it, and the message stays open for the rest of the session's
-    // life: the TUI reads open as "in progress" and stamps QUEUED on everything typed after it,
-    // across restarts, with nothing running.
-    const { llm } = yield* useServerConfig(providerCfg)
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const guards = yield* SessionGuardLog.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
+it.instance(
+  "closes a turn left open by a process that died, instead of carrying it forever",
+  () =>
+    Effect.gen(function* () {
+      // `time.completed` is written by the process running the turn. Killed mid-turn — an OOM, a
+      // machine asleep — nobody writes it, and the message stays open for the rest of the session's
+      // life: the TUI reads open as "in progress" and stamps QUEUED on everything typed after it,
+      // across restarts, with nothing running.
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
 
-    const seeded = yield* seed(chat.id)
-    // Exactly what a killed process leaves behind: an assistant message with no completion.
-    const abandoned = { ...seeded.assistant, time: { created: seeded.assistant.time.created } }
-    yield* sessions.updateMessage(abandoned)
-    expect((yield* sessions.messages({ sessionID: chat.id })).some((m) => m.info.id === abandoned.id)).toBe(true)
+      const seeded = yield* seed(chat.id)
+      // Exactly what a killed process leaves behind: an assistant message with no completion.
+      const abandoned = { ...seeded.assistant, time: { created: seeded.assistant.time.created } }
+      yield* sessions.updateMessage(abandoned)
+      expect((yield* sessions.messages({ sessionID: chat.id })).some((m) => m.info.id === abandoned.id)).toBe(true)
 
-    yield* llm.text("carrying on")
-    yield* user(chat.id, "still there?")
-    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+      yield* llm.text("carrying on")
+      yield* user(chat.id, "still there?")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
 
-    const messages = yield* sessions.messages({ sessionID: chat.id })
-    const reaped = messages.find((item) => item.info.id === abandoned.id)
-    expect(reaped?.info.role === "assistant" && reaped.info.time.completed).toBeTruthy()
-    expect((reaped?.info as SessionV1.Assistant).error?.name).toBe("MessageAbortedError")
-    // And it is counted, so a week of these says the OOM came back.
-    expect((yield* guards.summary()).some((row) => row.guard === "orphan")).toBe(true)
-  }),
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const reaped = messages.find((item) => item.info.id === abandoned.id)
+      expect(reaped?.info.role === "assistant" && reaped.info.time.completed).toBeTruthy()
+      expect((reaped?.info as SessionV1.Assistant).error?.name).toBe("MessageAbortedError")
+      // And it is counted, so a week of these says the OOM came back.
+      expect((yield* guards.summary()).some((row) => row.guard === "orphan")).toBe(true)
+    }),
   60_000,
 )
 
