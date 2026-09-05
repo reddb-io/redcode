@@ -19,7 +19,6 @@
         "@types/mime-types": "3.0.1",
         "@typescript/native-preview": "catalog:",
         "glob": "13.0.5",
-        "husky": "9.1.7",
         "oxlint": "1.60.0",
         "oxlint-tsgolint": "0.21.0",
         "prettier": "3.6.2",
@@ -30,7 +29,7 @@
     },
     "packages/app": {
       "name": "@reddb-io/redcode-app",
-      "version": "1.18.20",
+      "version": "1.19.0",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -97,7 +96,7 @@
     },
     "packages/cli": {
       "name": "@reddb-io/redcode-cli",
-      "version": "1.18.20",
+      "version": "1.18.21",
       "bin": {
         "lildax": "./bin/lildax.cjs",
       },
@@ -291,7 +290,7 @@
     },
     "packages/core": {
       "name": "@reddb-io/redcode-core",
-      "version": "1.19.0",
+      "version": "1.20.0",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.112",
@@ -464,7 +463,7 @@
     },
     "packages/enterprise": {
       "name": "@reddb-io/redcode-enterprise",
-      "version": "1.18.20",
+      "version": "1.18.21",
       "dependencies": {
         "@hono/standard-validator": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -605,7 +604,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "bin": {
         "redcode": "./bin/redcode",
       },
@@ -770,7 +769,7 @@
     },
     "packages/sdk-next": {
       "name": "@reddb-io/redcode-sdk-next",
-      "version": "1.18.20",
+      "version": "1.18.21",
       "dependencies": {
         "@reddb-io/redcode-client": "workspace:*",
         "@reddb-io/redcode-core": "workspace:*",
@@ -800,7 +799,7 @@
     },
     "packages/server": {
       "name": "@reddb-io/redcode-server",
-      "version": "1.18.20",
+      "version": "1.18.21",
       "dependencies": {
         "@reddb-io/multi-rpc": "0.29.6",
         "@reddb-io/redcode-core": "workspace:*",
@@ -818,7 +817,7 @@
     },
     "packages/session-ui": {
       "name": "@reddb-io/redcode-session-ui",
-      "version": "1.18.20",
+      "version": "1.18.21",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@opencode-ai/client": "file:../app/vendor/opencode-ai-client-1.17.13-v2.tgz",
@@ -967,7 +966,7 @@
     },
     "packages/tui": {
       "name": "@reddb-io/redcode-tui",
-      "version": "1.18.20",
+      "version": "1.19.0",
       "dependencies": {
         "@opentui/core": "catalog:",
         "@opentui/keymap": "catalog:",
@@ -4122,8 +4121,6 @@
     "human-signals": ["human-signals@5.0.0", "", {}, "sha512-AXcZb6vzzrFAUE61HnN4mpLqd/cSIwNQjtNWR0euPm6y0iqx3G4gOXaIDdtdDwZmhwe82LA6+zinmW4UBWVePQ=="],
 
     "humanize-ms": ["humanize-ms@1.2.1", "", { "dependencies": { "ms": "^2.0.0" } }, "sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ=="],
-
-    "husky": ["husky@9.1.7", "", { "bin": { "husky": "bin.js" } }, "sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA=="],
 
     "i18n-iso-countries": ["i18n-iso-countries@7.14.0", "", { "dependencies": { "diacritics": "1.3.0" } }, "sha512-nXHJZYtNrfsi1UQbyRqm3Gou431elgLjKl//CYlnBGt5aTWdRPH1PiS2T/p/n8Q8LnqYqzQJik3Q7mkwvLokeg=="],
 
