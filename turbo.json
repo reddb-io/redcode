@@ -23,6 +23,9 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@reddb-io/redcode-function#test": {
+      "outputs": []
+    },
     "@reddb-io/redcode-app#test": {
       "dependsOn": ["^build"],
       "outputs": []
