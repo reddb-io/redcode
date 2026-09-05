@@ -1,6 +1,60 @@
-import { expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
 import { type Virtualizer } from "@tanstack/solid-virtual"
 import { mutationNodesContainElement, observeElementOffsetReconnectAware } from "./observe-element-offset"
+
+// happy-dom schedules animation frames on its own terms, and under load it can starve them for
+// seconds: the component waits for a frame to run its offset check, the test waits for the check,
+// and on a Windows runner neither arrived inside the budget. Frames here are macrotasks, which
+// happy-dom always drives, and the timestamp stays real so the component's own deadline
+// arithmetic is untouched.
+let restoreFrames: (() => void) | undefined
+
+beforeAll(() => {
+  const target = window as unknown as {
+    requestAnimationFrame: (callback: FrameRequestCallback) => number
+    cancelAnimationFrame: (handle: number) => void
+  }
+  const realRequest = target.requestAnimationFrame
+  const realCancel = target.cancelAnimationFrame
+  const pending = new Map<number, ReturnType<typeof setTimeout>>()
+  let nextHandle = 1
+
+  const request = (callback: FrameRequestCallback) => {
+    const handle = nextHandle++
+    pending.set(
+      handle,
+      setTimeout(() => {
+        pending.delete(handle)
+        callback(performance.now())
+      }, 0),
+    )
+    return handle
+  }
+  const cancel = (handle: number) => {
+    const timer = pending.get(handle)
+    if (timer === undefined) return
+    clearTimeout(timer)
+    pending.delete(handle)
+  }
+
+  // Both bindings: the component reaches through `targetWindow`, the helpers below through the
+  // global, and nothing guarantees those are the same object.
+  target.requestAnimationFrame = request
+  target.cancelAnimationFrame = cancel
+  globalThis.requestAnimationFrame = request
+  globalThis.cancelAnimationFrame = cancel
+
+  restoreFrames = () => {
+    target.requestAnimationFrame = realRequest
+    target.cancelAnimationFrame = realCancel
+    globalThis.requestAnimationFrame = realRequest
+    globalThis.cancelAnimationFrame = realCancel
+    for (const timer of pending.values()) clearTimeout(timer)
+    pending.clear()
+  }
+})
+
+afterAll(() => restoreFrames?.())
 
 test("matches only the scroll element or an ancestor containing it", () => {
   const route = document.createElement("section")
