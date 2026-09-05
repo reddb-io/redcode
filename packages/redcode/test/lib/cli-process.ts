@@ -74,6 +74,10 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
     REDCODE_DISABLE_AUTOUPDATE: "1",
     REDCODE_DISABLE_AUTOCOMPACT: "1",
     REDCODE_DISABLE_MODELS_FETCH: "1",
+    // The environment here replaces the parent's rather than extending it, so a kill switch the CI
+    // job sets never reaches the process being tested. Bun segfaulted inside the native watcher on
+    // a Windows runner; nothing in these tests needs one.
+    REDCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "1",
     REDCODE_AUTH_CONTENT: "{}",
   }
 }

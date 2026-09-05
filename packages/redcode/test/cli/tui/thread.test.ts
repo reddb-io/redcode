@@ -16,6 +16,13 @@ describe("tui thread", () => {
     expect(source).not.toContain('import("./app")')
   })
 
+  test("does not leave a native file watcher running in every spawned CLI", async () => {
+    // The spawn environment replaces the parent's, so a kill switch set by CI never arrives. Bun
+    // segfaulted inside that watcher on a Windows runner and took a release with it.
+    const source = await Bun.file(new URL("../../lib/cli-process.ts", import.meta.url)).text()
+    expect(source).toContain("REDCODE_EXPERIMENTAL_DISABLE_FILEWATCHER")
+  })
+
   test("forwards the CLI environment to the TUI worker", async () => {
     const source = await Bun.file(new URL("../../../src/cli/cmd/tui.ts", import.meta.url)).text()
 
