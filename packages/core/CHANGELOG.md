@@ -1,5 +1,23 @@
 # @reddb-io/redcode-core
 
+## 1.19.0
+
+### Minor Changes
+
+- 68c96b4: Write down every time a guard intervenes, so the thresholds can be argued from evidence
+
+  Five guards ship in 0.14.0 — the inactivity watchdog, tool deadlines, the loop guard, the step budget, the bounds on naming and compacting — and every threshold in them was chosen by argument, because there was nothing to measure. Each intervention is now recorded with which guard fired, what it acted on, and what it did, and published as a live `session.next.guard.tripped` event. `redcode debug guards` reads it back: counts per guard and action over the last week, loudest first, plus the most recent trips. An empty report says so in words, because "nothing fired" and "nothing was collected" are different answers.
+
+- 7246ae1: Notice a call that never stops being made, even when the answer keeps changing
+
+  Comparing results is what keeps the loop guard off polling's back, and it was also the way through it: an answer carrying a timestamp, a pid or a temporary path never repeats byte for byte, so the same call could run all turn without ever counting as repetition. At twelve identical calls in a row the repetition is mentioned once — the call still runs, because polling looks exactly like this and is sometimes right. Configurable as `experimental.loop_guard.nudge_at`.
+
+### Patch Changes
+
+- Updated dependencies [68c96b4]
+  - @reddb-io/redcode-schema@1.20.0
+  - @reddb-io/redcode-llm@1.18.20
+
 ## 1.18.19
 
 ### Patch Changes
