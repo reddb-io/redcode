@@ -75,6 +75,20 @@ describe("the design surface", () => {
     }),
   )
 
+  it.instance("the revision poll is the heartbeat", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "beat", { "index.html": "<html></html>" })
+      const registry = yield* DesignRegistry.Service
+      expect((yield* registry.get(prototype.id))!.lastSeen).toBeUndefined()
+      const polled = yield* call(`/design/${prototype.id}/revision`, {
+        headers: { "x-redcode-design-token": prototype.token },
+      })
+      expect(polled.status).toBe(200)
+      expect(typeof (yield* registry.get(prototype.id))!.lastSeen).toBe("number")
+    }),
+  )
+
   it.instance("serves only what belongs to a page", () =>
     Effect.gen(function* () {
       const { directory } = yield* TestInstance
