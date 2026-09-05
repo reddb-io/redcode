@@ -114,6 +114,7 @@
     "turbo": "2.10.2"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "3.0.111",
     "@aws-sdk/client-s3": "3.933.0",
     "@reddb-io/redcode-plugin": "workspace:*",
     "@reddb-io/redcode-script": "workspace:*",
@@ -141,6 +142,7 @@
     "electron"
   ],
   "overrides": {
+    "@ai-sdk/anthropic": "3.0.111",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",
@@ -165,6 +167,8 @@
     "effect@4.0.0-beta.83": "patches/effect@4.0.0-beta.83.patch",
     "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "@ai-sdk/openai-compatible@2.0.41": "patches/@ai-sdk%2Fopenai-compatible@2.0.41.patch",
-    "@ai-sdk/groq@3.0.31": "patches/@ai-sdk%2Fgroq@3.0.31.patch"
+    "@ai-sdk/groq@3.0.31": "patches/@ai-sdk%2Fgroq@3.0.31.patch",
+    "@ai-sdk/anthropic@3.0.111": "patches/@ai-sdk%2Fanthropic@3.0.111.patch",
+    "@ai-sdk/amazon-bedrock@4.0.166": "patches/@ai-sdk%2Famazon-bedrock@4.0.166.patch"
   }
 }
