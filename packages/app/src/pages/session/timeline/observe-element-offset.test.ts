@@ -69,25 +69,80 @@ test("matches only the scroll element or an ancestor containing it", () => {
   expect(mutationNodesContainElement([child, sibling], viewport)).toBe(false)
 })
 
-// happy-dom decides for itself when a MutationObserver batch is delivered and in what order, and
-// that scheduling is noise here: adding a console.log to the component was enough to flip this
-// test between passing and failing, and it failed on Windows CI for the same reason. The reconnect
-// tests therefore drive the observer themselves — each pins one arrangement a browser is allowed
-// to produce — so what is under test is our reaction to it, not the emulator's timing.
-function withObserver(
-  deliver: (callback: MutationCallback, records: MutationRecord[], observer: MutationObserver) => void,
-) {
+// happy-dom decides for itself whether a MutationObserver batch is delivered at all, in what order,
+// and when — and under CI load it sometimes simply does not get round to it. Waiting on that was
+// the difference between this suite passing here and failing on CI, twice, for two different
+// reasons. So the reconnect tests hand the observer its records themselves: what is under test is
+// how the component reacts to an arrangement a browser is allowed to produce, never the emulator's
+// scheduling.
+function captureObserver() {
   const real = window.MutationObserver
-  class Controlled extends real {
-    constructor(callback: MutationCallback) {
-      super((records, observer) => deliver(callback, [...records], observer))
+  let callback: MutationCallback | undefined
+  const observed: { root: Node; options?: MutationObserverInit }[] = []
+  class Captured extends real {
+    constructor(fn: MutationCallback) {
+      super(fn)
+      callback = fn
+    }
+    observe(root: Node, options?: MutationObserverInit) {
+      observed.push({ root, options })
+      return super.observe(root, options)
     }
   }
-  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = Controlled
-  return () => {
-    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = Captured
+  return {
+    /** Deliver one batch, exactly as written. */
+    emit(records: Partial<MutationRecord>[]) {
+      callback?.(records.map(asRecord), {} as MutationObserver)
+    },
+    /** What the component actually asked the browser to watch. */
+    observed,
+    restore() {
+      ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+    },
   }
 }
+
+const asRecord = (input: Partial<MutationRecord>): MutationRecord =>
+  ({
+    type: "childList",
+    target: document.body,
+    addedNodes: [],
+    removedNodes: [],
+    ...input,
+  }) as unknown as MutationRecord
+
+const removedRecord = (node: Node) => asRecord({ removedNodes: [node] as unknown as NodeList })
+const addedRecord = (node: Node) => asRecord({ addedNodes: [node] as unknown as NodeList })
+
+test("watches the route above the scroll element, not the element itself", async () => {
+  // The three tests below hand the observer its records, which is what makes them deterministic —
+  // so this one keeps the other half honest: a component that never subscribed would pass them all.
+  const route = document.createElement("main")
+  const viewport = document.createElement("div")
+  route.append(viewport)
+  document.body.append(route)
+  const instance = {
+    scrollElement: viewport,
+    targetWindow: window,
+    scrollOffset: 0,
+    options: { horizontal: false, isRtl: false, isScrollingResetDelay: 0, useScrollendEvent: false },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+
+  const observer = captureObserver()
+  const cleanup = observeElementOffsetReconnectAware(instance, () => {})
+  try {
+    expect(observer.observed).toHaveLength(1)
+    // The nearest <main>, because a session route is replaced below it; the element itself would
+    // be gone at exactly the moment we need to hear about it.
+    expect(observer.observed[0]!.root).toBe(route)
+    expect(observer.observed[0]!.options).toMatchObject({ childList: true, subtree: true })
+  } finally {
+    observer.restore()
+    cleanup?.()
+    route.remove()
+  }
+})
 
 test("reports a divergent native offset once and ignores equal offsets and unrelated mutations", async () => {
   const route = document.createElement("section")
@@ -107,34 +162,34 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
     },
   } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
   const calls: [number, boolean][] = []
-  // Delivered as a browser reports it: every record of a batch, in order.
-  const restoreObserver = withObserver((callback, records, observer) => callback(records, observer))
+  const observer = captureObserver()
   const cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
     calls.push([offset, isScrolling])
     instance.scrollOffset = offset
   })
 
+  // Something else on the page came and went. It says nothing about our element.
   document.body.append(unrelated)
   unrelated.remove()
+  observer.emit([addedRecord(unrelated), removedRecord(unrelated)])
   await frames(2)
   expect(calls).toEqual([])
 
+  // Now the route is replaced, which is how a session route behaves, and the element comes back.
   route.remove()
   document.body.append(route)
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  // Waited for rather than counted in frames: three frames is plenty on a quiet machine and not
-  // enough on a loaded CI runner, and the difference has nothing to do with what is being tested.
+  observer.emit([removedRecord(route), addedRecord(route)])
   await until(() => calls.length > 0)
   expect(calls).toEqual([[0, false]])
 
   route.remove()
   document.body.append(route)
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  observer.emit([removedRecord(route), addedRecord(route)])
   await frames(3)
-  // Still one call: the offset now matches, so there is nothing new to report.
+  // Still one call: the offset now matches what was reported, so there is nothing new to say.
   expect(calls).toEqual([[0, false]])
 
-  restoreObserver()
+  observer.restore()
   cleanup?.()
   route.remove()
 })
@@ -288,13 +343,7 @@ test("reconnects when the batch reports the addition before the removal", async 
   } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
   const calls: [number, boolean][] = []
 
-  const real = window.MutationObserver
-  class Reversed extends real {
-    constructor(callback: MutationCallback) {
-      super((records, observer) => callback([...records].reverse(), observer))
-    }
-  }
-  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = Reversed
+  const observer = captureObserver()
   let cleanup: (() => void) | undefined
   try {
     cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
@@ -303,11 +352,12 @@ test("reconnects when the batch reports the addition before the removal", async 
     })
     route.remove()
     document.body.append(route)
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await frames(3)
+    // One batch, addition first.
+    observer.emit([addedRecord(route), removedRecord(route)])
+    await until(() => calls.length > 0)
     expect(calls).toEqual([[0, false]])
   } finally {
-    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+    observer.restore()
     cleanup?.()
     route.remove()
   }
@@ -329,16 +379,7 @@ test("reconnects when the addition is delivered in an earlier batch than the rem
   } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
   const calls: [number, boolean][] = []
 
-  const real = window.MutationObserver
-  class OneBatchLate extends real {
-    constructor(callback: MutationCallback) {
-      // Every record is delivered in its own batch, in reverse order: addition first.
-      super((records, observer) => {
-        for (const record of [...records].reverse()) callback([record], observer)
-      })
-    }
-  }
-  ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = OneBatchLate
+  const observer = captureObserver()
   let cleanup: (() => void) | undefined
   try {
     cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
@@ -347,11 +388,13 @@ test("reconnects when the addition is delivered in an earlier batch than the rem
     })
     route.remove()
     document.body.append(route)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Two batches, the addition arriving in the earlier one.
+    observer.emit([addedRecord(route)])
+    observer.emit([removedRecord(route)])
     await until(() => calls.length > 0)
     expect(calls).toEqual([[0, false]])
   } finally {
-    ;(window as unknown as { MutationObserver: typeof real }).MutationObserver = real
+    observer.restore()
     cleanup?.()
     route.remove()
   }
