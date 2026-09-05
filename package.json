@@ -17,6 +17,8 @@
     "lint": "oxlint",
     "release:version": "changeset version && bun script/red-sync-version.ts",
     "typecheck": "bun turbo typecheck",
+    "upstream:status": "bun script/upstream-status.ts",
+    "upstream:port": "bun script/upstream-port.ts",
     "upgrade-opentui": "bun run script/upgrade-opentui.ts",
     "postinstall": "bun run --cwd packages/core fix-node-pty",
     "random": "echo 'Random script'",

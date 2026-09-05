@@ -1,0 +1,18 @@
+# Upstream commits ported before the `Upstream:` trailer existed, one SHA per line.
+# From then on the trailer on our commits is the record, and this file only grows for
+# ports that could not carry one (a squash that lost it, a manual backport).
+# Ported in #98, "feat: catch up with upstream, and say what a turn is doing" (2026-09-03):
+71d08e94d
+e0b9e68a6
+40282c1d4
+4eb29a64f
+b04697366
+3a4c25396
+57fa34f23
+9b0dd36cd
+8b65fa2ef
+765ae641d
+c313504c8
+35fe5b721
+08faeb389
+03afae5b9
