@@ -1,4 +1,4 @@
-import { Show, type JSX } from "solid-js"
+import { Show, type JSX, createMemo } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { SessionPermissionDock } from "@/pages/session/composer/session-permission-dock"
@@ -6,6 +6,9 @@ import { SessionQuestionDock } from "@/pages/session/composer/session-question-d
 import { SessionFollowupDock } from "@/pages/session/composer/session-followup-dock"
 import { SessionRevertDock } from "@/pages/session/composer/session-revert-dock"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
+import { SessionGoalDock } from "./session-goal-dock"
+import { useSync } from "@/context/sync"
+import { useParams } from "@solidjs/router"
 import type { SessionComposerRegionController } from "./session-composer-region-controller"
 
 export function SessionComposerRegion(props: {
@@ -14,6 +17,13 @@ export function SessionComposerRegion(props: {
 }) {
   const language = useLanguage()
   const controller = props.controller
+  const sync = useSync()
+  const params = useParams()
+  const goalMetadata = createMemo(() => {
+    const id = params.id
+    if (!id) return undefined
+    return (sync().data.session ?? []).find((s) => s.id === id)?.metadata as Record<string, unknown> | undefined
+  })
   const settings = useSettings()
   const rolled = () => {
     const revert = controller.revert()
@@ -71,6 +81,7 @@ export function SessionComposerRegion(props: {
               }}
             >
               <div ref={controller.setDockBodyRef}>
+                <SessionGoalDock metadata={goalMetadata()} />
                 <SessionTodoDock
                   todos={controller.state.todos()}
                   collapsed={controller.todo.collapsed()}

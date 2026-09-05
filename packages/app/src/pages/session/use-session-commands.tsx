@@ -476,6 +476,69 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: redo,
     }),
     sessionCommand({
+      id: "session.goal",
+      title: language.t("command.session.goal"),
+      description: language.t("command.session.goal.description"),
+      slash: "goal",
+      disabled: !params.id,
+      onSelect: () =>
+        void import("@/components/dialog-goal").then((x) =>
+          dialog.show(() => (
+            <x.DialogGoal
+              onSubmit={async (text) => {
+                const sessionID = params.id
+                if (!sessionID) return
+                const result = await sdk().client.session.goalSet({ sessionID, text })
+                if (result.data) {
+                  showToast({
+                    title: language.t("command.session.goal"),
+                    description: `${result.data.turns.max} turns`,
+                  })
+                } else {
+                  showToast({
+                    title: language.t("command.session.goal"),
+                    description: "Could not set the goal. Is REDCODE_EXPERIMENTAL_GOAL on?",
+                  })
+                }
+              }}
+            />
+          )),
+        ),
+    }),
+    sessionCommand({
+      id: "session.goal.pause",
+      title: language.t("command.session.goal.pause"),
+      slash: "goal-pause",
+      disabled: !params.id,
+      onSelect: async () => {
+        const sessionID = params.id
+        if (!sessionID) return
+        await sdk().client.session.goalPause({ sessionID })
+      },
+    }),
+    sessionCommand({
+      id: "session.goal.resume",
+      title: language.t("command.session.goal.resume"),
+      slash: "goal-resume",
+      disabled: !params.id,
+      onSelect: async () => {
+        const sessionID = params.id
+        if (!sessionID) return
+        await sdk().client.session.goalResume({ sessionID })
+      },
+    }),
+    sessionCommand({
+      id: "session.goal.drop",
+      title: language.t("command.session.goal.drop"),
+      slash: "goal-drop",
+      disabled: !params.id,
+      onSelect: async () => {
+        const sessionID = params.id
+        if (!sessionID) return
+        await sdk().client.session.goalDrop({ sessionID })
+      },
+    }),
+    sessionCommand({
       id: "session.compact",
       title: language.t("command.session.compact"),
       description: language.t("command.session.compact.description"),

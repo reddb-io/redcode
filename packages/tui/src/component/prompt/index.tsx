@@ -164,6 +164,23 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  // The goal, as one line for the footer: read off the session record, so it says what the
+  // server knows and needs no event of its own.
+  const goalLine = createMemo(() => {
+    if (!props.sessionID) return
+    const session = sync.session.get(props.sessionID)
+    const goal = (session?.metadata as { goal?: Record<string, unknown> } | undefined)?.goal
+    if (!goal || typeof goal !== "object") return
+    const status = String(goal["status"] ?? "")
+    if (!status || status === "dropped") return
+    const turns = goal["turns"] as { used?: number; max?: number } | undefined
+    const used = typeof turns?.used === "number" ? turns.used : 0
+    const max = typeof turns?.max === "number" ? turns.max : 0
+    const reason = typeof goal["reason"] === "string" ? goal["reason"] : ""
+    if (status === "active") return { text: `goal · turn ${Math.min(used + 1, max)}/${max}`, tone: "active" as const }
+    if (status === "done") return { text: "goal · done", tone: "done" as const }
+    return { text: `goal · ${status}${reason ? ` — ${reason}` : ""}`, tone: "paused" as const }
+  })
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
@@ -1593,6 +1610,13 @@ export function Prompt(props: PromptProps) {
                         <Show when={stalled()}>
                           {(notice) => <span style={{ fg: theme.warning }}>{" · " + notice()}</span>}
                         </Show>
+                      </text>
+                    )}
+                  </Show>
+                  <Show when={goalLine()}>
+                    {(line) => (
+                      <text fg={line().tone === "paused" ? theme.warning : line().tone === "done" ? theme.success : theme.textMuted}>
+                        {line().text}
                       </text>
                     )}
                   </Show>

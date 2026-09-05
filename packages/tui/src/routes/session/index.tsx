@@ -44,6 +44,7 @@ import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { useDialog } from "../../ui/dialog"
+import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -613,6 +614,67 @@ export function Session() {
             sessionID={route.sessionID}
           />
         ))
+      },
+    },
+    {
+      title: "Set goal",
+      value: "session.goal",
+      category: "Session",
+      slash: { name: "goal" },
+      run: async () => {
+        // No arguments travel with a slash command, so the goal is typed in a prompt: free text,
+        // plus optional lines — verify:, constraints:, boundaries:, stop when:, gate:.
+        const text = await DialogPrompt.show(dialog, "What does done look like?", {
+          placeholder: "make the tests pass; verify: bun test; gate: bun test; constraints: …; stop when: …",
+        })
+        if (!text?.trim()) return
+        const result = await sdk.client.session.goalSet({ sessionID: route.sessionID, text: text.trim() }).catch(() => undefined)
+        const goal = result?.data
+        toast.show({
+          variant: goal ? "success" : "warning",
+          message: goal
+            ? `Goal set · ${goal.turns.max} turns. Ctrl+C pauses it; /goal-resume continues.`
+            : "Could not set the goal. Is REDCODE_EXPERIMENTAL_GOAL on?",
+          duration: 4000,
+        })
+      },
+    },
+    {
+      title: "Pause goal",
+      value: "session.goal.pause",
+      category: "Session",
+      slash: { name: "goal-pause" },
+      run: async () => {
+        const result = await sdk.client.session.goalPause({ sessionID: route.sessionID }).catch(() => undefined)
+        toast.show({ variant: "info", message: result?.data ? "Goal paused" : "No goal to pause", duration: 3000 })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Resume goal",
+      value: "session.goal.resume",
+      category: "Session",
+      slash: { name: "goal-resume" },
+      run: async () => {
+        const result = await sdk.client.session.goalResume({ sessionID: route.sessionID }).catch(() => undefined)
+        const goal = result?.data
+        toast.show({
+          variant: goal ? "success" : "warning",
+          message: goal ? `Goal resumed · turn ${Number(goal.turns.used) + 1} of ${goal.turns.max}` : "No goal to resume",
+          duration: 3000,
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Drop goal",
+      value: "session.goal.drop",
+      category: "Session",
+      slash: { name: "goal-drop" },
+      run: async () => {
+        const result = await sdk.client.session.goalDrop({ sessionID: route.sessionID }).catch(() => undefined)
+        toast.show({ variant: "info", message: result?.data ? "Goal dropped" : "No goal to drop", duration: 3000 })
+        dialog.clear()
       },
     },
     {
