@@ -1,5 +1,34 @@
 # opencode
 
+## 0.15.0
+
+### Minor Changes
+
+- 68c96b4: Write down every time a guard intervenes, so the thresholds can be argued from evidence
+
+  Five guards ship in 0.14.0 — the inactivity watchdog, tool deadlines, the loop guard, the step budget, the bounds on naming and compacting — and every threshold in them was chosen by argument, because there was nothing to measure. Each intervention is now recorded with which guard fired, what it acted on, and what it did, and published as a live `session.next.guard.tripped` event. `redcode debug guards` reads it back: counts per guard and action over the last week, loudest first, plus the most recent trips. An empty report says so in words, because "nothing fired" and "nothing was collected" are different answers.
+
+- 7246ae1: Notice a call that never stops being made, even when the answer keeps changing
+
+  Comparing results is what keeps the loop guard off polling's back, and it was also the way through it: an answer carrying a timestamp, a pid or a temporary path never repeats byte for byte, so the same call could run all turn without ever counting as repetition. At twelve identical calls in a row the repetition is mentioned once — the call still runs, because polling looks exactly like this and is sometimes right. Configurable as `experimental.loop_guard.nudge_at`.
+
+### Patch Changes
+
+- 566eb17: Say when mise is holding a release back, instead of reporting a failed install
+
+  mise refuses to install a release younger than its `minimum_release_age`, and says so only on a line of stderr nobody reads. The update prompt offered a version mise had quietly decided not to see, `mise upgrade` exited 0 having done nothing, and the failure read as "mise did not install vX" — sending the user to run a command that changes nothing. When the version is not even on offer, the message now names the gate and gives the one-line fix that lets Redcode's own releases through while keeping the delay for everything else. The five turn bounds and `redcode debug guards` are now documented too.
+
+- f94e2cb: Close turns left open by a process that died, and stop calling them a queue
+
+  `time.completed` on an assistant message is written by the process running the turn. Killed mid-turn — an OOM, a machine going to sleep — nobody writes it, and the message stays open for the rest of the session's life. The TUI reads an open assistant message as a turn in progress and stamps QUEUED on everything typed after it, across restarts, with nothing running: a session that survived one crash looks jammed forever. A fresh run now closes anything left behind by a run that is gone, records it, and the QUEUED badge requires the session to actually be busy.
+
+- Updated dependencies [68c96b4]
+  - @reddb-io/redcode-schema@1.20.0
+  - @reddb-io/redcode-server@1.18.20
+  - @reddb-io/redcode-tui@1.18.20
+  - @reddb-io/redcode-llm@1.18.20
+  - @reddb-io/redcode-protocol@1.18.20
+
 ## 0.14.0
 
 ### Minor Changes

@@ -59,13 +59,20 @@ runs:
         # e.g. ./patches/ for standard-openapi
         # https://github.com/oven-sh/bun/issues/28147
         if [ "$RUNNER_OS" = "Windows" ]; then
-          bun install --linker hoisted ${{ inputs.install-flags }} || {
-            bun pm cache rm
-            bun install --linker hoisted ${{ inputs.install-flags }}
-          }
+          linker="--linker hoisted"
         else
-          bun install ${{ inputs.install-flags }}
+          linker=""
         fi
+        # Retried on every platform, not only Windows. A registry that answers "Failed to install 1
+        # package" once is the whole reason a release did not ship, and this action runs in every
+        # job of every workflow — so one transient refusal anywhere costs a build.
+        for attempt in 1 2 3; do
+          if bun install $linker ${{ inputs.install-flags }}; then exit 0; fi
+          echo "bun install failed (attempt $attempt); clearing the cache and retrying"
+          bun pm cache rm || true
+          sleep $((attempt * 10))
+        done
+        bun install $linker ${{ inputs.install-flags }}
       shell: bash
 
     - name: Save Bun dependencies
