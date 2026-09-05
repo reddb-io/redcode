@@ -3,7 +3,7 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
-import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { Agent } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { SessionGoal } from "@/session/goal"
@@ -58,6 +58,7 @@ const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
 
 const it = testEffect(layer())
 const background = testEffect(layer({ experimentalBackgroundSubagents: true }))
+const noBackground = testEffect(layer({ experimentalBackgroundSubagents: false }))
 
 function defer<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -537,7 +538,7 @@ describe("tool.task", () => {
     },
   )
 
-  it.instance("rejects background execution when the experiment is disabled", () =>
+  noBackground.instance("rejects background execution when the flag turns it off", () =>
     Effect.gen(function* () {
       const { chat, assistant } = yield* seed()
       const tool = yield* TaskTool
@@ -1021,5 +1022,55 @@ describe("tool.task", () => {
       yield* def.execute(params, ctx)
       expect(seen[1]?.parts).toHaveLength(1)
     }),
+  )
+
+  it.instance(
+    "refuses a background subagent past the session's cap and says to wait or run it inline",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const tool = yield* TaskTool
+        const def = yield* tool.init()
+        const done = yield* Deferred.make<void>()
+        const promptOps: TaskPromptOps = {
+          cancel: () => Effect.void,
+          resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
+          prompt: (input) =>
+            input.sessionID === chat.id
+              ? Effect.succeed(reply(input, "injected"))
+              : Deferred.await(done).pipe(Effect.as(reply(input, "background done"))),
+        }
+        const ctx = {
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        }
+        const first = yield* def.execute(
+          { description: "one", prompt: "first job", subagent_type: "general", background: true },
+          ctx,
+        )
+        expect(first.metadata.background).toBe(true)
+
+        const second = yield* def
+          .execute({ description: "two", prompt: "second job", subagent_type: "general", background: true }, ctx)
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(second)).toBe(true)
+        const message = Exit.isFailure(second) ? String(Cause.squash(second.cause)) : ""
+        expect(message).toContain("limit 1")
+        expect(message).toContain("run this task in the foreground")
+
+        // A foreground task is not capped: it is the caller's own turn waiting.
+        const inline = yield* def
+          .execute({ description: "three", prompt: "third job", subagent_type: "general" }, ctx)
+          .pipe(Effect.forkChild)
+        yield* Deferred.succeed(done, undefined)
+        expect((yield* Fiber.join(inline)).output).toContain("background done")
+      }),
+    { config: { experimental: { background_subagents_max: 1 } } },
   )
 })

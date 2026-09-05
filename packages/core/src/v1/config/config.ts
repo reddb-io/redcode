@@ -226,6 +226,13 @@ export const Info = Schema.Struct({
       ).annotate({
         description: "Defaults for /goal: the turn budget, and the bounds on the judge and on gate commands.",
       }),
+      subtask_concurrency: Schema.optional(PositiveInt).annotate({
+        description: "How many subtasks of one message run at the same time (default: 4)",
+      }),
+      background_subagents_max: Schema.optional(PositiveInt).annotate({
+        description:
+          "How many background subagents one session may have running at once; past it the task tool refuses and asks the model to wait or run the task inline (default: 4)",
+      }),
       tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
         description:
           "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",

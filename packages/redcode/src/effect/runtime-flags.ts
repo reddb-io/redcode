@@ -40,7 +40,11 @@ export class Service extends ConfigService.Service<Service>()("@redcode/RuntimeF
   enableExperimentalModels: bool("REDCODE_ENABLE_EXPERIMENTAL_MODELS"),
   enableQuestionTool: bool("REDCODE_ENABLE_QUESTION_TOOL"),
   experimentalReferences: enabledByExperimental("REDCODE_EXPERIMENTAL_REFERENCES"),
-  experimentalBackgroundSubagents: enabledByExperimental("REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS"),
+  // On by default: the harness parks a goal on WAIT while a background subagent runs, and the
+  // task tool caps how many run at once, so the guard the experiment stood behind is now built in.
+  experimentalBackgroundSubagents: Config.boolean("REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS").pipe(
+    Config.withDefault(true),
+  ),
   experimentalLspTy: bool("REDCODE_EXPERIMENTAL_LSP_TY"),
   experimentalLspTool: enabledByExperimental("REDCODE_EXPERIMENTAL_LSP_TOOL"),
   experimentalOxfmt: enabledByExperimental("REDCODE_EXPERIMENTAL_OXFMT"),

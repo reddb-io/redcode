@@ -3269,3 +3269,61 @@ it.instance(
     }),
   60_000,
 )
+
+it.instance(
+  "every subtask on a message runs, together, and their results land in the order they were asked",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const jobs = yield* BackgroundJob.Service
+      const chat = yield* sessions.create({ title: "Fan-out" })
+      const msg = yield* user(chat.id, "split the work")
+      const names = ["alpha", "beta", "gamma"]
+      const gates = names.map(() => defer<void>())
+      for (const [i, name] of names.entries()) {
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID: chat.id,
+          type: "subtask",
+          prompt: `job ${name}`,
+          description: `task ${name}`,
+          agent: "general",
+          model: ref,
+        })
+        yield* llm.pushMatch(
+          (hit) => JSON.stringify(hit.body).includes(`job ${name}`),
+          reply().wait(gates[i]!.promise).text(`${name} done`).stop(),
+        )
+      }
+      yield* llm.text("all three reported")
+
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      const running = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const list = (yield* jobs.list()).filter(
+            (job) => job.metadata?.["parentSessionId"] === chat.id && job.status === "running",
+          )
+          if (list.length === 3) return list
+        }),
+        "the three subtasks never ran together",
+      )
+      expect(running).toHaveLength(3)
+      // Finished out of order on purpose: the transcript keeps the order they were asked in.
+      for (const gate of [...gates].reverse()) gate.resolve()
+      yield* awaitWithTimeout(Fiber.join(fiber), "the loop never finished", "30 seconds")
+
+      const msgs = yield* sessions.messages({ sessionID: chat.id })
+      const outputs = msgs
+        .filter((m) => m.info.role === "assistant" && m.info.agent === "general")
+        .flatMap((m) =>
+          m.parts.flatMap((p) => (p.type === "tool" && p.state.status === "completed" ? [p.state.output] : [])),
+        )
+      expect(outputs).toHaveLength(3)
+      expect(outputs.map((o) => names.find((n) => o.includes(`${n} done`)))).toEqual(names)
+      expect(yield* llm.calls).toBe(4)
+    }),
+  60_000,
+)

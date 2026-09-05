@@ -98,7 +98,7 @@ export const TaskTool = Tool.define(
       const runInBackground = params.background === true
       if (runInBackground && !flags.experimentalBackgroundSubagents) {
         return yield* Effect.fail(
-          new Error("Background subagents require REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true"),
+          new Error("Background subagents are turned off here (REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=false)"),
         )
       }
 
@@ -290,6 +290,22 @@ export const TaskTool = Tool.define(
             summary: "Background task updated",
             text: BACKGROUND_UPDATED,
           }),
+        }
+      }
+
+      // A cap per session, not per process: fan-out is bounded by what one conversation can
+      // keep track of, and a model that wants a fifth is told to wait or run it inline.
+      if (runInBackground) {
+        const max = cfg.experimental?.background_subagents_max ?? 4
+        const running = (yield* background.list()).filter(
+          (job) => job.type === id && job.status === "running" && job.metadata?.["parentSessionId"] === ctx.sessionID,
+        )
+        if (running.length >= max) {
+          return yield* Effect.fail(
+            new Error(
+              `${running.length} background subagent${running.length === 1 ? " is" : "s are"} already running for this session (limit ${max}). Wait for one to report, or run this task in the foreground.`,
+            ),
+          )
         }
       }
 

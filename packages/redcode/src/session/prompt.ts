@@ -491,9 +491,14 @@ const layer = Layer.effect(
           },
         } satisfies SessionV1.ToolPart)
       }
+    })
 
-      if (!task.command) return
-
+    /** One nudge for the whole batch: the outputs sit above, the model picks the thread back up. */
+    const summarizeSubtasks = Effect.fn("SessionPrompt.summarizeSubtasks")(function* (input: {
+      lastUser: SessionV1.User
+      sessionID: SessionID
+    }) {
+      const { lastUser, sessionID } = input
       const summaryUserMsg: SessionV1.User = {
         id: MessageID.ascending(),
         sessionID,
@@ -1459,7 +1464,17 @@ const layer = Layer.effect(
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
-            yield* handleSubtask({ task, model, lastUser, sessionID, session, msgs })
+            // Every subtask still pending on the message, together — not one per iteration. The
+            // assistant message a subtask leaves behind is the turn's last finished message, and
+            // latest() drops everything before it, so a second subtask on the same message used
+            // to be skipped without a trace.
+            const batch = [...tasks.filter((t): t is SessionV1.SubtaskPart => t.type === "subtask"), task]
+            const concurrency = (yield* config.get()).experimental?.subtask_concurrency ?? 4
+            yield* Effect.forEach(batch, (t) => handleSubtask({ task: t, model, lastUser, sessionID, session, msgs }), {
+              concurrency,
+              discard: true,
+            })
+            if (batch.some((t) => t.command)) yield* summarizeSubtasks({ lastUser, sessionID })
             continue
           }
 
