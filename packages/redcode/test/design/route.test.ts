@@ -12,14 +12,19 @@ import { TestInstance } from "../fixture/fixture"
 import { SessionID } from "@/session/schema"
 
 /** What the agent would have been told, without running a turn to find out. */
-const delivered: { sessionID: string; text: string }[] = []
+type Part = { type: string; text?: string; mime?: string; url?: string; filename?: string }
+const delivered: { sessionID: string; text: string; parts: readonly Part[] }[] = []
 
 const promptStub = Layer.succeed(
   SessionPrompt.Service,
   SessionPrompt.Service.of({
-    prompt: (input: { sessionID: string; parts: readonly { type: string; text?: string }[] }) =>
+    prompt: (input: { sessionID: string; parts: readonly Part[] }) =>
       Effect.sync(() => {
-        delivered.push({ sessionID: input.sessionID, text: input.parts.map((p) => p.text ?? "").join("") })
+        delivered.push({
+          sessionID: input.sessionID,
+          text: input.parts.map((p) => p.text ?? "").join(""),
+          parts: input.parts,
+        })
         return {} as never
       }),
   } as never),
@@ -120,6 +125,44 @@ describe("the design surface", () => {
       expect(delivered[0]!.text).toContain("[button.cta]")
       expect(delivered[0]!.text).toContain('(selected: "Get started")')
       expect(delivered[0]!.text).toContain("less shouty")
+    }),
+  )
+
+  it.instance("carries a pasted image as a file part, and refuses a body that is too big", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "picture", { "index.html": "<html></html>" })
+      delivered.length = 0
+      const headers = { "content-type": "application/json", "x-redcode-design-token": prototype.token }
+      const png = Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.alloc(32),
+      ]).toString("base64")
+
+      const accepted = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          items: [{ label: "h1", text: "more like this", image: { mime: "image/png", data: png } }],
+        }),
+      })
+      expect(accepted.status).toBe(202)
+      expect(delivered[0]!.parts.map((p) => p.type)).toEqual(["text", "file"])
+      expect(delivered[0]!.parts[1]).toMatchObject({ mime: "image/png", filename: "design-feedback-1.png" })
+      expect(delivered[0]!.parts[1]!.url).toBe(`data:image/png;base64,${png}`)
+      expect(delivered[0]!.text).toContain("(image attached: design-feedback-1)")
+
+      // A body past the cap never reaches the parser, let alone the session.
+      delivered.length = 0
+      const flood = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          items: [{ text: "x", image: { mime: "image/png", data: "A".repeat(4 * 1024 * 1024) } }],
+        }),
+      })
+      expect(flood.status).toBe(413)
+      expect(delivered).toHaveLength(0)
     }),
   )
 })
