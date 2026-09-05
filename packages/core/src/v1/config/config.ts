@@ -211,6 +211,21 @@ export const Info = Schema.Struct({
         description:
           "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable.",
       }),
+      goal: Schema.optional(
+        Schema.Struct({
+          max_turns: Schema.optional(PositiveInt).annotate({
+            description: "Turns a /goal may run before it pauses and asks (default: 20)",
+          }),
+          judge_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
+            description: "Milliseconds the goal judge may wait for a provider (default: 60000)",
+          }),
+          gate_timeout: Schema.optional(PositiveInt).annotate({
+            description: "Milliseconds a goal gate command may run (default: 300000)",
+          }),
+        }),
+      ).annotate({
+        description: "Defaults for /goal: the turn budget, and the bounds on the judge and on gate commands.",
+      }),
       tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
         description:
           "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",

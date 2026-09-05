@@ -36,6 +36,8 @@ Always follow the exact output structure requested by the user prompt. Keep ever
 
 Do not continue the conversation. Do not respond to any questions in the conversation. Only output the structured summary in the exact format requested by the user prompt. Respond in the same language as the conversation.`
 
+const PROMPT_GOAL_JUDGE = `You are a strict judge of whether an autonomous coding agent has reached a user's goal. Reply with exactly one JSON object: {"verdict": "done|continue|blocked|wait", "reason": "..."}. DONE needs direct current-state evidence for every deliverable; a claim without evidence is CONTINUE; explaining why it cannot be done is BLOCKED; WAIT only when acting now would be busy-work while background work runs. When in doubt, CONTINUE.`
+
 const PROMPT_TITLE = `You are a title generator. You output ONLY a thread title. Nothing else.
 
 <task>
@@ -113,6 +115,7 @@ export const Plugin = define({
       { action: "plan_exit", resource: "*", effect: "deny" },
       { action: "design_enter", resource: "*", effect: "deny" },
       { action: "design_exit", resource: "*", effect: "deny" },
+      { action: "goal_complete", resource: "*", effect: "deny" },
       { action: "read", resource: "*", effect: "allow" },
       { action: "read", resource: "*.env", effect: "ask" },
       { action: "read", resource: "*.env.*", effect: "ask" },
@@ -130,6 +133,7 @@ export const Plugin = define({
             { action: "question", resource: "*", effect: "allow" },
             { action: "plan_enter", resource: "*", effect: "allow" },
             { action: "design_enter", resource: "*", effect: "allow" },
+            { action: "goal_complete", resource: "*", effect: "allow" },
           ]),
         )
       })
@@ -140,6 +144,7 @@ export const Plugin = define({
         item.mode = "primary"
         item.permissions.push(
           ...PermissionV2.merge(defaults, [
+            { action: "goal_complete", resource: "*", effect: "allow" },
             { action: "question", resource: "*", effect: "allow" },
             { action: "plan_exit", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
@@ -163,6 +168,7 @@ export const Plugin = define({
           ...PermissionV2.merge(defaults, [
             { action: "question", resource: "*", effect: "allow" },
             { action: "design_exit", resource: "*", effect: "allow" },
+            { action: "goal_complete", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "designs", "*"), effect: "allow" },
             { action: "edit", resource: "*", effect: "deny" },
             { action: "edit", resource: path.join(".redcode", "designs", "*"), effect: "allow" },
@@ -214,6 +220,13 @@ export const Plugin = define({
         item.mode = "primary"
         item.hidden = true
         item.system = PROMPT_TITLE
+        item.permissions.push(...PermissionV2.merge(defaults, [{ action: "*", resource: "*", effect: "deny" }]))
+      })
+
+      draft.update(AgentV2.ID.make("goal_judge"), (item) => {
+        item.mode = "primary"
+        item.hidden = true
+        item.system = PROMPT_GOAL_JUDGE
         item.permissions.push(...PermissionV2.merge(defaults, [{ action: "*", resource: "*", effect: "deny" }]))
       })
 

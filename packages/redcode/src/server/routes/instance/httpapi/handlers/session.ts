@@ -9,6 +9,9 @@ import { Session } from "@/session/session"
 import { SessionCompaction } from "@/session/compaction"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import { SessionGoal } from "@/session/goal"
+import { GoalRuntime } from "@/session/goal-runtime"
+import { Config } from "@/config/config"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
@@ -50,6 +53,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const session = yield* Session.Service
     const shareSvc = yield* SessionShare.Service
     const promptSvc = yield* SessionPrompt.Service
+    const goals = yield* GoalRuntime.Service
+    const config = yield* Config.Service
     const revertSvc = yield* SessionRevert.Service
     const compactSvc = yield* SessionCompaction.Service
     const runState = yield* SessionRunState.Service
@@ -232,6 +237,115 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* promptSvc.cancel(ctx.params.sessionID)
       return true
+    })
+
+    /** The agent of the last user message, or the default: a goal continues the conversation it lands in. */
+    const goalAgent = Effect.fn("SessionHttpApi.goalAgent")(function* (sessionID: SessionID) {
+      const messages = yield* SessionError.mapStorageNotFound(session.messages({ sessionID }))
+      return (
+        messages.findLast((message) => message.info.role === "user")?.info.agent ?? (yield* agentSvc.defaultAgent())
+      )
+    })
+
+    const goalGet = Effect.fn("SessionHttpApi.goalGet")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      return (yield* goals.get(ctx.params.sessionID)) ?? null
+    })
+
+    const goalSet = Effect.fn("SessionHttpApi.goalSet")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: { text: string; max_turns?: number }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const text = ctx.payload.text.trim()
+      if (!text) return yield* new HttpApiError.BadRequest()
+      const cfg = yield* config.get()
+      const goal = SessionGoal.parse(text, { maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns })
+      yield* goals.set(ctx.params.sessionID, goal)
+      // The goal's first turn is the objective itself, as the user's message: the loop takes it
+      // from there. Forked into the server's scope so the request answers at once.
+      const scope = yield* Scope.Scope
+      const agent = yield* goalAgent(ctx.params.sessionID)
+      yield* promptSvc
+        .prompt({
+          sessionID: ctx.params.sessionID,
+          agent,
+          parts: [
+            {
+              type: "text",
+              text: `${goal.objective}\n\n(This is the goal of this session; the goal block carries the full contract.)`,
+            },
+          ],
+        })
+        .pipe(
+          Effect.catchCause((cause) => Effect.logError("goal could not start", { cause })),
+          Effect.forkIn(scope, { startImmediately: true }),
+        )
+      return (yield* goals.get(ctx.params.sessionID)) ?? goal
+    })
+
+    const goalPause = Effect.fn("SessionHttpApi.goalPause")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      yield* promptSvc.cancel(ctx.params.sessionID)
+      return (yield* goals.pause(ctx.params.sessionID, "paused by the user")) ?? null
+    })
+
+    const goalResume = Effect.fn("SessionHttpApi.goalResume")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      const goal = yield* goals.get(ctx.params.sessionID)
+      if (!goal) return null
+      if (goal.status === "done" || goal.status === "dropped") return yield* new HttpApiError.BadRequest()
+      const next = SessionGoal.resumed(goal, Date.now())
+      yield* goals.set(ctx.params.sessionID, next)
+      const scope = yield* Scope.Scope
+      const agent = yield* goalAgent(ctx.params.sessionID)
+      yield* promptSvc
+        .prompt({
+          sessionID: ctx.params.sessionID,
+          agent,
+          parts: [
+            {
+              type: "text",
+              text: SessionGoal.continuation(next, { reason: goal.reason ?? "resumed by the user" }),
+              synthetic: true,
+            },
+          ],
+        })
+        .pipe(
+          Effect.catchCause((cause) => Effect.logError("goal could not resume", { cause })),
+          Effect.forkIn(scope, { startImmediately: true }),
+        )
+      return next
+    })
+
+    const goalDrop = Effect.fn("SessionHttpApi.goalDrop")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      const goal = yield* goals.get(ctx.params.sessionID)
+      if (!goal) return false
+      yield* goals.set(ctx.params.sessionID, {
+        ...goal,
+        status: "dropped",
+        reason: "dropped by the user",
+        updated: Date.now(),
+      })
+      if (goal.status === "active") yield* promptSvc.cancel(ctx.params.sessionID)
+      return true
+    })
+
+    const goalBudget = Effect.fn("SessionHttpApi.goalBudget")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: { max_turns: number }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const goal = yield* goals.get(ctx.params.sessionID)
+      if (!goal) return null
+      const next = {
+        ...goal,
+        turns: { ...goal.turns, max: Math.max(1, Math.floor(ctx.payload.max_turns)) },
+        updated: Date.now(),
+      }
+      yield* goals.set(ctx.params.sessionID, next)
+      return next
     })
 
     const init = Effect.fn("SessionHttpApi.init")(function* (ctx: {
@@ -428,6 +542,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("share", share)
       .handle("unshare", unshare)
       .handle("summarize", summarize)
+      .handle("goal", goalGet)
+      .handle("goalSet", goalSet)
+      .handle("goalPause", goalPause)
+      .handle("goalResume", goalResume)
+      .handle("goalDrop", goalDrop)
+      .handle("goalBudget", goalBudget)
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
       .handle("command", command)

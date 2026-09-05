@@ -16,6 +16,7 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventSessionNextGuardTripped
   | EventSessionNextAgentSwitched
   | EventSessionNextModelSwitched
   | EventSessionNextMoved
@@ -820,6 +821,18 @@ export type GlobalEvent = {
           sessionID: string
           messageID: string
           partID: string
+        }
+      }
+    | {
+        id: string
+        type: "session.next.guard.tripped"
+        properties: {
+          timestamp: number
+          sessionID: string
+          guard: string
+          action: string
+          subject?: string
+          detail: string
         }
       }
     | {
@@ -2033,6 +2046,10 @@ export type Config = {
     continue_loop_on_deny?: boolean
     mcp_timeout?: number
     /**
+     * Milliseconds the calls around a turn - naming the session, compacting the conversation - may wait for a provider before being given up on (defaults: 120000 and 600000). Set to false to remove the bound.
+     */
+    aux_timeout?: false | number
+    /**
      * Steps one turn may run before the model is asked to stop and report what it did (wrap_up_at, default 198) and before the turn is stopped outright (stop_at, default 200). Set to false to remove the ceiling.
      */
     turn_steps?:
@@ -2042,14 +2059,23 @@ export type Config = {
           stop_at?: number
         }
     /**
-     * How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). Set to false to disable.
+     * How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable.
      */
     loop_guard?:
       | false
       | {
           correct_at?: number
           stop_at?: number
+          nudge_at?: number
         }
+    goal?: {
+      max_turns?: number
+      /**
+       * Milliseconds the goal judge may wait for a provider (default: 60000)
+       */
+      judge_timeout?: false | number
+      gate_timeout?: number
+    }
     /**
      * Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.
      */
@@ -2586,6 +2612,38 @@ export type NotFoundError = {
   }
 }
 
+export type SessionGoal = {
+  id: string
+  objective: string
+  contract: {
+    outcome?: string
+    verification?: string
+    constraints?: string
+    boundaries?: string
+    stop_when?: string
+  }
+  gates: Array<string>
+  status: "active" | "paused" | "blocked" | "done" | "dropped"
+  reason?: string
+  turns: {
+    used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    max: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  last?: {
+    verdict: "done" | "continue" | "blocked" | "wait"
+    reason: string
+    at: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  judgeFailures: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  claimed?: {
+    evidence: string
+    at: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  boot?: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2913,6 +2971,7 @@ export type V2Event =
   | MessageRemoved
   | MessagePartUpdated
   | MessagePartRemoved
+  | SessionNextGuardTripped
   | SessionNextAgentSwitched
   | SessionNextModelSwitched
   | SessionNextMoved
@@ -5266,6 +5325,28 @@ export type MessagePartRemoved = {
   }
 }
 
+export type SessionNextGuardTripped = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.next.guard.tripped"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    timestamp: number
+    sessionID: string
+    guard: string
+    action: string
+    subject?: string
+    detail: string
+  }
+}
+
 export type SessionNextTextDelta = {
   id: string
   metadata?: {
@@ -6294,6 +6375,19 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventSessionNextGuardTripped = {
+  id: string
+  type: "session.next.guard.tripped"
+  properties: {
+    timestamp: number
+    sessionID: string
+    guard: string
+    action: string
+    subject?: string
+    detail: string
   }
 }
 
@@ -10186,6 +10280,221 @@ export type SessionSummarizeResponses = {
 }
 
 export type SessionSummarizeResponse = SessionSummarizeResponses[keyof SessionSummarizeResponses]
+
+export type SessionGoalData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal"
+}
+
+export type SessionGoalErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalError = SessionGoalErrors[keyof SessionGoalErrors]
+
+export type SessionGoalResponses = {
+  /**
+   * The session's goal, or null
+   */
+  200: SessionGoal
+}
+
+export type SessionGoalResponse = SessionGoalResponses[keyof SessionGoalResponses]
+
+export type SessionGoalSetData = {
+  body?: {
+    /**
+     * The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable).
+     */
+    text: string
+    /**
+     * Turn budget for this goal (default: 20)
+     */
+    max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal"
+}
+
+export type SessionGoalSetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalSetError = SessionGoalSetErrors[keyof SessionGoalSetErrors]
+
+export type SessionGoalSetResponses = {
+  /**
+   * The goal, active
+   */
+  200: SessionGoal
+}
+
+export type SessionGoalSetResponse = SessionGoalSetResponses[keyof SessionGoalSetResponses]
+
+export type SessionGoalPauseData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal/pause"
+}
+
+export type SessionGoalPauseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalPauseError = SessionGoalPauseErrors[keyof SessionGoalPauseErrors]
+
+export type SessionGoalPauseResponses = {
+  /**
+   * The goal, paused
+   */
+  200: SessionGoal
+}
+
+export type SessionGoalPauseResponse = SessionGoalPauseResponses[keyof SessionGoalPauseResponses]
+
+export type SessionGoalResumeData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal/resume"
+}
+
+export type SessionGoalResumeErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalResumeError = SessionGoalResumeErrors[keyof SessionGoalResumeErrors]
+
+export type SessionGoalResumeResponses = {
+  /**
+   * The goal, active again
+   */
+  200: SessionGoal
+}
+
+export type SessionGoalResumeResponse = SessionGoalResumeResponses[keyof SessionGoalResumeResponses]
+
+export type SessionGoalDropData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal/drop"
+}
+
+export type SessionGoalDropErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalDropError = SessionGoalDropErrors[keyof SessionGoalDropErrors]
+
+export type SessionGoalDropResponses = {
+  /**
+   * Dropped
+   */
+  200: boolean
+}
+
+export type SessionGoalDropResponse = SessionGoalDropResponses[keyof SessionGoalDropResponses]
+
+export type SessionGoalBudgetData = {
+  body?: {
+    max_turns: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal/budget"
+}
+
+export type SessionGoalBudgetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalBudgetError = SessionGoalBudgetErrors[keyof SessionGoalBudgetErrors]
+
+export type SessionGoalBudgetResponses = {
+  /**
+   * The goal with its new budget
+   */
+  200: SessionGoal
+}
+
+export type SessionGoalBudgetResponse = SessionGoalBudgetResponses[keyof SessionGoalBudgetResponses]
 
 export type SessionPromptAsyncData = {
   body?: {

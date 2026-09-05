@@ -16,9 +16,12 @@ export const TITLE_MS = 120_000
 /** Compacting reads the whole conversation back, so it is allowed to take real time. */
 export const COMPACTION_MS = 600_000
 
-export type Call = "title" | "compaction"
+/** Judging a goal is one short request against a small model, on a turn that is already over. */
+export const JUDGE_MS = 60_000
 
-const DEFAULTS: Record<Call, number> = { title: TITLE_MS, compaction: COMPACTION_MS }
+export type Call = "title" | "compaction" | "judge"
+
+const DEFAULTS: Record<Call, number> = { title: TITLE_MS, compaction: COMPACTION_MS, judge: JUDGE_MS }
 
 export function deadlineMs(call: Call, configured?: number | false): number | undefined {
   if (configured === false) return undefined
@@ -27,7 +30,8 @@ export function deadlineMs(call: Call, configured?: number | false): number | un
 }
 
 export function message(call: Call, ms: number) {
-  const what = call === "title" ? "Naming the session" : "Compacting the conversation"
+  const what =
+    call === "title" ? "Naming the session" : call === "judge" ? "Judging the goal" : "Compacting the conversation"
   return `${what} got no answer from the provider within ${Math.round(ms / 1000)}s and was given up on.`
 }
 

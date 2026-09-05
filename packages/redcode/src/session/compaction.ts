@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { SessionGoal } from "./goal"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { Session } from "./session"
@@ -457,55 +458,57 @@ const layer = Layer.effect(
       // that stops answering here holds the turn open with nothing to show. A compaction that did
       // not happen is reported as itself rather than as silence.
       const compactionMs = AuxDeadline.deadlineMs("compaction", (yield* config.get()).experimental?.aux_timeout)
-      const result = yield* processor.process({
-        user: userMessage,
-        agent,
-        sessionID: input.sessionID,
-        tools: {},
-        system: [],
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: [
-                  nextPrompt,
-                  ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-              },
-            ],
-          },
-        ],
-        model,
-      }).pipe(
-        compactionMs === undefined
-          ? (self) => self
-          : Effect.timeoutOrElse({
-              duration: Duration.millis(compactionMs),
-              orElse: () =>
-                Effect.gen(function* () {
-                  yield* guards.record({
-                    sessionID: input.sessionID,
-                    guard: "aux",
-                    action: "stop",
-                    subject: "compaction",
-                    detail: AuxDeadline.message("compaction", compactionMs),
-                  })
-                  yield* Effect.logWarning(AuxDeadline.message("compaction", compactionMs), {
-                    "session.id": input.sessionID,
-                  })
-                  processor.message.error = new SessionV1.ContextOverflowError({
-                    message: AuxDeadline.message("compaction", compactionMs),
-                  }).toObject()
-                  processor.message.finish = "error"
-                  yield* session.updateMessage(processor.message)
-                  return "stop" as const
-                }),
-            }),
-      )
+      const result = yield* processor
+        .process({
+          user: userMessage,
+          agent,
+          sessionID: input.sessionID,
+          tools: {},
+          system: [],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: [
+                    nextPrompt,
+                    ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                },
+              ],
+            },
+          ],
+          model,
+        })
+        .pipe(
+          compactionMs === undefined
+            ? (self) => self
+            : Effect.timeoutOrElse({
+                duration: Duration.millis(compactionMs),
+                orElse: () =>
+                  Effect.gen(function* () {
+                    yield* guards.record({
+                      sessionID: input.sessionID,
+                      guard: "aux",
+                      action: "stop",
+                      subject: "compaction",
+                      detail: AuxDeadline.message("compaction", compactionMs),
+                    })
+                    yield* Effect.logWarning(AuxDeadline.message("compaction", compactionMs), {
+                      "session.id": input.sessionID,
+                    })
+                    processor.message.error = new SessionV1.ContextOverflowError({
+                      message: AuxDeadline.message("compaction", compactionMs),
+                    }).toObject()
+                    processor.message.finish = "error"
+                    yield* session.updateMessage(processor.message)
+                    return "stop" as const
+                  }),
+              }),
+        )
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({
@@ -579,6 +582,12 @@ const layer = Layer.effect(
               { enabled: true },
             )).enabled
           ) {
+            // While a goal is active the goal loop decides what the next turn is; two synthetic
+            // continuations would interleave.
+            const goalActive =
+              SessionGoal.fromMetadata((yield* session.get(input.sessionID).pipe(Effect.orDie)).metadata)?.status ===
+              "active"
+            if (goalActive) return "continue"
             const continueMsg = yield* session.updateMessage({
               id: MessageID.ascending(),
               role: "user",

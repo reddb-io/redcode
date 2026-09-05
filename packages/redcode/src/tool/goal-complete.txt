@@ -1,0 +1,11 @@
+Claim that the active goal is complete, with the evidence. A judge decides at the end of the turn; a claim the judge rejects comes back as more work.
+
+Before calling this, audit the current state — not your memory of it:
+1. Turn the objective into concrete deliverables: files, behaviours, tests, gates, artifacts.
+2. For each deliverable, gather direct current-state evidence: file contents, command output, a test run, a URL or id that exists now.
+3. Read and run things again. The repository may have changed since you last looked.
+4. Match the scope of the check to the scope of the claim: one passing unit test does not prove a feature works end to end.
+5. Anything uncertain, indirect, partial or uninspected counts as not done. Keep working instead.
+6. Running out of turns is not completion. Do not call this because the budget is nearly spent.
+
+The evidence you pass is what the judge reads. Quote it; do not summarise it.

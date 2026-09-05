@@ -13,6 +13,7 @@ import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
+import PROMPT_GOAL_JUDGE from "./prompt/goal-judge.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -121,6 +122,7 @@ const layer = Layer.effect(
           doom_loop: "ask",
           design_enter: "deny",
           design_exit: "deny",
+          goal_complete: "deny",
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -148,6 +150,7 @@ const layer = Layer.effect(
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
+                goal_complete: "allow",
                 question: "allow",
                 plan_enter: "allow",
                 design_enter: "allow",
@@ -165,6 +168,7 @@ const layer = Layer.effect(
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
+                goal_complete: "allow",
                 question: "allow",
                 plan_exit: "allow",
                 task: {
@@ -193,6 +197,7 @@ const layer = Layer.effect(
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
+                goal_complete: "allow",
                 question: "allow",
                 design_exit: "allow",
                 // Edits belong to the prototype. A design session that starts changing the product
@@ -278,6 +283,22 @@ const layer = Layer.effect(
               user,
             ),
             prompt: PROMPT_TITLE,
+          },
+          goal_judge: {
+            name: "goal_judge",
+            mode: "primary",
+            options: {},
+            native: true,
+            hidden: true,
+            temperature: 0,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+              }),
+              user,
+            ),
+            prompt: PROMPT_GOAL_JUDGE,
           },
           summary: {
             name: "summary",

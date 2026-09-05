@@ -209,6 +209,18 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionGoalBudgetErrors,
+  SessionGoalBudgetResponses,
+  SessionGoalDropErrors,
+  SessionGoalDropResponses,
+  SessionGoalErrors,
+  SessionGoalPauseErrors,
+  SessionGoalPauseResponses,
+  SessionGoalResponses,
+  SessionGoalResumeErrors,
+  SessionGoalResumeResponses,
+  SessionGoalSetErrors,
+  SessionGoalSetResponses,
   SessionInitErrors,
   SessionInitResponses,
   SessionListErrors,
@@ -4101,6 +4113,204 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionSummarizeResponses, SessionSummarizeErrors, ThrowOnError>({
       url: "/session/{sessionID}/summarize",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get goal
+   */
+  public goal<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionGoalResponses, SessionGoalErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set goal
+   *
+   * Set a definition of done for the session and start pursuing it. Replaces any existing goal.
+   */
+  public goalSet<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      text?: string
+      max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "text" },
+            { in: "body", key: "max_turns" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalSetResponses, SessionGoalSetErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Pause goal
+   */
+  public goalPause<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalPauseResponses, SessionGoalPauseErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal/pause",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resume goal
+   */
+  public goalResume<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalResumeResponses, SessionGoalResumeErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal/resume",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Drop goal
+   */
+  public goalDrop<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalDropResponses, SessionGoalDropErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal/drop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set goal budget
+   */
+  public goalBudget<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "max_turns" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalBudgetResponses, SessionGoalBudgetErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal/budget",
       ...options,
       ...params,
       headers: {

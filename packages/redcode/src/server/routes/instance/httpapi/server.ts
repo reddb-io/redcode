@@ -71,6 +71,7 @@ import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/red
 import { serveUIEffect } from "@/server/shared/ui"
 import { serveDesignEffect } from "../../../shared/design"
 import { DesignRegistry } from "@/design/registry"
+import { GoalRuntime } from "@/session/goal-runtime"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@reddb-io/redcode-server/api"
@@ -284,6 +285,7 @@ const app = LayerNode.group([
   ProjectCopy.node,
   PtyTicket.node,
   DesignRegistry.node,
+  GoalRuntime.node,
 ])
 
 export function createRoutes(
