@@ -18,7 +18,7 @@
     "@reddb-io/redcode-ui": "workspace:*",
     "@solidjs/meta": "catalog:",
     "@solidjs/router": "catalog:",
-    "@solidjs/start": "catalog:",
+    "@solidjs/start": "file:../../../vendor/solidjs-start-2.0.0-devinxi.0.tgz",
     "d3-geo": "3.1.1",
     "d3-scale": "4.0.2",
     "effect": "catalog:",
