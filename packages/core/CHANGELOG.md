@@ -1,5 +1,33 @@
 # @reddb-io/redcode-core
 
+## 1.20.1
+
+### Patch Changes
+
+- be2fcd5: Build is red, plan is gold, design is cyan — everywhere, including the loading bar
+
+  The brand theme had set primary, secondary and accent all to RedDB reds, and agents took their colour from that palette by position, so every mode looked the same. Each built-in agent now names its colour: build red, plan gold, design a cyan a shade under bright. The TUI's loading scanner takes its head from the agent's own colour instead of the theme accent, so it changes with the mode again. The app gets a design token to match.
+
+- b331e2e: Ported from upstream: tolerate Anthropic's thinking block binding on Claude 5.1+
+
+  Fable 5.1 binds each thinking signature to the system prompt, tool list and messages above it, and rejects the request when any of that changes between turns. Requests to Claude 5.1+ (direct, Vertex, Bedrock) now ask the API to drop the affected blocks instead of failing, via patched `@ai-sdk/anthropic` 3.0.111 and `@ai-sdk/amazon-bedrock` 4.0.166; the blocks Anthropic reports dropping are logged. Set `thinking.blockBinding: false` (or `reasoningConfig.blockBinding: false` on Bedrock) in the model's provider options to opt out.
+
+- 4ad8dc9: Ported from upstream: Azure CLI authentication, Codex model filtering, Copilot session header, GitLab provider bump
+
+  Azure can authenticate through the Azure CLI, without a Bun dependency, and its model discovery is gone (it logged to stdout and added nothing); Codex accepts integer GPT versions and compares them by major and minor; GitHub Copilot sends the interaction id with the session; `gitlab-ai-provider` 6.13.0.
+
+- f9100dc: Ported from upstream: session, provider list, database and apply-patch fixes
+
+  `/connect` shows the providers that are actually authenticated; session request headers are restored after compaction and the parent session header is sent; a database whose legacy migration history is missing is recovered instead of refusing to start; `apply_patch` no longer emits an empty move path.
+
+- 150c010: Ported from upstream: seven provider and stream fixes
+
+  Cerebras keeps its completion limit; Vertex multi-region models route through the regional endpoint; non-native providers behind Cloudflare AI Gateway go through its REST API, and Anthropic's dashed slug is sent correctly through it; Bedrock reasoning that cannot be replayed is filtered before caching, and a `none` reasoning effort is accepted; a cancelled SSE reader no longer surfaces an unhandled rejection.
+
+- 9c22b55: Ported from upstream: console device URLs, GitHub OIDC subjects, and test hygiene
+
+  Console device-auth URLs resolve correctly; the GitHub app accepts immutable OIDC subjects; development runs on native runtime conditions instead of `--conditions=browser`; a test guards that every patched dependency is at the version its patch targets (and drops a patch for a version nothing uses); the core test preload disables npm audits.
+
 ## 1.20.0
 
 ### Minor Changes
