@@ -56,7 +56,21 @@ import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
-import { Cause, DateTime, Duration, Effect, Exit, Latch, Layer, Option, Schedule, Scope, Context, Schema, Types } from "effect"
+import {
+  Cause,
+  DateTime,
+  Duration,
+  Effect,
+  Exit,
+  Latch,
+  Layer,
+  Option,
+  Schedule,
+  Scope,
+  Context,
+  Schema,
+  Types,
+} from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
@@ -67,6 +81,7 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
+import { DesignSystem } from "@/design/system"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@reddb-io/redcode-llm"
@@ -143,6 +158,7 @@ const layer = Layer.effect(
     const guards = yield* SessionGuardLog.Service
     const permission = yield* Permission.Service
     const fsys = yield* FSUtil.Service
+    const designSystem = yield* DesignSystem.Service
     const mcp = yield* MCP.Service
     const lsp = yield* LSP.Service
     const registry = yield* ToolRegistry.Service
@@ -1422,6 +1438,7 @@ const layer = Layer.effect(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
+            Effect.provideService(DesignSystem.Service, designSystem),
           )
 
           const msg: SessionV1.Assistant = {
@@ -1525,10 +1542,9 @@ const layer = Layer.effect(
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
-              ...(!Permission.disabled(
-                ["todowrite"],
-                Permission.merge(agent.permission, session.permission ?? []),
-              ).has("todowrite")
+              ...(!Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
+                "todowrite",
+              )
                 ? [SessionTodo.guidance]
                 : []),
             ]
@@ -1888,6 +1904,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    DesignSystem.node,
     SessionGuardLog.node,
     SessionStatus.node,
     Session.node,
