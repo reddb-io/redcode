@@ -99,6 +99,17 @@ describe("RuntimeFlags", () => {
     }),
   )
 
+  it.effect("background subagents are on unless the flag says no", () =>
+    Effect.gen(function* () {
+      const on = yield* readFlags.pipe(Effect.provide(fromConfig({})))
+      expect(on.experimentalBackgroundSubagents).toBe(true)
+      const off = yield* readFlags.pipe(
+        Effect.provide(fromConfig({ REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS: false })),
+      )
+      expect(off.experimentalBackgroundSubagents).toBe(false)
+    }),
+  )
+
   it.effect("layer accepts partial test overrides and fills defaults from Config definitions", () =>
     Effect.gen(function* () {
       const flags = yield* readFlags.pipe(
