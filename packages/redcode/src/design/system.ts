@@ -183,7 +183,8 @@ const layer = Layer.effect(
       Effect.fn("DesignSystem.scan")(function* (ctx) {
         const stop = ctx.worktree === "/" ? ctx.directory : ctx.worktree
         const cwd = stop
-        const rel = (file: string) => path.relative(ctx.directory, file) || "."
+        // Forward slashes on every platform: this is prose for the model, not a path to open.
+        const rel = (file: string) => (path.relative(ctx.directory, file) || ".").split(path.sep).join("/")
 
         const packages: PackageJson[] = []
         for (const file of yield* fs.findUp("package.json", ctx.directory, stop).pipe(Effect.orElseSucceed(() => []))) {
