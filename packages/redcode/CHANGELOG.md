@@ -1,5 +1,27 @@
 # opencode
 
+## 0.17.0
+
+### Minor Changes
+
+- 604ce9f: Design mode: craft that is checked
+
+  A prototype that only shows the populated state decides nothing, so `design_preview` now reports which of the five states — loading, empty, error, populated, edge — the prototype does not render, and writes each as a question into `design.json`, where `design_exit` carries it into the plan. `design.json` gains a `kind` (screen, flow, comparison, deck), each with its own checks. The craft notes grow the second set: uppercase without tracking, images loaded from a network the prototype does not have, raw hex outside the token block, the accent used everywhere.
+
+- 7bc774e: Design mode: a note can carry an image, and notes can be held
+
+  In the review window, paste or drop a screenshot or sketch beside what you type; it reaches the agent as a reference for that note, downscaled in the browser and checked by its bytes on the server. A Hold button keeps notes on the page until you press Send, so one message can carry a whole review — nothing accumulates on the server and nothing wakes the agent but Send. The app's Design tab no longer remounts the review surface on every revision, which was throwing held notes away.
+
+- 6c81f67: Design mode: the project's design system, read and handed over
+
+  On entering the `design` agent, redcode reads `DESIGN.md` or `.red/DESIGN.md` from the project and puts it in the mode's prompt. When neither exists it scans the repository — framework and component library from `package.json`, the token block from the stylesheet that declares the most custom properties, fonts, a few styled pages to read, an existing design doc — and writes `.red/DESIGN.md` with what it found, so the summary can be corrected once and believed from then on.
+
+### Patch Changes
+
+- 7363e57: Design mode: the session's end is written down, and a closed session's prototypes stop being served
+
+  When a turn ends, `design.json` records which revision it ended on, so a design reopened later knows where it stopped. When a session is deleted its prototypes stop being reachable — before, nothing ever released them. And `design_preview` says when the review window has not checked in for a while, so the agent knows it may be talking to nobody. Also fixes prototype ids, which were the first sixteen bytes of `session:path` and therefore the same for every prototype on a machine.
+
 ## 0.16.0
 
 ### Minor Changes
