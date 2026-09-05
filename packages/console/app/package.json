@@ -1,6 +1,6 @@
 {
   "name": "@reddb-io/redcode-console-app",
-  "version": "1.18.18",
+  "version": "1.18.19",
   "type": "module",
   "license": "MIT",
   "scripts": {

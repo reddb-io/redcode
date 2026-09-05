@@ -1,5 +1,27 @@
 # @reddb-io/redcode-tui
 
+## 1.19.1
+
+### Patch Changes
+
+- be2fcd5: Build is red, plan is gold, design is cyan — everywhere, including the loading bar
+
+  The brand theme had set primary, secondary and accent all to RedDB reds, and agents took their colour from that palette by position, so every mode looked the same. Each built-in agent now names its colour: build red, plan gold, design a cyan a shade under bright. The TUI's loading scanner takes its head from the agent's own colour instead of the theme accent, so it changes with the mode again. The app gets a design token to match.
+
+- 2e219a9: Ported from upstream: five TUI fixes
+
+  Encrypted reasoning shows as a thought with its duration instead of nothing; home shortcuts stay right-aligned; the diff highlight query is pinned; interface text uses a real ellipsis.
+
+- Updated dependencies [be2fcd5]
+- Updated dependencies [b331e2e]
+- Updated dependencies [2b6e24e]
+- Updated dependencies [4ad8dc9]
+- Updated dependencies [f9100dc]
+- Updated dependencies [150c010]
+- Updated dependencies [9c22b55]
+  - @reddb-io/redcode-core@1.20.1
+  - @reddb-io/redcode-ui@1.18.19
+
 ## 1.19.0
 
 ### Minor Changes
