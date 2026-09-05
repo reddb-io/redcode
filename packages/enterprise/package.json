@@ -19,7 +19,7 @@
     "aws4fetch": "^1.0.20",
     "@pierre/diffs": "catalog:",
     "@solidjs/router": "catalog:",
-    "@solidjs/start": "catalog:",
+    "@solidjs/start": "file:../../vendor/solidjs-start-2.0.0-devinxi.0.tgz",
     "@solidjs/meta": "catalog:",
     "@hono/standard-validator": "catalog:",
     "hono": "catalog:",

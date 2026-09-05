@@ -24,7 +24,7 @@
     "@smithy/util-utf8": "4.2.0",
     "@solidjs/meta": "catalog:",
     "@solidjs/router": "catalog:",
-    "@solidjs/start": "catalog:",
+    "@solidjs/start": "file:../../../vendor/solidjs-start-2.0.0-devinxi.0.tgz",
     "@stripe/stripe-js": "8.6.1",
     "@upstash/redis": "1.38.0",
     "chart.js": "4.5.1",
