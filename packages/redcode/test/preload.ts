@@ -36,6 +36,11 @@ process.env["XDG_CACHE_HOME"] = path.join(dir, "cache")
 process.env["XDG_CONFIG_HOME"] = path.join(dir, "config")
 process.env["XDG_STATE_HOME"] = path.join(dir, "state")
 process.env["REDCODE_MODELS_PATH"] = path.join(import.meta.dir, "tool", "fixtures", "models-api.json")
+// The catalog comes from the fixture above, so the background refresh has nothing to add and two
+// things to cost: a network call from a unit suite, and a race. It publishes `models-dev.refreshed`,
+// which invalidates provider state on purpose — so a refresh landing mid-test rebuilds providers
+// from an environment the test has already changed.
+process.env["REDCODE_DISABLE_MODELS_FETCH"] = "1"
 process.env["REDCODE_EXPERIMENTAL_EVENT_SYSTEM"] = "true"
 process.env["REDCODE_EXPERIMENTAL_WORKSPACES"] = "true"
 
