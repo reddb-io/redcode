@@ -23,3 +23,4 @@ e2ec62d07
 # Declined, with the reason. A decision, not an omission:
 2a3623613  # declined: makes the upgrade target mandatory; our mise-aware self-update resolves "latest" on the server on purpose
 15537a41d  # not applicable: changes a config-snapshot test helper we never took (only the write path of 03afae5b9 came across in #98)
+62cb3f77b  # already absent: the flaky subagent test it removes is not in our run-process suite
