@@ -758,6 +758,7 @@ it.instance(
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        design: { disable: true },
       },
     },
   },

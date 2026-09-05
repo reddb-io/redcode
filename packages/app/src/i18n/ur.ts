@@ -714,6 +714,8 @@ export const dict = {
   "session.tab.session": "سیشن",
   "session.tab.review": "جائزہ لیں",
   "session.tab.context": "سیاق و سباق",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "نامعلوم سیشن",
   "session.panel.reviewAndFiles": "جائزہ اور فائلیں۔",
   "session.error.notFound": "یہ سیشن نہیں مل سکتا",

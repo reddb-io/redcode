@@ -715,6 +715,8 @@ export const dict = {
   "session.tab.session": "ސެޝަން",
   "session.tab.review": "ރިވިއު",
   "session.tab.context": "ކޮންޓެކްސްޓް",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "ނޭނގޭ ސެޝަނެއް",
   "session.panel.reviewAndFiles": "ރިވިއުކޮށް ފައިލްކުރުން",
   "session.error.notFound": "މި ސެޝަން ހޯދިފައެއް ނުވެއެވެ",

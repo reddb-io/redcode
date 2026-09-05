@@ -742,6 +742,8 @@ export const dict = {
   "session.tab.session": "เซสชัน",
   "session.tab.review": "ตรวจสอบ",
   "session.tab.context": "บริบท",
+  "session.tab.design": "การออกแบบ",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "เซสชันที่ไม่รู้จัก",
   "session.panel.reviewAndFiles": "ตรวจสอบและไฟล์",
   "session.error.notFound": "ไม่พบเซสชันนี้",

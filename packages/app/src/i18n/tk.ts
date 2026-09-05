@@ -703,6 +703,8 @@ export const dict = {
   "session.tab.session": "Sessiýa",
   "session.tab.review": "Syn",
   "session.tab.context": "Kontekst",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Näbelli sessiýa",
   "session.panel.reviewAndFiles": "Gözden geçiriň we faýllary",
   "session.error.notFound": "Bu sessiýany tapyp bolmaýar",

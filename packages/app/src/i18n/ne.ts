@@ -704,6 +704,8 @@ export const dict: Record<string, string> = {
   "session.tab.session": "सत्र",
   "session.tab.review": "समीक्षा गर्नुहोस्",
   "session.tab.context": "सन्दर्भ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "अज्ञात सत्र",
   "session.panel.reviewAndFiles": "समीक्षा र फाइलहरू",
   "session.error.notFound": "यो सत्र फेला पार्न सकिँदैन",

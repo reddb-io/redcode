@@ -754,6 +754,8 @@ export const dict = {
   "session.tab.session": "Oturum",
   "session.tab.review": "İnceleme",
   "session.tab.context": "Bağlam",
+  "session.tab.design": "Tasarım",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Bilinmeyen Oturum",
   "session.panel.reviewAndFiles": "İnceleme ve dosyalar",
   "session.error.notFound": "Bu oturum bulunamıyor",

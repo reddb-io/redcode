@@ -119,6 +119,8 @@ const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
+          design_enter: "deny",
+          design_exit: "deny",
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -147,6 +149,7 @@ const layer = Layer.effect(
               Permission.fromConfig({
                 question: "allow",
                 plan_enter: "allow",
+                design_enter: "allow",
               }),
               user,
             ),
@@ -172,6 +175,32 @@ const layer = Layer.effect(
                   "*": "deny",
                   [path.join(".redcode", "plans", "*.md")]: "allow",
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          design: {
+            name: "design",
+            description:
+              "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                design_exit: "allow",
+                // Edits belong to the prototype. A design session that starts changing the product
+                // has stopped being a design session, and the user has no way to see it happen.
+                edit: {
+                  "*": "deny",
+                  [path.join(".redcode", "designs", "*")]: "allow",
+                  [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("designs", "*")))]: "allow",
+                },
+                external_directory: {
+                  [path.join(Global.Path.data, "designs", "*")]: "allow",
                 },
               }),
               user,

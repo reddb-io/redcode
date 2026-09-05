@@ -11,6 +11,7 @@ import { Session } from "./session"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
+import DESIGN_MODE from "./prompt/design-mode.txt"
 
 export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
@@ -22,6 +23,29 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   const sessions = yield* Session.Service
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
   if (!userMessage) return input.messages
+
+  const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
+
+  if (flags.experimentalDesignMode && input.agent.name === "design" && assistantMessage?.info.agent !== "design") {
+    const ctx = yield* InstanceState.context
+    const root = Session.design(input.session, ctx)
+    const exists = yield* fsys.existsSafe(root)
+    if (!exists) yield* fsys.ensureDir(root).pipe(Effect.catch(Effect.die))
+    const part = yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      text: DESIGN_MODE.replace("${designInfo}", () =>
+        exists
+          ? `A design already exists at ${root}. Read what is there — including design.json — before changing it.`
+          : `Build the prototype at ${root}, starting with index.html.`,
+      ),
+      synthetic: true,
+    })
+    userMessage.parts.push(part)
+    return input.messages
+  }
 
   if (!flags.experimentalPlanMode) {
     if (input.agent.name === "plan") {
@@ -48,7 +72,6 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     return input.messages
   }
 
-  const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
   if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
     const ctx = yield* InstanceState.context
     const plan = Session.plan(input.session, ctx)
@@ -66,6 +89,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     userMessage.parts.push(part)
     return input.messages
   }
+
 
   if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
 

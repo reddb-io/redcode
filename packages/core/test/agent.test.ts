@@ -117,6 +117,7 @@ describe("AgentV2", () => {
       expect(agents.map((item) => String(item.id)).sort()).toEqual([
         "build",
         "compaction",
+        "design",
         "explore",
         "general",
         "plan",

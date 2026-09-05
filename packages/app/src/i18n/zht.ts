@@ -738,6 +738,8 @@ export const dict = {
   "session.tab.session": "工作階段",
   "session.tab.review": "檢閱",
   "session.tab.context": "上下文",
+  "session.tab.design": "設計",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "未知的工作階段",
   "session.panel.reviewAndFiles": "檢閱與檔案",
   "session.error.notFound": "找不到此工作階段",

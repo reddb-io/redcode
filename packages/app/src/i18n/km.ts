@@ -701,6 +701,8 @@ export const dict = {
   "session.tab.session": "សម័យ",
   "session.tab.review": "ពិនិត្យ",
   "session.tab.context": "បរិបទ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "សម័យមិនស្គាល់",
   "session.panel.reviewAndFiles": "ពិនិត្យ និងឯកសារ",
   "session.error.notFound": "សម័យនេះមិនអាចរកឃើញទេ។",

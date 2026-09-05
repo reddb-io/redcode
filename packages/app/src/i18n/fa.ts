@@ -703,6 +703,8 @@ export const dict = {
   "session.tab.session": "جلسه",
   "session.tab.review": "بررسی کنید",
   "session.tab.context": "زمینه",
+  "session.tab.design": "طراحی",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "جلسه ناشناخته",
   "session.panel.reviewAndFiles": "بررسی و فایل ها",
   "session.error.notFound": "این جلسه یافت نمی شود",

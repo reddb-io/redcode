@@ -710,6 +710,8 @@ export const dict = {
   "session.tab.session": "Seansas",
   "session.tab.review": "Apžvalga",
   "session.tab.context": "Kontekstas",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Nežinomas seansas",
   "session.panel.reviewAndFiles": "Apžvalga ir failai",
   "session.error.notFound": "Šios sesijos rasti nepavyko",

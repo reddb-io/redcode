@@ -706,6 +706,8 @@ export const dict = {
   "session.tab.session": "Сессия",
   "session.tab.review": "Барраси",
   "session.tab.context": "Контекст",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Сеанси номаълум",
   "session.panel.reviewAndFiles": "Барраси ва файлҳо",
   "session.error.notFound": "Ин сессияро ёфтан мумкин нест",

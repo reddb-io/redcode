@@ -708,6 +708,8 @@ export const dict = {
   "session.tab.session": "Session",
   "session.tab.review": "Granskning",
   "session.tab.context": "Kontext",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Okänd session",
   "session.panel.reviewAndFiles": "Granskning och filer",
   "session.error.notFound": "Denna session kan inte hittas",

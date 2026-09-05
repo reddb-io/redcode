@@ -704,6 +704,8 @@ export const dict = {
   "session.tab.session": "Relace",
   "session.tab.review": "Recenze",
   "session.tab.context": "Kontext",
+  "session.tab.design": "Návrh",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Neznámá relace",
   "session.panel.reviewAndFiles": "Recenze a soubory",
   "session.error.notFound": "Tuto relaci nelze najít",
