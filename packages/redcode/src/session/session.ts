@@ -335,6 +335,20 @@ export function plan(input: { slug: string; time: { created: number } }, instanc
   return path.join(base, [input.time.created, input.slug].join("-") + ".md")
 }
 
+/**
+ * Where a session's design work lives.
+ *
+ * A directory rather than a file, because a prototype is a page plus whatever it needs beside it,
+ * and a manifest recording why it looks the way it does. It sits next to `plans` for the same
+ * reason plans sit in the worktree: the work is about this project and should travel with it.
+ */
+export function design(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+  const base = instance.project.vcs
+    ? path.join(instance.worktree, ".redcode", "designs")
+    : path.join(Global.Path.data, "designs")
+  return path.join(base, [input.time.created, input.slug].join("-"))
+}
+
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {
   const finite = (value: number) => (Number.isFinite(value) ? value : 0)
   const safe = (value: number) => Math.max(0, finite(value))
