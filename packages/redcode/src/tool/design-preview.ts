@@ -4,6 +4,7 @@ import * as Tool from "./tool"
 import DESCRIPTION from "./design-preview.txt"
 import { DesignRegistry } from "@/design/registry"
 import { DesignServe } from "@/design/serve"
+import { DesignLint } from "@/design/lint"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 
@@ -52,13 +53,18 @@ export const DesignPreviewTool = Tool.define(
           }).pipe(Effect.ignore)
 
           const served = DesignServe.mimeFor(entry) ? "index.html" : "nothing servable"
+          // Craft notes ride along with the URL: the model is reading this anyway, and nobody
+          // else needs to be woken for them.
+          const findings = DesignLint.lint(yield* Effect.promise(() => Bun.file(entry).text()))
+          const notes = DesignLint.report(findings)
           return {
             title: prototype.name,
-            metadata: { url, revision: prototype.revision, entry: served },
+            metadata: { url, revision: prototype.revision, entry: served, findings: findings.map((f) => f.id) },
             output: [
               `Prototype "${prototype.name}" is open at ${url} (revision ${prototype.revision}).`,
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
               `Call design_preview again after each revision.`,
+              ...(notes ? ["", notes] : []),
             ].join("\n"),
           }
         }),

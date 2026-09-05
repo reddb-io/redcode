@@ -19,6 +19,8 @@ It runs with no network access. Everything it needs must be in the directory or 
 
 Match what already exists. If this is a screen for a product in this repository, find its design system — Tailwind config, CSS variables, component library, existing styled pages — and use it, so what the user sees is what they would get. Only invent a look when there is nothing to match.
 
+`design_preview` appends craft notes when the prototype reaches for the patterns reviewers recognise as generated — the purple gradient, the default indigo accent, emoji as icons, the rounded card with a coloured left border, invented metrics, filler copy. They are notes, not errors: each names what fired, so fix it or say why it stays.
+
 ## Keeping the reasoning
 
 The prototype records what was decided; `design.json` beside it records why. Keep it current as the conversation settles things:
