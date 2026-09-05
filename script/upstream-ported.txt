@@ -26,3 +26,4 @@ e2ec62d07
 62cb3f77b  # already absent: the flaky subagent test it removes is not in our run-process suite
 1b937c860  # covered: our run-process tests from #98 already assert the unknown-finish continuation, with our own fake provider
 c2e39bb55  # not applicable: the permission assertion it fixes belongs to a test our config suite does not have
+86387e90b  # not applicable: fixes test/session/tools.test.ts, which our tree does not have
