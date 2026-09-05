@@ -121,6 +121,7 @@ export const Plugin = define({
 
     yield* ctx.agent.transform((draft) => {
       draft.update(AgentV2.defaultID, (item) => {
+        item.color = "secondary"
         item.description = "The default agent. Executes tools based on configured permissions."
         item.system ??= BUILD_SYSTEM
         item.mode = "primary"
@@ -133,7 +134,28 @@ export const Plugin = define({
         )
       })
 
+      draft.update(AgentV2.ID.make("plan"), (item) => {
+        item.color = "accent"
+        item.description = "Plan mode. Disallows all edit tools."
+        item.mode = "primary"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "plan_exit", resource: "*", effect: "allow" },
+            { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "edit", resource: path.join(".redcode", "plans", "*.md"), effect: "allow" },
+            {
+              action: "edit",
+              resource: path.relative(worktree, path.join(Global.Path.data, "plans", "*.md")),
+              effect: "allow",
+            },
+          ]),
+        )
+      })
+
       draft.update(AgentV2.ID.make("design"), (item) => {
+        item.color = "info"
         item.description =
           "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan."
         item.mode = "primary"
@@ -147,25 +169,6 @@ export const Plugin = define({
             {
               action: "edit",
               resource: path.relative(worktree, path.join(Global.Path.data, "designs", "*")),
-              effect: "allow",
-            },
-          ]),
-        )
-      })
-
-      draft.update(AgentV2.ID.make("plan"), (item) => {
-        item.description = "Plan mode. Disallows all edit tools."
-        item.mode = "primary"
-        item.permissions.push(
-          ...PermissionV2.merge(defaults, [
-            { action: "question", resource: "*", effect: "allow" },
-            { action: "plan_exit", resource: "*", effect: "allow" },
-            { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
-            { action: "edit", resource: "*", effect: "deny" },
-            { action: "edit", resource: path.join(".redcode", "plans", "*.md"), effect: "allow" },
-            {
-              action: "edit",
-              resource: path.relative(worktree, path.join(Global.Path.data, "plans", "*.md")),
               effect: "allow",
             },
           ]),

@@ -142,6 +142,7 @@ const layer = Layer.effect(
         const agents: Record<string, Info> = {
           build: {
             name: "build",
+            color: "secondary",
             description: "The default agent. Executes tools based on configured permissions.",
             options: {},
             permission: Permission.merge(
@@ -158,6 +159,7 @@ const layer = Layer.effect(
           },
           plan: {
             name: "plan",
+            color: "accent",
             description: "Plan mode. Disallows all edit tools.",
             options: {},
             permission: Permission.merge(
@@ -184,6 +186,7 @@ const layer = Layer.effect(
           },
           design: {
             name: "design",
+            color: "info",
             description:
               "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan.",
             options: {},
