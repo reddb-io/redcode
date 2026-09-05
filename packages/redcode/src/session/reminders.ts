@@ -8,6 +8,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
+import { DesignSystem } from "@/design/system"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
@@ -31,6 +32,14 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     const root = Session.design(input.session, ctx)
     const exists = yield* fsys.existsSafe(root)
     if (!exists) yield* fsys.ensureDir(root).pipe(Effect.catch(Effect.die))
+    // What the project already looks like. A failed scan is a missing paragraph, not a failed turn.
+    const system = yield* (yield* DesignSystem.Service)
+      .summary()
+      .pipe(
+        Effect.catchCause(() =>
+          Effect.succeed("The design system could not be read this turn; look for tokens and styled pages yourself."),
+        ),
+      )
     const part = yield* sessions.updatePart({
       id: PartID.ascending(),
       messageID: userMessage.info.id,
@@ -40,7 +49,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         exists
           ? `A design already exists at ${root}. Read what is there — including design.json — before changing it.`
           : `Build the prototype at ${root}, starting with index.html.`,
-      ),
+      ).replace("${designSystem}", () => system),
       synthetic: true,
     })
     userMessage.parts.push(part)
@@ -89,7 +98,6 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     userMessage.parts.push(part)
     return input.messages
   }
-
 
   if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
 
