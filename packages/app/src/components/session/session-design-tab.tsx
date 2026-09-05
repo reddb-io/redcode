@@ -30,8 +30,9 @@ export function SessionDesignTab() {
     const current = preview()
     if (!current) return undefined
     const base = sdk().url.replace(/\/$/, "")
-    // The revision rides in the URL so a rewrite remounts the frame instead of trusting the poll.
-    return `${base}/design/${current.id}?embed=1&rev=${current.revision}`
+    // No revision in the URL on purpose: the id is stable for a session and directory, and the
+    // shell reloads the prototype itself. Remounting the shell would throw away notes being held.
+    return `${base}/design/${current.id}?embed=1`
   })
 
   return (

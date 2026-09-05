@@ -1,6 +1,6 @@
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Effect, Scope } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { Effect, FileSystem, Scope } from "effect"
+import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { DesignRegistry } from "@/design/registry"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignRoutePath } from "@/design/route-path"
@@ -18,6 +18,9 @@ import { SessionPrompt } from "@/session/prompt"
  */
 
 const notFound = () => HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
+
+/** Four images at the feedback limit, the words, and JSON's overhead. */
+const MAX_FEEDBACK_BYTES = DesignFeedback.LIMITS.images * DesignFeedback.LIMITS.image + 512 * 1024
 const forbidden = () => HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
 
 /** Where the prototype's own assets live, absolute, for the policy that lets them load. */
@@ -71,7 +74,19 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     if (target.kind === "feedback") {
       if (!authorised) return forbidden()
       if (request.method !== "POST") return notFound()
-      const payload = yield* request.json.pipe(Effect.orElseSucceed(() => undefined))
+      // The body is bounded here because nothing below bounds it: the server is Node's http and
+      // Effect's default is unlimited. The stream cap stops a flood early; the length check is
+      // the one that holds on every transport, including the in-memory one the tests use.
+      const raw = yield* request.text.pipe(
+        Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(MAX_FEEDBACK_BYTES)),
+        Effect.orElseSucceed(() => undefined),
+      )
+      if (raw === undefined || raw.length > MAX_FEEDBACK_BYTES) {
+        return HttpServerResponse.jsonUnsafe({ error: "Payload Too Large" }, { status: 413 })
+      }
+      const payload = yield* Effect.try({ try: () => JSON.parse(raw) as unknown, catch: () => undefined }).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )
       const parsed = (payload ?? {}) as { items?: unknown; viewport?: { width?: unknown; height?: unknown } }
       const items = Array.isArray(parsed.items) ? DesignFeedback.normalize(parsed.items) : []
       if (items.length === 0) return HttpServerResponse.jsonUnsafe({ error: "Nothing to say" }, { status: 400 })
@@ -96,7 +111,9 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       yield* prompt
         .prompt({
           sessionID: prototype.sessionID,
-          parts: [{ type: "text", text }],
+          // The words first, then the references they mention, as data: URLs — nothing is
+          // written to the worktree on a browser's say-so.
+          parts: [{ type: "text", text }, ...DesignFeedback.attachments(items)],
         })
         .pipe(
           Effect.catchCause((cause) => Effect.logError("design feedback could not be delivered", { cause })),

@@ -68,6 +68,12 @@ export function shellHTML(input: ShellInput) {
            background: transparent; color: inherit; cursor: pointer }
   button[disabled] { opacity: .5; cursor: default }
   p.empty { margin: .75rem; opacity: .6 }
+  li img { display: block; max-width: 100%; max-height: 120px; margin-top: .35rem; border-radius: .25rem; border: 1px solid var(--edge) }
+  .actions { display: flex; gap: .5rem; align-items: center }
+  .actions button[type="button"] { opacity: .8 }
+  .draft { display: none; align-items: center; gap: .5rem; font-size: 12px; opacity: .8 }
+  .draft img { max-height: 40px; border-radius: .25rem; border: 1px solid var(--edge) }
+  .draft[data-on] { display: flex }
   body[data-embed] { grid-template-rows: 1fr }
   body[data-embed] header { display: none }
   body[data-embed] main { grid-template-columns: 1fr min(300px, 40vw) }
@@ -88,8 +94,12 @@ export function shellHTML(input: ShellInput) {
     <ol id="queue"></ol>
     <p class="empty" id="empty">Nothing queued yet.</p>
     <form id="composer">
-      <textarea id="text" placeholder="Say what should change…"></textarea>
-      <button id="send" type="submit">Send to agent</button>
+      <textarea id="text" placeholder="Say what should change… paste or drop an image to show it"></textarea>
+      <div class="draft" id="draft"><img id="draftImg" alt=""><span>image attached</span><button type="button" id="dropImg">remove</button></div>
+      <div class="actions">
+        <button id="send" type="submit">Send to agent</button>
+        <button id="hold" type="button" title="Keep this note here and carry on; nothing is sent until you press Send">Hold</button>
+      </div>
     </form>
   </aside>
 </main>
@@ -102,9 +112,15 @@ export function shellHTML(input: ShellInput) {
   const status = document.getElementById("status")
   const text = document.getElementById("text")
   const send = document.getElementById("send")
+  const hold = document.getElementById("hold")
+  const draft = document.getElementById("draft")
+  const draftImg = document.getElementById("draftImg")
   const base = location.pathname.replace(/\\/$/, "")
   let pending = []
   let revision = config.revision
+  // The image beside whatever is being typed. Ours to capture: the prototype never sees it and
+  // cannot supply one, because the frame's whole vocabulary is "ready" and "annotate".
+  let image = null
 
   frame.src = base + "/files/index.html"
 
@@ -117,11 +133,84 @@ export function shellHTML(input: ShellInput) {
         li.append(code)
       }
       li.append(document.createTextNode(item.text))
+      if (item.image) {
+        const img = document.createElement("img")
+        img.src = "data:" + item.image.mime + ";base64," + item.image.data
+        img.alt = "attached image"
+        li.append(img)
+      }
       return li
     }))
     empty.hidden = pending.length > 0
-    send.disabled = pending.length === 0 && text.value.trim() === ""
+    const typed = text.value.trim() !== "" || image !== null
+    send.disabled = pending.length === 0 && !typed
+    hold.disabled = !typed
+    const count = pending.length + (typed ? 1 : 0)
+    send.textContent = count > 1 ? "Send " + count + " notes" : "Send to agent"
+    draft.toggleAttribute("data-on", image !== null)
+    if (image) draftImg.src = "data:" + image.mime + ";base64," + image.data
   }
+
+  // Downscaled here so a screenshot is a reference, not a payload: ≤1280px on the long edge,
+  // and re-encoded as JPEG when PNG would be heavier. The server checks the bytes again.
+  const MAX_EDGE = 1280
+  const MAX_B64 = 800000
+  const attach = (file) => {
+    if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) return
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight))
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height)
+      let mime = "image/png"
+      let data = canvas.toDataURL(mime)
+      if (data.length > MAX_B64) { mime = "image/jpeg"; data = canvas.toDataURL(mime, 0.85) }
+      if (data.length > MAX_B64) { data = canvas.toDataURL(mime, 0.6) }
+      if (data.length > MAX_B64) { status.textContent = "that image is too large even downscaled"; return }
+      image = { mime, data: data.slice(data.indexOf(",") + 1) }
+      draw()
+      status.textContent = "image attached · it goes with what you type"
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); status.textContent = "could not read that image" }
+    img.src = url
+  }
+  text.addEventListener("paste", (event) => {
+    const item = [...(event.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"))
+    if (!item) return
+    event.preventDefault()
+    attach(item.getAsFile())
+  })
+  text.addEventListener("dragover", (event) => event.preventDefault())
+  text.addEventListener("drop", (event) => {
+    const file = event.dataTransfer?.files?.[0]
+    if (!file || !file.type.startsWith("image/")) return
+    event.preventDefault()
+    attach(file)
+  })
+  document.getElementById("dropImg").addEventListener("click", () => { image = null; draw() })
+
+  // What was typed, as one more note. With only an image, the words say so.
+  const typedNote = () => {
+    const typed = text.value.trim()
+    if (!typed && !image) return null
+    return { text: typed || "See the attached image.", ...(image ? { image } : {}) }
+  }
+
+  // Hold: the note joins the queue and nothing leaves this page. The agent is woken by Send, and
+  // by nothing else — a person decides when a batch is a batch.
+  hold.addEventListener("click", () => {
+    const note = typedNote()
+    if (!note) return
+    pending = pending.concat([note]).slice(0, 50)
+    text.value = ""
+    image = null
+    draw()
+    status.textContent = pending.length + " held · press Send when you are done"
+  })
 
   // Only what the prototype is allowed to say. Anything else is ignored rather than interpreted:
   // the frame is the least trusted thing here, and this list is the whole of its vocabulary.
@@ -148,8 +237,8 @@ export function shellHTML(input: ShellInput) {
 
   const submit = async (event) => {
     event.preventDefault()
-    const typed = text.value.trim()
-    const items = typed ? pending.concat([{ text: typed }]) : pending
+    const note = typedNote()
+    const items = note ? pending.concat([note]) : pending
     if (items.length === 0) return
     send.disabled = true
     status.textContent = "sending…"
@@ -165,6 +254,7 @@ export function shellHTML(input: ShellInput) {
       if (!response.ok) throw new Error("HTTP " + response.status)
       pending = []
       text.value = ""
+      image = null
       draw()
       status.textContent = "sent · the agent has it"
     } catch (error) {

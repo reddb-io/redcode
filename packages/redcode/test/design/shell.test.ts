@@ -47,3 +47,21 @@ describe("embedded in the app", () => {
     expect(shellHTML({ id: "abc", name: "n", token: "t", revision: 1 })).toContain("<body>")
   })
 })
+
+describe("notes, held and illustrated", () => {
+  test("holding keeps the note on the page; only Send leaves it", () => {
+    expect(html).toContain('id="hold"')
+    expect(html).toContain('hold.addEventListener("click"')
+    // The hold handler queues and redraws; it never fetches.
+    const hold = html.slice(html.indexOf('hold.addEventListener("click"'), html.indexOf("const submit = async"))
+    expect(hold).not.toContain("fetch(")
+  })
+
+  test("an image is captured by the shell, downscaled, and never asked of the prototype", () => {
+    expect(html).toContain('addEventListener("paste"')
+    expect(html).toContain('addEventListener("drop"')
+    expect(html).toContain("MAX_EDGE = 1280")
+    // The frame's vocabulary is unchanged: it cannot hand the shell an image.
+    expect(html).toContain('new Set(["ready", "annotate"])')
+  })
+})
