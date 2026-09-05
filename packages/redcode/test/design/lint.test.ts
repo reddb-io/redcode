@@ -57,3 +57,34 @@ describe("design lint", () => {
     expect(text).toContain("- filler-copy:")
   })
 })
+
+describe("design lint, the second set", () => {
+  test("uppercase without tracking, in a rule or inline; tracked or tokenised passes", () => {
+    expect(ids(`<style>.eyebrow{text-transform:uppercase}</style>`)).toEqual(["caps-no-tracking"])
+    expect(ids(`<span style="text-transform: uppercase; font-size: 12px">x</span>`)).toEqual(["caps-no-tracking"])
+    expect(ids(`<style>.eyebrow{text-transform:uppercase;letter-spacing:.08em}</style>`)).toEqual([])
+    expect(ids(`<style>.eyebrow{text-transform:uppercase;letter-spacing:var(--tracking)}</style>`)).toEqual([])
+    expect(ids(`<style>.eyebrow{text-transform:uppercase;letter-spacing:0.02em}</style>`)).toEqual(["caps-no-tracking"])
+  })
+
+  test("any remote image, since the prototype has no network", () => {
+    expect(ids(`<img src="https://images.unsplash.com/x.jpg">`)).toEqual(["external-image"])
+    expect(ids(`<img src="//cdn.example.com/x.png">`)).toEqual(["external-image"])
+    expect(ids(`<img src="./hero.png"><img src="data:image/png;base64,AAAA">`)).toEqual([])
+  })
+
+  test("raw hex outside :root, beyond a dozen", () => {
+    const many = Array.from({ length: 13 }, (_, i) => `.c${i}{color:#${(i + 1).toString(16).padStart(6, "0")}}`).join(
+      "",
+    )
+    expect(ids(`<style>${many}</style>`)).toEqual(["raw-hex"])
+    const tokens = Array.from({ length: 13 }, (_, i) => `--c${i}:#${(i + 1).toString(16).padStart(6, "0")};`).join("")
+    expect(ids(`<style>:root{${tokens}}</style>`)).toEqual([])
+  })
+
+  test("the accent everywhere", () => {
+    const seven = Array.from({ length: 7 }, () => `<b style="color:var(--accent)">x</b>`).join("")
+    expect(ids(seven)).toEqual(["accent-overuse"])
+    expect(ids(`<b style="color:var(--accent)">x</b><i style="color:var(--accent)">y</i>`)).toEqual([])
+  })
+})

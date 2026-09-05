@@ -1,5 +1,6 @@
 import path from "path"
 import { Schema } from "effect"
+import { DesignKinds } from "./kinds"
 
 /**
  * What the prototype is, and why it is that.
@@ -12,6 +13,8 @@ export const Manifest = Schema.Struct({
   /** Schema version, so a manifest written by an older build still reads. */
   version: Schema.Literal(1),
   name: Schema.String,
+  /** What kind of thing this is: a screen, a flow, a comparison, a deck. */
+  kind: Schema.Literals(DesignKinds.KINDS),
   /** Relative to the design directory. */
   entry: Schema.String,
   /** What the conversation settled, in the words it settled them. */
@@ -20,6 +23,8 @@ export const Manifest = Schema.Struct({
   questions: Schema.Array(Schema.String),
   /** Set once the design becomes a plan, so each points at the other. */
   plan: Schema.optional(Schema.String),
+  /** Where the session left it: the last revision a turn ended on. Bookkeeping, never prompted. */
+  state: Schema.optional(Schema.Struct({ revision: Schema.Number, updated: Schema.Number })),
 })
 export type Manifest = Schema.Schema.Type<typeof Manifest>
 
@@ -28,7 +33,7 @@ export const FILE = "design.json"
 export const file = (root: string) => path.join(root, FILE)
 
 export function empty(name: string): Manifest {
-  return { version: 1, name, entry: "index.html", decisions: [], questions: [] }
+  return { version: 1, name, kind: DesignKinds.DEFAULT, entry: "index.html", decisions: [], questions: [] }
 }
 
 /**
@@ -44,10 +49,14 @@ export function parse(raw: string, name: string): Manifest {
     return {
       version: 1,
       name: typeof decoded.name === "string" && decoded.name ? decoded.name : name,
+      kind: DesignKinds.isKind(decoded.kind) ? decoded.kind : DesignKinds.DEFAULT,
       entry: typeof decoded.entry === "string" && decoded.entry ? decoded.entry : "index.html",
       decisions: Array.isArray(decoded.decisions) ? decoded.decisions.filter((x) => typeof x === "string") : [],
       questions: Array.isArray(decoded.questions) ? decoded.questions.filter((x) => typeof x === "string") : [],
       ...(typeof decoded.plan === "string" ? { plan: decoded.plan } : {}),
+      ...(typeof decoded.state?.revision === "number" && typeof decoded.state?.updated === "number"
+        ? { state: { revision: decoded.state.revision, updated: decoded.state.updated } }
+        : {}),
     }
   } catch {
     return empty(name)
@@ -58,7 +67,7 @@ export const serialize = (manifest: Manifest) => JSON.stringify(manifest, null, 
 
 /** What the plan inherits from the design: the reasoning, not the markup. */
 export function summarize(manifest: Manifest, prototype: string) {
-  const lines = [`Prototype: ${prototype}`]
+  const lines = [`Prototype: ${prototype} (${manifest.kind})`]
   if (manifest.decisions.length) {
     lines.push("", "Decided:", ...manifest.decisions.map((item) => `- ${item}`))
   }

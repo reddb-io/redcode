@@ -13,7 +13,24 @@ Revise, call `design_preview` again, and keep going. The page reloads itself and
 
 ## What to build
 
-Make it real enough to argue with. A prototype that only shows the happy path answers nothing, so include the states that decide a design: empty, loading, error, too much content, the longest plausible name. Interactivity is the point — a static picture would have been a screenshot.
+Make it real enough to argue with. A prototype that only shows the happy path answers nothing, so include the states that decide a design. Interactivity is the point — a static picture would have been a screenshot.
+
+Every surface that fetches, transforms or accepts data renders five states, and marks the element that renders each with `data-state="…"`:
+
+- `loading` — a skeleton or shell, plus what it says when it takes too long
+- `empty` — its own state with a job: a headline, one plain sentence, one primary action; a search with no results echoes the query and suggests something
+- `error` — answers three questions in order: what happened, why if knowable, what the user can do. The user's input survives it.
+- `populated` — the state the design was drawn for
+- `edge` — too much content, the longest plausible name, a missing optional field, a 200-character title
+
+`design_preview` reports which are missing and writes each as a question into `design.json`, so a state you skipped becomes a question the plan carries instead of a decision someone else makes.
+
+Say what kind of thing this is in `design.json` (`kind`), because each is checked differently:
+
+- `screen` (default) — one surface, in every state that decides it
+- `flow` — steps the user moves through: `data-step="1"`, `data-step="2"`, … with a way to move between them; the step that fetches carries the five states
+- `comparison` — two or more options side by side, `data-option="a"`, `data-option="b"`, at the same fidelity; when the user picks, record it in `decisions`
+- `deck` — one `<section class="slide light|dark|hero light|hero dark">` per slide, exactly one theme class each, themes varied
 
 It runs with no network access. Everything it needs must be in the directory or inline; a CDN link will not load. Relative paths only.
 
@@ -25,8 +42,9 @@ Match what already exists. If this is a screen for a product in this repository,
 
 The prototype records what was decided; `design.json` beside it records why. Keep it current as the conversation settles things:
 
+- `kind` — screen, flow, comparison or deck
 - `decisions` — what is now settled, in the words it was settled in
-- `questions` — what is still open, including anything you had to guess
+- `questions` — what is still open, including anything you had to guess; the `state:` ones are maintained by `design_preview`
 
 That file is what becomes the plan when the user is done, so a decision missing from it is a decision the implementation will not know about.
 
