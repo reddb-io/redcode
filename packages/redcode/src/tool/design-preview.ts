@@ -85,6 +85,15 @@ export const DesignPreviewTool = Tool.define(
           }
           const states = DesignStates.report(coverage)
 
+          // Five minutes, not two: a background tab's timer runs once a minute at best, and the
+          // app's tab polls as well, so anything shorter would cry wolf.
+          const STALE_MS = 5 * 60_000
+          const lastSeen = prototype.lastSeen
+          const stale =
+            lastSeen !== undefined && Date.now() - lastSeen > STALE_MS
+              ? `The review window has not checked in for ${Math.round((Date.now() - lastSeen) / 60_000)} minutes; the user may not be looking at it. Say so if you are waiting on them.`
+              : undefined
+
           return {
             title: prototype.name,
             metadata: {
@@ -100,6 +109,7 @@ export const DesignPreviewTool = Tool.define(
               `Prototype "${prototype.name}" (${manifest.kind}) is open at ${url} (revision ${prototype.revision}).`,
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
               `Call design_preview again after each revision.`,
+              ...(stale ? ["", stale] : []),
               ...(states ? ["", states] : []),
               ...(notes ? ["", notes] : []),
             ].join("\n"),

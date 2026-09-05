@@ -68,6 +68,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
 
     if (target.kind === "revision") {
       if (!authorised) return forbidden()
+      // The poll is the heartbeat: a mounted surface asks every two seconds.
+      yield* registry.touch(prototype.id)
       return HttpServerResponse.jsonUnsafe({ revision: prototype.revision })
     }
 
