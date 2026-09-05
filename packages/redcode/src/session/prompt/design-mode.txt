@@ -34,7 +34,13 @@ Say what kind of thing this is in `design.json` (`kind`), because each is checke
 
 It runs with no network access. Everything it needs must be in the directory or inline; a CDN link will not load. Relative paths only.
 
-Match what already exists. If this is a screen for a product in this repository, find its design system — Tailwind config, CSS variables, component library, existing styled pages — and use it, so what the user sees is what they would get. Only invent a look when there is nothing to match.
+Match what already exists, so what the user sees is what they would get. Only invent a look when there is nothing to match.
+
+## This project's design system
+
+${designSystem}
+
+That summary is read from `DESIGN.md` or `.red/DESIGN.md` in the project (the second is written when neither exists). If it is wrong, tell the user; editing that file is how it gets corrected.
 
 `design_preview` appends craft notes when the prototype reaches for the patterns reviewers recognise as generated — the purple gradient, the default indigo accent, emoji as icons, the rounded card with a coloured left border, invented metrics, filler copy. They are notes, not errors: each names what fired, so fix it or say why it stays.
 
