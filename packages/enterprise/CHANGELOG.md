@@ -1,5 +1,14 @@
 # @reddb-io/redcode-enterprise
 
+## 1.18.20
+
+### Patch Changes
+
+- Updated dependencies [68c96b4]
+- Updated dependencies [7246ae1]
+  - @reddb-io/redcode-core@1.19.0
+  - @reddb-io/redcode-session-ui@1.18.20
+
 ## 1.18.19
 
 ### Patch Changes
