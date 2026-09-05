@@ -9,6 +9,7 @@ import { PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { DesignSystem } from "@/design/system"
+import { SessionGoal } from "./goal"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
@@ -26,6 +27,23 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   if (!userMessage) return input.messages
 
   const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
+
+  // The goal is re-rendered from the session record on every step, so compaction can drop every
+  // earlier copy and the model still reads the objective as it was set — and the turn it is on.
+  if (flags.experimentalGoal) {
+    const current = yield* sessions.get(input.session.id).pipe(Effect.orElseSucceed(() => input.session))
+    const goal = SessionGoal.fromMetadata(current.metadata)
+    if (goal?.status === "active") {
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        text: SessionGoal.render(goal),
+        synthetic: true,
+      })
+    }
+  }
 
   if (flags.experimentalDesignMode && input.agent.name === "design" && assistantMessage?.info.agent !== "design") {
     const ctx = yield* InstanceState.context

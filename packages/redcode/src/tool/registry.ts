@@ -4,6 +4,8 @@ import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { PlanExitTool } from "./plan"
 import { DesignPreviewTool } from "./design-preview"
 import { DesignExitTool } from "./design"
+import { GoalCompleteTool } from "./goal"
+import { GoalRuntime } from "@/session/goal-runtime"
 import { DesignRegistry } from "@/design/registry"
 import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
@@ -110,6 +112,7 @@ const layer = Layer.effect(
     const plan = yield* PlanExitTool
     const designPreview = yield* DesignPreviewTool
     const designExit = yield* DesignExitTool
+    const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
     const shell = yield* ShellTool
@@ -230,6 +233,7 @@ const layer = Layer.effect(
           plan: Tool.init(plan),
           design_preview: Tool.init(designPreview),
           design_exit: Tool.init(designExit),
+          goal_complete: Tool.init(goalComplete),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
 
@@ -256,6 +260,8 @@ const layer = Layer.effect(
             // Behind a flag while the review surface settles: it opens a browser window and serves
             // model-written HTML, which is not something to switch on for everyone by surprise.
             ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit] : []),
+            // The goal loop's only tool: a claim of completion, judged at the end of the turn.
+            ...(flags.experimentalGoal ? [tool.goal_complete] : []),
           ],
           task: tool.task,
           read: tool.read,
@@ -439,6 +445,7 @@ export const node = LayerNode.make({
   layer,
   deps: [
     DesignRegistry.node,
+    GoalRuntime.node,
     Config.node,
     Plugin.node,
     Question.node,

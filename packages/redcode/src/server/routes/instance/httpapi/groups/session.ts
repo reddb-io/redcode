@@ -5,6 +5,7 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import { SessionGoal } from "@/session/goal"
 import { SessionRevert } from "@/session/revert"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
@@ -67,6 +68,15 @@ export const SummarizePayload = Schema.Struct({
   modelID: ModelV2.ID,
   auto: Schema.optional(Schema.Boolean),
 })
+export const GoalSetPayload = Schema.Struct({
+  text: Schema.String.annotate({
+    description:
+      "The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable).",
+  }),
+  max_turns: Schema.optional(Schema.Number).annotate({ description: "Turn budget for this goal (default: 20)" }),
+})
+export const GoalBudgetPayload = Schema.Struct({ max_turns: Schema.Number })
+export const GoalResult = Schema.NullOr(SessionGoal.Info)
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
@@ -92,6 +102,11 @@ export const SessionPaths = {
   share: `${root}/:sessionID/share`,
   init: `${root}/:sessionID/init`,
   summarize: `${root}/:sessionID/summarize`,
+  goal: `${root}/:sessionID/goal`,
+  goalPause: `${root}/:sessionID/goal/pause`,
+  goalResume: `${root}/:sessionID/goal/resume`,
+  goalDrop: `${root}/:sessionID/goal/drop`,
+  goalBudget: `${root}/:sessionID/goal/budget`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   command: `${root}/:sessionID/command`,
@@ -313,6 +328,50 @@ export const SessionApi = HttpApi.make("session")
             description: "Generate a concise summary of the session using AI compaction to preserve key information.",
           }),
         ),
+        HttpApiEndpoint.get("goal", SessionPaths.goal, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(GoalResult, "The session's goal, or null"),
+          error: ApiNotFoundError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.goal", summary: "Get goal" })),
+        HttpApiEndpoint.post("goalSet", SessionPaths.goal, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: GoalSetPayload,
+          success: described(SessionGoal.Info, "The goal, active"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.goalSet",
+            summary: "Set goal",
+            description: "Set a definition of done for the session and start pursuing it. Replaces any existing goal.",
+          }),
+        ),
+        HttpApiEndpoint.post("goalPause", SessionPaths.goalPause, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(GoalResult, "The goal, paused"),
+          error: ApiNotFoundError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.goalPause", summary: "Pause goal" })),
+        HttpApiEndpoint.post("goalResume", SessionPaths.goalResume, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(GoalResult, "The goal, active again"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.goalResume", summary: "Resume goal" })),
+        HttpApiEndpoint.post("goalDrop", SessionPaths.goalDrop, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(Schema.Boolean, "Dropped"),
+          error: ApiNotFoundError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.goalDrop", summary: "Drop goal" })),
+        HttpApiEndpoint.post("goalBudget", SessionPaths.goalBudget, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: GoalBudgetPayload,
+          success: described(GoalResult, "The goal with its new budget"),
+          error: ApiNotFoundError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.goalBudget", summary: "Set goal budget" })),
         HttpApiEndpoint.post("prompt", SessionPaths.prompt, {
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,

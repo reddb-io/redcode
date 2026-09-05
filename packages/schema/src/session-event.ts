@@ -174,7 +174,7 @@ export namespace Guard {
     type: "session.next.guard.tripped",
     schema: {
       ...Base,
-      /** Which guard: stall, tool_timeout, loop, steps, aux. */
+      /** Which guard: stall, tool_timeout, loop, steps, aux, orphan, goal. */
       guard: Schema.String,
       /** What it did: warn (said so, changed nothing), correct (answered the model), stop (ended it). */
       action: Schema.String,

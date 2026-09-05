@@ -89,6 +89,8 @@ import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { Todo } from "./todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { SessionGoal } from "./goal"
+import { GoalRuntime } from "./goal-runtime"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -177,6 +179,7 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const todos = yield* Todo.Service
+    const goals = yield* GoalRuntime.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -189,6 +192,8 @@ const layer = Layer.effect(
     const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {
       yield* Effect.logInfo("cancel", { "session.id": sessionID })
       yield* state.cancel(sessionID)
+      // An interrupted goal waits for the person; it does not pick itself back up.
+      yield* goals.pause(sessionID, "interrupted").pipe(Effect.ignore)
     })
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
@@ -1166,6 +1171,14 @@ const layer = Layer.effect(
         let step = 0
         let todoContinuations = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        // A goal never restarts itself: if the process that drove it is not this one, it is
+        // paused here, and only /goal resume brings it back.
+        {
+          const goal = SessionGoal.fromMetadata(session.metadata)
+          if (goal?.status === "active" && goal.boot !== undefined && goal.boot !== SessionGoal.BOOT) {
+            yield* goals.pause(sessionID, "the session was resumed in a new process").pipe(Effect.ignore)
+          }
+        }
 
         // Only one run exists per session at a time, so an assistant message still open here was
         // left by a run that is gone — a process that died before it could close it. Left alone it
@@ -1391,6 +1404,43 @@ const layer = Layer.effect(
               }
             } else if (!lastAssistant.error && SessionTodo.active(yield* todos.get(sessionID)).length > 0) {
               yield* Effect.logWarning("todo continuation limit reached", { "session.id": sessionID })
+            }
+            // The goal loop: gates, judge, decision. A CONTINUE is one more synthetic user message
+            // and another pass through this loop — the turn never leaves `ensureRunning`, so the
+            // session stays busy and the surfaces see one turn. Anything else ends the turn here
+            // with the goal's status saying why.
+            if (!lastAssistant.error && flags.experimentalGoal) {
+              const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
+              const outcome = yield* goals
+                .afterTurn({ session: fresh, lastUser, lastAssistant: lastAssistantMsg })
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logError("goal loop failed; ending the turn", { "session.id": sessionID, cause }).pipe(
+                      Effect.as(undefined),
+                    ),
+                  ),
+                )
+              const ag = outcome?.action === "continue" ? yield* agents.get(lastUser.agent) : undefined
+              if (outcome?.action === "continue" && outcome.text && step < (ag?.steps ?? Infinity)) {
+                const message: SessionV1.User = {
+                  id: MessageID.ascending(),
+                  sessionID,
+                  role: "user",
+                  time: { created: Date.now() },
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                }
+                yield* sessions.updateMessage(message)
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  sessionID,
+                  messageID: message.id,
+                  type: "text",
+                  text: outcome.text,
+                  synthetic: true,
+                })
+                continue
+              }
             }
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
@@ -1917,6 +1967,7 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [
     DesignSystem.node,
+    GoalRuntime.node,
     SessionGuardLog.node,
     SessionStatus.node,
     Session.node,
