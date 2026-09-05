@@ -750,6 +750,8 @@ export const dict = {
   "session.tab.session": "Sesija",
   "session.tab.review": "Pregled",
   "session.tab.context": "Kontekst",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Nepoznata sesija",
   "session.panel.reviewAndFiles": "Pregled i datoteke",
   "session.error.notFound": "Ova sesija nije pronađena",

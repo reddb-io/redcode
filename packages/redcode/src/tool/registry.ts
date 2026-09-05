@@ -2,6 +2,9 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { PlanExitTool } from "./plan"
+import { DesignPreviewTool } from "./design-preview"
+import { DesignExitTool } from "./design"
+import { DesignRegistry } from "@/design/registry"
 import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
@@ -105,6 +108,8 @@ const layer = Layer.effect(
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
+    const designPreview = yield* DesignPreviewTool
+    const designExit = yield* DesignExitTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
     const shell = yield* ShellTool
@@ -223,6 +228,8 @@ const layer = Layer.effect(
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
+          design_preview: Tool.init(designPreview),
+          design_exit: Tool.init(designExit),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
 
@@ -246,6 +253,9 @@ const layer = Layer.effect(
             ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
+            // Behind a flag while the review surface settles: it opens a browser window and serves
+            // model-written HTML, which is not something to switch on for everyone by surprise.
+            ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit] : []),
           ],
           task: tool.task,
           read: tool.read,
@@ -428,6 +438,7 @@ export const node = LayerNode.make({
   service: Service,
   layer,
   deps: [
+    DesignRegistry.node,
     Config.node,
     Plugin.node,
     Question.node,

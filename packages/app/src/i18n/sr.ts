@@ -705,6 +705,8 @@ export const dict = {
   "session.tab.session": "Сесија",
   "session.tab.review": "Преглед",
   "session.tab.context": "Контекст",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Непозната сесија",
   "session.panel.reviewAndFiles": "Преглед и датотеке",
   "session.error.notFound": "Ова сесија није пронађена",

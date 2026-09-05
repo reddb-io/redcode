@@ -699,6 +699,8 @@ export const dict = {
   "session.tab.session": "Seanss",
   "session.tab.review": "Ülevaade",
   "session.tab.context": "Kontekst",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Tundmatu seanss",
   "session.panel.reviewAndFiles": "Ülevaatus ja failid",
   "session.error.notFound": "Seda seanssi ei leitud",

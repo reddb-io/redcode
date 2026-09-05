@@ -753,6 +753,8 @@ export const dict = {
   "session.tab.session": "Sesión",
   "session.tab.review": "Revisión",
   "session.tab.context": "Contexto",
+  "session.tab.design": "Diseño",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Sesión desconocida",
   "session.panel.reviewAndFiles": "Revisión y archivos",
   "session.error.notFound": "No se encuentra esta sesión",

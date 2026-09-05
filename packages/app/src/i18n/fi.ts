@@ -601,6 +601,8 @@ export const dict = {
   "session.tab.session": "Istunto",
   "session.tab.review": "Tarkistus",
   "session.tab.context": "Konteksti",
+  "session.tab.design": "Suunnittelu",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Tuntematon istunto",
   "session.panel.reviewAndFiles": "Tarkistus ja tiedostot",
   "session.error.notFound": "Tätä istuntoa ei löydy",

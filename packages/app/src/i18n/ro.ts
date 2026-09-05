@@ -704,6 +704,8 @@ export const dict = {
   "session.tab.session": "Sesiune",
   "session.tab.review": "Revizuire",
   "session.tab.context": "Context",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Sesiune necunoscută",
   "session.panel.reviewAndFiles": "Revizuire și fișiere",
   "session.error.notFound": "Această sesiune nu poate fi găsită",

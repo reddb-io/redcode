@@ -619,6 +619,8 @@ export const dict = {
   "session.tab.session": "Sessione",
   "session.tab.review": "Revisione",
   "session.tab.context": "Contesto",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Sessione sconosciuta",
   "session.panel.reviewAndFiles": "Revisione e file",
   "session.error.notFound": "Impossibile trovare questa sessione",

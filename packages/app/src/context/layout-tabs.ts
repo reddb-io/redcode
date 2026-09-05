@@ -1,4 +1,6 @@
 export const SESSION_OPEN_FILE_TAB = "open-file"
+/** The prototype the agent last opened with `design_preview`, embedded from the server. */
+export const SESSION_DESIGN_TAB = "design"
 
 export type SessionTabs = {
   active?: string

@@ -704,6 +704,8 @@ export const dict = {
   "session.tab.session": "Seta",
   "session.tab.review": "Ummæli",
   "session.tab.context": "Samanhangur",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Ókend seta",
   "session.panel.reviewAndFiles": "Ummæli og skráir",
   "session.error.notFound": "Henda setan er ikki at finna",

@@ -476,6 +476,8 @@ export const dict = {
   "session.tab.session": "세션",
   "session.tab.review": "검토",
   "session.tab.context": "컨텍스트",
+  "session.tab.design": "디자인",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.panel.reviewAndFiles": "검토 및 파일",
   "session.review.filesChanged": "{{count}}개 파일 변경됨",
   "session.review.change.one": "변경",

@@ -713,6 +713,8 @@ export const dict = {
   "session.tab.session": "सेशन",
   "session.tab.review": "समीक्षा",
   "session.tab.context": "कॉन्टेक्स्ट",
+  "session.tab.design": "डिज़ाइन",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "अज्ञात सेशन",
   "session.panel.reviewAndFiles": "समीक्षा और फ़ाइलें",
   "session.error.notFound": "यह सेशन नहीं मिल सका",

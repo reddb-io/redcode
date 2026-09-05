@@ -709,6 +709,8 @@ export const dict = {
   "session.tab.session": "Sessió",
   "session.tab.review": "Revisió",
   "session.tab.context": "Context",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Sessió desconeguda",
   "session.panel.reviewAndFiles": "Revisió i arxius",
   "session.error.notFound": "No es pot trobar aquesta sessió",

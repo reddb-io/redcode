@@ -715,6 +715,8 @@ export const dict: Record<string, string> = {
   "session.tab.session": "ལཱ་ཡུན།",
   "session.tab.review": "བསྐྱར་ཞིབ",
   "session.tab.context": "སྐབས་དོན།",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "མ་ཤེས་པའི་ལཱ་ཡུན།",
   "session.panel.reviewAndFiles": "བསྐྱར་ཞིབ་དང་ཡིག་སྣོད།",
   "session.error.notFound": "ལཱ་ཡུན་འདི་འཚོལ་མ་ཐོབ།",

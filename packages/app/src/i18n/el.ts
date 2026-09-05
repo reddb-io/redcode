@@ -710,6 +710,8 @@ export const dict = {
   "session.tab.session": "Συνεδρία",
   "session.tab.review": "Επισκόπηση",
   "session.tab.context": "Πλαίσιο",
+  "session.tab.design": "Σχεδίαση",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Άγνωστη συνεδρία",
   "session.panel.reviewAndFiles": "Επισκόπηση και αρχεία",
   "session.error.notFound": "Δεν μπορεί να βρεθεί αυτή η συνεδρία",

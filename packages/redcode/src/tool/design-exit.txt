@@ -1,0 +1,13 @@
+Use this tool when the design is settled and you are ready to leave design mode.
+
+It writes the plan from what design.json records — the decisions, the open questions, and a link to the prototype — and asks the user whether to switch to the plan agent to refine it.
+
+Call this tool:
+- After the user has reviewed the prototype and stopped asking for changes
+- After design.json reflects every decision the conversation settled
+- When the open questions in design.json are the ones a plan can carry, not ones the prototype should have answered
+
+Do NOT call this tool:
+- While the user is still annotating the prototype
+- Before design.json records what was decided, because that is all the plan will know
+- To start implementing: this mode edits the design directory and nothing else

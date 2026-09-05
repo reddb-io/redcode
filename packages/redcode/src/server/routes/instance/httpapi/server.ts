@@ -69,6 +69,8 @@ import * as SessionExecutionLocal from "@reddb-io/redcode-core/session/execution
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/redcode-server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
+import { serveDesignEffect } from "../../../shared/design"
+import { DesignRegistry } from "@/design/registry"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@reddb-io/redcode-server/api"
@@ -199,6 +201,13 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+// Before the UI catch-all below, which otherwise claims every path. The design surface serves two
+// documents with different privileges — see server/shared/design.ts — so it cannot be folded into
+// the UI route that serves our own trusted bundle.
+const designRoute = HttpRouter.use((router) =>
+  router.add("*", "/design/*", (request) => serveDesignEffect(request)),
+).pipe(Layer.provide(authOnlyRouterLayer))
+
 const uiRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
@@ -274,6 +283,7 @@ const app = LayerNode.group([
   ProjectV2.node,
   ProjectCopy.node,
   PtyTicket.node,
+  DesignRegistry.node,
 ])
 
 export function createRoutes(
@@ -289,6 +299,7 @@ export function createRoutes(
     serverRoutes,
     rpcRoutes,
     docRoute,
+    designRoute,
     uiRoute,
   ).pipe(
     Layer.provide([
