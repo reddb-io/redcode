@@ -57,6 +57,25 @@ function locationData(validate: (value: any) => void) {
   }
 }
 
+/** A goal as `/goal` stores it, seeded straight into session metadata so the routes have one to act on. */
+function goalMetadata(status: "active" | "paused") {
+  const now = Date.now()
+  return {
+    goal: {
+      id: "goal_httpapi",
+      objective: "cover the goal routes",
+      contract: {},
+      gates: [],
+      status,
+      ...(status === "paused" ? { reason: "paused by the user" } : {}),
+      turns: { used: 0, max: 20 },
+      judgeFailures: 0,
+      created: now,
+      updated: now,
+    },
+  }
+}
+
 const scenarios: Scenario[] = [
   http.protected
     .get("/global/health", "global.health")
@@ -1359,6 +1378,133 @@ const scenarios: Scenario[] = [
     }))
     .json(200, (body, ctx) => {
       check(stable(body) === stable(ctx.state.todos), "todos should match seeded state")
+    }),
+  http.protected
+    .get("/session/{sessionID}/goal", "session.goal")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("active"))
+        return session
+      }),
+    )
+    .at((ctx) => ({ path: route("/session/{sessionID}/goal", { sessionID: ctx.state.id }), headers: ctx.headers() }))
+    .json(200, (body) => {
+      check(isRecord(body), "goal should be an object")
+      check(body.objective === "cover the goal routes", "goal should carry the seeded objective")
+      check(body.status === "active", "goal should be active")
+    }),
+  http.protected
+    .post("/session/{sessionID}/goal", "session.goal.set")
+    .preserveDatabase()
+    .withLlm()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal set session" })
+        yield* ctx.llmText("ok")
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { text: "cover the goal set route; verify: bun test", max_turns: 3 },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(isRecord(body), "goal should be an object")
+        check(body.objective === "cover the goal set route", "objective should be the text before the fields")
+        check(isRecord(body.contract) && body.contract.verification === "bun test", "verify: should parse")
+        check(body.status === "active", "a set goal is active")
+        check(isRecord(body.turns) && body.turns.max === 3, "max_turns should set the budget")
+        // The first turn is forked after the response: the objective goes to the model.
+        yield* ctx.llmWait(1)
+      }),
+    ),
+  http.protected
+    .post("/session/{sessionID}/goal/pause", "session.goal.pause")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal pause session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("active"))
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/pause", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(isRecord(body) && body.status === "paused", "pause should answer with the paused goal")
+        check(body.reason === "paused by the user", "pause should say who paused it")
+        const stored = yield* ctx.sessionGet(ctx.state.id)
+        const goal = stored?.metadata?.["goal"]
+        check(isRecord(goal) && goal.status === "paused", "the paused goal should be stored on the session")
+      }),
+    ),
+  http.protected
+    .post("/session/{sessionID}/goal/resume", "session.goal.resume")
+    .preserveDatabase()
+    .withLlm()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal resume session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("paused"))
+        yield* ctx.llmText("ok")
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/resume", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(isRecord(body) && body.status === "active", "resume should answer with the goal active again")
+        yield* ctx.llmWait(1)
+      }),
+    ),
+  http.protected
+    .post("/session/{sessionID}/goal/drop", "session.goal.drop")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal drop session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("paused"))
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/drop", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(body === true, "drop should return true when there was a goal")
+        const stored = yield* ctx.sessionGet(ctx.state.id)
+        const goal = stored?.metadata?.["goal"]
+        check(isRecord(goal) && goal.status === "dropped", "the dropped goal should be stored on the session")
+      }),
+    ),
+  http.protected
+    .post("/session/{sessionID}/goal/budget", "session.goal.budget")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal budget session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("active"))
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/budget", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { max_turns: 7 },
+    }))
+    .json(200, (body) => {
+      check(isRecord(body) && isRecord(body.turns) && body.turns.max === 7, "budget should set the turn ceiling")
     }),
   http.protected
     .get("/session/{sessionID}/diff", "session.diff")

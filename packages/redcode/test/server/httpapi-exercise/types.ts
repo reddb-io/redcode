@@ -61,6 +61,7 @@ export type ScenarioContext = {
   message: (sessionID: SessionID, input?: { text?: string }) => Effect.Effect<MessageSeed>
   messages: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts[]>
   todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<void>
+  sessionMetadata: (sessionID: SessionID, metadata: Record<string, unknown>) => Effect.Effect<void>
   worktree: (input?: { name?: string }) => Effect.Effect<Worktree.Info>
   worktreeRemove: (directory: string) => Effect.Effect<void>
   llmText: (value: string) => Effect.Effect<void>
@@ -118,7 +119,7 @@ export type Result =
   | { status: "fail"; scenario: ActiveScenario; message: string }
   | { status: "skip"; scenario: TodoScenario }
 
-export type SessionInfo = { id: SessionID; title: string; parentID?: SessionID }
+export type SessionInfo = { id: SessionID; title: string; parentID?: SessionID; metadata?: Record<string, unknown> }
 export type TodoInfo = {
   content: string
   status: "pending" | "in_progress" | "completed" | "cancelled"
