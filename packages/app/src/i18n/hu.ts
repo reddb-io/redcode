@@ -709,6 +709,8 @@ export const dict = {
   "session.tab.session": "Munkamenet",
   "session.tab.review": "Tekintse át",
   "session.tab.context": "Kontextus",
+  "session.tab.design": "Terv",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Ismeretlen munkamenet",
   "session.panel.reviewAndFiles": "Áttekintés és fájlok",
   "session.error.notFound": "Ez a munkamenet nem található",

@@ -711,6 +711,8 @@ export const dict = {
   "session.tab.session": "Sessie",
   "session.tab.review": "Beoordeling",
   "session.tab.context": "Context",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Onbekende sessie",
   "session.panel.reviewAndFiles": "Beoordeling en bestanden",
   "session.error.notFound": "Deze sessie kan niet worden gevonden",

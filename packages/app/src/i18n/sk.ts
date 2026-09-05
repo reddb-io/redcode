@@ -702,6 +702,8 @@ export const dict = {
   "session.tab.session": "Relácia",
   "session.tab.review": "Revízia",
   "session.tab.context": "Kontext",
+  "session.tab.design": "Návrh",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Neznáma relácia",
   "session.panel.reviewAndFiles": "Revízia a súbory",
   "session.error.notFound": "Táto relácia sa nenašla",

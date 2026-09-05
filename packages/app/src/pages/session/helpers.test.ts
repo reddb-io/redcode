@@ -212,3 +212,26 @@ describe("createSessionTabs", () => {
     })
   })
 })
+
+describe("createSessionTabs with a design tab", () => {
+  test("lets the design tab be active without treating it as a file", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({
+        active: "design" as string | undefined,
+        all: ["file://src/a.ts", "design"],
+      })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: (tab) => (tab.startsWith("file://") ? tab.slice("file://".length) : undefined),
+        normalizeTab: (tab) => tab,
+      })
+
+      expect(result.panelTabs()).toEqual(["file://src/a.ts", "design"])
+      expect(result.activeTab()).toBe("design")
+      expect(result.activeFileTab()).toBeUndefined()
+      expect(result.closableTab()).toBe("design")
+      dispose()
+    })
+  })
+})

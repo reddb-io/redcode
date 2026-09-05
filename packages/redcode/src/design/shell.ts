@@ -15,6 +15,8 @@ export interface ShellInput {
   readonly name: string
   readonly token: string
   readonly revision: number
+  /** Inside the app's own panel the header is the tab; only the frame and the composer remain. */
+  readonly embed?: boolean
 }
 
 const escape = (value: string) =>
@@ -66,9 +68,12 @@ export function shellHTML(input: ShellInput) {
            background: transparent; color: inherit; cursor: pointer }
   button[disabled] { opacity: .5; cursor: default }
   p.empty { margin: .75rem; opacity: .6 }
+  body[data-embed] { grid-template-rows: 1fr }
+  body[data-embed] header { display: none }
+  body[data-embed] main { grid-template-columns: 1fr min(300px, 40vw) }
 </style>
 </head>
-<body>
+<body${input.embed ? " data-embed" : ""}>
 <header>
   <strong>${escape(input.name)}</strong>
   <span id="status">click an element in the prototype to annotate it</span>

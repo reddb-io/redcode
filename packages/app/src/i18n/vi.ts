@@ -713,6 +713,8 @@ export const dict = {
   "session.tab.session": "Phiên",
   "session.tab.review": "Xem lại",
   "session.tab.context": "Ngữ cảnh",
+  "session.tab.design": "Thiết kế",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Phiên không xác định",
   "session.panel.reviewAndFiles": "Xem lại và tệp",
   "session.error.notFound": "Không thể tìm thấy phiên này",

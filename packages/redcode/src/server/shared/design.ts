@@ -49,6 +49,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           name: prototype.name,
           token: prototype.token,
           revision: prototype.revision,
+          embed: url.searchParams.get("embed") === "1",
         }),
         {
           headers: {

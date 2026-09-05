@@ -691,6 +691,8 @@ export const dict = {
   "session.tab.session": "ክፍለ ጊዜ",
   "session.tab.review": "ግምገማ",
   "session.tab.context": "አውድ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "ያልታወቀ ክፍለ ጊዜ",
   "session.panel.reviewAndFiles": "ግምገማ እና ፋይሎች",
   "session.error.notFound": "ይህ ክፍለ ጊዜ ሊገኝ አይችልም",

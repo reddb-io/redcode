@@ -701,6 +701,8 @@ export const dict: Record<string, string> = {
   "session.tab.session": "සැසිය",
   "session.tab.review": "සමාලෝචනය කරන්න",
   "session.tab.context": "සන්දර්භය",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "නොදන්නා සැසිය",
   "session.panel.reviewAndFiles": "සමාලෝචනය සහ ගොනු",
   "session.error.notFound": "මෙම සැසිය සොයාගත නොහැක",

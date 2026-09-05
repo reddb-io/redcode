@@ -702,6 +702,8 @@ export const dict = {
   "session.tab.session": "Sesi",
   "session.tab.review": "Semak",
   "session.tab.context": "Konteks",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Sesi Tidak Diketahui",
   "session.panel.reviewAndFiles": "Semak dan fail",
   "session.error.notFound": "Sesi ini tidak dapat ditemui",

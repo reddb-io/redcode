@@ -711,6 +711,8 @@ export const dict = {
   "session.tab.session": "အပိုင်း",
   "session.tab.review": "သုံးသပ်ချက်",
   "session.tab.context": "ဆက်စပ်အကြောင်းအရာ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "အမည်မသိ ဆက်ရှင်",
   "session.panel.reviewAndFiles": "ပြန်လည်သုံးသပ်ခြင်းနှင့် ဖိုင်များ",
   "session.error.notFound": "ဤစက်ရှင်ကို ရှာမတွေ့ပါ။",

@@ -38,3 +38,12 @@ describe("the review shell", () => {
     expect(csp).toContain("form-action 'none'")
   })
 })
+
+describe("embedded in the app", () => {
+  test("drops its own header and keeps the composer", () => {
+    const html = shellHTML({ id: "abc", name: "n", token: "t", revision: 1, embed: true })
+    expect(html).toContain("<body data-embed>")
+    expect(html).toContain('id="composer"')
+    expect(shellHTML({ id: "abc", name: "n", token: "t", revision: 1 })).toContain("<body>")
+  })
+})

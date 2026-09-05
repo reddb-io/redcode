@@ -713,6 +713,8 @@ export const dict = {
   "session.tab.session": "Sessiya",
   "session.tab.review": "İcmal",
   "session.tab.context": "Kontekst",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Naməlum sessiya",
   "session.panel.reviewAndFiles": "İcmal və fayllar",
   "session.error.notFound": "Bu sessiyanı tapmaq mümkün deyil",

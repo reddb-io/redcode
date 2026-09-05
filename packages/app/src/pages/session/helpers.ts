@@ -2,9 +2,9 @@ import { batch, createMemo, onCleanup, onMount, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { same } from "@/utils/same"
-import { SESSION_OPEN_FILE_TAB } from "@/context/layout-tabs"
+import { SESSION_DESIGN_TAB, SESSION_OPEN_FILE_TAB } from "@/context/layout-tabs"
 
-export { SESSION_OPEN_FILE_TAB } from "@/context/layout-tabs"
+export { SESSION_DESIGN_TAB, SESSION_OPEN_FILE_TAB } from "@/context/layout-tabs"
 
 const emptyTabs: string[] = []
 
@@ -65,6 +65,7 @@ export const createSessionTabs = (input: TabsInput) => {
     if (active === SESSION_OPEN_FILE_TAB && openFileOpen()) return active
     if (active === "review" && review()) return active
     if (active && input.pathFromTab(active)) return input.normalizeTab(active)
+    if (active === SESSION_DESIGN_TAB && openedTabs().includes(active)) return active
 
     const first = openedTabs()[0]
     if (first) return first
@@ -74,6 +75,7 @@ export const createSessionTabs = (input: TabsInput) => {
   })
   const activeFileTab = createMemo(() => {
     const active = activeTab()
+    if (active === SESSION_DESIGN_TAB) return
     if (!openedTabs().includes(active)) return
     return active
   })

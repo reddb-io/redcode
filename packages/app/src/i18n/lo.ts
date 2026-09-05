@@ -699,6 +699,8 @@ export const dict = {
   "session.tab.session": "ເຊດຊັນ",
   "session.tab.review": "ການທົບທວນຄືນ",
   "session.tab.context": "ບໍລິບົດ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "ເຊດຊັນທີ່ບໍ່ຮູ້ຈັກ",
   "session.panel.reviewAndFiles": "ການທົບທວນຄືນແລະໄຟລ໌",
   "session.error.notFound": "ບໍ່ພົບເຊດຊັນນີ້",

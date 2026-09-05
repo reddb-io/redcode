@@ -59,7 +59,7 @@ export const DesignPreviewTool = Tool.define(
           const notes = DesignLint.report(findings)
           return {
             title: prototype.name,
-            metadata: { url, revision: prototype.revision, entry: served, findings: findings.map((f) => f.id) },
+            metadata: { id: prototype.id, url, revision: prototype.revision, entry: served, findings: findings.map((f) => f.id) },
             output: [
               `Prototype "${prototype.name}" is open at ${url} (revision ${prototype.revision}).`,
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,

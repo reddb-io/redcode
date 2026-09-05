@@ -703,6 +703,8 @@ export const dict: Record<string, string> = {
   "session.tab.session": "সেশন",
   "session.tab.review": "পর্যালোচনা",
   "session.tab.context": "প্রসঙ্গ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "অজানা সেশন",
   "session.panel.reviewAndFiles": "পর্যালোচনা এবং ফাইল",
   "session.error.notFound": "এই সেশন খুঁজে পাওয়া যাবে না",

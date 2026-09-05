@@ -708,6 +708,8 @@ export const dict = {
   "session.tab.session": "Նիստ",
   "session.tab.review": "Վերանայել",
   "session.tab.context": "Համատեքստ",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Անհայտ նիստ",
   "session.panel.reviewAndFiles": "Վերանայել և ֆայլեր",
   "session.error.notFound": "Այս նիստը հնարավոր չէ գտնել",

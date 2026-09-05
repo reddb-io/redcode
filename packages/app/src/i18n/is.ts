@@ -706,6 +706,8 @@ export const dict = {
   "session.tab.session": "Lota",
   "session.tab.review": "Upprifjun",
   "session.tab.context": "Samhengi",
+  "session.tab.design": "Design",
+  "session.design.empty": "No prototype yet. The agent opens one here with design_preview.",
   "session.tab.unknown": "Óþekkt lota",
   "session.panel.reviewAndFiles": "Yfirferð og skrár",
   "session.error.notFound": "Þessi lota finnst ekki",
