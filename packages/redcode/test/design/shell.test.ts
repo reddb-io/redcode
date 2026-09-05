@@ -25,7 +25,7 @@ describe("the review shell", () => {
 
   test("carries the prototype's identity without letting content forge the page", () => {
     expect(html).toContain('"token":"tok_abc"')
-    const injected = shellHTML({ id: "p1", name: '</title><script>alert(1)</script>', token: "t", revision: 1 })
+    const injected = shellHTML({ id: "p1", name: "</title><script>alert(1)</script>", token: "t", revision: 1 })
     expect(injected).not.toContain("<script>alert(1)</script>")
     expect(injected).toContain("&lt;script&gt;")
   })

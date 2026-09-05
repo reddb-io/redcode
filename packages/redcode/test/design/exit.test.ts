@@ -89,7 +89,10 @@ describe("leaving design mode", () => {
       expect(plan).toContain(path.relative(ctx.worktree, root))
 
       // And the design now knows which plan it became.
-      const manifest = DesignManifest.parse(yield* Effect.promise(() => Bun.file(DesignManifest.file(root)).text()), "x")
+      const manifest = DesignManifest.parse(
+        yield* Effect.promise(() => Bun.file(DesignManifest.file(root)).text()),
+        "x",
+      )
       expect(manifest.plan).toBe(path.relative(ctx.worktree, planFile))
 
       // The hand-off itself: a user message addressed to the plan agent.

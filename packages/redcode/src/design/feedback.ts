@@ -58,21 +58,19 @@ const body = (value: unknown, max: number) => {
 }
 
 export function normalize(input: readonly unknown[]): Annotation[] {
-  return input
-    .slice(0, LIMITS.items)
-    .flatMap((item) => {
-      if (!item || typeof item !== "object") return []
-      const raw = item as Record<string, unknown>
-      const text = body(raw.text, LIMITS.text)
-      if (!text) return []
-      const annotation: Annotation = {
-        text,
-        ...(raw.selector ? { selector: clamp(raw.selector, LIMITS.selector) } : {}),
-        ...(raw.label ? { label: clamp(raw.label, LIMITS.label) } : {}),
-        ...(raw.selection ? { selection: body(raw.selection, LIMITS.selection) } : {}),
-      }
-      return [annotation]
-    })
+  return input.slice(0, LIMITS.items).flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const raw = item as Record<string, unknown>
+    const text = body(raw.text, LIMITS.text)
+    if (!text) return []
+    const annotation: Annotation = {
+      text,
+      ...(raw.selector ? { selector: clamp(raw.selector, LIMITS.selector) } : {}),
+      ...(raw.label ? { label: clamp(raw.label, LIMITS.label) } : {}),
+      ...(raw.selection ? { selection: body(raw.selection, LIMITS.selection) } : {}),
+    }
+    return [annotation]
+  })
 }
 
 export function render(annotations: readonly Annotation[], context: Context): string {

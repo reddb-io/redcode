@@ -5,6 +5,9 @@ import DESCRIPTION from "./design-preview.txt"
 import { DesignRegistry } from "@/design/registry"
 import { DesignServe } from "@/design/serve"
 import { DesignLint } from "@/design/lint"
+import { DesignStates } from "@/design/states"
+import { DesignKinds } from "@/design/kinds"
+import { DesignManifest } from "@/design/manifest"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 
@@ -29,10 +32,13 @@ export const DesignPreviewTool = Tool.define(
       execute: (params: typeof Parameters.Type, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
-          const root = path.resolve(instance.worktree, params.path)
+          // Against the directory the agent works in, not the worktree: with no repository the worktree is "/".
+          const root = path.resolve(instance.directory, params.path)
           const entry = path.join(root, "index.html")
           if (!(yield* fs.existsSafe(entry))) {
-            throw new Error(`No index.html in ${path.relative(instance.worktree, root) || "."}. Write the prototype first.`)
+            throw new Error(
+              `No index.html in ${path.relative(instance.directory, root) || "."}. Write the prototype first.`,
+            )
           }
 
           const prototype = yield* registry.register({
@@ -47,23 +53,54 @@ export const DesignPreviewTool = Tool.define(
 
           // Opened for the person, not for us: if the browser refuses, the URL in the output is
           // still the whole answer, so a failure here must not fail the tool.
-          yield* Effect.promise(async () => {
-            const { default: open } = await import("open")
-            await open(url).catch(() => undefined)
-          }).pipe(Effect.ignore)
+          // Tests set REDCODE_DESIGN_NO_OPEN so a suite never pops a browser on someone's desk.
+          if (!process.env["REDCODE_DESIGN_NO_OPEN"]) {
+            yield* Effect.promise(async () => {
+              const { default: open } = await import("open")
+              await open(url).catch(() => undefined)
+            }).pipe(Effect.ignore)
+          }
 
           const served = DesignServe.mimeFor(entry) ? "index.html" : "nothing servable"
+          const html = yield* Effect.promise(() => Bun.file(entry).text())
+
+          // The manifest says what kind of thing this is; a missing manifest means a screen.
+          const manifestFile = DesignManifest.file(root)
+          const manifest = (yield* fs.existsSafe(manifestFile))
+            ? DesignManifest.parse(yield* Effect.promise(() => Bun.file(manifestFile).text()), prototype.name)
+            : DesignManifest.empty(prototype.name)
+
           // Craft notes ride along with the URL: the model is reading this anyway, and nobody
-          // else needs to be woken for them.
-          const findings = DesignLint.lint(yield* Effect.promise(() => Bun.file(entry).text()))
+          // else needs to be woken for them. Same for the kind's own checks.
+          const findings = [...DesignLint.lint(html), ...DesignKinds.check(manifest.kind, html)]
           const notes = DesignLint.report(findings)
+
+          // A missing state is a question the plan must carry, so it goes into design.json now
+          // rather than relying on the model to remember it later.
+          const coverage = DesignStates.states(html)
+          const questions = DesignStates.syncQuestions(manifest.questions, coverage)
+          const changed = questions.join("\n") !== manifest.questions.join("\n")
+          if (changed || !(yield* fs.existsSafe(manifestFile))) {
+            yield* Effect.promise(() => Bun.write(manifestFile, DesignManifest.serialize({ ...manifest, questions })))
+          }
+          const states = DesignStates.report(coverage)
+
           return {
             title: prototype.name,
-            metadata: { id: prototype.id, url, revision: prototype.revision, entry: served, findings: findings.map((f) => f.id) },
+            metadata: {
+              id: prototype.id,
+              url,
+              revision: prototype.revision,
+              entry: served,
+              kind: manifest.kind,
+              findings: findings.map((f) => f.id),
+              missingStates: coverage.missing,
+            },
             output: [
-              `Prototype "${prototype.name}" is open at ${url} (revision ${prototype.revision}).`,
+              `Prototype "${prototype.name}" (${manifest.kind}) is open at ${url} (revision ${prototype.revision}).`,
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
               `Call design_preview again after each revision.`,
+              ...(states ? ["", states] : []),
               ...(notes ? ["", notes] : []),
             ].join("\n"),
           }

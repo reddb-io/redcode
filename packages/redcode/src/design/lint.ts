@@ -24,10 +24,26 @@ export type Finding = typeof Finding.Type
 
 // Tailwind violet / purple, then indigo — the generated-page palette.
 const PURPLE = [
-  "#a855f7", "#9333ea", "#7c3aed", "#6d28d9", "#581c87",
-  "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe",
-  "#6366f1", "#4f46e5", "#4338ca", "#3730a3", "#312e81",
-  "#818cf8", "#a5b4fc", "#c7d2fe", "#e0e7ff", "#eef2ff",
+  "#a855f7",
+  "#9333ea",
+  "#7c3aed",
+  "#6d28d9",
+  "#581c87",
+  "#8b5cf6",
+  "#a78bfa",
+  "#c4b5fd",
+  "#ddd6fe",
+  "#ede9fe",
+  "#6366f1",
+  "#4f46e5",
+  "#4338ca",
+  "#3730a3",
+  "#312e81",
+  "#818cf8",
+  "#a5b4fc",
+  "#c7d2fe",
+  "#e0e7ff",
+  "#eef2ff",
 ]
 
 // A single solid use of these is the tell, gradient or not.
@@ -35,8 +51,19 @@ const DEFAULT_INDIGO = ["#6366f1", "#4f46e5", "#4338ca", "#3730a3", "#8b5cf6", "
 
 // Tailwind blue/sky and cyan: the two ends of the "trust" gradient.
 const BLUE = [
-  "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a", "#60a5fa", "#93c5fd", "#bfdbfe",
-  "#0ea5e9", "#0284c7", "#0369a1", "#38bdf8", "#7dd3fc",
+  "#3b82f6",
+  "#2563eb",
+  "#1d4ed8",
+  "#1e40af",
+  "#1e3a8a",
+  "#60a5fa",
+  "#93c5fd",
+  "#bfdbfe",
+  "#0ea5e9",
+  "#0284c7",
+  "#0369a1",
+  "#38bdf8",
+  "#7dd3fc",
 ]
 const CYAN = ["#06b6d4", "#0891b2", "#0e7490", "#155e75", "#164e63", "#22d3ee", "#67e8f9", "#a5f3fc"]
 
@@ -82,7 +109,9 @@ function withoutTokenBlocks(html: string) {
         .filter(Boolean)
       if (decls.length === 0) return full
       if (!decls.every((d) => /^--[\w-]+\s*:/.test(d))) return full
-      const launders = decls.some((d) => !/^--accent\s*:/.test(d) && DEFAULT_INDIGO.some((h) => d.toLowerCase().includes(h)))
+      const launders = decls.some(
+        (d) => !/^--accent\s*:/.test(d) && DEFAULT_INDIGO.some((h) => d.toLowerCase().includes(h)),
+      )
       if (launders) return full
       return ""
     })
@@ -198,6 +227,89 @@ export function lint(raw: string): Finding[] {
       snippet: clip(m[0]),
     })
     break
+  }
+
+  // ALL CAPS without tracking — cramped, and the first thing a typographer sees
+  {
+    const tracked = (decl: string) => {
+      const m = /letter-spacing\s*:\s*([^;]+)/i.exec(decl)
+      if (!m) return false
+      const value = m[1]!.trim()
+      const em = /^(-?[\d.]+)\s*em$/i.exec(value)
+      if (em) return parseFloat(em[1]!) >= 0.06
+      const px = /^(-?[\d.]+)\s*px$/i.exec(value)
+      if (px) return parseFloat(px[1]!) >= 1
+      return /var\(/.test(value) // a token: assume the design system chose it
+    }
+    let hit: string | undefined
+    for (const block of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+      const css = (block[1] ?? "").replace(/\/\*[\s\S]*?\*\//g, "")
+      for (const rule of css.matchAll(/([^{}]*)\{([^{}]*text-transform\s*:\s*uppercase[^{}]*)\}/gi)) {
+        if (!tracked(rule[2] ?? "")) {
+          hit = `${(rule[1] ?? "").trim()} { ${(rule[2] ?? "").trim()} }`
+          break
+        }
+      }
+      if (hit) break
+    }
+    if (!hit) {
+      for (const inline of html.matchAll(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/gi)) {
+        const decl = inline[2] ?? ""
+        if (/text-transform\s*:\s*uppercase/i.test(decl) && !tracked(decl)) {
+          hit = decl
+          break
+        }
+      }
+    }
+    if (hit) {
+      out.push({
+        id: "caps-no-tracking",
+        message: "Uppercase text without letter-spacing.",
+        fix: "Add letter-spacing: 0.08em (or so) to the same rule. Caps without tracking read as cramped.",
+        snippet: clip(hit),
+      })
+    }
+  }
+
+  // a remote image — the prototype has no network, so this is a broken image, not a placeholder
+  {
+    const m = /<img[^>]+src\s*=\s*["']?(?:https?:)?\/\/[^"'\s>]+/i.exec(html)
+    if (m) {
+      out.push({
+        id: "external-image",
+        message: "An image loaded from the network.",
+        fix: "The prototype runs with no network access, so this renders as a broken image. Put the file beside index.html, inline it as a data: URL, or draw a placeholder.",
+        snippet: clip(m[0]),
+      })
+    }
+  }
+
+  // raw hex outside the token block — the design system is not being honoured
+  {
+    const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1] ?? "").join("\n")
+    const outside = css.replace(/:root\s*\{[^}]*\}/g, "")
+    const hexes = outside.match(/#[0-9a-f]{3,8}\b/gi) ?? []
+    if (hexes.length > 12) {
+      out.push({
+        id: "raw-hex",
+        message: `${hexes.length} colours written as hex outside :root.`,
+        fix: "Declare the palette once as --tokens in :root and reference it with var(); derive tones with color-mix().",
+        snippet: hexes.slice(0, 6).join(" "),
+      })
+    }
+  }
+
+  // the accent everywhere — an accent that is everywhere is not an accent
+  {
+    const body = html.replace(/<style[\s\S]*?<\/style>/gi, "")
+    const uses = (body.match(/var\(--accent\)/g) ?? []).length
+    if (uses > 6) {
+      out.push({
+        id: "accent-overuse",
+        message: `var(--accent) used ${uses} times inline.`,
+        fix: "Two visible uses per screen — one eyebrow and one call to action, say. Demote the rest to --fg or --muted.",
+      })
+    }
   }
 
   // scrollIntoView crosses the iframe boundary and yanks the review window
