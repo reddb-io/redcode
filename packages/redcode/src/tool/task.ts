@@ -14,6 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionGoal } from "@/session/goal"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -198,7 +199,15 @@ export const TaskTool = Tool.define(
       if (!ops) return yield* Effect.fail(new Error("TaskTool requires promptOps in ctx.extra"))
 
       const runTask = Effect.fn("TaskTool.runTask")(function* () {
-        const parts = yield* ops.resolvePromptParts(params.prompt)
+        const resolved = yield* ops.resolvePromptParts(params.prompt)
+        // The goal is copied, never shared: a child session is blank by design, so the parent's
+        // objective rides in as a synthetic part ahead of the task, read fresh each run — the
+        // goal may have been dropped or changed since the child was first created.
+        const goal = SessionGoal.fromMetadata((yield* sessions.get(ctx.sessionID)).metadata)
+        const parts =
+          goal?.status === "active"
+            ? [{ type: "text" as const, text: SessionGoal.inherit(goal), synthetic: true }, ...resolved]
+            : resolved
         const result = yield* ops.prompt({
           messageID: MessageID.ascending(),
           sessionID: nextSession.id,

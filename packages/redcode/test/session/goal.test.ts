@@ -166,3 +166,17 @@ describe("one line for a status bar", () => {
     expect(SessionGoal.describe({ ...g, status: "done" })).toBe("goal · done")
   })
 })
+
+describe("a goal, inherited by a subagent", () => {
+  test("carries the objective and the contract, not the budget or the completion tool", () => {
+    const g = SessionGoal.parse("ship the cache fix; verify: bun test; constraints: no new deps", { maxTurns: 7 })
+    const block = SessionGoal.inherit(g)
+    expect(block.startsWith("<goal>")).toBe(true)
+    expect(block).toContain("Objective: ship the cache fix")
+    expect(block).toContain("Verification: bun test")
+    expect(block).toContain("Constraints: no new deps")
+    expect(block).toContain("one part of a larger goal")
+    expect(block).not.toContain("Turn 1 of 7")
+    expect(block).not.toContain("goal_complete")
+  })
+})

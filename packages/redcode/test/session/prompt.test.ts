@@ -173,7 +173,7 @@ const blockingProcessor = Layer.succeed(
   }),
 )
 
-const runtimeFlags = RuntimeFlags.layer({ experimentalEventSystem: true })
+const runtimeFlags = RuntimeFlags.layer({ experimentalEventSystem: true, experimentalBackgroundSubagents: true })
 
 const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
 
@@ -3199,4 +3199,73 @@ it.instance("a goal driven by another process pauses instead of restarting itsel
     expect(yield* userTexts(chat.id)).toHaveLength(1)
     expect(yield* llm.calls).toBe(1)
   }),
+)
+
+it.instance(
+  "a background subagent parks the loop on WAIT; its report re-enters the parent and the judge runs again",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt, sessions } = yield* startGoal("fix the cache key; verify: bun test", { maxTurns: 5 })
+      const jobs = yield* BackgroundJob.Service
+      const gate = defer<void>()
+      const has = (needle: string) => (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes(needle)
+
+      // Turn 1: the model hands the work to a background subagent and yields.
+      yield* llm.tool("task", {
+        description: "fix cache key",
+        prompt: "look into the cache key path",
+        subagent_type: "general",
+        background: true,
+      })
+      yield* llm.textMatch(has("Background task started"), "Launched a subagent for the cache key; waiting on it.")
+      // The child answers only when the test lets it, so the parent's turn ends with the job running.
+      yield* llm.pushMatch(
+        has("look into the cache key path"),
+        reply().wait(gate.promise).text("Fixed the key in cache.ts; bun test: 12 pass.").stop(),
+      )
+      yield* llm.textMatch(judgeRequest, verdict("wait", "the subagent is still running"))
+      // Turn 2 is the child's report re-entering the parent.
+      yield* llm.textMatch(has("Background task completed"), "The subagent fixed it and the tests pass.")
+      yield* llm.textMatch(judgeRequest, verdict("done", "cache.ts changed and bun test shows 12 pass"))
+
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the first turn never ended", "30 seconds")
+
+      const parked = yield* goals.get(chat.id)
+      expect(parked?.status).toBe("active")
+      expect(parked?.last?.verdict).toBe("wait")
+      expect(parked?.turns.used).toBe(0)
+      const running = (yield* jobs.list()).filter((job) => job.metadata?.["parentSessionId"] === chat.id)
+      expect(running).toHaveLength(1)
+
+      // The child was told what the whole is for, ahead of its own task.
+      const [child] = yield* sessions.children(chat.id)
+      expect(child).toBeDefined()
+      const childUsers = yield* userTexts(child!.id)
+      expect(childUsers[0]).toContain("Objective: fix the cache key")
+      expect(childUsers[0]).toContain("look into the cache key path")
+
+      gate.resolve()
+      const settled = yield* awaitWithTimeout(
+        Effect.gen(function* () {
+          while (true) {
+            const goal = yield* goals.get(chat.id)
+            if (goal?.status !== "active") return goal
+            yield* Effect.sleep("50 millis")
+          }
+        }),
+        "the goal never settled after the subagent reported",
+        "30 seconds",
+      )
+      expect(settled?.status).toBe("done")
+      expect(settled?.last?.verdict).toBe("done")
+
+      const users = yield* userTexts(chat.id)
+      expect(users.some((text) => text.includes("Background task completed"))).toBe(true)
+      const guards = yield* SessionGuardLog.Service
+      const trips = (yield* guards.recent()).filter((t) => t.guard === "goal")
+      expect(trips.map((t) => t.action).sort()).toEqual(["stop", "warn"])
+    }),
+  60_000,
 )

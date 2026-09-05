@@ -6,6 +6,7 @@ import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { Agent } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
+import { SessionGoal } from "@/session/goal"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Config } from "@/config/config"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
@@ -980,6 +981,45 @@ describe("tool.task", () => {
 
       expect((yield* jobs.get(child.id))?.status).toBe("cancelled")
       expect((yield* jobs.get(grandchild.id))?.status).toBe("cancelled")
+    }),
+  )
+
+  it.instance("the child's prompt opens with the parent's active goal; a paused goal stays home", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const goal = SessionGoal.parse("fix the cache key; verify: bun test", {})
+      yield* sessions.setMetadata({ sessionID: chat.id, metadata: SessionGoal.toMetadata({}, goal) })
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      const seen: SessionPrompt.PromptInput[] = []
+      const promptOps = stubOps({ onPrompt: (input) => void seen.push(input) })
+      const ctx = {
+        sessionID: chat.id,
+        messageID: assistant.id,
+        agent: "build",
+        abort: new AbortController().signal,
+        extra: { promptOps },
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const params = { description: "inspect bug", prompt: "look into the cache key path", subagent_type: "general" }
+
+      yield* def.execute(params, ctx)
+      const first = seen[0]?.parts ?? []
+      expect(first).toHaveLength(2)
+      expect(first[0]?.type === "text" && first[0].synthetic).toBe(true)
+      expect(first[0]?.type === "text" ? first[0].text : "").toContain("Objective: fix the cache key")
+      expect(first[0]?.type === "text" ? first[0].text : "").toContain("Verification: bun test")
+      expect(first[1]?.type === "text" ? first[1].text : "").toBe("look into the cache key path")
+
+      yield* sessions.setMetadata({
+        sessionID: chat.id,
+        metadata: SessionGoal.toMetadata({}, { ...goal, status: "paused", reason: "interrupted" }),
+      })
+      yield* def.execute(params, ctx)
+      expect(seen[1]?.parts).toHaveLength(1)
     }),
   )
 })

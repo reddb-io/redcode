@@ -179,6 +179,24 @@ export function render(goal: Goal): string {
   return lines.join("\n")
 }
 
+/**
+ * What a subagent is told. Children start blank by design, so the goal is copied in — the
+ * objective and the contract, never the budget or the completion tool: the child does one part,
+ * and only the parent's turn is judged.
+ */
+export function inherit(goal: Goal): string {
+  return [
+    "<goal>",
+    "This task is one part of a larger goal the calling agent is pursuing. Do the task you were given so that it fits the goal; do not attempt the rest of the goal, and do not redefine the task to something smaller.",
+    "",
+    `Objective: ${goal.objective}`,
+    ...contractLines(goal.contract),
+    "",
+    "Report what you did with evidence — file contents, command output, test results — and say plainly what you could not do.",
+    "</goal>",
+  ].join("\n")
+}
+
 export interface Gates {
   readonly command: string
   readonly ok: boolean
