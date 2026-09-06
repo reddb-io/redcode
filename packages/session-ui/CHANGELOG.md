@@ -1,5 +1,13 @@
 # @reddb-io/redcode-session-ui
 
+## 1.18.24
+
+### Patch Changes
+
+- Updated dependencies [d9dcc88]
+  - @reddb-io/redcode-sdk@1.19.1
+  - @reddb-io/redcode-core@1.21.1
+
 ## 1.18.23
 
 ### Patch Changes

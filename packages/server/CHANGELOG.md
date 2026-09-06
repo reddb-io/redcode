@@ -1,5 +1,12 @@
 # @reddb-io/redcode-server
 
+## 1.18.24
+
+### Patch Changes
+
+- @reddb-io/redcode-core@1.21.1
+- @reddb-io/redcode-protocol@1.18.21
+
 ## 1.18.23
 
 ### Patch Changes
