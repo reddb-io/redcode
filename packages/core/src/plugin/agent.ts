@@ -7,6 +7,7 @@ import { AgentV2 } from "../agent"
 import { Global } from "../global"
 import { Location } from "../location"
 import { PermissionV2 } from "../permission"
+import { ProjectDir } from "../project-dir"
 
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
@@ -149,7 +150,11 @@ export const Plugin = define({
             { action: "plan_exit", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
             { action: "edit", resource: "*", effect: "deny" },
-            { action: "edit", resource: path.join(".redcode", "plans", "*.md"), effect: "allow" },
+            ...ProjectDir.DIRS.map((dir) => ({
+              action: "edit" as const,
+              resource: path.join(dir, "plans", "*.md"),
+              effect: "allow" as const,
+            })),
             {
               action: "edit",
               resource: path.relative(worktree, path.join(Global.Path.data, "plans", "*.md")),
@@ -171,7 +176,11 @@ export const Plugin = define({
             { action: "goal_complete", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "designs", "*"), effect: "allow" },
             { action: "edit", resource: "*", effect: "deny" },
-            { action: "edit", resource: path.join(".redcode", "designs", "*"), effect: "allow" },
+            ...ProjectDir.DIRS.map((dir) => ({
+              action: "edit" as const,
+              resource: path.join(dir, "designs", "*"),
+              effect: "allow" as const,
+            })),
             {
               action: "edit",
               resource: path.relative(worktree, path.join(Global.Path.data, "designs", "*")),

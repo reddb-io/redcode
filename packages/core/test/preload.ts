@@ -1,6 +1,6 @@
 // IMPORTANT: these run before any import from src/, because `src/global.ts` resolves the app home
 // at module scope. Without REDCODE_TEST_HOME it resolves to the developer's — or the runner's —
-// real `~/.red/redcode`, and then creates directories in it, shares a `cache/bin` across
+// real `~/.red/code`, and then creates directories in it, shares a `cache/bin` across
 // concurrent jobs, and lets an ambient `~/.npmrc` reach the installer under test.
 import os from "os"
 import path from "path"

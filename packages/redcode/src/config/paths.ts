@@ -3,6 +3,7 @@ export * as ConfigPaths from "./paths"
 import path from "path"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Global } from "@reddb-io/redcode-core/global"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 import { unique } from "remeda"
 import * as Effect from "effect/Effect"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -28,13 +29,13 @@ export const directories = Effect.fn("ConfigPaths.directories")(function* (direc
     Global.Path.config,
     ...(!Flag.REDCODE_DISABLE_PROJECT_CONFIG
       ? yield* afs.up({
-          targets: [".opencode", ".redcode"],
+          targets: ProjectDir.DIRS,
           start: directory,
           stop: worktree,
         })
       : []),
     ...(yield* afs.up({
-      targets: [".opencode", ".redcode"],
+      targets: ProjectDir.DIRS,
       start: Global.Path.home,
       stop: Global.Path.home,
     })),

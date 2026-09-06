@@ -77,7 +77,7 @@ describe("entering design mode", () => {
 
       // The directory exists before the agent is asked to write into it. A test instance has no
       // repository, so this lands in the global data directory the way plans do; in a checkout it
-      // would be <worktree>/.redcode/designs.
+      // would be <worktree>/.red/code/designs.
       expect(yield* fs.existsSafe(root)).toBe(true)
       expect(path.basename(path.dirname(root))).toBe("designs")
 

@@ -82,7 +82,7 @@ describe("plugin.install.concurrent", () => {
     expect(out.map((x) => x.code)).toEqual(Array.from({ length: all.length }, () => 0))
     expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
 
-    const cfg = await read(path.join(tmp.path, ".redcode", "config.jsonc"))
+    const cfg = await read(path.join(tmp.path, ".red", "code", "config.jsonc"))
     expectPlugins(cfg.plugin, all)
   }, 25_000)
 
@@ -105,8 +105,8 @@ describe("plugin.install.concurrent", () => {
     expect(out.map((x) => x.code)).toEqual(Array.from({ length: all.length }, () => 0))
     expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
 
-    const server = await read(path.join(tmp.path, ".redcode", "config.jsonc"))
-    const tui = await read(path.join(tmp.path, ".redcode", "tui.jsonc"))
+    const server = await read(path.join(tmp.path, ".red", "code", "config.jsonc"))
+    const tui = await read(path.join(tmp.path, ".red", "code", "tui.jsonc"))
     expectPlugins(server.plugin, all)
     expectPlugins(tui.plugin, all)
   }, 25_000)

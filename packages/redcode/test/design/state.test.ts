@@ -6,7 +6,7 @@ describe("what a review remembers", () => {
     const state: DesignState.Persisted = {
       id: "abc",
       sessionID: "ses_1",
-      root: "/w/.redcode/designs/hero",
+      root: "/w/.red/code/designs/hero",
       name: "hero",
       token: "tok",
       revision: 4,

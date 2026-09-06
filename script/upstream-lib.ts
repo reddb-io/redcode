@@ -48,8 +48,8 @@ export const RENAMES: ReadonlyArray<readonly [RegExp, string]> = [
   [/@opencode-ai\//g, "@reddb-io/redcode-"],
   [/"opencode":\s*"workspace:\*"/g, '"@reddb-io/redcode": "workspace:*"'],
   [/\bOPENCODE_/g, "REDCODE_"],
-  [/\.opencode\//g, ".redcode/"],
-  [/\.opencode\b/g, ".redcode"],
+  [/\.opencode\//g, ".red/code/"],
+  [/\.opencode\b/g, ".red/code"],
   [/opencode\.json\b/g, "redcode.json"],
   [/opencode\.jsonc\b/g, "redcode.jsonc"],
 ]

@@ -830,7 +830,7 @@ describe("Config", () => {
     ),
   )
 
-  it.live("loads .redcode before legacy .opencode configuration up to the project boundary", () =>
+  it.live("loads .red/code last, after the older .redcode and .opencode, up to the project boundary", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
@@ -848,6 +848,8 @@ describe("Config", () => {
             await fs.mkdir(path.join(root, ".redcode"), { recursive: true })
             await fs.mkdir(path.join(directory, ".opencode"), { recursive: true })
             await fs.mkdir(path.join(directory, ".redcode"), { recursive: true })
+            await fs.mkdir(path.join(root, ".red", "code"), { recursive: true })
+            await fs.mkdir(path.join(directory, ".red", "code"), { recursive: true })
             await Promise.all([
               fs.writeFile(path.join(tmp.path, "opencode.json"), JSON.stringify({ $schema: "outside" })),
               fs.writeFile(path.join(global, "opencode.json"), JSON.stringify({ $schema: "global" })),
@@ -864,6 +866,14 @@ describe("Config", () => {
                 path.join(directory, ".redcode", "config.jsonc"),
                 JSON.stringify({ $schema: "directory-redcode" }),
               ),
+              fs.writeFile(
+                path.join(root, ".red", "code", "config.json"),
+                JSON.stringify({ $schema: "root-red-code" }),
+              ),
+              fs.writeFile(
+                path.join(directory, ".red", "code", "config.jsonc"),
+                JSON.stringify({ $schema: "directory-red-code" }),
+              ),
             ])
           })
 
@@ -876,8 +886,10 @@ describe("Config", () => {
               AbsolutePath.make(global),
               AbsolutePath.make(path.join(root, ".opencode")),
               AbsolutePath.make(path.join(root, ".redcode")),
+              AbsolutePath.make(path.join(root, ".red", "code")),
               AbsolutePath.make(path.join(directory, ".opencode")),
               AbsolutePath.make(path.join(directory, ".redcode")),
+              AbsolutePath.make(path.join(directory, ".red", "code")),
             ])
             expect(documents.map((document) => document.info.$schema)).toEqual([
               "global",
@@ -886,8 +898,10 @@ describe("Config", () => {
               "directory",
               "root-dot",
               "root-redcode",
+              "root-red-code",
               "directory-dot",
               "directory-redcode",
+              "directory-red-code",
             ])
             expect(entries.map((entry) => (entry.type === "document" ? entry.info.$schema : entry.path))).toEqual([
               "global",
@@ -899,10 +913,14 @@ describe("Config", () => {
               AbsolutePath.make(path.join(root, ".opencode")),
               "root-redcode",
               AbsolutePath.make(path.join(root, ".redcode")),
+              "root-red-code",
+              AbsolutePath.make(path.join(root, ".red", "code")),
               "directory-dot",
               AbsolutePath.make(path.join(directory, ".opencode")),
               "directory-redcode",
               AbsolutePath.make(path.join(directory, ".redcode")),
+              "directory-red-code",
+              AbsolutePath.make(path.join(directory, ".red", "code")),
             ])
           }).pipe(
             Effect.provide(

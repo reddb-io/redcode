@@ -20,6 +20,7 @@ import { Global } from "@reddb-io/redcode-core/global"
 import { modify, applyEdits } from "jsonc-parser"
 import { Filesystem } from "@/util/filesystem"
 import { Effect } from "effect"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 
 function getAuthStatusIcon(status: MCP.AuthStatus): string {
   switch (status) {
@@ -392,7 +393,8 @@ export const McpLogoutCommand = effectCmd({
 })
 
 async function resolveConfigPath(baseDir: string, global = false) {
-  // Check for existing config files (including primary .redcode and legacy .opencode directories). Redcode names
+  // Check for existing config files (including the project directories, `.red/code` and the older
+  // `.redcode`/`.opencode`). Redcode names
   // come first so that when both exist the edit lands on the file that also wins when config is read;
   // a legacy-only directory still gets edited in place rather than gaining a second file, and only
   // a directory with no config at all gets a `config.jsonc` created.
@@ -400,8 +402,9 @@ async function resolveConfigPath(baseDir: string, global = false) {
   const candidates = names.map((name) => path.join(baseDir, name))
 
   if (!global) {
-    candidates.push(...names.map((name) => path.join(baseDir, ".redcode", name)))
-    candidates.push(...names.map((name) => path.join(baseDir, ".opencode", name)))
+    for (const dir of ProjectDir.DIRS_PREFERRED_FIRST) {
+      candidates.push(...names.map((name) => path.join(baseDir, dir, name)))
+    }
   }
 
   for (const candidate of candidates) {

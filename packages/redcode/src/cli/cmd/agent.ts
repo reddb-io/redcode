@@ -11,6 +11,8 @@ import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
+import { existsSync } from "fs"
 
 type AgentMode = "all" | "primary" | "subagent"
 
@@ -112,7 +114,11 @@ const AgentCreateCommand = effectCmd({
           if (prompts.isCancel(scopeResult)) throw new UI.CancelledError()
           scope = scopeResult
         }
-        targetPath = path.join(scope === "global" ? Global.Path.config : path.join(ctx.worktree, ".redcode"), "agents")
+        targetPath =
+          scope === "global"
+            ? path.join(Global.Path.config, "agents")
+            : (ProjectDir.candidates(ctx.worktree, "agents").find((dir) => existsSync(dir)) ??
+              path.join(ctx.worktree, ProjectDir.DIR, "agents"))
       }
 
       // Get description
