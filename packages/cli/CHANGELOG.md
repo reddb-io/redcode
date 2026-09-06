@@ -1,5 +1,14 @@
 # @reddb-io/redcode-cli
 
+## 1.18.26
+
+### Patch Changes
+
+- Updated dependencies [9df9f10]
+  - @reddb-io/redcode-core@1.23.0
+  - @reddb-io/redcode-server@1.18.26
+  - @reddb-io/redcode-tui@1.21.2
+
 ## 1.18.25
 
 ### Patch Changes
