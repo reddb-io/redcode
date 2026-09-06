@@ -19,6 +19,20 @@ export interface ShellInput {
   readonly embed?: boolean
 }
 
+/** Everything the prototype may say; anything else is ignored rather than interpreted. */
+export const ARTIFACT_MESSAGES = [
+  "ready",
+  "queuePrompt",
+  "sendQueuedPrompts",
+  "endSession",
+  "toggleAnnotationMode",
+  "snapshot",
+  "scroll",
+  "status",
+  "draft",
+  "mode",
+] as const
+
 const escape = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
@@ -29,7 +43,7 @@ export function shellCSP() {
     "default-src 'none'",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
-    "img-src data:",
+    "img-src data: https: http:",
     "connect-src 'self'",
     "frame-src 'self'",
     "form-action 'none'",
@@ -38,35 +52,45 @@ export function shellCSP() {
 }
 
 export function shellHTML(input: ShellInput) {
-  const config = JSON.stringify({ id: input.id, token: input.token, revision: input.revision })
+  // Inside a <script>, a "</script>" in the name would end the block early; the JSON escapes every
+  // "<" so content can never break out of the string it is in.
+  const config = JSON.stringify({
+    id: input.id,
+    name: input.name,
+    token: input.token,
+    revision: input.revision,
+  }).replace(/</g, "\\u003c")
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="referrer" content="no-referrer">
 <title>${escape(input.name)} · redcode design</title>
 <style>
-  :root { color-scheme: light dark; --edge: color-mix(in oklab, currentColor 14%, transparent); }
+  :root { color-scheme: light dark; --edge: color-mix(in oklab, currentColor 14%, transparent); --accent: #f4c95d; }
   * { box-sizing: border-box }
   body { margin: 0; height: 100vh; display: grid; grid-template-rows: auto 1fr;
          font: 13px/1.5 ui-sans-serif, system-ui, sans-serif }
   header { display: flex; gap: .75rem; align-items: center; padding: .5rem .75rem;
            border-bottom: 1px solid var(--edge) }
   header strong { font-weight: 600 }
-  header span { opacity: .6 }
+  header span { opacity: .6; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
   main { display: grid; grid-template-columns: 1fr min(360px, 34vw); min-height: 0 }
   iframe { border: 0; width: 100%; height: 100%; background: #fff }
   aside { display: grid; grid-template-rows: 1fr auto; border-left: 1px solid var(--edge); min-height: 0 }
   ol { margin: 0; padding: .5rem .75rem; overflow: auto; list-style-position: inside }
   li { padding: .35rem 0; border-bottom: 1px solid var(--edge) }
   li code { opacity: .7 }
+  li small { display: block; opacity: .6 }
   form { display: grid; gap: .5rem; padding: .75rem; border-top: 1px solid var(--edge) }
   textarea { font: inherit; min-height: 4.5rem; resize: vertical; padding: .5rem;
              border: 1px solid var(--edge); border-radius: .375rem; background: transparent; color: inherit }
   button { font: inherit; padding: .4rem .75rem; border-radius: .375rem; border: 1px solid var(--edge);
            background: transparent; color: inherit; cursor: pointer }
   button[disabled] { opacity: .5; cursor: default }
+  button.mode { padding: .25rem .6rem }
+  button.mode[aria-pressed="true"] { background: var(--accent); color: #17130a; border-color: var(--accent) }
   p.empty { margin: .75rem; opacity: .6 }
   li img { display: block; max-width: 100%; max-height: 120px; margin-top: .35rem; border-radius: .25rem; border: 1px solid var(--edge) }
   .actions { display: flex; gap: .5rem; align-items: center }
@@ -74,8 +98,9 @@ export function shellHTML(input: ShellInput) {
   .draft { display: none; align-items: center; gap: .5rem; font-size: 12px; opacity: .8 }
   .draft img { max-height: 40px; border-radius: .25rem; border: 1px solid var(--edge) }
   .draft[data-on] { display: flex }
-  body[data-embed] { grid-template-rows: 1fr }
-  body[data-embed] header { display: none }
+  body[data-embed] { grid-template-rows: auto 1fr }
+  body[data-embed] header { padding: .25rem .75rem }
+  body[data-embed] header strong { display: none }
   body[data-embed] main { grid-template-columns: 1fr min(300px, 40vw) }
 </style>
 </head>
@@ -83,6 +108,7 @@ export function shellHTML(input: ShellInput) {
 <header>
   <strong>${escape(input.name)}</strong>
   <span id="status">click an element in the prototype to annotate it</span>
+  <button class="mode" id="mode" type="button" aria-pressed="true" title="Toggle annotate/explore mode (⌘I / Ctrl+I)">Annotate</button>
 </header>
 <main>
   <!-- The sandbox list below deliberately withholds same-origin access: the document inside is
@@ -113,26 +139,52 @@ export function shellHTML(input: ShellInput) {
   const text = document.getElementById("text")
   const send = document.getElementById("send")
   const hold = document.getElementById("hold")
+  const modeButton = document.getElementById("mode")
   const draft = document.getElementById("draft")
   const draftImg = document.getElementById("draftImg")
   const base = location.pathname.replace(/\\/$/, "")
   let pending = []
   let revision = config.revision
-  // The image beside whatever is being typed. Ours to capture: the prototype never sees it and
-  // cannot supply one, because the frame's whole vocabulary is "ready" and "annotate".
+  let annotate = true
+  // What the frame reported last, replayed after it reloads: where the person was, and what they
+  // had typed into a card. The sandbox keeps the shell from reading either directly.
+  let scroll = null
+  let cardDraft = null
+  let snapshotWaiter = null
+  // The image beside whatever is being typed. Ours to capture: the prototype never sees it.
   let image = null
 
-  frame.src = base + "/files/index.html"
+  const tell = (type, payload) => frame.contentWindow.postMessage({ source: "redcode-design-shell", type, payload: payload || {} }, "*")
+  const load = () => { frame.src = base + "/files/index.html?rev=" + revision }
+  load()
+
+  const where = (item) => {
+    const t = item.target
+    if (t && t.type === "text-range") return "text: “" + t.text.slice(0, 80) + "”"
+    if (t && t.type === "table-cell") {
+      const cell = [t.rowLabel, t.columnLabel].filter(Boolean).join(" → ")
+      return cell ? "cell: " + cell : "cell " + t.selector
+    }
+    if (t && t.type === "mermaid-node") return "node: " + (t.label || t.nodeId)
+    if (item.tag === "message") return ""
+    return item.label || item.selector || ""
+  }
 
   const draw = () => {
     queue.replaceChildren(...pending.map((item) => {
       const li = document.createElement("li")
-      if (item.label) {
+      const at = where(item)
+      if (at) {
         const code = document.createElement("code")
-        code.textContent = item.label + " "
+        code.textContent = at + " "
         li.append(code)
       }
       li.append(document.createTextNode(item.text))
+      if (item.elementText && !item.target) {
+        const small = document.createElement("small")
+        small.textContent = "it says: " + item.elementText.slice(0, 120)
+        li.append(small)
+      }
       if (item.image) {
         const img = document.createElement("img")
         img.src = "data:" + item.image.mime + ";base64," + item.image.data
@@ -156,7 +208,7 @@ export function shellHTML(input: ShellInput) {
   const MAX_EDGE = 1280
   const MAX_B64 = 800000
   const attach = (file) => {
-    if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) return
+    if (!file || !/^image\\/(png|jpeg|webp)$/.test(file.type)) return
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.onload = () => {
@@ -197,7 +249,7 @@ export function shellHTML(input: ShellInput) {
   const typedNote = () => {
     const typed = text.value.trim()
     if (!typed && !image) return null
-    return { text: typed || "See the attached image.", ...(image ? { image } : {}) }
+    return { tag: "message", text: typed || "See the attached image.", ...(image ? { image } : {}) }
   }
 
   // Hold: the note joins the queue and nothing leaves this page. The agent is woken by Send, and
@@ -212,43 +264,105 @@ export function shellHTML(input: ShellInput) {
     status.textContent = pending.length + " held · press Send when you are done"
   })
 
-  // Only what the prototype is allowed to say. Anything else is ignored rather than interpreted:
-  // the frame is the least trusted thing here, and this list is the whole of its vocabulary.
-  const ALLOWED = new Set(["ready", "annotate"])
+  // Annotate or explore. The shell owns the mode; the frame asks to toggle it and is told the answer.
+  const setMode = (next) => {
+    annotate = !!next
+    modeButton.setAttribute("aria-pressed", String(annotate))
+    modeButton.textContent = annotate ? "Annotate" : "Explore"
+    tell("setAnnotationMode", { annotate })
+  }
+  modeButton.addEventListener("click", () => setMode(!annotate))
+  document.addEventListener("keydown", (event) => {
+    if (event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return
+    if (String(event.key || "").toLowerCase() !== "i") return
+    event.preventDefault()
+    setMode(!annotate)
+  }, true)
+
+  // A prompt from the frame joins the queue; one that names the same control as an unsent one
+  // replaces it, so a person changing their mind sends one answer, not a history of them.
+  const enqueue = (p) => {
+    if (!p || typeof p !== "object") return
+    const words = String(p.prompt || "").slice(0, 4000)
+    if (!words.trim()) return
+    const item = {
+      selector: String(p.selector || "").slice(0, 512),
+      tag: String(p.tag || "").slice(0, 40),
+      elementText: String(p.text || "").slice(0, 240),
+      text: words,
+      ...(p.target && typeof p.target === "object" ? { target: p.target } : {}),
+      ...(p.queueKey ? { queueKey: String(p.queueKey).slice(0, 200) } : {}),
+    }
+    const at = item.queueKey ? pending.findIndex((x) => x.queueKey === item.queueKey) : -1
+    pending = at >= 0 ? pending.map((x, i) => (i === at ? item : x)) : pending.concat([item]).slice(0, 50)
+    draw()
+    status.textContent = pending.length + " queued · press Send when you are done"
+  }
+
+  // Only what the prototype is allowed to say, and only for the document we are showing: a
+  // message stamped with another revision is from a frame we already replaced.
+  const ALLOWED = new Set(${JSON.stringify(ARTIFACT_MESSAGES)})
 
   window.addEventListener("message", (event) => {
     if (event.source !== frame.contentWindow) return
     const data = event.data
     if (!data || typeof data !== "object") return
-    if (data.source !== "redcode-design" || data.v !== 1) return
+    if (data.source !== "redcode-design" || data.v !== 2) return
     if (!ALLOWED.has(data.type)) return
-    if (data.type === "ready") { status.textContent = "click an element in the prototype to annotate it"; return }
+    if (data.load !== revision) return
     const payload = data.payload || {}
-    if (typeof payload.text !== "string" || !payload.text.trim()) return
-    pending = pending.concat([{
-      selector: String(payload.selector || "").slice(0, 512),
-      label: String(payload.label || "").slice(0, 200),
-      text: payload.text.slice(0, 4000),
-      selection: String(payload.selection || "").slice(0, 2000),
-    }]).slice(0, 50)
-    draw()
-    status.textContent = pending.length + " queued · press Send when you are done"
+    switch (data.type) {
+      case "ready": {
+        status.textContent = annotate ? "click an element in the prototype to annotate it" : "explore mode · ⌘I / Ctrl+I to annotate"
+        if (payload.title) document.title = String(payload.title).slice(0, 200) + " · " + config.name
+        if (payload.icon) {
+          let link = document.querySelector('link[rel="icon"]')
+          if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.append(link) }
+          link.href = String(payload.icon)
+        }
+        tell("setAnnotationMode", { annotate })
+        if (scroll) tell("restoreScroll", scroll)
+        if (cardDraft) tell("restoreDraft", cardDraft)
+        return
+      }
+      case "queuePrompt": enqueue(payload.prompt); return
+      case "sendQueuedPrompts": submit(); return
+      case "endSession": submit(undefined, true); return
+      case "toggleAnnotationMode": setMode(!annotate); return
+      case "mode": return
+      case "snapshot": if (snapshotWaiter) snapshotWaiter(String(payload.snapshot || "")); return
+      case "scroll": scroll = { x: Number(payload.x) || 0, y: Number(payload.y) || 0 }; return
+      case "status": status.textContent = String(payload.message || "").slice(0, 200); return
+      case "draft": cardDraft = payload.text ? { selector: String(payload.selector || ""), text: String(payload.text).slice(0, 4000) } : null; return
+    }
   })
 
-  const submit = async (event) => {
-    event.preventDefault()
+  // The page as a uid/tag/text tree rides along with a send, so the agent can name what the
+  // person did not click. Asked for at send time and waited for briefly; never a reason to hold
+  // the send if the frame has gone quiet.
+  const snapshot = () => new Promise((resolve) => {
+    const timer = setTimeout(() => { snapshotWaiter = null; resolve("") }, 600)
+    snapshotWaiter = (value) => { clearTimeout(timer); snapshotWaiter = null; resolve(value) }
+    try { tell("requestSnapshot", { reason: "submit" }) } catch { snapshotWaiter = null; clearTimeout(timer); resolve("") }
+  })
+
+  const submit = async (event, end) => {
+    if (event) event.preventDefault()
     const note = typedNote()
     const items = note ? pending.concat([note]) : pending
-    if (items.length === 0) return
+    if (items.length === 0 && !end) return
     send.disabled = true
     status.textContent = "sending…"
     try {
+      const dom = items.length ? await snapshot() : ""
       const response = await fetch(base + "/feedback", {
         method: "POST",
         headers: { "content-type": "application/json", "x-redcode-design-token": config.token },
         body: JSON.stringify({
-          items,
+          items: items.length ? items : [{ tag: "message", text: "I am done reviewing." }],
           viewport: { width: innerWidth, height: innerHeight },
+          ...(dom ? { snapshot: dom } : {}),
+          ...(end ? { end: true } : {}),
         }),
       })
       if (!response.ok) throw new Error("HTTP " + response.status)
@@ -256,7 +370,7 @@ export function shellHTML(input: ShellInput) {
       text.value = ""
       image = null
       draw()
-      status.textContent = "sent · the agent has it"
+      status.textContent = end ? "sent · review ended" : "sent · the agent has it"
     } catch (error) {
       status.textContent = "could not send (" + error.message + ") · your notes are still here"
       send.disabled = false
@@ -265,6 +379,9 @@ export function shellHTML(input: ShellInput) {
 
   document.getElementById("composer").addEventListener("submit", submit)
   text.addEventListener("input", draw)
+  text.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); submit() }
+  })
 
   // The prototype changes when the agent rewrites it. Polling a number is enough and costs nothing;
   // the session event stream is a firehose and would be the wrong thing to point a tab at.
@@ -276,7 +393,7 @@ export function shellHTML(input: ShellInput) {
       if (typeof next !== "number" || next === revision) return
       revision = next
       const keep = text.value
-      frame.src = base + "/files/index.html?rev=" + next
+      load()
       text.value = keep
       status.textContent = "the agent revised this · reloaded"
     } catch {}
