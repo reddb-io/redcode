@@ -1,0 +1,3 @@
+Read how to build one kind of artifact well: diagram, table, comparison, plan, code, input (collecting answers from the user inside the page), or slides.
+
+Call it with no id to list them with when each applies. Open every playbook that matches what you are about to build before writing HTML — one artifact often combines several, a plan with a comparison and a diagram — and follow it. The guidance is written for this review page: what the user can annotate, how answers are queued, what the prototype can load.

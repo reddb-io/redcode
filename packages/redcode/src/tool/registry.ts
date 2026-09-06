@@ -4,6 +4,7 @@ import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { PlanExitTool } from "./plan"
 import { DesignPreviewTool } from "./design-preview"
 import { DesignExitTool } from "./design"
+import { DesignPlaybookTool } from "./design-playbook"
 import { GoalCompleteTool } from "./goal"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { DesignRegistry } from "@/design/registry"
@@ -112,6 +113,7 @@ const layer = Layer.effect(
     const plan = yield* PlanExitTool
     const designPreview = yield* DesignPreviewTool
     const designExit = yield* DesignExitTool
+    const designPlaybook = yield* DesignPlaybookTool
     const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
@@ -233,6 +235,7 @@ const layer = Layer.effect(
           plan: Tool.init(plan),
           design_preview: Tool.init(designPreview),
           design_exit: Tool.init(designExit),
+          design_playbook: Tool.init(designPlaybook),
           goal_complete: Tool.init(goalComplete),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
@@ -259,7 +262,7 @@ const layer = Layer.effect(
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
             // Behind a flag while the review surface settles: it opens a browser window and serves
             // model-written HTML, which is not something to switch on for everyone by surprise.
-            ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit] : []),
+            ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit, tool.design_playbook] : []),
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
             tool.goal_complete,
           ],
