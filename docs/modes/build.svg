@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-build d-build">
+  <title id="t-build">build mode</title>
+  <desc id="d-build">Build mode: the default agent, which edits files, runs commands and delegates to subagents under configured permissions.</desc>
+  <defs>
+    <linearGradient id="bg-build" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-build" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff2056" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-build" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff2056"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-build" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-build">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-build)">
+    <rect width="1200" height="230" fill="url(#bg-build)"/>
+    <rect width="1200" height="230" fill="url(#grid-build)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-build)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-build)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#ff2056"/>
+
+    <!-- glyph -->
+    <g transform="translate(70 45)" fill="none" stroke="#ff2056" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="0" y="0" width="140" height="140" rx="16" stroke-opacity="0.55"/>
+      <line x1="0" y1="30" x2="140" y2="30" stroke-opacity="0.35"/>
+      <circle cx="16" cy="15" r="3.5" fill="#ff2056" stroke="none"/>
+      <circle cx="30" cy="15" r="3.5" fill="#ffffff" fill-opacity="0.25" stroke="none"/>
+      <circle cx="44" cy="15" r="3.5" fill="#ffffff" fill-opacity="0.25" stroke="none"/>
+      <path d="M22 58 L40 76 L22 94"/>
+      <line x1="52" y1="94" x2="84" y2="94"/>
+      <rect x="96" y="82" width="10" height="16" fill="#ff2056" stroke="none"/>
+      <line x1="22" y1="116" x2="70" y2="116" stroke-opacity="0.35"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">MODE 01 / 03</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2">
+        <tspan fill="#f0f6fc">build</tspan>
+      </text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-build)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">The default. Reads, edits, runs, tests — with subagents when the work fans out.</text>
+      <g>
+      <rect x="262" y="176" width="164" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">Tab cycles agents</text>
+      <rect x="436.2" y="176" width="147" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="445.2" y="194" font-size="13" fill="#c9d1d9">edits and shell</text>
+      <rect x="593.2" y="176" width="190" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="602.2" y="194" font-size="13" fill="#c9d1d9">background subagents</text>
+      </g>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#ff2056" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">01</text>
+    </g>
+  </g>
+</svg>
