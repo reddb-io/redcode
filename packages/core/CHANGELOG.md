@@ -1,5 +1,14 @@
 # @reddb-io/redcode-core
 
+## 1.21.1
+
+### Patch Changes
+
+- Updated dependencies [d9dcc88]
+  - @reddb-io/redcode-schema@1.20.1
+  - @reddb-io/redcode-llm@1.18.21
+  - @reddb-io/redcode-plugin@1.18.20
+
 ## 1.21.0
 
 ### Minor Changes

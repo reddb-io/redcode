@@ -1,5 +1,20 @@
 # @reddb-io/redcode-tui
 
+## 1.21.0
+
+### Minor Changes
+
+- d9dcc88: Latency and output speed on the panel
+
+  Every assistant message now records when its first streamed chunk arrived (`time.first`). The TUI footer shows the last reply's latency and its output rate next to context and cost — `1.2s · 84 tk/s` — and the app shows both in the context tooltip and the context tab. Speed counts output plus reasoning tokens from the first chunk to completion; latency is the wait from the request to that first chunk. Messages from before this release show neither rather than a guess.
+
+### Patch Changes
+
+- Updated dependencies [d9dcc88]
+  - @reddb-io/redcode-sdk@1.19.1
+  - @reddb-io/redcode-core@1.21.1
+  - @reddb-io/redcode-plugin@1.18.20
+
 ## 1.20.0
 
 ### Minor Changes

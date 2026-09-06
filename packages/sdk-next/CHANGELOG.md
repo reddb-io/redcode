@@ -1,5 +1,13 @@
 # @reddb-io/redcode-sdk-next
 
+## 1.18.24
+
+### Patch Changes
+
+- @reddb-io/redcode-client@1.18.21
+- @reddb-io/redcode-core@1.21.1
+- @reddb-io/redcode-server@1.18.24
+
 ## 1.18.23
 
 ### Patch Changes
