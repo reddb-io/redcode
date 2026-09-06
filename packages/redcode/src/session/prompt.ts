@@ -1409,7 +1409,7 @@ const layer = Layer.effect(
             // and another pass through this loop — the turn never leaves `ensureRunning`, so the
             // session stays busy and the surfaces see one turn. Anything else ends the turn here
             // with the goal's status saying why.
-            if (!lastAssistant.error && flags.experimentalGoal) {
+            if (!lastAssistant.error) {
               const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
               const outcome = yield* goals
                 .afterTurn({ session: fresh, lastUser, lastAssistant: lastAssistantMsg })

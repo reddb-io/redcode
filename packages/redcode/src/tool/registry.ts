@@ -261,7 +261,7 @@ const layer = Layer.effect(
             // model-written HTML, which is not something to switch on for everyone by surprise.
             ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit] : []),
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
-            ...(flags.experimentalGoal ? [tool.goal_complete] : []),
+            tool.goal_complete,
           ],
           task: tool.task,
           read: tool.read,

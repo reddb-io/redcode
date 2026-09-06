@@ -30,19 +30,17 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
 
   // The goal is re-rendered from the session record on every step, so compaction can drop every
   // earlier copy and the model still reads the objective as it was set — and the turn it is on.
-  if (flags.experimentalGoal) {
-    const current = yield* sessions.get(input.session.id).pipe(Effect.orElseSucceed(() => input.session))
-    const goal = SessionGoal.fromMetadata(current.metadata)
-    if (goal?.status === "active") {
-      userMessage.parts.push({
-        id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
-        text: SessionGoal.render(goal),
-        synthetic: true,
-      })
-    }
+  const current = yield* sessions.get(input.session.id).pipe(Effect.orElseSucceed(() => input.session))
+  const goal = SessionGoal.fromMetadata(current.metadata)
+  if (goal?.status === "active") {
+    userMessage.parts.push({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      text: SessionGoal.render(goal),
+      synthetic: true,
+    })
   }
 
   if (flags.experimentalDesignMode && input.agent.name === "design" && assistantMessage?.info.agent !== "design") {
