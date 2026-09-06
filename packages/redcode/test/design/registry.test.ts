@@ -156,3 +156,128 @@ describe("when the session moves on", () => {
     }),
   )
 })
+
+import { Stream, Fiber, Deferred, Scope, Exit } from "effect"
+import { DesignState } from "@/design/state"
+
+/** The first `count` events of a subscription, collected in the background so the test can act. */
+const collect = (id: string, count: number) =>
+  Effect.gen(function* () {
+    const registry = yield* DesignRegistry.Service
+    const scope = yield* Scope.make()
+    const stream = yield* registry.subscribe(id).pipe(Scope.provide(scope))
+    const ready = yield* Deferred.make<void>()
+    const fiber = yield* stream.pipe(
+      Stream.tap(() => Deferred.succeed(ready, undefined)),
+      Stream.take(count),
+      Stream.runCollect,
+      Effect.forkChild,
+    )
+    // The subscription is live once the fiber is running; give it a beat before acting.
+    yield* Effect.sleep("20 millis")
+    return {
+      events: Effect.gen(function* () {
+        const out = yield* Fiber.join(fiber)
+        yield* Scope.close(scope, Exit.void)
+        return [...out]
+      }),
+    }
+  })
+
+describe("what a review remembers, and tells a mounted shell", () => {
+  it.instance("registering writes a sidecar and the index; a turn's reply and the person's words join the chat", () =>
+    Effect.gen(function* () {
+      const { root, registry, prototype } = yield* prototypeIn("kept")
+      const fs = yield* FSUtil.Service
+      const sidecar = DesignState.parse((yield* fs.readFileStringSafe(DesignState.file(root)))!)!
+      expect(sidecar.token).toBe(prototype.token)
+      expect(sidecar.revision).toBe(1)
+      const index = DesignState.parseIndex((yield* fs.readFileStringSafe(DesignState.INDEX))!)
+      expect(index[prototype.id]).toEqual({ root, sessionID: session })
+
+      yield* registry.say(prototype.id, { role: "user", text: "make it blue" })
+      const after = (yield* registry.get(prototype.id))!
+      expect(after.chat.map((c) => c.text)).toEqual(["make it blue"])
+      const persisted = DesignState.parse((yield* fs.readFileStringSafe(DesignState.file(root)))!)!
+      expect(persisted.chat.map((c) => c.text)).toEqual(["make it blue"])
+    }),
+  )
+
+  it.instance("a bump is a reload every listening shell hears; a change on disk is a bump while someone listens", () =>
+    Effect.gen(function* () {
+      const { root, registry, prototype } = yield* prototypeIn("live")
+      const { events } = yield* collect(prototype.id, 2)
+      yield* registry.bump(prototype.id)
+      // The agent saved a file: noticed by the poll, settled, then one reload.
+      yield* Effect.sleep("50 millis")
+      yield* Effect.promise(() => Bun.write(path.join(root, "index.html"), "<html><body>v2</body></html>"))
+      const got = yield* events.pipe(Effect.timeout("6 seconds"))
+      expect(got.map((e) => e.type)).toEqual(["reload", "reload"])
+      expect((got[1] as { revision: number }).revision).toBe(3)
+      expect((yield* registry.get(prototype.id))!.revision).toBe(3)
+    }),
+  )
+
+  it.instance("ending is remembered with who did it, is told to the shell, and is undone only on purpose", () =>
+    Effect.gen(function* () {
+      const { root, registry, prototype } = yield* prototypeIn("done")
+      const { events } = yield* collect(prototype.id, 1)
+      yield* registry.end(prototype.id, "user")
+      expect((yield* events).map((e) => e.type)).toEqual(["ended"])
+      expect((yield* registry.get(prototype.id))!.ended?.by).toBe("user")
+      // Ending twice keeps the first author.
+      yield* registry.end(prototype.id, "agent")
+      expect((yield* registry.get(prototype.id))!.ended?.by).toBe("user")
+      const fs = yield* FSUtil.Service
+      expect(DesignState.parse((yield* fs.readFileStringSafe(DesignState.file(root)))!)!.ended?.by).toBe("user")
+      // Re-registering keeps it ended; reopening clears it.
+      expect((yield* registry.register({ sessionID: session, root, name: "done" })).ended?.by).toBe("user")
+      yield* registry.reopen(prototype.id)
+      expect((yield* registry.get(prototype.id))!.ended).toBeUndefined()
+    }),
+  )
+
+  it.instance("the agent's reply enters the chat when the turn ends, and the shell hears presence", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const ctx = yield* InstanceState.context
+      const registry = yield* DesignRegistry.Service
+      const chat = yield* sessions.create({ title: "talk" })
+      const root = path.join(ctx.directory, "talk")
+      yield* (yield* FSUtil.Service).ensureDir(root)
+      const prototype = yield* registry.register({ sessionID: chat.id, root, name: "talk" })
+      const { events } = yield* collect(prototype.id, 3)
+      const events2 = yield* EventV2Bridge.Service
+      yield* events2.publish(SessionStatus.Event.Status, { sessionID: chat.id, status: { type: "busy" } })
+      // What the assistant said this turn, as the session stores it.
+      const { MessageID, PartID } = yield* Effect.promise(() => import("@/session/schema"))
+      const msg = (yield* sessions.updateMessage({
+        id: MessageID.ascending(),
+        sessionID: chat.id,
+        role: "assistant",
+        parentID: MessageID.ascending(),
+        mode: "design",
+        agent: "design",
+        cost: 0,
+        path: { cwd: root, root },
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: "m",
+        providerID: "p",
+        time: { created: Date.now() },
+      } as never)) as { id: string }
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: msg.id,
+        sessionID: chat.id,
+        type: "text",
+        text: "I made the header blue.",
+      } as never)
+      yield* events2.publish(SessionStatus.Event.Status, { sessionID: chat.id, status: { type: "idle" } })
+      const got = yield* events.pipe(Effect.timeout("5 seconds"))
+      expect(got.map((e) => e.type)).toEqual(["presence", "presence", "agent-reply"])
+      expect((got[0] as { state: string }).state).toBe("working")
+      expect((got[2] as { text: string }).text).toBe("I made the header blue.")
+      expect((yield* registry.get(prototype.id))!.chat.at(-1)?.role).toBe("agent")
+    }),
+  )
+})

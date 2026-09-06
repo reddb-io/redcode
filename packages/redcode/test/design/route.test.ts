@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
-import { HttpServerRequest } from "effect/unstable/http"
+import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import path from "path"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -177,6 +177,104 @@ describe("the design surface", () => {
       })
       expect(flood.status).toBe(413)
       expect(delivered).toHaveLength(0)
+    }),
+  )
+})
+
+describe("the review's life over the wire", () => {
+  it.instance("the event stream opens with the conversation and where the review stands", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "live", { "index.html": "<html></html>" })
+      const registry = yield* DesignRegistry.Service
+      yield* registry.say(prototype.id, { role: "user", text: "hello" })
+
+      expect((yield* call(`/design/${prototype.id}/events`)).status).toBe(403)
+      const stream = yield* call(`/design/${prototype.id}/events?token=${prototype.token}`)
+      expect(stream.status).toBe(200)
+      expect(String(stream.headers["content-type"])).toContain("text/event-stream")
+      // The first frame, then close: the stream stays open until the shell leaves.
+      const body = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const web = HttpServerResponse.toWeb(stream)
+          const reader = web.body!.getReader()
+          const chunk = yield* Effect.promise(() => reader.read())
+          yield* Effect.promise(() => reader.cancel())
+          return new TextDecoder().decode(chunk.value)
+        }),
+      )
+      expect(body).toContain("event: chat-sync")
+      expect(body).toContain("hello")
+    }),
+  )
+
+  it.instance("ending is the person's act: token and origin, then nothing more arrives", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "over", { "index.html": "<html></html>" })
+      const headers = {
+        "content-type": "application/json",
+        "x-redcode-design-token": prototype.token,
+        host: "127.0.0.1:4096",
+      }
+      // Another site's page, holding the token somehow, still cannot end or send.
+      expect(
+        (yield* call(`/design/${prototype.id}/end`, {
+          method: "POST",
+          headers: { ...headers, origin: "https://evil.example" },
+        })).status,
+      ).toBe(403)
+      expect(
+        (yield* call(`/design/${prototype.id}/end`, {
+          method: "POST",
+          headers: { ...headers, origin: "http://127.0.0.1:4096" },
+        })).status,
+      ).toBe(200)
+      expect((yield* DesignRegistry.Service.pipe(Effect.flatMap((r) => r.get(prototype.id))))!.ended?.by).toBe("user")
+
+      delivered.length = 0
+      const late = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ items: [{ text: "one more" }] }),
+      })
+      expect(late.status).toBe(409)
+      expect(delivered).toHaveLength(0)
+    }),
+  )
+
+  it.instance("a send with the end flag delivers the words, marks the end, and the block says so", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "last", { "index.html": "<html></html>" })
+      delivered.length = 0
+      const sent = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-redcode-design-token": prototype.token },
+        body: JSON.stringify({
+          items: [
+            { tag: "message", text: "ship it" },
+            { selector: "h1", text: "bigger" },
+          ],
+          snapshot: "uid=1 body",
+          end: true,
+        }),
+      })
+      expect(sent.status).toBe(202)
+      expect(delivered[0]!.text).toContain('ended="user"')
+      expect(delivered[0]!.text).toContain("<dom-snapshot>")
+      const registry = yield* DesignRegistry.Service
+      const after = (yield* registry.get(prototype.id))!
+      expect(after.ended?.by).toBe("user")
+      expect(after.chat.map((c) => c.text)).toEqual(["ship it\n(1 annotation sent)"])
+    }),
+  )
+
+  it.instance("the review's own state is never served", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "private", { "index.html": "<html></html>" })
+      expect((yield* call(`/design/${prototype.id}/files/.review/state.json`)).status).toBe(404)
     }),
   )
 })

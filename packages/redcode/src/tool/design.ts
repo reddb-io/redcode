@@ -9,6 +9,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { MessageID, PartID } from "../session/schema"
 import { DesignManifest } from "@/design/manifest"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { DesignRegistry } from "@/design/registry"
 import EXIT_DESCRIPTION from "./design-exit.txt"
 
 export const Parameters = Schema.Struct({})
@@ -28,6 +29,7 @@ export const DesignExitTool = Tool.define(
     const question = yield* Question.Service
     const provider = yield* Provider.Service
     const fs = yield* FSUtil.Service
+    const registry = yield* DesignRegistry.Service
 
     return {
       description: EXIT_DESCRIPTION,
@@ -88,6 +90,9 @@ export const DesignExitTool = Tool.define(
             tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
           })
           if (answers[0]?.[0] === "No") yield* new Question.RejectedError()
+
+          // Leaving is the agent ending the review: the shells say so and go read-only.
+          for (const item of yield* registry.forSession(ctx.sessionID)) yield* registry.end(item.id, "agent")
 
           const messages = yield* session.messages({ sessionID: ctx.sessionID }).pipe(Effect.orDie)
           const lastUser = messages.findLast((item) => item.info.role === "user" && item.info.model)

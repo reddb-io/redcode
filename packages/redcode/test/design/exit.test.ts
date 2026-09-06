@@ -8,6 +8,8 @@ import { Session } from "@/session/session"
 import { Question } from "@/question"
 import { Provider } from "@/provider/provider"
 import { DesignExitTool } from "@/tool/design"
+import { DesignRegistry } from "@/design/registry"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { DesignManifest } from "@/design/manifest"
 import { Truncate } from "@/tool/truncate"
 import { Agent } from "@/agent/agent"
@@ -26,6 +28,8 @@ const agreeable = Layer.succeed(
 const it = testEffect(
   AppNodeBuilder.build(
     LayerNode.group([
+      DesignRegistry.node,
+      EventV2Bridge.node,
       Session.node,
       SessionProjector.node,
       Database.node,

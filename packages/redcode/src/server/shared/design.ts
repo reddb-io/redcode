@@ -1,5 +1,6 @@
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Effect, FileSystem, Scope } from "effect"
+import { Effect, FileSystem, Scope, Stream } from "effect"
+import * as Sse from "effect/unstable/encoding/Sse"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { DesignRegistry } from "@/design/registry"
 import { DesignFeedback } from "@/design/feedback"
@@ -18,6 +19,25 @@ import { SessionPrompt } from "@/session/prompt"
  */
 
 const notFound = () => HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
+const gone = (by: string) => HttpServerResponse.jsonUnsafe({ error: "Review ended", by }, { status: 409 })
+
+/**
+ * A mutating request must come from our own page. The token proves a page was opened for this
+ * prototype; the Origin proves the request was made by that page and not by another site the
+ * person happens to have open. Header-less callers (curl, tests) are allowed: a browser always sends
+ * an Origin on a cross-site POST, so an absent one cannot be a browser attack.
+ */
+function sameOrigin(request: HttpServerRequest.HttpServerRequest, url: URL) {
+  const origin = request.headers["origin"]
+  if (!origin) return true
+  // A Host header is what a real server sees; the request's own URL is what the tests have.
+  const host = request.headers["x-forwarded-host"] ?? request.headers["host"] ?? url.host
+  if (!host) return false
+  const scheme = request.headers["x-forwarded-proto"] === "https" ? "https" : "http"
+  return origin === `${scheme}://${host}`
+}
+
+const heartbeat = () => ({ _tag: "Event" as const, event: "heartbeat", id: undefined, data: "{}" })
 
 /** Four images at the feedback limit, the words, and JSON's overhead. */
 const MAX_FEEDBACK_BYTES = DesignFeedback.LIMITS.images * DesignFeedback.LIMITS.image + 512 * 1024
@@ -41,8 +61,9 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     if (!prototype) return notFound()
 
     // Everything but the shell needs the token. The shell does not, because opening it is how a
-    // person gets the token in the first place — and it discloses nothing on its own.
-    const presented = request.headers["x-redcode-design-token"]
+    // person gets the token in the first place — and it discloses nothing on its own. The event
+    // stream takes it as a query parameter, because EventSource cannot send a header.
+    const presented = request.headers["x-redcode-design-token"] ?? url.searchParams.get("token") ?? undefined
     const authorised = presented === prototype.token
 
     if (target.kind === "shell") {
@@ -52,6 +73,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           name: prototype.name,
           token: prototype.token,
           revision: prototype.revision,
+          root: prototype.root,
+          ...(prototype.ended ? { ended: prototype.ended.by } : {}),
           embed: url.searchParams.get("embed") === "1",
         }),
         {
@@ -73,9 +96,53 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       return HttpServerResponse.jsonUnsafe({ revision: prototype.revision })
     }
 
+    if (target.kind === "events") {
+      if (!authorised) return forbidden()
+      yield* registry.touch(prototype.id)
+      const live = yield* registry.subscribe(prototype.id)
+      // What a shell needs first: the conversation so far and where the review stands. Then
+      // whatever happens, with a heartbeat so a proxy does not close a quiet stream.
+      const first: DesignRegistry.LiveEvent[] = [
+        { type: "chat-sync", chat: prototype.chat },
+        ...(prototype.ended ? [{ type: "ended" as const, by: prototype.ended.by }] : []),
+      ]
+      const ticks = Stream.tick("15 seconds").pipe(
+        Stream.drop(1),
+        Stream.map(() => heartbeat()),
+      )
+      const body = Stream.fromIterable(first).pipe(
+        Stream.concat(live),
+        Stream.map(
+          (event): Sse.Event => ({ _tag: "Event", event: event.type, id: undefined, data: JSON.stringify(event) }),
+        ),
+        Stream.merge(ticks, { haltStrategy: "left" }),
+        Stream.pipeThroughChannel(Sse.encode()),
+        Stream.encodeText,
+      )
+      return HttpServerResponse.stream(body, {
+        contentType: "text/event-stream",
+        headers: {
+          "cache-control": "no-cache, no-transform",
+          "x-accel-buffering": "no",
+          "x-content-type-options": "nosniff",
+        },
+      })
+    }
+
+    if (target.kind === "end") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      const ended = yield* registry.end(prototype.id, "user")
+      return HttpServerResponse.jsonUnsafe({ ended: ended?.ended?.by ?? "user" })
+    }
+
     if (target.kind === "feedback") {
       if (!authorised) return forbidden()
       if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      // Nothing arrives after the end: no turn will read it, and the person was told so.
+      if (prototype.ended) return gone(prototype.ended.by)
       // The body is bounded here because nothing below bounds it: the server is Node's http and
       // Effect's default is unlimited. The stream cap stops a flood early; the length check is
       // the one that holds on every transport, including the in-memory one the tests use.
@@ -115,6 +182,15 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       // and the browser only needs to know the words were accepted. An idle session starts a turn;
       // a busy one picks this up at its next step, because `ensureRunning` joins the run already in
       // flight rather than starting a second one.
+      // The panel keeps what was said: the composer's words, or a count of the notes.
+      const said = items.filter((item) => item.tag === "message").map((item) => item.text)
+      const notes = items.length - said.length
+      yield* registry.say(prototype.id, {
+        role: "user",
+        text: [...said, ...(notes > 0 ? [`(${notes} annotation${notes === 1 ? "" : "s"} sent)`] : [])].join("\n"),
+      })
+      if (parsed.end === true) yield* registry.end(prototype.id, "user")
+
       const prompt = yield* SessionPrompt.Service
       const scope = yield* Scope.Scope
       yield* prompt

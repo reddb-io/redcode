@@ -18,7 +18,23 @@ export const Parameters = Schema.Struct({
   name: Schema.optional(Schema.String).annotate({
     description: "What to call this prototype in the review window. Defaults to the directory name.",
   }),
+  reopen: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Open a review the person ended. Without it, a prototype the user closed stays closed and the tool says so.",
+  }),
 })
+
+/** What the tool part records, whichever way the call went. */
+interface Meta {
+  id: string
+  url: string
+  revision: number
+  entry: string
+  kind: DesignKinds.Kind
+  findings: string[]
+  missingStates: DesignStates.State[]
+  status: "open" | "user-ended"
+}
 
 export const DesignPreviewTool = Tool.define(
   "design_preview",
@@ -40,6 +56,31 @@ export const DesignPreviewTool = Tool.define(
               `No index.html in ${path.relative(instance.directory, root) || "."}. Write the prototype first.`,
             )
           }
+
+          // A review the person ended stays ended: they closed it, and the agent does not reopen it
+          // on its own. An explicit `reopen` is the agent relaying that the person asked.
+          const before = yield* registry.get(DesignRegistry.idFor(ctx.sessionID, root))
+          if (before?.ended?.by === "user" && !params.reopen) {
+            const metadata: Meta = {
+              id: before.id,
+              url: "",
+              revision: before.revision,
+              entry: "index.html",
+              kind: "screen",
+              findings: [],
+              missingStates: [],
+              status: "user-ended",
+            }
+            return {
+              title: params.name?.trim() || path.basename(root),
+              metadata,
+              output: [
+                `The user ended the review of "${before.name}". It was not reopened.`,
+                "Finish from the notes you have, or call design_preview again with reopen: true if the user asks to look again.",
+              ].join("\n"),
+            }
+          }
+          if (before?.ended && params.reopen) yield* registry.reopen(before.id)
 
           const prototype = yield* registry.register({
             sessionID: ctx.sessionID,
@@ -94,17 +135,19 @@ export const DesignPreviewTool = Tool.define(
               ? `The review window has not checked in for ${Math.round((Date.now() - lastSeen) / 60_000)} minutes; the user may not be looking at it. Say so if you are waiting on them.`
               : undefined
 
+          const metadata: Meta = {
+            id: prototype.id,
+            url,
+            revision: prototype.revision,
+            entry: served,
+            kind: manifest.kind,
+            findings: findings.map((f) => f.id),
+            missingStates: [...coverage.missing],
+            status: "open",
+          }
           return {
             title: prototype.name,
-            metadata: {
-              id: prototype.id,
-              url,
-              revision: prototype.revision,
-              entry: served,
-              kind: manifest.kind,
-              findings: findings.map((f) => f.id),
-              missingStates: coverage.missing,
-            },
+            metadata,
             output: [
               `Prototype "${prototype.name}" (${manifest.kind}) is open at ${url} (revision ${prototype.revision}).`,
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
