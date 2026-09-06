@@ -50,7 +50,6 @@ export class Service extends ConfigService.Service<Service>()("@redcode/RuntimeF
   experimentalLspTool: enabledByExperimental("REDCODE_EXPERIMENTAL_LSP_TOOL"),
   experimentalOxfmt: enabledByExperimental("REDCODE_EXPERIMENTAL_OXFMT"),
   experimentalPlanMode: enabledByExperimental("REDCODE_EXPERIMENTAL_PLAN_MODE"),
-  experimentalDesignMode: enabledByExperimental("REDCODE_EXPERIMENTAL_DESIGN_MODE"),
   experimentalCodeMode: enabledByExperimental("REDCODE_EXPERIMENTAL_CODE_MODE"),
   experimentalEventSystem: enabledByExperimental("REDCODE_EXPERIMENTAL_EVENT_SYSTEM"),
   experimentalWorkspaces: enabledByExperimental("REDCODE_EXPERIMENTAL_WORKSPACES"),

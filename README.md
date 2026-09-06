@@ -45,6 +45,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 
 - [Install](#install) — one binary, nothing else
 - [Use](#use) — every command, and what it is for
+- [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 
 **Reference**
 
@@ -236,6 +237,84 @@ The sibling `redcode-rpc-sidecar` bridges bounded `Content-Length` frames on std
 HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`, or accepts a complete
 `REDCODE_AUTHORIZATION` header.
+
+## Design Mode
+
+Design mode is for working out what something should be by building it. The agent writes an
+interactive prototype, you review it in your browser — clicking, annotating, drawing on diagrams —
+and what you decide becomes a plan. The agent cannot edit the product in this mode, only the
+prototype, so nothing you say here changes code until you leave.
+
+### Start
+
+1. In the TUI, press `Tab` until the agent reads `design` (`Shift+Tab` goes back). In the web UI
+   (`redcode web`), pick the `design` agent the same way. Describe what you want built.
+2. The agent writes the prototype into `.redcode/designs/<timestamp>-<slug>/` — `index.html` plus
+   whatever sits beside it — and calls `design_preview`. Your browser opens on the review page;
+   its URL is also in the tool's output, and the web UI shows the same page in a **Design** tab.
+
+The prototype runs with no network. A CDN link will not load, so the agent uses what the project
+already has (it reads `DESIGN.md` or `.red/DESIGN.md` for the project's design system) or the
+Tailwind, DaisyUI and Mermaid that ship with Redcode.
+
+### Review
+
+Everything on the review page is a proposal until you press **Send to Agent**; the agent's next
+turn starts only then.
+
+- **Annotate** is the default mode. Click an element, select some text, click a table cell or a
+  node of a diagram, and a card opens. `Enter` queues the note, `Cmd/Ctrl+Enter` queues and sends,
+  `Shift+Enter` is a line break, `Esc` closes an empty card. Paste or drop an image onto the card
+  to attach a reference. `Cmd/Ctrl+I` switches to **Explore**, where the prototype behaves like a
+  page; `Alt+click` still annotates there.
+- **The conversation panel** on the right holds the queue (each note is a pill you can remove),
+  the agent's replies, and a composer. **Hold** keeps what you typed in the queue without sending;
+  **Send & End** sends and closes the review. Below 860px the panel is a sheet you pull up.
+- **Live reload.** When the agent saves, the page reloads and keeps your place: scroll position,
+  unsent notes, the text of an open card, and answers inside `data-redcode-question` groups.
+- **Layout issues.** After every load the browser audits the layout — text cut off by its
+  container, controls outside the viewport, a page that scrolls sideways, text covered by another
+  element — and lists what it found under the **Layout issues** button. Nothing there reaches
+  the agent on its own. Select the ones you want fixed and press **Queue selected fixes**; they
+  become one note. **Dismiss** hides a warning for the current revision only; it comes back if a
+  later revision still has it. A warning is cleared only when a newer revision no longer shows it.
+- **Whiteboard.** A Mermaid diagram gets an Excalidraw whiteboard beside it. Click it to edit,
+  drag nodes, redraw arrows, add shapes or freehand marks; **Fullscreen** opens it over the page.
+  **Queue feedback** turns your edits into a note with a summary of what moved and a PNG for the
+  agent, which then edits the Mermaid source — the whiteboard is how you talk about a diagram,
+  never a second copy of it. The first whiteboard on a machine downloads the editor bundle
+  (about 3MB) from the release; until then diagrams are plain.
+- **The `⋮` menu**: copy the prototype's directory, reload it, copy a DOM snapshot, **Export
+  standalone HTML** (one file with everything local inlined, which opens from disk), **Open on
+  another device** (when the server listens beyond loopback), and **End review**.
+
+### Finish
+
+End the review from the `⋮` menu or with **Send & End**; the agent stops waiting for notes. When
+the design is settled, the agent calls `design_exit`, which writes the plan from what it recorded
+in `design.json` — the decisions, the open questions, a link to the prototype — and offers to
+switch to the plan agent to refine it. The agent may also call `design_export` when you ask for a
+file to share.
+
+### Files
+
+| Path | What it is |
+| --- | --- |
+| `.redcode/designs/<name>/index.html` | The prototype, with its assets beside it |
+| `.redcode/designs/<name>/design.json` | `kind` (`screen`, `flow`, `comparison`, `deck`), `decisions`, `questions` — the reasoning the plan is written from |
+| `.redcode/designs/<name>/.review/` | Review state, whiteboard scenes and exports; never served, not part of the design |
+| `DESIGN.md` or `.red/DESIGN.md` | The project's design system as the agent understands it; edit it to correct the agent |
+
+### Settings
+
+Everything is on by default. Under `experimental.design` in the config: `attachments` (per-image,
+per-note and disk caps for pasted images), `viewports` (which of `mobile`, `compact`, `desktop` the
+layout audit reports on), `gate` and `gate_timeout` (the short curtain before a prototype is
+shown), `export` (size caps for the standalone file), and `hosts` (extra names the review surface
+answers to). `REDCODE_DESIGN_NO_OPEN=1` stops the browser from opening;
+`REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` never fetches the whiteboard bundle, and
+`REDCODE_WHITEBOARD_DIR` points at a local build of it. To review from a phone, run
+`redcode serve --hostname 0.0.0.0` and use the network URL `design_preview` prints.
 
 ## Architecture
 

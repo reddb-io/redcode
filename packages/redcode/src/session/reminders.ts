@@ -43,7 +43,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     })
   }
 
-  if (flags.experimentalDesignMode && input.agent.name === "design" && assistantMessage?.info.agent !== "design") {
+  if (input.agent.name === "design" && assistantMessage?.info.agent !== "design") {
     const ctx = yield* InstanceState.context
     const root = Session.design(input.session, ctx)
     const exists = yield* fsys.existsSafe(root)
