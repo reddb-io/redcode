@@ -34,7 +34,12 @@ export interface ShellInput {
   readonly gateTimeoutMs?: number
   /** The same review as another device on the network reaches it, when the server listens beyond loopback. */
   readonly networkUrl?: string
+  /** The whiteboard bundle is on this machine: diagrams open as whiteboards, and the page hosts them full screen. */
+  readonly whiteboard?: boolean
 }
+
+/** How long a reload waits for open whiteboards to save before the frame is replaced. */
+export const WHITEBOARD_FLUSH_MS = 1500
 
 /** Everything the prototype may say; anything else is ignored rather than interpreted. */
 export const ARTIFACT_MESSAGES = [
@@ -109,6 +114,7 @@ export function shellHTML(input: ShellInput) {
     gate: input.gate !== false && !input.ended,
     gateTimeoutMs: input.gateTimeoutMs && input.gateTimeoutMs > 0 ? input.gateTimeoutMs : GATE_TIMEOUT_MS,
     networkUrl: input.networkUrl ?? "",
+    whiteboard: input.whiteboard === true,
   }).replace(/</g, "\\u003c")
   return `<!doctype html>
 <html lang="en">
@@ -165,6 +171,12 @@ export function shellHTML(input: ShellInput) {
   .warning .acts { display: flex; gap: .4rem }
   .warning .acts button { padding: .15rem .5rem; font-size: 12px }
   .overlay.gate { z-index: 48; background: color-mix(in oklab, Canvas 92%, transparent) }
+  .wb { position: absolute; inset: 0; z-index: 60; background: Canvas }
+  .wb[hidden] { display: none }
+  .wb iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent }
+  .wb .close { position: absolute; top: .45rem; right: .6rem; z-index: 61; width: 32px; height: 32px; padding: 0; border-radius: 999px; font-size: 18px; line-height: 1; background: Canvas }
+  .wb .wb-error { position: absolute; left: 1rem; right: 1rem; bottom: 1rem; padding: .6rem .75rem; border-radius: .5rem; background: color-mix(in oklab, #d0432b 14%, Canvas); color: #d0432b }
+  .wb .wb-error[hidden] { display: none }
   .overlay .row { display: flex; gap: .5rem; justify-content: center; margin-top: .75rem }
   .overlay .row .secondary { opacity: .75 }
   .menu { position: absolute; right: .5rem; top: calc(var(--bar-h) + .25rem); z-index: 40; min-width: 240px;
@@ -326,6 +338,9 @@ export function shellHTML(input: ShellInput) {
     </form>
   </aside>
   <div class="overlay" id="ended"><div class="card"><h2 id="endedTitle">Review ended</h2><p id="endedCopy"></p></div></div>
+  <!-- A diagram opened full screen. The same frame the prototype embeds inline, hosted here so
+       it can be large; sandboxed exactly like the inline one, with no origin of its own. -->
+  <div class="wb" id="whiteboardOverlay" hidden><iframe id="whiteboardFrame" sandbox="allow-scripts allow-popups" title="Whiteboard"></iframe><button type="button" class="close" id="whiteboardClose" aria-label="Close whiteboard">×</button><div class="wb-error" id="whiteboardError" hidden></div></div>
 </main>
 <script>
 (() => {
@@ -339,6 +354,7 @@ export function shellHTML(input: ShellInput) {
   const issuesButton = $("issues"), issuesCount = $("issuesCount"), drawer = $("drawer"), warningsList = $("warnings")
   const issuesAll = $("issuesAll"), issuesSummary = $("issuesSummary"), issuesSelected = $("issuesSelected"), issuesQueue = $("issuesQueue"), issuesClose = $("issuesClose")
   const gate = $("gate"), gateTitle = $("gateTitle"), gateCopy = $("gateCopy"), gateAction = $("gateAction"), gateBypass = $("gateBypass")
+  const wbOverlay = $("whiteboardOverlay"), wbFrame = $("whiteboardFrame"), wbClose = $("whiteboardClose"), wbError = $("whiteboardError")
   const base = location.pathname.replace(/\\/$/, "")
   const key = (name) => "redcode-design:" + name + ":" + config.id
   const load = (name, fallback) => { try { const raw = sessionStorage.getItem(key(name)); return raw === null ? fallback : JSON.parse(raw) } catch { return fallback } }
@@ -402,6 +418,8 @@ export function shellHTML(input: ShellInput) {
     loadToken = token
     loadRetried = false
     reportedFailures = new Set()
+    // The inline whiteboards go with the document; the next ones introduce themselves again.
+    inlineChannels.clear()
     startGate()
     armSilence()
     frame.src = frameSrc()
@@ -417,6 +435,7 @@ export function shellHTML(input: ShellInput) {
       return cell ? "cell: " + cell : "cell " + t.selector
     }
     if (t && t.type === "mermaid-node") return "node: " + (t.label || t.nodeId)
+    if (t && t.type === "excalidraw-scene") return "whiteboard: diagram " + (Number(t.diagramIndex) + 1)
     if (item.tag === "layout-warnings") return "layout fixes: " + ((t && Array.isArray(t.warnings) && t.warnings.length) || 0)
     if (item.tag === "message") return ""
     return item.label || item.selector || ""
@@ -672,7 +691,7 @@ export function shellHTML(input: ShellInput) {
   }
   modeButton.addEventListener("click", () => setMode(!annotate))
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { closeMenu(); if (drawerOpen) { setDrawer(false); issuesButton.focus() } if (sheetOpen) setSheet(false); return }
+    if (event.key === "Escape") { closeMenu(); if (overlayIndex !== null) { closeWhiteboard(); return } if (drawerOpen) { setDrawer(false); issuesButton.focus() } if (sheetOpen) setSheet(false); return }
     if (event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return
     if (String(event.key || "").toLowerCase() !== "i") return
     event.preventDefault()
@@ -733,6 +752,7 @@ export function shellHTML(input: ShellInput) {
     endedCopy.textContent = ended === "agent" ? "The agent finished this review. Nothing more is sent from here." : "You ended this review. Nothing more is sent from here."
     endedOverlay.setAttribute("data-on", "")
     closeMenu()
+    if (overlayIndex !== null) finishWhiteboardClose(overlayIndex)
     setDrawer(false)
     gateBypassed = true
     gateFailure = false
@@ -1154,6 +1174,253 @@ export function shellHTML(input: ShellInput) {
     } catch {}
   }
 
+  // --- whiteboards -----------------------------------------------------------------------------
+  // Diagrams open as Excalidraw scenes: inline, in a frame the prototype embeds beside each one,
+  // or full screen in the overlay above. The frames hold no server access; every read and write
+  // goes through this page, and only for a frame that proved its channel and its descent.
+  const whiteboards = new Map()
+  let overlayIndex = null, overlayReady = false, overlayChannel = "", overlayOpening = null, nextFlushId = 0
+  const teardowns = new Map(), flushes = new Map(), saveChains = new Map(), inlineChannels = new Map()
+  const wbTheme = () => (typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+  const postOverlay = (m) => { if (wbFrame.contentWindow && overlayChannel) wbFrame.contentWindow.postMessage({ ...m, channelId: overlayChannel }, "*") }
+  const postInline = (index, m) => { const c = inlineChannels.get(index); if (c && c.window) c.window.postMessage({ ...m, channelId: c.channelId }, "*") }
+  const postWb = (index, placement, m) => { if (placement === "overlay") postOverlay(m); else postInline(index, m) }
+  const fetchSources = async () => {
+    const response = await fetch(base + "/mermaid-sources", { headers: { "x-redcode-design-token": config.token } })
+    if (!response.ok) throw new Error("could not read the prototype's Mermaid sources")
+    const data = await response.json()
+    return Array.isArray(data.sources) ? data.sources : []
+  }
+  const authenticate = async (token) => { try { return (await api("/whiteboard-channel", { token })).ok } catch { return false } }
+  const showWbError = (message) => { wbError.textContent = message; wbError.hidden = false; wbOverlay.hidden = false }
+  const wbRecord = (index) => { let r = whiteboards.get(index); if (!r) { r = { diagramId: "", source: "", sourceHash: "" }; whiteboards.set(index, r) } return r }
+  const wbReady = async (index, mode, isCurrent) => {
+    try {
+      const sources = await fetchSources()
+      const source = sources.find((item) => item.index === index)
+      if (!source) throw new Error("this diagram's Mermaid source was not found in the prototype")
+      const savedResponse = await fetch(base + "/whiteboard/" + index, { headers: { "x-redcode-design-token": config.token } })
+      const saved = savedResponse.ok ? (await savedResponse.json()).whiteboard : null
+      const record = wbRecord(index)
+      record.source = String(source.source || "")
+      record.sourceHash = String(source.hash || "")
+      if (!isCurrent()) return false
+      postWb(index, mode, { type: "redcode-whiteboard:init", mode, diagramIndex: index, diagramId: record.diagramId, source: record.source, sourceHash: record.sourceHash, saved, theme: wbTheme() })
+      return true
+    } catch (error) {
+      if (mode === "overlay") showWbError("Could not open the whiteboard: " + (error instanceof Error ? error.message : String(error)))
+      return false
+    }
+  }
+  const showOverlay = (index) => {
+    if (ended) return
+    overlayIndex = index
+    overlayReady = false
+    overlayChannel = ""
+    inlineChannels.delete(index)
+    wbError.hidden = true
+    wbOverlay.hidden = false
+    tell("suspendWhiteboard", { diagramIndex: index })
+    // A fresh document per open: it boots, says ready, and is initialised; nothing leaks between opens.
+    wbFrame.src = base + "/whiteboard?" + new URLSearchParams({ index: String(index), diagramId: wbRecord(index).diagramId })
+    wbClose.focus()
+  }
+  const finishWhiteboardClose = (index) => {
+    wbOverlay.hidden = true
+    wbError.hidden = true
+    wbFrame.src = "about:blank"
+    overlayIndex = null
+    overlayReady = false
+    overlayChannel = ""
+    inlineChannels.delete(index)
+    if (!ended) tell("resumeWhiteboard", { diagramIndex: index })
+  }
+  const teardownKey = (index, placement) => placement + ":" + index
+  const beginTeardown = (index, placement, onComplete) => {
+    const key = teardownKey(index, placement)
+    const pending = teardowns.get(key)
+    if (pending) { if (onComplete) pending.promise.then(onComplete); return pending.promise }
+    const flushId = "whiteboard-" + ++nextFlushId
+    let resolve
+    const promise = new Promise((complete) => { resolve = complete })
+    teardowns.set(key, { index, placement, flushId, promise, resolve, onComplete })
+    postWb(index, placement, { type: "redcode-whiteboard:prepareTeardown", flushId })
+    return promise
+  }
+  const settleTeardown = (index, message, placement, ok) => {
+    const key = teardownKey(index, placement)
+    const teardown = teardowns.get(key)
+    if (!teardown || teardown.flushId !== String(message.flushId || "")) return
+    teardowns.delete(key)
+    if (teardown.onComplete) teardown.onComplete(ok)
+    teardown.resolve(ok)
+  }
+  const beginFlush = (index, placement) => {
+    const key = teardownKey(index, placement)
+    const pending = flushes.get(key)
+    if (pending) return pending.promise
+    const flushId = "whiteboard-flush-" + ++nextFlushId
+    let resolve
+    const promise = new Promise((complete) => { resolve = complete })
+    flushes.set(key, { flushId, promise, resolve })
+    postWb(index, placement, { type: "redcode-whiteboard:flush", flushId })
+    return promise
+  }
+  const finishFlush = (index, message, placement) => {
+    const key = teardownKey(index, placement)
+    const flush = flushes.get(key)
+    if (!flush || flush.flushId !== String(message.flushId || "")) return
+    flushes.delete(key)
+    flush.resolve(!!message.ok)
+  }
+  const flushWhiteboards = async () => {
+    const waits = []
+    for (const [index, channel] of inlineChannels) if (channel.initialized && index !== overlayIndex) waits.push(beginFlush(index, "inline"))
+    if (overlayIndex !== null && overlayReady) waits.push(beginFlush(overlayIndex, "overlay"))
+    if (!waits.length) return
+    let timer
+    await Promise.race([Promise.all(waits), new Promise((resolve) => { timer = setTimeout(resolve, ${WHITEBOARD_FLUSH_MS}) })])
+    clearTimeout(timer)
+  }
+  const openOverlay = (index) => {
+    if (ended || overlayIndex !== null || overlayOpening !== null) return
+    overlayOpening = index
+    beginTeardown(index, "inline", (flushed) => {
+      if (overlayOpening !== index) return
+      overlayOpening = null
+      if (flushed && !ended && overlayIndex === null) showOverlay(index)
+    })
+  }
+  const closeWhiteboard = () => {
+    const index = overlayIndex
+    if (index === null) return
+    if (!overlayReady) { finishWhiteboardClose(index); return }
+    beginTeardown(index, "overlay", (flushed) => { if (flushed && overlayIndex === index) finishWhiteboardClose(index) })
+  }
+  const persistScene = async (index, message) => {
+    const response = await fetch(base + "/whiteboard/" + index, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-redcode-design-token": config.token },
+      body: JSON.stringify({ source_hash: String(message.sourceHash || ""), text_metrics_version: Number(message.textMetricsVersion) || 0, scene: message.scene || null, baseline: message.baseline || null }),
+    })
+    if (!response.ok) throw new Error("failed to save the whiteboard scene")
+  }
+  const saveScene = (index, message) => {
+    const previous = saveChains.get(index) || Promise.resolve()
+    const result = previous.catch(() => {}).then(() => persistScene(index, message))
+    const tail = result.catch(() => {})
+    saveChains.set(index, tail)
+    tail.finally(() => { if (saveChains.get(index) === tail) saveChains.delete(index) })
+    return result
+  }
+  const handleSave = (index, message, mode) => {
+    const flushId = String(message.flushId || "")
+    saveScene(index, message).then(
+      () => { if (flushId) postWb(index, mode, { type: "redcode-whiteboard:saveResult", flushId, ok: true }) },
+      (error) => { if (flushId) postWb(index, mode, { type: "redcode-whiteboard:saveResult", flushId, ok: false, error: error instanceof Error ? error.message : String(error) }) },
+    )
+  }
+  // One queued whiteboard is one ordinary note: the summary of what moved, and where the scene
+  // and its preview are. Queueing the same diagram again before sending replaces the earlier note.
+  const queueWhiteboard = async (index, message, mode) => {
+    const diagramId = wbRecord(index).diagramId
+    try {
+      await saveScene(index, message)
+      const response = await api("/whiteboard/" + index + "/feedback-files", { scene: message.scene || null, pngDataUrl: String(message.pngDataUrl || "") })
+      if (!response.ok) throw new Error("failed to write the whiteboard files")
+      const files = await response.json()
+      const wbNote = String(message.note || "").slice(0, 4000)
+      const summary = (Array.isArray(message.summaryLines) ? message.summaryLines : []).filter((line) => typeof line === "string").slice(0, 50).map((line) => line.slice(0, 300)).join("\\n")
+      const promptText = (wbNote ? wbNote + "\\n\\n" : "") + "Whiteboard edits to diagram " + (index + 1) + (diagramId ? " (" + diagramId + ")" : "") + ":\\n" + (summary || "(no summary)") + "\\n\\nEdited scene JSON: " + String(files.scene_path || "") + (files.preview_path ? "\\nPNG preview: " + String(files.preview_path) : "")
+      enqueue({
+        selector: "", tag: "whiteboard", text: "Whiteboard: diagram " + (index + 1), prompt: promptText, queueKey: "whiteboard:" + index,
+        target: { type: "excalidraw-scene", diagramIndex: index, diagramId, sourceHash: String(message.sourceHash || ""), scenePath: String(files.scene_path || ""), previewPath: String(files.preview_path || ""), imageFallback: !!message.imageFallback, stats: message.stats && typeof message.stats === "object" ? message.stats : {} },
+      })
+      postWb(index, mode, { type: "redcode-whiteboard:queueResult", ok: true })
+      if (mode === "overlay") closeWhiteboard()
+    } catch (error) {
+      postWb(index, mode, { type: "redcode-whiteboard:queueResult", ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  // Inline frames go with the document on a reload and start over against fresh sources. Only an
+  // open overlay outlives it: tell it when its diagram changed underneath, never merge silently.
+  const refreshWhiteboardSource = async () => {
+    if (overlayIndex === null) return
+    const index = overlayIndex
+    try {
+      const sources = await fetchSources()
+      const source = sources.find((item) => item.index === index)
+      const nextHash = source ? String(source.hash || "") : ""
+      const record = wbRecord(index)
+      if (nextHash === record.sourceHash) return
+      record.source = source ? String(source.source || "") : ""
+      record.sourceHash = nextHash
+      postOverlay({ type: "redcode-whiteboard:sourceChanged", source: record.source, sourceHash: record.sourceHash })
+    } catch {}
+  }
+  const validIndex = (value) => { const index = Number(value); return Number.isInteger(index) && index >= 0 && index <= 999 ? index : null }
+  const handleAuthenticated = (index, message, mode) => {
+    if (message.type === "redcode-whiteboard:save") handleSave(index, message, mode)
+    if (message.type === "redcode-whiteboard:queueFeedback") queueWhiteboard(index, message, mode)
+    if (message.type === "redcode-whiteboard:maximize" && mode === "inline") openOverlay(index)
+    if (message.type === "redcode-whiteboard:close" && mode === "overlay") closeWhiteboard()
+    if (message.type === "redcode-whiteboard:teardownReady") settleTeardown(index, message, mode, true)
+    if (message.type === "redcode-whiteboard:teardownFailed") settleTeardown(index, message, mode, false)
+    if (message.type === "redcode-whiteboard:flushComplete") finishFlush(index, message, mode)
+  }
+  // A genuine inline frame is a direct child of the current prototype window. Descent, not the
+  // token, is what proves the sender is ours: the frame page is framable by anyone.
+  const isPrototypeChild = (source) => { try { return !!source && source.parent === frame.contentWindow } catch { return false } }
+  const handleInline = (event, message) => {
+    if (ended || !isPrototypeChild(event.source)) return
+    const index = validIndex(message.diagramIndex)
+    if (index === null) return
+    if (message.type === "redcode-whiteboard:ready") {
+      if (inlineChannels.has(index)) return
+      const channelId = String(message.channelToken || "")
+      if (!channelId) return
+      authenticate(channelId).then((ok) => {
+        if (!ok || ended || inlineChannels.has(index)) return
+        const channel = { window: event.source, channelId, initialized: false }
+        inlineChannels.set(index, channel)
+        wbRecord(index).diagramId = String(message.diagramId || "")
+        wbReady(index, "inline", () => inlineChannels.get(index) === channel).then((initialized) => { if (inlineChannels.get(index) === channel) channel.initialized = initialized })
+      })
+      return
+    }
+    const channel = inlineChannels.get(index)
+    if (!channel || channel.window !== event.source || channel.channelId !== message.channelId) return
+    handleAuthenticated(index, message, "inline")
+  }
+  const handleOverlay = (event, message) => {
+    if (overlayIndex === null) return
+    const index = validIndex(message.diagramIndex)
+    if (index === null || index !== overlayIndex) return
+    if (message.type === "redcode-whiteboard:ready") {
+      if (overlayReady || overlayChannel) return
+      const channelId = String(message.channelToken || "")
+      if (!channelId) return
+      overlayChannel = channelId
+      authenticate(channelId).then(async (ok) => {
+        const isCurrent = () => overlayIndex === index && overlayChannel === channelId && event.source === wbFrame.contentWindow
+        if (!ok) { if (isCurrent()) overlayChannel = ""; return }
+        if (!isCurrent()) return
+        const initialized = await wbReady(index, "overlay", isCurrent)
+        if (initialized && isCurrent()) overlayReady = true
+      })
+      return
+    }
+    if (!overlayReady || message.channelId !== overlayChannel) return
+    handleAuthenticated(index, message, "overlay")
+  }
+  window.addEventListener("message", (event) => {
+    const message = event.data
+    if (!message || typeof message !== "object" || typeof message.type !== "string" || !message.type.startsWith("redcode-whiteboard:")) return
+    if (event.source === wbFrame.contentWindow) handleOverlay(event, message)
+    else if (event.source !== frame.contentWindow) handleInline(event, message)
+  })
+  wbClose.addEventListener("click", closeWhiteboard)
+
   // --- the sheet, on a phone --------------------------------------------------------------------
   const media = typeof matchMedia === "function" ? matchMedia(${JSON.stringify(MOBILE_SHEET_MEDIA)}) : null
   const mobile = () => !!(media && media.matches)
@@ -1244,10 +1511,13 @@ export function shellHTML(input: ShellInput) {
     const source = new EventSource(base + "/events?token=" + encodeURIComponent(config.token))
     const on = (type, handler) => source.addEventListener(type, (event) => { let data = {}; try { data = JSON.parse(event.data) } catch {} handler(data) })
     source.addEventListener("open", () => { backoff = 500 })
-    on("reload", (data) => {
+    on("reload", async (data) => {
       if (typeof data.revision !== "number" || data.revision === revision) return
       revision = data.revision
+      // Open whiteboards get a moment to save before the document that holds them is replaced.
+      await flushWhiteboards()
       loadFrame()
+      refreshWhiteboardSource()
       status.textContent = "the agent revised this · reloaded"
     })
     on("chat-sync", (data) => { if (Array.isArray(data.chat)) { chat = data.chat.filter((c) => c && typeof c.text === "string"); drawChat() } })

@@ -664,3 +664,141 @@ describe("the export and the names the surface answers to", () => {
     }),
   )
 })
+
+describe("whiteboards", () => {
+  const json = (body: unknown, token: string, method = "POST"): RequestInit => ({
+    method,
+    headers: { "content-type": "application/json", "x-redcode-design-token": token },
+    body: JSON.stringify(body),
+  })
+  const read = (response: HttpServerResponse.HttpServerResponse) =>
+    bodyOf(response).pipe(Effect.map((text) => JSON.parse(text) as Record<string, any>))
+  const PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  const DIAGRAMS = `<!doctype html><html><body>
+<h1>Demo</h1>
+<pre class="mermaid">flowchart TD
+  A["OBJECTIVE:<br/>do the thing"] --&gt; B{Ready?}</pre>
+<pre class="mermaid">sequenceDiagram
+  CLI-&gt;&gt;Server: poll</pre>
+</body></html>`
+
+  /** A bundle on disk, so the frame page and its assets are served; the real one is a build away. */
+  const withBundle = (directory: string) =>
+    Effect.gen(function* () {
+      const bundle = path.join(directory, "whiteboard-bundle")
+      yield* Effect.promise(async () => {
+        const { promises: fs } = await import("node:fs")
+        await fs.mkdir(path.join(bundle, "fonts", "Excalifont"), { recursive: true })
+        await fs.writeFile(path.join(bundle, "whiteboard.js"), "// fake bundle\n")
+        await fs.writeFile(path.join(bundle, "whiteboard.css"), "body{}\n")
+        await fs.writeFile(path.join(bundle, "fonts", "Excalifont", "Excalifont-Regular.woff2"), "fake-font")
+      })
+      process.env["REDCODE_WHITEBOARD_DIR"] = bundle
+      return bundle
+    })
+
+  it.instance("the sources come from the file, in order, with hashes; scenes round-trip beside the review", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "diagrams", { "index.html": DIAGRAMS })
+      expect((yield* call(`/design/${prototype.id}/mermaid-sources`)).status).toBe(403)
+      const sources = yield* read(
+        yield* call(`/design/${prototype.id}/mermaid-sources`, { headers: { "x-redcode-design-token": prototype.token } }),
+      )
+      expect(sources.sources.length).toBe(2)
+      const flowchart = 'flowchart TD\n  A["OBJECTIVE:<br/>do the thing"] --> B{Ready?}'
+      expect(sources.sources[0]).toMatchObject({ index: 0, source: flowchart })
+      expect(sources.sources[0].hash).toMatch(/^[0-9a-f]{16}$/)
+      expect(sources.sources[1].source).toBe("sequenceDiagram\n  CLI->>Server: poll")
+
+      const empty = yield* read(
+        yield* call(`/design/${prototype.id}/whiteboard/0`, { headers: { "x-redcode-design-token": prototype.token } }),
+      )
+      expect(empty.whiteboard).toBeNull()
+      const scene = { elements: [{ id: "A", type: "rectangle" }], appState: { theme: "dark" }, files: {} }
+      const put = yield* call(
+        `/design/${prototype.id}/whiteboard/0`,
+        json({ source_hash: "hash-1", text_metrics_version: 1, scene, baseline: { elements: scene.elements } }, prototype.token, "PUT"),
+      )
+      expect(put.status).toBe(200)
+      const loaded = yield* read(
+        yield* call(`/design/${prototype.id}/whiteboard/0`, { headers: { "x-redcode-design-token": prototype.token } }),
+      )
+      expect(loaded.whiteboard.source_hash).toBe("hash-1")
+      expect(loaded.whiteboard.scene).toEqual({ ...scene, appState: {} })
+      expect(loaded.whiteboard.baseline).toEqual({ elements: scene.elements })
+      // Written beside the review's own state, which is never served.
+      expect((yield* call(`/design/${prototype.id}/files/.review/whiteboards/0.json`)).status).toBe(404)
+
+      const files = yield* read(
+        yield* call(
+          `/design/${prototype.id}/whiteboard/1/feedback-files`,
+          json({ scene: { elements: [{ id: "B", type: "ellipse" }], appState: {}, files: {} }, pngDataUrl: PNG }, prototype.token),
+        ),
+      )
+      expect(files.scene_path.endsWith(path.join(".review", "whiteboards", "1.excalidraw"))).toBe(true)
+      expect(files.preview_path.endsWith("1.png")).toBe(true)
+
+      // A foreign origin cannot write, and an index that is not a diagram's is not a route.
+      const cross = yield* call(`/design/${prototype.id}/whiteboard/0`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-redcode-design-token": prototype.token, origin: "https://evil.example" },
+        body: JSON.stringify({ source_hash: "x", scene: null }),
+      })
+      expect(cross.status).toBe(403)
+      expect((yield* call(`/design/${prototype.id}/whiteboard/1000`)).status).toBe(404)
+    }),
+  )
+
+  it.instance("the frame page carries a channel token only this prototype can prove, and the bundle answers every origin", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const bundle = yield* withBundle(directory)
+      try {
+        const prototype = yield* prototypeIn(directory, "frame", { "index.html": DIAGRAMS })
+        const other = yield* prototypeIn(directory, "frame-other", { "index.html": DIAGRAMS })
+        const page = yield* call(`/design/${prototype.id}/whiteboard?index=0`)
+        expect(page.status).toBe(200)
+        expect(page.headers["cache-control"]).toBe("no-store")
+        expect(String(page.headers["content-security-policy"])).toMatch(/connect-src http:\/\/127\.0\.0\.1(:\d+)?\/design\/vendor\/whiteboard\//)
+        const html = yield* bodyOf(page)
+        expect(html).toContain('<script src="/design/vendor/whiteboard/whiteboard.js"></script>')
+        const token = /__redcodeWhiteboardChannelToken="([^"]+)"/.exec(html)?.[1] ?? ""
+        expect(token.length).toBeGreaterThan(20)
+
+        const accepted = yield* call(`/design/${prototype.id}/whiteboard-channel`, json({ token }, prototype.token))
+        expect(accepted.status).toBe(200)
+        const forged = yield* call(`/design/${prototype.id}/whiteboard-channel`, json({ token: "forged" }, prototype.token))
+        expect(forged.status).toBe(403)
+        // Minted for one prototype, useless for another.
+        const foreign = yield* call(`/design/${other.id}/whiteboard-channel`, json({ token }, other.token))
+        expect(foreign.status).toBe(403)
+
+        const script = yield* call(`/design/vendor/whiteboard/whiteboard.js`)
+        expect(script.status).toBe(200)
+        expect(script.headers["access-control-allow-origin"]).toBe("*")
+        expect(String(script.headers["content-type"])).toContain("javascript")
+        const font = yield* call(`/design/vendor/whiteboard/fonts/Excalifont/Excalifont-Regular.woff2`)
+        expect(font.status).toBe(200)
+        expect(font.headers["access-control-allow-origin"]).toBe("*")
+        expect((yield* call(`/design/vendor/whiteboard/..%2F..%2Fstate.json`)).status).toBe(404)
+        expect((yield* call(`/design/vendor/whiteboard/nope.js`)).status).toBe(404)
+        const again = yield* call(`/design/vendor/whiteboard/whiteboard.js`, {
+          headers: { "if-none-match": String(script.headers["etag"]) },
+        })
+        expect(again.status).toBe(304)
+
+        // With the bundle here, the prototype may frame its whiteboards and the SDK knows where.
+        const served = yield* call(`/design/${prototype.id}/files/index.html`)
+        expect(String(served.headers["content-security-policy"])).toMatch(new RegExp(`frame-src http://127\\.0\\.0\\.1(:\\d+)?/design/${prototype.id}/whiteboard`))
+        expect(yield* bodyOf(served)).toContain(`"whiteboard":{"frame":"/design/${prototype.id}/whiteboard"}`)
+        const shell = yield* bodyOf(yield* call(`/design/${prototype.id}`))
+        expect(shell).toContain('"whiteboard":true')
+      } finally {
+        delete process.env["REDCODE_WHITEBOARD_DIR"]
+        yield* Effect.promise(() => import("node:fs").then(({ promises }) => promises.rm(bundle, { recursive: true, force: true })))
+      }
+    }),
+  )
+})

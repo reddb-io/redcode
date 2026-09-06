@@ -212,3 +212,23 @@ describe("export and another device", () => {
     expect(() => new Function(script)).not.toThrow()
   })
 })
+
+describe("whiteboards in the shell", () => {
+  test("hosts a diagram full screen in a frame with no origin, and mediates every read and write", () => {
+    expect(html).toMatch(/id="whiteboardFrame"[^>]*sandbox="allow-scripts allow-popups"/)
+    expect(html).not.toMatch(/id="whiteboardFrame"[^>]*allow-same-origin/)
+    // The prototype frame's own sandbox is unchanged by this.
+    expect(html).toContain('<iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups">')
+    expect(html).toContain('api("/whiteboard-channel", { token })')
+    expect(html).toContain("source.parent === frame.contentWindow")
+    expect(html).toContain('type: "redcode-whiteboard:init"')
+    expect(html).toContain('tag: "whiteboard"')
+    expect(html).toContain('queueKey: "whiteboard:" + index')
+    expect(html).toContain("await flushWhiteboards()")
+    expect(html).toContain('"whiteboard":false')
+    const on = shellHTML({ id: "p1", name: "n", token: "t", revision: 1, whiteboard: true })
+    expect(on).toContain('"whiteboard":true')
+    const script = on.slice(on.indexOf("<script>") + 8, on.lastIndexOf("</script>"))
+    expect(() => new Function(script)).not.toThrow()
+  })
+})

@@ -28,6 +28,18 @@ export type Target =
   | { readonly kind: "failures"; readonly id: string }
   /** The prototype as one self-contained file. */
   | { readonly kind: "export"; readonly id: string }
+  /** The whiteboard frame page for one diagram. */
+  | { readonly kind: "whiteboard-frame"; readonly id: string }
+  /** Every diagram's Mermaid source, from the file on disk. */
+  | { readonly kind: "mermaid-sources"; readonly id: string }
+  /** One diagram's saved scene: read, or write. */
+  | { readonly kind: "whiteboard"; readonly id: string; readonly index: number }
+  /** A frame proving it was minted for this prototype. */
+  | { readonly kind: "whiteboard-channel"; readonly id: string }
+  /** The agent-facing files for one diagram's scene. */
+  | { readonly kind: "whiteboard-files"; readonly id: string; readonly index: number }
+  /** A file of the whiteboard bundle: the script, the stylesheet, a font. */
+  | { readonly kind: "whiteboard-asset"; readonly path: string }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -35,6 +47,10 @@ const VENDOR = /^\/design\/vendor\/([A-Za-z0-9._-]{1,64})$/
 
 export function parse(pathname: string): Target | undefined {
   if (!pathname.startsWith("/design/")) return undefined
+  if (pathname.startsWith("/design/vendor/whiteboard/")) {
+    const rest = pathname.slice("/design/vendor/whiteboard/".length)
+    return rest ? { kind: "whiteboard-asset", path: rest } : undefined
+  }
   const vendor = VENDOR.exec(pathname)
   if (vendor) return { kind: "vendor", name: vendor[1]! }
   const rest = pathname.slice("/design/".length)
@@ -55,6 +71,14 @@ export function parse(pathname: string): Target | undefined {
   if (tail === "/layout-warnings/dismiss") return { kind: "warnings", id, action: "dismiss" }
   if (tail === "/artifact-failures") return { kind: "failures", id }
   if (tail === "/export") return { kind: "export", id }
+  if (tail === "/whiteboard") return { kind: "whiteboard-frame", id }
+  if (tail === "/mermaid-sources") return { kind: "mermaid-sources", id }
+  if (tail === "/whiteboard-channel") return { kind: "whiteboard-channel", id }
+  const scene = /^\/whiteboard\/(\d{1,3})(\/feedback-files)?$/.exec(tail)
+  if (scene) {
+    const index = Number(scene[1])
+    return scene[2] ? { kind: "whiteboard-files", id, index } : { kind: "whiteboard", id, index }
+  }
   const attachment = /^\/attachments\/([0-9a-f]{64}\.(?:png|jpg|webp))$/.exec(tail)
   if (attachment) return { kind: "attachment", id, aid: attachment[1]! }
   // The `/files/` prefix is what makes relative asset paths inside a prototype resolve back into

@@ -107,3 +107,19 @@ describe("the layout audit inside the prototype", () => {
     expect(() => new Function(script)).not.toThrow()
   })
 })
+
+describe("whiteboards inside the prototype", () => {
+  test("join each rendered diagram only when the bundle is here, as a sibling frame with no origin", () => {
+    const off = sdkScript({ load: 1 })
+    expect(off).not.toContain('"whiteboard"')
+    const on = sdkScript({ load: 1, whiteboard: { frame: "/design/p1/whiteboard" } })
+    expect(on).toContain('"whiteboard":{"frame":"/design/p1/whiteboard"}')
+    expect(on).toContain('setAttribute("sandbox", "allow-scripts allow-popups")')
+    expect(on).toContain('setAttribute("data-redcode-ui", "whiteboard-inline")')
+    expect(on).toContain('case "suspendWhiteboard"')
+    expect(on).toContain('case "resumeWhiteboard"')
+    expect(on).toContain('container.insertAdjacentElement("afterend", entry.iframe)')
+    expect(on).not.toContain("fetch(")
+    expect(() => new Function(on)).not.toThrow()
+  })
+})
