@@ -620,12 +620,16 @@ export const dict = {
   "context.stats.userMessages": "Повідомлення користувача",
   "context.stats.assistantMessages": "Повідомлення асистента",
   "context.stats.totalCost": "Загальна вартість",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Сесію створено",
   "context.stats.lastActivity": "Остання активність",
 
   "context.usage.tokens": "Токени",
   "context.usage.usage": "Використання",
   "context.usage.cost": "Вартість",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Натисніть, щоб переглянути контекст",
   "context.usage.view": "Переглянути використання контексту",
 

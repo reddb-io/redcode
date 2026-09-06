@@ -14,6 +14,7 @@ import { registerOpencodeSpinner } from "../register-spinner"
 import path from "path"
 import { fileURLToPath } from "url"
 import { useLocal } from "../../context/local"
+import { Throughput } from "../../util/throughput"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { tint, useTheme } from "../../context/theme"
 import { EmptyBorder, SplitBorder } from "../../ui/border"
@@ -348,9 +349,12 @@ export function Prompt(props: PromptProps) {
     const model = sync.data.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
     const pct = model?.limit.context ? `${Math.round((tokens / model.limit.context) * 100)}%` : undefined
     const cost = session?.cost ?? 0
+    const pace = Throughput.of(last)
     return {
       context: pct ? `${Locale.number(tokens)} (${pct})` : Locale.number(tokens),
       cost: cost > 0 ? money.format(cost) : undefined,
+      latency: pace.latency !== undefined ? Throughput.formatLatency(pace.latency) : undefined,
+      speed: pace.speed !== undefined ? Throughput.formatSpeed(pace.speed) : undefined,
     }
   })
 
@@ -1615,7 +1619,15 @@ export function Prompt(props: PromptProps) {
                   </Show>
                   <Show when={goalLine()}>
                     {(line) => (
-                      <text fg={line().tone === "paused" ? theme.warning : line().tone === "done" ? theme.success : theme.textMuted}>
+                      <text
+                        fg={
+                          line().tone === "paused"
+                            ? theme.warning
+                            : line().tone === "done"
+                              ? theme.success
+                              : theme.textMuted
+                        }
+                      >
                         {line().text}
                       </text>
                     )}
@@ -1774,7 +1786,7 @@ export function Prompt(props: PromptProps) {
                     <Match when={usage()}>
                       {(item) => (
                         <text fg={theme.textMuted} wrapMode="none">
-                          {[item().context, item().cost].filter(Boolean).join(" · ")}
+                          {[item().context, item().cost, item().latency, item().speed].filter(Boolean).join(" · ")}
                         </text>
                       )}
                     </Match>

@@ -455,6 +455,8 @@ export const Assistant = Schema.Struct({
   role: Schema.Literal("assistant"),
   time: Schema.Struct({
     created: NonNegativeInt,
+    /** When the first streamed chunk arrived: latency against `created`, output rate against `completed`. */
+    first: Schema.optional(NonNegativeInt),
     completed: Schema.optional(NonNegativeInt),
   }),
   error: Schema.optional(AssistantErrorSchema),
