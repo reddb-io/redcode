@@ -9,3 +9,4 @@ Served to prototypes at /design/vendor/<file>, because a prototype has no networ
 The .txt suffix makes them text imports for the bundler and the typechecker. Update by replacing the file and the version here; the route serves whatever is in this directory.
 
 Also here, not served: export-bundle.js — lavish-axi's self-contained-HTML export (MIT, LICENSE.lavish-axi), with its test suite at test/design/export-bundle.test.js. Three small edits are marked "redcode:" in the file.
+Also here, not served: whiteboard-core.js — lavish-axi's pure whiteboard helpers (MIT), shared by the frame bundle, the server and the feedback normaliser, with its tests at test/design/whiteboard-core.test.js. Unchanged.

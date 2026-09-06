@@ -7,6 +7,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { Session } from "@/session/session"
 import { Config } from "@/config/config"
 import { Context, Effect, Fiber, Layer, PubSub, Semaphore, Stream } from "effect"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { createHash, randomBytes } from "node:crypto"
 import { promises as nodeFs } from "node:fs"
 import path from "path"
@@ -17,6 +18,7 @@ import { DesignLayoutWarnings } from "./layout-warnings"
 import { DesignManifest } from "./manifest"
 import { DesignState } from "./state"
 import { DesignWatch } from "./watch"
+import { DesignWhiteboard } from "./whiteboard"
 
 /**
  * Which directories are currently reachable as prototypes, and by whom.
@@ -78,6 +80,13 @@ export interface Load {
 }
 
 export type LoadBegun = { readonly revision: number; readonly token: string; readonly stale?: "out-of-order" }
+
+/** The whiteboard bundle on this machine, if it is here, and the secret its channels are signed with. */
+export interface Whiteboard {
+  readonly dir?: string
+  readonly secret: Buffer
+  readonly status: "ready" | "fetching" | "unavailable"
+}
 
 /** What a review page was configured to do about layout. */
 export interface Settings {
@@ -142,6 +151,8 @@ export interface Interface {
   readonly settings: () => Effect.Effect<Settings>
   /** The export's size caps, from config. */
   readonly exportCaps: () => Effect.Effect<DesignExport.Options>
+  /** Where the whiteboard bundle is. The first ask on a machine without it starts the download. */
+  readonly whiteboard: () => Effect.Effect<Whiteboard>
   /** A shell is about to load the frame: mint the token that ties that document's passes to it. */
   readonly beginLoad: (id: string, input: { client: string; sequence: number }) => Effect.Effect<LoadBegun | undefined>
   /** Is this the token of a load still current for this prototype? */
@@ -240,7 +251,45 @@ const layer = Layer.effect(
     const fs = yield* FSUtil.Service
     const sessions = yield* Session.Service
     const config = yield* Config.Service
+    const flags = yield* RuntimeFlags.Service
     const lock = yield* Semaphore.make(1)
+
+    // One secret per process: a channel token outlives nothing, and a restart mints fresh ones.
+    const wb: { dir?: string; attempted: boolean; failed: boolean; readonly secret: Buffer } = {
+      attempted: false,
+      failed: false,
+      secret: randomBytes(32),
+    }
+    const whiteboard = Effect.fn("DesignRegistry.whiteboard")(function* () {
+      if (wb.dir) return { dir: wb.dir, secret: wb.secret, status: "ready" as const }
+      const located = yield* Effect.promise(() => DesignWhiteboard.locate())
+      if (located) {
+        wb.dir = located
+        return { dir: located, secret: wb.secret, status: "ready" as const }
+      }
+      if (!wb.attempted && !flags.disableWhiteboardDownload) {
+        wb.attempted = true
+        yield* Effect.forkDetach(
+          Effect.promise(() => DesignWhiteboard.download()).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                if (result !== "ready") wb.failed = true
+              }),
+            ),
+            Effect.flatMap((result) =>
+              result === "ready"
+                ? Effect.promise(() => DesignWhiteboard.locate()).pipe(
+                    Effect.tap((dir) => Effect.sync(() => (wb.dir = dir))),
+                  )
+                : Effect.logInfo("design: whiteboard bundle not fetched", { result }),
+            ),
+            Effect.catchCause((cause) => Effect.logWarning("design: whiteboard bundle download failed", { cause })),
+          ),
+        )
+      }
+      const status = wb.attempted && !wb.failed && !flags.disableWhiteboardDownload ? ("fetching" as const) : ("unavailable" as const)
+      return { secret: wb.secret, status }
+    })
 
     interface State {
       readonly data: Map<string, Prototype>
@@ -800,6 +849,7 @@ const layer = Layer.effect(
       exclusive,
       settings,
       exportCaps,
+      whiteboard,
       beginLoad,
       verifyLoad,
       diagnostics,
@@ -814,7 +864,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [EventV2Bridge.node, FSUtil.node, Session.node, Config.node],
+  deps: [EventV2Bridge.node, FSUtil.node, Session.node, Config.node, RuntimeFlags.node],
 })
 
 export * as DesignRegistry from "./registry"

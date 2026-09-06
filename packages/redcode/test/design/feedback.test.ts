@@ -241,3 +241,28 @@ describe("a batch of layout fixes", () => {
     expect(failures).toContain("design_preview")
   })
 })
+
+describe("a whiteboard's edits", () => {
+  test("arrive as a note that names the diagram and carries bounded paths and counts", () => {
+    const [item] = DesignFeedback.normalize([
+      {
+        tag: "whiteboard",
+        text: "Whiteboard edits to diagram 2:\nMoved by (40, 0): rectangle \"Server\" (B)",
+        target: {
+          type: "excalidraw-scene",
+          diagramIndex: 1,
+          diagramId: "mermaid-1",
+          sourceHash: "abcd",
+          scenePath: "/w/.review/whiteboards/1.excalidraw",
+          previewPath: "/w/.review/whiteboards/1.png",
+          imageFallback: false,
+          stats: { added: 0, removed: 0, moved: 1, relabeled: 0, drawn: 99999 },
+        },
+      },
+    ])
+    expect(item!.target).toMatchObject({ type: "excalidraw-scene", diagramIndex: 1, scenePath: "/w/.review/whiteboards/1.excalidraw" })
+    expect((item!.target as { stats: { drawn: number } }).stats.drawn).toBe(10000)
+    expect(DesignFeedback.where(item!)).toBe("whiteboard: diagram 2 (mermaid-1)")
+    expect(DesignFeedback.render([item!], { prototype: "p", revision: 3 })).toContain("1. [whiteboard: diagram 2 (mermaid-1)] Whiteboard edits")
+  })
+})

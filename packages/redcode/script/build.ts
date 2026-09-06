@@ -262,6 +262,10 @@ if (Script.release) {
       archives.push(`dist/${key}.zip`)
     }
   }
+  // The whiteboard bundle rides on the release as its own tarball: not in any binary, fetched by
+  // the server the first time a diagram is opened as a whiteboard.
+  await $`bun script/whiteboard-bundle.ts --archive`.env({ ...process.env, REDCODE_VERSION: Script.version })
+  archives.push(`dist/redcode-whiteboard-${Script.version}.tar.gz`)
   const checksums: string[] = []
   for (const archive of archives.sort()) {
     const hasher = new Bun.CryptoHasher("sha256")

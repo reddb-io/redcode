@@ -22,6 +22,8 @@ export interface ArtifactConfig {
   readonly load: number
   /** The image limits the server enforces, so the card refuses early and says why. */
   readonly attachments?: { readonly maxCount: number; readonly maxBytes: number; readonly accepted: readonly string[] }
+  /** Where a diagram's whiteboard frame lives, when the bundle is on this machine. */
+  readonly whiteboard?: { readonly frame: string }
 }
 
 export type HelperTable = {
@@ -871,6 +873,18 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
         // race): run again and publish even if nothing changed.
         audit.schedule(true)
         return
+      case "suspendWhiteboard": {
+        // The shell is editing this diagram full screen: park the inline frame so two editors
+        // never autosave one scene. Resume reboots it from the latest saved scene.
+        const entry = whiteboardByIndex(payload.diagramIndex)
+        if (entry) entry.iframe.src = "about:blank"
+        return
+      }
+      case "resumeWhiteboard": {
+        const entry = whiteboardByIndex(payload.diagramIndex)
+        if (entry) entry.iframe.src = whiteboardSrc(entry)
+        return
+      }
       case "attachmentResult":
         // Only from the shell, and only for this document: a result for a chip of the previous
         // document must not mark a new chip ready with the wrong image.
@@ -902,6 +916,78 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
     if (el instanceof Element && el.closest("[data-redcode-question],[data-lavish-question]"))
       scheduleReviewStateReport()
   })
+
+  // --- whiteboards ------------------------------------------------------------------------------
+  // Each rendered diagram in a `.mermaid` (or `data-redcode-mermaid`) container is joined, at view
+  // time only, by a sibling frame hosting the Excalidraw whiteboard; the file keeps its Mermaid
+  // source and still renders plain when opened standalone or exported. The container's index
+  // among containers in document order is the diagram's identity; the server recovers the
+  // matching source from the file.
+  const CONTAINER = ".mermaid,[data-redcode-mermaid],[data-lavish-mermaid]"
+  const whiteboards = new Map<any, { iframe: HTMLIFrameElement; index: number; diagramId: string }>()
+  let enhanceTimer = 0
+  const containerIndex = (container: any) => Array.from(document.querySelectorAll(CONTAINER)).indexOf(container)
+  const whiteboardSrc = (entry: { index: number; diagramId: string }) =>
+    config.whiteboard!.frame + "?" + new URLSearchParams({ index: String(entry.index), diagramId: entry.diagramId }).toString()
+  const whiteboardByIndex = (index: unknown) =>
+    Array.from(whiteboards.values()).find((entry) => entry.iframe.isConnected && entry.index === Number(index)) || null
+  const whiteboardHeight = (rect: DOMRect) => {
+    const min = 360
+    const max = Math.max(min, Math.round((window.innerHeight || 800) * 0.8))
+    return Math.max(min, Math.min(Math.round(rect.height) + 96, max))
+  }
+  const scheduleEnhance = () => {
+    if (enhanceTimer) return
+    enhanceTimer = window.setTimeout(() => {
+      enhanceTimer = 0
+      enhance()
+    }, 100)
+  }
+  const embedWhiteboard = (svg: any) => {
+    const container = svg.closest(CONTAINER)
+    if (!container) return
+    const existing = whiteboards.get(container)
+    if (existing && existing.iframe.isConnected) {
+      existing.index = containerIndex(container)
+      return
+    }
+    const index = containerIndex(container)
+    if (index < 0) return
+    const rect = svg.getBoundingClientRect()
+    // Mermaid renders asynchronously; a flat rect means this svg has no layout yet. Ask again
+    // shortly, because finishing layout does not necessarily mutate the DOM.
+    if (rect.height < 40) {
+      window.setTimeout(scheduleEnhance, 150)
+      return
+    }
+    const entry = { iframe: document.createElement("iframe"), index, diagramId: String(svg.id || "") }
+    entry.iframe.setAttribute("data-redcode-ui", "whiteboard-inline")
+    entry.iframe.setAttribute("title", "Whiteboard")
+    // Stricter than, and independent of, this document's own sandbox.
+    entry.iframe.setAttribute("sandbox", "allow-scripts allow-popups")
+    entry.iframe.src = whiteboardSrc(entry)
+    entry.iframe.style.cssText =
+      "display:block;width:100%;height:" +
+      whiteboardHeight(rect) +
+      "px;border:1px solid rgba(128,128,128,.35);border-radius:12px;background:transparent"
+    // The page may re-render Mermaid inside the container on a theme change, so the frame is a
+    // sibling: a re-render stays harmless inside the hidden container instead of killing the editor.
+    container.style.display = "none"
+    container.insertAdjacentElement("afterend", entry.iframe)
+    whiteboards.set(container, entry)
+  }
+  const enhance = () => {
+    for (const svg of Array.from(document.querySelectorAll("svg"))) {
+      if (isUi(svg) || !h.isMermaidSvg(svg)) continue
+      embedWhiteboard(svg)
+    }
+  }
+  if (config.whiteboard && config.whiteboard.frame) {
+    scheduleEnhance()
+    window.addEventListener("load", scheduleEnhance, { once: true })
+    if (typeof MutationObserver !== "undefined")
+      new MutationObserver(scheduleEnhance).observe(document.documentElement, { childList: true, subtree: true })
+  }
 
   // --- the passive layout audit, and the one fatal path -----------------------------------------
   const audit = h.artifactAudit({ h, post, isUi, selector, load: config.load })

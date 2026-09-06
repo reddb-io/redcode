@@ -14,6 +14,7 @@ import { DesignRoutePath } from "@/design/route-path"
 import { DesignSDK } from "@/design/sdk"
 import { DesignServe } from "@/design/serve"
 import { DesignShell } from "@/design/shell"
+import { DesignWhiteboard } from "@/design/whiteboard"
 import { SessionPrompt } from "@/session/prompt"
 
 /**
@@ -47,11 +48,11 @@ const heartbeat = () => ({ _tag: "Event" as const, event: "heartbeat", id: undef
 
 /** A small JSON body, or nothing: the caller decides what nothing means. */
 const MAX_JSON_BYTES = 256 * 1024
-const readJSON = (request: HttpServerRequest.HttpServerRequest) =>
+const readJSON = (request: HttpServerRequest.HttpServerRequest, max = MAX_JSON_BYTES) =>
   request.text.pipe(
-    Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(MAX_JSON_BYTES)),
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(max)),
     Effect.map((raw) => {
-      if (raw.length > MAX_JSON_BYTES) return undefined
+      if (raw.length > max) return undefined
       try {
         const parsed = JSON.parse(raw) as unknown
         return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
@@ -100,6 +101,32 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     const target = DesignRoutePath.parse(url.pathname)
     if (!target) return notFound()
 
+    // The whiteboard bundle, fetched from an opaque origin: the frame runs sandboxed, and a font
+    // fetched from an opaque origin is CORS-gated, so this public content answers every origin.
+    if (target.kind === "whiteboard-asset") {
+      const registry = yield* DesignRegistry.Service
+      const bundle = yield* registry.whiteboard()
+      if (!bundle.dir) return HttpServerResponse.jsonUnsafe({ error: "whiteboard bundle not available" }, { status: 404 })
+      const file = yield* Effect.promise(() => DesignWhiteboard.resolveAsset(bundle.dir!, target.path))
+      if (!file) return notFound()
+      const stat = yield* Effect.promise(() => Bun.file(file).stat()).pipe(Effect.orElseSucceed(() => undefined))
+      if (!stat) return notFound()
+      // Revalidated on every use: the URL is unversioned, and a stale bundle after an upgrade is
+      // worse than a cheap loopback round trip.
+      const etag = `"${DesignWhiteboard.VERSION}-${stat.size}-${Math.floor(stat.mtimeMs)}"`
+      const headers = {
+        "access-control-allow-origin": "*",
+        "cache-control": "no-cache",
+        etag,
+        "x-content-type-options": "nosniff",
+      }
+      if (request.headers["if-none-match"] === etag) return HttpServerResponse.empty({ status: 304, headers })
+      const bytes = yield* Effect.promise(() => Bun.file(file).arrayBuffer())
+      return HttpServerResponse.uint8Array(new Uint8Array(bytes), {
+        headers: { ...headers, "content-type": DesignWhiteboard.assetMime(file)! },
+      })
+    }
+
     // Not a prototype's: the assets every prototype may use. Public, immutable per release.
     if (target.kind === "vendor") {
       const asset = DesignVendor.FILES[target.name]
@@ -134,6 +161,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     if (target.kind === "shell") {
       const caps = yield* registry.attachments()
       const network = DesignHost.networkURL(Server.url)
+      const whiteboard = yield* registry.whiteboard()
       return HttpServerResponse.text(
         DesignShell.shellHTML({
           id: prototype.id,
@@ -150,6 +178,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           gate: settings.gate && url.searchParams.get("gate") !== "0",
           gateTimeoutMs: settings.gateTimeoutMs,
           ...(network ? { networkUrl: `${network}/design/${prototype.id}` } : {}),
+          whiteboard: whiteboard.status === "ready",
           ...(prototype.ended ? { ended: prototype.ended.by } : {}),
           embed: url.searchParams.get("embed") === "1",
         }),
@@ -212,6 +241,95 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       if (!sameOrigin(request, url)) return forbidden()
       const ended = yield* registry.end(prototype.id, "user")
       return HttpServerResponse.jsonUnsafe({ ended: ended?.ended?.by ?? "user" })
+    }
+
+    // --- whiteboards ---------------------------------------------------------------------------
+    // The frame page carries a token minted for this prototype; the shell accepts a frame only
+    // after the server confirms the token and the frame proves descent from the prototype frame.
+    if (target.kind === "whiteboard-frame") {
+      if (request.method !== "GET") return notFound()
+      const bundle = yield* registry.whiteboard()
+      if (!bundle.dir) {
+        const copy =
+          bundle.status === "fetching"
+            ? "The whiteboard bundle is being fetched. Reload the review in a moment."
+            : "The whiteboard bundle is not available on this machine. Diagrams stay as they are."
+        return HttpServerResponse.text(`<!doctype html><meta charset="utf-8"><p style="font:14px system-ui;padding:1rem">${copy}</p>`, {
+          status: 503,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        })
+      }
+      return HttpServerResponse.text(DesignWhiteboard.frameHTML(DesignWhiteboard.mintChannel(bundle.secret, prototype.id)), {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-security-policy": DesignWhiteboard.frameCSP(`${vendorPrefix(request)}whiteboard/`),
+          "referrer-policy": "no-referrer",
+          "cache-control": "no-store",
+        },
+      })
+    }
+
+    if (target.kind === "mermaid-sources") {
+      if (!authorised) return forbidden()
+      if (request.method !== "GET") return notFound()
+      const entry = DesignServe.resolve(prototype.root, "/index.html")
+      const html = entry ? yield* Effect.promise(() => Bun.file(entry).text()).pipe(Effect.orElseSucceed(() => "")) : ""
+      const sources = DesignWhiteboard.extractSources(html).map((item) => ({
+        ...item,
+        hash: DesignWhiteboard.sourceHash(item.source),
+      }))
+      return HttpServerResponse.jsonUnsafe({ sources })
+    }
+
+    if (target.kind === "whiteboard-channel") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      const body = yield* readJSON(request)
+      if (body === undefined) return tooLarge()
+      const bundle = yield* registry.whiteboard()
+      if (!DesignWhiteboard.verifyChannel(body.token, bundle.secret, prototype.id)) {
+        return HttpServerResponse.jsonUnsafe({ error: "invalid whiteboard channel" }, { status: 403 })
+      }
+      return HttpServerResponse.jsonUnsafe({ status: "authenticated" })
+    }
+
+    if (target.kind === "whiteboard") {
+      if (!authorised) return forbidden()
+      if (request.method === "GET") {
+        const saved = yield* Effect.promise(() => DesignWhiteboard.load(prototype.root, target.index))
+        return HttpServerResponse.jsonUnsafe({ whiteboard: saved })
+      }
+      if (request.method !== "PUT") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      if (prototype.ended) return gone(prototype.ended.by)
+      const body = yield* readJSON(request, DesignWhiteboard.MAX_BODY_BYTES)
+      if (body === undefined) return tooLarge()
+      yield* Effect.promise(() =>
+        DesignWhiteboard.save(prototype.root, target.index, {
+          sourceHash: body.source_hash ?? body.sourceHash,
+          textMetricsVersion: body.text_metrics_version ?? body.textMetricsVersion,
+          scene: body.scene ?? null,
+          baseline: body.baseline ?? null,
+        }),
+      )
+      return HttpServerResponse.jsonUnsafe({ status: "saved" })
+    }
+
+    if (target.kind === "whiteboard-files") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      if (prototype.ended) return gone(prototype.ended.by)
+      const body = yield* readJSON(request, DesignWhiteboard.MAX_BODY_BYTES)
+      if (body === undefined) return tooLarge()
+      const written = yield* Effect.promise(() =>
+        DesignWhiteboard.writeFeedbackFiles(prototype.root, target.index, {
+          scene: body.scene ?? null,
+          pngDataUrl: body.pngDataUrl ?? body.png_data_url,
+        }),
+      )
+      return HttpServerResponse.jsonUnsafe({ scene_path: written.scenePath, preview_path: written.previewPath })
     }
 
     // One file, with everything local inside it. Downloaded in the ordinary case; if a browser
@@ -552,11 +670,14 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     }
 
     const mime = DesignServe.mimeFor(file)!
+    const whiteboard = yield* registry.whiteboard()
+    const framePath = `/design/${prototype.id}/whiteboard`
     const headers: Record<string, string> = {
       "content-type": mime,
       "content-security-policy": DesignServe.prototypeCSP({
         assets: assetPrefix(request, prototype.id),
         vendor: vendorPrefix(request),
+        ...(whiteboard.status === "ready" ? { frame: `${assetPrefix(request, prototype.id).replace(/\/files\/$/, "")}/whiteboard` } : {}),
       }),
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
@@ -575,6 +696,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             maxBytes: caps.maxBytes,
             accepted: DesignAttachments.ACCEPTED_MIME,
           },
+          ...(whiteboard.status === "ready" ? { whiteboard: { frame: framePath } } : {}),
         }),
         { headers },
       )

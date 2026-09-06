@@ -13,6 +13,7 @@
  */
 
 import { DesignLayoutWarnings } from "./layout-warnings"
+import { normalizeExcalidrawSceneTarget, type ExcalidrawSceneTarget } from "./vendor/whiteboard-core.js"
 
 /** Long enough for a real remark, short enough that a page cannot flood a turn. */
 export const LIMITS = {
@@ -70,7 +71,10 @@ export interface MermaidNodeTarget {
 /** A batch of layout warnings the person queued for repair, as the inbox described them. */
 export type LayoutWarningsTarget = DesignLayoutWarnings.PromptTarget
 
-export type Target = TextRangeTarget | TableCellTarget | MermaidNodeTarget | LayoutWarningsTarget
+/** A whiteboard's edits: where the scene and its preview are on disk, and what changed, counted. */
+export type WhiteboardTarget = ExcalidrawSceneTarget
+
+export type Target = TextRangeTarget | TableCellTarget | MermaidNodeTarget | LayoutWarningsTarget | WhiteboardTarget
 
 export interface Annotation {
   /** Where in the prototype, as a CSS path. */
@@ -193,6 +197,16 @@ export function target(raw: unknown): Target | undefined {
       const normalized = DesignLayoutWarnings.normalizeTarget(r)
       return normalized.warnings.length ? normalized : undefined
     }
+    case "excalidraw-scene": {
+      const normalized = normalizeExcalidrawSceneTarget(r)
+      return {
+        ...normalized,
+        diagramId: clamp(normalized.diagramId, LIMITS.label),
+        sourceHash: clamp(normalized.sourceHash, 32),
+        scenePath: clamp(normalized.scenePath, LIMITS.selector),
+        previewPath: clamp(normalized.previewPath, LIMITS.selector),
+      }
+    }
     default:
       return undefined
   }
@@ -256,6 +270,7 @@ export function where(item: Annotation): string {
     return `node ${t.label ? `"${t.label}"` : ""}${ids ? ` ${ids}` : ""}`.replace(/\s+/g, " ").trim()
   }
   if (t?.type === "layout-warnings") return `layout issues: ${t.warnings.length} queued for repair`
+  if (t?.type === "excalidraw-scene") return `whiteboard: diagram ${t.diagramIndex + 1}${t.diagramId ? ` (${t.diagramId})` : ""}`
   if (item.tag === "message") return ""
   return item.label || item.selector || ""
 }
