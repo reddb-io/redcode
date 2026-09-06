@@ -488,12 +488,16 @@ export const dict = {
   "context.stats.userMessages": "Brugerbeskeder",
   "context.stats.assistantMessages": "Assistentbeskeder",
   "context.stats.totalCost": "Samlede omkostninger",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Session oprettet",
   "context.stats.lastActivity": "Seneste aktivitet",
 
   "context.usage.tokens": "Tokens",
   "context.usage.usage": "Forbrug",
   "context.usage.cost": "Omkostning",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Klik for at se kontekst",
   "context.usage.view": "Se kontekstforbrug",
 

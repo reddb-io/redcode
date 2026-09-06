@@ -23,6 +23,31 @@ type Context = {
   input: number
   total: number
   usage: number | null
+  /** Milliseconds from the request to the first streamed chunk, when the message recorded one. */
+  latency?: number
+  /** Output plus reasoning tokens per second between the first chunk and completion. */
+  speed?: number
+}
+
+const pace = (msg: AssistantMessage): { latency?: number; speed?: number } => {
+  const first = msg.time.first
+  if (first === undefined || first < msg.time.created) return {}
+  const latency = first - msg.time.created
+  const completed = msg.time.completed
+  const produced = msg.tokens.output + msg.tokens.reasoning
+  if (completed === undefined || completed <= first || produced <= 0) return { latency }
+  return { latency, speed: produced / ((completed - first) / 1000) }
+}
+
+export const formatLatency = (ms: number | undefined) => {
+  if (ms === undefined) return "—"
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`
+}
+
+export const formatSpeed = (tps: number | undefined) => {
+  if (tps === undefined) return "—"
+  return `${tps < 10 ? tps.toFixed(1) : Math.round(tps)} tk/s`
 }
 
 const tokenTotal = (msg: AssistantMessage) => {
@@ -57,6 +82,7 @@ const build = (messages: Message[] = [], providers: Provider[] = []): Context | 
     input: message.tokens.input,
     total,
     usage: limit ? Math.round((total / limit) * 100) : null,
+    ...pace(message),
   }
 }
 

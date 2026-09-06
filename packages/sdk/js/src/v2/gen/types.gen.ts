@@ -337,6 +337,7 @@ export type AssistantMessage = {
   role: "assistant"
   time: {
     created: number
+    first?: number
     completed?: number
   }
   error?:
@@ -2076,6 +2077,8 @@ export type Config = {
       judge_timeout?: false | number
       gate_timeout?: number
     }
+    subtask_concurrency?: number
+    background_subagents_max?: number
     /**
      * Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.
      */

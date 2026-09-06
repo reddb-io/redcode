@@ -617,12 +617,16 @@ export const dict = {
   "context.stats.userMessages": "Pesan Pengguna",
   "context.stats.assistantMessages": "Pesan Asisten",
   "context.stats.totalCost": "Total Biaya",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Sesi Dibuat",
   "context.stats.lastActivity": "Aktivitas Terakhir",
 
   "context.usage.tokens": "Token",
   "context.usage.usage": "Penggunaan",
   "context.usage.cost": "Biaya",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Klik untuk melihat konteks",
   "context.usage.view": "Lihat penggunaan konteks",
 

@@ -33,6 +33,8 @@ import { OperationHookBridge } from "@/operation-hook-bridge"
 
 /** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
 const LOOP_WINDOW = 16
+/** The stream events that carry the first content back: the wait for the provider ends here. */
+const FIRST_CHUNK = new Set(["reasoning-start", "text-start", "tool-input-start", "tool-call"])
 export type Result = "compact" | "stop" | "continue"
 
 export interface Handle {
@@ -308,6 +310,11 @@ const layer = Layer.effect(
       }
 
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
+        // The first chunk with content marks the end of the wait: latency is this minus
+        // `created`, and the output rate is the tokens over the time from here to `completed`.
+        if (ctx.assistantMessage.time.first === undefined && FIRST_CHUNK.has(value.type)) {
+          ctx.assistantMessage.time.first = Date.now()
+        }
         switch (value.type) {
           case "reasoning-start":
             if (value.id in ctx.reasoningMap) return
@@ -739,10 +746,7 @@ const layer = Layer.effect(
         })
       })
 
-      const guardLoop = Effect.fn("SessionProcessor.guardLoop")(function* (input: {
-        tool: string
-        input: unknown
-      }) {
+      const guardLoop = Effect.fn("SessionProcessor.guardLoop")(function* (input: { tool: string; input: unknown }) {
         const configured = (yield* config.get()).experimental?.loop_guard
         const bounds = LoopGuard.limits(configured)
         if (!bounds) return { type: "ok" } as LoopGuard.Decision
@@ -755,7 +759,9 @@ const layer = Layer.effect(
         // Every step of a turn is its own assistant message, so looking at the current message
         // alone can never see a loop that spans steps — which is what a loop actually looks like.
         // Read back a bounded window and cut it at the last thing the user said.
-        const recent = yield* session.messages({ sessionID: ctx.sessionID, limit: LOOP_WINDOW }).pipe(Effect.orElseSucceed(() => []))
+        const recent = yield* session
+          .messages({ sessionID: ctx.sessionID, limit: LOOP_WINDOW })
+          .pipe(Effect.orElseSucceed(() => []))
         const turn = recent.slice(recent.findLastIndex((item) => item.info.role === "user") + 1)
         const parts = turn.flatMap((item) => item.parts)
         const decision = LoopGuard.assess({ parts, next: input, limits: bounds })

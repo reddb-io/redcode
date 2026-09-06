@@ -606,12 +606,16 @@ export const dict = {
   "context.stats.userMessages": "Сообщения пользователя",
   "context.stats.assistantMessages": "Сообщения ассистента",
   "context.stats.totalCost": "Общая стоимость",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Сессия создана",
   "context.stats.lastActivity": "Последняя активность",
 
   "context.usage.tokens": "Токены",
   "context.usage.usage": "Использование",
   "context.usage.cost": "Стоимость",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Нажмите для просмотра контекста",
   "context.usage.view": "Показать использование контекста",
 

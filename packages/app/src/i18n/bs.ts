@@ -607,12 +607,16 @@ export const dict = {
   "context.stats.userMessages": "Korisničke poruke",
   "context.stats.assistantMessages": "Poruke asistenta",
   "context.stats.totalCost": "Ukupni trošak",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Sesija kreirana",
   "context.stats.lastActivity": "Posljednja aktivnost",
 
   "context.usage.tokens": "Tokeni",
   "context.usage.usage": "Korištenje",
   "context.usage.cost": "Trošak",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Klikni da vidiš kontekst",
   "context.usage.view": "Prikaži korištenje konteksta",
 

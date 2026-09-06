@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Message } from "@reddb-io/redcode-sdk/v2/client"
-import { getSessionContext } from "./session-context-metrics"
+import { formatLatency, formatSpeed, getSessionContext } from "./session-context-metrics"
 
 const assistant = (
   id: string,
@@ -95,5 +95,38 @@ describe("getSessionContext", () => {
     const ctx = getSessionContext(undefined, undefined)
 
     expect(ctx).toBeUndefined()
+  })
+})
+
+describe("latency and output speed", () => {
+  const timed = (time: { created: number; first?: number; completed?: number }, output = 200, reasoning = 100) =>
+    ({
+      ...assistant("timed", { input: 10, output, reasoning, read: 0, write: 0 }, 0),
+      time,
+    }) as unknown as Message
+
+  test("reads latency from the first chunk and speed from first chunk to completion", () => {
+    const ctx = getSessionContext([timed({ created: 1_000, first: 1_800, completed: 4_800 })])
+    expect(ctx?.latency).toBe(800)
+    // 300 tokens over 3 seconds
+    expect(ctx?.speed).toBe(100)
+  })
+
+  test("a message without a first chunk has neither; one still streaming has only latency", () => {
+    expect(getSessionContext([timed({ created: 1_000 })])?.latency).toBeUndefined()
+    expect(getSessionContext([timed({ created: 1_000 })])?.speed).toBeUndefined()
+    const streaming = getSessionContext([timed({ created: 1_000, first: 1_250 })])
+    expect(streaming?.latency).toBe(250)
+    expect(streaming?.speed).toBeUndefined()
+  })
+
+  test("formats for the panel", () => {
+    expect(formatLatency(420)).toBe("420 ms")
+    expect(formatLatency(1_850)).toBe("1.9 s")
+    expect(formatLatency(12_400)).toBe("12 s")
+    expect(formatLatency(undefined)).toBe("—")
+    expect(formatSpeed(7.25)).toBe("7.3 tk/s")
+    expect(formatSpeed(84.6)).toBe("85 tk/s")
+    expect(formatSpeed(undefined)).toBe("—")
   })
 })

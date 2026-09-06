@@ -609,12 +609,16 @@ export const dict = {
   "context.stats.userMessages": "Mensajes de usuario",
   "context.stats.assistantMessages": "Mensajes de asistente",
   "context.stats.totalCost": "Costo total",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Sesión creada",
   "context.stats.lastActivity": "Última actividad",
 
   "context.usage.tokens": "Tokens",
   "context.usage.usage": "Uso",
   "context.usage.cost": "Costo",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Haz clic para ver contexto",
   "context.usage.view": "Ver uso del contexto",
 

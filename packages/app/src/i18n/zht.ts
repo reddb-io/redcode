@@ -599,12 +599,16 @@ export const dict = {
   "context.stats.userMessages": "使用者訊息",
   "context.stats.assistantMessages": "助理訊息",
   "context.stats.totalCost": "總成本",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "建立時間",
   "context.stats.lastActivity": "最後活動",
 
   "context.usage.tokens": "Token",
   "context.usage.usage": "使用量",
   "context.usage.cost": "成本",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "按一下以檢視上下文",
   "context.usage.view": "檢視上下文用量",
 

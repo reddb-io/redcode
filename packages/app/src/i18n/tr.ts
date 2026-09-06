@@ -610,12 +610,16 @@ export const dict = {
   "context.stats.userMessages": "Kullanıcı Mesajları",
   "context.stats.assistantMessages": "Asistan Mesajları",
   "context.stats.totalCost": "Toplam Maliyet",
+  "context.stats.latency": "Latency (first token)",
+  "context.stats.speed": "Output speed",
   "context.stats.sessionCreated": "Oturum Oluşturma",
   "context.stats.lastActivity": "Son Etkinlik",
 
   "context.usage.tokens": "Tokenler",
   "context.usage.usage": "Kullanım",
   "context.usage.cost": "Maliyet",
+  "context.usage.latency": "Latency",
+  "context.usage.speed": "Output speed",
   "context.usage.clickToView": "Bağlamı görüntüle",
   "context.usage.view": "Bağlam kullanımını görüntüle",
 
