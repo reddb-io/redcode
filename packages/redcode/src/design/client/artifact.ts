@@ -19,6 +19,8 @@ import type * as Helpers from "./helpers"
 export interface ArtifactConfig {
   /** The revision this document was served for; every message carries it back. */
   readonly load: number
+  /** The image limits the server enforces, so the card refuses early and says why. */
+  readonly attachments?: { readonly maxCount: number; readonly maxBytes: number; readonly accepted: readonly string[] }
 }
 
 export type HelperTable = {
@@ -44,6 +46,18 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
   let activeCard: { context: any; textarea: HTMLTextAreaElement } | null = null
   let reviewStateTimer = 0
   let draftRestoreTimer = 0
+  // Images on the open card. Limits are the server's, threaded in; the literal is the fallback.
+  const ATTACHMENT_MAX_COUNT = config.attachments && config.attachments.maxCount > 0 ? config.attachments.maxCount : 4
+  const ATTACHMENT_MAX_BYTES = config.attachments && config.attachments.maxBytes > 0 ? config.attachments.maxBytes : 0
+  const ATTACHMENT_TYPES = h.acceptedImageTypes(config.attachments ? config.attachments.accepted : null)
+  // Minted once per document and stamped on every upload, so a result the shell posts back can
+  // be tied to the document that asked. Unique per document is enough; it is not a secret.
+  const ATTACHMENT_NONCE =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : "n" + Math.random().toString(36).slice(2) + Date.now().toString(36)
+  let attachmentLocalCounter = 0
+  let activeAttachments: ReturnType<typeof makeAttachments> | null = null
   /** How long a script-built section or a diagram gets to appear before a draft's anchor is called missing. */
   const DRAFT_ANCHOR_SETTLE_MS = 1500
   const ids = new WeakMap<object, string>()
@@ -245,14 +259,219 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
       ".row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}" +
       ".card button{border:0;border-radius:10px;padding:8px 10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer}" +
       ".card button:active{opacity:.85}.queue{background:var(--accent);color:var(--accent-ink)}.queue:hover{background:var(--accent-hover)}.cancel{background:var(--muted);color:var(--fg)}" +
+      ".card.is-dropping{outline:2px dashed var(--accent);outline-offset:3px}" +
+      ".chips{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:176px;overflow-y:auto}" +
+      ".chip{display:flex;align-items:center;gap:8px;padding:6px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--border)}.chip.is-error{border-color:#e0623d}" +
+      ".thumb{width:32px;height:32px;border-radius:6px;object-fit:cover;background:var(--muted);flex:0 0 auto}.thumb.empty{display:inline-block}" +
+      ".chip .body{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}.chip .name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      ".chip .state{font-size:11px;color:var(--fg-faint)}.chip .state.error{color:#ff9d7a}" +
+      ".chip .retry{flex:0 0 auto;padding:4px 8px;font-size:11px;font-weight:700;border-radius:8px;background:var(--muted);color:var(--fg);border:0;cursor:pointer}" +
+      ".chip .remove{flex:0 0 auto;width:22px;height:22px;padding:0;border-radius:50%;background:transparent;color:rgba(255,255,255,.85);border:0;cursor:pointer}.chip .remove:hover{background:rgba(255,255,255,.14)}" +
+      ".attach-row{margin-top:8px}.attach{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;background:var(--muted);color:var(--fg);font-size:12px;border:0;border-radius:10px;cursor:pointer}" +
       ".reveal{position:fixed;pointer-events:none;border:2px solid var(--accent);border-radius:4px;box-shadow:0 0 0 4px rgba(244,201,93,.22);animation:reveal 2.4s ease-out forwards}" +
       "@keyframes reveal{0%{opacity:0}12%{opacity:1}70%{opacity:1}100%{opacity:0}}"
     shadow.appendChild(style)
     return shadow
   }
 
+  // --- the card's images ------------------------------------------------------------------------
+  // Chips for the images a person attached to the open card. The card captures the bytes; the
+  // shell does the upload (this document has no network) and posts the result back.
+  function makeAttachments(listEl: HTMLElement, notify: (message: string) => void, onLayout: () => void) {
+    type Item = {
+      localId: string
+      file: File | null
+      name: string
+      mime: string
+      status: "uploading" | "ready" | "error"
+      id: string
+      error: string
+      url: string
+    }
+    const items: Item[] = []
+    let capRejected = false
+    let queueBlocked = false
+    const hasPending = () => items.some((item) => item.status === "uploading")
+    const hasErrors = () => items.some((item) => item.status === "error")
+    const hasReady = () => items.some((item) => item.status === "ready" && item.id)
+    const chip = (item: Item, index: number) =>
+      '<div class="chip' +
+      (item.status === "error" ? " is-error" : "") +
+      '">' +
+      (item.url
+        ? '<img class="thumb" src="' + escapeHtml(item.url) + '" alt="">'
+        : '<span class="thumb empty"></span>') +
+      '<span class="body"><span class="name" title="' +
+      escapeHtml(item.name) +
+      '">' +
+      escapeHtml(item.name) +
+      "</span>" +
+      (item.status === "uploading"
+        ? '<span class="state">Uploading…</span>'
+        : item.status === "error"
+          ? '<span class="state error">' + escapeHtml(item.error || "Upload failed") + "</span>"
+          : "") +
+      "</span>" +
+      (item.status === "error" && item.file
+        ? '<button type="button" class="retry" data-retry="' + index + '">Retry</button>'
+        : "") +
+      '<button type="button" class="remove" data-remove="' +
+      index +
+      '" aria-label="Remove image" title="Remove">×</button></div>'
+    const render = () => {
+      if (items.length < ATTACHMENT_MAX_COUNT) capRejected = false
+      if (!hasPending() && !hasErrors()) queueBlocked = false
+      notify(
+        h.deriveAttachmentNoticeState({
+          itemCount: items.length,
+          maxCount: ATTACHMENT_MAX_COUNT,
+          capRejected,
+          queueBlocked,
+          hasPending: hasPending(),
+          hasErrors: hasErrors(),
+        }),
+      )
+      listEl.innerHTML = items.map(chip).join("")
+      listEl.hidden = items.length === 0
+      for (const button of Array.from(listEl.querySelectorAll("[data-remove]")))
+        button.addEventListener("click", () => removeAt(Number(button.getAttribute("data-remove"))))
+      for (const button of Array.from(listEl.querySelectorAll("[data-retry]")))
+        button.addEventListener("click", () => retryAt(Number(button.getAttribute("data-retry"))))
+      onLayout()
+    }
+    const upload = (item: Item) => {
+      item.status = "uploading"
+      item.error = ""
+      render()
+      item
+        .file!.arrayBuffer()
+        .then((bytes) => {
+          if (!items.includes(item)) return
+          post("uploadAttachment", {
+            nonce: ATTACHMENT_NONCE,
+            localId: item.localId,
+            name: item.name,
+            mime: item.mime,
+            bytes,
+          })
+        })
+        .catch(() => {
+          if (!items.includes(item)) return
+          item.status = "error"
+          item.error = "Could not read image"
+          render()
+        })
+    }
+    const addFiles = (fileList: ArrayLike<File> | null | undefined) => {
+      const decisions = h.classifyAttachmentBatch(Array.from(fileList || []), {
+        currentCount: items.length,
+        maxCount: ATTACHMENT_MAX_COUNT,
+        maxBytes: ATTACHMENT_MAX_BYTES,
+        accepted: ATTACHMENT_TYPES.accepted,
+      })
+      const toUpload: Item[] = []
+      let added = false
+      for (const decision of decisions) {
+        if (decision.kind === "cap") capRejected = true
+        else if (decision.kind === "error")
+          items.push({
+            localId: "att-" + ++attachmentLocalCounter,
+            file: null,
+            name: (decision.file && decision.file.name) || "image",
+            mime: "",
+            status: "error",
+            id: "",
+            error: decision.error || "",
+            url: "",
+          })
+        else if (decision.kind === "accept") {
+          const item: Item = {
+            localId: "att-" + ++attachmentLocalCounter,
+            file: decision.file,
+            name: decision.file.name || "image",
+            mime: decision.file.type,
+            status: "uploading",
+            id: "",
+            error: "",
+            url: URL.createObjectURL(decision.file),
+          }
+          items.push(item)
+          toUpload.push(item)
+          added = true
+        }
+      }
+      render()
+      for (const item of toUpload) upload(item)
+      return added
+    }
+    const removeAt = (index: number) => {
+      const item = items[index]
+      if (!item) return
+      if (item.url) URL.revokeObjectURL(item.url)
+      items.splice(index, 1)
+      render()
+    }
+    const retryAt = (index: number) => {
+      const item = items[index]
+      if (item && item.file) upload(item)
+    }
+    const rejectUnsupported = (names: readonly string[]) => {
+      for (const name of names)
+        items.push({
+          localId: "att-" + ++attachmentLocalCounter,
+          file: null,
+          name: name || "file",
+          mime: "",
+          status: "error",
+          id: "",
+          error: "UNSUPPORTED_TYPE",
+          url: "",
+        })
+      render()
+    }
+    const handleResult = (localId: string, ok: boolean, id: string, error: string) => {
+      const item = items.find((entry) => entry.localId === localId)
+      if (!item) return
+      if (ok && id) {
+        item.status = "ready"
+        item.id = String(id)
+        item.error = ""
+      } else {
+        item.status = "error"
+        item.error = String(error || "Upload failed")
+      }
+      render()
+    }
+    const collectReady = () =>
+      items.filter((item) => item.status === "ready" && item.id).map((item) => ({ id: item.id, name: item.name }))
+    const setQueueBlocked = (value: boolean) => {
+      queueBlocked = value
+      render()
+    }
+    const destroy = () => {
+      for (const item of items) if (item.url) URL.revokeObjectURL(item.url)
+      items.length = 0
+    }
+    render()
+    return {
+      addFiles,
+      rejectUnsupported,
+      handleResult,
+      collectReady,
+      hasReady,
+      hasPending,
+      hasErrors,
+      setQueueBlocked,
+      destroy,
+    }
+  }
+
   const closeCard = () => {
     activeCard = null
+    if (activeAttachments) {
+      activeAttachments.destroy()
+      activeAttachments = null
+    }
     if (shadow) for (const el of Array.from(shadow.querySelectorAll(".card"))) el.remove()
     clearHighlight(hovered)
     clearHighlight(selected)
@@ -412,9 +631,13 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
       heading +
       '</div><textarea placeholder="' +
       placeholder +
-      '"></textarea><div class="hint">Enter to queue · ' +
+      '"></textarea><div class="chips" data-chips hidden></div>' +
+      '<div class="attach-row"><button class="attach" type="button">Attach image</button><input class="attach-input" type="file" accept="' +
+      ATTACHMENT_TYPES.accept +
+      '" multiple hidden></div>' +
+      '<div class="hint">Enter to queue · ' +
       mod +
-      "+Enter to send · Esc to cancel</div>" +
+      "+Enter to send · paste or drop an image</div>" +
       '<div class="row"><button class="cancel" type="button">Cancel</button><button class="queue" type="button">Queue</button></div>'
     root.appendChild(card)
     const place = () => {
@@ -427,26 +650,81 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
     const textarea = card.querySelector("textarea") as HTMLTextAreaElement
     const cancel = card.querySelector(".cancel") as HTMLButtonElement
     const queue = card.querySelector(".queue") as HTMLButtonElement
+    const chips = card.querySelector("[data-chips]") as HTMLElement
+    const attachButton = card.querySelector(".attach") as HTMLButtonElement
+    const attachInput = card.querySelector(".attach-input") as HTMLInputElement
+    const hintEl = card.querySelector(".hint") as HTMLElement
     activeCard = { context: c, textarea }
 
+    // One notice line, shared by the keyboard hint and by what went wrong with an image.
+    const defaultHint = hintEl.innerHTML
+    const notify = (message: string) => {
+      if (message) {
+        hintEl.textContent = message
+        hintEl.classList.add("alert")
+      } else {
+        hintEl.innerHTML = defaultHint
+        hintEl.classList.remove("alert")
+      }
+    }
+    const attachments = makeAttachments(chips, notify, place)
+    activeAttachments = attachments
+    attachButton.onclick = () => attachInput.click()
+    attachInput.addEventListener("change", () => {
+      attachments.addFiles(attachInput.files)
+      attachInput.value = ""
+    })
+    textarea.addEventListener("paste", (event) => {
+      const { images, keepTextPaste } = h.planClipboardPaste(event.clipboardData, ATTACHMENT_TYPES.accepted)
+      if (images.length && attachments.addFiles(images) && !keepTextPaste) event.preventDefault()
+    })
+    const hasFiles = (dt: DataTransfer | null) => !!dt && Array.from(dt.types || []).includes("Files")
+    card.addEventListener("dragover", (event) => {
+      if (hasFiles(event.dataTransfer)) {
+        event.preventDefault()
+        card.classList.add("is-dropping")
+      }
+    })
+    card.addEventListener("dragleave", (event) => {
+      if (event.target === card) card.classList.remove("is-dropping")
+    })
+    card.addEventListener("drop", (event) => {
+      // Every drop over the card is ours, so a dropped PDF can never navigate the frame away.
+      event.preventDefault()
+      card.classList.remove("is-dropping")
+      const { images, unsupported } = h.partitionDroppedFiles(event.dataTransfer, ATTACHMENT_TYPES.accepted)
+      if (images.length) attachments.addFiles(images)
+      if (unsupported.length) attachments.rejectUnsupported(unsupported)
+      if (!images.length && !unsupported.length && hasFiles(event.dataTransfer)) attachments.rejectUnsupported(["file"])
+    })
+
+    // Queue only when every image is settled: an upload still in flight or a failed one would be
+    // dropped silently, so the card stays open and says so.
     const tryQueue = () => {
+      if (attachments.hasPending() || attachments.hasErrors()) {
+        attachments.setQueueBlocked(true)
+        return false
+      }
+      attachments.setQueueBlocked(false)
       const prompt = textarea.value.trim()
-      if (prompt) queuePrompt(prompt, { ...c, queueKey: "" })
+      const ready = attachments.collectReady()
+      if (prompt || ready.length) queuePrompt(prompt, { ...c, queueKey: "", attachments: ready })
       closeCard()
-      return !!prompt
+      return !!(prompt || ready.length)
     }
     cancel.onclick = closeCard
     queue.onclick = () => void tryQueue()
     textarea.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault()
-        const sendNow = (event.ctrlKey || event.metaKey) && !!textarea.value.trim()
+        const sendNow = (event.ctrlKey || event.metaKey) && (!!textarea.value.trim() || attachments.hasReady())
         const queued = tryQueue()
         // postMessage delivery is ordered, so the queued prompt lands before the send.
         if (queued && sendNow) sendQueuedPrompts()
       } else if (event.key === "Escape" && !event.isComposing) {
         // Close only when there is nothing to lose.
-        if (textarea.value.trim()) return
+        if (textarea.value.trim() || attachments.hasPending() || attachments.hasErrors() || attachments.hasReady())
+          return
         event.preventDefault()
         closeCard()
       }
@@ -583,6 +861,24 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
         return
       case "restoreReviewState":
         restoreReviewState(payload.state)
+        return
+      case "attachmentResult":
+        // Only from the shell, and only for this document: a result for a chip of the previous
+        // document must not mark a new chip ready with the wrong image.
+        if (
+          !h.isTrustedAttachmentResult(
+            { source: event.source, data: payload },
+            { parentWindow: parent, nonce: ATTACHMENT_NONCE },
+          )
+        )
+          return
+        if (activeAttachments)
+          activeAttachments.handleResult(
+            String(payload.localId || ""),
+            !!payload.ok,
+            String(payload.id || ""),
+            String(payload.error || ""),
+          )
         return
     }
   })

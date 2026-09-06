@@ -67,3 +67,19 @@ describe("what the prototype is given", () => {
     expect(script).toContain(":host{all:initial")
   })
 })
+
+describe("images on the card", () => {
+  test("are captured by the card, uploaded by the shell, and applied only to the document that asked", () => {
+    const script = sdkScript({ load: 1, attachments: { maxCount: 4, maxBytes: 1024, accepted: ["image/png"] } })
+    expect(script).toContain('post("uploadAttachment"')
+    expect(script).toContain('case "attachmentResult"')
+    expect(script).toContain("isTrustedAttachmentResult(")
+    expect(script).toContain("nonce: ATTACHMENT_NONCE")
+    // The limits are the server's, threaded in, not a literal of the card's own.
+    expect(script).toContain('"maxBytes":1024')
+    // Queuing waits for every chip to settle; a drop over the card never navigates the frame.
+    expect(script).toContain("attachments.hasPending() || attachments.hasErrors()")
+    expect(script).toContain("partitionDroppedFiles(")
+    expect(script).not.toContain("fetch(")
+  })
+})

@@ -113,7 +113,12 @@ export const DesignPreviewTool = Tool.define(
 
           // Craft notes ride along with the URL: the model is reading this anyway, and nobody
           // else needs to be woken for them. Same for the kind's own checks.
-          const findings = [...DesignLint.lint(html), ...DesignKinds.check(manifest.kind, html)]
+          const findings = [
+            ...DesignLint.lint(html),
+            ...DesignKinds.check(manifest.kind, html),
+            // Render-free, and fail-open: a page that never paints its own surface can have invisible text.
+            ...(DesignLint.analyzeSelfPaint(html).painted ? [] : [DesignLint.SELF_PAINT]),
+          ]
           const notes = DesignLint.report(findings)
 
           // A missing state is a question the plan must carry, so it goes into design.json now

@@ -226,6 +226,23 @@ export const Info = Schema.Struct({
       ).annotate({
         description: "Defaults for /goal: the turn budget, and the bounds on the judge and on gate commands.",
       }),
+      design: Schema.optional(
+        Schema.Struct({
+          attachments: Schema.optional(
+            Schema.Struct({
+              max_bytes: Schema.optional(PositiveInt).annotate({ description: "Bytes one attached image may have (default: 10 MiB)" }),
+              max_per_prompt: Schema.optional(PositiveInt).annotate({ description: "Images one note may carry (default: 4)" }),
+              max_prompt_bytes: Schema.optional(PositiveInt).annotate({ description: "Bytes one note's images may total (default: 25 MiB)" }),
+              ttl_ms: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
+                description: "How long an unreferenced image is kept (default: 7 days; false keeps them)",
+              }),
+              max_disk_mb: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
+                description: "Disk the attachment store may use, in MiB (default: 512; false removes the cap)",
+              }),
+            }),
+          ).annotate({ description: "Limits on images attached to design-review notes." }),
+        }),
+      ).annotate({ description: "Design mode: the review surface and its stores." }),
       subtask_concurrency: Schema.optional(PositiveInt).annotate({
         description: "How many subtasks of one message run at the same time (default: 4)",
       }),

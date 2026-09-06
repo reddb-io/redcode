@@ -5,11 +5,13 @@ import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-even
 import { InstanceState } from "@/effect/instance-state"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Session } from "@/session/session"
-import { Context, Effect, Fiber, Layer, PubSub, Stream } from "effect"
+import { Config } from "@/config/config"
+import { Context, Effect, Fiber, Layer, PubSub, Semaphore, Stream } from "effect"
 import { createHash, randomBytes } from "node:crypto"
 import { promises as nodeFs } from "node:fs"
 import path from "path"
 import type { SessionID } from "@/session/schema"
+import { DesignAttachments } from "./attachments"
 import { DesignManifest } from "./manifest"
 import { DesignState } from "./state"
 import { DesignWatch } from "./watch"
@@ -52,6 +54,8 @@ export interface Prototype {
   readonly ended?: DesignState.Ended
   /** What was said, both ways, for the panel to show again after a reload. */
   readonly chat: readonly DesignState.ChatEntry[]
+  /** Images handed to the agent, and when. */
+  readonly delivered: readonly DesignState.Delivered[]
 }
 
 /** What a mounted shell is told as it happens. */
@@ -84,6 +88,14 @@ export interface Interface {
   readonly end: (id: string, by: DesignState.EndedBy) => Effect.Effect<Prototype | undefined>
   /** Explicitly opened again, by someone who knows it was ended. */
   readonly reopen: (id: string) => Effect.Effect<Prototype | undefined>
+  /** Images went to the agent with a send; they stay referenced for the delivery grace. */
+  readonly deliver: (id: string, attachmentIDs: readonly string[]) => Effect.Effect<void>
+  /** Every `<id>/<attachment>` the sweep must keep, across every review this machine knows. */
+  readonly referenced: () => Effect.Effect<Set<string>>
+  /** The attachment store's limits, from config. */
+  readonly attachments: () => Effect.Effect<DesignAttachments.Config>
+  /** One writer at a time in the attachment store: admission, write and sweep are one critical section. */
+  readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/DesignRegistry") {}
@@ -143,6 +155,8 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const fs = yield* FSUtil.Service
     const sessions = yield* Session.Service
+    const config = yield* Config.Service
+    const lock = yield* Semaphore.make(1)
 
     interface State {
       readonly data: Map<string, Prototype>
@@ -163,6 +177,7 @@ const layer = Layer.effect(
           revision: item.revision,
           ...(item.ended ? { ended: item.ended } : {}),
           chat: item.chat,
+          ...(item.delivered.length ? { delivered: item.delivered } : {}),
         }
         yield* writeAtomic(DesignState.file(item.root), DesignState.serialize(state))
         const raw = yield* fs.readFileStringSafe(DesignState.INDEX).pipe(Effect.orElseSucceed(() => undefined))
@@ -205,9 +220,46 @@ const layer = Layer.effect(
           token: parsed.token,
           ...(parsed.ended ? { ended: parsed.ended } : {}),
           chat: parsed.chat,
+          delivered: parsed.delivered ?? [],
         }
         return item
       }).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+
+    const attachments = Effect.fn("DesignRegistry.attachments")(function* () {
+      return DesignAttachments.resolveConfig((yield* config.get()).experimental?.design?.attachments)
+    })
+
+    /** Everything the index knows, with the sidecars' delivered lists: nothing referenced is swept. */
+    const referenced = Effect.fn("DesignRegistry.referenced")(function* () {
+      const out = new Set<string>()
+      const now = Date.now()
+      const raw = yield* fs.readFileStringSafe(DesignState.INDEX).pipe(Effect.orElseSucceed(() => undefined))
+      const index = raw ? DesignState.parseIndex(raw) : {}
+      for (const [id, entry] of Object.entries(index)) {
+        const sidecar = yield* fs.readFileStringSafe(DesignState.file(entry.root)).pipe(Effect.orElseSucceed(() => undefined))
+        const parsed = sidecar ? DesignState.parse(sidecar) : undefined
+        for (const item of parsed?.delivered ?? []) {
+          if (now - item.at <= DesignAttachments.DELIVERY_GRACE_MS) out.add(`${id}/${item.id}`)
+        }
+      }
+      return out
+    })
+
+    const sweep = Effect.gen(function* () {
+      const cfg = yield* attachments()
+      const keep = yield* referenced()
+      yield* lock.withPermits(1)(
+        Effect.promise(() =>
+          DesignAttachments.sweep(DesignAttachments.ROOT, {
+            ttlMs: cfg.ttlMs,
+            maxDiskBytes: cfg.maxDiskBytes,
+            maxObjects: cfg.maxObjects,
+            referenced: keep,
+            evictionGraceMs: cfg.evictionGraceMs,
+          }),
+        ),
+      )
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("design: attachment sweep failed", { cause })))
 
     const state = yield* InstanceState.make(
       Effect.fn("DesignRegistry.state")(function* (ctx) {
@@ -282,6 +334,16 @@ const layer = Layer.effect(
         yield* Effect.addFinalizer(() =>
           Effect.forEach([...st.pollers.values()], (fiber) => Fiber.interrupt(fiber), { discard: true }),
         )
+        // Expired and unreferenced images go at start and once an hour; nothing waits on it.
+        const sweeper = yield* Effect.forkDetach(
+          Effect.gen(function* () {
+            while (true) {
+              yield* sweep
+              yield* Effect.sleep("1 hour")
+            }
+          }),
+        )
+        yield* Effect.addFinalizer(() => Fiber.interrupt(sweeper))
         return { st, hub, publish }
       }),
     )
@@ -328,6 +390,7 @@ const layer = Layer.effect(
         ...(existing?.lastSeen !== undefined ? { lastSeen: existing.lastSeen } : {}),
         ...(existing?.ended ? { ended: existing.ended } : {}),
         chat: existing?.chat ?? [],
+        delivered: existing?.delivered ?? [],
       }
       st.data.set(id, next)
       yield* persist(next)
@@ -438,14 +501,40 @@ const layer = Layer.effect(
       })
     })
 
-    return Service.of({ register, get, forSession, touch, release, subscribe, bump, say, end, reopen })
+    const deliver = Effect.fn("DesignRegistry.deliver")(function* (id: string, attachmentIDs: readonly string[]) {
+      if (attachmentIDs.length === 0) return
+      const at = Date.now()
+      yield* update(id, (item) => ({
+        ...item,
+        delivered: [...item.delivered, ...attachmentIDs.map((aid) => ({ id: aid, at }))].slice(-DesignState.MAX_DELIVERED),
+      }))
+    })
+
+    const exclusive = <A, E, R>(effect: Effect.Effect<A, E, R>) => lock.withPermits(1)(effect)
+
+    return Service.of({
+      register,
+      get,
+      forSession,
+      touch,
+      release,
+      subscribe,
+      bump,
+      say,
+      end,
+      reopen,
+      deliver,
+      referenced,
+      attachments,
+      exclusive,
+    })
   }),
 )
 
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [EventV2Bridge.node, FSUtil.node, Session.node],
+  deps: [EventV2Bridge.node, FSUtil.node, Session.node, Config.node],
 })
 
 export * as DesignRegistry from "./registry"

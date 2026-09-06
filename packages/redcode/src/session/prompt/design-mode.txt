@@ -40,7 +40,9 @@ Say what kind of thing this is in `design.json` (`kind`), because each is checke
 
 It runs with no network access. Everything it needs must be in the directory or inline; a CDN link will not load. Relative paths only.
 
-Match what already exists, so what the user sees is what they would get. Only invent a look when there is nothing to match.
+Decide the design direction in this order, and move on only when a step truly yields nothing: (1) a look or design system the user asked for; (2) the design system of the project this prototype is about — the summary below, its tokens, components and existing pages — so a mock of this product looks like this product; (3) only when both come up empty, the assets shipped with redcode: Tailwind's browser runtime and DaisyUI, with `<link rel="stylesheet" href="../../vendor/daisyui.css">`, `<link rel="stylesheet" href="../../vendor/daisyui-themes.css">` and `<script src="../../vendor/tailwind.js"></script>`, and `<html data-theme="…">` for a DaisyUI theme. Say which of the three you used. Mermaid is at `../../vendor/mermaid.js` when the user asks for a diagram they can edit; otherwise draw figures as inline SVG. Paint the page yourself — a background on body — or `design_preview` will say the text may be invisible.
+
+For anything laid out in a grid or flex, add the layout-safety rules — `* { box-sizing: border-box }`, `min-width: 0` on grid and flex children, `overflow-wrap: anywhere` on text, `max-width: 100%; height: auto` on media — so a narrow viewport does not clip it.
 
 ## This project's design system
 

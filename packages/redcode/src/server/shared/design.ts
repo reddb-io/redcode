@@ -1,9 +1,12 @@
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Effect, FileSystem, Scope, Stream } from "effect"
+import { Cause, Effect, Exit, FileSystem, Scope, Stream } from "effect"
 import * as Sse from "effect/unstable/encoding/Sse"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { pathToFileURL } from "node:url"
+import { DesignAttachments } from "@/design/attachments"
 import { DesignRegistry } from "@/design/registry"
 import { DesignFeedback } from "@/design/feedback"
+import { DesignVendor } from "@/design/vendor"
 import { DesignRoutePath } from "@/design/route-path"
 import { DesignSDK } from "@/design/sdk"
 import { DesignServe } from "@/design/serve"
@@ -50,11 +53,45 @@ function assetPrefix(request: HttpServerRequest.HttpServerRequest, id: string) {
   return `${scheme}://${host}/design/${id}/files/`
 }
 
+/** Where the design assets we ship live, for the same policy. */
+function vendorPrefix(request: HttpServerRequest.HttpServerRequest) {
+  const host = request.headers["host"] ?? "127.0.0.1"
+  const scheme = request.headers["x-forwarded-proto"] === "https" ? "https" : "http"
+  return `${scheme}://${host}/design/vendor/`
+}
+
+/** One line a person can act on, naming the cap that was hit. Nothing was delivered. */
+function describeRejection(rejected: readonly DesignAttachments.Rejection[], caps: DesignAttachments.Config) {
+  const reasons = new Set(rejected.map((r) => r.reason))
+  const parts: string[] = []
+  const mb = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`
+  if (reasons.has("prompt-bytes-exceeded")) parts.push(`images exceed the ${mb(caps.maxPromptBytes)} per-note limit`)
+  if (reasons.has("too-many")) parts.push(`more than ${caps.maxPerPrompt} images on one note`)
+  if (reasons.has("too-many-in-request")) parts.push("too many images queued at once")
+  if (reasons.has("malformed")) parts.push("an image attachment was malformed")
+  if (reasons.has("not-found")) parts.push("an image is no longer available")
+  return `Not sent — ${parts.length ? parts.join("; ") : "some attachments could not be delivered"}. Remove or fix the image, then send again.`
+}
+
 export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) {
   return Effect.gen(function* () {
     const url = new URL(request.url, "http://localhost")
     const target = DesignRoutePath.parse(url.pathname)
     if (!target) return notFound()
+
+    // Not a prototype's: the assets every prototype may use. Public, immutable per release.
+    if (target.kind === "vendor") {
+      const asset = DesignVendor.FILES[target.name]
+      if (!asset) return notFound()
+      return HttpServerResponse.text(asset.body, {
+        headers: {
+          "content-type": asset.mime,
+          "cache-control": "public, max-age=86400",
+          "x-content-type-options": "nosniff",
+          "cross-origin-resource-policy": "same-origin",
+        },
+      })
+    }
 
     const registry = yield* DesignRegistry.Service
     const prototype = yield* registry.get(target.id)
@@ -67,6 +104,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     const authorised = presented === prototype.token
 
     if (target.kind === "shell") {
+      const caps = yield* registry.attachments()
       return HttpServerResponse.text(
         DesignShell.shellHTML({
           id: prototype.id,
@@ -74,6 +112,11 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           token: prototype.token,
           revision: prototype.revision,
           root: prototype.root,
+          attachments: {
+            maxCount: caps.maxPerPrompt,
+            maxBytes: caps.maxBytes,
+            accepted: DesignAttachments.ACCEPTED_MIME,
+          },
           ...(prototype.ended ? { ended: prototype.ended.by } : {}),
           embed: url.searchParams.get("embed") === "1",
         }),
@@ -137,6 +180,82 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       return HttpServerResponse.jsonUnsafe({ ended: ended?.ended?.by ?? "user" })
     }
 
+    if (target.kind === "attachment") {
+      if (!authorised) return forbidden()
+      const caps = yield* registry.attachments()
+      if (target.aid === undefined) {
+        // Upload: raw bytes, bounded before they are read; the type is decided by the bytes.
+        if (request.method !== "POST") return notFound()
+        if (!sameOrigin(request, url)) return forbidden()
+        if (prototype.ended) return gone(prototype.ended.by)
+        const body = yield* request.arrayBuffer.pipe(
+          Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(caps.maxBytes + 1)),
+          Effect.map((buffer) => Buffer.from(buffer)),
+          Effect.orElseSucceed(() => undefined),
+        )
+        if (body === undefined || body.length > caps.maxBytes) {
+          return HttpServerResponse.jsonUnsafe(
+            { error: `attachment exceeds the ${caps.maxBytes} byte limit` },
+            { status: 413 },
+          )
+        }
+        const keep = yield* registry.referenced()
+        const stored = yield* registry
+          .exclusive(
+            Effect.tryPromise({
+              try: () =>
+                DesignAttachments.write(DesignAttachments.ROOT, prototype.id, body, {
+                  ...caps,
+                  referenced: keep,
+                }),
+              catch: (error) => error,
+            }),
+          )
+          .pipe(Effect.exit)
+        if (Exit.isFailure(stored)) {
+          const error = Cause.squash(stored.cause)
+          const status = error instanceof DesignAttachments.StoreError ? error.status : 500
+          return HttpServerResponse.jsonUnsafe(
+            { error: error instanceof Error ? error.message : String(error) },
+            { status },
+          )
+        }
+        return HttpServerResponse.jsonUnsafe({ status: "stored", attachment: stored.value })
+      }
+      if (request.method === "DELETE") {
+        if (!sameOrigin(request, url)) return forbidden()
+        const aid = target.aid
+        const status = yield* registry.exclusive(
+          Effect.gen(function* () {
+            const keep = yield* registry.referenced()
+            if (keep.has(`${prototype.id}/${aid}`)) return "referenced"
+            const removed = yield* Effect.promise(() =>
+              DesignAttachments.remove(DesignAttachments.ROOT, prototype.id, aid),
+            )
+            return removed ? "removed" : "absent"
+          }),
+        )
+        return HttpServerResponse.jsonUnsafe({ status })
+      }
+      if (request.method !== "GET" && request.method !== "HEAD") return notFound()
+      const found = yield* Effect.promise(() =>
+        DesignAttachments.statForServe(DesignAttachments.ROOT, prototype.id, target.aid!),
+      )
+      if (!found) return notFound()
+      const bytes = yield* Effect.promise(() => Bun.file(found.file).arrayBuffer()).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )
+      if (!bytes) return notFound()
+      return HttpServerResponse.uint8Array(new Uint8Array(bytes), {
+        headers: {
+          "content-type": found.mime,
+          "cache-control": "private, max-age=300",
+          "x-content-type-options": "nosniff",
+          "cross-origin-resource-policy": "same-origin",
+        },
+      })
+    }
+
     if (target.kind === "feedback") {
       if (!authorised) return forbidden()
       if (request.method !== "POST") return notFound()
@@ -162,8 +281,42 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
         snapshot?: unknown
         end?: unknown
       }
-      const items = Array.isArray(parsed.items) ? DesignFeedback.normalize(parsed.items) : []
+      const rawItems = Array.isArray(parsed.items) ? parsed.items : []
+      const items = DesignFeedback.normalize(rawItems)
       if (items.length === 0) return HttpServerResponse.jsonUnsafe({ error: "Nothing to say" }, { status: 400 })
+
+      // Every image reference becomes what is on disk, or the whole send is refused: the browser
+      // keeps its queue and is told which cap was hit.
+      const caps = yield* registry.attachments()
+      const kept = rawItems.filter(
+        (item) => item && typeof item === "object" && DesignFeedback.normalize([item]).length === 1,
+      )
+      const images = yield* Effect.promise(() =>
+        DesignAttachments.resolveAll(
+          DesignAttachments.ROOT,
+          prototype.id,
+          kept.slice(0, DesignFeedback.LIMITS.items) as { attachments?: unknown }[],
+          caps,
+        ),
+      )
+      if (images.rejected.length) {
+        return HttpServerResponse.jsonUnsafe(
+          {
+            error: describeRejection(images.rejected, caps),
+            rejected: images.rejected.slice(0, 4),
+            caps: { maxPerPrompt: caps.maxPerPrompt, maxPromptBytes: caps.maxPromptBytes, maxBytes: caps.maxBytes },
+          },
+          { status: 400 },
+        )
+      }
+      const files = images.resolved.flatMap((own, index) =>
+        own.map((image, n) => ({
+          type: "file" as const,
+          mime: image.mime,
+          filename: image.name ?? `design-note-${index + 1}-${n + 1}.${image.id.slice(-4).replace(".", "")}`,
+          url: pathToFileURL(image.path).href,
+        })),
+      )
 
       const viewport =
         typeof parsed.viewport?.width === "number" && typeof parsed.viewport?.height === "number"
@@ -190,6 +343,10 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
         text: [...said, ...(notes > 0 ? [`(${notes} annotation${notes === 1 ? "" : "s"} sent)`] : [])].join("\n"),
       })
       if (parsed.end === true) yield* registry.end(prototype.id, "user")
+      yield* registry.deliver(
+        prototype.id,
+        images.resolved.flat().map((image) => image.id),
+      )
 
       const prompt = yield* SessionPrompt.Service
       const scope = yield* Scope.Scope
@@ -198,7 +355,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           sessionID: prototype.sessionID,
           // The words first, then the references they mention, as data: URLs — nothing is
           // written to the worktree on a browser's say-so.
-          parts: [{ type: "text", text }, ...DesignFeedback.attachments(items)],
+          parts: [{ type: "text", text }, ...DesignFeedback.attachments(items), ...files],
         })
         .pipe(
           Effect.catchCause((cause) => Effect.logError("design feedback could not be delivered", { cause })),
@@ -216,7 +373,10 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     const mime = DesignServe.mimeFor(file)!
     const headers: Record<string, string> = {
       "content-type": mime,
-      "content-security-policy": DesignServe.prototypeCSP({ assets: assetPrefix(request, prototype.id) }),
+      "content-security-policy": DesignServe.prototypeCSP({
+        assets: assetPrefix(request, prototype.id),
+        vendor: vendorPrefix(request),
+      }),
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "cross-origin-resource-policy": "same-origin",
@@ -225,7 +385,18 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
 
     if (mime.startsWith("text/html")) {
       const html = yield* Effect.promise(() => Bun.file(file).text())
-      return HttpServerResponse.text(DesignSDK.injectSDK(html, { load: prototype.revision }), { headers })
+      const caps = yield* registry.attachments()
+      return HttpServerResponse.text(
+        DesignSDK.injectSDK(html, {
+          load: prototype.revision,
+          attachments: {
+            maxCount: caps.maxPerPrompt,
+            maxBytes: caps.maxBytes,
+            accepted: DesignAttachments.ACCEPTED_MIME,
+          },
+        }),
+        { headers },
+      )
     }
 
     const bytes = yield* Effect.promise(() => Bun.file(file).arrayBuffer())

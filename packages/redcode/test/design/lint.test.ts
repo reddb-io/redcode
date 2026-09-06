@@ -88,3 +88,47 @@ describe("design lint, the second set", () => {
     expect(ids(`<b style="color:var(--accent)">x</b><i style="color:var(--accent)">y</i>`)).toEqual([])
   })
 })
+
+describe("whether the page paints itself", () => {
+  const page = (bodyAttrs: string, head = "", body = "<p>Report text</p>") =>
+    `<!doctype html><html><head>${head}</head><body${bodyAttrs ? ` ${bodyAttrs}` : ""}>${body}</body></html>`
+  const paint = DesignLint.analyzeSelfPaint
+
+  test("no styling, element colours only, a wrapper background, or look-alike selectors are unpainted", () => {
+    expect(paint(page("")).painted).toBe(false)
+    expect(paint(page("", "<style>h1 { color: #f8fafc } p { color: #e2e8f0 }</style>")).painted).toBe(false)
+    expect(paint(page("", "<style>.board { background: #0b1020 }</style>")).painted).toBe(false)
+    expect(
+      paint(page("", "<style>.body-card { background: #fff } #html-view { background: #000 }</style>")).painted,
+    ).toBe(false)
+  })
+
+  test("a root background rule paints it, nested in a media query, minified or grouped as well", () => {
+    expect(paint(page("", "<style>body { background: #0b1020; color: #e2e8f0 }</style>"))).toEqual({
+      painted: true,
+      signal: "root-background-rule",
+    })
+    expect(paint(page("", "<style>:root { background-color: #fff }</style>")).painted).toBe(true)
+    expect(paint(page("", "<style>html { background: canvas }</style>")).painted).toBe(true)
+    expect(paint(page("", "<style>* { background: #fff }</style>")).painted).toBe(true)
+    expect(
+      paint(page("", "<style>@media (prefers-color-scheme: dark) { body { background: #020617 } }</style>")).painted,
+    ).toBe(true)
+    expect(paint(page("", "<style>html,body{margin:0;background:#111;color:#eee}</style>")).painted).toBe(true)
+    expect(paint(page("", "<style>body.dark{background:var(--bg)}</style>")).painted).toBe(true)
+  })
+
+  test("a theme attribute, a background class, an inline background, a stylesheet, or the Tailwind runtime paints it", () => {
+    expect(paint(`<!doctype html><html data-theme="luxury"><body><p>x</p></body></html>`)).toEqual({
+      painted: true,
+      signal: "data-theme",
+    })
+    expect(paint(page(`class="bg-base-100 text-base-content"`)).signal).toBe("background-class")
+    expect(paint(page(`class="min-h-screen dark:bg-slate-900"`)).painted).toBe(true)
+    expect(paint(page(`style="background: #111"`)).signal).toBe("inline-background")
+    expect(paint(page("", '<link rel="stylesheet" href="./app.css">')).signal).toBe("stylesheet-link")
+    expect(paint(page("", '<script src="../../vendor/tailwind.js"></script>')).signal).toBe("tailwind-runtime")
+    expect(paint(page("", '<meta name="color-scheme" content="dark light">')).signal).toBe("color-scheme")
+    expect(paint(page("", "<style>@import url(theme.css);</style>")).signal).toBe("css-import")
+  })
+})

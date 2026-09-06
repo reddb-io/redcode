@@ -123,6 +123,57 @@ function gradients(html: string) {
   return html.match(/linear-gradient\([^)]*\)/gi) ?? []
 }
 
+const ROOT_TAG_RE = /<(?:html|body)\b([^>]*)>/gi
+const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi
+const CSS_RULE_RE = /([^{}]+)\{([^{}]*)\}/g
+const ROOT_SELECTOR_TOKEN_RE = /(^|[\s,>~+])(html|body|:root|\*)(?![\w-])/i
+
+const attrValue = (attrs: string, name: string) => {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"))
+  return match ? (match[1] ?? match[2] ?? match[3] ?? null) : null
+}
+
+/** The finding `design_preview` adds when `analyzeSelfPaint` says the page never paints itself. */
+export const SELF_PAINT: Finding = {
+  id: "self-paint",
+  message:
+    "The page never paints its own surface: no background on html, body or :root, no bg-* class or data-theme on them, and no stylesheet that could set one. Text that assumes a dark or light host can render invisible.",
+  fix: "Set an explicit background and readable text on body (or html / :root).",
+}
+
+/**
+ * Whether the page paints its own surface. A prototype that never sets a background on html, body
+ * or :root renders over whatever hosts it, and light text on an assumed dark surface can be
+ * invisible. Fails open — any stylesheet link, @import, Tailwind runtime, data-theme, bg-* class
+ * or color-scheme counts as painted — because a wrong note on every open costs more than a miss.
+ */
+export function analyzeSelfPaint(html: string): { painted: boolean; signal: string | null } {
+  const source = typeof html === "string" ? html : ""
+  if (/<link\b[^>]*\brel\s*=\s*["']?[^"'>]*stylesheet/i.test(source))
+    return { painted: true, signal: "stylesheet-link" }
+  if (/<script\b[^>]*\bsrc\s*=\s*["']?[^"'>]*tailwind/i.test(source))
+    return { painted: true, signal: "tailwind-runtime" }
+  if (/<meta\b[^>]*\bname\s*=\s*["']?color-scheme/i.test(source)) return { painted: true, signal: "color-scheme" }
+  for (const [, attrs] of source.matchAll(ROOT_TAG_RE)) {
+    if (/\bdata-theme\s*=/i.test(attrs!)) return { painted: true, signal: "data-theme" }
+    const className = attrValue(attrs!, "class")
+    if (className && /(^|[^\w-])bg-/i.test(className)) return { painted: true, signal: "background-class" }
+    const style = attrValue(attrs!, "style")
+    if (style && /background/i.test(style)) return { painted: true, signal: "inline-background" }
+    if (style && /color-scheme\s*:/i.test(style)) return { painted: true, signal: "color-scheme" }
+  }
+  for (const [, css] of source.matchAll(STYLE_BLOCK_RE)) {
+    const stripped = css!.replace(/\/\*[\s\S]*?\*\//g, "")
+    if (/@import\b/i.test(stripped)) return { painted: true, signal: "css-import" }
+    if (/color-scheme\s*:/i.test(stripped)) return { painted: true, signal: "color-scheme" }
+    for (const [, selector, declarations] of stripped.matchAll(CSS_RULE_RE)) {
+      if (!/background/i.test(declarations!)) continue
+      if (ROOT_SELECTOR_TOKEN_RE.test(selector!)) return { painted: true, signal: "root-background-rule" }
+    }
+  }
+  return { painted: false, signal: null }
+}
+
 /** Every rule is independent; adding one means appending here. At most one finding per rule. */
 export function lint(raw: string): Finding[] {
   const out: Finding[] = []

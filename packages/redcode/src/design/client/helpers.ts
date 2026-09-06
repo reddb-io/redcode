@@ -374,6 +374,159 @@ export function mermaidNodeFrom(el: AnyEl, selectorFor: (el: AnyEl) => string): 
   }
 }
 
+// --- attachments ---------------------------------------------------------------------------------
+// The decisions a card or a composer makes about picked, dropped and pasted files, kept pure so
+// both surfaces decide the same way and a test can drive them without a browser.
+
+/** "" when the size is fine; otherwise the line the chip shows. Decided before the file is read. */
+export function attachmentSizeError(size: unknown, maxBytes: unknown): string {
+  const cap = Number(maxBytes)
+  if (!Number.isFinite(cap) || cap <= 0) return ""
+  const n = Number(size)
+  if (!Number.isFinite(n) || n <= cap) return ""
+  const limit = cap >= 1024 * 1024 ? Math.round(cap / (1024 * 1024)) + " MB" : Math.round(cap / 1024) + " KB"
+  return "Image is larger than the " + limit + " limit"
+}
+
+/**
+ * The fate of a whole batch in one pass, so the chips render once: `skip` (wrong type), `error`
+ * (too big, with the line), `cap` (would exceed the per-note count) or `accept`. The count cap is
+ * honoured across the batch, not reset per file.
+ */
+export function classifyAttachmentBatch(
+  files: ArrayLike<any> | null | undefined,
+  options: { currentCount?: number; maxCount?: number; maxBytes?: number; accepted?: Record<string, boolean> } = {},
+): { kind: "skip" | "error" | "cap" | "accept"; file?: any; error?: string }[] {
+  const { currentCount = 0, maxCount = Infinity, maxBytes = 0, accepted = {} } = options
+  const decisions: { kind: "skip" | "error" | "cap" | "accept"; file?: any; error?: string }[] = []
+  let count = currentCount
+  for (const file of Array.from(files || [])) {
+    if (!file || !accepted[file.type]) {
+      decisions.push({ kind: "skip" })
+      continue
+    }
+    const error = attachmentSizeError(file.size, maxBytes)
+    if (error) {
+      decisions.push({ kind: "error", error, file })
+      continue
+    }
+    if (count >= maxCount) {
+      decisions.push({ kind: "cap" })
+      continue
+    }
+    count += 1
+    decisions.push({ kind: "accept", file })
+  }
+  return decisions
+}
+
+/** A drop or paste split into the images to attach and the names of what cannot be; both halves always reported. */
+export function partitionDroppedFiles(
+  dataTransfer: { files?: ArrayLike<any>; items?: ArrayLike<any> } | null | undefined,
+  acceptedMime: Record<string, boolean>,
+): { images: any[]; unsupported: string[] } {
+  const accepted = acceptedMime || {}
+  const images: any[] = []
+  const unsupported: string[] = []
+  if (!dataTransfer) return { images, unsupported }
+  const files = Array.from(dataTransfer.files || []).filter(Boolean)
+  for (const file of files) {
+    if (accepted[file.type]) images.push(file)
+    else unsupported.push(file.name || "file")
+  }
+  if (!files.length) {
+    // Pasted screenshots arrive as items, not files, in some browsers.
+    for (const item of Array.from(dataTransfer.items || [])) {
+      if (!item || item.kind !== "file") continue
+      if (accepted[item.type]) {
+        const file = item.getAsFile()
+        if (file) images.push(file)
+      } else unsupported.push("file")
+    }
+  }
+  return { images, unsupported }
+}
+
+/** One source for every surface's filter and `accept` attribute, so none offers a type another refuses. */
+export function acceptedImageTypes(list: readonly string[] | null | undefined): {
+  mimes: string[]
+  accepted: Record<string, boolean>
+  accept: string
+} {
+  const named = (Array.isArray(list) ? list : []).map(String).filter(Boolean)
+  const mimes = named.length ? named : ["image/png", "image/jpeg", "image/webp"]
+  const accepted: Record<string, boolean> = {}
+  for (const mime of mimes) accepted[mime] = true
+  return { mimes, accepted, accept: mimes.join(",") }
+}
+
+/**
+ * A paste over a textarea: the images to attach, and whether the browser's own text paste stays.
+ * A screenshot pasted alone must not also drop placeholder text in; a copied file's name or path
+ * is placeholder text too. Real text beside an image is a mixed paste, and both land.
+ */
+export function planClipboardPaste(
+  clipboardData:
+    | { files?: ArrayLike<any>; items?: ArrayLike<any>; getData?: (type: string) => string }
+    | null
+    | undefined,
+  acceptedMime: Record<string, boolean>,
+): { images: any[]; keepTextPaste: boolean } {
+  const { images } = partitionDroppedFiles(clipboardData, acceptedMime)
+  const text = clipboardData && clipboardData.getData ? clipboardData.getData("text/plain") : ""
+  const lines = String(text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const names = images.map((file) => String((file && file.name) || "")).filter(Boolean)
+  const keepTextPaste =
+    lines.length > 0 &&
+    !(
+      names.length > 0 &&
+      lines.every((line) =>
+        names.some((name) => line === name || line.endsWith("/" + name) || line.endsWith("\\" + name)),
+      )
+    )
+  return { images, keepTextPaste }
+}
+
+/**
+ * Whether an upload result may be applied to this document's chips: it must come from the shell,
+ * and carry this document's nonce, compared by exact string identity. Chip ids restart on every
+ * load, so a result still in flight across a reload could otherwise mark a new chip ready with the
+ * previous document's image.
+ */
+export function isTrustedAttachmentResult(
+  event: { source?: unknown; data?: { nonce?: unknown } } | null | undefined,
+  context: { parentWindow?: unknown; nonce?: string } = {},
+): boolean {
+  if (!event || !context.parentWindow || event.source !== context.parentWindow) return false
+  const expected = context.nonce
+  if (typeof expected !== "string" || !expected) return false
+  const actual = ((event.data || {}) as { nonce?: unknown }).nonce
+  return typeof actual === "string" && actual === expected
+}
+
+/** The one notice line a card or composer shows about its images, derived on every render. */
+export function deriveAttachmentNoticeState(
+  state: {
+    itemCount?: number
+    maxCount?: number
+    capRejected?: boolean
+    queueBlocked?: boolean
+    hasPending?: boolean
+    hasErrors?: boolean
+  } = {},
+): string {
+  const itemCount = Number(state.itemCount) || 0
+  const maxCount = Number(state.maxCount) || 0
+  if (state.queueBlocked && state.hasPending) return "Waiting for an image to finish uploading…"
+  if (state.queueBlocked && state.hasErrors) return "An image couldn't be attached. Retry or remove it before queuing."
+  if (state.capRejected && maxCount > 0 && itemCount >= maxCount)
+    return "You can attach up to " + maxCount + " image" + (maxCount === 1 ? "" : "s") + "."
+  return ""
+}
+
 /** Every helper above, in the order the bundle declares them. */
 export const HELPERS = [
   isModeToggleHotkeyEvent,
@@ -399,4 +552,11 @@ export const HELPERS = [
   readNodeLabel,
   mermaidNodeElement,
   mermaidNodeFrom,
+  attachmentSizeError,
+  classifyAttachmentBatch,
+  partitionDroppedFiles,
+  acceptedImageTypes,
+  planClipboardPaste,
+  isTrustedAttachmentResult,
+  deriveAttachmentNoticeState,
 ] as const

@@ -74,14 +74,14 @@ export function resolve(root: string, requestPath: string): string | undefined {
  * nothing, so inline is the only script mode that can work — which suits model-generated HTML,
  * and is harmless precisely because `connect-src 'none'` means the code it runs can reach nothing.
  */
-export function prototypeCSP(input: { assets: string }) {
+export function prototypeCSP(input: { assets: string; vendor?: string }) {
   return [
     "sandbox allow-scripts allow-forms allow-modals allow-popups",
     "default-src 'none'",
-    `script-src 'unsafe-inline' blob: ${input.assets}`,
-    `style-src 'unsafe-inline' ${input.assets}`,
+    `script-src 'unsafe-inline' blob: ${input.assets}${input.vendor ? ` ${input.vendor}` : ""}`,
+    `style-src 'unsafe-inline' ${input.assets}${input.vendor ? ` ${input.vendor}` : ""}`,
     `img-src data: blob: ${input.assets}`,
-    `font-src data: ${input.assets}`,
+    `font-src data: ${input.assets}${input.vendor ? ` ${input.vendor}` : ""}`,
     `media-src data: blob: ${input.assets}`,
     "connect-src 'none'",
     "form-action 'none'",
