@@ -1,5 +1,21 @@
 # @reddb-io/redcode-tui
 
+## 1.20.0
+
+### Minor Changes
+
+- e2002a5: `/goal` in the TUI and the app
+
+  `/goal` opens a prompt for the definition of done; `/goal-pause`, `/goal-resume`, `/goal-drop` do what they say. The TUI footer shows `goal · turn 3/20`, or the reason it is paused or blocked; the app shows the same line above the composer, with the objective.
+
+### Patch Changes
+
+- Updated dependencies [a4e53f8]
+- Updated dependencies [f53faea]
+  - @reddb-io/redcode-core@1.21.0
+  - @reddb-io/redcode-sdk@1.19.0
+  - @reddb-io/redcode-plugin@1.18.19
+
 ## 1.19.1
 
 ### Patch Changes
