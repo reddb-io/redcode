@@ -634,7 +634,7 @@ export function Session() {
           variant: goal ? "success" : "warning",
           message: goal
             ? `Goal set · ${goal.turns.max} turns. Ctrl+C pauses it; /goal-resume continues.`
-            : "Could not set the goal. Is REDCODE_EXPERIMENTAL_GOAL on?",
+            : "Could not set the goal.",
           duration: 4000,
         })
       },

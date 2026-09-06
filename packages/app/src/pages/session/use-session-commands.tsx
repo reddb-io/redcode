@@ -497,7 +497,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
                 } else {
                   showToast({
                     title: language.t("command.session.goal"),
-                    description: "Could not set the goal. Is REDCODE_EXPERIMENTAL_GOAL on?",
+                    description: "Could not set the goal.",
                   })
                 }
               }}
