@@ -1,5 +1,42 @@
 # opencode
 
+## 0.20.0
+
+### Minor Changes
+
+- fce66aa: Design mode: real image attachments, a self-paint check, and Tailwind, DaisyUI and Mermaid shipped for prototypes
+
+  Images attached to a note — from the composer or from the card on an element — are uploaded to a content-addressed store under the data directory (owner-only files, magic bytes decide the type, PNG/JPEG/WebP only), and reach the agent as files on disk. Limits are configurable under `experimental.design.attachments`: 10 MiB per image, 4 per note, 25 MiB per note, a 7-day TTL and a 512 MiB quota swept hourly without ever touching an image a turn may still be reading. A send whose images cannot be honoured is refused whole, and the page says which cap was hit. `design_preview` adds a note when a page never paints its own surface, since text styled for an assumed dark or light host can be invisible. Prototypes have no network, so redcode now serves Tailwind's browser runtime, DaisyUI (with its themes) and Mermaid at `/design/vendor/`, and the prompt states the design-direction rule: what the user asked for, then the project's own design system, then these.
+
+- 8993328: Design mode: a self-contained export, and the review from another device
+
+  `design_export` (and ⋮ → Export standalone HTML on the review page) writes the prototype as one HTML file with its own stylesheets, classic scripts, images, fonts and media inlined, along with the Tailwind, DaisyUI and Mermaid redcode serves, so it opens from disk or anywhere with no redcode running. Remote references are left for the browser; nothing is fetched, and every local read is confined to the prototype directory by real path, so a symlink cannot carry an outside file into a page that may be shared. What could not be inlined is listed for the agent and counted for the person. The transform is lavish-axi's export bundler, vendored whole with its tests. Caps under `experimental.design.export` (10 MB per asset, 25 MB per export). When the server listens beyond loopback, `design_preview` prints the URL a phone on the same network can open and the page offers it under ⋮; the review surface now answers only under names that are this machine (loopback, the bound hostname, its addresses and its own name, plus `experimental.design.hosts`), so a page elsewhere that resolves its name here cannot drive it.
+
+- 6e2e844: Design mode: a passive layout audit with an inbox the person triages
+
+  The prototype now audits its own layout after fonts, geometry and finite animations settle: text clipped by its container, controls cut off or outside the viewport, text off-screen, a page that scrolls sideways, text covered by an opaque sibling. Findings survive only if two samples agree, and every pass reports its own completeness. They land in a "Layout issues" inbox on the review page — badge, drawer, select, queue, dismiss, reveal — and nothing in it reaches the agent until the person queues it, when it becomes one ordinary note. A warning is cleared only by a complete pass on a newer revision that no longer finds it; a failed pass, a different viewport or a reload in flight never clears anything, and a dismissal lasts one revision. Every frame load is named by a token so a pass from a replaced frame is discarded. The page holds the prototype behind a short curtain until its first pass (`experimental.design.gate`, `gate_timeout`, or `?gate=0` for one tab), asks the server whether the document can be served when the frame stays silent, and the one report that does wake the agent unasked is a prototype that cannot be shown at all (`<artifact-failures>`). Viewport classes can be narrowed with `experimental.design.viewports`; a class left out has its warnings marked obsolete rather than resolved.
+
+- 448242c: Design mode: playbooks on demand
+
+  A new `design_playbook` tool hands the agent lavish's seven playbooks — diagram, table, comparison, plan, code, input (collecting answers inside the page), slides — rewritten for redcode's review page and a prototype that has no network. The mode's prompt carries the router (open every playbook that matches before writing HTML) and the playbook itself is read on the turn that needs it, so the prompt stays short.
+
+- 89356bb: Design mode: the conversation, live reload, ending the review, and a sheet on the phone
+
+  The review page is now a conversation: what you send and what the agent replies, queued notes as pills, Send to Agent, Hold, and Send & End; a menu with the prototype's path, reload, a DOM snapshot copy, and End review. A change on disk reloads the prototype while someone is looking, and the page keeps the person's place, their unsent card text, and answers inside `data-redcode-question` across that reload — a note whose element disappears for two revisions is handed back as text, never lost. Everything a person wrote survives a reload of the page itself. The server streams reloads, the agent's replies and presence over `/design/:id/events`; who ended the review is remembered, a person's end is not reopened by the agent unless asked (`design_preview` gains `reopen`), and `design_exit` ends the review as the agent. The review's state lives in a sidecar beside the prototype and an index in the data directory, so a restarted server still knows an open tab. Below 860px the panel becomes a sheet raised from a dock.
+
+- c7509de: Design mode reviews like lavish: annotate or explore, text ranges, table cells, Mermaid nodes
+
+  The review client is now the lavish-axi loop, natively. Annotate mode is on by default (Cmd/Ctrl+I toggles explore; alt-click still annotates there); native controls keep working. A note can anchor to a text selection (with range anchors), a table cell (named by its visible row and column when that is provable), or a Mermaid node (by the diagram's own ids), and the agent reads each as such. Artifacts get `window.redcodeDesign` (`window.lavish` as an alias) with `queuePrompt`, `sendQueuedPrompts`, `endSession`, `setStatus`, `snapshot`, and `data-redcode-action` / `data-redcode-question` (lavish's names accepted too); an unsent answer for the same control replaces the earlier one. A send carries a bounded DOM snapshot after the notes, and can end the review. The shell replays scroll position and an unsent card draft after the prototype reloads, and adopts the prototype's title and icon.
+
+- 3a6f023: Design mode: Mermaid diagrams open as whiteboards
+
+  Every rendered diagram in a `.mermaid` (or `data-redcode-mermaid`) container gets an Excalidraw whiteboard beside it, and a Fullscreen action that opens the same one over the page: converted from the Mermaid source, drawn on and rearranged, autosaved beside the review's own state, and queued as one ordinary note carrying a summary of what changed (added, removed, moved, relabeled, drawn) plus the edited scene and a PNG preview on disk. The agent edits the Mermaid source in response; nothing is ever converted back. A scene saved for an older version of a diagram is never merged silently: the person chooses between re-converting and keeping their edits. The frames run sandboxed with no origin and no server access; the review page does every read and write, and only for a frame that proved a channel token minted for this prototype and its descent from the prototype frame. The bundle (Excalidraw, the converter with its exactly pinned Mermaid, React) is not in the binary: a release ships it as `redcode-whiteboard-<version>.tar.gz`, fetched into the data directory the first time a review needs it (`REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` to never fetch, `REDCODE_WHITEBOARD_DIR` to point at a build); a source checkout builds it with `bun run build:whiteboard`. Until it is there, diagrams stay as they are.
+
+### Patch Changes
+
+- @reddb-io/redcode-server@1.18.25
+- @reddb-io/redcode-tui@1.21.1
+
 ## 0.19.0
 
 ### Minor Changes

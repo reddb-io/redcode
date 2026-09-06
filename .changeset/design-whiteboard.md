@@ -1,7 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-Design mode: Mermaid diagrams open as whiteboards
-
-Every rendered diagram in a `.mermaid` (or `data-redcode-mermaid`) container gets an Excalidraw whiteboard beside it, and a Fullscreen action that opens the same one over the page: converted from the Mermaid source, drawn on and rearranged, autosaved beside the review's own state, and queued as one ordinary note carrying a summary of what changed (added, removed, moved, relabeled, drawn) plus the edited scene and a PNG preview on disk. The agent edits the Mermaid source in response; nothing is ever converted back. A scene saved for an older version of a diagram is never merged silently: the person chooses between re-converting and keeping their edits. The frames run sandboxed with no origin and no server access; the review page does every read and write, and only for a frame that proved a channel token minted for this prototype and its descent from the prototype frame. The bundle (Excalidraw, the converter with its exactly pinned Mermaid, React) is not in the binary: a release ships it as `redcode-whiteboard-<version>.tar.gz`, fetched into the data directory the first time a review needs it (`REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` to never fetch, `REDCODE_WHITEBOARD_DIR` to point at a build); a source checkout builds it with `bun run build:whiteboard`. Until it is there, diagrams stay as they are.
