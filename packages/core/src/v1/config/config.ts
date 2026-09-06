@@ -252,6 +252,20 @@ export const Info = Schema.Struct({
           gate_timeout: Schema.optional(PositiveInt).annotate({
             description: "Milliseconds the gate may hold the prototype before revealing it anyway (default: 12000, at most 60000).",
           }),
+          export: Schema.optional(
+            Schema.Struct({
+              max_asset_bytes: Schema.optional(PositiveInt).annotate({
+                description: "Bytes one local asset may have to be inlined into an export (default: 10 MB)",
+              }),
+              max_bundle_bytes: Schema.optional(PositiveInt).annotate({
+                description: "Bytes all inlined assets of one export may total (default: 25 MB)",
+              }),
+            }),
+          ).annotate({ description: "Limits on the self-contained HTML export." }),
+          hosts: Schema.optional(Schema.Array(Schema.String)).annotate({
+            description:
+              "Extra Host names the review surface answers to, beyond loopback, the bound hostname, this machine's addresses and its own name (a DNS name you point at this machine, say).",
+          }),
         }),
       ).annotate({ description: "Design mode: the review surface and its stores." }),
       subtask_concurrency: Schema.optional(PositiveInt).annotate({

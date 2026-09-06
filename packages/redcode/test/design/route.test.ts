@@ -627,3 +627,40 @@ describe("the passive layout inbox", () => {
     }),
   )
 })
+
+describe("the export and the names the surface answers to", () => {
+  it.instance("hands back one self-contained file, named, with what did not fit in the headers", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "café deck", {
+        "index.html": '<html><head><link rel="stylesheet" href="s.css"></head><body><img src="missing.png"></body></html>',
+        "s.css": "h1{color:blue}",
+      })
+      expect((yield* call(`/design/${prototype.id}/export`)).status).toBe(403)
+      const response = yield* call(`/design/${prototype.id}/export`, {
+        headers: { "x-redcode-design-token": prototype.token },
+      })
+      expect(response.status).toBe(200)
+      expect(String(response.headers["content-disposition"])).toContain('filename="caf_ deck.export.html"')
+      expect(String(response.headers["content-disposition"])).toContain("filename*=UTF-8''caf%C3%A9%20deck.export.html")
+      expect(response.headers["x-redcode-export-warning-count"]).toBe("1")
+      expect(String(response.headers["content-security-policy"])).toContain("sandbox allow-scripts")
+      const html = yield* bodyOf(response)
+      expect(html).toContain("<style>h1{color:blue}</style>")
+      // Nothing of the review rides along: no SDK, no token.
+      expect(html).not.toContain("redcode-design")
+      expect(html).not.toContain(prototype.token)
+    }),
+  )
+
+  it.instance("answers only under a name that is this machine", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "rebind", { "index.html": "<html></html>" })
+      const evil = yield* call(`/design/${prototype.id}`, { headers: { host: "evil.example:4096" } })
+      expect(evil.status).toBe(403)
+      const ours = yield* call(`/design/${prototype.id}`, { headers: { host: "localhost:4096" } })
+      expect(ours.status).toBe(200)
+    }),
+  )
+})

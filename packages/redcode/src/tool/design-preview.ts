@@ -9,6 +9,7 @@ import { DesignStates } from "@/design/states"
 import { DesignKinds } from "@/design/kinds"
 import { DesignManifest } from "@/design/manifest"
 import { DesignLayoutWarnings } from "@/design/layout-warnings"
+import { DesignHost } from "@/design/host"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 
@@ -92,6 +93,10 @@ export const DesignPreviewTool = Tool.define(
           const { Server } = yield* Effect.promise(() => import("../server/server"))
           const base = Server.url?.toString().replace(/\/$/, "") ?? "http://localhost:4096"
           const url = `${base}/design/${prototype.id}`
+          // Reachable from a phone only when the server listens beyond loopback (`redcode serve
+          // --hostname 0.0.0.0`, say); then the same review is one URL away on the same network.
+          const network = DesignHost.networkURL(Server.url)
+          const networkUrl = network ? `${network}/design/${prototype.id}` : undefined
 
           // Opened for the person, not for us: if the browser refuses, the URL in the output is
           // still the whole answer, so a failure here must not fail the tool.
@@ -168,6 +173,7 @@ export const DesignPreviewTool = Tool.define(
             metadata,
             output: [
               `Prototype "${prototype.name}" (${manifest.kind}) is open at ${url} (revision ${prototype.revision}).`,
+              ...(networkUrl ? [`On another device on the same network: ${networkUrl}`] : []),
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
               `Call design_preview again after each revision.`,
               ...(stale ? ["", stale] : []),

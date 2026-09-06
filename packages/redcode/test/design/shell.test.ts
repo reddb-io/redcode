@@ -198,3 +198,17 @@ describe("the passive layout inbox and the curtain", () => {
     expect(() => new Function(script)).not.toThrow()
   })
 })
+
+describe("export and another device", () => {
+  test("exports from the menu as a download, and offers the network URL only when there is one", () => {
+    expect(html).toContain('id="exportHtml"')
+    expect(html).toContain('fetch(base + "/export"')
+    expect(html).toContain("x-redcode-export-warning-count")
+    expect(html).toContain('"networkUrl":""')
+    const reachable = shellHTML({ id: "p1", name: "n", token: "t", revision: 1, networkUrl: "http://10.0.0.5:4096/design/p1" })
+    expect(reachable).toContain('"networkUrl":"http://10.0.0.5:4096/design/p1"')
+    expect(reachable).toContain('id="otherDevice"')
+    const script = reachable.slice(reachable.indexOf("<script>") + 8, reachable.lastIndexOf("</script>"))
+    expect(() => new Function(script)).not.toThrow()
+  })
+})

@@ -26,6 +26,8 @@ export type Target =
   | { readonly kind: "warnings"; readonly id: string; readonly action?: "queue" | "dismiss" }
   /** The prototype could not be shown at all. The one report that does wake the agent. */
   | { readonly kind: "failures"; readonly id: string }
+  /** The prototype as one self-contained file. */
+  | { readonly kind: "export"; readonly id: string }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -52,6 +54,7 @@ export function parse(pathname: string): Target | undefined {
   if (tail === "/layout-warnings/queue") return { kind: "warnings", id, action: "queue" }
   if (tail === "/layout-warnings/dismiss") return { kind: "warnings", id, action: "dismiss" }
   if (tail === "/artifact-failures") return { kind: "failures", id }
+  if (tail === "/export") return { kind: "export", id }
   const attachment = /^\/attachments\/([0-9a-f]{64}\.(?:png|jpg|webp))$/.exec(tail)
   if (attachment) return { kind: "attachment", id, aid: attachment[1]! }
   // The `/files/` prefix is what makes relative asset paths inside a prototype resolve back into

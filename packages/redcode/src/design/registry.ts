@@ -12,6 +12,7 @@ import { promises as nodeFs } from "node:fs"
 import path from "path"
 import type { SessionID } from "@/session/schema"
 import { DesignAttachments } from "./attachments"
+import { DesignExport } from "./export"
 import { DesignLayoutWarnings } from "./layout-warnings"
 import { DesignManifest } from "./manifest"
 import { DesignState } from "./state"
@@ -83,6 +84,8 @@ export interface Settings {
   readonly viewports: readonly DesignLayoutWarnings.ViewportClass[]
   readonly gate: boolean
   readonly gateTimeoutMs: number
+  /** Host names the surface answers to beyond this machine's own. */
+  readonly hosts: readonly string[]
 }
 
 export const GATE_TIMEOUT_MS = 12_000
@@ -137,6 +140,8 @@ export interface Interface {
   readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
   /** The layout audit's settings, from config. */
   readonly settings: () => Effect.Effect<Settings>
+  /** The export's size caps, from config. */
+  readonly exportCaps: () => Effect.Effect<DesignExport.Options>
   /** A shell is about to load the frame: mint the token that ties that document's passes to it. */
   readonly beginLoad: (id: string, input: { client: string; sequence: number }) => Effect.Effect<LoadBegun | undefined>
   /** Is this the token of a load still current for this prototype? */
@@ -320,7 +325,16 @@ const layer = Layer.effect(
         gate: design?.gate !== false,
         gateTimeoutMs:
           typeof timeout === "number" && timeout > 0 ? Math.min(timeout, GATE_TIMEOUT_MAX_MS) : GATE_TIMEOUT_MS,
+        hosts: (design?.hosts ?? []).map(String),
       } satisfies Settings
+    })
+
+    const exportCaps = Effect.fn("DesignRegistry.exportCaps")(function* () {
+      const caps = (yield* config.get()).experimental?.design?.export
+      return {
+        maxAssetBytes: caps?.max_asset_bytes ?? DesignExport.DEFAULT_MAX_ASSET_BYTES,
+        maxBundleBytes: caps?.max_bundle_bytes ?? DesignExport.DEFAULT_MAX_BUNDLE_BYTES,
+      } satisfies DesignExport.Options
     })
 
     /** Everything the index knows, with the sidecars' delivered lists: nothing referenced is swept. */
@@ -785,6 +799,7 @@ const layer = Layer.effect(
       attachments,
       exclusive,
       settings,
+      exportCaps,
       beginLoad,
       verifyLoad,
       diagnostics,

@@ -32,6 +32,8 @@ export interface ShellInput {
   readonly gate?: boolean
   /** How long the curtain may hold before the prototype is shown anyway. */
   readonly gateTimeoutMs?: number
+  /** The same review as another device on the network reaches it, when the server listens beyond loopback. */
+  readonly networkUrl?: string
 }
 
 /** Everything the prototype may say; anything else is ignored rather than interpreted. */
@@ -106,6 +108,7 @@ export function shellHTML(input: ShellInput) {
     },
     gate: input.gate !== false && !input.ended,
     gateTimeoutMs: input.gateTimeoutMs && input.gateTimeoutMs > 0 ? input.gateTimeoutMs : GATE_TIMEOUT_MS,
+    networkUrl: input.networkUrl ?? "",
   }).replace(/</g, "\\u003c")
   return `<!doctype html>
 <html lang="en">
@@ -269,6 +272,9 @@ export function shellHTML(input: ShellInput) {
   <button type="button" id="copyPath">Copy directory path</button>
   <button type="button" id="reload">Reload prototype</button>
   <button type="button" id="copySnapshot">Copy DOM snapshot</button>
+  <button type="button" id="exportHtml">Export standalone HTML</button>
+  <button type="button" id="otherDevice" hidden>Open on another device</button>
+  <div class="path" id="networkUrl" hidden></div>
   <button type="button" id="endSession" class="danger">End review</button>
 </div>
 <main>
@@ -682,6 +688,43 @@ export function shellHTML(input: ShellInput) {
   $("reload").addEventListener("click", () => { closeMenu(); loadFrame(); status.textContent = "reloaded" })
   $("copySnapshot").addEventListener("click", async () => { closeMenu(); const dom = await snapshot(); try { await navigator.clipboard.writeText(dom); note("snapshot copied") } catch { note("could not copy", true) } })
   $("endSession").addEventListener("click", () => { closeMenu(); endReview() })
+  // One file with everything local inside it, handed to the browser as a download. The server
+  // says what did not make it in, and so does the hint.
+  $("exportHtml").addEventListener("click", async () => {
+    closeMenu()
+    const button = $("exportHtml")
+    button.disabled = true
+    status.textContent = "exporting…"
+    try {
+      const response = await fetch(base + "/export", { headers: { "x-redcode-design-token": config.token } })
+      if (!response.ok) throw new Error("HTTP " + response.status)
+      const blob = await response.blob()
+      const unresolved = Number(response.headers.get("x-redcode-export-warning-count")) || 0
+      const notices = Number(response.headers.get("x-redcode-export-notice-count")) || 0
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = href
+      a.download = (config.name || "prototype").replace(/[\\/:*?"<>|]+/g, "_").replace(/\.html?$/i, "") + ".export.html"
+      document.body.append(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 10000)
+      const parts = []
+      if (unresolved) parts.push(unresolved === 1 ? "1 unresolved asset" : unresolved + " unresolved assets")
+      if (notices) parts.push(notices === 1 ? "1 notice" : notices + " notices")
+      status.textContent = parts.length ? "exported with " + parts.join(" and ") : "exported"
+      note(parts.length ? "Exported with " + parts.join(" and ") + ". A local file that could not be inlined needs to sit beside the export." : "Exported.", unresolved > 0)
+    } catch (error) { note("Could not export (" + error.message + ").", true); status.textContent = "export failed" }
+    finally { button.disabled = false }
+  })
+  // The same review from a phone on the same network: the URL is the server's, and only shown
+  // when the server listens somewhere a phone can reach.
+  if (config.networkUrl) {
+    $("otherDevice").hidden = false
+    $("networkUrl").hidden = false
+    $("networkUrl").textContent = config.networkUrl
+    $("otherDevice").addEventListener("click", async () => { closeMenu(); try { await navigator.clipboard.writeText(config.networkUrl); note("link copied · open it on the other device") } catch { note(config.networkUrl, false) } })
+  }
 
   // --- the review ends -------------------------------------------------------------------------
   const markEnded = (by) => {

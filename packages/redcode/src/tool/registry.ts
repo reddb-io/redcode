@@ -5,6 +5,7 @@ import { PlanExitTool } from "./plan"
 import { DesignPreviewTool } from "./design-preview"
 import { DesignExitTool } from "./design"
 import { DesignPlaybookTool } from "./design-playbook"
+import { DesignExportTool } from "./design-export"
 import { GoalCompleteTool } from "./goal"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { DesignRegistry } from "@/design/registry"
@@ -114,6 +115,7 @@ const layer = Layer.effect(
     const designPreview = yield* DesignPreviewTool
     const designExit = yield* DesignExitTool
     const designPlaybook = yield* DesignPlaybookTool
+    const designExport = yield* DesignExportTool
     const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
@@ -236,6 +238,7 @@ const layer = Layer.effect(
           design_preview: Tool.init(designPreview),
           design_exit: Tool.init(designExit),
           design_playbook: Tool.init(designPlaybook),
+          design_export: Tool.init(designExport),
           goal_complete: Tool.init(goalComplete),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
