@@ -42,6 +42,10 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
   let shadow: ShadowRoot | null = null
   let counter = 0
   let activeCard: { context: any; textarea: HTMLTextAreaElement } | null = null
+  let reviewStateTimer = 0
+  let draftRestoreTimer = 0
+  /** How long a script-built section or a diagram gets to appear before a draft's anchor is called missing. */
+  const DRAFT_ANCHOR_SETTLE_MS = 1500
   const ids = new WeakMap<object, string>()
 
   const uid = (el: any) => {
@@ -255,9 +259,118 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
     hovered = null
     selected = null
     clearTextHighlight()
+    scheduleReviewStateReport()
+  }
+
+  // --- review state: what the shell replays after a reload --------------------------------------
+  // Only what this client owns: an open element card's text, and the controls inside a question
+  // scope. Application-owned form state is left alone, and a text-range card anchors to a live
+  // Range that a reload invalidates, so it is not replayed.
+  const questionControls = () => {
+    const entries: { el: any; key: string; index: number; question: string; type: string }[] = []
+    for (const scope of Array.from(document.querySelectorAll("[data-redcode-question],[data-lavish-question]"))) {
+      const question = h.reviewAttribute(scope, "question")
+      const controls = Array.from(scope.querySelectorAll("input,select,textarea"))
+      controls.forEach((el, index) => {
+        const control = el as any
+        const type = String(control.getAttribute("type") || control.type || "text").toLowerCase()
+        if (["button", "submit", "reset", "file", "image", "password"].includes(type)) return
+        if (entries.length >= 200) return
+        entries.push({
+          el: control,
+          key: [
+            question,
+            String(control.getAttribute("name") || control.id || ""),
+            type,
+            String(control.getAttribute("value") || ""),
+          ]
+            .join("|")
+            .slice(0, 300),
+          index,
+          question,
+          type,
+        })
+      })
+    }
+    return entries
+  }
+  const collectReviewState = () => {
+    const text = activeCard ? String(activeCard.textarea.value || "") : ""
+    return {
+      card:
+        activeCard && activeCard.context.tag !== "text" && text.trim()
+          ? { selector: String(activeCard.context.selector || ""), text: text.slice(0, 4000) }
+          : null,
+      fields: questionControls().map((entry) => ({
+        key: entry.key,
+        index: entry.index,
+        question: entry.question,
+        type: entry.type,
+        value: String(entry.el.value === undefined || entry.el.value === null ? "" : entry.el.value).slice(0, 2000),
+        checked: entry.type === "checkbox" || entry.type === "radio" ? Boolean(entry.el.checked) : null,
+      })),
+    }
+  }
+  const scheduleReviewStateReport = () => {
+    if (reviewStateTimer) window.clearTimeout(reviewStateTimer)
+    reviewStateTimer = window.setTimeout(() => {
+      reviewStateTimer = 0
+      post("reviewState", { state: collectReviewState() })
+    }, 120)
+  }
+  const cancelPendingDraftRestore = () => {
+    if (!draftRestoreTimer) return
+    window.clearTimeout(draftRestoreTimer)
+    draftRestoreTimer = 0
+  }
+  const safeQuery = (sel: unknown): Element | null => {
+    try {
+      return document.querySelector(String(sel || ""))
+    } catch {
+      return null
+    }
+  }
+  const restoreReviewState = (state: any) => {
+    if (!state || typeof state !== "object") return
+    const fields = Array.isArray(state.fields) ? state.fields : []
+    if (fields.length) {
+      const entries = questionControls()
+      for (const field of fields) {
+        const match =
+          entries.find((entry) => entry.key === field.key) ||
+          entries.find((entry) => entry.question === field.question && entry.index === field.index)
+        if (!match) continue
+        // No synthetic change/input events: the page's own handlers queue prompts, and replaying
+        // them would silently re-queue answers the person already sent.
+        if (field.checked === null || field.checked === undefined) match.el.value = String(field.value ?? "")
+        else match.el.checked = Boolean(field.checked)
+      }
+    }
+    const card = state.card
+    if (!card || !card.selector || !String(card.text || "").trim()) return
+    const target = safeQuery(card.selector)
+    if (target) {
+      showCard(target, { restoreText: String(card.text) })
+      return
+    }
+    // The load event says the document parsed, not that it finished rendering. Ask again once
+    // it has had time to appear; only then is the anchor's absence an answer worth reporting.
+    cancelPendingDraftRestore()
+    draftRestoreTimer = window.setTimeout(() => {
+      draftRestoreTimer = 0
+      // A card the person opened meanwhile wins: restoring over live typing destroys text.
+      if (activeCard) return
+      const late = safeQuery(card.selector)
+      if (late) {
+        showCard(late, { restoreText: String(card.text) })
+        return
+      }
+      post("reviewDraftUnrestorable", { selector: String(card.selector) })
+    }, DRAFT_ANCHOR_SETTLE_MS)
   }
 
   const showCard = (target: any, options: { context?: any; range?: Range; restoreText?: string } = {}) => {
+    cancelPendingDraftRestore()
     const root = ensureShadow()
     closeCard()
     const c = options.context || context(target, { table: true })
@@ -338,10 +451,12 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
         closeCard()
       }
     })
-    textarea.addEventListener("input", () =>
-      post("draft", { selector: String(c.selector || ""), text: textarea.value.slice(0, 4000) }),
-    )
-    if (typeof options.restoreText === "string") textarea.value = options.restoreText
+    // Unsent card text is review context this client owns: reported, and replayed after a reload.
+    textarea.addEventListener("input", scheduleReviewStateReport)
+    if (typeof options.restoreText === "string") {
+      textarea.value = options.restoreText
+      scheduleReviewStateReport()
+    }
     setTimeout(() => textarea.focus(), 0)
   }
 
@@ -466,17 +581,21 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
       case "revealElement":
         reveal(payload.selector)
         return
-      case "restoreDraft": {
-        let el: Element | null = null
-        try {
-          el = document.querySelector(String(payload.selector || ""))
-        } catch {
-          el = null
-        }
-        if (el && !activeCard) showCard(el, { restoreText: String(payload.text || "") })
+      case "restoreReviewState":
+        restoreReviewState(payload.state)
         return
-      }
     }
+  })
+
+  document.addEventListener("change", (event) => {
+    const el = event.target
+    if (el instanceof Element && el.closest("[data-redcode-question],[data-lavish-question]"))
+      scheduleReviewStateReport()
+  })
+  document.addEventListener("input", (event) => {
+    const el = event.target
+    if (el instanceof Element && el.closest("[data-redcode-question],[data-lavish-question]"))
+      scheduleReviewStateReport()
   })
 
   const icon = document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null

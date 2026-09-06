@@ -85,3 +85,31 @@ describe("design_preview, judging what it opens", () => {
     }),
   )
 })
+
+describe("design_preview, after the person ended the review", () => {
+  it.instance("does not reopen it on its own, and does when the agent relays the ask", () =>
+    Effect.gen(function* () {
+      const instance = yield* InstanceState.context
+      const fs = yield* FSUtil.Service
+      const root = path.join(instance.directory, "closed")
+      yield* fs.ensureDir(root)
+      yield* Effect.promise(() => Bun.write(path.join(root, "index.html"), `<main data-state="populated">hi</main>`))
+      const tool = yield* (yield* DesignPreviewTool).init()
+      const first = yield* tool.execute({ path: "closed" }, ctx)
+      expect(first.metadata.status).toBe("open")
+
+      const registry = yield* DesignRegistry.Service
+      yield* registry.end(first.metadata.id, "user")
+
+      const refused = yield* tool.execute({ path: "closed" }, ctx)
+      expect(refused.metadata.status).toBe("user-ended")
+      expect(refused.output).toContain("The user ended the review")
+      expect((yield* registry.get(first.metadata.id))!.revision).toBe(first.metadata.revision)
+
+      const again = yield* tool.execute({ path: "closed", reopen: true }, ctx)
+      expect(again.metadata.status).toBe("open")
+      expect(again.metadata.revision).toBe(first.metadata.revision + 1)
+      expect((yield* registry.get(first.metadata.id))!.ended).toBeUndefined()
+    }),
+  )
+})

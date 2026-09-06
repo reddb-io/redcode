@@ -1,4 +1,5 @@
 import path from "path"
+import { DIR as STATE_DIR } from "./state"
 
 /**
  * What may be served out of a prototype directory, and under what policy.
@@ -59,6 +60,8 @@ export function resolve(root: string, requestPath: string): string | undefined {
   const target = path.resolve(root, relative)
   const base = path.resolve(root)
   if (target !== base && !target.startsWith(base + path.sep)) return undefined
+  // The review's own state lives beside the prototype and is never part of it.
+  if (path.relative(base, target).split(path.sep)[0] === STATE_DIR) return undefined
   if (!mimeFor(target)) return undefined
   return target
 }

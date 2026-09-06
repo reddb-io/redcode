@@ -10,6 +10,10 @@ export type Target =
   | { readonly kind: "file"; readonly id: string; readonly path: string }
   | { readonly kind: "revision"; readonly id: string }
   | { readonly kind: "feedback"; readonly id: string }
+  /** The live event stream a mounted shell listens to. */
+  | { readonly kind: "events"; readonly id: string }
+  /** The person ended the review. */
+  | { readonly kind: "end"; readonly id: string }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -23,6 +27,8 @@ export function parse(pathname: string): Target | undefined {
   if (tail === "" || tail === "/") return { kind: "shell", id }
   if (tail === "/revision") return { kind: "revision", id }
   if (tail === "/feedback") return { kind: "feedback", id }
+  if (tail === "/events") return { kind: "events", id }
+  if (tail === "/end") return { kind: "end", id }
   // The `/files/` prefix is what makes relative asset paths inside a prototype resolve back into
   // the prototype rather than into the surface's own endpoints.
   if (tail.startsWith("/files/")) return { kind: "file", id, path: tail.slice("/files".length) }

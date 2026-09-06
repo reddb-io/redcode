@@ -13,7 +13,7 @@ describe("the review shell", () => {
 
   test("only listens for what the prototype is allowed to say", () => {
     expect(html).toContain(
-      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","draft","mode"])',
+      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","reviewState","reviewDraftUnrestorable","mode"])',
     )
     // And only for the document it is showing: a stale frame's messages are dropped.
     expect(html).toContain("if (data.load !== revision) return")
@@ -22,9 +22,38 @@ describe("the review shell", () => {
   })
 
   test("sending is a person's act, not the page's", () => {
-    // The frame can propose; only a submit on our own chrome sends.
+    // The frame can propose; only a submit on our own chrome sends. The handler for what the
+    // frame says never fetches on its own: it queues, or it calls the same submit the button does.
     expect(html).toContain('addEventListener("submit", submit)')
-    expect(html).not.toMatch(/message[\s\S]{0,400}fetch\(base \+ "\/feedback"/)
+    const handler = html.slice(
+      html.indexOf('window.addEventListener("message"'),
+      html.indexOf("// The frame reported the state"),
+    )
+    expect(handler).not.toContain("fetch(")
+    expect(handler).toContain('case "queuePrompt": enqueue(payload.prompt)')
+  })
+
+  test("listens to the server for reloads, replies, presence and the end, and reconnects on its own", () => {
+    expect(html).toContain('new EventSource(base + "/events?token="')
+    for (const type of ["reload", "chat-sync", "agent-reply", "presence", "ended"])
+      expect(html).toContain('on("' + type + '"')
+    expect(html).toContain("backoff = Math.min(backoff * 2, 5000)")
+    expect(html).not.toContain("setInterval(")
+  })
+
+  test("ending is the person's act, and an ended review opens read-only", () => {
+    expect(html).toContain('fetch(base + "/end"')
+    expect(html).toContain('id="sendEnd"')
+    const closed = shellHTML({ id: "p1", name: "n", token: "t", revision: 1, ended: "agent" })
+    expect(closed).toContain("<body data-ended>")
+    expect(closed).toContain('"ended":"agent"')
+  })
+
+  test("folds into a sheet on a phone", () => {
+    expect(html).toContain("@media (max-width: 860px)")
+    expect(html).toContain('id="panelHead"')
+    expect(html).toContain("SHEET_DRAG_THRESHOLD_PX".length ? "offset > 48" : "")
+    expect(html).toContain("--vv-height")
   })
 
   test("carries the prototype's identity without letting content forge the page", () => {
@@ -60,7 +89,7 @@ describe("notes, held and illustrated", () => {
     expect(html).toContain('id="hold"')
     expect(html).toContain('hold.addEventListener("click"')
     // The hold handler queues and redraws; it never fetches.
-    const hold = html.slice(html.indexOf('hold.addEventListener("click"'), html.indexOf("const submit = async"))
+    const hold = html.slice(html.indexOf('hold.addEventListener("click"'), html.indexOf("// --- the sheet, on a phone"))
     expect(hold).not.toContain("fetch(")
   })
 
@@ -90,8 +119,25 @@ describe("annotate or explore", () => {
     expect(html).toContain("...(end ? { end: true } : {})")
   })
 
-  test("what the frame reported is replayed after it reloads", () => {
-    expect(html).toContain('if (scroll) tell("restoreScroll", scroll)')
-    expect(html).toContain('if (cardDraft) tell("restoreDraft", cardDraft)')
+  test("what the frame reported is replayed after it reloads, and kept across a reload of this page", () => {
+    expect(html).toContain('if (scrollPos) tell("restoreScroll", scrollPos)')
+    expect(html).toContain('if (reviewState) tell("restoreReviewState", { state: reviewState })')
+    expect(html).toContain('"redcode-design:" + name + ":" + config.id')
+    expect(html).toContain('save("queued", pending.length ? pending : null)')
+  })
+
+  test("a draft is retired only when a second revision still lacks its anchor, and the text is handed back", () => {
+    expect(html).toContain("if (unrestorableMiss.revision === revision) return")
+    expect(html).toContain('el.className = "bubble note"')
+  })
+})
+
+describe("the shell's own script", () => {
+  test("is valid JavaScript, whatever the prototype is called", () => {
+    for (const name of ["hero", "</script><script>alert(1)</script>", 'a "quoted" name', "line\nbreak"]) {
+      const page = shellHTML({ id: "p1", name, token: "t", revision: 1, root: "/w/x" })
+      const script = page.slice(page.lastIndexOf("<script>") + 8, page.lastIndexOf("</script>"))
+      expect(() => new Function(script)).not.toThrow()
+    }
   })
 })
