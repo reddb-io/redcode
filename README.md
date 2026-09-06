@@ -45,7 +45,9 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 
 - [Install](#install) — one binary, nothing else
 - [Use](#use) — every command, and what it is for
+- [Modes](#modes) — build, plan and design: three agents, one `Tab` apart
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
+- [Goal](#goal) — a definition of done the harness pursues across turns
 
 **Reference**
 
@@ -228,6 +230,9 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 
 `redcode --help` lists everything, including `upgrade`, `uninstall`, `generate`, and `console`.
 
+In the TUI, the line under the prompt shows the context used, the cost so far, the latency to the
+first token of the last answer, and the tokens per second it arrived at.
+
 `redcode serve` prints both its base URL and the exact `POST /rpc` endpoint. That endpoint accepts
 JSON-RPC 2.0 (`application/json`) and TOON-RPC 1.0 (`application/toon`) for the same typed read-only
 methods: `health.get`, `session.list`, and `session.active`. `session.list` accepts the same filters,
@@ -237,6 +242,35 @@ The sibling `redcode-rpc-sidecar` bridges bounded `Content-Length` frames on std
 HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`, or accepts a complete
 `REDCODE_AUTHORIZATION` header.
+
+## Modes
+
+A session runs one of three primary agents. `Tab` cycles through them (`Shift+Tab` goes back), in
+the TUI and in the web UI, and the switch is durable: the next prompt is admitted under the agent
+you picked. Each mode is a different answer to what the agent is allowed to touch.
+
+<img src="docs/modes/build.svg" alt="Build mode" width="100%" />
+
+**Build** is the default. It reads, edits and runs under the permissions you configured, and it
+delegates: every subtask of one message runs together (four at a time by default), and background
+subagents are on, capped per session so a fan-out cannot run away. A subagent started under a goal
+inherits it. Nothing here is special — it is what a coding agent is — and the two other modes are
+defined by what they take away from it.
+
+<img src="docs/modes/plan.svg" alt="Plan mode" width="100%" />
+
+**Plan** reads everything and changes nothing but the plan file, written under `.redcode/plans/`.
+Use it when the shape of the work is the question: the agent explores, asks, and writes the plan
+down; `plan_exit` asks whether to switch to build and start on it. A plan written here is what
+build reads first.
+
+<img src="docs/modes/design.svg" alt="Design mode" width="100%" />
+
+**Design** is for when the question is what something should be, not how to build it. The agent
+writes an interactive prototype instead of a description, you review it in your browser, and the
+review is the conversation. Design cannot edit the product at all, only the prototype directory,
+so nothing you decide reaches the code until `design_exit` writes the plan. The whole loop is in
+[Design Mode](#design-mode).
 
 ## Design Mode
 
@@ -315,6 +349,50 @@ answers to). `REDCODE_DESIGN_NO_OPEN=1` stops the browser from opening;
 `REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` never fetches the whiteboard bundle, and
 `REDCODE_WHITEBOARD_DIR` points at a local build of it. To review from a phone, run
 `redcode serve --hostname 0.0.0.0` and use the network URL `design_preview` prints.
+
+## Goal
+
+<img src="docs/modes/goal.svg" alt="Goal" width="100%" />
+
+Every mode is turn by turn: the agent answers, the harness waits for you. `/goal` changes that for
+one session. You give it a definition of done, and the harness keeps the agent on it across turns
+until it holds, until it is blocked, or until the budget runs out.
+
+```
+/goal make the design suite pass; verify: bun test test/design; gate: bun test test/design;
+constraints: do not touch the app package; stop when: a test needs a network
+```
+
+Free text is the objective. The optional fields — one per line or separated by `;` — are the
+contract the judge holds the agent to:
+
+| Field | What it fixes |
+| --- | --- |
+| `outcome:` / `done when:` | What has to be true at the end |
+| `verify:` | How the agent should prove it |
+| `gate:` | A shell command that must exit 0 before the goal can even be judged done; several allowed |
+| `constraints:` / `scope:` | What may not be touched or changed |
+| `stop when:` | What should make the agent stop and ask instead of pushing on |
+
+Then, at the end of every turn:
+
+- The gates run. A failing gate feeds its output into the next turn; the judge is not asked.
+- A small judge reads the objective and the last answer and says **DONE**, **CONTINUE**,
+  **BLOCKED** or **WAIT**. CONTINUE starts the next turn with the objective re-rendered in full —
+  it lives in the session's metadata, not the transcript, so compaction cannot paraphrase it away
+  and the model cannot quietly shrink it. BLOCKED parks the loop with the reason. WAIT means
+  background subagents are still working and does not spend a turn.
+- The agent may claim completion itself with `goal_complete` and its evidence; the next judgement
+  consumes that claim rather than trusting it.
+
+The budget is 20 turns by default, and running out of turns is not completion — the goal pauses and
+says so. `Ctrl+C` pauses it; so does a new process, because a loop must never restart itself.
+`/goal-pause`, `/goal-resume` and `/goal-drop` do what they say, and the goal's line under the
+session shows where it stands. When the judge cannot answer, the loop fails open: three unreadable
+verdicts in a row pause it rather than spin.
+
+Defaults live under `experimental.goal` in the config: `max_turns`, `judge_timeout` and
+`gate_timeout`.
 
 ## Architecture
 
