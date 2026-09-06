@@ -8,6 +8,7 @@ import { DesignLint } from "@/design/lint"
 import { DesignStates } from "@/design/states"
 import { DesignKinds } from "@/design/kinds"
 import { DesignManifest } from "@/design/manifest"
+import { DesignLayoutWarnings } from "@/design/layout-warnings"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 
@@ -140,6 +141,18 @@ export const DesignPreviewTool = Tool.define(
               ? `The review window has not checked in for ${Math.round((Date.now() - lastSeen) / 60_000)} minutes; the user may not be looking at it. Say so if you are waiting on them.`
               : undefined
 
+          // What the browser found and the person has not asked about. Theirs to triage: named
+          // here so the agent knows the page is not clean, not so it starts fixing unasked.
+          const unqueued = DesignLayoutWarnings.active(prototype.warnings).filter(
+            (warning) => !DesignLayoutWarnings.hasOutstandingRepairRequest(warning),
+          )
+          const inbox =
+            unqueued.length > 0
+              ? `The browser's layout audit has ${unqueued.length} open issue${unqueued.length === 1 ? "" : "s"} the user has not queued (${[
+                  ...new Set(unqueued.map((warning) => DesignLayoutWarnings.describe(warning as never).title.toLowerCase())),
+                ].join("; ")}). They can queue them from the review page; fix one unasked only if you are revising that area anyway.`
+              : undefined
+
           const metadata: Meta = {
             id: prototype.id,
             url,
@@ -158,6 +171,7 @@ export const DesignPreviewTool = Tool.define(
               `The user annotates elements there; their notes arrive here as a <design-feedback> block.`,
               `Call design_preview again after each revision.`,
               ...(stale ? ["", stale] : []),
+              ...(inbox ? ["", inbox] : []),
               ...(states ? ["", states] : []),
               ...(notes ? ["", notes] : []),
             ].join("\n"),

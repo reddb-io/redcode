@@ -83,3 +83,27 @@ describe("images on the card", () => {
     expect(script).not.toContain("fetch(")
   })
 })
+
+describe("the layout audit inside the prototype", () => {
+  test("is bundled beside the helpers, reports passes and fatal asset failures, and can be asked again", () => {
+    const script = sdkScript({ load: 3 })
+    expect(script).toContain("function artifactAudit(")
+    expect(script).toContain("artifactAudit: artifactAudit")
+    expect(script).toContain('post("layoutDiagnostics"')
+    expect(script).toContain("artifact_pass_sequence")
+    expect(script).toContain('post("artifactAssetFailure"')
+    expect(script).toContain('case "requestLayoutDiagnostics"')
+    // The six rules, each of which stays silent rather than guessing.
+    for (const rule of [
+      "page-horizontal-overflow",
+      "clipped-text",
+      "clipped-control",
+      "viewport-unreachable-control",
+      "viewport-unreachable-content",
+      "overlapping-text",
+    ])
+      expect(script).toContain('"' + rule + '"')
+    expect(script).not.toContain("fetch(")
+    expect(() => new Function(script)).not.toThrow()
+  })
+})

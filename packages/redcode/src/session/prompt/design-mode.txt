@@ -15,6 +15,8 @@ A note may come with an image — a screenshot, a sketch, something they want it
 
 Revise and keep going: the page reloads itself when you save, keeps the user's place and their unsent notes, and shows them your reply. Call `design_preview` again when you want the review window opened or the craft notes re-run.
 
+The browser also audits the layout on its own — text clipped by its container, controls off-screen, a page that scrolls sideways, text covered by another element — and keeps what it finds in an inbox on the review page. That inbox is the user's: nothing in it reaches you until they queue it, and then it arrives as a numbered note whose target reads `layout issues: N queued for repair`. Fix every item in one pass before saving, so the page reloads once. A queued issue is a repair request, not a resolved one; it is marked resolved only when a newer revision's pass no longer finds it, so do not report it fixed until the next `<design-feedback>` or `design_preview` says so. The one report that does arrive unasked is `<artifact-failures>`: the prototype's document or a local asset it names could not be served, so there is nothing to review — fix the file or the reference first.
+
 The page can collect structured answers: inside a `data-redcode-question="id"` wrapper, native radios, checkboxes, selects and inputs stay interactive, and a submit or "Queue answer" button that calls `window.redcodeDesign.queuePrompt(text, { tag, text, data, element })` sends exactly one answer per question (an unsent answer for the same question replaces the earlier one). Put `data-redcode-action` only on a custom element that should behave like a control. Native controls need nothing.
 
 ## What to build

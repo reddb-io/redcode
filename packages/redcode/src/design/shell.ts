@@ -28,6 +28,10 @@ export interface ShellInput {
   readonly embed?: boolean
   /** The image limits the server enforces; the page refuses early and says why. */
   readonly attachments?: { readonly maxCount: number; readonly maxBytes: number; readonly accepted: readonly string[] }
+  /** Hold the prototype behind a curtain until its first layout pass; off for an ended review. */
+  readonly gate?: boolean
+  /** How long the curtain may hold before the prototype is shown anyway. */
+  readonly gateTimeoutMs?: number
 }
 
 /** Everything the prototype may say; anything else is ignored rather than interpreted. */
@@ -44,6 +48,8 @@ export const ARTIFACT_MESSAGES = [
   "reviewDraftUnrestorable",
   "uploadAttachment",
   "mode",
+  "layoutDiagnostics",
+  "artifactAssetFailure",
 ] as const
 
 /** A page may upload this many images a minute, this many bytes in its lifetime, this many at once. */
@@ -58,6 +64,12 @@ export const MOBILE_SHEET_MEDIA = "(max-width: 860px)"
 export const SHEET_DRAG_THRESHOLD_PX = 48
 /** A send still unacknowledged after this long says so. */
 export const SEND_ACKNOWLEDGEMENT_WARNING_MS = 10_000
+/** A frame that has said nothing after this long is asked whether it can be served at all. */
+export const ARTIFACT_SILENCE_PROBE_MS = 8_000
+/** A frame that has still said nothing after this long gets a card with a way out. */
+export const ARTIFACT_BOOT_FAILSAFE_MS = 15_000
+/** The curtain's default hold, when the server sends none. */
+export const GATE_TIMEOUT_MS = 12_000
 
 const escape = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -92,6 +104,8 @@ export function shellHTML(input: ShellInput) {
       maxBytes: 10 * 1024 * 1024,
       accepted: ["image/png", "image/jpeg", "image/webp"],
     },
+    gate: input.gate !== false && !input.ended,
+    gateTimeoutMs: input.gateTimeoutMs && input.gateTimeoutMs > 0 ? input.gateTimeoutMs : GATE_TIMEOUT_MS,
   }).replace(/</g, "\\u003c")
   return `<!doctype html>
 <html lang="en">
@@ -112,13 +126,44 @@ export function shellHTML(input: ShellInput) {
   header strong { font-weight: 600; white-space: nowrap }
   header .status { opacity: .6; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
   main { display: grid; grid-template-columns: minmax(0, 1fr) min(360px, 34vw); min-height: 0; position: relative }
-  iframe { border: 0; width: 100%; height: 100%; background: #fff }
+  .stage { position: relative; min-width: 0; min-height: 0 }
+  iframe { border: 0; width: 100%; height: 100%; background: #fff; display: block }
   button { font: inherit; padding: .4rem .75rem; border-radius: .375rem; border: 1px solid var(--edge);
            background: transparent; color: inherit; cursor: pointer }
   button[disabled] { opacity: .5; cursor: default }
   button.mode { padding: .25rem .6rem }
   button.mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
   button.more { padding: .25rem .5rem; font-weight: 700 }
+  button.issues { padding: .25rem .6rem; display: inline-flex; align-items: center; gap: .4rem; border-color: #d0432b; color: #d0432b }
+  button.issues[aria-expanded="true"] { background: color-mix(in oklab, #d0432b 14%, transparent) }
+  .badge { display: inline-block; min-width: 1.4em; padding: 0 .35em; border-radius: 999px; background: #d0432b; color: #fff; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.5 }
+  .drawer { position: absolute; top: .5rem; right: .5rem; z-index: 45; width: min(440px, calc(100% - 1rem)); max-height: calc(100% - 1rem);
+            display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: Canvas; color: CanvasText;
+            border: 1px solid var(--edge); border-radius: .6rem; box-shadow: 0 12px 40px rgba(0,0,0,.25) }
+  .drawer[hidden] { display: none }
+  .drawer-head, .drawer-foot { display: flex; align-items: center; gap: .6rem; padding: .5rem .75rem; border-bottom: 1px solid var(--edge) }
+  .drawer-foot { border-bottom: 0; border-top: 1px solid var(--edge); justify-content: flex-end }
+  .drawer-head label { display: inline-flex; align-items: center; gap: .35rem }
+  .drawer-head .sum { flex: 1; min-width: 0; font-size: 12px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+  .drawer-head .close { border: 0; padding: .1rem .4rem; font-size: 16px; line-height: 1 }
+  .drawer-foot .sel { flex: 1; font-size: 12px; opacity: .7 }
+  .warnings { overflow: auto; display: flex; flex-direction: column }
+  .warnings .empty { padding: 1rem .75rem; opacity: .7 }
+  .warning { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .5rem; padding: .6rem .75rem; border-bottom: 1px solid var(--edge) }
+  .warning.outstanding { opacity: .75 }
+  .warning input { margin-top: .2rem }
+  .warning .title { font-weight: 600 }
+  .warning .explain { margin: .15rem 0 .3rem; opacity: .85 }
+  .warning .meta { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .3rem }
+  .warning .chip { display: inline-block; padding: 0 .45rem; border-radius: 999px; background: var(--soft); font-size: 11px; border: 0 }
+  .warning .chip.sev { background: color-mix(in oklab, #d0432b 18%, transparent); color: #d0432b; font-weight: 600 }
+  .warning .chip.st-queued, .warning .chip.st-recurring, .warning .chip.st-unverified { background: color-mix(in oklab, var(--accent) 30%, transparent) }
+  .warning code { display: block; font-size: 11px; opacity: .7; word-break: break-all; margin-bottom: .3rem }
+  .warning .acts { display: flex; gap: .4rem }
+  .warning .acts button { padding: .15rem .5rem; font-size: 12px }
+  .overlay.gate { z-index: 48; background: color-mix(in oklab, Canvas 92%, transparent) }
+  .overlay .row { display: flex; gap: .5rem; justify-content: center; margin-top: .75rem }
+  .overlay .row .secondary { opacity: .75 }
   .menu { position: absolute; right: .5rem; top: calc(var(--bar-h) + .25rem); z-index: 40; min-width: 240px;
           background: Canvas; color: CanvasText; border: 1px solid var(--edge); border-radius: .5rem;
           box-shadow: 0 12px 40px rgba(0,0,0,.25); padding: .25rem; display: none }
@@ -215,6 +260,7 @@ export function shellHTML(input: ShellInput) {
 <header>
   <strong>${escape(input.name)}</strong>
   <span class="status" id="status">click an element in the prototype to annotate it</span>
+  <button class="issues" id="issues" type="button" hidden aria-expanded="false" aria-controls="drawer" title="Layout issues the browser found; yours to queue or dismiss">Layout issues <span class="badge" id="issuesCount">0</span></button>
   <button class="mode" id="mode" type="button" aria-pressed="true" title="Toggle annotate/explore mode (⌘I / Ctrl+I)">Annotate</button>
   <button class="more" id="more" type="button" aria-label="More" aria-haspopup="menu">⋮</button>
 </header>
@@ -230,7 +276,22 @@ export function shellHTML(input: ShellInput) {
        model-written and must stay at an opaque origin, unable to read this page's token. The
        serving route repeats the restriction in a header, so it holds even when this page is
        bypassed and the prototype URL is opened directly. -->
-  <iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+  <div class="stage" id="stage">
+    <iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+    <div class="overlay gate" id="gate"><div class="card"><h2 id="gateTitle">Checking layout…</h2><p id="gateCopy">Waiting for fonts and final geometry before showing the prototype.</p><div class="row"><button id="gateAction" type="button">Show anyway</button><button id="gateBypass" type="button" class="secondary" hidden>Show anyway</button></div></div></div>
+    <div class="drawer" id="drawer" hidden role="region" aria-label="Layout issues">
+      <div class="drawer-head">
+        <label><input type="checkbox" id="issuesAll"> Select all</label>
+        <span class="sum" id="issuesSummary"></span>
+        <button type="button" class="close" id="issuesClose" aria-label="Close layout issues">×</button>
+      </div>
+      <div class="warnings" id="warnings"></div>
+      <div class="drawer-foot">
+        <span class="sel" id="issuesSelected">None selected</span>
+        <button type="button" id="issuesQueue" class="send" disabled>Queue selected fixes</button>
+      </div>
+    </div>
+  </div>
   <div class="scrim" id="scrim"></div>
   <aside class="panel" id="panel">
     <div class="panel-head" id="panelHead">
@@ -269,6 +330,9 @@ export function shellHTML(input: ShellInput) {
   const hint = $("hint"), presence = $("presence"), chips = $("chips"), attachButton = $("attach"), attachInput = $("attachInput"), attachNotice = $("attachNotice")
   const panel = $("panel"), panelHead = $("panelHead"), summary = $("summary"), toggle = $("toggle"), scrim = $("scrim")
   const endedOverlay = $("ended"), endedCopy = $("endedCopy")
+  const issuesButton = $("issues"), issuesCount = $("issuesCount"), drawer = $("drawer"), warningsList = $("warnings")
+  const issuesAll = $("issuesAll"), issuesSummary = $("issuesSummary"), issuesSelected = $("issuesSelected"), issuesQueue = $("issuesQueue"), issuesClose = $("issuesClose")
+  const gate = $("gate"), gateTitle = $("gateTitle"), gateCopy = $("gateCopy"), gateAction = $("gateAction"), gateBypass = $("gateBypass")
   const base = location.pathname.replace(/\\/$/, "")
   const key = (name) => "redcode-design:" + name + ":" + config.id
   const load = (name, fallback) => { try { const raw = sessionStorage.getItem(key(name)); return raw === null ? fallback : JSON.parse(raw) } catch { return fallback } }
@@ -289,6 +353,21 @@ export function shellHTML(input: ShellInput) {
   let sendAgain = false
   let ackTimer = 0
   let unread = ""
+  // The passive layout inbox, and the load each pass belongs to.
+  let warnings = []
+  let selectedIds = new Set((load("issues", []) || []).filter((x) => typeof x === "string"))
+  let drawerOpen = false
+  const loadClient = "c" + Math.random().toString(36).slice(2) + Date.now().toString(36)
+  let loadSeq = 0
+  let loadToken = ""
+  let loadRetried = false
+  let silenceTimer = 0, bootTimer = 0
+  let reportedFailures = new Set()
+  let gateOn = !!config.gate && !ended
+  let gateBypassed = false
+  let gateFailure = false
+  let gateCycle = 0
+  let gateTimer = 0
   const ACCEPTED = (config.attachments && config.attachments.accepted) || ["image/png", "image/jpeg", "image/webp"]
   const ACCEPTED_SET = new Set(ACCEPTED)
   const MAX_COUNT = (config.attachments && config.attachments.maxCount) || 4
@@ -296,7 +375,31 @@ export function shellHTML(input: ShellInput) {
   attachInput.accept = ACCEPTED.join(",")
 
   const tell = (type, payload) => { try { frame.contentWindow.postMessage({ source: "redcode-design-shell", type, payload: payload || {} }, "*") } catch {} }
-  const loadFrame = () => { frame.src = base + "/files/index.html?rev=" + revision }
+  const api = (path, body) => fetch(base + path, { method: "POST", headers: { "content-type": "application/json", "x-redcode-design-token": config.token }, body: JSON.stringify(body || {}) })
+  // Every load of the frame is named first: the server hands back a token that ties the passes
+  // that document runs to it, so a frame replaced mid-flight cannot report on what nobody sees.
+  const beginLoad = async () => {
+    const seq = ++loadSeq
+    try {
+      const response = await api("/loads/begin", { client: loadClient, sequence: seq })
+      const data = await response.json().catch(() => ({}))
+      if (seq !== loadSeq) return null
+      if (!response.ok || data.status === "out-of-order") return null
+      if (typeof data.revision === "number") revision = data.revision
+      return String(data.artifact_load_token || "")
+    } catch { return seq === loadSeq ? "" : null }
+  }
+  const frameSrc = () => base + "/files/index.html?rev=" + revision + (loadToken ? "&load=" + encodeURIComponent(loadToken) : "")
+  const loadFrame = async () => {
+    const token = await beginLoad()
+    if (token === null) return
+    loadToken = token
+    loadRetried = false
+    reportedFailures = new Set()
+    startGate()
+    armSilence()
+    frame.src = frameSrc()
+  }
   const escapeHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 
   // --- what a note points at ------------------------------------------------------------------
@@ -308,6 +411,7 @@ export function shellHTML(input: ShellInput) {
       return cell ? "cell: " + cell : "cell " + t.selector
     }
     if (t && t.type === "mermaid-node") return "node: " + (t.label || t.nodeId)
+    if (item.tag === "layout-warnings") return "layout fixes: " + ((t && Array.isArray(t.warnings) && t.warnings.length) || 0)
     if (item.tag === "message") return ""
     return item.label || item.selector || ""
   }
@@ -370,6 +474,7 @@ export function shellHTML(input: ShellInput) {
   }
   const draw = () => {
     drawPills()
+    drawWarnings()
     const typed = text.value.trim() !== "" || composerImages.hasReady()
     send.disabled = !!ended || (pending.length === 0 && !typed)
     sendEnd.disabled = !!ended
@@ -561,7 +666,7 @@ export function shellHTML(input: ShellInput) {
   }
   modeButton.addEventListener("click", () => setMode(!annotate))
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { closeMenu(); if (sheetOpen) setSheet(false); return }
+    if (event.key === "Escape") { closeMenu(); if (drawerOpen) { setDrawer(false); issuesButton.focus() } if (sheetOpen) setSheet(false); return }
     if (event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return
     if (String(event.key || "").toLowerCase() !== "i") return
     event.preventDefault()
@@ -585,6 +690,10 @@ export function shellHTML(input: ShellInput) {
     endedCopy.textContent = ended === "agent" ? "The agent finished this review. Nothing more is sent from here." : "You ended this review. Nothing more is sent from here."
     endedOverlay.setAttribute("data-on", "")
     closeMenu()
+    setDrawer(false)
+    gateBypassed = true
+    gateFailure = false
+    revealGate()
     setMode(false)
     presence.hidden = true
     draw()
@@ -593,7 +702,7 @@ export function shellHTML(input: ShellInput) {
   }
   const endReview = async () => {
     if (ended) return
-    if (pending.length || text.value.trim() || image) { await submit(undefined, true); return }
+    if (pending.length || text.value.trim() || composerImages.hasReady()) { await submit(undefined, true); return }
     try {
       const response = await fetch(base + "/end", { method: "POST", headers: { "x-redcode-design-token": config.token } })
       if (!response.ok) throw new Error("HTTP " + response.status)
@@ -613,6 +722,7 @@ export function shellHTML(input: ShellInput) {
     const payload = data.payload || {}
     switch (data.type) {
       case "ready": {
+        clearTimeout(silenceTimer); clearTimeout(bootTimer)
         status.textContent = ended ? "review ended" : annotate ? "click an element in the prototype to annotate it" : "explore mode · ⌘I / Ctrl+I to annotate"
         if (payload.title) document.title = String(payload.title).slice(0, 200) + " · " + config.name
         if (payload.icon) {
@@ -635,6 +745,8 @@ export function shellHTML(input: ShellInput) {
       case "status": status.textContent = String(payload.message || "").slice(0, 200); return
       case "reviewState": setReviewState(payload.state); return
       case "reviewDraftUnrestorable": discardUnrestorable(String(payload.selector || "")); return
+      case "layoutDiagnostics": onDiagnostics(payload); return
+      case "artifactAssetFailure": reportFailures([{ kind: "artifact-asset-unavailable", detail: String(payload.detail || "a local asset failed to load").slice(0, 300) }]); return
       case "uploadAttachment": {
         // The frame captured the bytes; this page uploads them and echoes the nonce back untouched.
         const localId = String(payload.localId || "")
@@ -757,6 +869,248 @@ export function shellHTML(input: ShellInput) {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); submit() }
   })
 
+  // --- the curtain -----------------------------------------------------------------------------
+  // Held until the first layout pass, so a person never judges a page mid-layout. It never waits
+  // on the network: the frame's own pass is the release, and a timer is the way out of anything.
+  const clearGateTimer = () => { clearTimeout(gateTimer); gateTimer = 0 }
+  const setGate = (on) => { gate.toggleAttribute("data-on", !!on) }
+  const armGateTimer = () => {
+    clearGateTimer()
+    const cycle = gateCycle
+    gateTimer = setTimeout(() => { if (cycle === gateCycle) revealGate() }, config.gateTimeoutMs || ${GATE_TIMEOUT_MS})
+  }
+  const revealGate = () => { clearGateTimer(); setGate(false) }
+  const bypassGate = () => { gateBypassed = true; gateFailure = false; revealGate() }
+  const setGateChecking = () => {
+    gateTitle.textContent = "Checking layout…"
+    gateCopy.textContent = "Waiting for fonts and final geometry before showing the prototype."
+    gateAction.textContent = "Show anyway"
+    gateAction.disabled = false
+    gateAction.onclick = bypassGate
+    gateBypass.hidden = true
+  }
+  const startGate = () => {
+    gateFailure = false
+    gateCycle += 1
+    if (!gateOn || gateBypassed || ended) { revealGate(); return }
+    setGateChecking()
+    setGate(true)
+    armGateTimer()
+  }
+  // The one thing this page cannot work around: the frame never loaded. The same card, with a
+  // way out that asks the server first, because a reload into a dead port is worse than waiting.
+  const setGateFailure = (title, copy, actionLabel, onAction) => {
+    if (ended) return
+    gateFailure = true
+    gateCycle += 1
+    gateTitle.textContent = title
+    gateCopy.textContent = copy
+    gateAction.textContent = actionLabel
+    gateAction.disabled = false
+    gateAction.onclick = onAction
+    gateBypass.hidden = false
+    gateBypass.onclick = bypassGate
+    setGate(true)
+    armGateTimer()
+  }
+  const checkServerThenReload = (stillDown) => async () => {
+    gateAction.disabled = true
+    const cycle = gateCycle
+    try {
+      const response = await fetch(base + "/revision", { headers: { "x-redcode-design-token": config.token }, cache: "no-store" })
+      if (response.ok) { loadFrame(); return }
+      if (cycle === gateCycle) gateCopy.textContent = stillDown
+    } catch {
+      if (cycle === gateCycle) gateCopy.textContent = "The server is not answering. Check that redcode is still running, then try again."
+    } finally { gateAction.disabled = false }
+  }
+  gateAction.onclick = bypassGate
+  gateBypass.onclick = bypassGate
+
+  // --- when the frame says nothing --------------------------------------------------------------
+  // A healthy prototype boots its SDK within seconds. Silence is the one signal that separates
+  // "the review is unusable" from "the review has layout problems", and only that reaches the agent.
+  const armSilence = () => {
+    clearTimeout(silenceTimer); clearTimeout(bootTimer)
+    const token = loadToken
+    silenceTimer = setTimeout(async () => {
+      if (token !== loadToken || !token) return
+      try {
+        const response = await fetch(frameSrc() + "&probe=1", { cache: "no-store" })
+        if (token !== loadToken || response.status === 409 || response.ok) return
+        const detail = "the prototype's document responded with HTTP " + response.status
+        reportFailures([{ kind: "artifact-unavailable", detail }])
+        setGateFailure("The prototype could not be loaded", "The server answered HTTP " + response.status + " for index.html. The agent has been told.", "Retry", checkServerThenReload("Still failing. The agent has been told; try again once it has revised the prototype."))
+      } catch {}
+    }, ${ARTIFACT_SILENCE_PROBE_MS})
+    bootTimer = setTimeout(() => {
+      if (token !== loadToken || gateFailure) return
+      setGateFailure("The prototype has not finished loading", "It has been quiet for a while. A script in it may have failed before the review tools started.", "Reload", checkServerThenReload("The server is up but the prototype still did not start. Look at the browser console for an error in it."))
+    }, ${ARTIFACT_BOOT_FAILSAFE_MS})
+  }
+  const reportFailures = (failures) => {
+    if (ended || !loadToken) return
+    const fresh = failures.filter((f) => { const k = f.kind + "|" + f.detail; if (reportedFailures.has(k)) return false; reportedFailures.add(k); return true })
+    if (!fresh.length) return
+    api("/artifact-failures", { failures: fresh, artifact_load_token: loadToken, artifact_revision: revision }).catch(() => {})
+  }
+
+  // --- the passive layout inbox -----------------------------------------------------------------
+  // The frame audits itself and reports; this page hands the pass to the server, which folds it
+  // into the warnings and hands back what to show. Nothing here starts a turn.
+  const onDiagnostics = async (payload) => {
+    revealGate()
+    if (!loadToken) return
+    const token = loadToken
+    try {
+      const response = await api("/layout-diagnostics", {
+        complete: payload.complete !== false,
+        target_presence_complete: payload.target_presence_complete === true,
+        artifact_revision: Number(payload.artifact_revision) || 0,
+        artifact_load_token: token,
+        artifact_pass_sequence: Number(payload.artifact_pass_sequence) || 0,
+        viewport_width: Number(payload.viewport_width) || 0,
+        findings: Array.isArray(payload.findings) ? payload.findings.filter((f) => f && typeof f === "object" && f.severity === "error").slice(0, 200) : [],
+      })
+      const data = await response.json().catch(() => ({}))
+      if (token !== loadToken) return
+      if (Array.isArray(data.warnings)) setWarnings(data.warnings)
+      // The server forgot this load (it restarted): name the load again and ask for a fresh pass.
+      if (data.status === "stale" && !loadRetried) {
+        loadRetried = true
+        const again = await beginLoad()
+        if (again) { loadToken = again; tell("requestLayoutDiagnostics") }
+      }
+    } catch {}
+  }
+  const pendingWarningIds = () => {
+    const ids = new Set()
+    for (const item of pending) {
+      if (item.tag !== "layout-warnings" || !item.target || !Array.isArray(item.target.warnings)) continue
+      for (const w of item.target.warnings) if (w && w.id) ids.add(String(w.id))
+    }
+    return ids
+  }
+  const activeWarnings = () => warnings.filter((w) => w && w.active)
+  const selectable = () => { const held = pendingWarningIds(); return activeWarnings().filter((w) => w.selectable && !held.has(w.id)) }
+  const persistSelection = () => save("issues", selectedIds.size ? [...selectedIds] : null)
+  const setWarnings = (next) => {
+    warnings = Array.isArray(next) ? next.filter((w) => w && typeof w === "object" && typeof w.id === "string") : []
+    const ok = new Set(selectable().map((w) => w.id))
+    for (const id of [...selectedIds]) if (!ok.has(id)) selectedIds.delete(id)
+    persistSelection()
+    drawWarnings()
+  }
+  const ago = (value) => {
+    const at = Date.parse(String(value || ""))
+    if (!Number.isFinite(at)) return ""
+    const s = Math.max(0, Math.round((Date.now() - at) / 1000))
+    if (s < 45) return "just now"
+    const m = Math.round(s / 60); if (m < 60) return m + "m ago"
+    const h = Math.round(m / 60); if (h < 24) return h + "h ago"
+    return Math.round(h / 24) + "d ago"
+  }
+  const chip = (label, cls) => { const el = document.createElement("span"); el.className = "chip" + (cls ? " " + cls : ""); el.textContent = label; return el }
+  const warningRow = (w) => {
+    const held = pendingWarningIds().has(w.id)
+    const can = !!w.selectable && !held
+    const row = document.createElement("div")
+    row.className = "warning" + (w.outstanding ? " outstanding" : "")
+    const box = document.createElement("input")
+    box.type = "checkbox"
+    box.checked = can && selectedIds.has(w.id)
+    box.disabled = !can
+    box.setAttribute("aria-label", (can ? "Select " : "") + w.title + " on " + w.viewport_label + (can ? "" : held ? " (queued to send)" : " (a fix is already queued)"))
+    box.addEventListener("change", () => { if (box.checked) selectedIds.add(w.id); else selectedIds.delete(w.id); persistSelection(); drawSelection() })
+    const body = document.createElement("div")
+    const title = document.createElement("div"); title.className = "title"; title.textContent = w.title
+    const explain = document.createElement("div"); explain.className = "explain"; explain.textContent = w.explanation
+    const meta = document.createElement("div"); meta.className = "meta"
+    meta.append(chip("Severe", "sev"), chip(held ? "Queued to send" : w.status_label, "st-" + w.status), chip(w.viewport_label + " · " + w.viewport_width + "px"))
+    const seen = ago(w.last_seen_at); if (seen) meta.append(chip("Seen " + seen))
+    const target = document.createElement("code"); target.textContent = w.selector || "(whole page)"
+    const acts = document.createElement("div"); acts.className = "acts"
+    if (w.selector) { const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "Reveal"; reveal.addEventListener("click", () => tell("revealElement", { selector: w.selector })); acts.append(reveal) }
+    const dismiss = document.createElement("button"); dismiss.type = "button"; dismiss.textContent = "Dismiss"; dismiss.disabled = !can
+    dismiss.title = can ? "Hide this for the current revision; it comes back if a later revision still has it" : "Cannot be dismissed while a fix is queued"
+    dismiss.addEventListener("click", () => dismissWarning(w.id))
+    acts.append(dismiss)
+    body.append(title, explain, meta, target, acts)
+    row.append(box, body)
+    return row
+  }
+  const drawSelection = () => {
+    const can = selectable()
+    const count = can.filter((w) => selectedIds.has(w.id)).length
+    issuesAll.disabled = can.length === 0
+    issuesAll.checked = can.length > 0 && count === can.length
+    issuesAll.indeterminate = count > 0 && count < can.length
+    issuesSelected.textContent = count === 0 ? "None selected" : count + " selected"
+    issuesQueue.disabled = count === 0 || !!ended
+  }
+  const drawWarnings = () => {
+    const held = pendingWarningIds()
+    let changed = false
+    for (const id of [...selectedIds]) if (held.has(id)) { selectedIds.delete(id); changed = true }
+    if (changed) persistSelection()
+    const active = activeWarnings()
+    issuesButton.hidden = active.length === 0 || !!ended
+    if (issuesButton.hidden && drawerOpen) setDrawer(false)
+    issuesCount.textContent = String(active.length)
+    issuesButton.setAttribute("aria-label", active.length === 1 ? "1 unresolved layout issue" : active.length + " unresolved layout issues")
+    const outstanding = active.filter((w) => w.outstanding).length
+    issuesSummary.textContent = (active.length === 1 ? "1 unresolved issue" : active.length + " unresolved issues") + (outstanding ? " · " + outstanding + " already queued for a fix" : "")
+    if (active.length === 0) { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "No unresolved layout issues."; warningsList.replaceChildren(empty) }
+    else warningsList.replaceChildren(...active.map(warningRow))
+    drawSelection()
+  }
+  const setDrawer = (open) => {
+    drawerOpen = !!open && !ended
+    drawer.hidden = !drawerOpen
+    issuesButton.setAttribute("aria-expanded", String(drawerOpen))
+    if (drawerOpen) { closeMenu(); tell("requestLayoutDiagnostics"); issuesAll.focus() }
+  }
+  issuesButton.addEventListener("click", () => setDrawer(drawer.hidden))
+  issuesClose.addEventListener("click", () => { setDrawer(false); issuesButton.focus() })
+  issuesAll.addEventListener("change", () => { for (const w of selectable()) { if (issuesAll.checked) selectedIds.add(w.id); else selectedIds.delete(w.id) } persistSelection(); drawWarnings() })
+  const dismissWarning = async (id) => {
+    try {
+      const response = await api("/layout-warnings/dismiss", { id })
+      if (!response.ok) return
+      const data = await response.json()
+      if (Array.isArray(data.warnings)) setWarnings(data.warnings)
+    } catch {}
+  }
+  // One queued batch is one ordinary note in the queue: the agent cannot tell it apart from any
+  // other feedback, which is the point. The warnings become repair requests when it is delivered.
+  issuesQueue.addEventListener("click", async () => {
+    if (ended) return
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    issuesQueue.disabled = true
+    try {
+      const response = await api("/layout-warnings/queue", { ids, revision })
+      const data = await response.json().catch(() => ({}))
+      if (response.status === 409) { note("The prototype changed while you chose; the list was refreshed.", true); if (typeof data.revision === "number") revision = data.revision; refreshWarnings(); return }
+      if (!response.ok) throw new Error(data.error || "HTTP " + response.status)
+      if (data.prompt) enqueue({ selector: "", tag: "layout-warnings", text: data.prompt.text, prompt: data.prompt.prompt, target: data.prompt.target })
+      selectedIds.clear()
+      persistSelection()
+      if (Array.isArray(data.warnings)) setWarnings(data.warnings)
+      setDrawer(false)
+      issuesButton.focus()
+    } catch (error) { note("Could not queue the fixes (" + error.message + ").", true) }
+    finally { drawSelection() }
+  })
+  const refreshWarnings = async () => {
+    try {
+      const response = await fetch(base + "/layout-warnings", { headers: { "x-redcode-design-token": config.token } })
+      if (!response.ok) return
+      const data = await response.json()
+      if (Array.isArray(data.warnings)) setWarnings(data.warnings)
+    } catch {}
+  }
+
   // --- the sheet, on a phone --------------------------------------------------------------------
   const media = typeof matchMedia === "function" ? matchMedia(${JSON.stringify(MOBILE_SHEET_MEDIA)}) : null
   const mobile = () => !!(media && media.matches)
@@ -867,6 +1221,7 @@ export function shellHTML(input: ShellInput) {
       drawChat()
       drawSummary()
     })
+    on("layout-warnings", (data) => { if (Array.isArray(data.warnings)) setWarnings(data.warnings) })
     on("ended", (data) => markEnded(data.by === "agent" ? "agent" : "user"))
     source.addEventListener("error", () => {
       source.close()

@@ -15,6 +15,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type * as Helpers from "./helpers"
+import type { artifactAudit } from "./audit"
 
 export interface ArtifactConfig {
   /** The revision this document was served for; every message carries it back. */
@@ -27,6 +28,9 @@ export type HelperTable = {
   readonly [K in keyof typeof Helpers as (typeof Helpers)[K] extends (...args: any[]) => any
     ? K
     : never]: (typeof Helpers)[K]
+} & {
+  /** The layout audit, declared beside the helpers; it takes the table itself. */
+  readonly artifactAudit: typeof artifactAudit
 }
 
 export function artifactMain(config: ArtifactConfig, h: HelperTable) {
@@ -862,6 +866,11 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
       case "restoreReviewState":
         restoreReviewState(payload.state)
         return
+      case "requestLayoutDiagnostics":
+        // The shell wants fresh evidence (it opened the inbox, or a pass was lost to a load
+        // race): run again and publish even if nothing changed.
+        audit.schedule(true)
+        return
       case "attachmentResult":
         // Only from the shell, and only for this document: a result for a chip of the previous
         // document must not mark a new chip ready with the wrong image.
@@ -893,6 +902,33 @@ export function artifactMain(config: ArtifactConfig, h: HelperTable) {
     if (el instanceof Element && el.closest("[data-redcode-question],[data-lavish-question]"))
       scheduleReviewStateReport()
   })
+
+  // --- the passive layout audit, and the one fatal path -----------------------------------------
+  const audit = h.artifactAudit({ h, post, isUi, selector, load: config.load })
+  // A local subresource the prototype declares but the server cannot serve makes the review
+  // unusable rather than merely flawed, so it bypasses the passive inbox. Only same-origin
+  // references count: a remote host failing is the viewer's network, not the prototype's defect.
+  window.addEventListener(
+    "error",
+    (event) => {
+      const el = event.target as any
+      if (!(el instanceof Element) || isUi(el)) return
+      const tag = String(el.tagName || "").toLowerCase()
+      if (!["img", "script", "link", "source", "video", "audio", "iframe"].includes(tag)) return
+      const raw = String(el.getAttribute("src") || el.getAttribute("href") || "")
+      if (!raw) return
+      let resolved: URL
+      try {
+        resolved = new URL(raw, document.baseURI)
+      } catch {
+        return
+      }
+      if (resolved.origin !== window.location.origin) return
+      post("artifactAssetFailure", { detail: "<" + tag + "> could not load " + resolved.pathname })
+    },
+    true,
+  )
+  audit.start()
 
   const icon = document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null
   setAnnotationMode(true)

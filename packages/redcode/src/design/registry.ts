@@ -12,6 +12,7 @@ import { promises as nodeFs } from "node:fs"
 import path from "path"
 import type { SessionID } from "@/session/schema"
 import { DesignAttachments } from "./attachments"
+import { DesignLayoutWarnings } from "./layout-warnings"
 import { DesignManifest } from "./manifest"
 import { DesignState } from "./state"
 import { DesignWatch } from "./watch"
@@ -56,6 +57,43 @@ export interface Prototype {
   readonly chat: readonly DesignState.ChatEntry[]
   /** Images handed to the agent, and when. */
   readonly delivered: readonly DesignState.Delivered[]
+  /** The passive layout inbox: what the browser proved, and what the person did about it. */
+  readonly warnings: readonly DesignLayoutWarnings.Warning[]
+}
+
+/**
+ * One load of the prototype into one shell's frame. The token ties a diagnostic pass to the
+ * document that ran it: a pass from a frame that has since been replaced is stale, and a stale
+ * pass is discarded rather than allowed to clear or create a warning for a page nobody is seeing.
+ */
+export interface Load {
+  readonly token: string
+  readonly revision: number
+  readonly sequence: number
+  /** The highest pass this load has reported; a lower or equal one is a replay. */
+  lastPass: number
+  /** Failures already reported for this load, so a page that keeps failing wakes the agent once. */
+  readonly failures: Set<string>
+}
+
+export type LoadBegun = { readonly revision: number; readonly token: string; readonly stale?: "out-of-order" }
+
+/** What a review page was configured to do about layout. */
+export interface Settings {
+  readonly viewports: readonly DesignLayoutWarnings.ViewportClass[]
+  readonly gate: boolean
+  readonly gateTimeoutMs: number
+}
+
+export const GATE_TIMEOUT_MS = 12_000
+export const GATE_TIMEOUT_MAX_MS = 60_000
+/** Frames one prototype remembers loads for; a shell that keeps reloading forgets its oldest. */
+export const MAX_LOADS = 8
+export const MAX_FAILURES = 20
+export const FAILURE_KINDS = ["artifact-unavailable", "artifact-asset-unavailable"] as const
+export interface Failure {
+  readonly kind: (typeof FAILURE_KINDS)[number]
+  readonly detail: string
 }
 
 /** What a mounted shell is told as it happens. */
@@ -65,6 +103,7 @@ export type LiveEvent =
   | { readonly type: "chat-sync"; readonly chat: readonly DesignState.ChatEntry[] }
   | { readonly type: "presence"; readonly state: "working" | "waiting" }
   | { readonly type: "ended"; readonly by: DesignState.EndedBy }
+  | { readonly type: "layout-warnings"; readonly warnings: readonly DesignLayoutWarnings.Serialized[] }
 
 export interface Interface {
   readonly register: (input: { sessionID: SessionID; root: string; name: string }) => Effect.Effect<Prototype>
@@ -96,6 +135,46 @@ export interface Interface {
   readonly attachments: () => Effect.Effect<DesignAttachments.Config>
   /** One writer at a time in the attachment store: admission, write and sweep are one critical section. */
   readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+  /** The layout audit's settings, from config. */
+  readonly settings: () => Effect.Effect<Settings>
+  /** A shell is about to load the frame: mint the token that ties that document's passes to it. */
+  readonly beginLoad: (id: string, input: { client: string; sequence: number }) => Effect.Effect<LoadBegun | undefined>
+  /** Is this the token of a load still current for this prototype? */
+  readonly verifyLoad: (id: string, token: string) => Effect.Effect<boolean>
+  /** Fold one browser pass into the inbox. Never wakes the agent; a stale pass changes nothing. */
+  readonly diagnostics: (
+    id: string,
+    payload: Record<string, unknown>,
+  ) => Effect.Effect<{ stale: boolean; changed: boolean; warnings: DesignLayoutWarnings.Serialized[] } | undefined>
+  /** The person selected warnings to fix: the note they would send, without committing anything yet. */
+  readonly prepareWarnings: (
+    id: string,
+    ids: readonly unknown[],
+    revision: number | undefined,
+  ) => Effect.Effect<
+    | { conflict: true; revision: number }
+    | {
+        conflict?: undefined
+        queued: DesignLayoutWarnings.Warning[]
+        prompt: ReturnType<typeof DesignLayoutWarnings.promptPayload> | null
+        warnings: DesignLayoutWarnings.Serialized[]
+      }
+    | undefined
+  >
+  /** The note with those warnings was delivered: they are now repair requests. */
+  readonly commitWarnings: (id: string, ids: readonly unknown[]) => Effect.Effect<void>
+  readonly dismissWarning: (
+    id: string,
+    warningID: unknown,
+  ) => Effect.Effect<{ changed: boolean; warnings: DesignLayoutWarnings.Serialized[] } | undefined>
+  /**
+   * The prototype could not be shown: the document itself, or a local asset it declares. Deduped
+   * per load; what comes back is only what is new, and the route wakes the agent with it.
+   */
+  readonly failures: (
+    id: string,
+    payload: Record<string, unknown>,
+  ) => Effect.Effect<{ stale: boolean; fresh: Failure[] } | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/DesignRegistry") {}
@@ -164,6 +243,8 @@ const layer = Layer.effect(
       readonly listeners: Map<string, number>
       readonly pollers: Map<string, Fiber.Fiber<void>>
       readonly baselines: Map<string, string>
+      /** Per prototype, per shell (its own random id): the load whose passes are current. */
+      readonly loads: Map<string, Map<string, Load>>
     }
 
     const persist = (item: Prototype) =>
@@ -178,6 +259,7 @@ const layer = Layer.effect(
           ...(item.ended ? { ended: item.ended } : {}),
           chat: item.chat,
           ...(item.delivered.length ? { delivered: item.delivered } : {}),
+          ...(item.warnings.length ? { warnings: item.warnings } : {}),
         }
         yield* writeAtomic(DesignState.file(item.root), DesignState.serialize(state))
         const raw = yield* fs.readFileStringSafe(DesignState.INDEX).pipe(Effect.orElseSucceed(() => undefined))
@@ -221,12 +303,24 @@ const layer = Layer.effect(
           ...(parsed.ended ? { ended: parsed.ended } : {}),
           chat: parsed.chat,
           delivered: parsed.delivered ?? [],
+          warnings: parsed.warnings ?? [],
         }
         return item
       }).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
 
     const attachments = Effect.fn("DesignRegistry.attachments")(function* () {
       return DesignAttachments.resolveConfig((yield* config.get()).experimental?.design?.attachments)
+    })
+
+    const settings = Effect.fn("DesignRegistry.settings")(function* () {
+      const design = (yield* config.get()).experimental?.design
+      const timeout = design?.gate_timeout
+      return {
+        viewports: DesignLayoutWarnings.resolveViewportClasses(design?.viewports),
+        gate: design?.gate !== false,
+        gateTimeoutMs:
+          typeof timeout === "number" && timeout > 0 ? Math.min(timeout, GATE_TIMEOUT_MAX_MS) : GATE_TIMEOUT_MS,
+      } satisfies Settings
     })
 
     /** Everything the index knows, with the sidecars' delivered lists: nothing referenced is swept. */
@@ -269,6 +363,7 @@ const layer = Layer.effect(
           listeners: new Map(),
           pollers: new Map(),
           baselines: new Map(),
+          loads: new Map(),
         }
         const hub = (id: string) =>
           Effect.gen(function* () {
@@ -391,6 +486,7 @@ const layer = Layer.effect(
         ...(existing?.ended ? { ended: existing.ended } : {}),
         chat: existing?.chat ?? [],
         delivered: existing?.delivered ?? [],
+        warnings: existing?.warnings ?? [],
       }
       st.data.set(id, next)
       yield* persist(next)
@@ -447,8 +543,11 @@ const layer = Layer.effect(
             continue
           }
           if (now === baseline) continue
-          // Let a burst of saves settle before the shell reloads once for all of them.
-          yield* Effect.sleep(DesignWatch.DEBOUNCE_MS)
+          // Let a burst of saves settle before the shell reloads once for all of them. Wider while
+          // a batch of layout fixes is outstanding: the agent is touching several places for one
+          // reload, and every extra reload is a pass that cannot yet resolve anything.
+          const outstanding = item.warnings.some(DesignLayoutWarnings.hasOutstandingRepairRequest)
+          yield* Effect.sleep(outstanding ? DesignWatch.BATCH_DEBOUNCE_MS : DesignWatch.DEBOUNCE_MS)
           yield* bump(id)
         }
       }).pipe(Effect.catchCause(() => Effect.void))
@@ -512,6 +611,164 @@ const layer = Layer.effect(
 
     const exclusive = <A, E, R>(effect: Effect.Effect<A, E, R>) => lock.withPermits(1)(effect)
 
+    // --- the passive layout inbox ---------------------------------------------------------------
+
+    const beginLoad = Effect.fn("DesignRegistry.beginLoad")(function* (
+      id: string,
+      input: { client: string; sequence: number },
+    ) {
+      const { st } = yield* InstanceState.get(state)
+      const item = yield* lookup(id)
+      if (!item) return undefined
+      const byClient = st.loads.get(id) ?? new Map<string, Load>()
+      st.loads.set(id, byClient)
+      const client = String(input.client || "").slice(0, 64) || "anon"
+      const sequence = Number.isSafeInteger(input.sequence) && input.sequence > 0 ? input.sequence : 0
+      const existing = byClient.get(client)
+      // A begin that arrives after a later one from the same shell lost a race; the later load
+      // is the one showing, and it keeps its token.
+      if (existing && sequence > 0 && existing.sequence > sequence) {
+        return { revision: existing.revision, token: existing.token, stale: "out-of-order" as const }
+      }
+      const token = randomBytes(24).toString("base64url")
+      byClient.delete(client)
+      byClient.set(client, { token, revision: item.revision, sequence, lastPass: 0, failures: new Set() })
+      while (byClient.size > MAX_LOADS) byClient.delete(byClient.keys().next().value!)
+      return { revision: item.revision, token }
+    })
+
+    const findLoad = (st: State, id: string, token: unknown): Load | undefined => {
+      const key = String(token || "")
+      if (!key) return undefined
+      for (const load of st.loads.get(id)?.values() ?? []) if (load.token === key) return load
+      return undefined
+    }
+
+    const verifyLoad = Effect.fn("DesignRegistry.verifyLoad")(function* (id: string, token: string) {
+      const { st } = yield* InstanceState.get(state)
+      const item = yield* lookup(id)
+      const load = findLoad(st, id, token)
+      return !!item && !!load && load.revision === item.revision
+    })
+
+    const publishWarnings = (id: string, warnings: readonly DesignLayoutWarnings.Warning[]) =>
+      Effect.gen(function* () {
+        const { publish } = yield* InstanceState.get(state)
+        yield* publish(id, { type: "layout-warnings", warnings: DesignLayoutWarnings.serializeAll(warnings) })
+      })
+
+    const diagnostics = Effect.fn("DesignRegistry.diagnostics")(function* (
+      id: string,
+      payload: Record<string, unknown>,
+    ) {
+      const { st } = yield* InstanceState.get(state)
+      const item = yield* lookup(id)
+      if (!item) return undefined
+      const stale = { stale: true, changed: false, warnings: DesignLayoutWarnings.serializeAll(item.warnings) }
+      const load = findLoad(st, id, payload.artifact_load_token)
+      const revision = Number(payload.artifact_revision)
+      const sequence = Number(payload.artifact_pass_sequence)
+      if (
+        !load ||
+        !Number.isInteger(revision) ||
+        revision !== load.revision ||
+        !Number.isInteger(sequence) ||
+        sequence <= load.lastPass
+      )
+        return stale
+      load.lastPass = sequence
+      const cfg = yield* settings()
+      const at = new Date().toISOString()
+      const viewportWidth = Number(payload.viewport_width) || 0
+      // A class that is not audited is not evidence either way; its findings are not recorded
+      // only to be marked obsolete a line later.
+      const audited = cfg.viewports.includes(DesignLayoutWarnings.viewportClassFor(viewportWidth))
+      const pass = audited
+        ? DesignLayoutWarnings.applyDiagnosticPass(item.warnings, {
+            complete: payload.complete !== false,
+            targetPresenceComplete: payload.target_presence_complete === true,
+            viewportWidth,
+            findings: Array.isArray(payload.findings) ? payload.findings : [],
+            revision: load.revision,
+            at,
+          })
+        : { warnings: [...item.warnings], changed: false }
+      const obsolete = DesignLayoutWarnings.markObsoleteViewports(pass.warnings, cfg.viewports, {
+        at,
+        revision: load.revision,
+      })
+      const changed = pass.changed || obsolete.changed
+      if (!changed) return { stale: false, changed: false, warnings: DesignLayoutWarnings.serializeAll(item.warnings) }
+      const next = yield* update(id, (current) => ({ ...current, warnings: obsolete.warnings }))
+      const warnings = next?.warnings ?? obsolete.warnings
+      yield* publishWarnings(id, warnings)
+      return { stale: false, changed: true, warnings: DesignLayoutWarnings.serializeAll(warnings) }
+    })
+
+    const prepareWarnings = Effect.fn("DesignRegistry.prepareWarnings")(function* (
+      id: string,
+      ids: readonly unknown[],
+      revision: number | undefined,
+    ) {
+      const item = yield* lookup(id)
+      if (!item) return undefined
+      // The person chose from a list drawn for one revision. If the prototype moved meanwhile,
+      // their choice may no longer mean what they think: say so, and let the page redraw.
+      if (revision !== undefined && revision !== item.revision) return { conflict: true as const, revision: item.revision }
+      const result = DesignLayoutWarnings.queue(item.warnings, ids, { revision: item.revision })
+      return {
+        queued: result.queued,
+        prompt: result.queued.length ? DesignLayoutWarnings.promptPayload(result.queued) : null,
+        warnings: DesignLayoutWarnings.serializeAll(item.warnings),
+      }
+    })
+
+    const commitWarnings = Effect.fn("DesignRegistry.commitWarnings")(function* (id: string, ids: readonly unknown[]) {
+      if (ids.length === 0) return
+      const item = yield* lookup(id)
+      if (!item) return
+      const result = DesignLayoutWarnings.queue(item.warnings, ids, { revision: item.revision })
+      if (!result.changed) return
+      const next = yield* update(id, (current) => ({ ...current, warnings: result.warnings }))
+      yield* publishWarnings(id, next?.warnings ?? result.warnings)
+    })
+
+    const dismissWarning = Effect.fn("DesignRegistry.dismissWarning")(function* (id: string, warningID: unknown) {
+      const item = yield* lookup(id)
+      if (!item) return undefined
+      const result = DesignLayoutWarnings.dismiss(item.warnings, warningID, { revision: item.revision })
+      if (!result.changed) return { changed: false, warnings: DesignLayoutWarnings.serializeAll(item.warnings) }
+      const next = yield* update(id, (current) => ({ ...current, warnings: result.warnings }))
+      const warnings = next?.warnings ?? result.warnings
+      yield* publishWarnings(id, warnings)
+      return { changed: true, warnings: DesignLayoutWarnings.serializeAll(warnings) }
+    })
+
+    const failures = Effect.fn("DesignRegistry.failures")(function* (id: string, payload: Record<string, unknown>) {
+      const { st } = yield* InstanceState.get(state)
+      const item = yield* lookup(id)
+      if (!item) return undefined
+      const load = findLoad(st, id, payload.artifact_load_token)
+      const revision = Number(payload.artifact_revision)
+      if (!load || !Number.isInteger(revision) || revision !== load.revision) return { stale: true, fresh: [] }
+      const raw = Array.isArray(payload.failures) ? payload.failures : []
+      const fresh: Failure[] = []
+      for (const entry of raw.slice(0, MAX_FAILURES)) {
+        if (!entry || typeof entry !== "object") continue
+        const kind = String((entry as Record<string, unknown>).kind || "")
+        if (!(FAILURE_KINDS as readonly string[]).includes(kind)) continue
+        const detail = String((entry as Record<string, unknown>).detail || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 300)
+        const key = `${kind}|${detail}`
+        if (load.failures.has(key)) continue
+        load.failures.add(key)
+        fresh.push({ kind: kind as Failure["kind"], detail })
+      }
+      return { stale: false, fresh }
+    })
+
     return Service.of({
       register,
       get,
@@ -527,6 +784,14 @@ const layer = Layer.effect(
       referenced,
       attachments,
       exclusive,
+      settings,
+      beginLoad,
+      verifyLoad,
+      diagnostics,
+      prepareWarnings,
+      commitWarnings,
+      dismissWarning,
+      failures,
     })
   }),
 )

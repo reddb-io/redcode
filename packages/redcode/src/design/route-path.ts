@@ -18,6 +18,14 @@ export type Target =
   | { readonly kind: "attachment"; readonly id: string; readonly aid?: string }
   /** A design asset we ship for prototypes that have no network: tailwind, daisyui, mermaid. */
   | { readonly kind: "vendor"; readonly name: string }
+  /** A shell is about to load the prototype into its frame, and wants a token for that load. */
+  | { readonly kind: "load"; readonly id: string }
+  /** One browser pass of the passive layout audit. Never wakes the agent. */
+  | { readonly kind: "diagnostics"; readonly id: string }
+  /** The layout inbox: read it, prepare a batch of fixes, or dismiss one warning. */
+  | { readonly kind: "warnings"; readonly id: string; readonly action?: "queue" | "dismiss" }
+  /** The prototype could not be shown at all. The one report that does wake the agent. */
+  | { readonly kind: "failures"; readonly id: string }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -38,6 +46,12 @@ export function parse(pathname: string): Target | undefined {
   if (tail === "/events") return { kind: "events", id }
   if (tail === "/end") return { kind: "end", id }
   if (tail === "/attachments") return { kind: "attachment", id }
+  if (tail === "/loads/begin") return { kind: "load", id }
+  if (tail === "/layout-diagnostics") return { kind: "diagnostics", id }
+  if (tail === "/layout-warnings") return { kind: "warnings", id }
+  if (tail === "/layout-warnings/queue") return { kind: "warnings", id, action: "queue" }
+  if (tail === "/layout-warnings/dismiss") return { kind: "warnings", id, action: "dismiss" }
+  if (tail === "/artifact-failures") return { kind: "failures", id }
   const attachment = /^\/attachments\/([0-9a-f]{64}\.(?:png|jpg|webp))$/.exec(tail)
   if (attachment) return { kind: "attachment", id, aid: attachment[1]! }
   // The `/files/` prefix is what makes relative asset paths inside a prototype resolve back into

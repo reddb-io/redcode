@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url"
 import { DesignAttachments } from "@/design/attachments"
 import { DesignRegistry } from "@/design/registry"
 import { DesignFeedback } from "@/design/feedback"
+import { DesignLayoutWarnings } from "@/design/layout-warnings"
 import { DesignVendor } from "@/design/vendor"
 import { DesignRoutePath } from "@/design/route-path"
 import { DesignSDK } from "@/design/sdk"
@@ -41,6 +42,24 @@ function sameOrigin(request: HttpServerRequest.HttpServerRequest, url: URL) {
 }
 
 const heartbeat = () => ({ _tag: "Event" as const, event: "heartbeat", id: undefined, data: "{}" })
+
+/** A small JSON body, or nothing: the caller decides what nothing means. */
+const MAX_JSON_BYTES = 256 * 1024
+const readJSON = (request: HttpServerRequest.HttpServerRequest) =>
+  request.text.pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(MAX_JSON_BYTES)),
+    Effect.map((raw) => {
+      if (raw.length > MAX_JSON_BYTES) return undefined
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
+      } catch {
+        return undefined
+      }
+    }),
+    Effect.orElseSucceed(() => undefined),
+  )
+const tooLarge = () => HttpServerResponse.jsonUnsafe({ error: "Payload Too Large" }, { status: 413 })
 
 /** Four images at the feedback limit, the words, and JSON's overhead. */
 const MAX_FEEDBACK_BYTES = DesignFeedback.LIMITS.images * DesignFeedback.LIMITS.image + 512 * 1024
@@ -105,6 +124,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
 
     if (target.kind === "shell") {
       const caps = yield* registry.attachments()
+      const settings = yield* registry.settings()
       return HttpServerResponse.text(
         DesignShell.shellHTML({
           id: prototype.id,
@@ -117,6 +137,9 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             maxBytes: caps.maxBytes,
             accepted: DesignAttachments.ACCEPTED_MIME,
           },
+          // One tab can turn the curtain off for itself; the config turns it off for everyone.
+          gate: settings.gate && url.searchParams.get("gate") !== "0",
+          gateTimeoutMs: settings.gateTimeoutMs,
           ...(prototype.ended ? { ended: prototype.ended.by } : {}),
           embed: url.searchParams.get("embed") === "1",
         }),
@@ -147,6 +170,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       // whatever happens, with a heartbeat so a proxy does not close a quiet stream.
       const first: DesignRegistry.LiveEvent[] = [
         { type: "chat-sync", chat: prototype.chat },
+        { type: "layout-warnings", warnings: DesignLayoutWarnings.serializeAll(prototype.warnings) },
         ...(prototype.ended ? [{ type: "ended" as const, by: prototype.ended.by }] : []),
       ]
       const ticks = Stream.tick("15 seconds").pipe(
@@ -178,6 +202,112 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       if (!sameOrigin(request, url)) return forbidden()
       const ended = yield* registry.end(prototype.id, "user")
       return HttpServerResponse.jsonUnsafe({ ended: ended?.ended?.by ?? "user" })
+    }
+
+    if (target.kind === "load") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      const body = yield* readJSON(request)
+      if (body === undefined) return tooLarge()
+      const begun = yield* registry.beginLoad(prototype.id, {
+        client: String(body.client || ""),
+        sequence: Number(body.sequence) || 0,
+      })
+      if (!begun) return notFound()
+      return HttpServerResponse.jsonUnsafe({
+        status: begun.stale ?? "begun",
+        revision: begun.revision,
+        artifact_load_token: begun.token,
+      })
+    }
+
+    // The passive inbox. Nothing here starts a turn: a pass is folded into the warnings, the
+    // page is told what changed, and the person decides what, if anything, to ask for.
+    if (target.kind === "diagnostics") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      const body = yield* readJSON(request)
+      if (body === undefined) return tooLarge()
+      const result = yield* registry.diagnostics(prototype.id, body)
+      if (!result) return notFound()
+      return HttpServerResponse.jsonUnsafe({
+        status: result.stale ? "stale" : "recorded",
+        active_count: result.warnings.filter((warning) => warning.active).length,
+        warnings: result.warnings,
+      })
+    }
+
+    if (target.kind === "warnings") {
+      if (!authorised) return forbidden()
+      if (target.action === undefined) {
+        if (request.method !== "GET") return notFound()
+        return HttpServerResponse.jsonUnsafe({
+          warnings: DesignLayoutWarnings.serializeAll(prototype.warnings),
+          revision: prototype.revision,
+        })
+      }
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      if (prototype.ended) return gone(prototype.ended.by)
+      const body = yield* readJSON(request)
+      if (body === undefined) return tooLarge()
+      if (target.action === "queue") {
+        // Prepared, not committed: the note joins the page's queue like any other, and the
+        // warnings become repair requests only when that note is delivered.
+        const ids = Array.isArray(body.ids) ? body.ids : []
+        const revision = typeof body.revision === "number" ? body.revision : undefined
+        const result = yield* registry.prepareWarnings(prototype.id, ids, revision)
+        if (!result) return notFound()
+        if (result.conflict) {
+          return HttpServerResponse.jsonUnsafe(
+            { error: "conflict", status: "conflict", revision: result.revision },
+            { status: 409 },
+          )
+        }
+        return HttpServerResponse.jsonUnsafe({
+          status: result.queued.length ? "prepared" : "unchanged",
+          queued_count: result.queued.length,
+          prompt: result.prompt,
+          warnings: result.warnings,
+        })
+      }
+      const result = yield* registry.dismissWarning(prototype.id, body.id)
+      if (!result) return notFound()
+      return HttpServerResponse.jsonUnsafe({ status: result.changed ? "dismissed" : "unchanged", warnings: result.warnings })
+    }
+
+    // The narrow fatal path: the document itself, or a local asset it declares, cannot be served.
+    // There is no review to triage from, so this one does reach the agent.
+    if (target.kind === "failures") {
+      if (!authorised) return forbidden()
+      if (request.method !== "POST") return notFound()
+      if (!sameOrigin(request, url)) return forbidden()
+      if (prototype.ended) return gone(prototype.ended.by)
+      const body = yield* readJSON(request)
+      if (body === undefined) return tooLarge()
+      const result = yield* registry.failures(prototype.id, body)
+      if (!result) return notFound()
+      if (result.stale) return HttpServerResponse.jsonUnsafe({ status: "stale" }, { status: 409 })
+      if (result.fresh.length === 0) return HttpServerResponse.jsonUnsafe({ status: "unchanged" })
+      const text = DesignFeedback.renderFailures(result.fresh, {
+        prototype: prototype.name,
+        revision: prototype.revision,
+      })
+      yield* registry.say(prototype.id, {
+        role: "user",
+        text: `(the prototype could not be shown: ${result.fresh.map((f) => f.detail).join("; ")})`,
+      })
+      const prompt = yield* SessionPrompt.Service
+      const scope = yield* Scope.Scope
+      yield* prompt
+        .prompt({ sessionID: prototype.sessionID, parts: [{ type: "text", text }] })
+        .pipe(
+          Effect.catchCause((cause) => Effect.logError("design failure could not be delivered", { cause })),
+          Effect.forkIn(scope, { startImmediately: true }),
+        )
+      return HttpServerResponse.jsonUnsafe({ status: "recorded", failures: result.fresh })
     }
 
     if (target.kind === "attachment") {
@@ -343,6 +473,9 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
         text: [...said, ...(notes > 0 ? [`(${notes} annotation${notes === 1 ? "" : "s"} sent)`] : [])].join("\n"),
       })
       if (parsed.end === true) yield* registry.end(prototype.id, "user")
+      // A batch of layout fixes was delivered: those warnings are now repair requests, and the
+      // inbox stops offering them until a newer revision says whether the fix took.
+      yield* registry.commitWarnings(prototype.id, DesignFeedback.queuedWarningIDs(items))
       yield* registry.deliver(
         prototype.id,
         images.resolved.flat().map((image) => image.id),
@@ -369,6 +502,16 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     const fs = yield* FSUtil.Service
     const exists = yield* fs.existsSafe(file)
     if (!exists) return notFound()
+
+    // A shell names the load it is making. A load that has since been replaced gets a refusal
+    // rather than bytes, so a frame that lost a race cannot report on a page nobody is seeing;
+    // and a probe asks only whether the document can be served, which is now answered.
+    const loadToken = url.searchParams.get("load")
+    if (loadToken !== null) {
+      const current = yield* registry.verifyLoad(prototype.id, loadToken)
+      if (!current) return HttpServerResponse.jsonUnsafe({ status: "stale" }, { status: 409 })
+      if (url.searchParams.get("probe") === "1") return HttpServerResponse.empty({ status: 200 })
+    }
 
     const mime = DesignServe.mimeFor(file)!
     const headers: Record<string, string> = {
