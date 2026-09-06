@@ -10,6 +10,7 @@
 
 import path from "path"
 import { Global } from "@reddb-io/redcode-core/global"
+import { DesignLayoutWarnings } from "./layout-warnings"
 
 /** The directory a prototype keeps its own state in; never served, never part of the design. */
 export const DIR = ".review"
@@ -43,6 +44,8 @@ export interface Persisted {
   readonly chat: readonly ChatEntry[]
   /** Images handed to the agent, with when: referenced for a while so a turn reading them is not cut off. */
   readonly delivered?: readonly Delivered[]
+  /** What the browser proved about the layout, and what the person did about it. */
+  readonly warnings?: readonly DesignLayoutWarnings.Warning[]
 }
 
 export interface Delivered {
@@ -103,6 +106,7 @@ export function parse(raw: string): Persisted | undefined {
         return typeof d.id === "string" && d.id ? [{ id: d.id, at: Number(d.at) || 0 }] : []
       })
     : []
+  const warnings = DesignLayoutWarnings.normalizeStored(r.warnings).slice(-DesignLayoutWarnings.MAX_STORED)
   return {
     id,
     sessionID,
@@ -113,6 +117,7 @@ export function parse(raw: string): Persisted | undefined {
     ...(ended ? { ended } : {}),
     chat: chat.slice(-MAX_CHAT),
     ...(delivered.length ? { delivered: delivered.slice(-MAX_DELIVERED) } : {}),
+    ...(warnings.length ? { warnings } : {}),
   }
 }
 

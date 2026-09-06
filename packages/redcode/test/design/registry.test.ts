@@ -281,3 +281,44 @@ describe("what a review remembers, and tells a mounted shell", () => {
     }),
   )
 })
+
+describe("loads", () => {
+  it.instance("are named per shell; a begin that lost a race keeps the newer load, and a shell forgets its oldest", () =>
+    Effect.gen(function* () {
+      const { registry, prototype } = yield* prototypeIn("loads")
+
+      const second = (yield* registry.beginLoad(prototype.id, { client: "tab", sequence: 2 }))!
+      const late = (yield* registry.beginLoad(prototype.id, { client: "tab", sequence: 1 }))!
+      expect(late.stale).toBe("out-of-order")
+      expect(late.token).toBe(second.token)
+      expect(yield* registry.verifyLoad(prototype.id, second.token)).toBe(true)
+      expect(yield* registry.verifyLoad(prototype.id, "nope")).toBe(false)
+
+      // Another shell does not disturb this one's load.
+      const other = (yield* registry.beginLoad(prototype.id, { client: "phone", sequence: 1 }))!
+      expect(yield* registry.verifyLoad(prototype.id, second.token)).toBe(true)
+      expect(yield* registry.verifyLoad(prototype.id, other.token)).toBe(true)
+
+      // A pass under a load that has since been replaced is stale.
+      const third = (yield* registry.beginLoad(prototype.id, { client: "tab", sequence: 3 }))!
+      const stale = (yield* registry.diagnostics(prototype.id, {
+        artifact_load_token: second.token,
+        artifact_revision: second.revision,
+        artifact_pass_sequence: 1,
+        viewport_width: 390,
+        findings: [],
+      }))!
+      expect(stale.stale).toBe(true)
+      const fresh = (yield* registry.diagnostics(prototype.id, {
+        artifact_load_token: third.token,
+        artifact_revision: third.revision,
+        artifact_pass_sequence: 1,
+        viewport_width: 390,
+        findings: [{ selector: "html", kind: "page-horizontal-overflow", axis: "horizontal", overflowPx: 80, severity: "error" }],
+      }))!
+      expect(fresh.stale).toBe(false)
+      expect(fresh.changed).toBe(true)
+      expect(fresh.warnings[0]!.viewport_class).toBe("mobile")
+    }),
+  )
+})

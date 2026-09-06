@@ -13,7 +13,7 @@ describe("the review shell", () => {
 
   test("only listens for what the prototype is allowed to say", () => {
     expect(html).toContain(
-      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","reviewState","reviewDraftUnrestorable","uploadAttachment","mode"])',
+      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","reviewState","reviewDraftUnrestorable","uploadAttachment","mode","layoutDiagnostics","artifactAssetFailure"])',
     )
     // And only for the document it is showing: a stale frame's messages are dropped.
     expect(html).toContain("if (data.load !== revision) return")
@@ -89,7 +89,7 @@ describe("notes, held and illustrated", () => {
     expect(html).toContain('id="hold"')
     expect(html).toContain('hold.addEventListener("click"')
     // The hold handler queues and redraws; it never fetches.
-    const hold = html.slice(html.indexOf('hold.addEventListener("click"'), html.indexOf("// --- the sheet, on a phone"))
+    const hold = html.slice(html.indexOf('hold.addEventListener("click"'), html.indexOf('text.addEventListener("input", draw)'))
     expect(hold).not.toContain("fetch(")
   })
 
@@ -149,5 +149,52 @@ describe("the shell's own script", () => {
       const script = page.slice(page.lastIndexOf("<script>") + 8, page.lastIndexOf("</script>"))
       expect(() => new Function(script)).not.toThrow()
     }
+  })
+})
+
+describe("the passive layout inbox and the curtain", () => {
+  test("names every load, and reports passes and failures under that name", () => {
+    expect(html).toContain('api("/loads/begin", { client: loadClient, sequence: seq })')
+    expect(html).toContain('"&load=" + encodeURIComponent(loadToken)')
+    expect(html).toContain('case "layoutDiagnostics": onDiagnostics(payload)')
+    expect(html).toContain('api("/layout-diagnostics"')
+    expect(html).toContain("artifact_load_token: token")
+    // A pass is folded into the inbox; the handler that receives it never sends feedback.
+    const diagnostics = html.slice(html.indexOf("const onDiagnostics"), html.indexOf("const pendingWarningIds"))
+    expect(diagnostics).not.toContain("/feedback")
+    expect(html).toContain('api("/artifact-failures"')
+    expect(html).toContain('kind: "artifact-asset-unavailable"')
+    expect(html).toContain('kind: "artifact-unavailable"')
+  })
+
+  test("the inbox is the person's: select, queue as one ordinary note, dismiss, reveal", () => {
+    expect(html).toContain('id="issues"')
+    expect(html).toContain('id="drawer"')
+    expect(html).toContain('api("/layout-warnings/queue", { ids, revision })')
+    expect(html).toContain('tag: "layout-warnings"')
+    expect(html).toContain('api("/layout-warnings/dismiss", { id })')
+    expect(html).toContain('tell("revealElement", { selector: w.selector })')
+    expect(html).toContain('on("layout-warnings"')
+    // A revision that moved under the person's choice is a refusal, not a silent requeue.
+    expect(html).toContain("response.status === 409")
+  })
+
+  test("holds the prototype behind a curtain with a way out, and never behind the network", () => {
+    expect(html).toContain('id="gate"')
+    expect(html).toContain('"gate":true')
+    expect(html).toContain('"gateTimeoutMs":12000')
+    expect(html).toContain("Show anyway")
+    // The frame's own pass releases the curtain before anything is fetched.
+    const onPass = html.slice(html.indexOf("const onDiagnostics"), html.indexOf("if (!loadToken) return"))
+    expect(onPass).toContain("revealGate()")
+    const off = shellHTML({ id: "p1", name: "n", token: "t", revision: 1, gate: false })
+    expect(off).toContain('"gate":false')
+    const ended = shellHTML({ id: "p1", name: "n", token: "t", revision: 1, ended: "user" })
+    expect(ended).toContain('"gate":false')
+  })
+
+  test("still parses as one script after all that", () => {
+    const script = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</script>"))
+    expect(() => new Function(script)).not.toThrow()
   })
 })

@@ -395,3 +395,235 @@ describe("the design assets we ship", () => {
     }),
   )
 })
+
+describe("the passive layout inbox", () => {
+  const json = (body: unknown, token: string, method = "POST"): RequestInit => ({
+    method,
+    headers: { "content-type": "application/json", "x-redcode-design-token": token },
+    body: JSON.stringify(body),
+  })
+  const read = (response: HttpServerResponse.HttpServerResponse) =>
+    bodyOf(response).pipe(Effect.map((text) => JSON.parse(text) as Record<string, any>))
+  const begin = (id: string, token: string, sequence = 1) =>
+    Effect.gen(function* () {
+      const response = yield* call(`/design/${id}/loads/begin`, json({ client: "tab-a", sequence }, token))
+      expect(response.status).toBe(200)
+      return (yield* read(response)) as { revision: number; artifact_load_token: string; status: string }
+    })
+  const overflow = { selector: "html", kind: "page-horizontal-overflow", axis: "horizontal", overflowPx: 120, severity: "error" }
+  const pass = (loadToken: string, revision: number, sequence: number, findings: unknown[], extra: Record<string, unknown> = {}) => ({
+    complete: true,
+    target_presence_complete: true,
+    artifact_revision: revision,
+    artifact_load_token: loadToken,
+    artifact_pass_sequence: sequence,
+    viewport_width: 1440,
+    findings,
+    ...extra,
+  })
+
+  it.instance("a diagnostic pass fills the inbox and never wakes the agent; a stale one changes nothing", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "audit", { "index.html": "<html></html>" })
+      delivered.length = 0
+      const load = yield* begin(prototype.id, prototype.token)
+      expect(load.status).toBe("begun")
+      expect(load.artifact_load_token.length).toBeGreaterThan(20)
+
+      // The frame is served under that load; a made-up load is refused rather than served.
+      const page = yield* call(`/design/${prototype.id}/files/index.html?load=${load.artifact_load_token}`)
+      expect(page.status).toBe(200)
+      expect((yield* call(`/design/${prototype.id}/files/index.html?load=nope`)).status).toBe(409)
+      const probe = yield* call(`/design/${prototype.id}/files/index.html?load=${load.artifact_load_token}&probe=1`)
+      expect(probe.status).toBe(200)
+
+      const recorded = yield* call(
+        `/design/${prototype.id}/layout-diagnostics`,
+        json(pass(load.artifact_load_token, load.revision, 1, [overflow]), prototype.token),
+      )
+      expect(recorded.status).toBe(200)
+      const body = yield* read(recorded)
+      expect(body.status).toBe("recorded")
+      expect(body.active_count).toBe(1)
+      expect(body.warnings[0]).toMatchObject({ rule: "page-horizontal-overflow", status: "open", viewport_class: "desktop" })
+      expect(delivered.length).toBe(0)
+
+      // A replay of the same pass, and a pass under a token nobody issued, are both stale.
+      const replay = yield* read(
+        yield* call(`/design/${prototype.id}/layout-diagnostics`, json(pass(load.artifact_load_token, load.revision, 1, []), prototype.token)),
+      )
+      expect(replay.status).toBe("stale")
+      const forged = yield* read(
+        yield* call(`/design/${prototype.id}/layout-diagnostics`, json(pass("forged", load.revision, 9, []), prototype.token)),
+      )
+      expect(forged.status).toBe("stale")
+      expect(forged.active_count).toBe(1)
+
+      // It survives a restart of the registry's memory: the sidecar has it.
+      const listed = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings`, { headers: { "x-redcode-design-token": prototype.token } }),
+      )
+      expect(listed.warnings.length).toBe(1)
+      expect(listed.revision).toBe(load.revision)
+      const registry = yield* DesignRegistry.Service
+      expect((yield* registry.get(prototype.id))!.warnings.length).toBe(1)
+      expect((yield* call(`/design/${prototype.id}/layout-warnings`)).status).toBe(403)
+    }),
+  )
+
+  it.instance("queueing prepares one ordinary note, refuses a moved revision, and commits on delivery", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "queue", { "index.html": "<html></html>" })
+      delivered.length = 0
+      const load = yield* begin(prototype.id, prototype.token)
+      yield* call(
+        `/design/${prototype.id}/layout-diagnostics`,
+        json(pass(load.artifact_load_token, load.revision, 1, [overflow]), prototype.token),
+      )
+      const listed = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings`, { headers: { "x-redcode-design-token": prototype.token } }),
+      )
+      const id = listed.warnings[0].id as string
+
+      const moved = yield* call(
+        `/design/${prototype.id}/layout-warnings/queue`,
+        json({ ids: [id], revision: load.revision + 5 }, prototype.token),
+      )
+      expect(moved.status).toBe(409)
+      expect((yield* read(moved)).revision).toBe(load.revision)
+
+      const prepared = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings/queue`, json({ ids: [id], revision: load.revision }, prototype.token)),
+      )
+      expect(prepared.status).toBe("prepared")
+      expect(prepared.queued_count).toBe(1)
+      expect(prepared.prompt.prompt).toContain("Fix this layout issue")
+      expect(prepared.prompt.target.type).toBe("layout-warnings")
+      // Prepared is not committed: the inbox still offers it until the note is delivered.
+      expect(prepared.warnings[0].status).toBe("open")
+
+      const sent = yield* call(
+        `/design/${prototype.id}/feedback`,
+        json(
+          { items: [{ tag: "layout-warnings", text: prepared.prompt.prompt, target: prepared.prompt.target }] },
+          prototype.token,
+        ),
+      )
+      expect(sent.status).toBe(202)
+      expect(delivered.length).toBe(1)
+      expect(delivered[0]!.text).toContain("[layout issues: 1 queued for repair]")
+      expect(delivered[0]!.text).toContain("Fix this layout issue")
+      const registry = yield* DesignRegistry.Service
+      const after = (yield* registry.get(prototype.id))!.warnings[0]!
+      expect(after.status).toBe("queued")
+      expect(after.queue_attempts).toBe(1)
+
+      // Queued is outstanding: it can be neither re-queued nor dismissed.
+      const again = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings/queue`, json({ ids: [id] }, prototype.token)),
+      )
+      expect(again.status).toBe("unchanged")
+      const dismissed = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings/dismiss`, json({ id }, prototype.token)),
+      )
+      expect(dismissed.status).toBe("unchanged")
+    }),
+  )
+
+  it.instance("dismissing hides a warning for this revision only", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "dismiss", { "index.html": "<html></html>" })
+      const load = yield* begin(prototype.id, prototype.token)
+      yield* call(
+        `/design/${prototype.id}/layout-diagnostics`,
+        json(pass(load.artifact_load_token, load.revision, 1, [overflow]), prototype.token),
+      )
+      const registry = yield* DesignRegistry.Service
+      const id = (yield* registry.get(prototype.id))!.warnings[0]!.id
+      const dismissed = yield* read(
+        yield* call(`/design/${prototype.id}/layout-warnings/dismiss`, json({ id }, prototype.token)),
+      )
+      expect(dismissed.status).toBe("dismissed")
+      expect(dismissed.warnings[0].active).toBe(false)
+
+      // A newer revision that still has it brings it back.
+      yield* registry.bump(prototype.id)
+      const next = yield* begin(prototype.id, prototype.token, 2)
+      expect(next.revision).toBe(load.revision + 1)
+      const back = yield* read(
+        yield* call(
+          `/design/${prototype.id}/layout-diagnostics`,
+          json(pass(next.artifact_load_token, next.revision, 1, [overflow]), prototype.token),
+        ),
+      )
+      expect(back.warnings[0].status).toBe("open")
+    }),
+  )
+
+  it.instance("a failure to show the prototype is the one report that reaches the agent, once per load", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "broken", { "index.html": "<html></html>" })
+      delivered.length = 0
+      const load = yield* begin(prototype.id, prototype.token)
+      const failure = {
+        failures: [
+          { kind: "artifact-asset-unavailable", detail: "<img> could not load /design/x/files/hero.png" },
+          { kind: "made-up", detail: "ignored" },
+        ],
+        artifact_load_token: load.artifact_load_token,
+        artifact_revision: load.revision,
+      }
+      const first = yield* call(`/design/${prototype.id}/artifact-failures`, json(failure, prototype.token))
+      expect(first.status).toBe(200)
+      expect((yield* read(first)).status).toBe("recorded")
+      expect(delivered.length).toBe(1)
+      expect(delivered[0]!.text).toContain("<artifact-failures")
+      expect(delivered[0]!.text).toContain("hero.png")
+      expect(delivered[0]!.text).not.toContain("made-up")
+
+      const repeat = yield* read(yield* call(`/design/${prototype.id}/artifact-failures`, json(failure, prototype.token)))
+      expect(repeat.status).toBe("unchanged")
+      expect(delivered.length).toBe(1)
+
+      const stale = yield* call(
+        `/design/${prototype.id}/artifact-failures`,
+        json({ ...failure, artifact_load_token: "old" }, prototype.token),
+      )
+      expect(stale.status).toBe(409)
+      expect(delivered.length).toBe(1)
+    }),
+  )
+
+  it.instance("the event stream tells a shell the inbox as it opens, and again when it changes", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "inbox-live", { "index.html": "<html></html>" })
+      const load = yield* begin(prototype.id, prototype.token)
+      yield* call(
+        `/design/${prototype.id}/layout-diagnostics`,
+        json(pass(load.artifact_load_token, load.revision, 1, [overflow]), prototype.token),
+      )
+      const stream = yield* call(`/design/${prototype.id}/events?token=${prototype.token}`)
+      const body = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const web = HttpServerResponse.toWeb(stream)
+          const reader = web.body!.getReader()
+          let text = ""
+          while (!text.includes("event: layout-warnings")) {
+            const chunk = yield* Effect.promise(() => reader.read())
+            if (chunk.done) break
+            text += new TextDecoder().decode(chunk.value)
+          }
+          yield* Effect.promise(() => reader.cancel())
+          return text
+        }),
+      )
+      expect(body).toContain("event: layout-warnings")
+      expect(body).toContain("page-horizontal-overflow")
+    }),
+  )
+})

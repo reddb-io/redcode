@@ -12,6 +12,8 @@
  * commands.
  */
 
+import { DesignLayoutWarnings } from "./layout-warnings"
+
 /** Long enough for a real remark, short enough that a page cannot flood a turn. */
 export const LIMITS = {
   items: 50,
@@ -65,7 +67,10 @@ export interface MermaidNodeTarget {
   readonly selector: string
 }
 
-export type Target = TextRangeTarget | TableCellTarget | MermaidNodeTarget
+/** A batch of layout warnings the person queued for repair, as the inbox described them. */
+export type LayoutWarningsTarget = DesignLayoutWarnings.PromptTarget
+
+export type Target = TextRangeTarget | TableCellTarget | MermaidNodeTarget | LayoutWarningsTarget
 
 export interface Annotation {
   /** Where in the prototype, as a CSS path. */
@@ -184,6 +189,10 @@ export function target(raw: unknown): Target | undefined {
         label: clamp(r.label, LIMITS.elementText),
         selector: clamp(r.selector, LIMITS.selector),
       }
+    case "layout-warnings": {
+      const normalized = DesignLayoutWarnings.normalizeTarget(r)
+      return normalized.warnings.length ? normalized : undefined
+    }
     default:
       return undefined
   }
@@ -246,8 +255,46 @@ export function where(item: Annotation): string {
     const ids = [t.diagramId ? `#${t.diagramId}` : "", t.nodeId ? `#${t.nodeId}` : ""].filter(Boolean).join(" ")
     return `node ${t.label ? `"${t.label}"` : ""}${ids ? ` ${ids}` : ""}`.replace(/\s+/g, " ").trim()
   }
+  if (t?.type === "layout-warnings") return `layout issues: ${t.warnings.length} queued for repair`
   if (item.tag === "message") return ""
   return item.label || item.selector || ""
+}
+
+/** The ids of every layout warning a batch carries: what the inbox marks as requested once it is delivered. */
+export function queuedWarningIDs(annotations: readonly Annotation[]): string[] {
+  const ids = new Set<string>()
+  for (const item of annotations) {
+    if (item.target?.type !== "layout-warnings") continue
+    for (const warning of item.target.warnings) if (warning.id) ids.add(warning.id)
+  }
+  return [...ids]
+}
+
+export const FAILURE_KINDS = ["artifact-unavailable", "artifact-asset-unavailable"] as const
+
+/**
+ * The one report that reaches the agent unasked: the prototype could not be shown, so there is no
+ * review to have. Rendered like feedback — fenced, capped — because its details come from a page.
+ */
+export function renderFailures(
+  failures: readonly { kind: string; detail: string }[],
+  context: { prototype: string; revision: number },
+): string {
+  const head = `<artifact-failures prototype="${clamp(context.prototype, LIMITS.label)}" revision="${context.revision}">`
+  const lines = failures.slice(0, 20).map((failure, index) => {
+    const what =
+      failure.kind === "artifact-unavailable"
+        ? "The prototype's document could not be served"
+        : "A local asset the prototype declares could not be served"
+    return `${index + 1}. ${what}: ${clamp(failure.detail, 300)}`
+  })
+  return [
+    head,
+    ...lines,
+    "",
+    "The person has nothing to review until this is fixed. Fix the file or the reference, then call design_preview again.",
+    "</artifact-failures>",
+  ].join("\n")
 }
 
 export function render(annotations: readonly Annotation[], context: Context): string {

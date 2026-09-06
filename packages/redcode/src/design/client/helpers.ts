@@ -527,6 +527,179 @@ export function deriveAttachmentNoticeState(
   return ""
 }
 
+// --- the layout audit's pure classifiers ---------------------------------------------------------
+// The audit measures in the document (see `audit.ts`); these decide what a measurement means, so
+// the thresholds are testable without a browser. Ported from lavish-axi with the same numbers.
+
+export interface AuditRect {
+  readonly left?: number
+  readonly right?: number
+  readonly top?: number
+  readonly bottom?: number
+  readonly width?: number
+  readonly height?: number
+}
+
+export interface TextOverflowFinding {
+  readonly axis: "horizontal" | "vertical"
+  readonly kind: "clipped-text"
+  readonly overflowPx: number
+}
+
+/**
+ * Severe text overflow: a line whose centre lies outside its clipping box, or whose clipped share
+ * is at least a fifth. Glyph ink outside the line box, tiny excursions, explicit truncation and
+ * standard accessibility hiding are the author's intent and stay silent.
+ */
+export function classifySevereTextOverflow(input: {
+  readonly fragments: readonly AuditRect[] | null | undefined
+  readonly box: AuditRect | null | undefined
+  readonly overflowX: string
+  readonly overflowY: string
+  readonly isTruncated?: boolean
+  readonly isVisuallyHidden?: boolean
+  readonly minOutsideRatio?: number
+  readonly epsilon?: number
+}): TextOverflowFinding | null {
+  const minOutsideRatio = input.minOutsideRatio === undefined ? 0.2 : input.minOutsideRatio
+  const epsilon = input.epsilon === undefined ? 1 : input.epsilon
+  function overflowOf(fragment: AuditRect, boundary: AuditRect, axis: "horizontal" | "vertical") {
+    const start = Number(axis === "horizontal" ? fragment.left : fragment.top)
+    const end = Number(axis === "horizontal" ? fragment.right : fragment.bottom)
+    const boxStart = Number(axis === "horizontal" ? boundary.left : boundary.top)
+    const boxEnd = Number(axis === "horizontal" ? boundary.right : boundary.bottom)
+    const explicitSize = Number(axis === "horizontal" ? fragment.width : fragment.height)
+    const size = Number.isFinite(explicitSize) ? Math.max(0, explicitSize) : Math.max(0, end - start)
+    if (![start, end, boxStart, boxEnd, size].every(Number.isFinite) || size <= 0) {
+      return { overflowPx: 0, outsideRatio: 0, centerOutside: false }
+    }
+    const before = Math.max(0, boxStart - start)
+    const after = Math.max(0, end - boxEnd)
+    const center = start + size / 2
+    return {
+      overflowPx: Math.max(before, after),
+      outsideRatio: Math.min(1, (before + after) / size),
+      centerOutside: center < boxStart || center > boxEnd,
+    }
+  }
+  const fragments = input.fragments
+  if (input.isTruncated || input.isVisuallyHidden || !input.box || !Array.isArray(fragments) || fragments.length === 0)
+    return null
+  const clipsX = input.overflowX === "hidden" || input.overflowX === "clip"
+  const clipsY = input.overflowY === "hidden" || input.overflowY === "clip"
+  const spillsY = input.overflowY === "visible"
+  const scrollsX = input.overflowX === "auto" || input.overflowX === "scroll"
+  const scrollsY = input.overflowY === "auto" || input.overflowY === "scroll"
+  let strongest: TextOverflowFinding | null = null
+  for (const fragment of fragments) {
+    const horizontal = overflowOf(fragment, input.box, "horizontal")
+    const vertical = overflowOf(fragment, input.box, "vertical")
+    const severeX =
+      clipsX &&
+      !scrollsX &&
+      horizontal.overflowPx > epsilon &&
+      (horizontal.centerOutside || horizontal.outsideRatio >= minOutsideRatio)
+    const severeY = (clipsY || spillsY) && !scrollsY && vertical.overflowPx > epsilon && vertical.centerOutside
+    const candidates: (TextOverflowFinding | null)[] = [
+      severeX ? { axis: "horizontal", kind: "clipped-text", overflowPx: horizontal.overflowPx } : null,
+      severeY ? { axis: "vertical", kind: "clipped-text", overflowPx: vertical.overflowPx } : null,
+    ]
+    for (const candidate of candidates) {
+      if (candidate && (!strongest || candidate.overflowPx > strongest.overflowPx)) strongest = candidate
+    }
+  }
+  return strongest
+}
+
+export interface RectEscape {
+  readonly axis: "horizontal" | "vertical"
+  readonly side: "start" | "end"
+  readonly overflowPx: number
+}
+
+/** A box that materially leaves a boundary: at least 4px, and either its centre or a fifth of it. */
+export function classifyMaterialRectEscape(input: {
+  readonly rect: AuditRect | null | undefined
+  readonly boundary: AuditRect | null | undefined
+  readonly axes?: readonly ("horizontal" | "vertical")[]
+  readonly minOutsidePx?: number
+  readonly minOutsideRatio?: number
+}): RectEscape | null {
+  const axes = input.axes || ["horizontal", "vertical"]
+  const minOutsidePx = input.minOutsidePx === undefined ? 4 : input.minOutsidePx
+  const minOutsideRatio = input.minOutsideRatio === undefined ? 0.2 : input.minOutsideRatio
+  let strongest: RectEscape | null = null
+  for (const axis of axes) {
+    const rect = input.rect || {}
+    const boundary = input.boundary || {}
+    const start = Number(axis === "horizontal" ? rect.left : rect.top)
+    const end = Number(axis === "horizontal" ? rect.right : rect.bottom)
+    const boundaryStart = Number(axis === "horizontal" ? boundary.left : boundary.top)
+    const boundaryEnd = Number(axis === "horizontal" ? boundary.right : boundary.bottom)
+    const explicitSize = Number(axis === "horizontal" ? rect.width : rect.height)
+    const size = Number.isFinite(explicitSize) ? Math.max(0, explicitSize) : Math.max(0, end - start)
+    if (![start, end, boundaryStart, boundaryEnd, size].every(Number.isFinite) || size <= 0) continue
+    const before = Math.max(0, boundaryStart - start)
+    const after = Math.max(0, end - boundaryEnd)
+    const outsidePx = Math.max(before, after)
+    const outsideRatio = Math.min(1, (before + after) / size)
+    const center = start + size / 2
+    const centerOutside = center < boundaryStart || center > boundaryEnd
+    if (outsidePx < minOutsidePx || (!centerOutside && outsideRatio < minOutsideRatio)) continue
+    const candidate: RectEscape = { axis, side: before >= after ? "start" : "end", overflowPx: outsidePx }
+    if (!strongest || candidate.overflowPx > strongest.overflowPx) strongest = candidate
+  }
+  return strongest
+}
+
+/**
+ * Tiny document deltas are cosmetic. A page failure is reportable only when meaningful content
+ * materially escapes the usable viewport; the caller establishes that from visible element bounds.
+ */
+export function isMaterialPageOverflow(input: {
+  readonly overflowPx: unknown
+  readonly viewportWidth: unknown
+  readonly hasEscapedContent: unknown
+}): boolean {
+  const overflow = Number(input.overflowPx)
+  const width = Number(input.viewportWidth)
+  const materialThreshold = Math.max(24, Number.isFinite(width) ? width * 0.05 : 24)
+  return Boolean(input.hasEscapedContent) && Number.isFinite(overflow) && overflow >= materialThreshold
+}
+
+export interface LayoutFinding {
+  readonly selector: string
+  readonly kind: string
+  readonly axis?: string
+  readonly overflowPx?: number
+  readonly viewportWidth?: number
+  readonly severity: string
+}
+
+/** Only what two samples agree on: a finding seen once is motion, not layout. */
+export function findStableLayoutFindings(
+  first: readonly LayoutFinding[] | null | undefined,
+  second: readonly LayoutFinding[] | null | undefined,
+): LayoutFinding[] {
+  const key = (finding: LayoutFinding) => finding.kind + ":" + finding.selector + ":" + (finding.axis || "")
+  const firstKeys = new Set((Array.isArray(first) ? first : []).filter((f) => f && f.severity === "error").map(key))
+  return (Array.isArray(second) ? second : []).filter((f) => f && f.severity === "error" && firstKeys.has(key(f)))
+}
+
+/** Covered text: enough sample points, and nine in ten of them under an opaque sibling. */
+export function isNearTotalOcclusion(input: {
+  readonly occludedSamples: unknown
+  readonly totalSamples: unknown
+  readonly minSamples?: number
+  readonly minRatio?: number
+}): boolean {
+  const minSamples = input.minSamples === undefined ? 5 : input.minSamples
+  const minRatio = input.minRatio === undefined ? 0.9 : input.minRatio
+  const occluded = Number(input.occludedSamples)
+  const total = Number(input.totalSamples)
+  return Number.isFinite(occluded) && Number.isFinite(total) && total >= minSamples && occluded / total >= minRatio
+}
+
 /** Every helper above, in the order the bundle declares them. */
 export const HELPERS = [
   isModeToggleHotkeyEvent,
@@ -559,4 +732,9 @@ export const HELPERS = [
   planClipboardPaste,
   isTrustedAttachmentResult,
   deriveAttachmentNoticeState,
+  classifySevereTextOverflow,
+  classifyMaterialRectEscape,
+  isMaterialPageOverflow,
+  findStableLayoutFindings,
+  isNearTotalOcclusion,
 ] as const

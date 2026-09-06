@@ -241,6 +241,17 @@ export const Info = Schema.Struct({
               }),
             }),
           ).annotate({ description: "Limits on images attached to design-review notes." }),
+          viewports: Schema.optional(Schema.Array(Schema.Literals(["mobile", "compact", "desktop"]))).annotate({
+            description:
+              "Viewport classes the browser's layout audit reports on (default: all three). A class left out is never re-checked, and its warnings are marked obsolete.",
+          }),
+          gate: Schema.optional(Schema.Boolean).annotate({
+            description:
+              "Hold the prototype behind a curtain until its first layout pass, so a person never sees a half-laid-out page (default: true; ?gate=0 on the review URL disables it for one tab).",
+          }),
+          gate_timeout: Schema.optional(PositiveInt).annotate({
+            description: "Milliseconds the gate may hold the prototype before revealing it anyway (default: 12000, at most 60000).",
+          }),
         }),
       ).annotate({ description: "Design mode: the review surface and its stores." }),
       subtask_concurrency: Schema.optional(PositiveInt).annotate({

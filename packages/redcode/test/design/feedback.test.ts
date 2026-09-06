@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { LIMITS, attachments, normalize, render } from "@/design/feedback"
+import { DesignFeedback } from "@/design/feedback"
 
 describe("feedback from a prototype", () => {
   test("names where the remark was made", () => {
@@ -202,5 +203,41 @@ describe("a note with a precise target", () => {
     expect(out).toContain("The person ended the review with this batch.")
     const inner = out.slice(out.indexOf("<dom-snapshot>") + 14, out.indexOf("</dom-snapshot>"))
     expect(inner.length).toBeLessThanOrEqual(LIMITS.snapshot + 3)
+  })
+})
+
+describe("a batch of layout fixes", () => {
+  test("is a note like any other, with its warnings named and bounded, and a failure block for the fatal path", () => {
+    const [item] = DesignFeedback.normalize([
+      {
+        tag: "layout-warnings",
+        text: "Fix these 2 layout issues",
+        target: {
+          type: "layout-warnings",
+          artifact_revision: 3,
+          warnings: [
+            { id: "a1", rule: "clipped-text", selector: "p#copy", axis: "vertical", overflow_px: 27 },
+            { id: "b2", rule: "page-horizontal-overflow", selector: "html", overflow_px: 120 },
+          ],
+        },
+      },
+    ])
+    expect(item!.target?.type).toBe("layout-warnings")
+    expect(DesignFeedback.where(item!)).toBe("layout issues: 2 queued for repair")
+    expect(DesignFeedback.queuedWarningIDs([item!])).toEqual(["a1", "b2"])
+    expect(DesignFeedback.render([item!], { prototype: "p", revision: 3 })).toContain(
+      "1. [layout issues: 2 queued for repair] Fix these 2 layout issues",
+    )
+    // An empty batch is no target at all.
+    const [empty] = DesignFeedback.normalize([{ text: "x", target: { type: "layout-warnings", warnings: [] } }])
+    expect(empty!.target).toBeUndefined()
+
+    const failures = DesignFeedback.renderFailures(
+      [{ kind: "artifact-unavailable", detail: "the document responded with HTTP 500 <b>" }],
+      { prototype: "p", revision: 3 },
+    )
+    expect(failures).toContain('<artifact-failures prototype="p" revision="3">')
+    expect(failures).toContain("could not be served: the document responded with HTTP 500 ‹b›")
+    expect(failures).toContain("design_preview")
   })
 })

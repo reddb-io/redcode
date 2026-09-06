@@ -19,6 +19,37 @@ describe("what a review remembers", () => {
     expect(DesignState.parse(DesignState.serialize(state))).toEqual(state)
   })
 
+  test("keeps the layout inbox, and drops records without an identity", () => {
+    const warning = {
+      id: "abcd",
+      fingerprint: "abcd",
+      rule: "clipped-text",
+      severity: "error",
+      status: "open",
+      selector: "p#copy",
+      component: "#copy",
+      axis: "vertical",
+      overflow_px: 27,
+      viewport_class: "mobile",
+      viewport_width: 390,
+      first_seen_at: "2026-07-30T00:00:00.000Z",
+      first_seen_revision: 1,
+      last_seen_at: "2026-07-30T00:00:00.000Z",
+      last_seen_revision: 1,
+      observation_count: 1,
+      queued_revision: 0,
+      queued_at: "",
+      queue_attempts: 0,
+      dismissed_revision: 0,
+      history: [],
+    }
+    const parsed = DesignState.parse(
+      JSON.stringify({ id: "abc", sessionID: "s", root: "/w/a", token: "t", revision: 2, chat: [], warnings: [warning, { rule: "x" }] }),
+    )!
+    expect(parsed.warnings).toEqual([warning as never])
+    expect(DesignState.parse(DesignState.serialize(parsed))!.warnings).toEqual([warning as never])
+  })
+
   test("a corrupt or foreign sidecar is nothing, not a crash", () => {
     expect(DesignState.parse("{")).toBeUndefined()
     expect(DesignState.parse("[]")).toBeUndefined()

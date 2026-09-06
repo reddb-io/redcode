@@ -12,14 +12,18 @@
  */
 
 import { artifactMain, type ArtifactConfig } from "./client/artifact"
+import { artifactAudit } from "./client/audit"
 import { HELPERS } from "./client/helpers"
 
 /** A readable name for an element, short enough to sit in a transcript line. */
 export const LABEL_PARTS = 3
 
 export function sdkScript(config: ArtifactConfig = { load: 0 }) {
-  const declarations = HELPERS.map((fn) => fn.toString()).join("\n")
-  const table = "{ " + HELPERS.map((fn) => fn.name + ": " + fn.name).join(", ") + " }"
+  // The audit is one more declaration in the same scope: bigger than a helper, but bundled the
+  // same way, so it is typechecked and tested here and cannot drift from what the route serves.
+  const parts = [...HELPERS, artifactAudit]
+  const declarations = parts.map((fn) => fn.toString()).join("\n")
+  const table = "{ " + parts.map((fn) => fn.name + ": " + fn.name).join(", ") + " }"
   return `(() => {
 ${declarations}
 ;(${artifactMain.toString()})(${JSON.stringify(config)}, ${table})
