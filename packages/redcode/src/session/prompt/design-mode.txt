@@ -19,6 +19,8 @@ The page can collect structured answers: inside a `data-redcode-question="id"` w
 
 ## What to build
 
+Open each matching playbook with `design_playbook` before writing HTML — diagram, table, comparison, plan, code, input (collecting answers inside the page), slides — and follow it; one artifact often combines several. Call it with no id to see when each applies.
+
 Make it real enough to argue with. A prototype that only shows the happy path answers nothing, so include the states that decide a design. Interactivity is the point — a static picture would have been a screenshot.
 
 Every surface that fetches, transforms or accepts data renders five states, and marks the element that renders each with `data-state="…"`:

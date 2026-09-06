@@ -26,6 +26,7 @@ import type { InvalidTool } from "@/tool/invalid"
 import type { LspTool } from "@/tool/lsp"
 import type { PlanExitTool } from "@/tool/plan"
 import { DesignExitTool } from "@/tool/design"
+import { DesignPlaybookTool } from "@/tool/design-playbook"
 import { GoalCompleteTool } from "@/tool/goal"
 import type { QuestionTool } from "@/tool/question"
 import type { ReadTool } from "@/tool/read"
@@ -113,6 +114,7 @@ type ToolDefs = {
   skill: typeof SkillTool
   plan_exit: typeof PlanExitTool
   design_exit: typeof DesignExitTool
+  design_playbook: typeof DesignPlaybookTool
   goal_complete: typeof GoalCompleteTool
 }
 
@@ -480,6 +482,14 @@ function runPlanExit(p: ToolProps<typeof PlanExitTool>): ToolInline {
     title: text(p.frame.state.title) || "Switching to build agent",
     mode: "block",
     body: p.frame.status === "completed" ? text(p.frame.state.output) : undefined,
+  }
+}
+
+function runDesignPlaybook(p: ToolProps<typeof DesignPlaybookTool>): ToolInline {
+  return {
+    icon: "📖",
+    title: text(p.frame.state.title) || "Design playbook",
+    mode: "inline",
   }
 }
 
@@ -1257,6 +1267,16 @@ const TOOL_RULES = {
       final: false,
     },
     run: runDesignExit,
+    scroll: {
+      start: () => "",
+    },
+  },
+  design_playbook: {
+    view: {
+      output: false,
+      final: false,
+    },
+    run: runDesignPlaybook,
     scroll: {
       start: () => "",
     },
