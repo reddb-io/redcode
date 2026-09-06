@@ -89,7 +89,12 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       const payload = yield* Effect.try({ try: () => JSON.parse(raw) as unknown, catch: () => undefined }).pipe(
         Effect.orElseSucceed(() => undefined),
       )
-      const parsed = (payload ?? {}) as { items?: unknown; viewport?: { width?: unknown; height?: unknown } }
+      const parsed = (payload ?? {}) as {
+        items?: unknown
+        viewport?: { width?: unknown; height?: unknown }
+        snapshot?: unknown
+        end?: unknown
+      }
       const items = Array.isArray(parsed.items) ? DesignFeedback.normalize(parsed.items) : []
       if (items.length === 0) return HttpServerResponse.jsonUnsafe({ error: "Nothing to say" }, { status: 400 })
 
@@ -102,6 +107,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
         prototype: prototype.name,
         revision: prototype.revision,
         ...(viewport ? { viewport } : {}),
+        ...(typeof parsed.snapshot === "string" && parsed.snapshot.trim() ? { snapshot: parsed.snapshot } : {}),
+        ...(parsed.end === true ? { ended: "user" as const } : {}),
       })
 
       // Forked, and into the server's scope rather than the request's: a turn can run for minutes
@@ -142,7 +149,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
 
     if (mime.startsWith("text/html")) {
       const html = yield* Effect.promise(() => Bun.file(file).text())
-      return HttpServerResponse.text(DesignSDK.injectSDK(html), { headers })
+      return HttpServerResponse.text(DesignSDK.injectSDK(html, { load: prototype.revision }), { headers })
     }
 
     const bytes = yield* Effect.promise(() => Bun.file(file).arrayBuffer())
