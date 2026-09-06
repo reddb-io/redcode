@@ -1,5 +1,30 @@
 # opencode
 
+## 0.18.0
+
+### Minor Changes
+
+- a4e53f8: Real fan-out: every subtask on a message runs, together; background subagents on by default, capped per session
+
+  A message carrying several subtasks used to run only the last one — the assistant message the first subtask left behind hid the rest. Now all of them run, `experimental.subtask_concurrency` at a time (default 4), and their results land in the order they were asked. Background subagents no longer need `REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`; set it to `false` to turn them off. One session may have `experimental.background_subagents_max` (default 4) running at once; past that the task tool refuses and tells the model to wait or run the task inline. Cancelling the run — Ctrl+C, `/goal-drop` — still cancels every child.
+
+- f53faea: `/goal`: a definition of done the harness pursues until it holds
+
+  A goal — free text plus optional `verify:`, `constraints:`, `boundaries:`, `stop when:` and `gate:` lines — lives in the session's metadata and is re-rendered into every turn, so compaction cannot paraphrase it away. At the end of each turn, gates run and a small judge reads the objective against the last answer: CONTINUE is one more turn inside the same run, DONE ends it with the goal met, BLOCKED and the turn budget (default 20) pause it with the reason, WAIT parks it while background work runs. The agent claims completion through `goal_complete` with evidence the judge reads; an unsupported claim comes back as work. Ctrl+C and a new process pause the goal; only `/goal resume` brings it back. Every decision is a row in `redcode debug guards`. Endpoints: `GET/POST /session/:id/goal`, `…/goal/pause|resume|drop|budget`.
+
+- 6c71717: Subagents inherit the goal, and the loop waits for them
+
+  When the parent session has an active goal, every `task` call opens the child's prompt with the objective and the contract — not the budget, not the completion tool: the child does one part, and only the parent's turn is judged. A turn that ends with a background subagent still running parks the loop on WAIT instead of spending a turn; the subagent's report re-enters the parent and the judge runs again on that turn.
+
+### Patch Changes
+
+- Updated dependencies [f53faea]
+- Updated dependencies [e2002a5]
+  - @reddb-io/redcode-sdk@1.19.0
+  - @reddb-io/redcode-tui@1.20.0
+  - @reddb-io/redcode-server@1.18.23
+  - @reddb-io/redcode-plugin@1.18.19
+
 ## 0.17.1
 
 ### Patch Changes
