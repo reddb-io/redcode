@@ -22,7 +22,7 @@ const synthetic = (parts: readonly { synthetic?: boolean; text?: string }[]) =>
     .map((part) => part.text ?? "")
     .join("\n")
 
-const flags = RuntimeFlags.layer({ experimentalDesignMode: true })
+const flags = RuntimeFlags.layer({})
 const it = testEffect(
   LayerNode.compile(
     LayerNode.group([

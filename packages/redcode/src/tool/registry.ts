@@ -263,9 +263,10 @@ const layer = Layer.effect(
             ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
-            // Behind a flag while the review surface settles: it opens a browser window and serves
-            // model-written HTML, which is not something to switch on for everyone by surprise.
-            ...(flags.experimentalDesignMode ? [tool.design_preview, tool.design_exit, tool.design_playbook] : []),
+            tool.design_preview,
+            tool.design_exit,
+            tool.design_playbook,
+            tool.design_export,
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
             tool.goal_complete,
           ],
