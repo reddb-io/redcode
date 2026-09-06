@@ -1,5 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
+import { existsSync, renameSync } from "fs"
 import { xdgData, xdgCache, xdgState } from "xdg-basedir"
 import os from "os"
 import { Context, Effect, Layer } from "effect"
@@ -11,8 +12,32 @@ const app = "redcode"
 const home = process.env.REDCODE_TEST_HOME ?? os.homedir()
 
 // Primary paths live under the RedDB family alongside redskilled
-// (`~/.red/redskilled`), so `redcode` joins it instead of splitting across XDG.
-const redcodeHome = path.join(home, ".red", app)
+// (`~/.red/redskilled`), so `redcode` joins it instead of splitting across XDG. The directory is
+// `code`, matching `.red/code` inside a repository.
+const redcodeHome = adoptHome(path.join(home, ".red", "code"), path.join(home, ".red", app))
+
+/**
+ * The home this installation uses.
+ *
+ * `~/.red/redcode` was the earlier spelling. When it is the only one there it is renamed rather
+ * than read in place, so there is one home and not two: the move is a rename inside `~/.red`, and
+ * an open database or log keeps writing to the same file through it. Anything that goes wrong
+ * leaves the old directory exactly as it was and keeps using it — this runs before argv is parsed,
+ * and no failure here is worth refusing to start over.
+ */
+function adoptHome(preferred: string, legacy: string) {
+  try {
+    if (existsSync(preferred) || !existsSync(legacy)) return preferred
+    renameSync(legacy, preferred)
+    return preferred
+  } catch {
+    try {
+      return existsSync(legacy) ? legacy : preferred
+    } catch {
+      return preferred
+    }
+  }
+}
 const data = path.join(redcodeHome, "data")
 const cache = path.join(redcodeHome, "cache")
 const config = redcodeHome

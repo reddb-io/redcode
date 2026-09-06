@@ -23,6 +23,7 @@ import { ConfigVariable } from "@/config/variable"
 import { Npm } from "@reddb-io/redcode-core/npm"
 import { FormatError, FormatUnknownError } from "@/cli/error"
 import { TuiConfig } from "@reddb-io/redcode-tui/config"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 
 export const Info = TuiConfig.Info
 export type Info = TuiConfig.Info
@@ -168,8 +169,8 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
       acc.plugin_origins = plugins
     })
 
-  // Every config dir we may read from: global config dir, `.redcode` and legacy
-  // `.opencode` folders between cwd and home, and REDCODE_CONFIG_DIR.
+  // Every config dir we may read from: global config dir, the `.red/code` folders (and the older
+  // `.redcode`/`.opencode`) between cwd and home, and REDCODE_CONFIG_DIR.
   const directories = yield* ConfigPaths.directories(ctx.directory)
   yield* Effect.promise(() => migrateTuiConfig({ directories, cwd: ctx.directory }))
 
@@ -197,15 +198,16 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
     yield* mergeFile(acc, file)
   }
 
-  // 4. `.redcode` and legacy `.opencode` directories (and REDCODE_CONFIG_DIR) discovered while
+  // 4. Project directories (and REDCODE_CONFIG_DIR) discovered while
   // walking up the tree. Also returned below so callers can install plugin
   // dependencies from each location.
-  const dirs = unique(directories).filter(
-    (dir) => [".redcode", ".opencode"].some((name) => dir.endsWith(name)) || dir === Flag.REDCODE_CONFIG_DIR,
-  )
+  // The global config home has the shape of a project directory (`~/.red/code`), and step 1
+  // already merged it at the lowest precedence. Matching it here would merge it again, last.
+  const isProject = (dir: string) => ProjectDir.isProjectDir(dir) && dir !== Global.Path.config
+  const dirs = unique(directories).filter((dir) => isProject(dir) || dir === Flag.REDCODE_CONFIG_DIR)
 
   for (const dir of dirs) {
-    if (![".redcode", ".opencode"].some((name) => dir.endsWith(name)) && dir !== Flag.REDCODE_CONFIG_DIR) continue
+    if (!isProject(dir) && dir !== Flag.REDCODE_CONFIG_DIR) continue
     for (const file of ConfigPaths.fileInDirectory(dir, "tui")) {
       yield* mergeFile(acc, file)
     }

@@ -14,6 +14,7 @@ import { Flock } from "@reddb-io/redcode-core/util/flock"
 import { isRecord } from "@/util/record"
 
 import { parsePluginSpecifier, readPackageThemes, readPluginPackage, resolvePluginTarget } from "./shared"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 
 type Mode = "noop" | "add" | "replace"
 type Kind = "server" | "tui"
@@ -334,9 +335,12 @@ async function patchDir(input: PatchInput, dep: PatchDeps) {
   if (input.global) return input.config ?? Global.Path.config
   const git = input.vcs === "git" && input.worktree !== "/"
   const root = git ? input.worktree : input.directory
-  const current = path.join(root, ".redcode")
-  const legacy = path.join(root, ".opencode")
-  return !(await dep.exists(current)) && (await dep.exists(legacy)) ? legacy : current
+  // The one that is already there wins, so a repository keeps a single directory; a repository
+  // with none gets `.red/code`.
+  for (const candidate of ProjectDir.candidates(root)) {
+    if (await dep.exists(candidate)) return candidate
+  }
+  return path.join(root, ProjectDir.DIR)
 }
 
 function patchNames(kind: Kind): Array<"config" | "redcode" | "opencode" | "tui"> {

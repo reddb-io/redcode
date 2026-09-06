@@ -33,9 +33,9 @@ describe("the design manifest", () => {
   test("hands the plan the reasoning, not the markup", () => {
     const text = summarize(
       { ...empty("hero"), decisions: ["one column on mobile"], questions: ["empty state?"] },
-      ".redcode/designs/1-hero",
+      ".red/code/designs/1-hero",
     )
-    expect(text).toContain("Prototype: .redcode/designs/1-hero")
+    expect(text).toContain("Prototype: .red/code/designs/1-hero")
     expect(text).toContain("- one column on mobile")
     expect(text).toContain("Still open:")
     expect(text).toContain("- empty state?")

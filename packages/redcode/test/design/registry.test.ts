@@ -3,7 +3,7 @@ import { idFor } from "@/design/registry"
 
 describe("prototype identity", () => {
   test("the same directory in the same session keeps one id, so one open tab keeps working", () => {
-    expect(idFor("ses_1", "/w/.redcode/designs/hero")).toBe(idFor("ses_1", "/w/.redcode/designs/hero"))
+    expect(idFor("ses_1", "/w/.red/code/designs/hero")).toBe(idFor("ses_1", "/w/.red/code/designs/hero"))
   })
 
   test("a different session or a different directory is a different prototype", () => {
@@ -13,16 +13,16 @@ describe("prototype identity", () => {
 
   test("two prototypes of one session, at real paths, are two prototypes", () => {
     const session = "ses_f8fd610c5ffeu74HsqcdyYsV2Q"
-    const a = idFor(session, "/home/someone/work/project/.redcode/designs/1757000000000-settings")
-    const b = idFor(session, "/home/someone/work/project/.redcode/designs/1757000000001-onboarding")
+    const a = idFor(session, "/home/someone/work/project/.red/code/designs/1757000000000-settings")
+    const b = idFor(session, "/home/someone/work/project/.red/code/designs/1757000000001-onboarding")
     expect(a).not.toBe(b)
     expect(a).not.toBe(
-      idFor("ses_f8fd610c5ffeu74HsqcdyYsV2R", "/home/someone/work/project/.redcode/designs/1757000000000-settings"),
+      idFor("ses_f8fd610c5ffeu74HsqcdyYsV2R", "/home/someone/work/project/.red/code/designs/1757000000000-settings"),
     )
   })
 
   test("the id is safe to put in a URL", () => {
-    const id = idFor("ses_1", "/w/.redcode/designs/hero world")
+    const id = idFor("ses_1", "/w/.red/code/designs/hero world")
     expect(id).toMatch(/^[A-Za-z0-9_-]+$/)
     expect(encodeURIComponent(id)).toBe(id)
   })

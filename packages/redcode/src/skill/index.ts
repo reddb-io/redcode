@@ -31,7 +31,7 @@ const SKILL_PATTERN = "**/SKILL.md"
 // actual schemas instead of guesses.
 const CUSTOMIZE_REDCODE_SKILL_NAME = "customize-opencode"
 const CUSTOMIZE_REDCODE_SKILL_DESCRIPTION =
-  "Use ONLY when the user is editing or creating Redcode's own configuration: config.jsonc, config.json, redcode.json/redcode.jsonc, legacy opencode.json/opencode.jsonc, files under .redcode/ or legacy .opencode/, or files under ~/.red/redcode/. Also use when creating or fixing Redcode agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring Redcode itself."
+  "Use ONLY when the user is editing or creating Redcode's own configuration: config.jsonc, config.json, redcode.json/redcode.jsonc, legacy opencode.json/opencode.jsonc, files under .red/code/ (or an older .redcode/ or .opencode/), or files under ~/.red/code/. Also use when creating or fixing Redcode agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring Redcode itself."
 const CUSTOMIZE_REDCODE_SKILL_BODY = SkillPlugin.CustomizeOpencodeContent
 
 export const Info = Schema.Struct({

@@ -259,7 +259,7 @@ defined by what they take away from it.
 
 <img src="docs/modes/plan.svg" alt="Plan mode" width="100%" />
 
-**Plan** reads everything and changes nothing but the plan file, written under `.redcode/plans/`.
+**Plan** reads everything and changes nothing but the plan file, written under `.red/code/plans/`.
 Use it when the shape of the work is the question: the agent explores, asks, and writes the plan
 down; `plan_exit` asks whether to switch to build and start on it. A plan written here is what
 build reads first.
@@ -283,7 +283,7 @@ prototype, so nothing you say here changes code until you leave.
 
 1. In the TUI, press `Tab` until the agent reads `design` (`Shift+Tab` goes back). In the web UI
    (`redcode web`), pick the `design` agent the same way. Describe what you want built.
-2. The agent writes the prototype into `.redcode/designs/<timestamp>-<slug>/` — `index.html` plus
+2. The agent writes the prototype into `.red/code/designs/<timestamp>-<slug>/` — `index.html` plus
    whatever sits beside it — and calls `design_preview`. Your browser opens on the review page;
    its URL is also in the tool's output, and the web UI shows the same page in a **Design** tab.
 
@@ -334,9 +334,9 @@ file to share.
 
 | Path | What it is |
 | --- | --- |
-| `.redcode/designs/<name>/index.html` | The prototype, with its assets beside it |
-| `.redcode/designs/<name>/design.json` | `kind` (`screen`, `flow`, `comparison`, `deck`), `decisions`, `questions` — the reasoning the plan is written from |
-| `.redcode/designs/<name>/.review/` | Review state, whiteboard scenes and exports; never served, not part of the design |
+| `.red/code/designs/<name>/index.html` | The prototype, with its assets beside it |
+| `.red/code/designs/<name>/design.json` | `kind` (`screen`, `flow`, `comparison`, `deck`), `decisions`, `questions` — the reasoning the plan is written from |
+| `.red/code/designs/<name>/.review/` | Review state, whiteboard scenes and exports; never served, not part of the design |
 | `DESIGN.md` or `.red/DESIGN.md` | The project's design system as the agent understands it; edit it to correct the agent |
 
 ### Settings

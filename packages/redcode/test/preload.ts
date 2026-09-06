@@ -55,7 +55,7 @@ const testManagedConfigDir = path.join(dir, "managed")
 process.env["REDCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 
 // Write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(testHome, ".red", "redcode", "cache")
+const cacheDir = path.join(testHome, ".red", "code", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "14")
 

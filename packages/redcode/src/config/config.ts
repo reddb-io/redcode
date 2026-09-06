@@ -258,7 +258,7 @@ const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      // Only the primary directory (~/.red/redcode by default) is read. Ordered lowest to highest
+      // Only the primary directory (~/.red/code by default) is read. Ordered lowest to highest
       // so the Redcode-named files override the legacy OpenCode-named ones field by field.
       const primary = Global.Path.config
       const primaryFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
@@ -431,7 +431,12 @@ const layer = Layer.effect(
         const deps: Fiber.Fiber<void>[] = []
 
         for (const dir of directories) {
-          if ([".redcode", ".opencode"].some((name) => dir.endsWith(name)) || dir === Flag.REDCODE_CONFIG_DIR) {
+          // The global config home has the shape of a project directory (`~/.red/code`); it is
+          // loaded on its own elsewhere, so it is not read again as one here.
+          if (
+            (ProjectDir.isProjectDir(dir) && dir !== Global.Path.config) ||
+            dir === Flag.REDCODE_CONFIG_DIR
+          ) {
             for (const file of [
               "opencode.json",
               "opencode.jsonc",
@@ -475,7 +480,7 @@ const layer = Layer.effect(
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
-          // Auto-discovered plugins under `.redcode/plugin(s)` or legacy `.opencode/plugin(s)` are local files,
+          // Auto-discovered plugins under `.red/code/plugin(s)`, or an older `.redcode`/`.opencode`, are local files,
           // so ConfigPlugin.load returns normalized Specs and we only need to attach origin metadata here.
           const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
           yield* mergePluginOrigins(dir, list)
@@ -713,3 +718,4 @@ export const node = LayerNode.make({
 })
 
 export * as Config from "./config"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"

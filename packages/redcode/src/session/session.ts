@@ -4,6 +4,8 @@ import { Slug } from "@reddb-io/redcode-core/util/slug"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import path from "path"
+import { existsSync } from "fs"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 import { BackgroundJob } from "@/background/job"
 import { Decimal } from "decimal.js"
 import type { ProviderMetadata, Usage } from "@reddb-io/redcode-llm"
@@ -329,10 +331,19 @@ export const Event = {
 }
 
 export function plan(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
-  const base = instance.project.vcs
-    ? path.join(instance.worktree, ".redcode", "plans")
-    : path.join(Global.Path.data, "plans")
-  return path.join(base, [input.time.created, input.slug].join("-") + ".md")
+  const name = [input.time.created, input.slug].join("-") + ".md"
+  if (!instance.project.vcs) return path.join(Global.Path.data, "plans", name)
+  return inProject(instance.worktree, "plans", name)
+}
+
+/**
+ * A path inside the project's own directory: `.red/code`, unless this plan or design already sits
+ * in one of the older names. Nothing is moved — a session reopened after an upgrade finds its own
+ * work where it left it.
+ */
+function inProject(worktree: string, ...tail: string[]) {
+  const options = ProjectDir.candidates(worktree, ...tail)
+  return options.find((candidate) => existsSync(candidate)) ?? options[0]!
 }
 
 /**
@@ -343,10 +354,9 @@ export function plan(input: { slug: string; time: { created: number } }, instanc
  * reason plans sit in the worktree: the work is about this project and should travel with it.
  */
 export function design(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
-  const base = instance.project.vcs
-    ? path.join(instance.worktree, ".redcode", "designs")
-    : path.join(Global.Path.data, "designs")
-  return path.join(base, [input.time.created, input.slug].join("-"))
+  const name = [input.time.created, input.slug].join("-")
+  if (!instance.project.vcs) return path.join(Global.Path.data, "designs", name)
+  return inProject(instance.worktree, "designs", name)
 }
 
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {

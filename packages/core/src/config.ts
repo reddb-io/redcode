@@ -26,6 +26,7 @@ import { ConfigWatcher } from "./config/watcher"
 import { ConfigHook } from "./config/hook"
 import { ConfigV1 } from "./v1/config/config"
 import { ConfigMigrateV1 } from "./v1/config/migrate"
+import { ProjectDir } from "./project-dir"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
   $schema: Schema.optional(Schema.String).annotate({
@@ -193,7 +194,7 @@ const layer = Layer.effect(
       ? []
       : yield* fs
           .up({
-            targets: [".redcode", ".opencode", ...names.toReversed()],
+            targets: [...ProjectDir.DIRS_PREFERRED_FIRST, ...names.toReversed()],
             start: location.directory,
             stop: location.project.directory,
           })
@@ -201,22 +202,22 @@ const layer = Layer.effect(
     const directories = [
       globalDirectory,
       ...discovered
-        .filter((item) => [".redcode", ".opencode"].includes(path.basename(item)))
+        .filter((item) => ProjectDir.isProjectDir(item))
         .toReversed()
         .map((directory) => AbsolutePath.make(directory)),
     ]
     // A config closer to the opened directory should win over one higher up.
     // Search starts nearby, so reverse the results before applying them.
     const directPaths = discovered
-      .filter((item) => ![".redcode", ".opencode"].includes(path.basename(item)))
+      .filter((item) => !ProjectDir.isProjectDir(item))
       .toReversed()
     const direct = yield* Effect.forEach(directPaths, loadFile).pipe(
       Effect.orDie,
       Effect.map((configs) => configs.filter((config): config is Document => config !== undefined)),
     )
     const supplementary = yield* Effect.forEach(directories, loadDirectory).pipe(Effect.orDie)
-    // Apply general settings first and more specific settings last:
-    // global config, project files, then legacy `.opencode` and primary `.redcode` files.
+    // Apply general settings first and more specific settings last: global config, project
+    // files, then the project directories — older names first, `.red/code` last.
     const configs = [...(supplementary[0] ?? []), ...direct, ...supplementary.slice(1).flat()]
     // Rules use the opposite order so a user-global rule can override a
     // repository rule. Statement order inside each file stays unchanged.

@@ -78,14 +78,17 @@ it.instance("title agent produces labels without unsupported diagnostic claims",
   }),
 )
 
-it.instance("plan agent denies edits except .redcode/plans/*", () =>
+it.instance("plan agent denies edits except the project directories' plans", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
     expect(plan).toBeDefined()
     // Wildcard is denied
     expect(evalPerm(plan, "edit")).toBe("deny")
     // But specific path is allowed
+    expect(Permission.evaluate("edit", ".red/code/plans/foo.md", plan!.permission).action).toBe("allow")
+    // The older names keep working, so a plan written before the rename is still editable.
     expect(Permission.evaluate("edit", ".redcode/plans/foo.md", plan!.permission).action).toBe("allow")
+    expect(Permission.evaluate("edit", ".opencode/plans/foo.md", plan!.permission).action).toBe("allow")
   }),
 )
 

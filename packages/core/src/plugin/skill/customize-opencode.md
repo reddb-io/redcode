@@ -40,13 +40,13 @@ already-loaded config until then.
 | Scope                         | Path                                                                                                                                          |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Project config                | `./config.jsonc`, `./config.json`, or `.opencode/config.jsonc` (opencode walks up from the cwd to the worktree root)                           |
-| Global config                 | `~/.red/redcode/config.jsonc` or `~/.red/redcode/config.json` (NOT `~/.opencode/`)                                                            |
+| Global config                 | `~/.red/code/config.jsonc` or `~/.red/code/config.json` (NOT `~/.opencode/`)                                                            |
 | Project agents                | `.opencode/agent/<name>.md` or `.opencode/agents/<name>.md`                                                                                   |
-| Global agents                 | `~/.red/redcode/agent(s)/<name>.md`                                                                                                           |
+| Global agents                 | `~/.red/code/agent(s)/<name>.md`                                                                                                           |
 | Project commands              | `.opencode/command/<name>.md` or `.opencode/commands/<name>.md`                                                                               |
-| Global commands               | `~/.red/redcode/command(s)/<name>.md`                                                                                                         |
+| Global commands               | `~/.red/code/command(s)/<name>.md`                                                                                                         |
 | Project skills                | `.opencode/skill(s)/<name>/SKILL.md`                                                                                                          |
-| Global skills                 | `~/.red/redcode/skill(s)/<name>/SKILL.md`                                                                                                     |
+| Global skills                 | `~/.red/code/skill(s)/<name>/SKILL.md`                                                                                                     |
 | External skills (auto-loaded) | `~/.claude/skills/<name>/SKILL.md`, `~/.agents/skills/<name>/SKILL.md`                                                                        |
 
 Configs from each scope are deep-merged. Project overrides global. Unknown
@@ -56,7 +56,7 @@ The legacy `redcode.json` / `redcode.jsonc` and the older `opencode.json` /
 `opencode.jsonc` names are still read everywhere the primary `config.jsonc` /
 `config.json` names are. When a directory holds several, they are merged and the
 primary `config.*` file wins. The XDG-style `~/.config/redcode/` directory is
-not read; only `~/.red/redcode/` is. Edit the file that already exists there
+not read; only `~/.red/code/` is. Edit the file that already exists there
 rather than creating a second one beside it.
 
 ## Config file fields

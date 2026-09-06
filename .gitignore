@@ -34,4 +34,5 @@ logs/
 tsconfig.tsbuildinfo
 
 # Design-mode prototypes are session artifacts, not source
+.red/code/designs/
 .redcode/designs/

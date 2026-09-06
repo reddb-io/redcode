@@ -179,7 +179,7 @@ const layer = Layer.effect(
                 },
                 edit: {
                   "*": "deny",
-                  [path.join(".redcode", "plans", "*.md")]: "allow",
+                  ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "plans", "*.md"), "allow"])),
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
                 },
               }),
@@ -204,7 +204,7 @@ const layer = Layer.effect(
                 // has stopped being a design session, and the user has no way to see it happen.
                 edit: {
                   "*": "deny",
-                  [path.join(".redcode", "designs", "*")]: "allow",
+                  ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "designs", "*"), "allow"])),
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("designs", "*")))]: "allow",
                 },
                 external_directory: {
@@ -504,3 +504,4 @@ export const node = LayerNode.make({
 })
 
 export * as Agent from "./agent"
+import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
