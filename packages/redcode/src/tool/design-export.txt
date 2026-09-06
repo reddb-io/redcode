@@ -1,0 +1,3 @@
+Write the prototype as one self-contained HTML file a person can open from disk, attach to a message, or host anywhere, with no redcode running.
+
+Its own stylesheets, classic scripts, images, fonts and media — and the Tailwind, DaisyUI and Mermaid we serve — are inlined; anything remote (a CDN, a web font) stays a reference the browser loads. Local assets that could not be inlined are listed so you can fix the reference or accept the gap. Call it when the user asks for a copy, a file to share, or something to open outside the review page.

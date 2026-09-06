@@ -4,6 +4,8 @@ import * as Sse from "effect/unstable/encoding/Sse"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { pathToFileURL } from "node:url"
 import { DesignAttachments } from "@/design/attachments"
+import { DesignExport } from "@/design/export"
+import { DesignHost } from "@/design/host"
 import { DesignRegistry } from "@/design/registry"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignLayoutWarnings } from "@/design/layout-warnings"
@@ -113,6 +115,13 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     }
 
     const registry = yield* DesignRegistry.Service
+    // Only under a name that is this machine: a page elsewhere that resolves its own name here
+    // must not be able to drive the surface from a browser (DNS rebinding).
+    const settings = yield* registry.settings()
+    const { Server } = yield* Effect.promise(() => import("../server"))
+    const bound = Server.url?.hostname ? [Server.url.hostname] : []
+    if (!DesignHost.allowed(request.headers["host"], [...bound, ...settings.hosts])) return forbidden()
+
     const prototype = yield* registry.get(target.id)
     if (!prototype) return notFound()
 
@@ -124,7 +133,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
 
     if (target.kind === "shell") {
       const caps = yield* registry.attachments()
-      const settings = yield* registry.settings()
+      const network = DesignHost.networkURL(Server.url)
       return HttpServerResponse.text(
         DesignShell.shellHTML({
           id: prototype.id,
@@ -140,6 +149,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           // One tab can turn the curtain off for itself; the config turns it off for everyone.
           gate: settings.gate && url.searchParams.get("gate") !== "0",
           gateTimeoutMs: settings.gateTimeoutMs,
+          ...(network ? { networkUrl: `${network}/design/${prototype.id}` } : {}),
           ...(prototype.ended ? { ended: prototype.ended.by } : {}),
           embed: url.searchParams.get("embed") === "1",
         }),
@@ -202,6 +212,34 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       if (!sameOrigin(request, url)) return forbidden()
       const ended = yield* registry.end(prototype.id, "user")
       return HttpServerResponse.jsonUnsafe({ ended: ended?.ended?.by ?? "user" })
+    }
+
+    // One file, with everything local inside it. Downloaded in the ordinary case; if a browser
+    // renders it instead, the prototype's own policy keeps it at an opaque origin.
+    if (target.kind === "export") {
+      if (!authorised) return forbidden()
+      if (request.method !== "GET") return notFound()
+      const entry = DesignServe.resolve(prototype.root, "/index.html")
+      if (!entry) return notFound()
+      const fs = yield* FSUtil.Service
+      if (!(yield* fs.existsSafe(entry))) return notFound()
+      const html = yield* Effect.promise(() => Bun.file(entry).text())
+      const caps = yield* registry.exportCaps()
+      const built = yield* Effect.promise(() => DesignExport.build(prototype.root, html, caps))
+      return HttpServerResponse.text(built.html, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-security-policy": DesignServe.prototypeCSP({
+            assets: assetPrefix(request, prototype.id),
+            vendor: vendorPrefix(request),
+          }),
+          "content-disposition": DesignExport.contentDisposition(prototype.name),
+          "x-redcode-export-warning-count": String(built.unresolved.length),
+          "x-redcode-export-notice-count": String(built.notices.length),
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      })
     }
 
     if (target.kind === "load") {

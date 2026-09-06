@@ -27,6 +27,7 @@ import type { LspTool } from "@/tool/lsp"
 import type { PlanExitTool } from "@/tool/plan"
 import { DesignExitTool } from "@/tool/design"
 import { DesignPlaybookTool } from "@/tool/design-playbook"
+import { DesignExportTool } from "@/tool/design-export"
 import { GoalCompleteTool } from "@/tool/goal"
 import type { QuestionTool } from "@/tool/question"
 import type { ReadTool } from "@/tool/read"
@@ -115,6 +116,7 @@ type ToolDefs = {
   plan_exit: typeof PlanExitTool
   design_exit: typeof DesignExitTool
   design_playbook: typeof DesignPlaybookTool
+  design_export: typeof DesignExportTool
   goal_complete: typeof GoalCompleteTool
 }
 
@@ -490,6 +492,15 @@ function runDesignPlaybook(p: ToolProps<typeof DesignPlaybookTool>): ToolInline 
     icon: "📖",
     title: text(p.frame.state.title) || "Design playbook",
     mode: "inline",
+  }
+}
+
+function runDesignExport(p: ToolProps<typeof DesignExportTool>): ToolInline {
+  return {
+    icon: "📦",
+    title: text(p.frame.state.title) || "Design export",
+    mode: "block",
+    body: p.frame.status === "completed" ? text(p.frame.state.output) : undefined,
   }
 }
 
@@ -1277,6 +1288,16 @@ const TOOL_RULES = {
       final: false,
     },
     run: runDesignPlaybook,
+    scroll: {
+      start: () => "",
+    },
+  },
+  design_export: {
+    view: {
+      output: true,
+      final: false,
+    },
+    run: runDesignExport,
     scroll: {
       start: () => "",
     },
