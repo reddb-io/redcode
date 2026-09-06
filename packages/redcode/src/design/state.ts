@@ -41,7 +41,16 @@ export interface Persisted {
   readonly revision: number
   readonly ended?: Ended
   readonly chat: readonly ChatEntry[]
+  /** Images handed to the agent, with when: referenced for a while so a turn reading them is not cut off. */
+  readonly delivered?: readonly Delivered[]
 }
+
+export interface Delivered {
+  readonly id: string
+  readonly at: number
+}
+
+export const MAX_DELIVERED = 256
 
 export interface IndexEntry {
   readonly root: string
@@ -87,6 +96,13 @@ export function parse(raw: string): Persisted | undefined {
         return [{ role: c.role === "agent" ? ("agent" as const) : ("user" as const), text, at: Number(c.at) || 0 }]
       })
     : []
+  const delivered: Delivered[] = Array.isArray(r.delivered)
+    ? r.delivered.flatMap((item) => {
+        if (!item || typeof item !== "object") return []
+        const d = item as Record<string, unknown>
+        return typeof d.id === "string" && d.id ? [{ id: d.id, at: Number(d.at) || 0 }] : []
+      })
+    : []
   return {
     id,
     sessionID,
@@ -96,6 +112,7 @@ export function parse(raw: string): Persisted | undefined {
     revision: Number.isInteger(r.revision) && (r.revision as number) > 0 ? (r.revision as number) : 1,
     ...(ended ? { ended } : {}),
     chat: chat.slice(-MAX_CHAT),
+    ...(delivered.length ? { delivered: delivered.slice(-MAX_DELIVERED) } : {}),
   }
 }
 

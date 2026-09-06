@@ -13,7 +13,7 @@ describe("the review shell", () => {
 
   test("only listens for what the prototype is allowed to say", () => {
     expect(html).toContain(
-      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","reviewState","reviewDraftUnrestorable","mode"])',
+      'new Set(["ready","queuePrompt","sendQueuedPrompts","endSession","toggleAnnotationMode","snapshot","scroll","status","reviewState","reviewDraftUnrestorable","uploadAttachment","mode"])',
     )
     // And only for the document it is showing: a stale frame's messages are dropped.
     expect(html).toContain("if (data.load !== revision) return")
@@ -93,12 +93,22 @@ describe("notes, held and illustrated", () => {
     expect(hold).not.toContain("fetch(")
   })
 
-  test("an image is captured by the shell, downscaled, and never asked of the prototype", () => {
-    expect(html).toContain('addEventListener("paste"')
-    expect(html).toContain('addEventListener("drop"')
-    expect(html).toContain("MAX_EDGE = 1280")
-    // The frame's vocabulary has no image in it: it cannot hand the shell one.
-    expect(html).not.toContain('"image"')
+  test("an image is uploaded by the shell for both surfaces, within budgets, and rides on the note as an id", () => {
+    // The composer has chips; the frame captures bytes and asks this page to upload them.
+    expect(html).toContain('id="attachInput"')
+    expect(html).toContain('case "uploadAttachment"')
+    expect(html).toContain('tell("attachmentResult", { nonce: payload.nonce, localId, ...result })')
+    expect(html).toContain('fetch(base + "/attachments"')
+    // Bounded before the network: a rate, a lifetime quota, an in-flight ceiling.
+    expect(html).toContain("uploadTimestamps.length >= 30")
+    expect(html).toContain("uploadsInFlight >= 4")
+    expect(html).toContain("256 * 1024 * 1024".length ? "268435456" : "")
+    // Nothing is inlined any more: no base64 downscaling, and the note carries ids the server re-derives.
+    expect(html).not.toContain("MAX_EDGE")
+    expect(html).not.toContain("toDataURL")
+    expect(html).toContain("attachments: ready")
+    // A refused batch keeps the queue and says which cap was hit.
+    expect(html).toContain("detail.error")
   })
 })
 

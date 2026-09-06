@@ -113,3 +113,23 @@ describe("design_preview, after the person ended the review", () => {
     }),
   )
 })
+
+describe("design_preview, on a page that never paints itself", () => {
+  it.instance("adds the self-paint note beside the craft notes, and not when the page paints", () =>
+    Effect.gen(function* () {
+      const instance = yield* InstanceState.context
+      const fs = yield* FSUtil.Service
+      const root = path.join(instance.directory, "unpainted")
+      yield* fs.ensureDir(root)
+      yield* Effect.promise(() =>
+        Bun.write(path.join(root, "index.html"), `<style>h1 { color: #fff }</style><h1>Hi</h1>`),
+      )
+      const tool = yield* (yield* DesignPreviewTool).init()
+      expect((yield* tool.execute({ path: "unpainted" }, ctx)).metadata.findings).toContain("self-paint")
+      yield* Effect.promise(() =>
+        Bun.write(path.join(root, "index.html"), `<style>body { background: #111; color: #fff }</style><h1>Hi</h1>`),
+      )
+      expect((yield* tool.execute({ path: "unpainted" }, ctx)).metadata.findings).not.toContain("self-paint")
+    }),
+  )
+})

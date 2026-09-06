@@ -548,3 +548,108 @@ describe("naming a Mermaid node", () => {
     expect(mermaidNodeFrom(svg.children[0]!, () => "")).toBeNull()
   })
 })
+
+import {
+  acceptedImageTypes,
+  attachmentSizeError,
+  classifyAttachmentBatch,
+  deriveAttachmentNoticeState,
+  isTrustedAttachmentResult,
+  partitionDroppedFiles,
+  planClipboardPaste,
+} from "@/design/client/helpers"
+
+describe("images picked, dropped or pasted", () => {
+  const png = (name: string, size = 100) => ({ name, type: "image/png", size })
+  const pdf = (name: string) => ({ name, type: "application/pdf", size: 10 })
+  const accepted = acceptedImageTypes(null).accepted
+
+  test("the accepted list is one source for the filter and the picker, with a fallback when unwired", () => {
+    const types = acceptedImageTypes(["image/png", "image/webp"])
+    expect(types.mimes).toEqual(["image/png", "image/webp"])
+    expect(types.accepted).toEqual({ "image/png": true, "image/webp": true })
+    expect(types.accept).toBe("image/png,image/webp")
+    expect(acceptedImageTypes(undefined).mimes).toEqual(["image/png", "image/jpeg", "image/webp"])
+  })
+
+  test("an over-limit file is refused before it is read, with the limit in the words", () => {
+    expect(attachmentSizeError(5 * 1024 * 1024 + 1, 5 * 1024 * 1024)).toBe("Image is larger than the 5 MB limit")
+    expect(attachmentSizeError(600, 512)).toBe("Image is larger than the 1 KB limit")
+    expect(attachmentSizeError(100, 512)).toBe("")
+    expect(attachmentSizeError(100, 0)).toBe("")
+  })
+
+  test("a whole batch is decided in one pass, and the count cap holds across it", () => {
+    const decisions = classifyAttachmentBatch([png("a"), pdf("b"), png("big", 10_000), png("c"), png("d")], {
+      currentCount: 1,
+      maxCount: 3,
+      maxBytes: 5000,
+      accepted,
+    })
+    expect(decisions.map((d) => d.kind)).toEqual(["accept", "skip", "error", "accept", "cap"])
+    expect(decisions[2]!.error).toContain("larger than")
+  })
+
+  test("a mixed drop attaches the images and names every file it cannot; items stand in for files", () => {
+    expect(
+      partitionDroppedFiles({ files: [png("shot.png"), pdf("spec.pdf"), { type: "text/plain" }] }, accepted),
+    ).toEqual({
+      images: [png("shot.png")],
+      unsupported: ["spec.pdf", "file"],
+    })
+    const item = (type: string, file: unknown) => ({ kind: "file", type, getAsFile: () => file })
+    expect(
+      partitionDroppedFiles({ files: [], items: [item("image/png", png("p")), item("text/html", null)] }, accepted),
+    ).toEqual({
+      images: [png("p")],
+      unsupported: ["file"],
+    })
+    expect(partitionDroppedFiles(null, accepted)).toEqual({ images: [], unsupported: [] })
+  })
+
+  test("a paste keeps the text only when it is more than the pasted files' own names", () => {
+    const clip = (files: unknown[], text: string) => ({ files, getData: () => text })
+    expect(planClipboardPaste(clip([png("shot.png")], ""), accepted).keepTextPaste).toBe(false)
+    expect(planClipboardPaste(clip([png("shot.png")], "shot.png"), accepted).keepTextPaste).toBe(false)
+    expect(planClipboardPaste(clip([png("shot.png")], "/Users/me/Desktop/shot.png"), accepted).keepTextPaste).toBe(
+      false,
+    )
+    expect(planClipboardPaste(clip([png("a.png"), png("b.png")], "a.png\nb.png"), accepted).keepTextPaste).toBe(false)
+    expect(planClipboardPaste(clip([png("shot.png")], "look at this"), accepted).keepTextPaste).toBe(true)
+    expect(planClipboardPaste(clip([], "plain text"), accepted)).toEqual({ images: [], keepTextPaste: true })
+    expect(planClipboardPaste(null, accepted)).toEqual({ images: [], keepTextPaste: false })
+  })
+
+  test("an upload result is trusted only from the shell and only for this document", () => {
+    const parentWindow = {}
+    expect(
+      isTrustedAttachmentResult({ source: parentWindow, data: { nonce: "n1" } }, { parentWindow, nonce: "n1" }),
+    ).toBe(true)
+    expect(isTrustedAttachmentResult({ source: {}, data: { nonce: "n1" } }, { parentWindow, nonce: "n1" })).toBe(false)
+    expect(
+      isTrustedAttachmentResult({ source: parentWindow, data: { nonce: "n2" } }, { parentWindow, nonce: "n1" }),
+    ).toBe(false)
+    expect(
+      isTrustedAttachmentResult({ source: parentWindow, data: { nonce: true } }, { parentWindow, nonce: "n1" }),
+    ).toBe(false)
+    expect(
+      isTrustedAttachmentResult({ source: parentWindow, data: { nonce: ["n1"] } }, { parentWindow, nonce: "n1" }),
+    ).toBe(false)
+    expect(isTrustedAttachmentResult({ source: parentWindow, data: { nonce: "" } }, { parentWindow, nonce: "" })).toBe(
+      false,
+    )
+  })
+
+  test("the notice says what blocks queuing, else the cap, else nothing", () => {
+    expect(deriveAttachmentNoticeState({ queueBlocked: true, hasPending: true })).toContain("Waiting")
+    expect(deriveAttachmentNoticeState({ queueBlocked: true, hasErrors: true })).toContain("Retry or remove")
+    expect(deriveAttachmentNoticeState({ capRejected: true, itemCount: 4, maxCount: 4 })).toBe(
+      "You can attach up to 4 images.",
+    )
+    expect(deriveAttachmentNoticeState({ capRejected: true, itemCount: 1, maxCount: 1 })).toBe(
+      "You can attach up to 1 image.",
+    )
+    expect(deriveAttachmentNoticeState({ capRejected: true, itemCount: 2, maxCount: 4 })).toBe("")
+    expect(deriveAttachmentNoticeState({})).toBe("")
+  })
+})

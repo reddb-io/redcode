@@ -34,6 +34,10 @@ const it = testEffect(
   LayerNode.compile(LayerNode.group([DesignRegistry.node, FSUtil.node])).pipe(Layer.provideMerge(promptStub)),
 )
 
+/** The body of a response, the way a browser would read it. */
+const bodyOf = (response: HttpServerResponse.HttpServerResponse) =>
+  Effect.promise(() => HttpServerResponse.toWeb(response).text())
+
 const call = (target: string, init?: RequestInit) =>
   Effect.gen(function* () {
     const request = HttpServerRequest.fromWeb(new Request(new URL(target, "http://127.0.0.1:4096"), init))
@@ -275,6 +279,119 @@ describe("the review's life over the wire", () => {
       const { directory } = yield* TestInstance
       const prototype = yield* prototypeIn(directory, "private", { "index.html": "<html></html>" })
       expect((yield* call(`/design/${prototype.id}/files/.review/state.json`)).status).toBe(404)
+    }),
+  )
+})
+
+describe("images attached to a note", () => {
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.from([0, 0, 0, 13]),
+    Buffer.from("IHDR", "ascii"),
+    Buffer.from([0, 0, 0, 0x20, 0, 0, 0, 0x10]),
+    Buffer.alloc(40),
+  ])
+
+  it.instance("are uploaded by our page, served back to it, and delivered to the agent as files on disk", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "pictures", { "index.html": "<html></html>" })
+      const auth = { "x-redcode-design-token": prototype.token, host: "127.0.0.1:4096" }
+
+      expect((yield* call(`/design/${prototype.id}/attachments`, { method: "POST", body: PNG })).status).toBe(403)
+      expect(
+        (yield* call(`/design/${prototype.id}/attachments`, {
+          method: "POST",
+          headers: { ...auth, origin: "https://evil.example" },
+          body: PNG,
+        })).status,
+      ).toBe(403)
+      const uploaded = yield* call(`/design/${prototype.id}/attachments`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/octet-stream" },
+        body: PNG,
+      })
+      expect(uploaded.status).toBe(200)
+      const { attachment } = JSON.parse(yield* bodyOf(uploaded)) as {
+        attachment: { id: string; mime: string; width: number }
+      }
+      expect(attachment.mime).toBe("image/png")
+      expect(attachment.width).toBe(32)
+
+      const fetched = yield* call(`/design/${prototype.id}/attachments/${attachment.id}?token=${prototype.token}`)
+      expect(fetched.status).toBe(200)
+      expect(fetched.headers["content-type"]).toBe("image/png")
+      expect((yield* call(`/design/${prototype.id}/attachments/${attachment.id}`)).status).toBe(403)
+      expect(
+        (yield* call(`/design/${prototype.id}/attachments/${"0".repeat(64)}.png?token=${prototype.token}`)).status,
+      ).toBe(404)
+
+      delivered.length = 0
+      const sent = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify({
+          items: [{ selector: "h1", text: "like this", attachments: [{ id: attachment.id, name: "ref.png" }] }],
+        }),
+      })
+      expect(sent.status).toBe(202)
+      expect(delivered[0]!.parts.map((p) => p.type)).toEqual(["text", "file"])
+      expect(delivered[0]!.parts[1]).toMatchObject({ mime: "image/png", filename: "ref.png" })
+      expect(delivered[0]!.parts[1]!.url).toMatch(/^file:\/\//)
+      // Delivered images stay referenced, so a chip removal cannot delete them from under the turn.
+      const registry = yield* DesignRegistry.Service
+      expect((yield* registry.get(prototype.id))!.delivered.map((d) => d.id)).toEqual([attachment.id])
+      const removal = yield* call(`/design/${prototype.id}/attachments/${attachment.id}`, {
+        method: "DELETE",
+        headers: auth,
+      })
+      expect(JSON.parse(yield* bodyOf(removal))).toEqual({ status: "referenced" })
+    }),
+  )
+
+  it.instance("a send with an image it cannot honour is refused whole, and says which cap", () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "refused", { "index.html": "<html></html>" })
+      const headers = { "x-redcode-design-token": prototype.token, "content-type": "application/json" }
+      delivered.length = 0
+      const missing = yield* call(`/design/${prototype.id}/feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          items: [{ text: "ok", attachments: [{ id: "0".repeat(64) + ".png" }] }, { text: "also" }],
+        }),
+      })
+      expect(missing.status).toBe(400)
+      const body = JSON.parse(yield* bodyOf(missing)) as { error: string; rejected: { reason: string }[] }
+      expect(body.error).toContain("no longer available")
+      expect(body.rejected[0]!.reason).toBe("not-found")
+      expect(delivered).toHaveLength(0)
+
+      const notImage = yield* call(`/design/${prototype.id}/attachments`, {
+        method: "POST",
+        headers: { "x-redcode-design-token": prototype.token },
+        body: Buffer.from("<svg onload=alert(1)>"),
+      })
+      expect(notImage.status).toBe(415)
+    }),
+  )
+})
+
+describe("the design assets we ship", () => {
+  it.instance("are served to any prototype, and the prototype's policy lets them load", () =>
+    Effect.gen(function* () {
+      const tailwind = yield* call("/design/vendor/tailwind.js")
+      expect(tailwind.status).toBe(200)
+      expect(String(tailwind.headers["content-type"])).toContain("javascript")
+      expect((yield* call("/design/vendor/daisyui.css")).status).toBe(200)
+      expect((yield* call("/design/vendor/nope.js")).status).toBe(404)
+      expect((yield* call("/design/vendor/../secret")).status).toBe(404)
+
+      const { directory } = yield* TestInstance
+      const prototype = yield* prototypeIn(directory, "styled", { "index.html": "<html></html>" })
+      const page = yield* call(`/design/${prototype.id}/files/index.html`)
+      expect(String(page.headers["content-security-policy"])).toContain("/design/vendor/")
     }),
   )
 })

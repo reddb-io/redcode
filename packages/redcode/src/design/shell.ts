@@ -26,6 +26,8 @@ export interface ShellInput {
   readonly ended?: "user" | "agent"
   /** Inside the app's own panel the header is the tab; only the frame and the composer remain. */
   readonly embed?: boolean
+  /** The image limits the server enforces; the page refuses early and says why. */
+  readonly attachments?: { readonly maxCount: number; readonly maxBytes: number; readonly accepted: readonly string[] }
 }
 
 /** Everything the prototype may say; anything else is ignored rather than interpreted. */
@@ -40,8 +42,15 @@ export const ARTIFACT_MESSAGES = [
   "status",
   "reviewState",
   "reviewDraftUnrestorable",
+  "uploadAttachment",
   "mode",
 ] as const
+
+/** A page may upload this many images a minute, this many bytes in its lifetime, this many at once. */
+export const UPLOAD_RATE_MAX = 30
+export const UPLOAD_RATE_WINDOW_MS = 60_000
+export const UPLOAD_SESSION_BYTE_QUOTA = 256 * 1024 * 1024
+export const UPLOAD_MAX_IN_FLIGHT = 4
 
 /** Below this width the panel is a sheet over the page, raised from a dock. */
 export const MOBILE_SHEET_MEDIA = "(max-width: 860px)"
@@ -60,7 +69,7 @@ export function shellCSP() {
     "default-src 'none'",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
-    "img-src data: https: http:",
+    "img-src 'self' data: https: http:",
     "connect-src 'self'",
     "frame-src 'self'",
     "form-action 'none'",
@@ -78,6 +87,11 @@ export function shellHTML(input: ShellInput) {
     revision: input.revision,
     root: input.root ?? "",
     ended: input.ended ?? "",
+    attachments: input.attachments ?? {
+      maxCount: 4,
+      maxBytes: 10 * 1024 * 1024,
+      accepted: ["image/png", "image/jpeg", "image/webp"],
+    },
   }).replace(/</g, "\\u003c")
   return `<!doctype html>
 <html lang="en">
@@ -145,9 +159,19 @@ export function shellHTML(input: ShellInput) {
   .hint.alert { opacity: 1; color: #d0432b }
   .actions { display: flex; gap: .5rem; align-items: center; justify-content: flex-end }
   .actions .send { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600 }
-  .draft-img { display: none; align-items: center; gap: .5rem; font-size: 12px; opacity: .8 }
-  .draft-img img { max-height: 40px; border-radius: .25rem; border: 1px solid var(--edge) }
-  .draft-img[data-on] { display: flex }
+  .chips { display: flex; flex-direction: column; gap: .3rem }
+  .chips:empty { display: none }
+  .chip { display: flex; align-items: center; gap: .5rem; padding: .3rem .4rem; border-radius: .375rem; border: 1px solid var(--edge); font-size: 12px }
+  .chip.error { border-color: #d0432b }
+  .chip img { width: 32px; height: 32px; object-fit: cover; border-radius: .25rem }
+  .chip .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600 }
+  .chip .state { opacity: .7 } .chip.error .state { color: #d0432b; opacity: 1 }
+  .chip button { padding: .1rem .4rem; font-size: 11px }
+  .attach-row { display: flex; gap: .5rem; align-items: center; font-size: 12px }
+  .attach-row .notice { opacity: .8; color: #d0432b }
+  .pill img { width: 18px; height: 18px; object-fit: cover; border-radius: .2rem }
+  .pill .more { font-size: 11px; opacity: .7 }
+  form.dropping { outline: 2px dashed var(--accent); outline-offset: -4px }
   .overlay { position: absolute; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
              background: color-mix(in oklab, Canvas 85%, transparent); text-align: center; padding: 2rem }
   .overlay[data-on] { display: flex }
@@ -224,7 +248,8 @@ export function shellHTML(input: ShellInput) {
     <form id="composer">
       <div class="banner" id="presence" hidden>The agent is idle. What you send starts its next turn.</div>
       <textarea id="text" placeholder="Write a message… paste or drop an image to show something"></textarea>
-      <div class="draft-img" id="draft"><img id="draftImg" alt=""><span>image attached</span><button type="button" id="dropImg">remove</button></div>
+      <div class="chips" id="chips"></div>
+      <div class="attach-row"><button type="button" id="attach">Attach images</button><input id="attachInput" type="file" multiple hidden><span class="notice" id="attachNotice" role="status"></span></div>
       <div class="hint" id="hint"></div>
       <div class="actions">
         <button id="hold" type="button" title="Keep this note in the queue and carry on; nothing is sent until you press Send">Hold</button>
@@ -241,7 +266,7 @@ export function shellHTML(input: ShellInput) {
   const $ = (id) => document.getElementById(id)
   const frame = $("frame"), status = $("status"), text = $("text"), send = $("send"), sendEnd = $("sendEnd"), hold = $("hold")
   const modeButton = $("mode"), more = $("more"), menu = $("menu"), pills = $("pills"), scroll = $("scroll")
-  const hint = $("hint"), presence = $("presence"), draft = $("draft"), draftImg = $("draftImg")
+  const hint = $("hint"), presence = $("presence"), chips = $("chips"), attachButton = $("attach"), attachInput = $("attachInput"), attachNotice = $("attachNotice")
   const panel = $("panel"), panelHead = $("panelHead"), summary = $("summary"), toggle = $("toggle"), scrim = $("scrim")
   const endedOverlay = $("ended"), endedCopy = $("endedCopy")
   const base = location.pathname.replace(/\\/$/, "")
@@ -264,7 +289,11 @@ export function shellHTML(input: ShellInput) {
   let sendAgain = false
   let ackTimer = 0
   let unread = ""
-  let image = null
+  const ACCEPTED = (config.attachments && config.attachments.accepted) || ["image/png", "image/jpeg", "image/webp"]
+  const ACCEPTED_SET = new Set(ACCEPTED)
+  const MAX_COUNT = (config.attachments && config.attachments.maxCount) || 4
+  const MAX_BYTES = (config.attachments && config.attachments.maxBytes) || 0
+  attachInput.accept = ACCEPTED.join(",")
 
   const tell = (type, payload) => { try { frame.contentWindow.postMessage({ source: "redcode-design-shell", type, payload: payload || {} }, "*") } catch {} }
   const loadFrame = () => { frame.src = base + "/files/index.html?rev=" + revision }
@@ -312,6 +341,7 @@ export function shellHTML(input: ShellInput) {
 
   // --- the queue -------------------------------------------------------------------------------
   const persistQueue = () => save("queued", pending.length ? pending : null)
+  const thumb = (id) => base + "/attachments/" + encodeURIComponent(id) + "?token=" + encodeURIComponent(config.token)
   const drawPills = () => {
     pills.replaceChildren(...pending.map((item, index) => {
       const pill = document.createElement("div")
@@ -319,7 +349,9 @@ export function shellHTML(input: ShellInput) {
       pill.tabIndex = 0
       const at = where(item)
       const label = document.createElement("span")
-      label.textContent = (at ? at + " · " : "") + item.text
+      label.textContent = (at ? at + " · " : "") + (item.text || (item.attachments && item.attachments.length ? "Image" : ""))
+      const refs = Array.isArray(item.attachments) ? item.attachments : []
+      const imgs = refs.slice(0, 4).map((a) => { const img = document.createElement("img"); img.src = thumb(a.id); img.alt = ""; return img })
       const remove = document.createElement("button")
       remove.type = "button"
       remove.setAttribute("aria-label", "Remove queued note")
@@ -330,26 +362,25 @@ export function shellHTML(input: ShellInput) {
       tip.innerHTML = (at ? "<b>Target</b>" + escapeHtml(at) : "") +
         (item.selector && item.selector !== at ? "<b>Locator</b>" + escapeHtml(item.selector) : "") +
         "<b>Note</b>" + escapeHtml(item.text)
-      pill.append(label, remove, tip)
+      pill.append(label, ...imgs)
+      if (refs.length > 4) { const more = document.createElement("span"); more.className = "more"; more.textContent = "+" + (refs.length - 4); pill.append(more) }
+      pill.append(remove, tip)
       return pill
     }))
   }
   const draw = () => {
     drawPills()
-    const typed = text.value.trim() !== "" || image !== null
+    const typed = text.value.trim() !== "" || composerImages.hasReady()
     send.disabled = !!ended || (pending.length === 0 && !typed)
     sendEnd.disabled = !!ended
     hold.disabled = !!ended || !typed
     const count = pending.length + (typed ? 1 : 0)
     send.textContent = count > 1 ? "Send " + count + " notes" : "Send to Agent"
-    draft.toggleAttribute("data-on", image !== null)
-    if (image) draftImg.src = "data:" + image.mime + ";base64," + image.data
     drawSummary()
   }
   const enqueue = (p) => {
     if (!p || typeof p !== "object" || ended) return
     const words = String(p.prompt || "").slice(0, 4000)
-    if (!words.trim()) return
     const item = {
       selector: String(p.selector || "").slice(0, 512),
       tag: String(p.tag || "").slice(0, 40),
@@ -357,7 +388,11 @@ export function shellHTML(input: ShellInput) {
       text: words,
       ...(p.target && typeof p.target === "object" ? { target: p.target } : {}),
       ...(p.queueKey ? { queueKey: String(p.queueKey).slice(0, 200) } : {}),
+      ...(Array.isArray(p.attachments) && p.attachments.length
+        ? { attachments: p.attachments.filter((a) => a && typeof a.id === "string").slice(0, MAX_COUNT).map((a) => (a.name ? { id: a.id, name: String(a.name).slice(0, 200) } : { id: a.id })) }
+        : {}),
     }
+    if (!item.text.trim() && !item.attachments) return
     const at = item.queueKey ? pending.findIndex((x) => x.queueKey === item.queueKey) : -1
     pending = at >= 0 ? pending.map((x, i) => (i === at ? item : x)) : pending.concat([item]).slice(0, 50)
     persistQueue()
@@ -366,45 +401,149 @@ export function shellHTML(input: ShellInput) {
     status.textContent = pending.length + " queued · press Send when you are done"
   }
 
-  // --- images beside the composer (downscaled here; the server checks the bytes again) -----------
-  const MAX_EDGE = 1280
-  const MAX_B64 = 800000
-  const attach = (file) => {
-    if (!file || !/^image\\/(png|jpeg|webp)$/.test(file.type)) return
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight))
-      const canvas = document.createElement("canvas")
-      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
-      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height)
-      let mime = "image/png"
-      let data = canvas.toDataURL(mime)
-      if (data.length > MAX_B64) { mime = "image/jpeg"; data = canvas.toDataURL(mime, 0.85) }
-      if (data.length > MAX_B64) { data = canvas.toDataURL(mime, 0.6) }
-      if (data.length > MAX_B64) { note("that image is too large even downscaled", true); return }
-      image = { mime, data: data.slice(data.indexOf(",") + 1) }
+  // --- images beside the composer -------------------------------------------------------------
+  // The same chips the card has, for the composer: captured here, uploaded here, and carried on
+  // the message as ids the server re-derives from disk.
+  const formatLimit = (bytes) => (bytes >= 1024 * 1024 ? Math.round(bytes / (1024 * 1024)) + " MB" : bytes >= 1024 ? Math.round(bytes / 1024) + " KB" : bytes + " bytes")
+  const composerImages = (() => {
+    const items = []
+    let nextId = 0
+    let capRejected = false
+    let sendBlocked = false
+    const imageCount = () => items.filter((item) => item.file).length
+    const render = () => {
+      if (imageCount() < MAX_COUNT) capRejected = false
+      const pending = items.some((item) => item.status === "uploading")
+      const errored = items.some((item) => item.status === "error")
+      if (!pending && !errored) sendBlocked = false
+      attachNotice.textContent = sendBlocked && pending ? "Waiting for an image to finish uploading…" : sendBlocked && errored ? "An image couldn't be attached. Retry or remove it before sending." : capRejected ? "You can attach up to " + MAX_COUNT + " image" + (MAX_COUNT === 1 ? "" : "s") + "." : ""
+      chips.replaceChildren(...items.map((item) => {
+        const el = document.createElement("div")
+        el.className = "chip " + item.status
+        if (item.preview) { const img = document.createElement("img"); img.src = item.preview; img.alt = ""; el.append(img) }
+        const name = document.createElement("span"); name.className = "name"; name.textContent = item.name; el.append(name)
+        const state = document.createElement("span"); state.className = "state"; state.textContent = item.status === "uploading" ? "Uploading…" : item.status === "error" ? item.error : ""; el.append(state)
+        if (item.status === "error" && item.file) { const retry = document.createElement("button"); retry.type = "button"; retry.textContent = "Retry"; retry.addEventListener("click", () => start(item)); el.append(retry) }
+        const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.setAttribute("aria-label", "Remove " + item.name); remove.addEventListener("click", () => { const at = items.indexOf(item); if (at >= 0) items.splice(at, 1); if (item.abort) item.abort.abort(); if (item.preview) URL.revokeObjectURL(item.preview); render(); draw() }); el.append(remove)
+        return el
+      }))
       draw()
     }
-    img.onerror = () => { URL.revokeObjectURL(url); note("could not read that image", true) }
-    img.src = url
+    const start = async (item) => {
+      const abort = new AbortController()
+      item.abort = abort
+      item.status = "uploading"
+      item.error = ""
+      render()
+      try {
+        const bytes = await item.file.arrayBuffer()
+        if (!items.includes(item)) return
+        await upload({ localId: item.localId, bytes, mime: item.file.type }, (result) => {
+          if (!items.includes(item)) return
+          if (result.ok && result.id) { item.status = "ready"; item.id = result.id } else { item.status = "error"; item.error = String(result.error || "Upload failed") }
+          render()
+        }, abort.signal)
+      } catch (error) {
+        if (!items.includes(item)) return
+        item.status = "error"
+        item.error = error instanceof Error ? error.message : String(error)
+        render()
+      }
+    }
+    const addFiles = (files) => {
+      let added = false
+      let count = imageCount()
+      for (const file of Array.from(files || [])) {
+        if (!ACCEPTED_SET.has(String(file.type || ""))) continue
+        const tooLarge = MAX_BYTES > 0 && Number(file.size) > MAX_BYTES
+        if (!tooLarge && count >= MAX_COUNT) { capRejected = true; continue }
+        const item = { localId: String(nextId++), file: tooLarge ? null : file, name: String(file.name || "image"), preview: tooLarge ? "" : URL.createObjectURL(file), status: tooLarge ? "error" : "uploading", error: tooLarge ? "Image is larger than the " + formatLimit(MAX_BYTES) + " limit" : "", id: "", abort: null }
+        items.push(item)
+        if (!tooLarge) count += 1
+        added = true
+        if (!tooLarge) start(item)
+      }
+      render()
+      return added
+    }
+    const rejectUnsupported = (files) => {
+      for (const file of Array.from(files || [])) {
+        if (ACCEPTED_SET.has(String(file.type || ""))) continue
+        items.push({ localId: String(nextId++), file: null, name: String(file.name || "file"), preview: "", status: "error", error: "Unsupported file type. Use " + ACCEPTED.map((m) => m.split("/")[1].toUpperCase()).join(", ") + ".", id: "", abort: null })
+      }
+      render()
+    }
+    return {
+      addFiles, rejectUnsupported,
+      hasPending: () => items.some((item) => item.status === "uploading"),
+      hasErrors: () => items.some((item) => item.status === "error"),
+      hasReady: () => items.some((item) => item.status === "ready"),
+      noteSendBlocked: () => { sendBlocked = true; render() },
+      collectReady: () => items.filter((item) => item.status === "ready").map((item) => ({ id: item.id, name: item.name })),
+      reset: () => { for (const item of items) { if (item.abort) item.abort.abort(); if (item.preview) URL.revokeObjectURL(item.preview) } items.length = 0; capRejected = false; sendBlocked = false; render() },
+    }
+  })()
+
+  // The upload itself, for the composer and for the frame (which has no network). Bounded before
+  // it touches the network: a page that posts a flood of uploads gets refusals, not a stall.
+  const uploadTimestamps = []
+  let uploadedBytesTotal = 0
+  let uploadsInFlight = 0
+  const upload = async (message, report, signal) => {
+    const bytes = message.bytes
+    let size
+    try { size = ArrayBuffer.isView(bytes) ? bytes.byteLength : Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength").get.call(bytes) } catch { size = NaN }
+    if (!Number.isFinite(size) || size < 0) return report({ ok: false, error: "invalid upload payload" })
+    if (MAX_BYTES > 0 && size > MAX_BYTES) return report({ ok: false, error: "Image is larger than the " + formatLimit(MAX_BYTES) + " limit" })
+    const now = Date.now()
+    while (uploadTimestamps.length && now - uploadTimestamps[0] > ${UPLOAD_RATE_WINDOW_MS}) uploadTimestamps.shift()
+    if (uploadTimestamps.length >= ${UPLOAD_RATE_MAX}) return report({ ok: false, error: "Too many uploads. Wait a moment and retry." })
+    if (uploadedBytesTotal + size > ${UPLOAD_SESSION_BYTE_QUOTA}) return report({ ok: false, error: "Upload limit reached for this page (" + formatLimit(${UPLOAD_SESSION_BYTE_QUOTA}) + ")." })
+    if (uploadsInFlight >= ${UPLOAD_MAX_IN_FLIGHT}) return report({ ok: false, error: "Too many uploads in flight. Wait a moment and retry." })
+    uploadTimestamps.push(now)
+    uploadedBytesTotal += size
+    uploadsInFlight += 1
+    try {
+      const response = await fetch(base + "/attachments", { method: "POST", headers: { "content-type": String(message.mime || "application/octet-stream"), "x-redcode-design-token": config.token }, body: bytes, signal })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || "Upload failed")
+      report({ ok: true, id: (data.attachment && data.attachment.id) || "" })
+    } catch (error) {
+      report({ ok: false, error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      uploadsInFlight -= 1
+    }
   }
+  const files = (dt) => { const list = Array.from((dt && dt.files) || []).filter(Boolean); if (list.length) return list; return Array.from((dt && dt.items) || []).filter((i) => i && i.kind === "file").map((i) => i.getAsFile()).filter(Boolean) }
+  const keepsText = (value, picked) => {
+    const lines = String(value).split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean)
+    if (!lines.length) return false
+    const names = picked.map((f) => String((f && f.name) || "")).filter(Boolean)
+    if (!names.length) return true
+    return !lines.every((line) => names.some((name) => line === name || line.endsWith("/" + name) || line.endsWith("\\\\" + name)))
+  }
+  attachButton.addEventListener("click", () => attachInput.click())
+  attachInput.addEventListener("change", () => { composerImages.addFiles(attachInput.files); composerImages.rejectUnsupported(attachInput.files); attachInput.value = "" })
   text.addEventListener("paste", (event) => {
-    const item = [...(event.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"))
-    if (!item) return
-    event.preventDefault()
-    attach(item.getAsFile())
+    const picked = files(event.clipboardData)
+    const added = composerImages.addFiles(picked)
+    if (added && !keepsText(event.clipboardData && event.clipboardData.getData("text/plain") || "", picked)) event.preventDefault()
   })
-  text.addEventListener("dragover", (event) => event.preventDefault())
-  text.addEventListener("drop", (event) => {
-    const file = event.dataTransfer?.files?.[0]
-    if (!file || !file.type.startsWith("image/")) return
+  const composer = $("composer")
+  composer.addEventListener("dragover", (event) => { if (Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes("Files")) { event.preventDefault(); composer.classList.add("dropping") } })
+  composer.addEventListener("dragleave", (event) => { if (!composer.contains(event.relatedTarget)) composer.classList.remove("dropping") })
+  composer.addEventListener("drop", (event) => {
+    composer.classList.remove("dropping")
+    if (!Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes("Files")) return
     event.preventDefault()
-    attach(file)
+    const picked = files(event.dataTransfer)
+    if (!picked.length) { composerImages.rejectUnsupported([{ name: "file", type: "" }]); return }
+    composerImages.addFiles(picked)
+    composerImages.rejectUnsupported(picked)
   })
-  $("dropImg").addEventListener("click", () => { image = null; draw() })
+  // A drop that misses the composer must not navigate this page away from the review.
+  document.addEventListener("dragover", (event) => { if (Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes("Files")) event.preventDefault() })
+  document.addEventListener("drop", (event) => { if (Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes("Files")) event.preventDefault() })
 
   // --- hints and the mode ----------------------------------------------------------------------
   let hintTimer = 0
@@ -496,6 +635,13 @@ export function shellHTML(input: ShellInput) {
       case "status": status.textContent = String(payload.message || "").slice(0, 200); return
       case "reviewState": setReviewState(payload.state); return
       case "reviewDraftUnrestorable": discardUnrestorable(String(payload.selector || "")); return
+      case "uploadAttachment": {
+        // The frame captured the bytes; this page uploads them and echoes the nonce back untouched.
+        const localId = String(payload.localId || "")
+        if (!localId) return
+        upload({ localId, bytes: payload.bytes, mime: payload.mime }, (result) => tell("attachmentResult", { nonce: payload.nonce, localId, ...result }))
+        return
+      }
     }
   })
 
@@ -535,13 +681,17 @@ export function shellHTML(input: ShellInput) {
   const submit = async (event, end) => {
     if (event) event.preventDefault()
     if (ended) return
-    // What was typed joins the queue first, so a failure past this point loses nothing.
+    // What was typed joins the queue first, so a failure past this point loses nothing. A chip
+    // still uploading or failed holds back only the composer's own message.
+    const blocked = composerImages.hasPending() || composerImages.hasErrors()
+    if (blocked) composerImages.noteSendBlocked()
     const typed = text.value.trim()
-    if (typed || image) {
-      pending = pending.concat([{ tag: "message", text: typed || "See the attached image.", ...(image ? { image } : {}) }]).slice(0, 50)
+    const ready = blocked ? [] : composerImages.collectReady()
+    if (!blocked && (typed || ready.length)) {
+      pending = pending.concat([{ tag: "message", text: typed || "See the attached image.", ...(ready.length ? { attachments: ready } : {}) }]).slice(0, 50)
       persistQueue()
       text.value = ""
-      image = null
+      composerImages.reset()
       draw()
     }
     if (!pending.length) { if (end) await endReview(); else note("Write a message or annotate an element first."); return }
@@ -559,6 +709,10 @@ export function shellHTML(input: ShellInput) {
           body: JSON.stringify({ items, viewport: { width: innerWidth, height: innerHeight }, ...(dom ? { snapshot: dom } : {}), ...(end ? { end: true } : {}) }),
         })
         if (response.status === 409) { markEnded("user"); return }
+        if (response.status === 400) {
+          const detail = await response.json().catch(() => ({}))
+          throw new Error(detail.error || "the server refused the batch")
+        }
         if (!response.ok) throw new Error("HTTP " + response.status)
         pending = pending.filter((x) => !items.includes(x))
         persistQueue()
@@ -588,11 +742,13 @@ export function shellHTML(input: ShellInput) {
   // by nothing else — a person decides when a batch is a batch.
   hold.addEventListener("click", () => {
     const typed = text.value.trim()
-    if (!typed && !image) return
-    pending = pending.concat([{ tag: "message", text: typed || "See the attached image.", ...(image ? { image } : {}) }]).slice(0, 50)
+    if (composerImages.hasPending() || composerImages.hasErrors()) { composerImages.noteSendBlocked(); return }
+    const ready = composerImages.collectReady()
+    if (!typed && !ready.length) return
+    pending = pending.concat([{ tag: "message", text: typed || "See the attached image.", ...(ready.length ? { attachments: ready } : {}) }]).slice(0, 50)
     persistQueue()
     text.value = ""
-    image = null
+    composerImages.reset()
     draw()
     status.textContent = pending.length + " held · press Send when you are done"
   })
@@ -722,6 +878,7 @@ export function shellHTML(input: ShellInput) {
   loadFrame()
   connect()
   drawChat()
+  composerImages.reset()
   draw()
   applySheet()
   if (ended) markEnded(ended)
