@@ -1385,7 +1385,7 @@ export function Prompt(props: PromptProps) {
     () => !!local.agent.current() && store.mode === "normal" && showVariant(),
     animationsEnabled,
   )
-  const borderHighlight = createMemo(() => tint(theme.border, theme.borderActive, agentMetaAlpha()))
+  const borderHighlight = createMemo(() => tint(theme.border, highlight(), agentMetaAlpha()))
 
   const placeholderText = createMemo(() => {
     if (props.showPlaceholder === false) return undefined
