@@ -209,7 +209,11 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             // mise caches the remote version list; with a stale list `mise upgrade` decides there is
             // nothing to do. Clearing it is best-effort, the upgrade below is what matters.
             yield* run(["mise", "cache", "clear", MISE_TOOL])
-            upgradeResult = yield* run(["mise", "upgrade", MISE_TOOL])
+            // `--bump` because a plain `mise upgrade` only moves inside the version range the
+            // config already allows. red-dev pins an exact version, so without it mise finds the
+            // new release, decides it does not match the range, and exits 0 having done nothing.
+            // The person accepted an update to this version; bumping the pin is what they asked for.
+            upgradeResult = yield* run(["mise", "upgrade", "--bump", MISE_TOOL])
             break
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })
@@ -218,17 +222,21 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           return yield* new UpgradeFailedError({ stderr: upgradeFailure(m, upgradeResult) })
         }
         // `mise upgrade` exits 0 when it keeps the pinned version, so confirm the target landed.
-        if (m === "mise" && !hasMiseVersion(yield* text(["mise", "ls", "--json", MISE_TOOL]), target)) {
-          // The usual cause is not a failed download. mise refuses to install a release younger
-          // than `minimum_release_age`, and says so only as a line on stderr nobody sees: the
-          // update prompt offers a version mise has quietly decided not to see, the upgrade exits
-          // 0 having done nothing, and it looks like the update button is broken.
-          const offered = yield* text(["mise", "ls-remote", MISE_TOOL])
-          return yield* new UpgradeFailedError({
-            stderr: offersVersion(offered, target)
-              ? `mise did not install v${target}. Run "mise use -g ${MISE_TOOL}@latest" and try again.`
-              : releaseAgeMessage(target),
-          })
+        // Installed is not enough: mise keeps every version it ever fetched, and the shim runs the
+        // *active* one. A target that is present but not selected is the shape this used to report
+        // as a successful update, after which restarting still opened the old version.
+        if (m === "mise") {
+          const listed = yield* text(["mise", "ls", "--json", MISE_TOOL])
+          if (!isMiseVersionActive(listed, target)) {
+            const offered = yield* text(["mise", "ls-remote", MISE_TOOL])
+            return yield* new UpgradeFailedError({
+              stderr: hasMiseVersion(listed, target)
+                ? `mise installed v${target} but is still running another version. Run "mise use -g ${MISE_TOOL}@${target}".`
+                : offersVersion(offered, target)
+                  ? `mise did not install v${target}. Run "mise use -g ${MISE_TOOL}@latest" and try again.`
+                  : releaseAgeMessage(target),
+            })
+          }
         }
         yield* Effect.logInfo("upgraded", {
           method: m,
@@ -269,19 +277,28 @@ export function releaseAgeMessage(target: string) {
   ].join("\n")
 }
 
-function hasMiseVersion(output: string, version?: string) {
+function miseVersions(output: string) {
   try {
     const parsed: unknown = JSON.parse(output)
-    if (!Array.isArray(parsed)) return false
-    const versions = parsed.flatMap((item) =>
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item) =>
       item && typeof item === "object" && typeof (item as { version?: unknown }).version === "string"
-        ? [(item as { version: string }).version]
+        ? [{ version: (item as { version: string }).version, active: (item as { active?: unknown }).active === true }]
         : [],
     )
-    return version === undefined ? versions.length > 0 : versions.includes(version)
   } catch {
-    return false
+    return []
   }
+}
+
+function hasMiseVersion(output: string, version?: string) {
+  const versions = miseVersions(output)
+  return version === undefined ? versions.length > 0 : versions.some((item) => item.version === version)
+}
+
+/** What the shim actually runs. mise keeps every version it fetched; only one of them is selected. */
+function isMiseVersionActive(output: string, version: string) {
+  return miseVersions(output).some((item) => item.version === version && item.active)
 }
 
 const { runPromise } = makeRuntime(Service, AppNodeBuilder.build(node))
