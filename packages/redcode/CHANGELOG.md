@@ -1,5 +1,11 @@
 # opencode
 
+## 0.21.2
+
+### Patch Changes
+
+- 85fead4: Make the prompt's left border follow the selected agent color, including gold for Plan and cyan for Design in the Redcode theme, while preserving the existing fade-in.
+
 ## 0.21.1
 
 ### Patch Changes
