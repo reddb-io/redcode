@@ -205,16 +205,25 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           case "yarn":
             upgradeResult = yield* run(["yarn", "global", "add", `@reddb-io/redcode@${target}`])
             break
-          case "mise":
+          case "mise": {
             // mise caches the remote version list; with a stale list `mise upgrade` decides there is
             // nothing to do. Clearing it is best-effort, the upgrade below is what matters.
             yield* run(["mise", "cache", "clear", MISE_TOOL])
             // `--bump` because a plain `mise upgrade` only moves inside the version range the
             // config already allows. red-dev pins an exact version, so without it mise finds the
             // new release, decides it does not match the range, and exits 0 having done nothing.
-            // The person accepted an update to this version; bumping the pin is what they asked for.
+            // The person accepted an update to this version; moving the pin is what they asked for.
+            // It also edits whichever config holds that pin, which `use -g` could not find.
             upgradeResult = yield* run(["mise", "upgrade", "--bump", MISE_TOOL])
+            // `--bump` goes to the newest version mise is willing to see, which is not necessarily
+            // the one this update promised: its own gates can hold that one back. Select the target
+            // by name when the bump did not land on it, so the version that ends up running is the
+            // version the person agreed to.
+            if (!isMiseVersionActive(yield* text(["mise", "ls", "--json", MISE_TOOL]), target)) {
+              upgradeResult = yield* run(["mise", "use", "-g", `${MISE_TOOL}@${target}`])
+            }
             break
+          }
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })
         }
