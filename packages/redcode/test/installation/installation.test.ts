@@ -204,6 +204,33 @@ describe("installation", () => {
       }),
     )
 
+    const selectCalls: string[][] = []
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          if (cmd !== "mise") return ""
+          selectCalls.push([cmd, ...args])
+          // The bump lands on a version mise considered newest, which is not the one this update
+          // promised. Only after the target is selected by name does it become active.
+          if (args[0] === "ls") {
+            const selected = selectCalls.some((call) => call[1] === "use")
+            return JSON.stringify([
+              { version: "8.8.8", active: !selected },
+              { version: "9.9.9", active: selected },
+            ])
+          }
+          return ""
+        },
+      ),
+    ).effect("selects the target by name when the bump lands on a different version", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("mise", "9.9.9")
+        expect(selectCalls).toContainEqual(["mise", "upgrade", "--bump", Installation.MISE_TOOL])
+        expect(selectCalls).toContainEqual(["mise", "use", "-g", `${Installation.MISE_TOOL}@9.9.9`])
+      }),
+    )
+
     testEffect(
       testLayer(
         () => jsonResponse({}),
