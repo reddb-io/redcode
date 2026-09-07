@@ -126,3 +126,44 @@ test("app.exit prints the session epilogue after scoped cleanup", async () => {
     mock.restore()
   }
 })
+
+test("app.exit releases the session when plugin disposal never settles", async () => {
+  const setup = await createTestRenderer({ width: 80, height: 24, useThread: false })
+  const core = await import("@opentui/core")
+  mock.module("@opentui/core", () => ({ ...core, createCliRenderer: async () => setup.renderer }))
+  const ready = Promise.withResolvers<TuiPluginApi>()
+  const cleanup = Promise.withResolvers<void>()
+  const { run } = await import("../src/app")
+  const task = Effect.runPromise(
+    run({
+      url: "http://test",
+      directory,
+      config: createTuiResolvedConfig({ plugin_enabled: {} }),
+      fetch: createFetch().fetch,
+      events: createEventSource().source,
+      args: {},
+      pluginHost: {
+        async start(input) {
+          ready.resolve(input.api)
+        },
+        dispose: () => cleanup.promise,
+      },
+    }).pipe(Effect.provide(AppNodeBuilder.build(Global.node))),
+  )
+  try {
+    const api = await ready.promise
+    const deadline = AbortSignal.timeout(4000)
+    api.keymap.dispatchCommand("app.exit")
+    const result = await Promise.race([
+      task.then(() => "exited"),
+      new Promise<string>((resolve) => deadline.addEventListener("abort", () => resolve("blocked"), { once: true })),
+    ])
+    expect(setup.renderer.isDestroyed).toBe(true)
+    expect(result).toBe("exited")
+  } finally {
+    cleanup.resolve()
+    await task
+    if (!setup.renderer.isDestroyed) setup.renderer.destroy()
+    mock.restore()
+  }
+}, 15000)

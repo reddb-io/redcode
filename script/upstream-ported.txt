@@ -29,3 +29,9 @@ c2e39bb55  # not applicable: the permission assertion it fixes belongs to a test
 86387e90b  # not applicable: fixes test/session/tools.test.ts, which our tree does not have
 040b85614  # declined: their npm preview-publishing pipeline; ours is red-release/red-publish
 4371298ff  # declined: pricing of their hosted console; not our product
+
+# 2026-09-07: provider parity, validated in specs/upstream/2026-09-07-sync.md.
+7c2199d84a5830f70a8250731a42ff958145b4d6  # ported: GitLab reasoning variants and provider 6.14.0
+23ec4f55c8bf4009068c44635a448d602914f1f7  # ported: OpenAI SDK 3.0.88 in Core and CLI
+bec9ee41afc64c0333f7ace8e73ea6ab47f30213  # ported: Azure SDK 3.0.93 in Core and CLI
+ea2d59d7ca8028951a16d4ebc558104258440bf9  # ported: explicit OpenAI service-tier patch with transport regression tests

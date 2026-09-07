@@ -221,13 +221,13 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         (unregister) => Effect.sync(unregister),
       )
       yield* Effect.addFinalizer(() =>
-        Effect.promise(async () => {
-          try {
-            await input.pluginHost.dispose()
-          } catch (error) {
-            console.error("Failed to dispose TUI plugins", error)
-          }
-        }),
+        // Finalizers normally mask interruption. A plugin must not prevent the CLI
+        // from reaching worker shutdown and returning control to the parent shell.
+        Effect.tryPromise(() => input.pluginHost.dispose()).pipe(
+          Effect.interruptible,
+          Effect.timeout("2 seconds"),
+          Effect.catch((error) => Effect.logWarning("TUI plugin cleanup failed or exceeded 2 seconds", error)),
+        ),
       )
       yield* Effect.addFinalizer(() => Effect.sync(TuiAudio.dispose))
       const shutdown = yield* Deferred.make<unknown>()
