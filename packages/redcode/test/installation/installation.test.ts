@@ -186,16 +186,46 @@ describe("installation", () => {
         () => jsonResponse({}),
         (cmd, args) => {
           miseCalls.push([cmd, ...args])
-          if (cmd === "mise" && args[0] === "ls") return JSON.stringify([{ version: "9.9.9" }])
+          if (cmd === "mise" && args[0] === "ls")
+            return JSON.stringify([
+              { version: "1.0.0", active: false },
+              { version: "9.9.9", active: true },
+            ])
           return ""
         },
       ),
-    ).effect("upgrades a mise install and confirms the target version", () =>
+    ).effect("upgrades a mise install and confirms the target version is the active one", () =>
       Effect.gen(function* () {
         yield* Installation.use.upgrade("mise", "9.9.9")
         expect(miseCalls).toContainEqual(["mise", "cache", "clear", Installation.MISE_TOOL])
-        expect(miseCalls).toContainEqual(["mise", "upgrade", Installation.MISE_TOOL])
+        // `--bump`, because a plain upgrade keeps an exact pin and exits 0 having done nothing.
+        expect(miseCalls).toContainEqual(["mise", "upgrade", "--bump", Installation.MISE_TOOL])
         expect(miseCalls).toContainEqual(["mise", "ls", "--json", Installation.MISE_TOOL])
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          if (cmd !== "mise") return ""
+          // The shape that used to be reported as a successful update: the version is on disk,
+          // and the shim still runs the old one, so restarting opens the old version again.
+          if (args[0] === "ls")
+            return JSON.stringify([
+              { version: "1.0.0", active: true },
+              { version: "9.9.9", active: false },
+            ])
+          if (args[0] === "ls-remote") return "1.0.0\n9.9.9\n"
+          return ""
+        },
+      ),
+    ).effect("fails when the target is installed but another version is still the active one", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(Installation.use.upgrade("mise", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toContain("still running another version")
+        expect(error.stderr).toContain(`mise use -g ${Installation.MISE_TOOL}@9.9.9`)
       }),
     )
 
