@@ -6,6 +6,8 @@ import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { DesignLegacy } from "../../src/design/legacy"
 import { TestInstance } from "../fixture/fixture"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
+import { ToolJsonSchema } from "../../src/tool/json-schema"
 import { ToolRegistry } from "../../src/tool/registry"
 import { MessageID } from "../../src/session/schema"
 import type { Tool } from "../../src/tool/tool"
@@ -88,6 +90,61 @@ it.instance("the existing TUI session owns new revisions and SVG assets without 
         expect((yield* sessions.get(session.id)).agent).toBe("design")
       }),
     )
+  }),
+)
+
+it.instance("Design document exposes its required action in the OpenRouter request", () =>
+  Effect.gen(function* () {
+    const registry = yield* ToolRegistry.Service
+    const document = (yield* registry.all()).find((tool) => tool.id === "design_document")!
+    yield* Effect.promise(async () => {
+      const requests: unknown[] = []
+      await using server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        async fetch(request) {
+          requests.push(await request.json())
+          return Response.json({
+            id: "fixture",
+            created: 0,
+            model: "z-ai/glm-5.3-flash",
+            choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+          })
+        },
+      })
+      await createOpenRouter({ apiKey: "fixture", baseURL: server.url.href })
+        .chat("z-ai/glm-5.3-flash")
+        .doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "Design a dark mode" }] }],
+          tools: [
+            {
+              type: "function",
+              name: document.id,
+              description: document.description,
+              inputSchema: ToolJsonSchema.fromTool(document),
+            },
+          ],
+        })
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        tools: [
+          {
+            function: {
+              parameters: {
+                type: "object",
+                required: ["action"],
+                properties: {
+                  action: { type: "string", enum: ["list", "create", "update", "reopen", "refresh"] },
+                  id: { type: "string" },
+                  input: { type: "object" },
+                },
+              },
+            },
+          },
+        ],
+      })
+      expect(requests[0]).not.toHaveProperty("tools.0.function.parameters.anyOf")
+    })
   }),
 )
 
