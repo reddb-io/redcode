@@ -1,5 +1,6 @@
 export const reviewCopy = {
   title: "Design",
+  details: "Details",
   create: "Create design",
   name: "Name",
   journey: "Starting point",
