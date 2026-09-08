@@ -3,7 +3,17 @@ export * as ConfigMCPV1 from "./mcp"
 import { Schema } from "effect"
 import { PositiveInt } from "../../schema"
 
+const Media = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    operations: Schema.mutable(Schema.Array(Schema.Literals(["generate", "edit", "reference"]))),
+    formats: Schema.mutable(Schema.Array(Schema.String)),
+    transparency: Schema.Boolean,
+  }),
+)
+
 export const Local = Schema.Struct({
+  media: Schema.optional(Media),
   type: Schema.Literal("local").annotate({ description: "Type of MCP server connection" }),
   command: Schema.mutable(Schema.Array(Schema.String)).annotate({
     description: "Command and arguments to run the MCP server",
@@ -42,6 +52,7 @@ export const OAuth = Schema.Struct({
 export type OAuth = Schema.Schema.Type<typeof OAuth>
 
 export const Remote = Schema.Struct({
+  media: Schema.optional(Media),
   type: Schema.Literal("remote").annotate({ description: "Type of MCP server connection" }),
   url: Schema.String.annotate({ description: "URL of the remote MCP server" }),
   enabled: Schema.optional(Schema.Boolean).annotate({

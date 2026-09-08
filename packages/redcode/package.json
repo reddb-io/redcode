@@ -105,6 +105,7 @@
     "@reddb-io/redcode-llm": "workspace:*",
     "@reddb-io/redcode-plugin": "workspace:*",
     "@reddb-io/redcode-protocol": "workspace:*",
+    "@reddb-io/redcode-design": "workspace:*",
     "@reddb-io/redcode-schema": "workspace:*",
     "@reddb-io/redcode-script": "workspace:*",
     "@reddb-io/redcode-sdk": "workspace:*",

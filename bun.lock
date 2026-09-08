@@ -635,7 +635,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.21.2",
+      "version": "0.22.1",
       "bin": {
         "redcode": "./bin/redcode",
       },
@@ -685,6 +685,7 @@
         "@pierre/diffs": "catalog:",
         "@reddb-io/redcode-client": "workspace:*",
         "@reddb-io/redcode-codemode": "workspace:*",
+        "@reddb-io/redcode-design": "workspace:*",
         "@reddb-io/redcode-llm": "workspace:*",
         "@reddb-io/redcode-plugin": "workspace:*",
         "@reddb-io/redcode-protocol": "workspace:*",

@@ -1,34 +1,42 @@
+export * as LSPLaunch from "./launch"
+
 import type { ChildProcessWithoutNullStreams } from "child_process"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { Process } from "@/util/process"
 
 type Child = Process.Child & ChildProcessWithoutNullStreams
 
-/**
- * Node refuses some command-line flags when they arrive through NODE_OPTIONS, and it refuses
- * them by exiting immediately. A language server started from a shell that exports one — the
- * flag is meant for the user's own Node, not for ours — dies during initialization with a
- * message naming the flag. Nothing about that is the server's fault or ours, so instead of
- * reporting it as a broken server, the flag is dropped for every later spawn.
- */
-const rejectedNodeOptions = new Set<string>()
-
+// Rejections belong to one server startup, including its bounded retries. Another
+// server can use a different Node version and must retain its own environment.
+const recovery = new AsyncLocalStorage<Set<string>>()
 const REJECTED = /(--[\w-]+)\s+is not allowed in NODE_OPTIONS/i
 
-/** Records the flag a failing server named, and says whether it is worth spawning again. */
-export function noteRejectedNodeOption(reason: unknown) {
-  const text = reason instanceof Error ? `${reason.message}` : String(reason ?? "")
-  const flag = text.match(REJECTED)?.[1]
-  if (!flag || rejectedNodeOptions.has(flag)) return false
-  rejectedNodeOptions.add(flag)
-  return true
+export function recover<A>(
+  start: () => Promise<A>,
+  reason = (error: unknown) => (error instanceof Error ? error.message : String(error ?? "")),
+): Promise<A> {
+  return recovery.run(new Set(), async () => {
+    const rejected = recovery.getStore()!
+    const attempt = async (): Promise<A> =>
+      start().catch((error: unknown) => {
+        const flag = reason(error).match(REJECTED)?.[1]
+        if (!flag || rejected.has(flag) || rejected.size >= 4) throw error
+        rejected.add(flag)
+        return attempt()
+      })
+    return attempt()
+  })
 }
 
-/** Only the flags this environment has proven a server cannot take are removed. */
-export function nodeOptionsWithoutRejected(value: string | undefined) {
-  if (!value) return value
-  if (rejectedNodeOptions.size === 0) return value
-  const kept = value.split(/\s+/).filter((entry) => entry && !rejectedNodeOptions.has(entry))
-  return kept.join(" ")
+/** Preserve quoted values and remove only options rejected by this startup. */
+export function nodeOptionsWithoutRejected(value: string | undefined, rejected = recovery.getStore()) {
+  if (!value || !rejected?.size) return value
+  return value
+    .replace(/(?:[^\s"\\]|\\.|"(?:[^"\\]|\\.)*")+/g, (raw) => {
+      const token = raw.replace(/"/g, "").replace(/\\(.)/g, "$1")
+      return rejected.has(token.split("=", 1)[0]) ? "" : raw
+    })
+    .trim()
 }
 
 export function spawn(cmd: string, args: string[], opts?: Process.Options): Child

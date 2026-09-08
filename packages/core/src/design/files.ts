@@ -45,7 +45,7 @@ export async function review(storage: string, design: string, id: string, index:
   await atomic(path.join(directory, `${id}-${index}.excalidraw`), scene)
 }
 
-export async function snapshot(root: string, blobs: string) {
+export async function snapshot(root: string, blobs: string, read?: (file: string) => Promise<void>) {
   const files: Record<string, string> = {}
   const budget = { bytes: 0 }
   const walk = async (directory: string) => {
@@ -62,7 +62,9 @@ export async function snapshot(root: string, blobs: string) {
       if (!entry.isFile()) continue
       if (Object.keys(files).length >= 2000)
         throw new Design.Error({ code: "invalid", message: "Design contains more than 2000 files" })
-      const source = Bun.file(await resolve(root, file))
+      const resolved = await resolve(root, file)
+      await read?.(resolved)
+      const source = Bun.file(resolved)
       budget.bytes += source.size
       if (source.size > 25 * 1024 * 1024 || budget.bytes > 100 * 1024 * 1024)
         throw new Design.Error({ code: "invalid", message: "Snapshot limits: 25 MB per file and 100 MB in total" })

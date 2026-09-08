@@ -195,3 +195,11 @@ describe("a goal, inherited by a subagent", () => {
     expect(block).not.toContain("goal_complete")
   })
 })
+
+test("Design-only scope survives TUI goal persistence", () => {
+  const goal = SessionGoal.parse("Review the prototype; constraints: leave product code unchanged", {
+    stopAfter: "design",
+  })
+  expect(SessionGoal.fromMetadata({ goal })?.stopAfter).toBe("design")
+  expect(SessionGoal.render(goal)).toContain("Scope ends in design")
+})

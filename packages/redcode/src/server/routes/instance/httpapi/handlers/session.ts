@@ -263,7 +263,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const agent = ctx.payload.agent ?? (yield* goalAgent(ctx.params.sessionID))
       const goal = SessionGoal.parse(text, {
         maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns,
-        stopAfter: agent === "plan" ? "plan" : "build",
+        stopAfter: agent === "design" ? "design" : agent === "plan" ? "plan" : "build",
       })
       yield* goals.set(ctx.params.sessionID, goal)
       // The goal's first turn is the objective itself, as the user's message: the loop takes it

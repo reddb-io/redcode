@@ -3,6 +3,7 @@ import type { ReviewCopy } from "./copy"
 
 export interface ReviewOptions {
   base: string
+  endpoint?: string
   sessionID: string
   copy: ReviewCopy
   request?: (url: string, init?: RequestInit) => Promise<Response>
@@ -13,7 +14,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const copy = { ...options.copy }
   const request = options.request ?? fetch
   const root = host.attachShadow({ mode: "open" })
-  const endpoint = `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
+  const endpoint = options.endpoint ?? `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
   const state = {
     creating: false,
     design: undefined as Design.Info | undefined,
