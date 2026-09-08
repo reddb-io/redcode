@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import path from "path"
+import os from "os"
+import fs from "fs/promises"
 
 const root = path.resolve(import.meta.dir, "..")
 const workflows = path.join(root, ".github", "workflows")
@@ -156,5 +158,28 @@ const staleDefault = sources.flatMap((source) =>
   source.text.includes("branches: [dev]") ? [`${source.file}: branches: [dev]`] : [],
 )
 if (staleDefault.length > 0) throw new Error(`workflow still targets dev: ${staleDefault.join(", ")}`)
+
+// `changeset status` does not validate the skipped-package dependency graph.
+// Exercise the real version command without changing the checkout's versions.
+const preview = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-version-check-"))
+try {
+  const workspace = await Bun.file(path.join(root, "package.json")).json()
+  await Bun.write(path.join(preview, "package.json"), Bun.file(path.join(root, "package.json")))
+  for (const pattern of workspace.workspaces.packages) {
+    for await (const file of new Bun.Glob(`${pattern}/package.json`).scan({ cwd: root })) {
+      await Bun.write(path.join(preview, file), Bun.file(path.join(root, file)))
+    }
+  }
+  await fs.cp(path.join(root, ".changeset"), path.join(preview, ".changeset"), { recursive: true })
+  await fs.symlink(path.join(root, "node_modules"), path.join(preview, "node_modules"), "junction")
+  const version = Bun.spawn(["node", path.join(root, "node_modules", "@changesets", "cli", "bin.js"), "version"], {
+    cwd: preview,
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  if ((await version.exited) !== 0) throw new Error("Changesets version rehearsal failed")
+} finally {
+  await fs.rm(preview, { recursive: true, force: true })
+}
 
 console.log("Redcode release posture: binary-only")

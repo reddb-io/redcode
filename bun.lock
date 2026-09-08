@@ -402,6 +402,7 @@
     },
     "packages/design": {
       "name": "@reddb-io/redcode-design",
+      "version": "0.0.0",
       "dependencies": {
         "@reddb-io/redcode-schema": "workspace:*",
       },
