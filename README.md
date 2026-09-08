@@ -460,7 +460,7 @@ Deliberately not done yet, so you do not have to find out the hard way:
 
 ## Development
 
-Requires Bun 1.3+.
+Requires Bun 1.4.1, matching the toolchain pinned in `package.json`.
 
 ```bash
 bun install

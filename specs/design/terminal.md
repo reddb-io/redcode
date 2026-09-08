@@ -64,6 +64,24 @@ Chromium installations are reused; `PLAYWRIGHT_BROWSERS_PATH` can select a
 preinstalled browser cache. HTML browser review itself needs neither the build
 tool download nor Chromium.
 
+Use the repository's pinned Bun 1.4.1 for checkout execution and native builds.
+Bun 1.3.14 launches Chromium but times out while Playwright connects to its local
+WebSocket endpoint. Bun 1.4 officially added Playwright support, including browser
+connections and Chromium on Windows; the same minimal connection probe succeeds
+on 1.4.1. The release and CI setup both read `packageManager` from the root
+`package.json`, so compiled releases carry the compatible runtime. This changes
+the repository toolchain, without requiring a separate Bun installation for
+users of native releases.
+
+The renderer retains `launchServer()` and the public `BrowserServer.kill()`
+cleanup API. Replacing the WebSocket connection with a direct launch would lose
+that explicit forced teardown path. Increasing the connection timeout would not
+fix the older runtime's protocol incompatibility.
+
+Upstream references: [Bun 1.4 Playwright support](https://bun.com/blog/bun-v1.4#playwright),
+[the bundled WebSocket compatibility issue](https://github.com/oven-sh/bun/issues/9911#issuecomment-2623174592),
+and [Bun 1.4.1 release notes](https://bun.com/blog/bun-v1.4.1).
+
 ## Native release preflight
 
 The 0.22.0 preflight copied the compiled executable outside the checkout and used

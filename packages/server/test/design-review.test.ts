@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { mkdtemp, rm, symlink } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
 import { chromium, type Browser } from "playwright-core"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
+import { designDependencies } from "../../core/test/fixture/design-dependencies"
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
 const web = webHandler()
@@ -49,7 +50,7 @@ const published = async (engine: "html" | "solid") => {
 
 beforeAll(async () => {
   await Bun.write(path.join(directory, "redcode.json"), JSON.stringify({ permission: { external_directory: "allow" } }))
-  await symlink(path.resolve(import.meta.dir, "../../core/node_modules"), path.join(directory, "node_modules"), "dir")
+  await designDependencies(directory)
   browser = await chromium.launch()
 }, 30000)
 afterAll(async () => {

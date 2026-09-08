@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises"
+import { mkdtemp, mkdir, rm } from "node:fs/promises"
 import os from "node:os"
 import { DesignRuntime } from "../src/design/runtime"
+import { designDependencies } from "./fixture/design-dependencies"
 
 test("loads checkout Design tools from real package files without a managed install", async () => {
   const vite = await DesignRuntime.load("vite")
@@ -23,7 +24,7 @@ test("a compiled CLI loads cached Vite, plugins and browser resources outside th
     await mkdir(cache, { recursive: true })
     // The fixture seeds a genuine package tree and rejects network access. The
     // binary must resolve these files instead of its original checkout path.
-    await symlink(path.resolve(import.meta.dir, "../node_modules"), path.join(cache, "node_modules"), "dir")
+    await designDependencies(cache, Object.keys(DesignRuntime.versions))
     await Bun.write(path.join(cache, "package.json"), JSON.stringify({ dependencies: DesignRuntime.versions }))
     await Bun.write(
       path.join(cache, "package-lock.json"),

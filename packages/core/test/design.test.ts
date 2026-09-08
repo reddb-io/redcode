@@ -1,9 +1,9 @@
 import { describe, expect } from "bun:test"
 import path from "node:path"
 import { Effect } from "effect"
-import { symlink } from "node:fs/promises"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import { chromium } from "playwright-core"
+import { designDependencies } from "./fixture/design-dependencies"
 import { Database } from "../src/database/database"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { LayerNode } from "../src/effect/layer-node"
@@ -200,13 +200,7 @@ describe("Design revisions and review", () => {
           const { store, document } = yield* setup
           const renderer = yield* DesignRenderer.Service
           const location = yield* Location.Service
-          yield* Effect.promise(() =>
-            symlink(
-              path.resolve(import.meta.dir, "../node_modules"),
-              path.join(location.directory, "node_modules"),
-              "dir",
-            ),
-          )
+          yield* Effect.promise(() => designDependencies(location.directory))
           const component = yield* store.create(document.sessionID, {
             name: "Existing component",
             journey: "existing",

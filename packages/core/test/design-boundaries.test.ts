@@ -15,6 +15,7 @@ import { SessionTable } from "../src/session/sql"
 import { SessionV2 } from "../src/session"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
+import { designDependencies } from "./fixture/design-dependencies"
 
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([DesignStore.node, Database.node, Location.node]), [
@@ -77,9 +78,7 @@ it.live(
   () =>
     Effect.gen(function* () {
       const { location, store, sessionID } = yield* setup
-      yield* Effect.promise(() =>
-        symlink(path.resolve(import.meta.dir, "../node_modules"), path.join(location.directory, "node_modules"), "dir"),
-      )
+      yield* Effect.promise(() => designDependencies(location.directory))
       const document = yield* store.create(sessionID, {
         name: "Probe",
         journey: "new",
@@ -107,13 +106,7 @@ for (const kind of ["raw", "css-import", "css-url", "asset-url", "symlink"] as c
     () =>
       Effect.gen(function* () {
         const { location, store, sessionID } = yield* setup
-        yield* Effect.promise(() =>
-          symlink(
-            path.resolve(import.meta.dir, "../node_modules"),
-            path.join(location.directory, "node_modules"),
-            "dir",
-          ),
-        )
+        yield* Effect.promise(() => designDependencies(location.directory))
         const document = yield* store.create(sessionID, {
           name: "Boundary",
           journey: "new",
@@ -162,9 +155,7 @@ for (const kind of ["raw", "css-import", "css-url", "asset-url", "symlink"] as c
 it.live("allows explicitly authorized product imports and captures the compiled result", () =>
   Effect.gen(function* () {
     const { location, store, sessionID } = yield* setup
-    yield* Effect.promise(() =>
-      symlink(path.resolve(import.meta.dir, "../node_modules"), path.join(location.directory, "node_modules"), "dir"),
-    )
+    yield* Effect.promise(() => designDependencies(location.directory))
     const document = yield* store.create(sessionID, {
       name: "Allowed",
       journey: "existing",
@@ -198,9 +189,7 @@ for (const value of ['"./\\u002eenv.fixture"', "`./${name}.fixture`"])
   it.live("rejects asset URL forms that cannot be authorized statically: " + value, () =>
     Effect.gen(function* () {
       const { location, store, sessionID } = yield* setup
-      yield* Effect.promise(() =>
-        symlink(path.resolve(import.meta.dir, "../node_modules"), path.join(location.directory, "node_modules"), "dir"),
-      )
+      yield* Effect.promise(() => designDependencies(location.directory))
       const document = yield* store.create(sessionID, {
         name: "Unsupported URL",
         journey: "new",

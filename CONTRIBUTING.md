@@ -30,7 +30,7 @@ ignored.
 
 ## Development setup
 
-Requires Bun 1.3+.
+Requires Bun 1.4.1, matching the toolchain pinned in `package.json`.
 
 ```bash
 bun install
