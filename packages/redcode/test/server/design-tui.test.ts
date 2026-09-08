@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { HttpRouter } from "effect/unstable/http"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { tmpdir } from "../fixture/fixture"
 
@@ -34,7 +35,8 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
       },
     },
   })
-  const server = HttpApiApp.webHandler()
+  // This fixture owns its handler; disposing the process-global handler breaks later server tests.
+  const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
   const request = async (route: string, method = "GET", body?: unknown) =>
     server.handler(
       new Request(`http://localhost${route}`, {
