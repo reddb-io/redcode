@@ -1,5 +1,8 @@
 import { DatabaseSync } from "node:sqlite"
 import {
+  HAS_MESSAGE_TABLE,
+  SELECT_MESSAGES,
+  type SidecarReader,
   CREATE_MESSAGE_INDEX,
   CREATE_MESSAGE_TABLE,
   INSERT_PROJECT,
@@ -34,6 +37,45 @@ export function open(filename: string, options: { own: boolean }): SidecarStore 
     },
     project(row: ProjectRow) {
       project?.run(row.id, row.worktree, row.timeCreated, row.timeUpdated)
+    },
+    close() {
+      database.close()
+    },
+  }
+}
+
+/** See the bun driver. */
+export function openStore(filename: string): SidecarReader | undefined {
+  let database: DatabaseSync
+  try {
+    database = new DatabaseSync(filename, { open: true, readOnly: true })
+  } catch {
+    return undefined
+  }
+  try {
+    if (!database.prepare(HAS_MESSAGE_TABLE).get()) {
+      database.close()
+      return undefined
+    }
+  } catch {
+    database.close()
+    return undefined
+  }
+  return {
+    messages() {
+      const rows = database.prepare(SELECT_MESSAGES).all() as {
+        id: string
+        session_id: string
+        time_created: number
+        data: string
+      }[]
+      return rows.map((row) => ({
+        id: row.id,
+        sessionID: row.session_id,
+        timeCreated: row.time_created,
+        timeUpdated: row.time_created,
+        data: row.data,
+      }))
     },
     close() {
       database.close()

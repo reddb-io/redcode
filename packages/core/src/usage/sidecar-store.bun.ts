@@ -1,5 +1,8 @@
 import { Database } from "bun:sqlite"
 import {
+  HAS_MESSAGE_TABLE,
+  SELECT_MESSAGES,
+  type SidecarReader,
   CREATE_MESSAGE_INDEX,
   CREATE_MESSAGE_TABLE,
   INSERT_PROJECT,
@@ -38,6 +41,45 @@ export function open(filename: string, options: { own: boolean }): SidecarStore 
     },
     project(row: ProjectRow) {
       project?.run(row.id, row.worktree, row.timeCreated, row.timeUpdated)
+    },
+    close() {
+      database.close()
+    },
+  }
+}
+
+/**
+ * Open a session store to read its messages. Answers undefined when the file is not a store this can read — a
+ * database with no `message` table, or one that will not open at all (a half-written file, a lock we lose).
+ */
+export function openStore(filename: string): SidecarReader | undefined {
+  let database: Database
+  try {
+    database = new Database(filename, { readonly: true })
+  } catch {
+    return undefined
+  }
+  try {
+    if (!database.query(HAS_MESSAGE_TABLE).get()) {
+      database.close()
+      return undefined
+    }
+  } catch {
+    database.close()
+    return undefined
+  }
+  return {
+    messages() {
+      const rows = database
+        .query<{ id: string; session_id: string; time_created: number; data: string }, []>(SELECT_MESSAGES)
+        .all()
+      return rows.map((row) => ({
+        id: row.id,
+        sessionID: row.session_id,
+        timeCreated: row.time_created,
+        timeUpdated: row.time_created,
+        data: row.data,
+      }))
     },
     close() {
       database.close()
