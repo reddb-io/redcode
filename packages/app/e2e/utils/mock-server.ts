@@ -217,6 +217,12 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
         ),
       })
     }
+    const sessionGoal = path.match(/^\/api\/session\/([^/]+)\/(goal|plan)$/)
+    if (sessionGoal && route.request().method() === "GET") {
+      if (!config.sessions.some((session) => session.id === sessionGoal[1]))
+        return json(route, { error: "Session not found" }, undefined, 404)
+      return json(route, { data: sessionGoal[2] === "goal" ? null : [] })
+    }
     if (/^\/api\/session\/[^/]+\/shell$/.test(path) && route.request().method() === "POST") {
       return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } })
     }

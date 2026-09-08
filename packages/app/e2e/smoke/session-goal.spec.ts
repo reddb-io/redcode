@@ -5,6 +5,42 @@ import { installStressSessionTabs, stressSessionHref } from "../performance/time
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectSessionTitle } from "../utils/waits"
 
+for (const response of [
+  { name: "missing plan data", endpoint: "plan", body: {} },
+  { name: "malformed plan revision", endpoint: "plan", body: { data: [{}] } },
+  { name: "malformed Goal", endpoint: "goal", body: { data: { status: "active" } } },
+]) {
+  test(`the session composer remains usable after ${response.name}`, async ({ page }) => {
+    await mockOpenCodeServer(page, {
+      protocol: "v2",
+      sessions: fixture.sessions,
+      provider: fixture.provider,
+      directory: fixture.directory,
+      project: fixture.project,
+      pageMessages,
+    })
+    await installStressSessionTabs(page)
+    const endpoint = `/api/session/${fixture.sourceID}/${response.endpoint}`
+    await page.route(`**${endpoint}`, (route) => route.fulfill({ json: response.body }))
+    const received = page.waitForResponse((reply) => new URL(reply.url()).pathname === endpoint)
+    await page.goto(stressSessionHref(fixture.sourceID))
+    await received
+    await expectSessionTitle(page, fixture.expected.sourceTitle)
+    const composer = page.getByRole("textbox")
+    await expect(composer).toBeEditable()
+    await composer.fill("/goal")
+    await composer.press("Enter")
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByText("What does done look like?", { exact: true })).toBeVisible()
+    const objective = dialog.getByRole("textbox")
+    await expect(objective).toBeEditable()
+    await objective.fill("Keep the current session usable")
+    await expect(objective).toHaveValue("Keep the current session usable")
+    await expect(page.locator('[data-component="session-goal-progress"]')).toHaveCount(0)
+    await expect(page.locator('[data-component="session-plan-history"]')).toHaveCount(0)
+  })
+}
+
 test("Goal controls preserve the objective, show evidence and recorded plan revisions", async ({ page }) => {
   let goal: NonNullable<SessionsGoalOutput> = {
     id: "goal_browser",

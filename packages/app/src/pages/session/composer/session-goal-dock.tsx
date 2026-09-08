@@ -58,7 +58,7 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
           setState("plans", reconcile(plans, { key: "revision" }))
         }
       } catch {
-        // Older servers have no current Goal endpoint; retain their metadata view.
+        // Unavailable or malformed Goal endpoints must retain the last valid view.
       } finally {
         pending = false
         if (!disposed && (dirty || (state.goal && ["active", "waiting"].includes(state.goal.status))))
