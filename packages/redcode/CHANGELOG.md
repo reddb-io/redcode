@@ -1,5 +1,48 @@
 # opencode
 
+## 0.22.0
+
+### Minor Changes
+
+- 4bcb811: Move Design mode to SessionV2 with durable review feedback, immutable revisions and approval packages, a shared embedded/browser review surface, isolated React/Solid previews, and design-system evidence.
+
+  Add canonical MCP and plugin image-tool registration, local versioned assets, editable SVG-to-GIF exports, accessibility/scenario checks, and comparison with the approved design. Preserve diagram whiteboards and reconcile the design-owned plan section without overwriting manual work.
+
+  Remove Design from V1 agents, tool registration and HTTP routing. Existing V1 design state is not migrated. New reviews use `/api/session/:sessionID/design/review`; the TUI's `/design` entry guides users to the dedicated `redcode design` terminal.
+
+- 4bcb811: Add `redcode design` for interactive V2 sessions with Design, Plan, and Build modes, durable history and event replay, explicit interruption and resumption, permission and question controls, Goal budgets, and browser review. Existing sessions retain their authoritative mode and do not resume automatically.
+- 4bcb811: Add durable SessionV2 goals with explicit mode scope, provider-turn budgets, pause and resume controls, recorded evidence and executed checks. Preserve approved Plan revisions across continuation and compaction, and carry frozen Design audit results into approval and handoff.
+
+  Align Plan permissions and legacy Goal budgets, reject completion without observed evidence, and bound Design browser setup, rendering and cleanup.
+
+### Patch Changes
+
+- 4bcb811: Move reply latency and token throughput from the TUI prompt footer to the Context sidebar.
+- 4bcb811: Build native releases with Bun 1.4.1 so Design browser exports can connect to Chromium reliably. Keep bounded browser shutdown and forced process cleanup when rendering is cancelled.
+- 4bcb811: Fix React and Solid Design previews in Windows temporary directories and workspaces reached through symlinks or junctions. Use canonical filesystem paths consistently for Vite builds and dependency authorization while continuing to require permission for external imports.
+- 4bcb811: Translate the new App Design studio and Goal controls into Brazilian Portuguese. Other locales explicitly fall back to English for these new messages, with source-language plural rules and separately reported translation coverage.
+
+  Refresh Design studio translations when the language changes or finishes loading, while preserving the current form, preview, and ongoing requests.
+
+- 4bcb811: Load Design build and browser tools from a versioned package cache in native binaries, preserving their native dependencies and browser resources. Correct Chromium installation from the compiled CLI, and bound first-use setup and cancellation.
+- 4bcb811: Contain Design feedback files and enforce read permissions across prototype imports, stylesheets and assets, including browser-initiated publish and restore. Disable implicit project configuration execution during builds; preprocessors require compiled CSS.
+
+  Encode SVG GIF exports and compare PNGs in a bounded, cancellable worker included in release binaries, keeping raster work off the session server event loop.
+
+  On cancelled or failed commands, terminate remaining process-group descendants even when their parent exited successfully. Preserve successful background launches with explicitly detached output.
+
+- 4bcb811: Restore Design source discovery for root design guidance and nested token, theme, and global-style files. Keep source hashes, excerpts, deterministic limits, and filesystem containment checks while supporting Windows path separators.
+- 094df07: Include the internal Design workspace in Changesets version planning and validate the real version command before merging release changes.
+- 4bcb811: Provide application services to HTTP requests so embedded SDK and CLI hosts can create and approve Design sessions without requiring callers to supply internal service context.
+- 4bcb811: Subscribe to global events before announcing the SSE connection, preventing session updates from falling between recovery snapshots and the live event stream. Release the subscription when the request closes, including abandoned response bodies.
+- 4bcb811: Keep sessions usable when a server returns malformed Goal or plan history data by validating responses before updating the composer.
+- 4bcb811: Keep permission requests relative to the project when Windows short paths, symlinks, or junctions refer to the same Location. Preserve rejection of relative escapes and links outside the project, and retain separate authorization for external files.
+- 4bcb811: Notify language servers when changed file contents have been saved, honoring their save capabilities. This triggers rust-analyzer compiler checks after edits so Rust diagnostics can refresh.
+- 4bcb811: Count provider retries against CLI Goal budgets, record terminal execution failures as blocked, and keep exhausted Goals paused until their budget increases. Use available Goal recovery commands and publish the authorized agent and reviewed revision on Plan handoffs.
+- 4bcb811: Finalize Goals only after sibling tools and hooks settle, reject completion when new steering is pending, and retain reported provider and reviewer usage even when execution fails or a verdict is stale or interrupted. Apply bounded termination to owned subprocesses so cancel and timeout do not depend on every caller opting into escalation.
+- 4bcb811: Release TUI listeners on unmount, bound inactive transcript caches and evict deleted sessions, and recover transcripts and pending interactions only after the event stream connects. Fence delayed navigation and list responses so they cannot overwrite the current workspace or restore deleted sessions. Add `/goal-budget`, accurate resume status, approved Plan-to-Build handoffs, and a discoverable entry for the separate Design workspace.
+- 4bcb811: Fix whiteboard startup on Windows by normalizing bundled font paths before mapping browser requests to embedded data URLs. Keep the sandbox's network restrictions intact.
+
 ## 0.21.2
 
 ### Patch Changes
