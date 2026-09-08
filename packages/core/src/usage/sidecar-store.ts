@@ -68,3 +68,13 @@ export const INSERT_SESSION = `INSERT OR IGNORE INTO session
 export const INSERT_PROJECT = `INSERT OR IGNORE INTO project
   (id, worktree, time_created, time_updated, sandboxes)
   VALUES (?, ?, ?, ?, '[]')`
+
+/** A session store opened for READING, so the backfill can replay what it already holds. */
+export interface SidecarReader {
+  messages(): MessageRow[]
+  close(): void
+}
+
+export const SELECT_MESSAGES = `SELECT id, session_id, time_created, data FROM message ORDER BY time_created`
+
+export const HAS_MESSAGE_TABLE = `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message'`
