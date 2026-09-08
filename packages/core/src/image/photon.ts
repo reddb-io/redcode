@@ -9,7 +9,8 @@ import { DecodeError, ResizerUnavailableError, SizeError } from "../image"
 const JPEG_QUALITIES = [80, 85, 70, 55, 40]
 
 export const make = Effect.gen(function* () {
-  ;(globalThis as typeof globalThis & { __REDCODE_PHOTON_WASM_PATH?: string }).__REDCODE_PHOTON_WASM_PATH =
+  // This key is the embedding contract read by the patched photon-node loader.
+  ;(globalThis as typeof globalThis & { __OPENCODE_PHOTON_WASM_PATH?: string }).__OPENCODE_PHOTON_WASM_PATH =
     path.isAbsolute(photonWasm) ? photonWasm : fileURLToPath(new URL(photonWasm, import.meta.url))
   const loadPhoton = yield* Effect.cached(
     Effect.tryPromise({

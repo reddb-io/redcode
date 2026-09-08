@@ -210,6 +210,18 @@ test("diagram review retains the Excalidraw whiteboard and queues an image plus 
       throw error
     })
   await frame.locator("#wbNote").fill("Keep these steps clear")
+  const upload = `${base}${current.root}/${current.document.id}/asset`
+  await page.route(upload, (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 409, json: { message: "Image import unavailable" } })
+      : route.continue(),
+  )
+  await frame.getByRole("button", { name: "Queue feedback", exact: true }).click()
+  await frame.locator("#wbStatus").getByText("Queue failed:", { exact: false }).waitFor()
+  expect(await frame.getByRole("button", { name: "Queue feedback", exact: true }).isEnabled()).toBe(true)
+  expect(await frame.locator("#wbNote").inputValue()).toBe("Keep these steps clear")
+  expect(await page.locator("#notes").textContent()).toBe("")
+  await page.unroute(upload)
   await frame.getByRole("button", { name: "Queue feedback", exact: true }).click()
   await page.getByText("diagram: Keep these steps clear", { exact: false }).waitFor({ timeout: 60000 })
   await page.getByRole("button", { name: "Send feedback", exact: true }).click()

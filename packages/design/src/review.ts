@@ -528,29 +528,38 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
       }
       if (data.type === "redcode-whiteboard:queueFeedback") {
         void run(async () => {
-          if (state.pending) throw new Error(copy.failure)
-          if (typeof data.pngDataUrl === "string" && data.pngDataUrl.startsWith("data:image/png;base64,")) {
-            const asset = await api<Design.Asset>(`/${state.design!.id}/asset`, "POST", {
-              name: "whiteboard.png",
-              mime: "image/png",
-              data: data.pngDataUrl.split(",")[1],
-              source: "whiteboard",
+          try {
+            if (state.pending) throw new Error(copy.failure)
+            if (typeof data.pngDataUrl === "string" && data.pngDataUrl.startsWith("data:image/png;base64,")) {
+              const asset = await api<Design.Asset>(`/${state.design!.id}/asset`, "POST", {
+                name: "whiteboard.png",
+                mime: "image/png",
+                data: data.pngDataUrl.split(",")[1],
+                source: "whiteboard",
+              })
+              state.assets.push(asset.id)
+            }
+            const target = element("target").textContent || "diagram"
+            state.boards.push({ target, scene: { type: "excalidraw", version: 2, source: "redcode", ...data.scene } })
+            state.notes.push({
+              target,
+              text:
+                [String(data.note || ""), ...(Array.isArray(data.summaryLines) ? data.summaryLines.map(String) : [])]
+                  .filter(Boolean)
+                  .join("\n") || copy.whiteboard,
             })
-            state.assets.push(asset.id)
+            save()
+            drawNotes()
+            reply({ type: "redcode-whiteboard:queueResult", ok: true })
+            element<HTMLDialogElement>("board-dialog").close()
+          } catch (error) {
+            reply({
+              type: "redcode-whiteboard:queueResult",
+              ok: false,
+              error: error instanceof Error ? error.message : copy.failure,
+            })
+            throw error
           }
-          const target = element("target").textContent || "diagram"
-          state.boards.push({ target, scene: { type: "excalidraw", version: 2, source: "redcode", ...data.scene } })
-          state.notes.push({
-            target,
-            text:
-              [String(data.note || ""), ...(Array.isArray(data.summaryLines) ? data.summaryLines.map(String) : [])]
-                .filter(Boolean)
-                .join("\n") || copy.whiteboard,
-          })
-          save()
-          drawNotes()
-          reply({ type: "redcode-whiteboard:queueResult", ok: true })
-          element<HTMLDialogElement>("board-dialog").close()
         })
       }
       return
