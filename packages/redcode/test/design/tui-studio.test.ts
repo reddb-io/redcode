@@ -1,6 +1,7 @@
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { DesignFeedback } from "../../src/design/feedback"
 import { SessionStatus } from "../../src/session/status"
+import { SessionPrompt } from "../../src/session/prompt"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { DesignLegacy } from "../../src/design/legacy"
@@ -26,6 +27,7 @@ const it = testEffect(
       DesignStudio.node,
       DesignFeedback.node,
       SessionStatus.node,
+      SessionPrompt.node,
       EventV2Bridge.node,
       Agent.node,
       Session.node,
@@ -179,6 +181,13 @@ it.instance("queued browser feedback does not restart an interrupted TUI session
     const status = yield* SessionStatus.Service
     const events = yield* EventV2Bridge.Service
     const session = yield* sessions.create({ agent: "design" })
+    const prompt = yield* SessionPrompt.Service
+    const initial = yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "design",
+      noReply: true,
+      parts: [{ type: "text", text: "Create a settings prototype" }],
+    })
     const document = yield* studio.use(
       Effect.gen(function* () {
         const store = yield* DesignStore.Service
@@ -210,8 +219,22 @@ it.instance("queued browser feedback does not restart an interrupted TUI session
       finished: false,
     })
     yield* status.set(session.id, { type: "idle" })
-    yield* Effect.sleep("300 millis")
-    expect(yield* sessions.messages({ sessionID: session.id })).toHaveLength(0)
+    yield* Effect.sleep("2 seconds")
+    expect((yield* sessions.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+      initial.info.id,
+    ])
     expect(yield* status.get(session.id)).toEqual({ type: "idle" })
   }),
+  {
+    config: {
+      model: "fixture/fixture",
+      provider: {
+        fixture: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { fixture: { name: "Fixture", limit: { context: 100000, output: 4096 } } },
+          options: { apiKey: "fixture", baseURL: "http://127.0.0.1:1/v1" },
+        },
+      },
+    },
+  },
 )

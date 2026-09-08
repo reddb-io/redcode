@@ -2,7 +2,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 export * as DesignFeedback from "./feedback"
 
-import { Context, Deferred, Effect, Exit, Layer, Schedule, Scope, Semaphore, Schema, Option } from "effect"
+import { Context, Deferred, Effect, Exit, Layer, Schedule, Scope, Semaphore, Schema } from "effect"
 import { eq } from "drizzle-orm"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
@@ -27,9 +27,9 @@ const make = Effect.gen(function* () {
       const off = yield* events.listen((event) =>
         Effect.sync(() => {
           if (event.type !== SessionEvent.Turn.Ended.type || event.location?.directory !== instance.directory) return
-          const data = Schema.decodeUnknownOption(SessionEvent.Turn.Ended.data)(event.data)
-          if (Option.isNone(data) || data.value.finished) return
-          const queue = queues.get(data.value.sessionID)
+          // Live events already contain decoded DateTime values. Validate their type, not the wire representation.
+          if (!Schema.is(Schema.toType(SessionEvent.Turn.Ended.data))(event.data) || event.data.finished) return
+          const queue = queues.get(event.data.sessionID)
           if (queue) queue.interruption++
         }),
       )
