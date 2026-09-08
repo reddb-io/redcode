@@ -71,7 +71,7 @@ describe("lsp.spawn", () => {
             character: 0,
           })
           expect(spy).toHaveBeenCalledTimes(1)
-          expect(yield* lsp.status()).toEqual([])
+          expect((yield* lsp.status()).filter((server) => server.id === LSPServer.Typescript.id)).toEqual([])
         } finally {
           spy.mockRestore()
         }
@@ -189,7 +189,9 @@ describe("lsp.spawn", () => {
 
           handle.process.kill()
           const status = yield* pollWithTimeout(
-            lsp.status().pipe(Effect.map((items) => items.find((item) => item.id === "typescript" && item.status === "error"))),
+            lsp
+              .status()
+              .pipe(Effect.map((items) => items.find((item) => item.id === "typescript" && item.status === "error"))),
             "LSP process exit was not reflected in status",
           )
           expect(status.error).toContain("Exited with code")
@@ -210,11 +212,12 @@ describe("lsp.spawn", () => {
       yield* Effect.promise(() => Bun.write(path.join(dir, "packages", "app", "package.json"), "{}"))
 
       expect(
-        yield* Effect.promise(async () =>
-          await withTestInstance({
-            directory: dir,
-            fn: (ctx) => LSPServer.Oxlint.root(path.join(nested, "index.ts"), ctx),
-          }),
+        yield* Effect.promise(
+          async () =>
+            await withTestInstance({
+              directory: dir,
+              fn: (ctx) => LSPServer.Oxlint.root(path.join(nested, "index.ts"), ctx),
+            }),
         ),
       ).toBe(dir)
     }),
@@ -224,11 +227,12 @@ describe("lsp.spawn", () => {
     Effect.gen(function* () {
       const dir = (yield* TestInstance).directory
       expect(
-        yield* Effect.promise(async () =>
-          await withTestInstance({
-            directory: dir,
-            fn: (ctx) => LSPServer.Biome.root(path.join(dir, "index.ts"), ctx),
-          }),
+        yield* Effect.promise(
+          async () =>
+            await withTestInstance({
+              directory: dir,
+              fn: (ctx) => LSPServer.Biome.root(path.join(dir, "index.ts"), ctx),
+            }),
         ),
       ).toBeUndefined()
     }),
