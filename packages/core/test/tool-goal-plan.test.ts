@@ -329,7 +329,11 @@ it.live("plan approval shows the content and rejects a changed revision", () =>
     expect((yield* plans.list(test.sessionID))[0].status).toBe("ready")
     duringApproval = Effect.void
     expect((yield* test.run("plan_exit", { path: test.file })).type).not.toBe("error")
-    expect((yield* plans.list(test.sessionID))[0]).toMatchObject({ content: "A different plan", status: "approved" })
+    // Revisions can share a millisecond; approval belongs to the reviewed content, not an array position.
+    const revisions = yield* plans.list(test.sessionID)
+    expect(revisions).toHaveLength(2)
+    expect(revisions.find((plan) => plan.content === "A different plan")).toMatchObject({ status: "approved" })
+    expect(revisions.filter((plan) => plan.status === "approved")).toHaveLength(1)
   }),
 )
 
