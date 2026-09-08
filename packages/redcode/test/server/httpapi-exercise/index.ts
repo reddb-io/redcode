@@ -36,6 +36,7 @@ import { runScenario } from "./runner"
 import { disposeApps } from "./backend"
 import { runtime } from "./runtime"
 import { type Scenario } from "./types"
+import { designGoalScenarios } from "./design-goal"
 
 function cursor(input: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(input)).toString("base64url")
@@ -77,6 +78,7 @@ function goalMetadata(status: "active" | "paused") {
 }
 
 const scenarios: Scenario[] = [
+  ...designGoalScenarios,
   http.protected
     .get("/global/health", "global.health")
     .global()

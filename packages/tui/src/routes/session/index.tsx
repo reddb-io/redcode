@@ -1,3 +1,7 @@
+import { loadSessionRoute } from "../../util/session-navigation"
+import { DialogGoalBudget } from "../../component/dialog-goal-budget"
+import { DialogDesignEntry } from "../../component/dialog-design-entry"
+import { modeTransition } from "../../util/mode-transition"
 import {
   batch,
   createContext,
@@ -18,13 +22,20 @@ import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
 import { useRoute, useRouteData } from "../../context/route"
 import { useProject } from "../../context/project"
-import { useSync } from "../../context/sync"
+import { useSessionHistory, useSync } from "../../context/sync"
 import { useEvent } from "../../context/event"
 import { SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useTheme } from "../../context/theme"
-import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, type MouseEvent, TextAttributes, RGBA } from "@opentui/core"
+import {
+  BoxRenderable,
+  ScrollBoxRenderable,
+  addDefaultParsers,
+  type MouseEvent,
+  TextAttributes,
+  RGBA,
+} from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
 import type {
   AssistantMessage,
@@ -54,11 +65,7 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
-import {
-  clampSidebarWidth,
-  SIDEBAR_WIDTH_DEFAULT,
-  SIDEBAR_WIDTH_STEP,
-} from "./sidebar-width"
+import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
@@ -311,35 +318,25 @@ export function Session() {
 
   createEffect(() => {
     const sessionID = route.sessionID
-    void (async () => {
-      const previousWorkspace = untrack(() => project.workspace.current())
-      const result = await sdk.client.session.get({ sessionID }, { throwOnError: true })
-      if (!result.data) {
-        toast.show({
-          message: `Session not found: ${sessionID}`,
-          variant: "error",
-          duration: 5000,
-        })
-        navigate({ type: "home" })
-        return
-      }
-
-      if (result.data.workspaceID !== previousWorkspace) {
-        project.workspace.set(result.data.workspaceID)
-
-        // Sync all the data for this workspace. Note that this
-        // workspace may not exist anymore which is why this is not
-        // fatal. If it doesn't we still want to show the session
-        // (which will be non-interactive)
-        try {
-          await sync.bootstrap({ fatal: false })
-        } catch {}
-      }
-      editor.reconnect(result.data.directory)
-      await sync.session.sync(sessionID)
-      if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
-    })().catch((error) => {
-      if (route.sessionID !== sessionID) return
+    onCleanup(sync.session.retain(sessionID))
+    const abort = new AbortController()
+    onCleanup(() => abort.abort())
+    const current = () => !abort.signal.aborted && route.sessionID === sessionID
+    void loadSessionRoute({
+      sessionID,
+      signal: abort.signal,
+      current,
+      client: sdk.client,
+      workspace: untrack(() => project.workspace.current()),
+      setWorkspace: (workspace) => project.workspace.set(workspace),
+      bootstrap: () => sync.bootstrap({ fatal: false }),
+      reconnect: (directory) => editor.reconnect(directory),
+      sync: (id) => sync.session.sync(id),
+      ready: () => {
+        if (scroll) scroll.scrollBy(100_000)
+      },
+    }).catch((error) => {
+      if (!current()) return
       toast.show({
         message: errorMessage(error),
         variant: "error",
@@ -357,16 +354,10 @@ export function Session() {
     if (part.state.status !== "completed") return
     if (part.id === lastSwitch) return
 
-    if (part.tool === "plan_exit") {
-      local.agent.set("build")
-      lastSwitch = part.id
-    } else if (part.tool === "plan_enter") {
-      local.agent.set("plan")
-      lastSwitch = part.id
-    } else if (part.tool === "design_exit") {
-      local.agent.set("plan")
-      lastSwitch = part.id
-    }
+    const agent = modeTransition(part)
+    if (!agent) return
+    local.agent.set(agent)
+    lastSwitch = part.id
   })
 
   let seeded = false
@@ -388,9 +379,7 @@ export function Session() {
     if (tab === "context") prompt?.focus()
   }
   const resizeSidebar = (width: number) => {
-    setStoredSidebarWidth(() =>
-      clampSidebarWidth({ width, available: dimensions().width, overlay: !wide() }),
-    )
+    setStoredSidebarWidth(() => clampSidebarWidth({ width, available: dimensions().width, overlay: !wide() }))
   }
   const adjustSidebarWidth = (delta: number) => {
     batch(() => {
@@ -522,6 +511,15 @@ export function Session() {
 
   const sessionCommandList = createMemo(() => [
     {
+      title: "Start a Design workspace",
+      value: "session.design",
+      category: "Session",
+      slash: { name: "design" },
+      run: () => {
+        dialog.replace(() => <DialogDesignEntry />)
+      },
+    },
+    {
       title: session()?.share?.url ? "Copy share link" : "Share session",
       value: "session.share",
       suggested: route.type === "session",
@@ -628,7 +626,9 @@ export function Session() {
           placeholder: "make the tests pass; verify: bun test; gate: bun test; constraints: …; stop when: …",
         })
         if (!text?.trim()) return
-        const result = await sdk.client.session.goalSet({ sessionID: route.sessionID, text: text.trim() }).catch(() => undefined)
+        const result = await sdk.client.session
+          .goalSet({ sessionID: route.sessionID, text: text.trim(), agent: local.agent.current()?.name })
+          .catch(() => undefined)
         const goal = result?.data
         toast.show({
           variant: goal ? "success" : "warning",
@@ -651,6 +651,16 @@ export function Session() {
       },
     },
     {
+      title: "Change goal budget",
+      value: "session.goal.budget",
+      category: "Session",
+      slash: { name: "goal-budget" },
+      run: () => {
+        const sessionID = route.sessionID
+        dialog.replace(() => <DialogGoalBudget sessionID={sessionID} />)
+      },
+    },
+    {
       title: "Resume goal",
       value: "session.goal.resume",
       category: "Session",
@@ -659,8 +669,12 @@ export function Session() {
         const result = await sdk.client.session.goalResume({ sessionID: route.sessionID }).catch(() => undefined)
         const goal = result?.data
         toast.show({
-          variant: goal ? "success" : "warning",
-          message: goal ? `Goal resumed · turn ${Number(goal.turns.used) + 1} of ${goal.turns.max}` : "No goal to resume",
+          variant: goal?.status === "active" ? "success" : "warning",
+          message: goal
+            ? goal.status === "active"
+              ? `Goal resumed · attempt ${Number(goal.turns.used) + 1} of ${goal.turns.max}`
+              : `Goal ${goal.status}: ${goal.reason ?? "could not resume"}. ${goal.turns.used >= goal.turns.max ? "Use /goal-budget to increase the total, then /goal-resume." : ""}`
+            : "No goal to resume",
           duration: 3000,
         })
         dialog.clear()
@@ -2339,12 +2353,7 @@ function Write(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool
-          icon="←"
-          pending="Preparing write…"
-          complete={stringValue(props.input.filePath)}
-          part={props.part}
-        >
+        <InlineTool icon="←" pending="Preparing write…" complete={stringValue(props.input.filePath)} part={props.part}>
           Write {pathFormatter.format(stringValue(props.input.filePath))}
         </InlineTool>
       </Match>
@@ -2436,12 +2445,8 @@ function Task(props: ToolProps) {
   const sync = useSync()
   const dialog = useDialog()
 
-  onMount(() => {
-    const sessionID = stringValue(props.metadata.sessionId)
-    if (sessionID && !sync.data.message[sessionID]?.length) void sync.session.sync(sessionID)
-  })
-
   const sessionID = createMemo(() => stringValue(props.metadata.sessionId))
+  useSessionHistory(sessionID)
   const messages = createMemo(() => sync.data.message[sessionID() ?? ""] ?? [])
 
   const tools = createMemo(() => {
@@ -2746,13 +2751,7 @@ function TodoWrite(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool
-          icon="⚙"
-          pending="Updating todos…"
-          failure="Todo update failed"
-          complete={false}
-          part={props.part}
-        >
+        <InlineTool icon="⚙" pending="Updating todos…" failure="Todo update failed" complete={false} part={props.part}>
           Updating todos…
         </InlineTool>
       </Match>

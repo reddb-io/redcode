@@ -3,6 +3,7 @@
 let nextId = 1
 let readBuffer = Buffer.alloc(0)
 let lastChange = null
+let lastSave = null
 const closed = []
 let initializeParams = null
 let diagnosticRequestCount = 0
@@ -118,6 +119,9 @@ function handle(raw) {
       capabilities: {
         textDocumentSync: {
           change: 2,
+          ...(process.env.FAKE_LSP_SAVE === "true" ? { save: true } : {}),
+          ...(process.env.FAKE_LSP_SAVE === "text" ? { save: { includeText: true } } : {}),
+          ...(process.env.FAKE_LSP_SAVE === "false" ? { save: false } : {}),
         },
       },
     })
@@ -152,6 +156,16 @@ function handle(raw) {
   if (data.method === "textDocument/didChange") {
     lastChange = data.params
     maybeRegister("didChange")
+    return
+  }
+
+  if (data.method === "textDocument/didSave") {
+    lastSave = data.params
+    return
+  }
+
+  if (data.method === "test/get-last-save") {
+    sendResponse(data.id, lastSave)
     return
   }
 

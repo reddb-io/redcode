@@ -88,7 +88,9 @@ describe("the decision at the end of a turn", () => {
   })
 
   test("the four verdicts", () => {
-    expect(SessionGoal.decide({ goal: g, verdict: { verdict: "done", reason: "all there" } }).action).toBe("done")
+    expect(
+      SessionGoal.decide({ goal: g, evidence: true, verdict: { verdict: "done", reason: "all there" } }).action,
+    ).toBe("done")
     expect(SessionGoal.decide({ goal: g, verdict: { verdict: "continue", reason: "more" } }).action).toBe("continue")
     expect(SessionGoal.decide({ goal: g, verdict: { verdict: "blocked", reason: "no creds" } })).toEqual({
       action: "pause",
@@ -97,11 +99,11 @@ describe("the decision at the end of a turn", () => {
     expect(SessionGoal.decide({ goal: g, verdict: { verdict: "wait", reason: "job running" } }).action).toBe("wait")
   })
 
-  test("background work in flight waits instead of burning a turn — unless the verdict is final", () => {
+  test("background work in flight prevents completion", () => {
     expect(SessionGoal.decide({ goal: g, waiting: true, verdict: { verdict: "continue", reason: "" } }).action).toBe(
       "wait",
     )
-    expect(SessionGoal.decide({ goal: g, waiting: true, verdict: { verdict: "done", reason: "" } }).action).toBe("done")
+    expect(SessionGoal.decide({ goal: g, waiting: true, verdict: { verdict: "done", reason: "" } }).action).toBe("wait")
   })
 
   test("the budget: the last turn's CONTINUE becomes a stop, with a reason that says so", () => {
@@ -119,7 +121,7 @@ describe("the decision at the end of a turn", () => {
 
   test("apply folds the decision into the record", () => {
     const cont = SessionGoal.apply(g, { action: "continue", reason: "r" }, { verdict: "continue", reason: "r" }, now)
-    expect(cont.turns.used).toBe(1)
+    expect(cont.turns.used).toBe(0)
     expect(cont.last?.verdict).toBe("continue")
     expect(cont.judgeFailures).toBe(0)
     const unread = SessionGoal.apply(g, { action: "continue", reason: "" }, undefined, now)
@@ -159,6 +161,19 @@ describe("reading the judge", () => {
 })
 
 describe("one line for a status bar", () => {
+  test("resuming an exhausted budget stays paused until its limit increases", () => {
+    const goal = SessionGoal.parse("x", { maxTurns: 1, now })
+    const exhausted = { ...goal, turns: { used: 1, max: 1 } }
+    const paused = SessionGoal.resumed(exhausted, now + 1)
+    expect(paused.status).toBe("paused")
+    expect(paused.reason).toContain("/goal-budget")
+    expect(paused.reason).toContain("/goal-resume")
+    const resumed = SessionGoal.resumed({ ...paused, turns: { used: 1, max: 2 } }, now + 2)
+    expect(resumed.status).toBe("active")
+    expect(resumed.turns.used).toBe(1)
+    expect(resumed.reason).toBeUndefined()
+  })
+
   test("says the state and the turn", () => {
     const g = SessionGoal.parse("x", { now })
     expect(SessionGoal.describe(g)).toBe("goal · turn 1/20")

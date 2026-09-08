@@ -6,6 +6,48 @@ import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Deferred, Effect, Latch, Option, Schema, Stream } from "effect"
 import type { RedcodeEvent } from "../src"
 
+test("embedded Goal and Design endpoints need no caller service context", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "redcode-embedded-design-"))
+  const database = Flag.REDCODE_DB
+  Flag.REDCODE_DB = ":memory:"
+  const { AbsolutePath, Agent, Location, Model, Provider, Redcode } = await import("../src")
+
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* Redcode.create()
+        const session = yield* client.sessions.create({
+          agent: Agent.ID.make("plan"),
+          model: Model.Ref.make({ id: Model.ID.make("embedded"), providerID: Provider.ID.make("test") }),
+          location: Location.Ref.make({ directory: AbsolutePath.make(directory) }),
+        })
+        const sessionID = session.id
+        expect(yield* client.sessions.goal({ sessionID })).toBeNull()
+        const goal = yield* client.sessions.goalSet({ sessionID, objective: "Review an HTML prototype", maxTurns: 1 })
+        yield* client.sessions.goalControl({ sessionID, action: "pause" })
+        expect(yield* client.sessions.goal({ sessionID })).toMatchObject({ id: goal.id, status: "paused" })
+        const design = yield* client.designs.create({
+          sessionID,
+          name: "Embedded prototype",
+          journey: "new",
+          engine: "html",
+          kind: "screen",
+        })
+        expect((yield* client.sessions.get({ sessionID })).agent).toBe(Agent.ID.make("design"))
+        const revision = yield* client.designs.publish({ sessionID, designID: design.id, name: "First revision" })
+        yield* client.designs.approve({ sessionID, designID: design.id, revision: revision.id })
+        expect((yield* client.sessions.get({ sessionID })).agent).toBe(Agent.ID.make("plan"))
+        expect(yield* client.designs.list({ sessionID })).toContainEqual(expect.objectContaining({ id: design.id }))
+        expect(yield* client.sessions.plans({ sessionID })).toEqual([])
+        yield* client.sessions.goalControl({ sessionID, action: "drop" })
+      }).pipe(Effect.scoped),
+    )
+  } finally {
+    Flag.REDCODE_DB = database
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 30000)
+
 test("embedded client uses the real router and handlers", async () => {
   const directory = await mkdtemp(join(tmpdir(), "redcode-embedded-"))
   const database = Flag.REDCODE_DB

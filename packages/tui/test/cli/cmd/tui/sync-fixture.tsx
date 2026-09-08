@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { testRender } from "@opentui/solid"
-import { onMount } from "solid-js"
+import { type JSX, onMount } from "solid-js"
 import { ArgsProvider } from "../../../../src/context/args"
 import { KVProvider, useKV } from "../../../../src/context/kv"
 import { ProjectProvider, useProject } from "../../../../src/context/project"
@@ -22,9 +22,14 @@ export async function wait(fn: () => boolean, timeout = 2000) {
 
 type Ctx = { kv: ReturnType<typeof useKV>; project: ReturnType<typeof useProject>; sync: ReturnType<typeof useSync> }
 
-export async function mount(override?: FetchHandler, state?: string) {
+export async function mount(
+  override?: FetchHandler,
+  state?: string,
+  children?: () => JSX.Element,
+  input: { continue?: boolean; ready?: "partial" | "complete" } = {},
+) {
   const calls = createFetch(override)
-  const events = createEventSource()
+  const events = createEventSource({ buffer: false })
   let sync!: ReturnType<typeof useSync>
   let project!: ReturnType<typeof useProject>
   let kv!: ReturnType<typeof useKV>
@@ -41,12 +46,12 @@ export async function mount(override?: FetchHandler, state?: string) {
       kv = ctx.kv
       done()
     })
-    return <box />
+    return <box>{children?.()}</box>
   }
 
   const app = await testRender(() => (
     <TestTuiContexts paths={state ? { state } : undefined}>
-      <ArgsProvider>
+      <ArgsProvider continue={input.continue}>
         <KVProvider>
           <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
             <PermissionProvider>
@@ -65,6 +70,6 @@ export async function mount(override?: FetchHandler, state?: string) {
   ))
 
   await ready
-  await wait(() => sync.status === "complete")
+  await wait(() => (input.ready === "partial" ? sync.ready : sync.status === "complete"))
   return { app, emit: events.emit, kv, project, sync, session: calls.session }
 }

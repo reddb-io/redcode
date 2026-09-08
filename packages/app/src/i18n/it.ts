@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("it"),
   "command.category.suggested": "Suggeriti",
   "command.category.view": "Visualizzazione",
   "command.category.project": "Progetto",
@@ -86,8 +89,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Crea sessione dal messaggio",
   "command.session.fork.description": "Crea una nuova sessione da un messaggio precedente",
@@ -407,8 +412,7 @@ export const dict = {
   "wsl.onboarding.wslUnavailable.title": "WSL non disponibile",
   "wsl.onboarding.wslUnavailable.description": "Redcode non ha potuto verificare WSL su questa macchina.",
   "wsl.onboarding.installWsl": "Installa WSL",
-  "wsl.onboarding.windowsRestartRequired":
-    "Riavvia Windows per completare l'installazione WSL, quindi riapri Redcode.",
+  "wsl.onboarding.windowsRestartRequired": "Riavvia Windows per completare l'installazione WSL, quindi riapri Redcode.",
   "wsl.onboarding.next": "Avanti",
   "wsl.onboarding.refresh": "Aggiorna",
   "wsl.onboarding.allDistrosAdded": "Tutte le distribuzioni installate sono già aggiunte.",

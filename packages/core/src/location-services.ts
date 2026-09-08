@@ -41,6 +41,9 @@ import { BuiltInTools } from "./tool/builtins"
 import { ReadToolFileSystem } from "./tool/read-filesystem"
 import { ToolRegistry } from "./tool/registry"
 import { ToolOutputStore } from "./tool-output-store"
+import { DesignStore } from "./design/store"
+import { DesignRenderer } from "./design/renderer"
+import { MCPTools } from "./tool/mcp"
 
 export { LocationServiceMap } from "./location-service-map"
 
@@ -77,6 +80,9 @@ export const locationServices = LayerNode.group([
   FileMutation.node,
   PermissionV2.node,
   ToolOutputStore.node,
+  DesignStore.node,
+  DesignRenderer.node,
+  MCPTools.node,
   ToolRegistry.node,
   ToolRegistry.toolsNode,
   Image.node,

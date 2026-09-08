@@ -21,6 +21,7 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { useSessionArchive } from "@/pages/session/session-archive"
 import { createSessionOwnership } from "./session-ownership"
 import { useLocal } from "@/context/local"
+import { useGoalApi } from "@/utils/goal-api"
 
 export type SessionCommandContext = {
   navigateMessageByOffset: (offset: number) => void
@@ -50,6 +51,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const terminal = useTerminal()
   const layout = useLayout()
   const local = useLocal()
+  const goals = useGoalApi()
   const navigate = useNavigate()
   const { params, sessionKey, tabs, view } = useSessionLayout()
   const sessionOwnership = createSessionOwnership(sessionKey)
@@ -482,13 +484,41 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       slash: "goal",
       disabled: !params.id,
       onSelect: () =>
-        void import("@/components/dialog-goal").then((x) =>
+        void Promise.all([import("@/components/dialog-goal"), goals.current()]).then(([x, current]) =>
           dialog.show(() => (
             <x.DialogGoal
-              onSubmit={async (text) => {
+              current={current}
+              onSubmit={async (text, options) => {
                 const sessionID = params.id
                 if (!sessionID) return
-                const result = await sdk().client.session.goalSet({ sessionID, text })
+                if (await goals.current()) {
+                  const model = local.model.current()
+                  const goal = await goals.set({
+                    sessionID,
+                    objective: text,
+                    agent: local.agent.current()?.name,
+                    model: model
+                      ? { id: model.id, providerID: model.provider.id, variant: local.model.variant.current() }
+                      : undefined,
+                    maxTurns: options.maxTurns,
+                    executePlan: options.executePlan,
+                    ...(options.executePlan ? { stopAfter: "build" } : {}),
+                  })
+                  showToast({
+                    title: language.t("command.session.goal"),
+                    description: language.t("session.goal.providerBudget", {
+                      used: goal.turns.used,
+                      max: goal.turns.max,
+                    }),
+                  })
+                  return
+                }
+                const result = await sdk().client.session.goalSet({
+                  sessionID,
+                  text,
+                  agent: local.agent.current()?.name,
+                  max_turns: options.maxTurns,
+                })
                 if (result.data) {
                   showToast({
                     title: language.t("command.session.goal"),
@@ -513,7 +543,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        await sdk().client.session.goalPause({ sessionID })
+        if (await goals.current()) await goals.control({ sessionID, action: "pause" })
+        else await sdk().client.session.goalPause({ sessionID })
       },
     }),
     sessionCommand({
@@ -524,7 +555,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        await sdk().client.session.goalResume({ sessionID })
+        if (await goals.current()) await goals.control({ sessionID, action: "resume" })
+        else await sdk().client.session.goalResume({ sessionID })
       },
     }),
     sessionCommand({
@@ -535,7 +567,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        await sdk().client.session.goalDrop({ sessionID })
+        if (await goals.current()) await goals.control({ sessionID, action: "drop" })
+        else await sdk().client.session.goalDrop({ sessionID })
       },
     }),
     sessionCommand({

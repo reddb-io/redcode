@@ -30,16 +30,18 @@ function parseBody(body: string) {
   }
 }
 
-function eventResponse() {
+export function eventResponse() {
   return Effect.gen(function* () {
     yield* Effect.logInfo("global event connected")
-    const events = Stream.callback<GlobalBusEvent>((queue) => {
-      const handler = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
-      return Effect.acquireRelease(
-        Effect.sync(() => GlobalBus.on("event", handler)),
-        () => Effect.sync(() => GlobalBus.off("event", handler)),
-      )
-    })
+    // The response body starts later. Subscribe before announcing the connection so a
+    // client's recovery snapshot and the live stream cannot have an unobserved gap.
+    const queue = yield* Queue.unbounded<GlobalBusEvent>()
+    const handler = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
+    yield* Effect.acquireRelease(
+      Effect.sync(() => GlobalBus.on("event", handler)),
+      () => Effect.sync(() => GlobalBus.off("event", handler)),
+    )
+    const events = Stream.fromQueue(queue)
     const heartbeat = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
       Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),

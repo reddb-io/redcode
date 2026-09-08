@@ -43,6 +43,12 @@ type Config<
   Structured extends SchemaType<any> = Output,
 > = {
   readonly description: string
+  readonly inputSchema?: JsonSchema.JsonSchema
+  readonly media?: {
+    readonly operations: readonly ("generate" | "edit" | "reference")[]
+    readonly formats: readonly string[]
+    readonly transparency: boolean
+  }
   readonly input: Input
   readonly output: Output
   readonly structured?: Structured
@@ -61,6 +67,7 @@ type Config<
 }
 
 type Runtime = {
+  readonly media?: Config<Schema.Unknown, Schema.Unknown>["media"]
   readonly permission?: string
   readonly definition: (name: string) => ToolDefinition
   readonly settle: (call: ToolCall, context: Context) => Effect.Effect<ToolOutput, ToolFailure>
@@ -76,13 +83,14 @@ export function make<
   const tool = Object.freeze({}) as Definition<Input, Structured>
   const definitions = new Map<string, ToolDefinition>()
   runtimes.set(tool, {
+    media: config.media,
     definition: (name) => {
       const cached = definitions.get(name)
       if (cached) return cached
       const definition = new ToolDefinition({
         name,
         description: config.description,
-        inputSchema: toJsonSchema(config.input),
+        inputSchema: config.inputSchema ?? toJsonSchema(config.input),
         outputSchema: toJsonSchema(config.structured ?? config.output),
       })
       definitions.set(name, definition)
@@ -146,6 +154,7 @@ export const withPermission = <Input extends SchemaType<any>, Output extends Sch
 }
 
 export const permission = (tool: AnyTool, name: string) => runtimeOf(tool).permission ?? name
+export const media = (tool: AnyTool) => runtimeOf(tool).media
 export const definition = (name: string, tool: AnyTool) => runtimeOf(tool).definition(name)
 export const settle = (tool: AnyTool, call: ToolCall, context: Context) => runtimeOf(tool).settle(call, context)
 

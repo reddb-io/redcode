@@ -69,6 +69,7 @@ export const SummarizePayload = Schema.Struct({
   auto: Schema.optional(Schema.Boolean),
 })
 export const GoalSetPayload = Schema.Struct({
+  agent: Schema.String.pipe(Schema.optional),
   text: Schema.String.annotate({
     description:
       "The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable).",

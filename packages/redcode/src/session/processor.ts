@@ -76,6 +76,9 @@ type Input = {
   model: Provider.Model
   /** Which step of the turn this handle serves, counting from 1. Reported in the busy status. */
   step?: number
+  /** Admit every primary provider attempt, including retries, before starting the stream. */
+  beforeAttempt?: () => Effect.Effect<boolean>
+  onFailure?: (reason: string) => Effect.Effect<void>
 }
 
 export interface Interface {
@@ -647,6 +650,7 @@ const layer = Layer.effect(
           if ((yield* config.get()).compaction?.auto === false && !ctx.assistantMessage.summary) {
             ctx.assistantMessage.error = error
             ctx.assistantMessage.finish = "error"
+            if (input.onFailure) yield* input.onFailure(errorMessage(e))
             yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
             yield* status.set(ctx.sessionID, { type: "idle" })
             return
@@ -656,6 +660,7 @@ const layer = Layer.effect(
           return
         }
         ctx.assistantMessage.error = error
+        if (input.onFailure) yield* input.onFailure(errorMessage(e))
         yield* events.publish(Session.Event.Error, {
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
@@ -673,6 +678,11 @@ const layer = Layer.effect(
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
+            if (input.beforeAttempt && !(yield* input.beforeAttempt())) {
+              ctx.blocked = true
+              ctx.assistantMessage.finish = "stop"
+              return
+            }
             ctx.currentText = undefined
             ctx.reasoningMap = {}
             ctx.phase = undefined

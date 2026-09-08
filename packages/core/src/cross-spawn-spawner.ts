@@ -379,8 +379,41 @@ export const make = Effect.gen(function* () {
               shell: command.options.shell,
               windowsHide: process.platform === "win32",
             }),
-            Effect.fnUntraced(function* ([proc, signal]) {
+            Effect.fnUntraced(function* ([proc, signal], exit) {
               const done = yield* Deferred.isDone(signal)
+              if (process.platform !== "win32" && command.options.detached !== false) {
+                const code = done ? (yield* Deferred.await(signal))[0] : undefined
+                if (Exit.isFailure(exit) || (done && code !== 0)) {
+                  // Closing captured stdio can complete the leader's close event while
+                  // descendants still run. Observe the owned group, not that event.
+                  const groupAlive = Effect.try({
+                    try: () => process.kill(-proc.pid!, 0),
+                    catch: (error) => error,
+                  }).pipe(
+                    Effect.as(true),
+                    Effect.catch(() => Effect.succeed(false)),
+                  )
+                  const waitGroup: Effect.Effect<void> = Effect.suspend(() =>
+                    Effect.flatMap(groupAlive, (alive) =>
+                      alive
+                        ? Effect.callback<void>((resume) => {
+                            const timer = setTimeout(() => resume(Effect.void), 20)
+                            return Effect.sync(() => clearTimeout(timer))
+                          }).pipe(Effect.andThen(waitGroup))
+                        : Effect.void,
+                    ),
+                  )
+                  const terminate = (signal: NodeJS.Signals) =>
+                    killGroup(command, proc, signal).pipe(Effect.ignore, Effect.andThen(waitGroup))
+                  return yield* terminate(command.options.killSignal ?? "SIGTERM").pipe(
+                    Effect.timeoutOrElse({
+                      duration: command.options.forceKillAfter ?? "3 seconds",
+                      orElse: () => terminate("SIGKILL").pipe(Effect.timeout("3 seconds")),
+                    }),
+                    Effect.ignore,
+                  )
+                }
+              }
               const kill = timeout(proc, command, command.options)
               if (done) {
                 const [code] = yield* Deferred.await(signal)
@@ -392,12 +425,16 @@ export const make = Effect.gen(function* () {
                 Effect.catch(killGroup(command, proc, s), () => killOne(command, proc, s))
               const sig = command.options.killSignal ?? "SIGTERM"
               const attempt = send(sig).pipe(Effect.andThen(Deferred.await(signal)), Effect.asVoid)
-              const escalated = command.options.forceKillAfter
-                ? Effect.timeoutOrElse(attempt, {
-                    duration: command.options.forceKillAfter,
-                    orElse: () => send("SIGKILL").pipe(Effect.andThen(Deferred.await(signal)), Effect.asVoid),
-                  })
-                : attempt
+              // Every owned child has a cleanup deadline, including callers that only specify a run timeout.
+              const escalated = Effect.timeoutOrElse(attempt, {
+                duration: command.options.forceKillAfter ?? "3 seconds",
+                orElse: () =>
+                  send("SIGKILL").pipe(
+                    Effect.andThen(Deferred.await(signal)),
+                    Effect.timeout("3 seconds"),
+                    Effect.asVoid,
+                  ),
+              })
               return yield* Effect.ignore(escalated)
             }),
           )
@@ -429,10 +466,15 @@ export const make = Effect.gen(function* () {
               const send = (s: NodeJS.Signals) =>
                 Effect.catch(killGroup(command, proc, s), () => killOne(command, proc, s))
               const attempt = send(sig).pipe(Effect.andThen(Deferred.await(signal)), Effect.asVoid)
-              if (!opts?.forceKillAfter) return attempt
               return Effect.timeoutOrElse(attempt, {
-                duration: opts.forceKillAfter,
-                orElse: () => send("SIGKILL").pipe(Effect.andThen(Deferred.await(signal)), Effect.asVoid),
+                duration: opts?.forceKillAfter ?? command.options.forceKillAfter ?? "3 seconds",
+                orElse: () =>
+                  send("SIGKILL").pipe(
+                    Effect.andThen(Deferred.await(signal)),
+                    Effect.timeout("3 seconds"),
+                    Effect.mapError((error) => toPlatformError("kill", error, command)),
+                    Effect.asVoid,
+                  ),
               })
             },
             unref: Effect.sync(() => {

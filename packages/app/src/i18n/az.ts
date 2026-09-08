@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("az"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Fayl",
   "desktop.menu.edit": "Redaktə",
@@ -180,8 +183,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Mesajdan fork et",
   "command.session.fork.description": "Əvvəlki mesajdan yeni sessiya yarat",
@@ -956,8 +961,7 @@ export const dict = {
   "settings.general.row.appearance.title": "Görünüş",
   "settings.general.row.appearance.description": "Redcode-un cihazınızda necə göründüyünü fərdiləşdirin",
   "settings.general.row.colorScheme.title": "Rəng sxemi",
-  "settings.general.row.colorScheme.description":
-    "Redcode-un sistem, açıq və ya tünd mövzudan istifadə etməsini seçin",
+  "settings.general.row.colorScheme.description": "Redcode-un sistem, açıq və ya tünd mövzudan istifadə etməsini seçin",
   "settings.general.row.theme.title": "Mövzu",
   "settings.general.row.theme.description": "Redcode-un mövzusunu fərdiləşdirin.",
   "settings.general.row.font.title": "Kod şrifti",

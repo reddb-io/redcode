@@ -63,14 +63,14 @@ import { ProjectCopy } from "@reddb-io/redcode-core/project/copy"
 import { PtyTicket } from "@reddb-io/redcode-core/pty/ticket"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
+import { SessionGoal } from "@reddb-io/redcode-core/session/goal"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
 import * as SessionExecutionLocal from "@reddb-io/redcode-core/session/execution/local"
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/redcode-server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
-import { serveDesignEffect } from "../../../shared/design"
-import { DesignRegistry } from "@/design/registry"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -202,13 +202,6 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
-// Before the UI catch-all below, which otherwise claims every path. The design surface serves two
-// documents with different privileges — see server/shared/design.ts — so it cannot be folded into
-// the UI route that serves our own trusted bundle.
-const designRoute = HttpRouter.use((router) =>
-  router.add("*", "/design/*", (request) => serveDesignEffect(request)),
-).pipe(Layer.provide(authOnlyRouterLayer))
-
 const uiRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
@@ -284,8 +277,9 @@ const app = LayerNode.group([
   ProjectV2.node,
   ProjectCopy.node,
   PtyTicket.node,
-  DesignRegistry.node,
   GoalRuntime.node,
+  SessionGoal.node,
+  SessionPlan.node,
 ])
 
 export function createRoutes(
@@ -301,7 +295,6 @@ export function createRoutes(
     serverRoutes,
     rpcRoutes,
     docRoute,
-    designRoute,
     uiRoute,
   ).pipe(
     Layer.provide([

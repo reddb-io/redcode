@@ -1,4 +1,10 @@
-import { ToolOutput, type LLMEvent, type ProviderMetadata, type ToolResultValue, type Usage } from "@reddb-io/redcode-llm"
+import {
+  ToolOutput,
+  type LLMEvent,
+  type ProviderMetadata,
+  type ToolResultValue,
+  type Usage,
+} from "@reddb-io/redcode-llm"
 import { DateTime, Effect } from "effect"
 import { EventV2 } from "../../event"
 import { ModelV2 } from "../../model"
@@ -17,7 +23,7 @@ type Input = {
 
 const safe = (value: number | undefined) => Math.max(0, Number.isFinite(value) ? (value ?? 0) : 0)
 
-const tokens = (usage: Usage | undefined) => {
+export const usageTokens = (usage: Usage | undefined) => {
   const reasoning = safe(usage?.reasoningTokens)
   const read = safe(usage?.cacheReadInputTokens)
   const write = safe(usage?.cacheWriteInputTokens)
@@ -71,7 +77,7 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
   let assistantActive = false
   let assistantFailed = false
   let providerFailed = false
-  let stepSettlement: { readonly finish: string; readonly tokens: ReturnType<typeof tokens> } | undefined
+  let stepSettlement: { readonly finish: string; readonly tokens: ReturnType<typeof usageTokens> } | undefined
 
   const startAssistant = Effect.fnUntraced(function* () {
     if (assistantMessageID !== undefined) return assistantMessageID
@@ -397,10 +403,12 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
         return
       }
       case "step-finish":
+        if (stepSettlement) return yield* Effect.die("Duplicate step finish")
+        // Usage is already known even if a display hook or event write blocks
+        // flushing the final text. Cancellation must not erase the known usage.
+        stepSettlement = { finish: event.reason, tokens: usageTokens(event.usage) }
         yield* flush()
         assistantActive = false
-        if (stepSettlement) return yield* Effect.die("Duplicate step finish")
-        stepSettlement = { finish: event.reason, tokens: tokens(event.usage) }
         return
       case "finish":
         return

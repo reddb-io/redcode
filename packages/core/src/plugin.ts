@@ -18,6 +18,7 @@ import { Reference } from "./reference"
 import { SkillV2 } from "./skill"
 import { State } from "./state"
 import { RuntimeInvariant } from "./invariant"
+import { ExternalTools } from "./tool/external"
 
 export const ID = Plugin.ID
 export type ID = typeof ID.Type
@@ -200,5 +201,6 @@ export const node = makeLocationNode({
     OperationHook.node,
     Reference.node,
     SkillV2.node,
+    ExternalTools.node,
   ],
 })

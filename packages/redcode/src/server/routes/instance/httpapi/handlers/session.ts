@@ -254,18 +254,21 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const goalSet = Effect.fn("SessionHttpApi.goalSet")(function* (ctx: {
       params: { sessionID: SessionID }
-      payload: { text: string; max_turns?: number }
+      payload: { text: string; max_turns?: number; agent?: string }
     }) {
       yield* requireSession(ctx.params.sessionID)
       const text = ctx.payload.text.trim()
       if (!text) return yield* new HttpApiError.BadRequest()
       const cfg = yield* config.get()
-      const goal = SessionGoal.parse(text, { maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns })
+      const agent = ctx.payload.agent ?? (yield* goalAgent(ctx.params.sessionID))
+      const goal = SessionGoal.parse(text, {
+        maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns,
+        stopAfter: agent === "plan" ? "plan" : "build",
+      })
       yield* goals.set(ctx.params.sessionID, goal)
       // The goal's first turn is the objective itself, as the user's message: the loop takes it
       // from there. Forked into the server's scope — not the request's, which closes with the
       // response and would take the turn with it — so the request answers at once.
-      const agent = yield* goalAgent(ctx.params.sessionID)
       yield* promptSvc
         .prompt({
           sessionID: ctx.params.sessionID,
@@ -300,6 +303,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       if (goal.status === "done" || goal.status === "dropped") return yield* new HttpApiError.BadRequest()
       const next = SessionGoal.resumed(goal, Date.now())
       yield* goals.set(ctx.params.sessionID, next)
+      if (next.status !== "active") return next
       const agent = yield* goalAgent(ctx.params.sessionID)
       yield* promptSvc
         .prompt({

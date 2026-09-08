@@ -81,14 +81,16 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const location = yield* Location.Service
-    const locationRoot = yield* fs.realPath(location.directory)
+    // The callback realpath used by Effect preserves Windows 8.3 names; normalize them natively too.
+    const realPath = (file: string) => fs.realPath(file).pipe(Effect.map(FSUtil.normalizePath))
+    const locationRoot = yield* realPath(location.directory)
 
     function notFound<A>(effect: Effect.Effect<A, FSUtil.Error>) {
       return effect.pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(undefined)))
     }
 
     const resolvePath = Effect.fnUntraced(function* (absolute: string) {
-      const existing = yield* notFound(fs.realPath(absolute))
+      const existing = yield* notFound(realPath(absolute))
       if (existing !== undefined) {
         const info = yield* fs.stat(existing)
         return {
@@ -100,7 +102,7 @@ const layer = Layer.effect(
 
       let anchor = path.dirname(absolute)
       while (true) {
-        const canonical = yield* notFound(fs.realPath(anchor))
+        const canonical = yield* notFound(realPath(anchor))
         if (canonical !== undefined) {
           const info = yield* fs.stat(canonical)
           if (info.type !== "Directory") {
@@ -128,7 +130,8 @@ const layer = Layer.effect(
         return yield* new PathError({ path: input.path, reason: "location_escape" })
       }
 
-      const external = !lexicallyInternal
+      // Canonical paths can name internal files even when the Location uses a directory alias.
+      const external = !FSUtil.contains(locationRoot, resolved.canonical)
       const resource = external
         ? slash(resolved.canonical)
         : slash(path.relative(locationRoot, resolved.canonical) || ".")

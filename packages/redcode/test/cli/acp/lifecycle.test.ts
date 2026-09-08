@@ -14,10 +14,32 @@ import { createAcpClient, initialize, newSession, verifierConfig } from "./helpe
 
 describe("opencode acp lifecycle subprocess", () => {
   cliIt.live(
-    "stdin EOF exits cleanly",
+    "stdin EOF during startup exits cleanly",
     ({ opencode }) =>
       Effect.gen(function* () {
         const acp = yield* opencode.acp()
+        acp.close()
+
+        // Source execution includes transpilation and server startup before it can observe EOF.
+        const code = yield* Effect.promise(() => acp.exited).pipe(Effect.timeout(Duration.seconds(15)))
+        expect(code).toBe(0)
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "stdin EOF after initialization exits within the shutdown deadline",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const acp = yield* opencode.acp()
+        yield* acp.send({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: { protocolVersion: 1, clientCapabilities: {} },
+        })
+        const ready = yield* acp.receive.pipe(Effect.timeout(Duration.seconds(15)))
+        expect(ready).toMatchObject({ id: 1, result: { protocolVersion: 1 } })
         acp.close()
 
         const code = yield* Effect.promise(() => acp.exited).pipe(Effect.timeout(Duration.seconds(5)))

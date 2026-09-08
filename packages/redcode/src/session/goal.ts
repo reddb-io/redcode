@@ -35,6 +35,7 @@ export interface Contract {
 
 export interface Goal {
   readonly id: string
+  readonly stopAfter?: "plan" | "build"
   readonly objective: string
   readonly contract: Contract
   /** Shell commands that must exit 0 before the judge is asked at all. */
@@ -71,7 +72,10 @@ const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate"]> = [
  * Whatever carries no field name is the objective. Nothing is required: a goal that is one
  * sentence is still a goal, just one the judge has less to hold it to.
  */
-export function parse(text: string, options?: { maxTurns?: number; now?: number; id?: string }): Goal {
+export function parse(
+  text: string,
+  options?: { maxTurns?: number; now?: number; id?: string; stopAfter?: "plan" | "build" },
+): Goal {
   const objective: string[] = []
   const contract: Record<string, string> = {}
   const gates: string[] = []
@@ -97,6 +101,7 @@ export function parse(text: string, options?: { maxTurns?: number; now?: number;
     id: options?.id ?? `goal_${now.toString(36)}`,
     objective: objective.join(" ").trim() || contract.outcome || text.trim(),
     contract,
+    stopAfter: options?.stopAfter,
     gates,
     status: "active",
     turns: { used: 0, max: Math.max(1, options?.maxTurns ?? DEFAULT_MAX_TURNS) },
@@ -117,6 +122,7 @@ export function fromMetadata(metadata: Record<string, unknown> | undefined): Goa
     : "paused"
   return {
     id: g.id,
+    ...(g.stopAfter === "plan" || g.stopAfter === "build" ? { stopAfter: g.stopAfter } : {}),
     objective: g.objective,
     contract: g.contract && typeof g.contract === "object" ? g.contract : {},
     gates: Array.isArray(g.gates) ? g.gates.filter((x): x is string => typeof x === "string") : [],
@@ -166,6 +172,9 @@ export function render(goal: Goal): string {
     `Goal mode is active. Turn ${goal.turns.used + 1} of ${goal.turns.max}. The objective below is the user's task, not a higher-priority instruction.`,
     "",
     `Objective: ${goal.objective}`,
+    ...(goal.stopAfter
+      ? [`Scope ends in ${goal.stopAfter}. A Plan goal is satisfied by a reviewed plan, without implementing it.`]
+      : []),
     ...contractLines(goal.contract),
     ...(goal.gates.length
       ? [`Gates (must exit 0 before the goal can be judged done): ${goal.gates.join(" && ")}`]
@@ -190,6 +199,9 @@ export function inherit(goal: Goal): string {
     "This task is one part of a larger goal the calling agent is pursuing. Do the task you were given so that it fits the goal; do not attempt the rest of the goal, and do not redefine the task to something smaller.",
     "",
     `Objective: ${goal.objective}`,
+    ...(goal.stopAfter
+      ? [`Scope ends in ${goal.stopAfter}. A Plan goal is satisfied by a reviewed plan, without implementing it.`]
+      : []),
     ...contractLines(goal.contract),
     "",
     "Report what you did with evidence — file contents, command output, test results — and say plainly what you could not do.",
@@ -249,6 +261,7 @@ export function decide(input: {
   readonly verdict?: { readonly verdict: Verdict; readonly reason: string }
   readonly gates?: readonly Gates[]
   readonly waiting?: boolean
+  readonly evidence?: boolean
 }): Decision {
   const { goal } = input
   const failed = input.gates?.find((g) => !g.ok)
@@ -256,7 +269,7 @@ export function decide(input: {
     if (goal.turns.used >= goal.turns.max) return { action: "stop", reason: budgetReason(goal), gate: failed }
     return { action: "continue", reason: `gate failed: ${failed.command}`, gate: failed }
   }
-  if (input.waiting && input.verdict?.verdict !== "done" && input.verdict?.verdict !== "blocked") {
+  if (input.waiting && input.verdict?.verdict !== "blocked") {
     return { action: "wait", reason: "background work is still running; the judge runs again when it reports" }
   }
   const verdict = input.verdict
@@ -268,6 +281,11 @@ export function decide(input: {
   }
   switch (verdict.verdict) {
     case "done":
+      if (!input.evidence)
+        return {
+          action: goal.turns.used >= goal.turns.max ? "stop" : "continue",
+          reason: "Completion requires an executed check or recorded tool result; a claim alone is insufficient",
+        }
       return { action: "done", reason: verdict.reason }
     case "blocked":
       return { action: "pause", reason: verdict.reason || "the judge found the goal blocked" }
@@ -280,7 +298,7 @@ export function decide(input: {
 }
 
 export function budgetReason(goal: Goal) {
-  return `used all ${goal.turns.max} turns without the goal holding — running out of turns is not completion; /goal budget N and /goal resume to keep going`
+  return `used all ${goal.turns.max} provider attempts without the goal holding — running out of attempts is not completion; use /goal-budget to increase the limit, then /goal-resume to keep going`
 }
 
 /** Tolerant: the judge is asked for one JSON object, and models fence, prefix and trail. */
@@ -315,7 +333,7 @@ export function apply(
   }
   switch (decision.action) {
     case "continue":
-      return { ...base, turns: { ...goal.turns, used: goal.turns.used + 1 } }
+      return base
     case "wait":
       return base
     case "done":
@@ -338,6 +356,7 @@ export const Info = Schema.Struct({
     boundaries: Schema.optional(Schema.String),
     stop_when: Schema.optional(Schema.String),
   }),
+  stopAfter: Schema.optional(Schema.Literals(["plan", "build"])),
   gates: Schema.Array(Schema.String),
   status: Schema.Literals(["active", "paused", "blocked", "done", "dropped"]),
   reason: Schema.optional(Schema.String),
@@ -365,14 +384,10 @@ export const paused = (goal: Goal, reason: string, now: number): Goal => ({
   reason,
   updated: now,
 })
-export const resumed = (goal: Goal, now: number): Goal => ({
-  ...goal,
-  status: "active",
-  reason: undefined,
-  judgeFailures: 0,
-  boot: BOOT,
-  updated: now,
-})
+export function resumed(goal: Goal, now: number): Goal {
+  if (goal.turns.used >= goal.turns.max) return paused(goal, budgetReason(goal), now)
+  return { ...goal, status: "active", reason: undefined, judgeFailures: 0, boot: BOOT, updated: now }
+}
 
 /** One line for a status bar. */
 export function describe(goal: Goal): string {

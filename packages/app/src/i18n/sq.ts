@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("sq"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Skedari",
   "desktop.menu.edit": "Redakto",
@@ -179,8 +182,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Fork nga mesazhi",
   "command.session.fork.description": "Krijoni një seancë të re nga një mesazh i mëparshëm",
@@ -950,8 +955,7 @@ export const dict = {
   "settings.general.row.appearance.title": "Pamja e jashtme",
   "settings.general.row.appearance.description": "Personalizojeni se si duket Redcode në pajisjen tuaj",
   "settings.general.row.colorScheme.title": "Skema e ngjyrave",
-  "settings.general.row.colorScheme.description":
-    "Zgjidhni nëse Redcode ndjek temën e sistemit, të lehtë ose të errët",
+  "settings.general.row.colorScheme.description": "Zgjidhni nëse Redcode ndjek temën e sistemit, të lehtë ose të errët",
   "settings.general.row.theme.title": "Tema",
   "settings.general.row.theme.description": "Personalizojeni se si është tema e Redcode.",
   "settings.general.row.font.title": "Fonti i kodit",

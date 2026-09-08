@@ -1,5 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
+import os from "node:os"
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Schema } from "effect"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -29,6 +30,65 @@ function withTmp<A, E, R>(f: (directory: string) => Effect.Effect<A, E, R>) {
 }
 
 describe("LocationMutation", () => {
+  it.live("uses native canonical resources for Locations created in the system temporary directory", () =>
+    Effect.acquireRelease(
+      // Keep os.tmpdir's original spelling: Windows CI commonly returns an 8.3 path here.
+      Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "location-native-"))),
+      (directory) => Effect.promise(() => fs.rm(directory, { recursive: true, force: true })),
+    ).pipe(
+      Effect.flatMap((directory) =>
+        Effect.gen(function* () {
+          const mutation = yield* LocationMutation.Service
+          const root = yield* Effect.promise(() => fs.realpath(directory))
+          yield* Effect.promise(() => fs.writeFile(path.join(directory, "existing.txt"), "ONLY_TEST_DATA"))
+          yield* Effect.forEach(["existing.txt", "nested/new.txt"], (file) =>
+            Effect.gen(function* () {
+              const target = yield* mutation.resolve({ path: path.join(root, file) })
+              expect(target.canonical).toBe(path.join(root, file))
+              expect(target.resource).toBe(file)
+              expect(target.externalDirectory).toBeUndefined()
+            }),
+          )
+        }).pipe(provide(directory)),
+      ),
+    ),
+  )
+
+  it.live("keeps canonical targets internal for an aliased Location without allowing escapes", () =>
+    withTmp((directory) =>
+      Effect.gen(function* () {
+        const root = path.join(directory, "actual")
+        const alias = path.join(directory, "alias")
+        const outside = path.join(directory, "outside")
+        yield* Effect.promise(async () => {
+          await fs.mkdir(root)
+          await fs.mkdir(outside)
+          await fs.writeFile(path.join(root, ".env.fixture"), "ONLY_TEST_DATA")
+          await fs.symlink(root, alias, process.platform === "win32" ? "junction" : "dir")
+          await fs.symlink(outside, path.join(root, "escape"), process.platform === "win32" ? "junction" : "dir")
+        })
+        yield* Effect.gen(function* () {
+          const mutation = yield* LocationMutation.Service
+          yield* Effect.forEach([".env.fixture", "nested/new.txt"], (file) =>
+            Effect.gen(function* () {
+              const target = yield* mutation.resolve({ path: path.join(root, file) })
+              expect(target.canonical).toBe(path.join(root, file))
+              expect(target.resource).toBe(file)
+              expect(target.externalDirectory).toBeUndefined()
+            }),
+          )
+          const relative = yield* Effect.flip(mutation.resolve({ path: "../actual/.env.fixture" }))
+          expect(relative).toMatchObject({ reason: "relative_escape" })
+          const escaped = yield* Effect.flip(mutation.resolve({ path: "escape/new.txt" }))
+          expect(escaped).toMatchObject({ reason: "location_escape" })
+          const external = yield* mutation.resolve({ path: path.join(outside, "new.txt") })
+          expect(external.externalDirectory?.directory).toBe(outside)
+          expect(external.resource).toBe(path.join(outside, "new.txt").replaceAll("\\", "/"))
+        }).pipe(provide(alias))
+      }),
+    ),
+  )
+
   it.live("resolves an active relative existing file target", () =>
     withTmp((directory) =>
       Effect.gen(function* () {

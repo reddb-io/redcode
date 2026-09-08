@@ -346,19 +346,6 @@ function inProject(worktree: string, ...tail: string[]) {
   return options.find((candidate) => existsSync(candidate)) ?? options[0]!
 }
 
-/**
- * Where a session's design work lives.
- *
- * A directory rather than a file, because a prototype is a page plus whatever it needs beside it,
- * and a manifest recording why it looks the way it does. It sits next to `plans` for the same
- * reason plans sit in the worktree: the work is about this project and should travel with it.
- */
-export function design(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
-  const name = [input.time.created, input.slug].join("-")
-  if (!instance.project.vcs) return path.join(Global.Path.data, "designs", name)
-  return inProject(instance.worktree, "designs", name)
-}
-
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {
   const finite = (value: number) => (Number.isFinite(value) ? value : 0)
   const safe = (value: number) => Math.max(0, finite(value))

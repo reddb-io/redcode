@@ -1,4 +1,5 @@
 export type { PluginContext } from "./context.js"
+export type { ToolSpec, MediaCapability } from "../tools.js"
 export type { PluginOptions } from "../options.js"
 export { define } from "./plugin.js"
 export type { Plugin, PluginDomain } from "./plugin.js"

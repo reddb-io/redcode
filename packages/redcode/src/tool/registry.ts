@@ -2,13 +2,8 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { PlanExitTool } from "./plan"
-import { DesignPreviewTool } from "./design-preview"
-import { DesignExitTool } from "./design"
-import { DesignPlaybookTool } from "./design-playbook"
-import { DesignExportTool } from "./design-export"
 import { GoalCompleteTool } from "./goal"
 import { GoalRuntime } from "@/session/goal-runtime"
-import { DesignRegistry } from "@/design/registry"
 import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
@@ -112,10 +107,6 @@ const layer = Layer.effect(
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
-    const designPreview = yield* DesignPreviewTool
-    const designExit = yield* DesignExitTool
-    const designPlaybook = yield* DesignPlaybookTool
-    const designExport = yield* DesignExportTool
     const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
@@ -235,10 +226,6 @@ const layer = Layer.effect(
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
-          design_preview: Tool.init(designPreview),
-          design_exit: Tool.init(designExit),
-          design_playbook: Tool.init(designPlaybook),
-          design_export: Tool.init(designExport),
           goal_complete: Tool.init(goalComplete),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
@@ -262,11 +249,7 @@ const layer = Layer.effect(
             tool.patch,
             ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
-            ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
-            tool.design_preview,
-            tool.design_exit,
-            tool.design_playbook,
-            tool.design_export,
+            tool.plan,
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
             tool.goal_complete,
           ],
@@ -451,7 +434,6 @@ export const node = LayerNode.make({
   service: Service,
   layer,
   deps: [
-    DesignRegistry.node,
     GoalRuntime.node,
     Config.node,
     Plugin.node,

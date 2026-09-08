@@ -16,6 +16,7 @@ import { ProviderV2 } from "../provider"
 import { Reference } from "../reference"
 import type { DeepMutable } from "../schema"
 import { SkillV2 } from "../skill"
+import { ExternalTools } from "../tool/external"
 
 const mutable = <T>(value: T) => value as DeepMutable<T>
 
@@ -29,9 +30,11 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
   const operationHooks = yield* OperationHook.Service
   const reference = yield* Reference.Service
   const skill = yield* SkillV2.Service
+  const tools = yield* ExternalTools.Service
 
   return {
     options: {},
+    tools: { register: (entries) => tools.register(entries).pipe(Effect.orDie) },
     agent: {
       reload: agents.reload,
       transform: (callback) =>
@@ -62,7 +65,9 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             label: backend.label,
             accepts: backend.accepts,
             build: () => {
-              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+              throw new Error(
+                "V2 plugin backends must register through the server-side seam; build() is server-internal",
+              )
             },
           }),
       },
@@ -82,7 +87,9 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             label: backend.label,
             accepts: backend.accepts,
             build: () => {
-              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+              throw new Error(
+                "V2 plugin backends must register through the server-side seam; build() is server-internal",
+              )
             },
           }),
       },
@@ -102,7 +109,9 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             label: backend.label,
             accepts: backend.accepts,
             build: () => {
-              throw new Error("V2 plugin backends must register through the server-side seam; build() is server-internal")
+              throw new Error(
+                "V2 plugin backends must register through the server-side seam; build() is server-internal",
+              )
             },
           }),
       },

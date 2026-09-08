@@ -31,6 +31,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     }
 
     let sdk = createSDK()
+    let unsubscribe: (() => void) | undefined
 
     const handlers = new Set<(event: GlobalEvent) => void>()
     const reconnects = new Set<() => void>()
@@ -67,6 +68,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     }
 
     const handleEvent = (event: GlobalEvent) => {
+      if (abort.signal.aborted) return
       queue.push(event)
       const elapsed = Date.now() - last
 
@@ -98,16 +100,16 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           // replay. Anything that arrived in the gap — a permission request, the status going
           // idle — leaves the client waiting on something that already happened, which is how a
           // session ends up spinning with everything the user types piling up behind it.
-          if (attempt > 0) for (const handler of reconnects) handler()
-
-          if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) {
-            // Start syncing workspaces, it's important to do this after
-            // we've started listening to events
-            await sdk.sync.start().catch(() => {})
-          }
-
+          let connected = false
           for await (const event of events.stream) {
             if (ctrl.signal.aborted) break
+            if (!connected) {
+              connected = true
+              // The SDK stream is lazy: obtaining its iterator does not establish a
+              // subscription. A received event is the barrier before reading snapshots.
+              for (const handler of reconnects) handler()
+              if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) void sdk.sync.start().catch(() => {})
+            }
             handleEvent(event)
           }
 
@@ -126,7 +128,8 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     onMount(async () => {
       if (props.events) {
         const unsub = await props.events.subscribe(handleEvent)
-        onCleanup(unsub)
+        if (abort.signal.aborted) return unsub()
+        unsubscribe = unsub
 
         if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) {
           // Start syncing workspaces, it's important to do this after
@@ -141,8 +144,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     onCleanup(() => {
       abort.abort()
       sse?.abort()
+      unsubscribe?.()
       if (timer) clearTimeout(timer)
+      queue = []
       handlers.clear()
+      reconnects.clear()
     })
 
     return {

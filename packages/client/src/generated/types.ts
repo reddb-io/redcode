@@ -66,6 +66,14 @@ export type UnknownError = {
 export const isUnknownError = (value: unknown): value is UnknownError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "UnknownError"
 
+export type DesignError = {
+  readonly _tag: "Design.Error"
+  readonly code: "not-found" | "conflict" | "invalid" | "unavailable"
+  readonly message: string
+}
+export const isDesignError = (value: unknown): value is DesignError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "Design.Error"
+
 export type ProviderNotFoundError = {
   readonly _tag: "ProviderNotFoundError"
   readonly providerID: string
@@ -363,6 +371,195 @@ export type SessionsGetOutput = {
       }>
     }
   }
+}["data"]
+
+export type SessionsGoalInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionsGoalOutput = {
+  readonly data: {
+    readonly id: string
+    readonly sessionID: string
+    readonly revision: number
+    readonly objective: string
+    readonly criteria: ReadonlyArray<string>
+    readonly gates: ReadonlyArray<string>
+    readonly stopAfter: "design" | "plan" | "build"
+    readonly executePlan: boolean
+    readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+    readonly reason: string
+    readonly turns: { readonly used: number; readonly max: number }
+    readonly tokens: number
+    readonly reviews: number
+    readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+    readonly checks: ReadonlyArray<{
+      readonly command: string
+      readonly exitCode: number
+      readonly output: string
+      readonly at: number
+    }>
+    readonly created: number
+    readonly updated: number
+  } | null
+}["data"]
+
+export type SessionsGoalSetInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly objective: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["objective"]
+  readonly criteria?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["criteria"]
+  readonly gates?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["gates"]
+  readonly maxTurns?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["maxTurns"]
+  readonly agent?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["agent"]
+  readonly model?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["model"]
+  readonly stopAfter?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["stopAfter"]
+  readonly executePlan?: {
+    readonly objective: string
+    readonly criteria?: ReadonlyArray<string>
+    readonly gates?: ReadonlyArray<string>
+    readonly maxTurns?: number
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly stopAfter?: "design" | "plan" | "build"
+    readonly executePlan?: boolean
+  }["executePlan"]
+}
+
+export type SessionsGoalSetOutput = {
+  readonly data: {
+    readonly id: string
+    readonly sessionID: string
+    readonly revision: number
+    readonly objective: string
+    readonly criteria: ReadonlyArray<string>
+    readonly gates: ReadonlyArray<string>
+    readonly stopAfter: "design" | "plan" | "build"
+    readonly executePlan: boolean
+    readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+    readonly reason: string
+    readonly turns: { readonly used: number; readonly max: number }
+    readonly tokens: number
+    readonly reviews: number
+    readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+    readonly checks: ReadonlyArray<{
+      readonly command: string
+      readonly exitCode: number
+      readonly output: string
+      readonly at: number
+    }>
+    readonly created: number
+    readonly updated: number
+  }
+}["data"]
+
+export type SessionsGoalControlInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly action: { readonly action: "pause" | "resume" | "drop" | "budget"; readonly maxTurns?: number }["action"]
+  readonly maxTurns?: {
+    readonly action: "pause" | "resume" | "drop" | "budget"
+    readonly maxTurns?: number
+  }["maxTurns"]
+}
+
+export type SessionsGoalControlOutput = {
+  readonly data: {
+    readonly id: string
+    readonly sessionID: string
+    readonly revision: number
+    readonly objective: string
+    readonly criteria: ReadonlyArray<string>
+    readonly gates: ReadonlyArray<string>
+    readonly stopAfter: "design" | "plan" | "build"
+    readonly executePlan: boolean
+    readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+    readonly reason: string
+    readonly turns: { readonly used: number; readonly max: number }
+    readonly tokens: number
+    readonly reviews: number
+    readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+    readonly checks: ReadonlyArray<{
+      readonly command: string
+      readonly exitCode: number
+      readonly output: string
+      readonly at: number
+    }>
+    readonly created: number
+    readonly updated: number
+  } | null
+}["data"]
+
+export type SessionsPlansInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionsPlansOutput = {
+  readonly data: ReadonlyArray<{
+    readonly sessionID: string
+    readonly revision: string
+    readonly path: string
+    readonly content: string
+    readonly status: "ready" | "approved"
+    readonly created: number
+  }>
 }["data"]
 
 export type SessionsSwitchAgentInput = {
@@ -1752,6 +1949,1298 @@ export type SessionsMessageOutput = {
         readonly time: { readonly created: number }
       }
 }["data"]
+
+export type DesignsReviewInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type DesignsReviewOutput = Uint8Array
+
+export type DesignsWhiteboardInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type DesignsWhiteboardOutput = Uint8Array
+
+export type DesignsListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type DesignsListOutput = ReadonlyArray<{
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}>
+
+export type DesignsCreateInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly name: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+  }["name"]
+  readonly journey: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+  }["journey"]
+  readonly engine: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+  }["engine"]
+  readonly kind: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+  }["kind"]
+  readonly application?: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+  }["application"]
+}
+
+export type DesignsCreateOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignsGetInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsGetOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignsUpdateInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly name?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["name"]
+  readonly brief?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["brief"]
+  readonly decisions?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["decisions"]
+  readonly questions?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["questions"]
+  readonly scenarios?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["scenarios"]
+  readonly designSystem?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["designSystem"]
+  readonly entry?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["entry"]
+  readonly tweaks?: {
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["tweaks"]
+}
+
+export type DesignsUpdateOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignsRevisionsInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsRevisionsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string
+  readonly parent: string | null
+  readonly name: string
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly files: { readonly [x: string]: string }
+  readonly document: {
+    readonly id: string
+    readonly sessionID: string
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly root: string
+    readonly application: string
+    readonly entry: string
+    readonly brief: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem: string
+    readonly sources: ReadonlyArray<{
+      readonly file: string
+      readonly hash: string
+      readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+      readonly authoritative: boolean
+      readonly excerpt: string
+    }>
+    readonly tweaks: { readonly [x: string]: string }
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+  }
+}>
+
+export type DesignsPreviewInput = {
+  readonly sessionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revisionID: string
+  }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly revisionID: string }["designID"]
+  readonly revisionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revisionID: string
+  }["revisionID"]
+}
+
+export type DesignsPreviewOutput = Uint8Array
+
+export type DesignsPublishInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly name: { readonly name: string }["name"]
+}
+
+export type DesignsPublishOutput = {
+  readonly id: string
+  readonly designID: string
+  readonly parent: string | null
+  readonly name: string
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly files: { readonly [x: string]: string }
+  readonly document: {
+    readonly id: string
+    readonly sessionID: string
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly root: string
+    readonly application: string
+    readonly entry: string
+    readonly brief: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem: string
+    readonly sources: ReadonlyArray<{
+      readonly file: string
+      readonly hash: string
+      readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+      readonly authoritative: boolean
+      readonly excerpt: string
+    }>
+    readonly tweaks: { readonly [x: string]: string }
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type DesignsRestoreInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly revision: { readonly revision: string }["revision"]
+}
+
+export type DesignsRestoreOutput = {
+  readonly id: string
+  readonly designID: string
+  readonly parent: string | null
+  readonly name: string
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly files: { readonly [x: string]: string }
+  readonly document: {
+    readonly id: string
+    readonly sessionID: string
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly root: string
+    readonly application: string
+    readonly entry: string
+    readonly brief: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem: string
+    readonly sources: ReadonlyArray<{
+      readonly file: string
+      readonly hash: string
+      readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+      readonly authoritative: boolean
+      readonly excerpt: string
+    }>
+    readonly tweaks: { readonly [x: string]: string }
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type DesignsReopenInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsReopenOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignsRefreshInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsRefreshOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string
+    readonly feedback?: string
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string
+    }>
+    readonly notApplicable?: string
+  }>
+  readonly designSystem: string
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignsFeedbackInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly id: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["id"]
+  readonly revision: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["revision"]
+  readonly text: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["text"]
+  readonly items: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["items"]
+  readonly assets: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["assets"]
+  readonly snapshot: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["snapshot"]
+  readonly whiteboards?: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["whiteboards"]
+  readonly delivery: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["delivery"]
+  readonly end: {
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["end"]
+}
+
+export type DesignsFeedbackOutput = { readonly id: string; readonly status: "pending" | "admitted" }
+
+export type DesignsApproveInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly revision: { readonly revision: string }["revision"]
+}
+
+export type DesignsApproveOutput = { readonly plan: string; readonly revision: string }
+
+export type DesignsAssetsInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsAssetsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string
+  readonly name: string
+  readonly mime: string
+  readonly bytes: number
+  readonly hash: string
+  readonly source: string
+  readonly parent: string | null
+  readonly created: number
+}>
+
+export type DesignsImportAssetInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly name: {
+    readonly name: string
+    readonly mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+    readonly data: string
+    readonly source: string
+    readonly parent?: string
+  }["name"]
+  readonly mime: {
+    readonly name: string
+    readonly mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+    readonly data: string
+    readonly source: string
+    readonly parent?: string
+  }["mime"]
+  readonly data: {
+    readonly name: string
+    readonly mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+    readonly data: string
+    readonly source: string
+    readonly parent?: string
+  }["data"]
+  readonly source: {
+    readonly name: string
+    readonly mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+    readonly data: string
+    readonly source: string
+    readonly parent?: string
+  }["source"]
+  readonly parent?: {
+    readonly name: string
+    readonly mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+    readonly data: string
+    readonly source: string
+    readonly parent?: string
+  }["parent"]
+}
+
+export type DesignsImportAssetOutput = {
+  readonly id: string
+  readonly designID: string
+  readonly name: string
+  readonly mime: string
+  readonly bytes: number
+  readonly hash: string
+  readonly source: string
+  readonly parent: string | null
+  readonly created: number
+}
+
+export type DesignsJobsInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+}
+
+export type DesignsJobsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string
+  readonly input: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }
+  readonly status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  readonly progress: number | "Infinity" | "-Infinity" | "NaN"
+  readonly result: string | null
+  readonly error: string | null
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly started?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly finished?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly audit?: {
+    readonly revision: string
+    readonly findings: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<string>
+    readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+  }
+}>
+
+export type DesignsRenderInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly revision: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["revision"]
+  readonly format: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["format"]
+  readonly implementation?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["implementation"]
+  readonly candidate?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["candidate"]
+  readonly asset?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["asset"]
+  readonly duration?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["duration"]
+  readonly fps?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["fps"]
+  readonly size?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["size"]
+  readonly repeat?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["repeat"]
+  readonly background?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["background"]
+  readonly transparent?: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }["transparent"]
+}
+
+export type DesignsRenderOutput = {
+  readonly id: string
+  readonly designID: string
+  readonly input: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }
+  readonly status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  readonly progress: number | "Infinity" | "-Infinity" | "NaN"
+  readonly result: string | null
+  readonly error: string | null
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly started?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly finished?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly audit?: {
+    readonly revision: string
+    readonly findings: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<string>
+    readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+  }
+}
+
+export type DesignsCancelInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["designID"]
+  readonly jobID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["jobID"]
+}
+
+export type DesignsCancelOutput = {
+  readonly id: string
+  readonly designID: string
+  readonly input: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare"
+    readonly implementation?: string
+    readonly candidate?: string
+    readonly asset?: string
+    readonly duration?: number | "Infinity" | "-Infinity" | "NaN"
+    readonly fps?: number
+    readonly size?: number
+    readonly repeat?: number
+    readonly background?: string
+    readonly transparent?: boolean
+  }
+  readonly status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  readonly progress: number | "Infinity" | "-Infinity" | "NaN"
+  readonly result: string | null
+  readonly error: string | null
+  readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  readonly started?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly finished?: number | "Infinity" | "-Infinity" | "NaN"
+  readonly audit?: {
+    readonly revision: string
+    readonly findings: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<string>
+    readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+  }
+}
+
+export type DesignsDownloadInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["designID"]
+  readonly jobID: { readonly sessionID: string; readonly designID: string; readonly jobID: string }["jobID"]
+}
+
+export type DesignsDownloadOutput = Uint8Array
+
+export type DesignsAssetFileInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string; readonly assetID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly assetID: string }["designID"]
+  readonly assetID: { readonly sessionID: string; readonly designID: string; readonly assetID: string }["assetID"]
+}
+
+export type DesignsAssetFileOutput = Uint8Array
 
 export type MessagesListInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]

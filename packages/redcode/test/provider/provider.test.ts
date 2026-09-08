@@ -1996,10 +1996,7 @@ it.instance("Google Vertex: uses REP endpoint for Gemini continental multi-regio
     yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
     yield* set("VERTEX_LOCATION", "eu")
     const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("gemini-3.5-flash"),
-    )
+    const model = yield* provider.getModel(ProviderV2.ID.make("google-vertex"), ModelV2.ID.make("gemini-3.5-flash"))
     const language = yield* provider.getLanguage(model)
     expect(languageBaseURL(language)).toBe(
       "https://aiplatform.eu.rep.googleapis.com/v1beta1/projects/test-project/locations/eu/publishers/google",
@@ -2012,10 +2009,7 @@ it.instance("Google Vertex: keeps regional Gemini endpoints unchanged", () =>
     yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
     yield* set("VERTEX_LOCATION", "europe-west1")
     const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("gemini-3.5-flash"),
-    )
+    const model = yield* provider.getModel(ProviderV2.ID.make("google-vertex"), ModelV2.ID.make("gemini-3.5-flash"))
     const language = yield* provider.getLanguage(model)
     expect(languageBaseURL(language)).toBe(
       "https://europe-west1-aiplatform.googleapis.com/v1beta1/projects/test-project/locations/europe-west1/publishers/google",
@@ -2054,7 +2048,7 @@ it.instance(
 )
 
 // Tests that need plugin file setup or multi-instance flows fall back to a
-// scoped tmpdir + provideInstance pattern via it.effect.
+// scoped tmpdir + provideInstance pattern.
 
 const instanceStoreLayer = LayerNode.compile(InstanceStore.node, [
   [InstanceStore.bootstrapNode, InstanceBootstrap.node],
@@ -2062,7 +2056,7 @@ const instanceStoreLayer = LayerNode.compile(InstanceStore.node, [
 const provideMultiInstance = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
 
-it.effect("plugin config providers persist after instance dispose", () =>
+it.live("plugin config providers persist after instance dispose", () =>
   Effect.gen(function* () {
     const dir = yield* tmpdirScoped()
     const configDir = path.join(dir, ".opencode")
@@ -2106,12 +2100,15 @@ it.effect("plugin config providers persist after instance dispose", () =>
       return yield* provider.list()
     }).pipe(provideInstanceEffect(dir))
 
+    const store = yield* InstanceStore.Service
+    const before = yield* store.load({ directory: dir })
     const first = yield* loadAndList
     expect(first[ProviderV2.ID.make("demo")]).toBeDefined()
     expect(first[ProviderV2.ID.make("demo")].models[ModelV2.ID.make("chat")]).toBeDefined()
 
-    yield* Effect.promise(() => disposeAllInstances())
+    yield* store.disposeAll()
 
+    expect(yield* store.load({ directory: dir })).not.toBe(before)
     const second = yield* loadAndList
     expect(second[ProviderV2.ID.make("demo")]).toBeDefined()
     expect(second[ProviderV2.ID.make("demo")].models[ModelV2.ID.make("chat")]).toBeDefined()

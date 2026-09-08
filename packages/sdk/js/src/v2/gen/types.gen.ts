@@ -2077,6 +2077,29 @@ export type Config = {
       judge_timeout?: false | number
       gate_timeout?: number
     }
+    design?: {
+      attachments?: {
+        max_bytes?: number
+        max_per_prompt?: number
+        max_prompt_bytes?: number
+        /**
+         * How long an unreferenced image is kept (default: 7 days; false keeps them)
+         */
+        ttl_ms?: false | number
+        /**
+         * Disk the attachment store may use, in MiB (default: 512; false removes the cap)
+         */
+        max_disk_mb?: false | number
+      }
+      viewports?: Array<"mobile" | "compact" | "desktop">
+      gate?: boolean
+      gate_timeout?: number
+      export?: {
+        max_asset_bytes?: number
+        max_bundle_bytes?: number
+      }
+      hosts?: Array<string>
+    }
     subtask_concurrency?: number
     background_subagents_max?: number
     /**
@@ -2625,6 +2648,7 @@ export type SessionGoal = {
     boundaries?: string
     stop_when?: string
   }
+  stopAfter?: "plan" | "build"
   gates: Array<string>
   status: "active" | "paused" | "blocked" | "done" | "dropped"
   reason?: string
@@ -2815,16 +2839,16 @@ export type SessionNotFoundError = {
   message: string
 }
 
-export type PromptInput = {
-  text: string
-  files?: Array<PromptInputFileAttachment>
-  agents?: Array<PromptAgentAttachment>
-}
-
 export type ConflictError = {
   _tag: "ConflictError"
   message: string
   resource?: string
+}
+
+export type PromptInput = {
+  text: string
+  files?: Array<PromptInputFileAttachment>
+  agents?: Array<PromptAgentAttachment>
 }
 
 export type ServiceUnavailableError = {
@@ -2882,6 +2906,12 @@ export type SessionHistory = {
 }
 
 export type SessionDurableEventStream = string
+
+export type DesignError = {
+  _tag: "Design.Error"
+  code: "not-found" | "conflict" | "invalid" | "unavailable"
+  message: string
+}
 
 export type SessionMessagesResponse = {
   data: Array<SessionMessage>
@@ -4040,6 +4070,65 @@ export type SessionV2Info = {
   revert?: RevertState
 }
 
+export type SessionGoalEvidence = {
+  path: string
+  hash: string
+  bytes: number
+}
+
+export type SessionGoalInfo = {
+  id: string
+  sessionID: string
+  revision: number
+  objective: string
+  criteria: Array<string>
+  gates: Array<string>
+  stopAfter: "design" | "plan" | "build"
+  executePlan: boolean
+  status: "active" | "waiting" | "paused" | "blocked" | "done"
+  reason: string
+  turns: {
+    used: number
+    max: number
+  }
+  tokens: number
+  reviews: number
+  evidence: Array<SessionGoalEvidence>
+  checks: Array<{
+    command: string
+    exitCode: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    output: string
+    at: number
+  }>
+  created: number
+  updated: number
+}
+
+export type SessionGoalInput = {
+  objective: string
+  criteria?: Array<string>
+  gates?: Array<string>
+  maxTurns?: number
+  agent?: string
+  model?: ModelRef
+  stopAfter?: "design" | "plan" | "build"
+  executePlan?: boolean
+}
+
+export type SessionGoalControl = {
+  action: "pause" | "resume" | "drop" | "budget"
+  maxTurns?: number
+}
+
+export type SessionPlanInfo = {
+  sessionID: string
+  revision: string
+  path: string
+  content: string
+  status: "ready" | "approved"
+  created: number
+}
+
 export type PromptInputFileAttachment = {
   uri: string
   name?: string
@@ -4880,6 +4969,176 @@ export type SessionNextRevertCommitted = {
     sessionID: string
     messageID: string
   }
+}
+
+export type DesignBrief = {
+  objective: string
+  audience: string
+  content: string
+  constraints: string
+  references: Array<string>
+}
+
+export type DesignDecision = {
+  id: string
+  text: string
+  revision?: string
+  feedback?: string
+}
+
+export type DesignScenario = {
+  id: string
+  name: string
+  selector: string
+  state: "loading" | "empty" | "error" | "populated" | "edge"
+  actions: Array<{
+    selector: string
+    action: "click" | "fill" | "press"
+    value?: string
+  }>
+  notApplicable?: string
+}
+
+export type DesignInfo = {
+  id: string
+  sessionID: string
+  name: string
+  journey: "new" | "existing"
+  engine: "html" | "react" | "solid"
+  kind: "screen" | "flow" | "comparison" | "deck"
+  root: string
+  application: string
+  entry: string
+  brief: DesignBrief
+  decisions: Array<DesignDecision>
+  questions: Array<string>
+  scenarios: Array<DesignScenario>
+  designSystem: string
+  sources: Array<{
+    file: string
+    hash: string
+    observed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    authoritative: boolean
+    excerpt: string
+  }>
+  tweaks: {
+    [key: string]: unknown | unknown
+  }
+  revision: string
+  approvedRevision: string
+  ended: boolean
+  updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignCreate = {
+  name: string
+  journey: "new" | "existing"
+  engine: "html" | "react" | "solid"
+  kind: "screen" | "flow" | "comparison" | "deck"
+  application?: string
+}
+
+export type DesignUpdate = {
+  name?: string
+  brief?: DesignBrief
+  decisions?: Array<DesignDecision>
+  questions?: Array<string>
+  scenarios?: Array<DesignScenario>
+  designSystem?: string
+  entry?: string
+  tweaks?: {
+    [key: string]: unknown | unknown
+  }
+}
+
+export type DesignRevision = {
+  id: string
+  designID: string
+  parent: string
+  name: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  files: {
+    [key: string]: string
+  }
+  document: DesignInfo
+}
+
+export type DesignFeedback = {
+  id: string
+  revision: string
+  text: string
+  items: Array<{
+    target: string
+    text: string
+  }>
+  assets: Array<string>
+  snapshot: string
+  whiteboards?: Array<{
+    target: string
+    scene: unknown
+  }>
+  delivery: "steer" | "queue"
+  end: boolean
+}
+
+export type DesignReceipt = {
+  id: string
+  status: "pending" | "admitted"
+}
+
+export type DesignAsset = {
+  id: string
+  designID: string
+  name: string
+  mime: string
+  bytes: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  hash: string
+  source: string
+  parent: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignImportAsset = {
+  name: string
+  mime: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml" | "image/gif"
+  data: string
+  source: string
+  parent?: string
+}
+
+export type DesignRender = {
+  revision: string
+  format: "html" | "gif" | "audit" | "compare"
+  implementation?: string
+  candidate?: string
+  asset?: string
+  duration?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  fps?: number
+  size?: number
+  repeat?: number
+  background?: string
+  transparent?: boolean
+}
+
+export type DesignAudit = {
+  revision: string
+  findings: Array<string>
+  scenarios: Array<string>
+  widths: Array<number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN">
+}
+
+export type DesignJob = {
+  id: string
+  designID: string
+  input: DesignRender
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  progress: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  result: string
+  error: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  started?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  finished?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  audit?: DesignAudit
 }
 
 export type ModelApi =
@@ -10320,6 +10579,7 @@ export type SessionGoalResponse = SessionGoalResponses[keyof SessionGoalResponse
 
 export type SessionGoalSetData = {
   body?: {
+    agent?: string
     /**
      * The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable).
      */
@@ -12742,6 +13002,172 @@ export type V2SessionGetResponses = {
 
 export type V2SessionGetResponse = V2SessionGetResponses[keyof V2SessionGetResponses]
 
+export type ServerSessionSessionGoalData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/goal"
+}
+
+export type ServerSessionSessionGoalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type ServerSessionSessionGoalError = ServerSessionSessionGoalErrors[keyof ServerSessionSessionGoalErrors]
+
+export type ServerSessionSessionGoalResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: SessionGoalInfo
+  }
+}
+
+export type ServerSessionSessionGoalResponse =
+  ServerSessionSessionGoalResponses[keyof ServerSessionSessionGoalResponses]
+
+export type ServerSessionSessionGoalSetData = {
+  body: SessionGoalInput
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/goal"
+}
+
+export type ServerSessionSessionGoalSetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type ServerSessionSessionGoalSetError =
+  ServerSessionSessionGoalSetErrors[keyof ServerSessionSessionGoalSetErrors]
+
+export type ServerSessionSessionGoalSetResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: SessionGoalInfo
+  }
+}
+
+export type ServerSessionSessionGoalSetResponse =
+  ServerSessionSessionGoalSetResponses[keyof ServerSessionSessionGoalSetResponses]
+
+export type ServerSessionSessionGoalControlData = {
+  body: SessionGoalControl
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/goal/control"
+}
+
+export type ServerSessionSessionGoalControlErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type ServerSessionSessionGoalControlError =
+  ServerSessionSessionGoalControlErrors[keyof ServerSessionSessionGoalControlErrors]
+
+export type ServerSessionSessionGoalControlResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: SessionGoalInfo
+  }
+}
+
+export type ServerSessionSessionGoalControlResponse =
+  ServerSessionSessionGoalControlResponses[keyof ServerSessionSessionGoalControlResponses]
+
+export type ServerSessionSessionPlansData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/plan"
+}
+
+export type ServerSessionSessionPlansErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type ServerSessionSessionPlansError = ServerSessionSessionPlansErrors[keyof ServerSessionSessionPlansErrors]
+
+export type ServerSessionSessionPlansResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: Array<SessionPlanInfo>
+  }
+}
+
+export type ServerSessionSessionPlansResponse =
+  ServerSessionSessionPlansResponses[keyof ServerSessionSessionPlansResponses]
+
 export type V2SessionSwitchAgentData = {
   body: {
     agent: string
@@ -13250,6 +13676,877 @@ export type V2SessionMessageResponses = {
 }
 
 export type V2SessionMessageResponse = V2SessionMessageResponses[keyof V2SessionMessageResponses]
+
+export type ServerDesignDesignReviewData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/review"
+}
+
+export type ServerDesignDesignReviewErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignReviewError = ServerDesignDesignReviewErrors[keyof ServerDesignDesignReviewErrors]
+
+export type ServerDesignDesignReviewResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignReviewResponse =
+  ServerDesignDesignReviewResponses[keyof ServerDesignDesignReviewResponses]
+
+export type ServerDesignDesignWhiteboardData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/whiteboard"
+}
+
+export type ServerDesignDesignWhiteboardErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignWhiteboardError =
+  ServerDesignDesignWhiteboardErrors[keyof ServerDesignDesignWhiteboardErrors]
+
+export type ServerDesignDesignWhiteboardResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignWhiteboardResponse =
+  ServerDesignDesignWhiteboardResponses[keyof ServerDesignDesignWhiteboardResponses]
+
+export type ServerDesignDesignListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design"
+}
+
+export type ServerDesignDesignListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignListError = ServerDesignDesignListErrors[keyof ServerDesignDesignListErrors]
+
+export type ServerDesignDesignListResponses = {
+  /**
+   * Success
+   */
+  200: Array<DesignInfo>
+}
+
+export type ServerDesignDesignListResponse = ServerDesignDesignListResponses[keyof ServerDesignDesignListResponses]
+
+export type ServerDesignDesignCreateData = {
+  body: DesignCreate
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design"
+}
+
+export type ServerDesignDesignCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignCreateError = ServerDesignDesignCreateErrors[keyof ServerDesignDesignCreateErrors]
+
+export type ServerDesignDesignCreateResponses = {
+  /**
+   * Design.Info
+   */
+  200: DesignInfo
+}
+
+export type ServerDesignDesignCreateResponse =
+  ServerDesignDesignCreateResponses[keyof ServerDesignDesignCreateResponses]
+
+export type ServerDesignDesignGetData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}"
+}
+
+export type ServerDesignDesignGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignGetError = ServerDesignDesignGetErrors[keyof ServerDesignDesignGetErrors]
+
+export type ServerDesignDesignGetResponses = {
+  /**
+   * Design.Info
+   */
+  200: DesignInfo
+}
+
+export type ServerDesignDesignGetResponse = ServerDesignDesignGetResponses[keyof ServerDesignDesignGetResponses]
+
+export type ServerDesignDesignUpdateData = {
+  body: DesignUpdate
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}"
+}
+
+export type ServerDesignDesignUpdateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignUpdateError = ServerDesignDesignUpdateErrors[keyof ServerDesignDesignUpdateErrors]
+
+export type ServerDesignDesignUpdateResponses = {
+  /**
+   * Design.Info
+   */
+  200: DesignInfo
+}
+
+export type ServerDesignDesignUpdateResponse =
+  ServerDesignDesignUpdateResponses[keyof ServerDesignDesignUpdateResponses]
+
+export type ServerDesignDesignRevisionsData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/revision"
+}
+
+export type ServerDesignDesignRevisionsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignRevisionsError =
+  ServerDesignDesignRevisionsErrors[keyof ServerDesignDesignRevisionsErrors]
+
+export type ServerDesignDesignRevisionsResponses = {
+  /**
+   * Success
+   */
+  200: Array<DesignRevision>
+}
+
+export type ServerDesignDesignRevisionsResponse =
+  ServerDesignDesignRevisionsResponses[keyof ServerDesignDesignRevisionsResponses]
+
+export type ServerDesignDesignPublishData = {
+  body: {
+    name: string
+  }
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/revision"
+}
+
+export type ServerDesignDesignPublishErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignPublishError = ServerDesignDesignPublishErrors[keyof ServerDesignDesignPublishErrors]
+
+export type ServerDesignDesignPublishResponses = {
+  /**
+   * Design.Revision
+   */
+  200: DesignRevision
+}
+
+export type ServerDesignDesignPublishResponse =
+  ServerDesignDesignPublishResponses[keyof ServerDesignDesignPublishResponses]
+
+export type ServerDesignDesignPreviewData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+    revisionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/revision/{revisionID}/preview"
+}
+
+export type ServerDesignDesignPreviewErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignPreviewError = ServerDesignDesignPreviewErrors[keyof ServerDesignDesignPreviewErrors]
+
+export type ServerDesignDesignPreviewResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignPreviewResponse =
+  ServerDesignDesignPreviewResponses[keyof ServerDesignDesignPreviewResponses]
+
+export type ServerDesignDesignRestoreData = {
+  body: {
+    revision: string
+  }
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/restore"
+}
+
+export type ServerDesignDesignRestoreErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignRestoreError = ServerDesignDesignRestoreErrors[keyof ServerDesignDesignRestoreErrors]
+
+export type ServerDesignDesignRestoreResponses = {
+  /**
+   * Design.Revision
+   */
+  200: DesignRevision
+}
+
+export type ServerDesignDesignRestoreResponse =
+  ServerDesignDesignRestoreResponses[keyof ServerDesignDesignRestoreResponses]
+
+export type ServerDesignDesignReopenData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/reopen"
+}
+
+export type ServerDesignDesignReopenErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignReopenError = ServerDesignDesignReopenErrors[keyof ServerDesignDesignReopenErrors]
+
+export type ServerDesignDesignReopenResponses = {
+  /**
+   * Design.Info
+   */
+  200: DesignInfo
+}
+
+export type ServerDesignDesignReopenResponse =
+  ServerDesignDesignReopenResponses[keyof ServerDesignDesignReopenResponses]
+
+export type ServerDesignDesignRefreshData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/refresh"
+}
+
+export type ServerDesignDesignRefreshErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignRefreshError = ServerDesignDesignRefreshErrors[keyof ServerDesignDesignRefreshErrors]
+
+export type ServerDesignDesignRefreshResponses = {
+  /**
+   * Design.Info
+   */
+  200: DesignInfo
+}
+
+export type ServerDesignDesignRefreshResponse =
+  ServerDesignDesignRefreshResponses[keyof ServerDesignDesignRefreshResponses]
+
+export type ServerDesignDesignFeedbackData = {
+  body: DesignFeedback
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/feedback"
+}
+
+export type ServerDesignDesignFeedbackErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignFeedbackError = ServerDesignDesignFeedbackErrors[keyof ServerDesignDesignFeedbackErrors]
+
+export type ServerDesignDesignFeedbackResponses = {
+  /**
+   * Design.Receipt
+   */
+  200: DesignReceipt
+}
+
+export type ServerDesignDesignFeedbackResponse =
+  ServerDesignDesignFeedbackResponses[keyof ServerDesignDesignFeedbackResponses]
+
+export type ServerDesignDesignApproveData = {
+  body: {
+    revision: string
+  }
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/approve"
+}
+
+export type ServerDesignDesignApproveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignApproveError = ServerDesignDesignApproveErrors[keyof ServerDesignDesignApproveErrors]
+
+export type ServerDesignDesignApproveResponses = {
+  /**
+   * Success
+   */
+  200: {
+    plan: string
+    revision: string
+  }
+}
+
+export type ServerDesignDesignApproveResponse =
+  ServerDesignDesignApproveResponses[keyof ServerDesignDesignApproveResponses]
+
+export type ServerDesignDesignAssetsData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/asset"
+}
+
+export type ServerDesignDesignAssetsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignAssetsError = ServerDesignDesignAssetsErrors[keyof ServerDesignDesignAssetsErrors]
+
+export type ServerDesignDesignAssetsResponses = {
+  /**
+   * Success
+   */
+  200: Array<DesignAsset>
+}
+
+export type ServerDesignDesignAssetsResponse =
+  ServerDesignDesignAssetsResponses[keyof ServerDesignDesignAssetsResponses]
+
+export type ServerDesignDesignImportAssetData = {
+  body: DesignImportAsset
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/asset"
+}
+
+export type ServerDesignDesignImportAssetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignImportAssetError =
+  ServerDesignDesignImportAssetErrors[keyof ServerDesignDesignImportAssetErrors]
+
+export type ServerDesignDesignImportAssetResponses = {
+  /**
+   * Design.Asset
+   */
+  200: DesignAsset
+}
+
+export type ServerDesignDesignImportAssetResponse =
+  ServerDesignDesignImportAssetResponses[keyof ServerDesignDesignImportAssetResponses]
+
+export type ServerDesignDesignJobsData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/job"
+}
+
+export type ServerDesignDesignJobsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignJobsError = ServerDesignDesignJobsErrors[keyof ServerDesignDesignJobsErrors]
+
+export type ServerDesignDesignJobsResponses = {
+  /**
+   * Success
+   */
+  200: Array<DesignJob>
+}
+
+export type ServerDesignDesignJobsResponse = ServerDesignDesignJobsResponses[keyof ServerDesignDesignJobsResponses]
+
+export type ServerDesignDesignRenderData = {
+  body: DesignRender
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/job"
+}
+
+export type ServerDesignDesignRenderErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignRenderError = ServerDesignDesignRenderErrors[keyof ServerDesignDesignRenderErrors]
+
+export type ServerDesignDesignRenderResponses = {
+  /**
+   * Design.Job
+   */
+  200: DesignJob
+}
+
+export type ServerDesignDesignRenderResponse =
+  ServerDesignDesignRenderResponses[keyof ServerDesignDesignRenderResponses]
+
+export type ServerDesignDesignCancelData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+    jobID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/job/{jobID}/cancel"
+}
+
+export type ServerDesignDesignCancelErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignCancelError = ServerDesignDesignCancelErrors[keyof ServerDesignDesignCancelErrors]
+
+export type ServerDesignDesignCancelResponses = {
+  /**
+   * Design.Job
+   */
+  200: DesignJob
+}
+
+export type ServerDesignDesignCancelResponse =
+  ServerDesignDesignCancelResponses[keyof ServerDesignDesignCancelResponses]
+
+export type ServerDesignDesignDownloadData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+    jobID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/job/{jobID}/file"
+}
+
+export type ServerDesignDesignDownloadErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignDownloadError = ServerDesignDesignDownloadErrors[keyof ServerDesignDesignDownloadErrors]
+
+export type ServerDesignDesignDownloadResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignDownloadResponse =
+  ServerDesignDesignDownloadResponses[keyof ServerDesignDesignDownloadResponses]
+
+export type ServerDesignDesignAssetFileData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+    assetID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/asset/{assetID}/file"
+}
+
+export type ServerDesignDesignAssetFileErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignAssetFileError =
+  ServerDesignDesignAssetFileErrors[keyof ServerDesignDesignAssetFileErrors]
+
+export type ServerDesignDesignAssetFileResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignAssetFileResponse =
+  ServerDesignDesignAssetFileResponses[keyof ServerDesignDesignAssetFileResponses]
 
 export type V2SessionMessagesData = {
   body?: never

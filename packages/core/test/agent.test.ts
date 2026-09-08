@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect, Exit, Scope } from "effect"
+import { PermissionV2 } from "../src/permission"
 import { AgentV2 } from "@reddb-io/redcode-core/agent"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { Location } from "@reddb-io/redcode-core/location"
@@ -125,6 +126,20 @@ describe("AgentV2", () => {
         "summary",
         "title",
       ])
+      for (const name of ["plan", "design"]) {
+        const rules = agents.find((item) => item.id === name)!.permissions
+        expect(PermissionV2.evaluate("bash", "touch src/index.ts", rules).effect).toBe("deny")
+        expect(PermissionV2.evaluate("edit", "src/index.ts", rules).effect).toBe("deny")
+        expect(PermissionV2.evaluate("external_write", "*", rules).effect).toBe("deny")
+        expect(PermissionV2.evaluate("read", "src/index.ts", rules).effect).toBe("allow")
+        expect(
+          PermissionV2.evaluate(
+            "edit",
+            name === "plan" ? ".red/code/plans/proposal.md" : ".red/code/design/example/work/index.html",
+            rules,
+          ).effect,
+        ).toBe("allow")
+      }
       for (const item of agents) {
         expect(item.permissions.some((rule) => rule.action === "bash" && rule.effect !== "deny")).toBe(false)
       }

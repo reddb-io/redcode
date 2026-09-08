@@ -9,10 +9,9 @@ export function latestDesignPreview(messages: readonly { id: string }[], parts: 
     for (const part of parts(messages[i]!.id)) {
       if (part.type !== "tool" || part.tool !== "design_preview") continue
       if (part.state.status !== "completed") continue
-      const id = part.state.metadata?.id
-      if (typeof id !== "string") continue
-      const revision = part.state.metadata?.revision
-      return { id, name: part.state.title, revision: typeof revision === "number" ? revision : 0 }
+      const id = part.state.input.id
+      if (typeof id !== "string" || !id.startsWith("design_")) continue
+      return { id, name: part.state.title }
     }
   }
   return undefined

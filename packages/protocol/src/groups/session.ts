@@ -2,6 +2,8 @@ import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { SessionInput } from "@reddb-io/redcode-schema/session-input"
 import { PromptInput } from "@reddb-io/redcode-schema/prompt-input"
 import { Session } from "@reddb-io/redcode-schema/session"
+import { SessionGoal } from "@reddb-io/redcode-schema/session-goal"
+import { SessionPlan } from "@reddb-io/redcode-schema/session-plan"
 import { Project } from "@reddb-io/redcode-schema/project"
 import {
   AbsolutePath,
@@ -194,6 +196,36 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
             description: "Retrieve a session by ID.",
           }),
         ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.goal", "/api/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),
+        error: [SessionNotFoundError, ConflictError],
+      }).middleware(sessionLocationMiddleware),
+    )
+    .add(
+      HttpApiEndpoint.post("session.goalSet", "/api/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.Input,
+        success: Schema.Struct({ data: SessionGoal.Info }),
+        error: [SessionNotFoundError, ConflictError, InvalidRequestError],
+      }).middleware(sessionLocationMiddleware),
+    )
+    .add(
+      HttpApiEndpoint.post("session.goalControl", "/api/session/:sessionID/goal/control", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.Control,
+        success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),
+        error: [SessionNotFoundError, ConflictError, InvalidRequestError],
+      }).middleware(sessionLocationMiddleware),
+    )
+    .add(
+      HttpApiEndpoint.get("session.plans", "/api/session/:sessionID/plan", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.Array(SessionPlan.Info) }),
+        error: SessionNotFoundError,
+      }).middleware(sessionLocationMiddleware),
     )
     .add(
       HttpApiEndpoint.post("session.switchAgent", "/api/session/:sessionID/agent", {

@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("ur"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "فائل",
   "desktop.menu.edit": "ترمیم",
@@ -186,8 +189,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "پیغام سے نئی شاخ بنائیں",
   "command.session.fork.description": "پچھلے پیغام سے ایک نیا سیشن بنائیں",
@@ -956,8 +961,7 @@ export const dict = {
   "settings.general.row.appearance.title": "ظاہری شکل",
   "settings.general.row.appearance.description": "اپنی مرضی کے مطابق بنائیں کہ آپ کے آلے پر Redcode کیسا لگتا ہے۔",
   "settings.general.row.colorScheme.title": "رنگ سکیم",
-  "settings.general.row.colorScheme.description":
-    "منتخب کریں کہ آیا Redcode سسٹم، لائٹ یا ڈارک تھیم کی پیروی کرتا ہے۔",
+  "settings.general.row.colorScheme.description": "منتخب کریں کہ آیا Redcode سسٹم، لائٹ یا ڈارک تھیم کی پیروی کرتا ہے۔",
   "settings.general.row.theme.title": "تھیم",
   "settings.general.row.theme.description": "Redcode کی تھیم حسب ضرورت بنائیں۔",
   "settings.general.row.font.title": "کوڈ فونٹ",

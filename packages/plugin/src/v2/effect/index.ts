@@ -1,4 +1,5 @@
 export type { PluginContext } from "./context.js"
+export type { ToolSpec, MediaCapability } from "../tools.js"
 export { define } from "./plugin.js"
 export type { Plugin } from "./plugin.js"
 export { Definition as OperationDefinition, Operation } from "./operation-hook.js"

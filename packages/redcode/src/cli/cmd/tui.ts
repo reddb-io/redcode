@@ -2,7 +2,7 @@ import { cmd } from "@/cli/cmd/cmd"
 import { Rpc } from "@/util/rpc"
 import { type rpc } from "../tui/worker"
 import path from "path"
-import { fileURLToPath } from "url"
+import { workerPath } from "../worker-path"
 import { UI } from "@/cli/ui"
 import { errorMessage } from "@reddb-io/redcode-tui/util/error"
 import { withTimeout } from "@/util/timeout"
@@ -14,10 +14,6 @@ import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@reddb-io/redcode-tui/terminal-win32"
-
-declare global {
-  const REDCODE_WORKER_PATH: string
-}
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
 
@@ -47,13 +43,6 @@ function createEventSource(client: RpcClient): EventSource {
       })
     },
   }
-}
-
-async function target() {
-  if (typeof REDCODE_WORKER_PATH !== "undefined") return REDCODE_WORKER_PATH
-  const dist = new URL("./cli/tui/worker.js", import.meta.url)
-  if (await Filesystem.exists(fileURLToPath(dist))) return dist
-  return new URL("../tui/worker.ts", import.meta.url)
 }
 
 // A non-TTY stdin is not always a finite pipe: launched from a wrapper, an editor task or a
@@ -217,7 +206,7 @@ export const TuiThreadCommand = cmd({
       // Resolve relative --project paths from PWD, then use the real cwd after
       // chdir so the thread and worker share the same directory key.
       const next = resolveThreadDirectory(args.project)
-      const file = await target()
+      const file = await workerPath()
       try {
         process.chdir(next)
       } catch {

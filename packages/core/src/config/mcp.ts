@@ -3,6 +3,15 @@ export * as ConfigMCP from "./mcp"
 import { Schema } from "effect"
 import { PositiveInt } from "../schema"
 
+export const Media = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    operations: Schema.Array(Schema.Literals(["generate", "edit", "reference"])),
+    formats: Schema.Array(Schema.String),
+    transparency: Schema.Boolean,
+  }),
+)
+
 export class Timeout extends Schema.Class<Timeout>("ConfigV2.MCP.Timeout")({
   startup: PositiveInt.pipe(Schema.optional).annotate({
     description: "Maximum time in milliseconds to establish and initialize the MCP server.",
@@ -13,6 +22,7 @@ export class Timeout extends Schema.Class<Timeout>("ConfigV2.MCP.Timeout")({
 }) {}
 
 export class Local extends Schema.Class<Local>("ConfigV2.MCP.Local")({
+  media: Media.pipe(Schema.optional),
   type: Schema.Literal("local"),
   command: Schema.String.pipe(Schema.Array),
   cwd: Schema.String.pipe(Schema.optional).annotate({
@@ -32,6 +42,7 @@ export class OAuth extends Schema.Class<OAuth>("ConfigV2.MCP.OAuth")({
 }) {}
 
 export class Remote extends Schema.Class<Remote>("ConfigV2.MCP.Remote")({
+  media: Media.pipe(Schema.optional),
   type: Schema.Literal("remote"),
   url: Schema.String,
   headers: Schema.Record(Schema.String, Schema.String).pipe(Schema.optional),

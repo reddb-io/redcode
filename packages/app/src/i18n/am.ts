@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("am"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "ፋይል",
   "desktop.menu.edit": "አርትዕ",
@@ -178,8 +181,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "ከመልዕክት አዲስ ቅርንጫፍ ፍጠር",
   "command.session.fork.description": "ከቀደመው መልእክት አዲስ ክፍለ ጊዜ ፍጠር",
@@ -240,8 +245,7 @@ export const dict = {
   "provider.connect.opencodeZen.visit.suffix": " የእርስዎን API ቁልፍ ለመሰብሰብ።",
   "provider.connect.oauth.code.visit.prefix": "ጎብኝ ",
   "provider.connect.oauth.code.visit.link": "ይህ ሊንክ",
-  "provider.connect.oauth.code.visit.suffix":
-    " መለያዎን ለማገናኘት የፈቀዳ ኮድዎን ለመሰብሰብ እና {{provider}} ሞዴሎችን በRedcode ውስጥ ይጠቀሙ።",
+  "provider.connect.oauth.code.visit.suffix": " መለያዎን ለማገናኘት የፈቀዳ ኮድዎን ለመሰብሰብ እና {{provider}} ሞዴሎችን በRedcode ውስጥ ይጠቀሙ።",
   "provider.connect.oauth.code.label": "{{method}}የፈቀዳ ኮድ",
   "provider.connect.oauth.code.placeholder": "የፈቃድ ኮድ",
   "provider.connect.oauth.code.required": "የፈቃድ ኮድ ያስፈልጋል",

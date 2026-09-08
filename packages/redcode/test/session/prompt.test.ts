@@ -55,6 +55,7 @@ import { Truncate } from "@/tool/truncate"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { Format } from "../../src/format"
+import { InstanceState } from "@/effect/instance-state"
 import { TestInstance } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
@@ -3042,12 +3043,15 @@ const judgeRequest = (hit: { body: Record<string, unknown> }) =>
   JSON.stringify(hit.body).includes("done|continue|blocked|wait")
 const verdict = (v: string, reason: string) => JSON.stringify({ verdict: v, reason })
 
-const startGoal = Effect.fn("test.startGoal")(function* (text: string, opts?: { maxTurns?: number; boot?: string }) {
+const startGoal = Effect.fn("test.startGoal")(function* (
+  text: string,
+  opts?: { maxTurns?: number; boot?: string; agent?: "plan" | "build" },
+) {
   const sessions = yield* Session.Service
   const goals = yield* GoalRuntime.Service
   const prompt = yield* SessionPrompt.Service
   const chat = yield* sessions.create({ title: "Goal" })
-  const goal = SessionGoal.parse(text, { maxTurns: opts?.maxTurns })
+  const goal = SessionGoal.parse(text, { maxTurns: opts?.maxTurns, stopAfter: opts?.agent })
   yield* goals.set(chat.id, opts?.boot ? { ...goal, boot: opts.boot } : goal)
   if (opts?.boot) {
     // `set` stamps this process; a foreign boot has to be written around it.
@@ -3055,7 +3059,7 @@ const startGoal = Effect.fn("test.startGoal")(function* (text: string, opts?: { 
   }
   yield* prompt.prompt({
     sessionID: chat.id,
-    agent: "build",
+    agent: opts?.agent ?? "build",
     noReply: true,
     parts: [{ type: "text", text: goal.objective }],
   })
@@ -3072,7 +3076,9 @@ const userTexts = Effect.fn("test.userTexts")(function* (sessionID: SessionID) {
 it.instance("a CONTINUE verdict is one more synthetic turn inside the same run; DONE ends it with the goal met", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => providerCfg(url))
-    const { chat, goals, prompt } = yield* startGoal("make the tests pass; verify: bun test", { maxTurns: 5 })
+    const { chat, goals, prompt } = yield* startGoal("make the tests pass; verify: bun test; gate: true", {
+      maxTurns: 5,
+    })
 
     yield* llm.textMatch(judgeRequest, verdict("continue", "the tests were not run"))
     yield* llm.textMatch(judgeRequest, verdict("done", "bun test shows 12 pass"))
@@ -3088,7 +3094,7 @@ it.instance("a CONTINUE verdict is one more synthetic turn inside the same run; 
 
     const goal = yield* goals.get(chat.id)
     expect(goal?.status).toBe("done")
-    expect(goal?.turns.used).toBe(1)
+    expect(goal?.turns.used).toBe(2)
     expect(goal?.last?.verdict).toBe("done")
 
     const guards = yield* SessionGuardLog.Service
@@ -3097,16 +3103,98 @@ it.instance("a CONTINUE verdict is one more synthetic turn inside the same run; 
   }),
 )
 
+it.instance(
+  "a Plan-only goal records the real plan and finishes without Build approval",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt, sessions } = yield* startGoal("Prepare the implementation plan", {
+        agent: "plan",
+        maxTurns: 3,
+      })
+      const instance = yield* InstanceState.context
+      yield* Effect.promise(() =>
+        Bun.write(Session.plan(chat, instance), "# Plan\nChange src/index.ts and verify with bun test."),
+      )
+      yield* llm.textMatch(judgeRequest, verdict("done", "The recorded plan covers the request"))
+      yield* llm.tool("plan_exit", {})
+      yield* llm.text("The plan is ready for review.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Plan-only goal did not finish", "30 seconds")
+      expect((yield* goals.get(chat.id))?.status).toBe("done")
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      expect(messages.filter((message) => message.info.role === "user").map((message) => message.info.agent)).toEqual([
+        "plan",
+      ])
+      expect(JSON.stringify(messages)).toContain("Plan-only goal: revision")
+      const exit = messages
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === "tool" && part.tool === "plan_exit")
+      expect(exit?.type === "tool" && exit.state.status === "completed" && exit.state.metadata.agent).toBe("plan")
+    }),
+  30000,
+)
+
+it.instance(
+  "a Goal budget admits each provider attempt and prevents a retry after exhaustion",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("Try the provider once", { maxTurns: 1 })
+      yield* llm.error(503, { error: { message: "Service temporarily unavailable", type: "server_error" } })
+      yield* llm.text("This retry must never be sent")
+      yield* llm.textMatch(judgeRequest, verdict("continue", "Still needs evidence"))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "retry did not finish", "15 seconds")
+      const goal = yield* goals.get(chat.id)
+      expect((yield* llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(1)
+      expect(goal?.turns.used).toBe(1)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toContain("/goal-budget")
+    }),
+  20000,
+)
+
+it.instance(
+  "a successful provider retry consumes a second Goal attempt",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("Recover within the budget", { maxTurns: 2 })
+      yield* llm.error(503, { error: { message: "Service temporarily unavailable", type: "server_error" } })
+      yield* llm.text("Recovered")
+      yield* llm.textMatch(judgeRequest, verdict("continue", "Still needs evidence"))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "retry did not finish", "15 seconds")
+      expect((yield* llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(2)
+      expect((yield* goals.get(chat.id))?.turns.used).toBe(2)
+    }),
+  20000,
+)
+
+it.instance(
+  "a terminal provider failure blocks the Goal before the session becomes idle",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("Complete the objective", { maxTurns: 2 })
+      yield* llm.error(400, { error: { message: "Invalid model request", type: "invalid_request_error" } })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "failure did not finish", "10 seconds")
+      const goal = yield* goals.get(chat.id)
+      const status = yield* SessionStatus.Service
+      expect(goal?.status).toBe("blocked")
+      expect(goal?.reason).toContain("Invalid model request")
+      expect(goal?.turns.used).toBe(1)
+      expect((yield* status.get(chat.id)).type).toBe("idle")
+    }),
+  20000,
+)
+
 it.instance("the turn budget ends the loop with a reason that says running out is not completion", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => providerCfg(url))
     const { chat, goals, prompt } = yield* startGoal("never done", { maxTurns: 1 })
     yield* llm.textMatch(judgeRequest, verdict("continue", "more"))
-    yield* llm.textMatch(judgeRequest, verdict("continue", "still more"))
     yield* llm.text("one")
-    yield* llm.text("two")
     yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
-    expect(yield* userTexts(chat.id)).toHaveLength(2)
+    expect(yield* userTexts(chat.id)).toHaveLength(1)
     const goal = yield* goals.get(chat.id)
     expect(goal?.status).toBe("paused")
     expect(goal?.reason).toContain("not completion")
@@ -3132,7 +3220,7 @@ it.instance("a failing gate is more work and the judge is never asked", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => providerCfg(url))
     const { chat, goals, prompt } = yield* startGoal("make it green; gate: echo the-gate-said-no && exit 3", {
-      maxTurns: 1,
+      maxTurns: 2,
     })
     yield* llm.text("first try")
     yield* llm.text("second try")
@@ -3145,14 +3233,14 @@ it.instance("a failing gate is more work and the judge is never asked", () =>
     expect(yield* llm.calls).toBe(2)
     const goal = yield* goals.get(chat.id)
     expect(goal?.status).toBe("paused")
-    expect(goal?.turns.used).toBe(1)
+    expect(goal?.turns.used).toBe(2)
   }),
 )
 
 it.instance("goal_complete's evidence reaches the judge; a rejected claim continues", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => providerCfg(url))
-    const { chat, goals, prompt } = yield* startGoal("ship the feature", { maxTurns: 3 })
+    const { chat, goals, prompt } = yield* startGoal("ship the feature; gate: true", { maxTurns: 3 })
     yield* llm.textMatch(judgeRequest, verdict("continue", "the evidence covers one file, not the feature"))
     yield* llm.textMatch(judgeRequest, verdict("done", "ok"))
     yield* llm.tool("goal_complete", { evidence: "src/a.ts now exports run(); bun test src/a.test.ts: 1 pass" })
@@ -3170,7 +3258,7 @@ it.instance("goal_complete's evidence reaches the judge; a rejected claim contin
 it.instance("an unreadable judge continues, and cancel pauses the goal as interrupted", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => providerCfg(url))
-    const { chat, goals, prompt } = yield* startGoal("x", { maxTurns: 2 })
+    const { chat, goals, prompt } = yield* startGoal("x; gate: true", { maxTurns: 2 })
     yield* llm.textMatch(judgeRequest, "I think it is probably fine")
     yield* llm.textMatch(judgeRequest, verdict("done", "fine"))
     yield* llm.text("one")
@@ -3202,7 +3290,7 @@ it.instance("a goal driven by another process pauses instead of restarting itsel
 )
 
 it.instance(
-  "a background subagent parks the loop on WAIT; its report re-enters the parent and the judge runs again",
+  "a background subagent defers judging until its report re-enters the parent",
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) => providerCfg(url))
@@ -3225,7 +3313,6 @@ it.instance(
         has("look into the cache key path"),
         reply().wait(gate.promise).text("Fixed the key in cache.ts; bun test: 12 pass.").stop(),
       )
-      yield* llm.textMatch(judgeRequest, verdict("wait", "the subagent is still running"))
       // Turn 2 is the child's report re-entering the parent.
       yield* llm.textMatch(has("Background task completed"), "The subagent fixed it and the tests pass.")
       yield* llm.textMatch(judgeRequest, verdict("done", "cache.ts changed and bun test shows 12 pass"))
@@ -3234,8 +3321,9 @@ it.instance(
 
       const parked = yield* goals.get(chat.id)
       expect(parked?.status).toBe("active")
-      expect(parked?.last?.verdict).toBe("wait")
-      expect(parked?.turns.used).toBe(0)
+      expect(parked?.last).toBeUndefined()
+      expect(parked?.turns.used).toBe(2)
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(0)
       const running = (yield* jobs.list()).filter((job) => job.metadata?.["parentSessionId"] === chat.id)
       expect(running).toHaveLength(1)
 
@@ -3260,12 +3348,13 @@ it.instance(
       )
       expect(settled?.status).toBe("done")
       expect(settled?.last?.verdict).toBe("done")
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(1)
 
       const users = yield* userTexts(chat.id)
       expect(users.some((text) => text.includes("Background task completed"))).toBe(true)
       const guards = yield* SessionGuardLog.Service
       const trips = (yield* guards.recent()).filter((t) => t.guard === "goal")
-      expect(trips.map((t) => t.action).sort()).toEqual(["stop", "warn"])
+      expect(trips.map((t) => t.action)).toEqual(["stop"])
     }),
   60_000,
 )

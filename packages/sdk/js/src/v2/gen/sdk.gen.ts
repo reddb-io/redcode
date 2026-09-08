@@ -24,6 +24,11 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DesignCreate,
+  DesignFeedback,
+  DesignImportAsset,
+  DesignRender,
+  DesignUpdate,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -191,6 +196,56 @@ import type {
   RedskilledWorkerSteerStatusResponses,
   RedskilledWorkerStopErrors,
   RedskilledWorkerStopResponses,
+  ServerDesignDesignApproveErrors,
+  ServerDesignDesignApproveResponses,
+  ServerDesignDesignAssetFileErrors,
+  ServerDesignDesignAssetFileResponses,
+  ServerDesignDesignAssetsErrors,
+  ServerDesignDesignAssetsResponses,
+  ServerDesignDesignCancelErrors,
+  ServerDesignDesignCancelResponses,
+  ServerDesignDesignCreateErrors,
+  ServerDesignDesignCreateResponses,
+  ServerDesignDesignDownloadErrors,
+  ServerDesignDesignDownloadResponses,
+  ServerDesignDesignFeedbackErrors,
+  ServerDesignDesignFeedbackResponses,
+  ServerDesignDesignGetErrors,
+  ServerDesignDesignGetResponses,
+  ServerDesignDesignImportAssetErrors,
+  ServerDesignDesignImportAssetResponses,
+  ServerDesignDesignJobsErrors,
+  ServerDesignDesignJobsResponses,
+  ServerDesignDesignListErrors,
+  ServerDesignDesignListResponses,
+  ServerDesignDesignPreviewErrors,
+  ServerDesignDesignPreviewResponses,
+  ServerDesignDesignPublishErrors,
+  ServerDesignDesignPublishResponses,
+  ServerDesignDesignRefreshErrors,
+  ServerDesignDesignRefreshResponses,
+  ServerDesignDesignRenderErrors,
+  ServerDesignDesignRenderResponses,
+  ServerDesignDesignReopenErrors,
+  ServerDesignDesignReopenResponses,
+  ServerDesignDesignRestoreErrors,
+  ServerDesignDesignRestoreResponses,
+  ServerDesignDesignReviewErrors,
+  ServerDesignDesignReviewResponses,
+  ServerDesignDesignRevisionsErrors,
+  ServerDesignDesignRevisionsResponses,
+  ServerDesignDesignUpdateErrors,
+  ServerDesignDesignUpdateResponses,
+  ServerDesignDesignWhiteboardErrors,
+  ServerDesignDesignWhiteboardResponses,
+  ServerSessionSessionGoalControlErrors,
+  ServerSessionSessionGoalControlResponses,
+  ServerSessionSessionGoalErrors,
+  ServerSessionSessionGoalResponses,
+  ServerSessionSessionGoalSetErrors,
+  ServerSessionSessionGoalSetResponses,
+  ServerSessionSessionPlansErrors,
+  ServerSessionSessionPlansResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -211,9 +266,11 @@ import type {
   SessionGetResponses,
   SessionGoalBudgetErrors,
   SessionGoalBudgetResponses,
+  SessionGoalControl,
   SessionGoalDropErrors,
   SessionGoalDropResponses,
   SessionGoalErrors,
+  SessionGoalInput,
   SessionGoalPauseErrors,
   SessionGoalPauseResponses,
   SessionGoalResponses,
@@ -4163,6 +4220,7 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       workspace?: string
+      agent?: string
       text?: string
       max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     },
@@ -4176,6 +4234,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "body", key: "agent" },
             { in: "body", key: "text" },
             { in: "body", key: "max_turns" },
           ],
@@ -7707,6 +7766,778 @@ export class V2 extends HeyApiClient {
   }
 }
 
+export class Session4 extends HeyApiClient {
+  public goal<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      ServerSessionSessionGoalResponses,
+      ServerSessionSessionGoalErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/goal",
+      ...options,
+      ...params,
+    })
+  }
+
+  public goalSet<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      sessionGoalInput: SessionGoalInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "sessionGoalInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerSessionSessionGoalSetResponses,
+      ServerSessionSessionGoalSetErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/goal",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public goalControl<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      sessionGoalControl: SessionGoalControl
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "sessionGoalControl", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerSessionSessionGoalControlResponses,
+      ServerSessionSessionGoalControlErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/goal/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public plans<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      ServerSessionSessionPlansResponses,
+      ServerSessionSessionPlansErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/plan",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Session5 extends HeyApiClient {
+  private _session?: Session4
+  get session(): Session4 {
+    return (this._session ??= new Session4({ client: this.client }))
+  }
+}
+
+export class Design extends HeyApiClient {
+  public review<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignReviewResponses,
+      ServerDesignDesignReviewErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/review",
+      ...options,
+      ...params,
+    })
+  }
+
+  public whiteboard<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignWhiteboardResponses,
+      ServerDesignDesignWhiteboardErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/whiteboard",
+      ...options,
+      ...params,
+    })
+  }
+
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignListResponses,
+      ServerDesignDesignListErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design",
+      ...options,
+      ...params,
+    })
+  }
+
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designCreate: DesignCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "designCreate", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignCreateResponses,
+      ServerDesignDesignCreateErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignGetResponses,
+      ServerDesignDesignGetErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designUpdate: DesignUpdate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designUpdate", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      ServerDesignDesignUpdateResponses,
+      ServerDesignDesignUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public revisions<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignRevisionsResponses,
+      ServerDesignDesignRevisionsErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/revision",
+      ...options,
+      ...params,
+    })
+  }
+
+  public publish<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignPublishResponses,
+      ServerDesignDesignPublishErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/revision",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public preview<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      revisionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "path", key: "revisionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignPreviewResponses,
+      ServerDesignDesignPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/revision/{revisionID}/preview",
+      ...options,
+      ...params,
+    })
+  }
+
+  public restore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      revision?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "body", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignRestoreResponses,
+      ServerDesignDesignRestoreErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/restore",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public reopen<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignReopenResponses,
+      ServerDesignDesignReopenErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/reopen",
+      ...options,
+      ...params,
+    })
+  }
+
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignRefreshResponses,
+      ServerDesignDesignRefreshErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
+  public feedback<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designFeedback: DesignFeedback
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designFeedback", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignFeedbackResponses,
+      ServerDesignDesignFeedbackErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/feedback",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public approve<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      revision?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "body", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignApproveResponses,
+      ServerDesignDesignApproveErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/approve",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public assets<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignAssetsResponses,
+      ServerDesignDesignAssetsErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/asset",
+      ...options,
+      ...params,
+    })
+  }
+
+  public importAsset<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designImportAsset: DesignImportAsset
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designImportAsset", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignImportAssetResponses,
+      ServerDesignDesignImportAssetErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/asset",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public jobs<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignJobsResponses,
+      ServerDesignDesignJobsErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/job",
+      ...options,
+      ...params,
+    })
+  }
+
+  public render<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designRender: DesignRender
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designRender", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignRenderResponses,
+      ServerDesignDesignRenderErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/job",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      jobID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "path", key: "jobID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ServerDesignDesignCancelResponses,
+      ServerDesignDesignCancelErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/job/{jobID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  public download<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      jobID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "path", key: "jobID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignDownloadResponses,
+      ServerDesignDesignDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/job/{jobID}/file",
+      ...options,
+      ...params,
+    })
+  }
+
+  public assetFile<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      assetID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "path", key: "assetID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignAssetFileResponses,
+      ServerDesignDesignAssetFileErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/asset/{assetID}/file",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Design2 extends HeyApiClient {
+  private _design?: Design
+  get design(): Design {
+    return (this._design ??= new Design({ client: this.client }))
+  }
+}
+
+export class Server extends HeyApiClient {
+  private _session?: Session5
+  get session(): Session5 {
+    return (this._session ??= new Session5({ client: this.client }))
+  }
+
+  private _design?: Design2
+  get design(): Design2 {
+    return (this._design ??= new Design2({ client: this.client }))
+  }
+}
+
 export class RedcodeClient extends HeyApiClient {
   public static readonly __registry = new HeyApiRegistry<RedcodeClient>()
 
@@ -7853,5 +8684,10 @@ export class RedcodeClient extends HeyApiClient {
   private _v2?: V2
   get v2(): V2 {
     return (this._v2 ??= new V2({ client: this.client }))
+  }
+
+  private _server?: Server
+  get server(): Server {
+    return (this._server ??= new Server({ client: this.client }))
   }
 }

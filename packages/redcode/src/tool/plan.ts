@@ -1,8 +1,10 @@
 import path from "path"
+import { createHash } from "node:crypto"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import { Question } from "../question"
+import { GoalRuntime } from "@/session/goal-runtime"
 import { Session } from "@/session/session"
 import { MessageV2 } from "../session/message-v2"
 import { Provider } from "@/provider/provider"
@@ -16,6 +18,7 @@ export const PlanExitTool = Tool.define(
   "plan_exit",
   Effect.gen(function* () {
     const session = yield* Session.Service
+    const goals = yield* GoalRuntime.Service
     const question = yield* Question.Service
     const provider = yield* Provider.Service
 
@@ -27,11 +30,21 @@ export const PlanExitTool = Tool.define(
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(instance.worktree, Session.plan(info, instance))
+          const content = yield* Effect.tryPromise(() => Bun.file(path.resolve(instance.worktree, plan)).text())
+          if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
+          const revision = createHash("sha256").update(content).digest("hex")
+          const goal = yield* goals.get(ctx.sessionID)
+          if (goal?.status === "active" && goal.stopAfter === "plan")
+            return {
+              title: "Plan ready",
+              output: `Plan-only goal: revision ${revision} is ready for review.\n\n${content}`,
+              metadata: { agent: "plan", revision },
+            }
           const answers = yield* question.ask({
             sessionID: ctx.sessionID,
             questions: [
               {
-                question: `Plan at ${plan} is complete. Would you like to switch to the build agent and start implementing?`,
+                question: `Execute plan ${plan} (revision ${revision})?\n\n${content}`,
                 header: "Build Agent",
                 custom: false,
                 options: [
@@ -43,7 +56,10 @@ export const PlanExitTool = Tool.define(
             tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
           })
 
-          if (answers[0]?.[0] === "No") yield* new Question.RejectedError()
+          if (answers[0]?.[0] !== "Yes") yield* new Question.RejectedError()
+          const current = yield* Effect.tryPromise(() => Bun.file(path.resolve(instance.worktree, plan)).text())
+          if (createHash("sha256").update(current).digest("hex") !== revision)
+            return yield* Effect.die("Plan changed during approval; review the current revision before executing")
 
           const messages = yield* session.messages({ sessionID: ctx.sessionID }).pipe(Effect.orDie)
           const lastUser = messages.findLast((item) => item.info.role === "user" && item.info.model)
@@ -64,14 +80,14 @@ export const PlanExitTool = Tool.define(
             messageID: msg.id,
             sessionID: ctx.sessionID,
             type: "text",
-            text: `The plan at ${plan} has been approved, you can now edit files. Execute the plan`,
+            text: `Plan ${plan}, revision ${revision}, has been approved. Execute this recorded content within the authorized scope:\n\n${content}`,
             synthetic: true,
           } satisfies SessionV1.TextPart)
 
           return {
             title: "Switching to build agent",
-            output: "User approved switching to build agent. Wait for further instructions.",
-            metadata: {},
+            output: `User approved plan revision ${revision}. Switch to Build and execute the recorded plan.`,
+            metadata: { agent: "build", revision },
           }
         }).pipe(Effect.orDie),
     }

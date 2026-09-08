@@ -8,10 +8,13 @@ import { Global } from "../global"
 import { Location } from "../location"
 import { PermissionV2 } from "../permission"
 import { ProjectDir } from "../project-dir"
+import { DESIGN_INSTRUCTIONS } from "../design/instructions"
 
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
   "You are an AI coding agent. Help the user accomplish software engineering tasks by inspecting the workspace, making targeted changes, and using tools according to the configured permissions."
+
+const PLAN_SYSTEM = `You are the Plan agent. Research the actual code and resolve implementation decisions without changing product code. Write the implementation plan to .red/code/plans/<name>.md, or refine the plan handed off by Design. Include the objective, ordered changes, important decisions and concrete verification commands with expected behavior. Keep the plan self-contained so a fresh agent can execute it. Ask only about preferences or tradeoffs the code cannot answer. Reuse prior authorization and preserve the goal's scope. When ready, call plan_exit with the real plan path. Shell and unclassified external tools are disabled by default in Plan; use read, glob, grep and research tools.`
 
 const PROMPT_EXPLORE = `You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 
@@ -114,7 +117,6 @@ export const Plugin = define({
       { action: "question", resource: "*", effect: "deny" },
       { action: "plan_enter", resource: "*", effect: "deny" },
       { action: "plan_exit", resource: "*", effect: "deny" },
-      { action: "design_enter", resource: "*", effect: "deny" },
       { action: "design_exit", resource: "*", effect: "deny" },
       { action: "goal_complete", resource: "*", effect: "deny" },
       { action: "read", resource: "*", effect: "allow" },
@@ -122,6 +124,14 @@ export const Plugin = define({
       { action: "read", resource: "*.env.*", effect: "ask" },
       { action: "read", resource: "*.env.example", effect: "allow" },
     ]
+    const scoped: PermissionV2.Ruleset = PermissionV2.merge(
+      defaults.map((rule) => (rule.action === "*" ? { ...rule, effect: "deny" as const } : rule)),
+      ["glob", "grep", "webfetch", "websearch", "skill", "todowrite", "goal_status"].map((action) => ({
+        action,
+        resource: "*",
+        effect: "allow" as const,
+      })),
+    )
 
     yield* ctx.agent.transform((draft) => {
       draft.update(AgentV2.defaultID, (item) => {
@@ -133,23 +143,30 @@ export const Plugin = define({
           ...PermissionV2.merge(defaults, [
             { action: "question", resource: "*", effect: "allow" },
             { action: "plan_enter", resource: "*", effect: "allow" },
-            { action: "design_enter", resource: "*", effect: "allow" },
             { action: "goal_complete", resource: "*", effect: "allow" },
           ]),
         )
       })
 
       draft.update(AgentV2.ID.make("plan"), (item) => {
+        item.system = PLAN_SYSTEM
         item.color = "accent"
         item.description = "Plan mode. Disallows all edit tools."
         item.mode = "primary"
         item.permissions.push(
-          ...PermissionV2.merge(defaults, [
+          ...PermissionV2.merge(scoped, [
             { action: "goal_complete", resource: "*", effect: "allow" },
             { action: "question", resource: "*", effect: "allow" },
             { action: "plan_exit", resource: "*", effect: "allow" },
+            { action: "design_document", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
             { action: "edit", resource: "*", effect: "deny" },
+            {
+              action: "edit",
+              resource: path.join(worktree, ".red", "code", "design", "*", "plan.md"),
+              effect: "allow",
+            },
+            { action: "edit", resource: ".red/code/design/*/plan.md", effect: "allow" },
             ...ProjectDir.DIRS.map((dir) => ({
               action: "edit" as const,
               resource: path.join(dir, "plans", "*.md"),
@@ -165,27 +182,24 @@ export const Plugin = define({
       })
 
       draft.update(AgentV2.ID.make("design"), (item) => {
+        item.system = DESIGN_INSTRUCTIONS
         item.color = "info"
         item.description =
           "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan."
         item.mode = "primary"
         item.permissions.push(
-          ...PermissionV2.merge(defaults, [
+          ...PermissionV2.merge(scoped, [
             { action: "question", resource: "*", effect: "allow" },
             { action: "design_exit", resource: "*", effect: "allow" },
+            { action: "design_*", resource: "*", effect: "allow" },
             { action: "goal_complete", resource: "*", effect: "allow" },
-            { action: "external_directory", resource: path.join(Global.Path.data, "designs", "*"), effect: "allow" },
             { action: "edit", resource: "*", effect: "deny" },
-            ...ProjectDir.DIRS.map((dir) => ({
-              action: "edit" as const,
-              resource: path.join(dir, "designs", "*"),
-              effect: "allow" as const,
-            })),
             {
               action: "edit",
-              resource: path.relative(worktree, path.join(Global.Path.data, "designs", "*")),
+              resource: path.join(worktree, ".red", "code", "design", "*", "work", "*"),
               effect: "allow",
             },
+            { action: "edit", resource: ".red/code/design/*/work/*", effect: "allow" },
           ]),
         )
       })
