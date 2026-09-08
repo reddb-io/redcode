@@ -4,10 +4,12 @@ import { DesignFeedback } from "@/design/feedback"
 import { DesignRead } from "@/design/read"
 import { DesignHandoff } from "@/design/handoff"
 import { Effect, Schema, FileSystem } from "effect"
-import { eq } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignTable } from "@reddb-io/redcode-core/design/sql"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
@@ -27,7 +29,58 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
     const url = new URL(request.url, "http://localhost")
     if (!DesignHost.allowed(request.headers.host)) return HttpServerResponse.empty({ status: 403 })
     const parts = url.pathname.split("/").filter(Boolean)
-    if (parts[0] !== "design" || parts[1] !== "session") return HttpServerResponse.empty({ status: 404 })
+    if (parts[0] !== "design") return HttpServerResponse.empty({ status: 404 })
+    const db = yield* Database.Service
+    if (request.method === "GET" && parts[1] === "list" && parts.length === 2) {
+      const directory = url.searchParams.get("directory")
+      if (!directory) return HttpServerResponse.empty({ status: 400 })
+      const rows = yield* db.db
+        .select({
+          sessionID: SessionTable.id,
+          title: SessionTable.title,
+          updated: SessionTable.time_updated,
+          design: DesignTable.data,
+        })
+        .from(SessionTable)
+        .leftJoin(
+          DesignTable,
+          and(eq(SessionTable.id, DesignTable.session_id), eq(DesignTable.directory, FSUtil.resolve(directory))),
+        )
+        .where(
+          and(
+            eq(SessionTable.directory, FSUtil.resolve(directory)),
+            isNull(SessionTable.time_archived),
+            or(isNotNull(DesignTable.id), eq(SessionTable.agent, "design")),
+          ),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      const conversations = rows.reduce((result, row) => {
+        const current = result.get(row.sessionID)
+        result.set(row.sessionID, {
+          sessionID: row.sessionID,
+          title: row.title,
+          updated: Math.max(current?.updated ?? 0, row.updated, row.design?.updated ?? 0),
+          designs: [
+            ...(current?.designs ?? []),
+            ...(row.design
+              ? [
+                  {
+                    id: row.design.id,
+                    name: row.design.name,
+                    revision: row.design.revision,
+                    approvedRevision: row.design.approvedRevision,
+                    ended: row.design.ended,
+                  },
+                ]
+              : []),
+          ],
+        })
+        return result
+      }, new Map<string, Design.Conversation>())
+      return HttpServerResponse.jsonUnsafe([...conversations.values()].sort((a, b) => b.updated - a.updated))
+    }
+    if (parts[1] !== "session") return HttpServerResponse.empty({ status: 404 })
     const sessionID = yield* Schema.decodeUnknownEffect(SessionID)(parts[2])
     if (request.method !== "GET") {
       const origin = request.headers.origin
@@ -37,7 +90,6 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       )
         return HttpServerResponse.empty({ status: 403 })
     }
-    const db = yield* Database.Service
     const row = yield* db.db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie)
     if (!row) return HttpServerResponse.empty({ status: 404 })
     const instances = yield* InstanceStore.Service
