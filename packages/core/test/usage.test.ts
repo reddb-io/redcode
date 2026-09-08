@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
 import fs from "fs"
+import os from "os"
 import path from "path"
 import { Global } from "@reddb-io/redcode-core/global"
 import { Usage } from "@reddb-io/redcode-core/usage/usage"
@@ -100,6 +101,65 @@ describe("usage sidecar", () => {
       }),
     ).toBeUndefined()
     expect(fs.existsSync(Usage.path())).toBe(false)
+  })
+
+  test("the fan-out satisfies OpenCode's foreign keys, and marks every row it introduces", () => {
+    const foreign = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "redcode-fanout-")), "opencode")
+    fs.mkdirSync(foreign, { recursive: true })
+    const file = path.join(foreign, "opencode.db")
+    const database = new Database(file, { create: true })
+    database.exec(fs.readFileSync(path.join(import.meta.dir, "fixtures", "opencode-schema.sql"), "utf8"))
+    database.close()
+
+    process.env.OPENCODE_DATA_DIR = foreign
+    try {
+      Usage.reset()
+      Usage.recordMessage({
+        id: "msg_5",
+        sessionID: "ses_abc",
+        timeCreated: 1_700_000_000_000,
+        info: assistant({ path: { cwd: "/work/project", root: "/work/project" } }),
+      })
+      Usage.reset()
+
+      const check = new Database(file, { readonly: true })
+      // Enforcement is per connection: turning it on here is what proves the rows satisfy the constraints.
+      check.exec("PRAGMA foreign_keys = ON")
+      const violations = check.query("PRAGMA foreign_key_check").all()
+      const messages = check.query<{ id: string; session_id: string }, []>("SELECT id, session_id FROM message").all()
+      const sessions = check.query<{ id: string; directory: string }, []>("SELECT id, directory FROM session").all()
+      const projects = check.query<{ id: string; worktree: string }, []>("SELECT id, worktree FROM project").all()
+      check.close()
+
+      expect(violations).toEqual([])
+      expect(messages).toHaveLength(1)
+      expect(messages[0].id).toContain(Usage.MARKER)
+      expect(messages[0].session_id).toContain(Usage.MARKER)
+      expect(sessions).toHaveLength(1)
+      expect(sessions[0].id).toContain(Usage.MARKER)
+      expect(sessions[0].directory).toBe("/work/project")
+      expect(projects).toHaveLength(1)
+      expect(projects[0].id).toContain(Usage.MARKER)
+    } finally {
+      delete process.env.OPENCODE_DATA_DIR
+      Usage.reset()
+      fs.rmSync(path.dirname(foreign), { recursive: true, force: true })
+    }
+  })
+
+  test("no OpenCode database means no fan-out, and never a created one", () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "redcode-nofanout-"))
+    process.env.OPENCODE_DATA_DIR = empty
+    try {
+      Usage.reset()
+      expect(Usage.fanoutPath()).toBeUndefined()
+      Usage.recordMessage({ id: "msg_6", sessionID: "ses_1", timeCreated: 1_700_000_000_000, info: assistant() })
+      expect(fs.readdirSync(empty)).toEqual([])
+    } finally {
+      delete process.env.OPENCODE_DATA_DIR
+      Usage.reset()
+      fs.rmSync(empty, { recursive: true, force: true })
+    }
   })
 
   test("REDCODE_DISABLE_USAGE_SIDECAR writes nothing", () => {
