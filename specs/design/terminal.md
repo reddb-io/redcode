@@ -44,9 +44,9 @@ the terminal aborts its HTTP requests and event stream; local worker shutdown is
 bounded and ends with Worker termination. Failed startup restores readline's
 previous raw-input state before propagating the error.
 
-This is a separate interactive terminal surface. The existing full-screen TUI
-still uses its legacy renderer and history model. Its existing conversations are
-not silently converted or replaced by starting Design. `--session` identifies a
+This optional terminal surface supplements the full-screen TUI. The TUI exposes
+Design through Tab and `/design`, including browser review, assets and exports in
+the current conversation. Its conversations are not converted or replaced. `--session` identifies a
 V2 session; use the original TUI to continue legacy sessions.
 
 Native releases prepare a versioned Design tool cache under

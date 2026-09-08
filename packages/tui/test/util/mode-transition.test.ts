@@ -44,3 +44,10 @@ test("running or failed handoffs do not switch the composer", () => {
   ).toBeUndefined()
   expect(modeTransition({ ...completed, tool: "plan_enter" })).toBe("plan")
 })
+
+test("Design hands off only after approval and respects Design-only goals", () => {
+  const design = { ...completed, tool: "design_exit" }
+  expect(modeTransition(design)).toBeUndefined()
+  expect(modeTransition({ ...design, state: { ...design.state, metadata: { agent: "design" } } })).toBeUndefined()
+  expect(modeTransition({ ...design, state: { ...design.state, metadata: { agent: "plan" } } })).toBe("plan")
+})

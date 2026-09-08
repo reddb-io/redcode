@@ -148,6 +148,7 @@ test("SVG asset: browser import, local GIF progress and downloadable animation",
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><circle r="4" cy="10" fill="red"><animate attributeName="cx" values="4;36;4" dur="1s" repeatCount="indefinite"/></circle></svg>',
     ),
   })
+  await page.getByRole("tab", { name: "Assets", exact: true }).click()
   await page.getByRole("option", { name: "motion.svg" }).waitFor({ state: "attached" })
   await page.waitForFunction(() => {
     const image = document.querySelector("#review")?.shadowRoot?.querySelector<HTMLImageElement>("#assets img")
@@ -177,6 +178,7 @@ test("diagram review retains the Excalidraw whiteboard and queues an image plus 
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(`${base}${current.root}/review`)
+  await page.locator("summary").getByText("Diagram or selected content", { exact: true }).click()
   await page.getByLabel("Diagram or selected content", { exact: true }).fill("graph TD\nA[Start] --> B[Review]")
   await page.getByRole("button", { name: "Open diagram whiteboard", exact: true }).click()
   const frame = page.frameLocator("#board-frame")
@@ -290,4 +292,43 @@ test("publishing a product dependency requests read permission and preserves den
   const revisions = await api<Design.Revision[]>(`${current.root}/${current.document.id}/revision`)
   expect(revisions).toHaveLength(1)
   expect(revisions[0].id).toBe(current.revision.id)
+}, 60000)
+
+test("review controls stay compact, keyboard accessible and isolated from prototype styles", async () => {
+  const current = await published("html")
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await page.goto(`${base}${current.root}/review`)
+  const prototype = page.frameLocator("#preview")
+  await prototype.getByRole("heading", { name: "Checkout" }).waitFor()
+  const before = await prototype.getByRole("button").evaluate((button) => ({
+    background: getComputedStyle(button).backgroundColor,
+    font: getComputedStyle(button).fontFamily,
+  }))
+  await page.addStyleTag({
+    content: "button { background: rgb(255, 0, 255) !important; font-family: monospace !important }",
+  })
+  expect(
+    await prototype.getByRole("button").evaluate((button) => ({
+      background: getComputedStyle(button).backgroundColor,
+      font: getComputedStyle(button).fontFamily,
+    })),
+  ).toEqual(before)
+  expect(
+    await page
+      .getByRole("button", { name: "Create design", exact: true })
+      .evaluate((button) => getComputedStyle(button).backgroundColor),
+  ).not.toBe("rgb(255, 0, 255)")
+  const preview = await page.locator("#preview").boundingBox()
+  expect(preview!.y).toBeLessThan(140)
+  expect(preview!.height).toBeGreaterThan(600)
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
+  await page.getByRole("tab", { name: "Review", exact: true }).focus()
+  await page.keyboard.press("ArrowRight")
+  expect(await page.getByRole("tab", { name: "Assets", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.getByLabel("Seconds", { exact: true }).waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect((await page.locator("#preview").boundingBox())!.height).toBeGreaterThan(150)
+  await page.close()
 }, 60000)

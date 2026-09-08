@@ -8,7 +8,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import * as LSPServer from "./server"
 import { Config } from "@/config/config"
 import { Process } from "@/util/process"
-import { spawn as lspspawn, noteRejectedNodeOption } from "./launch"
+import { LSPLaunch } from "./launch"
 import { Effect, Layer, Context, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { containsPath } from "@/project/instance-context"
@@ -221,7 +221,7 @@ const layer = Layer.effect(
                 root: existing?.root ?? (async (_file, ctx) => ctx.directory),
                 extensions: item.extensions ?? existing?.extensions ?? [],
                 spawn: async (root) => ({
-                  process: lspspawn(item.command[0], item.command.slice(1), {
+                  process: LSPLaunch.spawn(item.command[0], item.command.slice(1), {
                     cwd: root,
                     env: { ...process.env, ...item.env },
                   }),
@@ -281,55 +281,30 @@ const layer = Layer.effect(
             })
             bridge.fork(Effect.logWarning("LSP server failed", { serverID: server.id, root, error }))
           }
-          // A server that died because the environment handed it a Node flag it refuses is not
-          // a broken server: drop the flag and start it again, once.
-          const start = async () => server.spawn(root, ctx, flags)
-          let handle = await start().catch((error) => {
-            if (noteRejectedNodeOption(error)) return "retry" as const
+          const started = await LSPLaunch.recover(async () => {
+            const handle = await server.spawn(root, ctx, flags)
+            if (!handle) return
+            const client = await LSPClient.create({
+              serverID: server.id,
+              server: handle,
+              root,
+              directory: ctx.directory,
+              instance: ctx,
+            }).catch(async (error: unknown) => {
+              await Process.stop(handle.process)
+              throw error
+            })
+            return { handle, client }
+          }, lspFailure).catch((error: unknown) => {
             failed(error)
             return undefined
           })
-          if (handle === "retry")
-            handle = await start().catch((error) => {
-              failed(error)
-              return undefined
-            })
-
-          if (!handle) {
-            s.unavailable.add(key)
-            bridge.fork(Effect.logDebug("LSP server unavailable", { serverID: server.id, root }))
+          if (!started) {
+            if (!s.broken.has(key)) s.unavailable.add(key)
             return undefined
           }
-          const client = await LSPClient.create({
-            serverID: server.id,
-            server: handle,
-            root,
-            directory: ctx.directory,
-            instance: ctx,
-          }).catch(async (error) => {
-            await Process.stop(handle.process)
-            // The flag is only named once the server has started and refused, so the rejection
-            // usually lands here, during initialization, rather than on spawn.
-            if (noteRejectedNodeOption(error)) {
-              const again = await start().catch(() => undefined)
-              if (again)
-                return await LSPClient.create({
-                  serverID: server.id,
-                  server: again,
-                  root,
-                  directory: ctx.directory,
-                  instance: ctx,
-                }).catch(async (retryError) => {
-                  failed(retryError)
-                  await Process.stop(again.process)
-                  return undefined
-                })
-            }
-            failed(error)
-            return undefined
-          })
-
-          if (!client) return undefined
+          const handle = started.handle
+          const client = started.client
 
           const existing = s.clients.find((x) => x.root === root && x.serverID === server.id)
           if (existing) {

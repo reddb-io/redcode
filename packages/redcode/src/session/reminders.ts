@@ -1,3 +1,6 @@
+import { DESIGN_INSTRUCTIONS } from "@reddb-io/redcode-core/design/instructions"
+import { DesignStudio } from "@/design/studio"
+import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import path from "path"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Effect } from "effect"
@@ -39,6 +42,28 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text: SessionGoal.render(goal),
       synthetic: true,
     })
+  }
+
+  if (input.agent.name === "design") {
+    const studio = yield* DesignStudio.Service
+    const documents = yield* studio.use(DesignStore.Service.use((store) => store.list(input.session.id)))
+    userMessage.parts.push({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      synthetic: true,
+      text:
+        DESIGN_INSTRUCTIONS +
+        "\n\nThis is the current TUI conversation. Browser feedback and approval return here.\n" +
+        documents
+          .map(
+            (document) =>
+              `Design ${document.id}: ${document.name}; root ${document.root}; revision ${document.revision ?? "unpublished"}; ${document.ended ? "ended: do not reopen without the user asking" : "open"}`,
+          )
+          .join("\n"),
+    })
+    return input.messages
   }
 
   if (!flags.experimentalPlanMode) {

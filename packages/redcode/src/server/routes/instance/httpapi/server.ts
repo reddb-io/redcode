@@ -1,3 +1,7 @@
+import { DesignReviewServer } from "@/design/review-server"
+import { DesignFeedback } from "@/design/feedback"
+import { serveDesignEffect } from "@/server/shared/design"
+import { DesignStudio } from "@/design/studio"
 import { Config as EffectConfig, Context, Effect, Layer } from "effect"
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
 import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
@@ -202,6 +206,13 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+const designRoute = HttpRouter.use((router) =>
+  Effect.gen(function* () {
+    const services = yield* Effect.context<Effect.Services<ReturnType<typeof serveDesignEffect>>>()
+    yield* router.add("*", "/design/*", (request) => serveDesignEffect(request).pipe(Effect.provide(services)))
+  }),
+).pipe(Layer.provide(authOnlyRouterLayer))
+
 const uiRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
@@ -221,6 +232,9 @@ type RouteRequirements =
   | HttpRouter.Request<"GlobalRequires", never>
 
 const app = LayerNode.group([
+  DesignStudio.node,
+  DesignReviewServer.node,
+  DesignFeedback.node,
   Npm.node,
   FSUtil.node,
   Database.node,
@@ -295,6 +309,7 @@ export function createRoutes(
     serverRoutes,
     rpcRoutes,
     docRoute,
+    designRoute,
     uiRoute,
   ).pipe(
     Layer.provide([

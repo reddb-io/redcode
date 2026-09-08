@@ -246,14 +246,15 @@ HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 
 ## Modes
 
-Build, Plan and Design define what the agent may change. The full-screen TUI uses its existing
-session runtime for Build and Plan; `Tab` switches between available agents. Design now starts in
-its own SessionV2 terminal with `redcode design`, or in a SessionV2 session in the web app. The
-TUI's `/design` command shows how to open that terminal. Existing conversations are preserved;
-a legacy session ID cannot be adopted as a V2 session.
+Build, Plan and Design are the three primary modes in the full-screen TUI. Press `Tab`
+to cycle between them: Build is red, Plan is gold and Design is cyan. `/design` selects
+Design in the current conversation; `/design-review` reopens its browser review. Prototype
+changes, generated assets, browser feedback and approved handoffs remain in that same
+conversation. Design edits only its prototype work directory.
 
-In `redcode design`, use `/mode design|plan|build` to change the active mode explicitly. Mode
-changes keep the current SessionV2 history; they do not expand an existing Goal's scope.
+The web app and the optional `redcode design` terminal also use the shared Design
+storage and rendering services. Existing TUI sessions keep their history and execution
+runtime; using Design does not require moving to another terminal.
 
 <img src="docs/modes/build.svg" alt="Build mode" width="100%" />
 
@@ -275,18 +276,18 @@ reuse application components and design-system evidence through authorized reads
 
 ## Design Mode
 
-Design combines a resumable terminal session with a browser review surface. It supports HTML,
+Design combines the full-screen TUI conversation with a browser review surface. It supports HTML,
 React and Solid prototypes, versioned assets, editable SVG-to-GIF exports, and recorded approval.
 
 ### Start
 
 ```sh
-redcode design "Explore the settings screen"
-redcode design --model provider/model
-redcode design --session ses_existing_v2
+redcode
+# Press Tab to select Design, or use /design.
+# Use /design-review to reopen the current conversation’s browser review.
 ```
 
-Use `/review` inside the terminal to open the browser. Choose a starting point, the target
+Use `/design-review` inside the terminal to open the browser. Choose a starting point, the target
 application, an engine and an objective. The agent publishes revisions with `design_preview`.
 The web app opens the same review implementation in its **Design** tab.
 
@@ -339,10 +340,12 @@ streaming and migration of the full-screen TUI renderer remain future work.
 | The plan's marked Design section | Reviewed scope and evidence for the implementation handoff |
 | `DESIGN.md` or `.red/DESIGN.md` | Project design guidance used as source evidence |
 
-Version 0.22 moves Design off the legacy agents and `/design` HTTP routes. Existing V1 Design
-state and `design.json` files are not migrated automatically. Keep old artifacts when upgrading;
-new reviews use `/api/session/:sessionID/design/review`. Legacy Design configuration options do
-not configure the new review surface.
+Design is available in the existing full-screen TUI again. New documents use the shared
+revision and asset store. When continuing a pre-0.22 prototype, `design_preview` still
+accepts its original `path`: it imports the source into a new document, keeps private
+review files out of the published snapshot, and preserves the original directory.
+TUI feedback and approvals return through `/design/session/:sessionID`; web-app sessions
+use `/api/session/:sessionID/design`.
 
 See [Design Studio](specs/design/studio.md) for storage, permissions, exports and MCP configuration,
 and [Design terminal](specs/design/terminal.md) for connection and interaction commands.

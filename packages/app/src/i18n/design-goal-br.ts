@@ -1,5 +1,6 @@
 export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.title": "Design",
+  "session.design.studio.details": "Detalhes",
   "session.design.studio.create": "Criar design",
   "session.design.studio.name": "Nome",
   "session.design.studio.journey": "Ponto de partida",

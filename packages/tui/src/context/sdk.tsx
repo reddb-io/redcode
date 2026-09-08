@@ -165,6 +165,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         }
       },
       fetch: props.fetch ?? fetch,
+      headers: props.headers,
       url: props.url,
     }
   },

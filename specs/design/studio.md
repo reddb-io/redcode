@@ -5,7 +5,7 @@ Design is a SessionV2 workflow for creating interfaces and evolving existing app
 ## Entry points
 
 - App and desktop: open **Design** from session commands. A completed `design_preview` opens its design once; subsequent revisions do not reopen a closed tab.
-- TUI: `/design` offers the `redcode design` command for a separate SessionV2 terminal. In that terminal, `/review` opens `/api/session/:sessionID/design/review` in the browser. Existing TUI conversations remain on their original session contract.
+- TUI: `Tab` cycles Build, Plan and Design. `/design` selects the cyan Design mode; `/design-review` opens the current conversation’s browser review. The TUI uses the shared DesignStore and DesignRenderer with its existing session, permission, question and handoff services. A loopback review listener starts only when needed. No SessionV2 model runner is started for a TUI conversation.
 - Both surfaces use the same native review implementation in `packages/design`. The app mounts it without another review iframe; the standalone server supplies the same function and copy dictionary. Prototype and whiteboard frames have opaque sandbox origins and receive no server credentials.
 
 The intake records the starting point, target application, HTML/React/Solid engine, objective, audience, constraints and references. Creating a document selects the Design agent. Review feedback is admitted through SessionV2 before the browser reports success; it does not wait for a provider response. A configured model is still required for the agent to act on feedback.
@@ -80,3 +80,17 @@ For comparison, run `design_export` with `format: "compare"`, the approved `revi
 Design's V1 agent, tool registrations and `/design/*` routing are removed. Old design sessions are not adapted or migrated. JSON remains at established HTTP/MCP and SQLite boundaries and in portable Excalidraw/approval files; the new design workflow does not introduce a second wire protocol.
 
 Validation lives in `packages/core/test/design.test.ts`, `packages/core/test/plugin/design-tools.test.ts`, `packages/core/test/mcp-design.test.ts`, `packages/server/test/design-review.test.ts`, the existing app preview-selection tests, and the HttpApi code-generation suite. Browser tests use real V2 endpoints, local files, Chromium and a GIF decoder. They exercise admission without a configured provider; they do not claim to evaluate an external model's visual quality or a paid image service.
+
+## Full-screen TUI compatibility
+
+The TUI exposes the same document, revision, asset, export and audit domain services.
+Its adapter owns legacy message admission, MCP tool permissions and approved Plan
+handoffs. Explicit `media` declarations on legacy MCP servers enable `design_media`
+and `design_generate`; direct tool output can be imported with `design_asset`.
+Browser routes use `/design/session/:sessionID`, resolve the owning directory from
+storage and enforce document/session ownership. The shared review surface supports
+that endpoint without changing the web app API.
+
+Pre-0.22 `design_preview({path})` calls import source into a new document. The old
+source and `.review` files remain in place. Vendored asset references are made local
+in the imported copy. Historical feedback remains in the original TUI transcript.

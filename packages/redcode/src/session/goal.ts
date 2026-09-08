@@ -35,7 +35,7 @@ export interface Contract {
 
 export interface Goal {
   readonly id: string
-  readonly stopAfter?: "plan" | "build"
+  readonly stopAfter?: "design" | "plan" | "build"
   readonly objective: string
   readonly contract: Contract
   /** Shell commands that must exit 0 before the judge is asked at all. */
@@ -74,7 +74,7 @@ const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate"]> = [
  */
 export function parse(
   text: string,
-  options?: { maxTurns?: number; now?: number; id?: string; stopAfter?: "plan" | "build" },
+  options?: { maxTurns?: number; now?: number; id?: string; stopAfter?: "design" | "plan" | "build" },
 ): Goal {
   const objective: string[] = []
   const contract: Record<string, string> = {}
@@ -122,7 +122,7 @@ export function fromMetadata(metadata: Record<string, unknown> | undefined): Goa
     : "paused"
   return {
     id: g.id,
-    ...(g.stopAfter === "plan" || g.stopAfter === "build" ? { stopAfter: g.stopAfter } : {}),
+    ...(g.stopAfter === "design" || g.stopAfter === "plan" || g.stopAfter === "build" ? { stopAfter: g.stopAfter } : {}),
     objective: g.objective,
     contract: g.contract && typeof g.contract === "object" ? g.contract : {},
     gates: Array.isArray(g.gates) ? g.gates.filter((x): x is string => typeof x === "string") : [],
@@ -356,7 +356,7 @@ export const Info = Schema.Struct({
     boundaries: Schema.optional(Schema.String),
     stop_when: Schema.optional(Schema.String),
   }),
-  stopAfter: Schema.optional(Schema.Literals(["plan", "build"])),
+  stopAfter: Schema.optional(Schema.Literals(["design", "plan", "build"])),
   gates: Schema.Array(Schema.String),
   status: Schema.Literals(["active", "paused", "blocked", "done", "dropped"]),
   reason: Schema.optional(Schema.String),

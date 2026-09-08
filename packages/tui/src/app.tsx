@@ -680,6 +680,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       {
+        name: "agent.design",
+        title: "Switch to Design mode",
+        category: "Agent",
+        slashName: "design",
+        run: () => {
+          local.agent.set("design")
+          dialog.clear()
+        },
+      },
+      {
         name: "agent.list",
         title: "Switch agent",
         category: "Agent",
@@ -1113,9 +1123,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         evt.stopPropagation()
       }}
       onMouseUp={
-        !Flag.REDCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
-          ? () => Selection.copy(renderer, toast, clipboard)
-          : undefined
+        !Flag.REDCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? () => Selection.copy(renderer, toast, clipboard) : undefined
       }
     >
       <Show when={Flag.REDCODE_SHOW_TTFD}>

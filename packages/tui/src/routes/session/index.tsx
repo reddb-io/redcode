@@ -1,6 +1,5 @@
 import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
-import { DialogDesignEntry } from "../../component/dialog-design-entry"
 import { modeTransition } from "../../util/mode-transition"
 import {
   batch,
@@ -346,6 +345,16 @@ export function Session() {
     })
   })
 
+  const savedMode = { sessionID: "", agent: undefined as string | undefined }
+  createEffect(() => {
+    const current = session()
+    if (!current?.agent) return
+    if (savedMode.sessionID === current.id && savedMode.agent === current.agent) return
+    savedMode.sessionID = current.id
+    savedMode.agent = current.agent
+    local.agent.set(current.agent)
+  })
+
   let lastSwitch: string | undefined = undefined
   event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
@@ -511,12 +520,22 @@ export function Session() {
 
   const sessionCommandList = createMemo(() => [
     {
-      title: "Start a Design workspace",
-      value: "session.design",
+      title: "Open Design review",
+      value: "session.design.review",
       category: "Session",
-      slash: { name: "design" },
-      run: () => {
-        dialog.replace(() => <DialogDesignEntry />)
+      slash: { name: "design-review" },
+      run: async () => {
+        const { default: open } = await import("open")
+        const response = await sdk.fetch(new URL(`/design/session/${route.sessionID}/open`, sdk.url), {
+          headers: sdk.headers,
+        })
+        if (!response.ok) {
+          toast.show({ variant: "error", message: "Could not open the Design review" })
+          return
+        }
+        const value: { url: string } = await response.json()
+        await open(value.url).catch((error) => toast.show({ variant: "error", message: errorMessage(error) }))
+        dialog.clear()
       },
     },
     {

@@ -1844,6 +1844,13 @@ export type ProviderConfig = {
 }
 
 export type McpLocalConfig = {
+  media?: {
+    [key: string]: {
+      operations: Array<"generate" | "edit" | "reference">
+      formats: Array<string>
+      transparency: boolean
+    }
+  }
   /**
    * Type of MCP server connection
    */
@@ -1869,6 +1876,13 @@ export type McpOAuthConfig = {
 }
 
 export type McpRemoteConfig = {
+  media?: {
+    [key: string]: {
+      operations: Array<"generate" | "edit" | "reference">
+      formats: Array<string>
+      transparency: boolean
+    }
+  }
   /**
    * Type of MCP server connection
    */
@@ -2648,7 +2662,7 @@ export type SessionGoal = {
     boundaries?: string
     stop_when?: string
   }
-  stopAfter?: "plan" | "build"
+  stopAfter?: "design" | "plan" | "build"
   gates: Array<string>
   status: "active" | "paused" | "blocked" | "done" | "dropped"
   reason?: string

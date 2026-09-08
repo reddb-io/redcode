@@ -1,3 +1,6 @@
+import { DesignReviewServer } from "@/design/review-server"
+import { DesignTools } from "./design"
+import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
@@ -106,6 +109,7 @@ const layer = Layer.effect(
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
+    const design = yield* DesignTools
     const plan = yield* PlanExitTool
     const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
@@ -250,6 +254,7 @@ const layer = Layer.effect(
             ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
             tool.plan,
+            ...design,
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
             tool.goal_complete,
           ],
@@ -434,6 +439,8 @@ export const node = LayerNode.make({
   service: Service,
   layer,
   deps: [
+    DesignStudio.node,
+    DesignReviewServer.node,
     GoalRuntime.node,
     Config.node,
     Plugin.node,

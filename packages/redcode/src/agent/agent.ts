@@ -194,6 +194,47 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
           },
+          design: {
+            name: "design",
+            color: "info",
+            description:
+              "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan.",
+            options: {},
+            permission: Permission.merge(
+              defaults.map((rule) => (rule.permission === "*" ? { ...rule, action: "deny" as const } : rule)),
+              Permission.fromConfig({
+                glob: "allow",
+                grep: "allow",
+                list: "allow",
+                webfetch: "allow",
+                websearch: "allow",
+                skill: "allow",
+                todowrite: "allow",
+                "design_*": "allow",
+                bash: "deny",
+                task: { "*": "deny", explore: "allow" },
+                goal_complete: "allow",
+                question: "allow",
+                design_exit: "allow",
+                // Edits belong to the prototype. A design session that starts changing the product
+                // has stopped being a design session, and the user has no way to see it happen.
+                edit: {
+                  "*": "deny",
+                  [path.join(ctx.directory, ".red", "code", "design", "*", "work", "*")]: "allow",
+                  [path.relative(ctx.worktree, path.join(ctx.directory, ".red", "code", "design", "*", "work", "*"))]:
+                    "allow",
+                  ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "designs", "*"), "allow"])),
+                  [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("designs", "*")))]: "allow",
+                },
+                external_directory: {
+                  [path.join(Global.Path.data, "designs", "*")]: "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
           general: {
             name: "general",
             description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
