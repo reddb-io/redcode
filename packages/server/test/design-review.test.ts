@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
+import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import { chromium, type Browser } from "playwright-core"
@@ -8,7 +9,10 @@ import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
 import { designDependencies } from "../../core/test/fixture/design-dependencies"
 
-const directory = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
+const temporary = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
+const directory = path.join(temporary, "alias")
+await mkdir(path.join(temporary, "workspace"))
+await symlink(path.join(temporary, "workspace"), directory, process.platform === "win32" ? "junction" : "dir")
 const web = webHandler()
 const server = Bun.serve({
   port: 0,
@@ -57,7 +61,7 @@ afterAll(async () => {
   await browser?.close()
   await server.stop(true)
   await web.dispose()
-  await rm(directory, { recursive: true, force: true })
+  await rm(temporary, { recursive: true, force: true })
 }, 30000)
 
 test("intake creates a new alternative without polling closing the brief", async () => {
@@ -246,7 +250,19 @@ test("publishing a product dependency requests read permission and preserves den
         if (request) return request
         await Bun.sleep(20)
       }
-      throw new Error("No protected dependency permission request")
+      const pending = await api<{ data: { action: string; resources: string[] }[] }>(
+        `/api/session/${current.sessionID}/permission`,
+      )
+      throw new Error(
+        `No protected dependency permission request: ${JSON.stringify({
+          pending: pending.data,
+          directory,
+          promiseRoot: await fs.promises.realpath(directory),
+          callbackRoot: await new Promise<string>((resolve, reject) =>
+            fs.realpath(directory, (error, resolved) => (error ? reject(error) : resolve(resolved))),
+          ),
+        })}`,
+      )
     })(),
     response.then(() => {
       throw new Error("Publish completed before asking permission")
