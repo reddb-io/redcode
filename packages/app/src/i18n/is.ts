@@ -1,3 +1,5 @@
+import { designGoalDictionary } from "./design-goal"
+
 import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
@@ -94,6 +96,7 @@ const desktop = [
 ]
 
 export const dict = {
+  ...designGoalDictionary("is"),
   ...Object.fromEntries(DESKTOP_NATIVE_KEYS.map((key, index) => [key, desktop[index]])),
   "command.category.suggested": "Tillögur",
   "command.category.view": "Skoða",
@@ -182,8 +185,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Kvíslast frá skilaboðum",
   "command.session.fork.description": "Stofna nýja setu út frá fyrri skilaboðum",

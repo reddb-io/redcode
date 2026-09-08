@@ -1,8 +1,11 @@
+import { designGoalDictionary } from "./design-goal"
+
 import { dict as en } from "./en"
 
 type Keys = keyof typeof en
 
 export const dict = {
+  ...designGoalDictionary("zh"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "文件",
   "desktop.menu.edit": "编辑",
@@ -217,8 +220,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "从消息创建新会话",
   "command.session.fork.description": "从之前的消息创建新会话",

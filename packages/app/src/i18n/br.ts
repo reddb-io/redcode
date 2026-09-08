@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict = {
+  ...designGoalDictionary("br"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Arquivo",
   "desktop.menu.edit": "Editar",
@@ -186,8 +189,10 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Bifurcar da mensagem",
   "command.session.fork.description": "Criar uma nova sessão a partir de uma mensagem anterior",

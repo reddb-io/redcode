@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict: Record<string, string> = {
+  ...designGoalDictionary("si"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "ගොනුව",
   "desktop.menu.edit": "සංස්කරණය කරන්න",
@@ -178,8 +181,10 @@ export const dict: Record<string, string> = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "පණිවිඩයෙන් දෙබලක",
   "command.session.fork.description": "පෙර පණිවිඩයකින් නව සැසියක් සාදන්න",

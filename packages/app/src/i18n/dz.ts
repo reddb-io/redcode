@@ -1,4 +1,7 @@
+import { designGoalDictionary } from "./design-goal"
+
 export const dict: Record<string, string> = {
+  ...designGoalDictionary("dz"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "ཡིག༌སྣོད",
   "desktop.menu.edit": "ཞུན༌དག",
@@ -181,8 +184,10 @@ export const dict: Record<string, string> = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "འཕྲིན་དོན་ལས་ཕོརཀ།",
   "command.session.fork.description": "ཧེ་མའི་འཕྲིན་དོན་ལས་ ལཱ་ཡུན་གསརཔ་ཅིག་གསར་བསྐྲུན་འབད།",

@@ -10,7 +10,7 @@ export interface ReviewOptions {
 
 /** Shared native review surface. The standalone host serializes this self-contained function. */
 export function mountReview(host: HTMLElement, options: ReviewOptions) {
-  const copy = options.copy
+  const copy = { ...options.copy }
   const request = options.request ?? fetch
   const root = host.attachShadow({ mode: "open" })
   const endpoint = `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
@@ -18,6 +18,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     creating: false,
     design: undefined as Design.Info | undefined,
     revision: "",
+    revisionInfo: undefined as Design.Revision | undefined,
+    audits: [] as Design.Job[],
     notes: [] as { target: string; text: string }[],
     assets: [] as string[],
     snapshot: "",
@@ -46,15 +48,22 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const element = <T extends HTMLElement>(id: string) => root.getElementById(id) as T
   const input = (id: string) => element<HTMLInputElement>(id)
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
-  const status = (text: string) => {
+  const status = (text: string, key?: keyof ReviewCopy) => {
     element("status").textContent = text
+    if (key) element("status").dataset.copy = key
+    else delete element("status").dataset.copy
+  }
+  const text = (id: string, value: string, fallback: keyof ReviewCopy = "none") => {
+    element(id).textContent = value || copy[fallback]
+    if (value) delete element(id).dataset.copy
+    else element(id).dataset.copy = fallback
   }
   const tasks = { tail: Promise.resolve() }
   const run = (task: () => Promise<void>) => {
     const pending = tasks.tail.then(async () => {
       if (state.stopped) return
       state.loading = true
-      status(copy.busy)
+      status(copy.busy, "busy")
       try {
         await task()
       } catch (error) {
@@ -72,14 +81,14 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px;border-bottom:1px solid #8884}h1{font-size:16px;margin:0;margin-right:auto}h2{font-size:14px;margin:0 0 8px}label{display:grid;gap:4px;margin-bottom:10px}textarea{min-height:85px;resize:vertical;width:100%}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{margin-right:6px}label.check{display:flex;align-items:center}main{height:calc(100% - 105px);display:grid;grid-template-columns:minmax(0,1fr) 300px}.canvas{background:#8882;overflow:auto;padding:16px;min-height:300px}iframe{display:block;background:white;border:0;min-height:100%;height:800px;margin:auto;width:100%;box-shadow:0 4px 24px #0001}aside{padding:16px;overflow:auto;border-left:1px solid #8884}details{border-bottom:1px solid #8884;padding:12px 0}summary{cursor:pointer;font-weight:600}form.intake{max-width:580px;margin:30px auto;padding:24px}form.intake h2{font-size:24px;margin-bottom:24px}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.note{padding:8px 0;border-bottom:1px solid #8883;overflow-wrap:anywhere}.note button{float:right;padding:2px 7px}.muted{font-size:12px;opacity:.7}#status{min-height:30px;padding:6px 12px;border-top:1px solid #8884}#studio{height:calc(100% - 90px)}#studio main{height:calc(100% - 60px)}#board-frame{min-height:0}#intake[hidden],#studio[hidden]{display:none}.asset{display:flex;gap:8px;align-items:center;padding:6px 0}.asset img{width:40px;height:40px;object-fit:contain}.primary{background:#285b49;color:white}.primary:hover{background:#367965}#target{overflow-wrap:anywhere}#jobs .note{display:grid;gap:5px}#newer{color:#367965}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#source-files{font-size:12px}small{display:block}#width{width:auto}
     @container(max-width:720px){main{display:flex;flex-direction:column;height:auto!important}.canvas{height:55vh}aside{border-left:0;border-top:1px solid #8884}iframe{height:100%}#studio{overflow:auto}}
     @media(max-width:720px){main{display:flex;flex-direction:column;height:auto}.canvas{height:60vh}aside{border-left:0;border-top:1px solid #8884}iframe{height:100%}:host{overflow:auto}header{position:sticky;top:0;background:var(--background-base,#fafaf7);z-index:2}}
-    </style><header><h1>${copy.title}</h1><select id="designs" aria-label="${copy.alternatives}"></select><button id="new">${copy.create}</button><button id="refresh">${copy.refresh}</button></header>
-    <section id="intake"><form class="intake" id="create"><h2>${copy.create}</h2><label>${copy.name}<input id="name" required></label><div class="row"><label>${copy.journey}<select id="journey"><option value="new">${copy.new}</option><option value="existing">${copy.existing}</option></select></label><label>${copy.engine}<select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label>${copy.application}<input id="application" value="."></label><label>${copy.objective}<textarea id="objective" required></textarea></label><label>${copy.audience}<input id="audience"></label><label>${copy.constraints}<textarea id="constraints"></textarea></label><label>${copy.references}<textarea id="references"></textarea></label><button class="primary">${copy.create}</button></form></section>
-    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}"></select><button id="newer" hidden>${copy.latest}</button><select id="width" aria-label="${copy.width}"><option value="100%">${copy.full}</option><option>390</option><option>768</option><option>1440</option></select><button id="restore">${copy.restore}</button><button id="approve" class="primary">${copy.approve}</button><button id="reopen" hidden>${copy.reopen}</button></header><main><div class="canvas"><iframe id="preview" title="${copy.review}" sandbox="allow-scripts allow-forms" allow=""></iframe></div><aside>
-    <details><summary>${copy.findings}</summary><div id="findings"></div></details><h2>${copy.notes}</h2><label class="check"><input id="annotate" type="checkbox">${copy.annotate}</label><p class="muted">${copy.inspect}</p><small id="target"></small><label>${copy.diagram}<textarea id="selection"></textarea></label><button type="button" id="whiteboard">${copy.whiteboard}</button><label>${copy.notes}<textarea id="note"></textarea></label><button id="add">${copy.add}</button><div id="notes"></div><label>${copy.attachment}<input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft">${copy.draft}</small><label class="check"><input type="checkbox" id="queue">${copy.queue}</label><label class="check"><input type="checkbox" id="end">${copy.end}</label><button id="send" class="primary">${copy.send}</button>
-    <details><summary>${copy.system}</summary><div id="source-files"></div><button id="refresh-system">${copy.refreshSystem}</button></details><details><summary>${copy.decisions}</summary><div id="decisions"></div><h2>${copy.questions}</h2><div id="questions"></div><h2>${copy.scenarios}</h2><div id="scenarios"></div></details>
-    <details><summary>${copy.tweaks}</summary><label>${copy.token}<input id="token" value="--accent"></label><label>${copy.value}<input id="value" value="#285b49"></label><button id="apply">${copy.apply}</button><button id="reset">${copy.reset}</button></details>
-    <details><summary>${copy.assets}</summary><div id="assets"></div></details><details open><summary>${copy.export}</summary><button id="html">${copy.html}</button><button id="audit">${copy.audit}</button><label>${copy.implementation}<input id="implementation" value="dist"></label><button id="compare">${copy.compare}</button><label>${copy.source}<select id="svg"></select></label><div class="row"><label>${copy.duration}<input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label>${copy.fps}<input id="fps" type="number" min="1" max="25" value="20"></label></div><label>${copy.size}<input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent">${copy.transparent}</label><button id="gif">${copy.gif}</button></details><details open><summary>${copy.jobs}</summary><div id="jobs"></div></details>
-    </aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close">${copy.close}</button><iframe id="board-frame" title="${copy.whiteboard}" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><div id="status" role="status" aria-live="polite"></div>`
+    </style><header><h1><span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><button id="new"><span data-copy="create">${copy.create}</span></button><button id="refresh"><span data-copy="refresh">${copy.refresh}</span></button></header>
+    <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
+    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option>390</option><option>768</option><option>1440</option></select><button id="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><main><div class="canvas"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><aside>
+    <details><summary><span data-copy="findings">${copy.findings}</span></summary><div id="findings"></div></details><h2><span data-copy="notes">${copy.notes}</span></h2><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
+    <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
+    <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
+    <details><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
+    </aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><div id="status" role="status" aria-live="polite"></div>`
 
   const save = () => {
     if (!state.design) return
@@ -97,7 +106,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         }),
       )
     } catch {
-      status(copy.failure)
+      status(copy.failure, "failure")
     }
   }
   const drawNotes = () => {
@@ -107,6 +116,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         row.className = "note"
         row.textContent = `${note.target}: ${note.text}`
         const button = document.createElement("button")
+        button.dataset.copy = "remove"
         button.textContent = copy.remove
         button.onclick = () => {
           if (state.pending) return
@@ -119,6 +129,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
       }),
     )
     element<HTMLButtonElement>("send").textContent = state.pending ? copy.retry : copy.send
+    element("send").dataset.copy = state.pending ? "retry" : "send"
     input("note").disabled = !!state.pending
   }
   const restoreDraft = () => {
@@ -141,18 +152,28 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         input("note").value = stored.text ?? ""
       }
     } catch {
-      status(copy.failure)
+      status(copy.failure, "failure")
     }
     drawNotes()
   }
   const drawSources = (revision?: Design.Revision) => {
-    element("source-files").textContent =
+    state.revisionInfo = revision
+    text(
+      "source-files",
       revision?.document.sources
         .map((item) => {
           const current = state.design?.sources.find((source) => source.file === item.file)
           return `${item.file} · ${new Date(item.observed).toLocaleString()} · ${item.hash.slice(0, 8)} · ${current?.hash === item.hash ? copy.sourceCurrent : copy.sourceChanged}`
         })
-        .join("\n") || copy.none
+        .join("\n") ?? "",
+    )
+  }
+  const drawEvidence = () => {
+    const summary = root.querySelector<HTMLElement>("[data-review-evidence]")
+    if (!summary) return
+    summary.textContent = state.audits.length
+      ? `${copy.evidence}: ${state.audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
+      : copy.noAudit
   }
   const chooseRevision = async (revisionID: string) => {
     if (state.revision) save()
@@ -169,12 +190,14 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     element<HTMLIFrameElement>("preview").srcdoc = await response.text()
     input("revisions").value = revisionID
     element("newer").hidden = state.design?.revision === revisionID
-    element("decisions").textContent = revision.document.decisions.map((item) => item.text).join("\n") || copy.none
-    element("questions").textContent = revision.document.questions.join("\n") || copy.none
-    element("scenarios").textContent =
+    text("decisions", revision.document.decisions.map((item) => item.text).join("\n"))
+    text("questions", revision.document.questions.join("\n"))
+    text(
+      "scenarios",
       revision.document.scenarios
         .map((item) => `${item.name}: ${item.state}${item.notApplicable ? ` (${item.notApplicable})` : ""}`)
-        .join("\n") || copy.none
+        .join("\n"),
+    )
     drawSources(revision)
   }
   const refresh = async (designID = state.design?.id) => {
@@ -231,6 +254,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
             `<div class="asset"><img alt="" src="${thumbnails.get(asset.id) ?? ""}"><span>${escape(asset.name)}<small>${escape(asset.source)}</small></span></div>`,
         )
         .join("") || copy.noAssets
+    if (assets.length) delete element("assets").dataset.copy
+    else element("assets").dataset.copy = "noAssets"
     const previous = input("svg").value
     element("svg").innerHTML = assets
       .filter((asset) => asset.mime === "image/svg+xml")
@@ -238,16 +263,14 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
       .join("")
     if (assets.some((asset) => asset.id === previous)) input("svg").value = previous
     const jobs = await api<Design.Job[]>(`/${current.id}/job`)
-    const audits = jobs.filter((job) => job.input.revision === state.revision && job.audit)
+    state.audits = jobs.filter((job) => job.input.revision === state.revision && job.audit)
     let summary = root.querySelector<HTMLElement>("[data-review-evidence]")
     if (!summary) {
       summary = document.createElement("div")
       summary.dataset.reviewEvidence = ""
       element("jobs").before(summary)
     }
-    summary.textContent = audits.length
-      ? `${copy.evidence}: ${audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
-      : copy.noAudit
+    drawEvidence()
     element("jobs").replaceChildren(
       ...jobs.map((job) => {
         const row = document.createElement("div")
@@ -256,6 +279,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         if (job.audit) {
           const details = document.createElement("details")
           const summary = document.createElement("summary")
+          summary.dataset.copy = "findings"
+          summary.dataset.copySuffix = `: ${job.audit.findings.length}`
           summary.textContent = `${copy.findings}: ${job.audit.findings.length}`
           const content = document.createElement("div")
           content.textContent = [...job.audit.scenarios, ...job.audit.findings].join("\n")
@@ -265,6 +290,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         }
         if (job.status === "queued" || job.status === "running" || job.status === "completed") {
           const button = document.createElement("button")
+          button.dataset.copy = job.status !== "completed" ? "cancel" : "download"
           button.textContent = job.status !== "completed" ? copy.cancel : copy.download
           button.onclick = () =>
             void run(async () => {
@@ -289,7 +315,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         return row
       }),
     )
-    status(current.ended ? copy.closed : current.revision ? copy.draft : copy.waiting)
+    const message = current.ended ? "closed" : current.revision ? "draft" : "waiting"
+    status(copy[message], message)
   }
   const click = (id: string, action: () => Promise<void>) => {
     element(id).onclick = () => void run(action)
@@ -390,7 +417,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     await api(`/${state.design!.id}/feedback`, "POST", state.pending)
     localStorage.removeItem(key())
     restoreDraft()
-    status(copy.received)
+    status(copy.received, "received")
   })
   input("attachment").onchange = () =>
     void run(async () => {
@@ -533,7 +560,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
       event.data?.type === "design:layout" &&
       Array.isArray(event.data.findings)
     ) {
-      element("findings").textContent =
+      text(
+        "findings",
         event.data.findings
           .slice(0, 30)
           .filter(
@@ -546,7 +574,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
               typeof item.target === "string",
           )
           .map((item: { target: string; text: string }) => `${item.target}: ${item.text}`)
-          .join("\n") || copy.none
+          .join("\n"),
+      )
       return
     }
     if (event.source !== element<HTMLIFrameElement>("preview").contentWindow || event.data?.type !== "design:selection")
@@ -562,7 +591,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     if (!state.loading && !state.creating && !document.hidden) void run(refresh)
   }, 5000)
   void run(refresh)
-  return () => {
+  const dispose = () => {
     save()
     state.stopped = true
     controller.abort()
@@ -572,4 +601,20 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     window.removeEventListener("message", message)
     root.replaceChildren()
   }
+  return Object.assign(dispose, {
+    updateCopy(next: ReviewCopy) {
+      if (state.stopped) return
+      Object.assign(copy, next)
+      root.querySelectorAll<HTMLElement>("[data-copy]").forEach((node) => {
+        node.textContent = copy[node.dataset.copy as keyof ReviewCopy] + (node.dataset.copySuffix ?? "")
+      })
+      for (const attribute of ["aria-label", "title"]) {
+        root.querySelectorAll<HTMLElement>(`[data-copy-${attribute}]`).forEach((node) => {
+          node.setAttribute(attribute, copy[node.getAttribute(`data-copy-${attribute}`) as keyof ReviewCopy])
+        })
+      }
+      drawSources(state.revisionInfo)
+      drawEvidence()
+    },
+  })
 }

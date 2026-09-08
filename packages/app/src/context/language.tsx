@@ -5,6 +5,7 @@ import { createSimpleContext } from "@reddb-io/redcode-ui/context"
 import { pluralCategory, type UiI18nPluralKey } from "@reddb-io/redcode-ui/context/i18n"
 import { Persist, persisted } from "@/utils/persist"
 import { dict as en } from "@/i18n/en"
+import { designGoalPluralLocale } from "@/i18n/design-goal"
 import { dict as uiEn } from "@reddb-io/redcode-ui/i18n/en"
 import {
   createDesktopNativeBundle,
@@ -197,7 +198,7 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
     ) => string
 
     const plural = (key: PluralKey, count: number, params?: Record<string, string | number | boolean>) => {
-      const category = pluralCategory(intl(), count)
+      const category = pluralCategory(INTL[designGoalPluralLocale(dict.loading ? "en" : locale(), key)], count)
       const current = (dict.loading ? base : (dict() ?? base)) as Record<string, string>
       const candidate = `${key}.${category}`
       const fallback = `${key}.other`
