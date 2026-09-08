@@ -35,6 +35,11 @@
       "bun": "./src/filesystem/fff.bun.ts",
       "node": "./src/filesystem/fff.node.ts",
       "default": "./src/filesystem/fff.bun.ts"
+    },
+    "#usage-sidecar": {
+      "bun": "./src/usage/sidecar-store.bun.ts",
+      "node": "./src/usage/sidecar-store.node.ts",
+      "default": "./src/usage/sidecar-store.bun.ts"
     }
   },
   "devDependencies": {
