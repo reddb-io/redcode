@@ -1,5 +1,16 @@
 # opencode
 
+## 0.23.0
+
+### Minor Changes
+
+- 5ce06f9: Restore Design as the cyan third mode in the fullscreen TUI, alongside Build and Plan. Keep prototyping, browser feedback, image assets, SVG-to-GIF exports and approved Plan handoffs attached to the same conversation. Reopen pre-0.22 prototypes without overwriting their sources, and retain the new Design revision and rendering services. Queued browser feedback respects session interruption and requires an explicit retry to resume.
+
+### Patch Changes
+
+- 5ce06f9: Restore a compact Design review surface with cyan actions, system light/dark themes, a viewport-sized preview, and keyboard-accessible Review, Assets and Details panels. Keep control styles inside Shadow DOM and prototype styles inside their sandboxed iframe, without adding Tailwind or a global reset.
+- 5ce06f9: Fix LSP recovery from rejected NODE_OPTIONS, including Biome startup with --user-system-ca. Keep retries isolated per server, preserve quoted options, and monitor the successfully restarted process instead of the exited original.
+
 ## 0.22.1
 
 ### Patch Changes
