@@ -3290,7 +3290,7 @@ it.instance("a goal driven by another process pauses instead of restarting itsel
 )
 
 it.instance(
-  "a background subagent parks the loop on WAIT; its report re-enters the parent and the judge runs again",
+  "a background subagent defers judging until its report re-enters the parent",
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) => providerCfg(url))
@@ -3313,7 +3313,6 @@ it.instance(
         has("look into the cache key path"),
         reply().wait(gate.promise).text("Fixed the key in cache.ts; bun test: 12 pass.").stop(),
       )
-      yield* llm.textMatch(judgeRequest, verdict("wait", "the subagent is still running"))
       // Turn 2 is the child's report re-entering the parent.
       yield* llm.textMatch(has("Background task completed"), "The subagent fixed it and the tests pass.")
       yield* llm.textMatch(judgeRequest, verdict("done", "cache.ts changed and bun test shows 12 pass"))
@@ -3322,8 +3321,9 @@ it.instance(
 
       const parked = yield* goals.get(chat.id)
       expect(parked?.status).toBe("active")
-      expect(parked?.last?.verdict).toBe("wait")
-      expect(parked?.turns.used).toBe(0)
+      expect(parked?.last).toBeUndefined()
+      expect(parked?.turns.used).toBe(2)
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(0)
       const running = (yield* jobs.list()).filter((job) => job.metadata?.["parentSessionId"] === chat.id)
       expect(running).toHaveLength(1)
 
@@ -3348,12 +3348,13 @@ it.instance(
       )
       expect(settled?.status).toBe("done")
       expect(settled?.last?.verdict).toBe("done")
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(1)
 
       const users = yield* userTexts(chat.id)
       expect(users.some((text) => text.includes("Background task completed"))).toBe(true)
       const guards = yield* SessionGuardLog.Service
       const trips = (yield* guards.recent()).filter((t) => t.guard === "goal")
-      expect(trips.map((t) => t.action).sort()).toEqual(["stop", "warn"])
+      expect(trips.map((t) => t.action)).toEqual(["stop"])
     }),
   60_000,
 )
