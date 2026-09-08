@@ -33,6 +33,8 @@ jobs:
           - name: windows
             host: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.settings.host }}
+    env:
+      REDCODE_WHITEBOARD_DIR: ${{ github.workspace }}/packages/redcode/dist/whiteboard
     defaults:
       run:
         shell: bash
@@ -47,6 +49,10 @@ jobs:
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
+
+      - name: Build whiteboard test assets
+        working-directory: packages/redcode
+        run: bun run build:whiteboard
 
       - name: Configure git identity
         run: |

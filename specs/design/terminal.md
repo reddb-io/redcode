@@ -63,3 +63,16 @@ three-minute deadline, and is interrupted when the export is cancelled. Existing
 Chromium installations are reused; `PLAYWRIGHT_BROWSERS_PATH` can select a
 preinstalled browser cache. HTML browser review itself needs neither the build
 tool download nor Chromium.
+
+## Native release preflight
+
+The 0.22.0 preflight copied the compiled executable outside the checkout and used
+an isolated project, database, package cache and empty Chromium cache. It published
+HTML, React and Solid revisions and downloaded a GIF decoded as 128 × 64 pixels,
+six frames and 50 ms per frame. The initial browser installation completed through
+the native executable after the bounded setup deadline was adjusted to three minutes.
+
+A separate PTY smoke exercised Design → Plan, status, Ctrl+C and exit. It returned
+code zero, restored the original terminal attributes and left no owned process
+group running. These checks made no provider requests. Linux was exercised locally;
+platform builds and the required Linux/Windows suites remain release pipeline gates.
