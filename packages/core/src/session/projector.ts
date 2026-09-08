@@ -12,6 +12,7 @@ import { SessionMessage } from "./message"
 import { SessionMessageUpdater } from "./message-updater"
 import { SessionInput } from "./input"
 import { WorkspaceV2 } from "../workspace"
+import { Usage } from "../usage/usage"
 import { MessageTable, PartTable, SessionInputTable, SessionMessageTable, SessionTable } from "./sql"
 import type { DeepMutable } from "../schema"
 
@@ -73,6 +74,8 @@ function sessionRow(info: SessionV1.SessionInfo): typeof SessionTable.$inferInse
     time_archived: info.time.archived,
   }
 }
+
+let warnedAboutSidecar = false
 
 function messageData(
   info: (typeof SessionV1.Event.MessageUpdated.Type)["data"]["info"],
@@ -269,6 +272,13 @@ const layer = Layer.effectDiscard(
           .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
           .run()
           .pipe(Effect.orDie)
+        // The usage sidecar mirrors the same row, minus the content: it is the file usage reporters read, and it
+        // outlives whatever stores the session itself (Usage.record swallows its own failures).
+        const mirrored = Usage.recordMessage({ id, sessionID, timeCreated: time_created, info: event.data.info })
+        if (mirrored === false && !warnedAboutSidecar) {
+          warnedAboutSidecar = true
+          yield* Effect.logWarning("usage sidecar disabled after a write failure", { error: Usage.lastError() })
+        }
       }),
     )
     yield* events.project(SessionV1.Event.MessageRemoved, (event) =>
