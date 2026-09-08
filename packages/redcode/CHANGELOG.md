@@ -1,5 +1,11 @@
 # opencode
 
+## 0.22.1
+
+### Patch Changes
+
+- c259e75: Fix image import and resizing in compiled binaries by matching the embedded Photon WASM loader contract. Report decoder failures clearly, and let whiteboard feedback retry a failed image upload without losing the annotation or leaving the queue button disabled.
+
 ## 0.22.0
 
 ### Minor Changes
