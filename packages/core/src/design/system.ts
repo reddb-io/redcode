@@ -5,10 +5,19 @@ import { DesignFiles } from "./files"
 
 /** File hashes are provenance, not a claim that inferred tokens are authoritative. */
 export async function discover(application: string) {
-  const matches = new Bun.Glob(
-    "{DESIGN.md,design-system.md,src/**/tokens.{css,ts,json},src/**/theme.{css,ts},src/**/global.css,src/**/globals.css,tailwind.config.*,components.json}",
+  // Bun's glob scanner cannot expand a brace containing both root files and recursive paths.
+  const paths = (
+    await Promise.all(
+      [
+        "{DESIGN.md,design-system.md,tailwind.config.*,components.json}",
+        "src/**/{tokens.css,tokens.ts,tokens.json,theme.css,theme.ts,global.css,globals.css}",
+      ].map((pattern) =>
+        Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: application, onlyFiles: true, followSymlinks: false })),
+      ),
+    )
   )
-  const paths = (await Array.fromAsync(matches.scan({ cwd: application, onlyFiles: true, followSymlinks: false })))
+    .flat()
+    .map((file) => file.split(path.sep).join("/"))
     .sort()
     .slice(0, 30)
   return Promise.all(
