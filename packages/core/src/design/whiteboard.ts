@@ -60,11 +60,19 @@ async function load() {
       ),
     ),
   )
-  const bootstrap = `const fonts=${JSON.stringify(fonts)};const prefix="https://design-fonts.local/";const originalFetch=window.fetch.bind(window);window.fetch=(input,options)=>originalFetch(typeof input==="string"&&input.startsWith(prefix)?fonts[input.slice(prefix.length)]??input:input,options);const NativeFontFace=window.FontFace;window.FontFace=class extends NativeFontFace{constructor(family,source,descriptors){super(family,typeof source==="string"?source.replace(/https:\\/\\/design-fonts\\.local\\/[^)"']+/g,url=>fonts[url.slice(prefix.length)]??url):source,descriptors)}};`
-  const script = (await Bun.file(path.join(directory, "whiteboard.js")).text()).replace(
-    "`${location.origin}/design/vendor/whiteboard/`",
-    '"https://design-fonts.local/"',
+  return render({
+    fonts,
+    script: await Bun.file(path.join(directory, "whiteboard.js")).text(),
+    css: await Bun.file(path.join(directory, "whiteboard.css")).text(),
+  })
+}
+
+export function render(input: { fonts: Record<string, string>; script: string; css: string }) {
+  // Filesystem paths from Windows globs become URL keys inside the sandbox.
+  const fonts = Object.fromEntries(
+    Object.entries(input.fonts).map(([file, data]) => [file.replaceAll("\\", "/"), data]),
   )
-  const css = await Bun.file(path.join(directory, "whiteboard.css")).text()
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src data:; worker-src blob:; form-action 'none'"><style>${css.replaceAll("</style", "<\\/style")}</style></head><body><script type="module">${bootstrap}${script.replaceAll("</script", "<\\/script")}</script></body></html>`
+  const bootstrap = `const fonts=${JSON.stringify(fonts)};const prefix="https://design-fonts.local/";const originalFetch=window.fetch.bind(window);window.fetch=(input,options)=>originalFetch(typeof input==="string"&&input.startsWith(prefix)?fonts[input.slice(prefix.length)]??input:input,options);const NativeFontFace=window.FontFace;window.FontFace=class extends NativeFontFace{constructor(family,source,descriptors){super(family,typeof source==="string"?source.replace(/https:\\/\\/design-fonts\\.local\\/[^)"']+/g,url=>fonts[url.slice(prefix.length)]??url):source,descriptors)}};`
+  const script = input.script.replace("`${location.origin}/design/vendor/whiteboard/`", '"https://design-fonts.local/"')
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src data:; worker-src blob:; form-action 'none'"><style>${input.css.replaceAll("</style", "<\\/style")}</style></head><body><script type="module">${bootstrap}${script.replaceAll("</script", "<\\/script")}</script></body></html>`
 }
