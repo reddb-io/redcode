@@ -1,12 +1,13 @@
 import { expect } from "bun:test"
 import path from "node:path"
-import { symlink } from "node:fs/promises"
+import { mkdir, realpath, symlink } from "node:fs/promises"
 import { Effect, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Database } from "../src/database/database"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { LayerNode } from "../src/effect/layer-node"
 import { DesignStore } from "../src/design/store"
+import { DesignBuild } from "../src/design/build"
 import { DesignFiles } from "../src/design/files"
 import { Location } from "../src/location"
 import { Project } from "../src/project"
@@ -184,6 +185,71 @@ it.live("allows explicitly authorized product imports and captures the compiled 
     expect(texts.some((text) => text.includes("Explicitly allowed product component"))).toBe(true)
   }),
 )
+
+for (const engine of ["react", "solid"] as const)
+  it.live(
+    `builds ${engine} through a directory alias without treating generated files as external dependencies`,
+    () =>
+      Effect.gen(function* () {
+        const { location, store, sessionID } = yield* setup
+        yield* Effect.promise(() => designDependencies(location.directory))
+        const document = yield* store.create(sessionID, {
+          name: "Aliased build",
+          journey: "new",
+          engine,
+          kind: "screen",
+        })
+        const target = path.join(location.directory, "build-target")
+        const alias = path.join(location.directory, "build-alias")
+        yield* Effect.promise(() => mkdir(target))
+        yield* Effect.promise(() => symlink(target, alias, process.platform === "win32" ? "junction" : "dir"))
+        const files = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+        const revision: Design.Revision = {
+          id: "rev_alias",
+          designID: document.id,
+          parent: null,
+          name: "Aliased build",
+          created: Date.now(),
+          files,
+          document: { ...document, tweaks: { "--accent": "#abc" } },
+        }
+        const reads: string[] = []
+        const output = yield* Effect.promise(() =>
+          DesignBuild.build(revision, store.blobs, path.join(alias, "allowed"), async (file) => {
+            reads.push(file)
+          }),
+        )
+        expect(output).toBe(yield* Effect.promise(() => realpath(path.join(target, "allowed", "output"))))
+        expect(reads.some((file) => file.startsWith(target + path.sep))).toBe(false)
+        const compiled = yield* Effect.promise(() => DesignFiles.snapshot(output, store.blobs))
+        expect(compiled["index.html"]).toBeDefined()
+        expect(yield* Effect.promise(() => Bun.file(path.join(output, "index.html")).text())).toContain("--accent:#abc")
+
+        const protectedPath = path.join(location.directory, ".env.alias-fixture")
+        yield* Effect.promise(() => Bun.write(protectedPath, "ONLY_TEST_DATA"))
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(document.root, document.entry),
+            `import content from ${JSON.stringify(protectedPath + "?raw")}; document.body.textContent = content`,
+          ),
+        )
+        const protectedFiles = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+        const denied = yield* Effect.tryPromise(() =>
+          DesignBuild.build(
+            { ...revision, files: protectedFiles },
+            store.blobs,
+            path.join(alias, "denied"),
+            async (file) => {
+              reads.push(file)
+              if (file === protectedPath) throw new Error("Fixture permission denied")
+            },
+          ),
+        ).pipe(Effect.result)
+        expect(denied._tag).toBe("Failure")
+        expect(reads).toContain(protectedPath)
+      }),
+    60000,
+  )
 
 for (const value of ['"./\\u002eenv.fixture"', "`./${name}.fixture`"])
   it.live("rejects asset URL forms that cannot be authorized statically: " + value, () =>

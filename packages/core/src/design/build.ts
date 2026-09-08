@@ -29,7 +29,10 @@ export async function build(
   read?: Read,
   signal?: AbortSignal,
 ) {
-  const source = await materialize(revision, blobs, path.join(directory, "source"))
+  // Vite resolves module IDs through realpath, including Windows short paths and junctions.
+  // Its root and our dependency boundary must use that same filesystem identity.
+  const source = await realpath(await materialize(revision, blobs, path.join(directory, "source")))
+  const root = path.dirname(source)
   if (revision.files[".compiled/index.html"]) return path.join(source, ".compiled")
   if (revision.document.engine === "html") {
     const file = path.join(source, revision.document.entry)
@@ -165,7 +168,7 @@ export async function build(
     esbuild: { tsconfigRaw: {} },
     worker: { plugins: () => [guard()] },
     logLevel: "error",
-    cacheDir: path.join(directory, "cache"),
+    cacheDir: path.join(root, "cache"),
     resolve: {
       alias: [...alias, ...projectAliases, { find: /^/, replacement: "" }].map((alias) => ({
         ...alias,
@@ -173,14 +176,14 @@ export async function build(
       })),
     },
     build: {
-      outDir: path.join(directory, "output"),
+      outDir: path.join(root, "output"),
       emptyOutDir: true,
       assetsInlineLimit: 25 * 1024 * 1024,
       cssCodeSplit: false,
       rollupOptions: { output: { inlineDynamicImports: true } },
     },
   })
-  return path.join(directory, "output")
+  return path.join(root, "output")
 }
 
 function tweaks(document: Design.Info) {
