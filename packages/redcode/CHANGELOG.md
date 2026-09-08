@@ -1,5 +1,13 @@
 # opencode
 
+## 0.23.1
+
+### Patch Changes
+
+- 292ec67: Open a fresh empty session directly for /new and /clear instead of returning to the welcome screen.
+- 292ec67: Remove the ASCII art banner from the upgrade command.
+- 58f05c5: Add `redcode usage backfill` to mirror historical session usage into usage reports, with repeatable imports and JSON output, and `redcode usage path` to show mirror destinations.
+
 ## 0.23.0
 
 ### Minor Changes
