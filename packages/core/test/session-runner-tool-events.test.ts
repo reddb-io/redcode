@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Schema, Stream } from "effect"
+import { Deferred, Effect, Fiber, Schema, Stream } from "effect"
 import { LLMEvent } from "@reddb-io/redcode-llm"
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
@@ -12,7 +12,7 @@ import { createLLMEventPublisher } from "@reddb-io/redcode-core/session/runner/p
 const sessionID = SessionV2.ID.make("ses_tool_event_test")
 const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
 
-const capture = () => {
+const capture = (messageDisplay?: Parameters<typeof createLLMEventPublisher>[1]["messageDisplay"]) => {
   const published: Array<{ readonly type: string; readonly data: unknown }> = []
   const events = EventV2.Service.of({
     publish: (definition, data) =>
@@ -41,6 +41,7 @@ const capture = () => {
     publisher: createLLMEventPublisher(events, {
       sessionID,
       agent: "build",
+      messageDisplay,
       model: {
         id: ModelV2.ID.make("model"),
         providerID: ProviderV2.ID.make("provider"),
@@ -133,4 +134,44 @@ test("step finish records settlement without publishing step ended", async () =>
 
   expect(published.some((event) => event.type === "session.next.step.ended.2")).toBe(false)
   expect(publisher.stepSettlement()).toMatchObject({ finish: "stop" })
+})
+
+test("received step usage survives cancellation while the display flush is blocked", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>()
+        const current = capture(() => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)))
+        yield* current.publisher.publish(LLMEvent.textStart({ id: "pending-text" }))
+        yield* current.publisher.publish(LLMEvent.textDelta({ id: "pending-text", text: "Pending display" }))
+        const finishing = yield* current.publisher
+          .publish(
+            LLMEvent.stepFinish({
+              index: 0,
+              reason: "stop",
+              usage: { inputTokens: 20, nonCachedInputTokens: 20, outputTokens: 10 },
+            }),
+          )
+          .pipe(Effect.forkChild)
+        yield* Deferred.await(entered)
+        yield* Fiber.interrupt(finishing)
+        expect(current.publisher.stepSettlement()).toEqual({
+          finish: "stop",
+          tokens: { input: 20, output: 10, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        expect(current.published.some((event) => event.type === "session.next.step.ended.2")).toBe(false)
+        const duplicate = yield* current.publisher
+          .publish(
+            LLMEvent.stepFinish({
+              index: 0,
+              reason: "error",
+              usage: { inputTokens: 999, nonCachedInputTokens: 999, outputTokens: 999 },
+            }),
+          )
+          .pipe(Effect.exit)
+        expect(duplicate._tag).toBe("Failure")
+        expect(current.publisher.stepSettlement()?.tokens.input).toBe(20)
+      }),
+    ),
+  )
 })

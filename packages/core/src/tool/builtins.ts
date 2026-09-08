@@ -14,6 +14,9 @@ import { TodoWriteTool } from "./todowrite"
 import { WebFetchTool } from "./webfetch"
 import { WebSearchTool } from "./websearch"
 import { WriteTool } from "./write"
+import { DesignTools } from "./design"
+import { GoalTools } from "./goal"
+import { PlanTools } from "./plan"
 
 /**
  * Composes only the shipped Location-scoped built-in tool transforms.
@@ -25,7 +28,7 @@ import { WriteTool } from "./write"
  *
  * TODO: Port the remaining launch-follow-up leaves deliberately: edit fuzzy
  * parity, task, LSP,
- * repo_clone, repo_overview, plan_exit, and Rune/code mode. Keep MCP and plugin
+ * repo_clone, repo_overview, and Rune/code mode. Keep MCP and plugin
  * transforms separate from this static built-in list.
  */
 export const node = makeLocationNode({
@@ -44,5 +47,8 @@ export const node = makeLocationNode({
     WebFetchTool.node,
     WebSearchTool.node,
     WriteTool.node,
+    DesignTools.node,
+    GoalTools.node,
+    PlanTools.node,
   ],
 })

@@ -1,6 +1,13 @@
+import { reviewCopy } from "@reddb-io/redcode-design/copy"
+
+const designCopy = Object.fromEntries(
+  Object.entries(reviewCopy).map(([key, value]) => [`session.design.studio.${key}`, value]),
+) as { [Key in keyof typeof reviewCopy as `session.design.studio.${Key}`]: string }
+
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  ...designCopy,
   ...DESKTOP_NATIVE_ENGLISH,
   "command.category.suggested": "Suggested",
   "command.category.view": "View",
@@ -95,8 +102,29 @@ export const dict = {
   "command.session.goal.resume": "Resume goal",
   "command.session.goal.drop": "Drop goal",
   "session.goal.dialog.title": "What does done look like?",
-  "session.goal.dialog.placeholder": "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
-  "session.goal.dialog.help": "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
+  "session.goal.providerBudget": "{{used}}/{{max}} provider turns",
+  "session.goal.turnLimit": "Provider-turn limit",
+  "session.goal.executePlan": "Allow implementing this goal's plan without another execution approval",
+  "session.goal.evidenceCount.one": "{{count}} evidence file",
+  "session.goal.evidenceCount.other": "{{count}} evidence files",
+  "session.goal.tokenCount.one": "{{count}} reported token",
+  "session.goal.tokenCount.other": "{{count}} reported tokens",
+  "session.goal.evidence": "Recorded evidence",
+  "session.goal.checks": "Executed checks",
+  "session.goal.plans": "Recorded plans",
+  "session.goal.plan.ready": "Ready for review",
+  "session.goal.plan.approved": "Approved for execution",
+  "session.goal.extend": "Add 20 provider turns",
+  "session.goal.error": "Could not update the goal",
+  "session.goal.state.active": "Working",
+  "session.goal.state.waiting": "Waiting",
+  "session.goal.state.paused": "Paused",
+  "session.goal.state.blocked": "Blocked",
+  "session.goal.state.done": "Verified",
+  "session.goal.dialog.placeholder":
+    "make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app",
+  "session.goal.dialog.help":
+    "Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0).",
   "session.goal.dialog.submit": "Start",
   "command.session.fork": "Fork from message",
   "command.session.fork.description": "Create a new session from a previous message",

@@ -24,6 +24,36 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`session_goal_review\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`goal_id\` text NOT NULL,
+          \`tokens\` integer NOT NULL,
+          \`created\` integer NOT NULL,
+          CONSTRAINT \`fk_session_goal_review_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_goal\` (
+          \`session_id\` text PRIMARY KEY,
+          \`goal_id\` text NOT NULL,
+          \`revision\` integer NOT NULL,
+          \`owner\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_session_goal_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_plan\` (
+          \`session_id\` text NOT NULL,
+          \`revision\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`session_plan_pk\` PRIMARY KEY(\`session_id\`, \`revision\`),
+          CONSTRAINT \`fk_session_plan_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`account_state\` (
           \`id\` integer PRIMARY KEY,
           \`active_account_id\` text,
@@ -67,6 +97,48 @@ export default {
           \`active\` integer,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_asset\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_asset_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_document\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`directory\` text NOT NULL,
+          \`data\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_feedback\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          \`admitted\` integer DEFAULT false NOT NULL,
+          CONSTRAINT \`fk_design_feedback_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_render_job\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_render_job_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_revision\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_revision_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -248,6 +320,11 @@ export default {
           CONSTRAINT \`fk_session_share_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
         );
       `)
+      yield* tx.run(
+        `CREATE INDEX \`session_goal_review_session_goal_idx\` ON \`session_goal_review\` (\`session_id\`,\`goal_id\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`design_document_session_idx\` ON \`design_document\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`design_revision_document_idx\` ON \`design_revision\` (\`design_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
       yield* tx.run(

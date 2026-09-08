@@ -32,6 +32,8 @@ type PluralKey =
   | UiI18nPluralKey
   | "session.question.pending"
   | "session.followupDock.summary"
+  | "session.goal.evidenceCount"
+  | "session.goal.tokenCount"
   | "session.revertDock.summary"
 type Source = { dict: Record<string, string> }
 

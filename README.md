@@ -43,9 +43,9 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 
 **Installing and using it**
 
-- [Install](#install) — one binary, nothing else
+- [Install](#install) — native CLI and installation methods
 - [Use](#use) — every command, and what it is for
-- [Modes](#modes) — build, plan and design: three agents, one `Tab` apart
+- [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 - [Goal](#goal) — a definition of done the harness pursues across turns
 
@@ -216,6 +216,7 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 | --- | --- |
 | `redcode` | Terminal UI — sessions, diffs, permissions, and the Workers fleet |
 | `redcode run` | Non-interactive prompt; `--format json` emits structured records |
+| `redcode design` | Interactive SessionV2 terminal with Design, Plan, Build and browser review |
 | `redcode serve` | Headless HTTP server exposing the Protocol API |
 | `redcode acp` | Agent Client Protocol over stdio; `--experimental-toon` selects TOON-RPC framing |
 | `redcode mcp` | Manage the MCP servers Redcode connects to — it is an MCP client, not a server |
@@ -230,8 +231,8 @@ Running `redcode` with no arguments opens the TUI directly in a new session.
 
 `redcode --help` lists everything, including `upgrade`, `uninstall`, `generate`, and `console`.
 
-In the TUI, the line under the prompt shows the context used, the cost so far, the latency to the
-first token of the last answer, and the tokens per second it arrived at.
+In the TUI, the line under the prompt shows context use and cost. The Context sidebar shows
+latency to the first token of the last answer and its token throughput.
 
 `redcode serve` prints both its base URL and the exact `POST /rpc` endpoint. That endpoint accepts
 JSON-RPC 2.0 (`application/json`) and TOON-RPC 1.0 (`application/toon`) for the same typed read-only
@@ -245,154 +246,149 @@ HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 
 ## Modes
 
-A session runs one of three primary agents. `Tab` cycles through them (`Shift+Tab` goes back), in
-the TUI and in the web UI, and the switch is durable: the next prompt is admitted under the agent
-you picked. Each mode is a different answer to what the agent is allowed to touch.
+Build, Plan and Design define what the agent may change. The full-screen TUI uses its existing
+session runtime for Build and Plan; `Tab` switches between available agents. Design now starts in
+its own SessionV2 terminal with `redcode design`, or in a SessionV2 session in the web app. The
+TUI's `/design` command shows how to open that terminal. Existing conversations are preserved;
+a legacy session ID cannot be adopted as a V2 session.
+
+In `redcode design`, use `/mode design|plan|build` to change the active mode explicitly. Mode
+changes keep the current SessionV2 history; they do not expand an existing Goal's scope.
 
 <img src="docs/modes/build.svg" alt="Build mode" width="100%" />
 
-**Build** is the default. It reads, edits and runs under the permissions you configured, and it
-delegates: every subtask of one message runs together (four at a time by default), and background
-subagents are on, capped per session so a fan-out cannot run away. A subagent started under a goal
-inherits it. Nothing here is special — it is what a coding agent is — and the two other modes are
-defined by what they take away from it.
+**Build** reads, edits and runs commands under your configured permissions. Use it to implement
+an approved plan or work directly on product code.
 
 <img src="docs/modes/plan.svg" alt="Plan mode" width="100%" />
 
-**Plan** reads everything and changes nothing but the plan file, written under `.red/code/plans/`.
-Use it when the shape of the work is the question: the agent explores, asks, and writes the plan
-down; `plan_exit` asks whether to switch to build and start on it. A plan written here is what
-build reads first.
+**Plan** explores the repository and writes the implementation plan under `.red/code/plans/`.
+`plan_exit` reads and records the reviewed file before a handoff. In SessionV2, the approved
+revision and contents survive continuation and compaction. A Plan-only Goal stays in Plan;
+entering Build requires approval or prior explicit execution authorization.
 
 <img src="docs/modes/design.svg" alt="Design mode" width="100%" />
 
-**Design** is for when the question is what something should be, not how to build it. The agent
-writes an interactive prototype instead of a description, you review it in your browser, and the
-review is the conversation. Design cannot edit the product at all, only the prototype directory,
-so nothing you decide reaches the code until `design_exit` writes the plan. The whole loop is in
-[Design Mode](#design-mode).
+**Design** builds interactive prototypes in a separate work directory, gathers review feedback,
+and hands an approved revision to Plan. Its default permissions protect product files. It can
+reuse application components and design-system evidence through authorized reads.
 
 ## Design Mode
 
-Design mode is for working out what something should be by building it. The agent writes an
-interactive prototype, you review it in your browser — clicking, annotating, drawing on diagrams —
-and what you decide becomes a plan. The agent cannot edit the product in this mode, only the
-prototype, so nothing you say here changes code until you leave.
+Design combines a resumable terminal session with a browser review surface. It supports HTML,
+React and Solid prototypes, versioned assets, editable SVG-to-GIF exports, and recorded approval.
 
 ### Start
 
-1. In the TUI, press `Tab` until the agent reads `design` (`Shift+Tab` goes back). In the web UI
-   (`redcode web`), pick the `design` agent the same way. Describe what you want built.
-2. The agent writes the prototype into `.red/code/designs/<timestamp>-<slug>/` — `index.html` plus
-   whatever sits beside it — and calls `design_preview`. Your browser opens on the review page;
-   its URL is also in the tool's output, and the web UI shows the same page in a **Design** tab.
+```sh
+redcode design "Explore the settings screen"
+redcode design --model provider/model
+redcode design --session ses_existing_v2
+```
 
-The prototype runs with no network. A CDN link will not load, so the agent uses what the project
-already has (it reads `DESIGN.md` or `.red/DESIGN.md` for the project's design system) or the
-Tailwind, DaisyUI and Mermaid that ship with Redcode.
+Use `/review` inside the terminal to open the browser. Choose a starting point, the target
+application, an engine and an objective. The agent publishes revisions with `design_preview`.
+The web app opens the same review implementation in its **Design** tab.
 
-### Review
+React and Solid prototypes resolve their framework from the target application's installed
+dependencies. Project Vite configurations and arbitrary build plugins are not executed; supply
+local fixtures for routing, data providers or other application services. Prototype frames are
+sandboxed, and their assets must be local. First use of browser rendering or component building
+may need network access to prepare its runtime dependencies and Chromium.
 
-Everything on the review page is a proposal until you press **Send to Agent**; the agent's next
-turn starts only then.
+### Review and assets
 
-- **Annotate** is the default mode. Click an element, select some text, click a table cell or a
-  node of a diagram, and a card opens. `Enter` queues the note, `Cmd/Ctrl+Enter` queues and sends,
-  `Shift+Enter` is a line break, `Esc` closes an empty card. Paste or drop an image onto the card
-  to attach a reference. `Cmd/Ctrl+I` switches to **Explore**, where the prototype behaves like a
-  page; `Alt+click` still annotates there.
-- **The conversation panel** on the right holds the queue (each note is a pill you can remove),
-  the agent's replies, and a composer. **Hold** keeps what you typed in the queue without sending;
-  **Send & End** sends and closes the review. Below 860px the panel is a sheet you pull up.
-- **Live reload.** When the agent saves, the page reloads and keeps your place: scroll position,
-  unsent notes, the text of an open card, and answers inside `data-redcode-question` groups.
-- **Layout issues.** After every load the browser audits the layout — text cut off by its
-  container, controls outside the viewport, a page that scrolls sideways, text covered by another
-  element — and lists what it found under the **Layout issues** button. Nothing there reaches
-  the agent on its own. Select the ones you want fixed and press **Queue selected fixes**; they
-  become one note. **Dismiss** hides a warning for the current revision only; it comes back if a
-  later revision still has it. A warning is cleared only when a newer revision no longer shows it.
-- **Whiteboard.** A Mermaid diagram gets an Excalidraw whiteboard beside it. Click it to edit,
-  drag nodes, redraw arrows, add shapes or freehand marks; **Fullscreen** opens it over the page.
-  **Queue feedback** turns your edits into a note with a summary of what moved and a PNG for the
-  agent, which then edits the Mermaid source — the whiteboard is how you talk about a diagram,
-  never a second copy of it. The first whiteboard on a machine downloads the editor bundle
-  (about 3MB) from the release; until then diagrams are plain.
-- **The `⋮` menu**: copy the prototype's directory, reload it, copy a DOM snapshot, **Export
-  standalone HTML** (one file with everything local inlined, which opens from disk), **Open on
-  another device** (when the server listens beyond loopback), and **End review**.
+- Annotate elements or selected text, attach reference images, and submit feedback. Drafts stay
+  on the reviewing device until sent; submitted feedback is stored durably before success is
+  reported. Steering reaches the agent at a safe provider boundary.
+- Select published revisions, compare directions, restore an earlier revision, and publish
+  CSS custom-property adjustments. Restoring creates a new revision and preserves the approved
+  baseline.
+- Review layouts and declared interaction scenarios at mobile, tablet and desktop widths.
+  Accessibility checks and comparison with the approved design retain reports and screenshots.
+- Edit Mermaid diagrams through an Excalidraw whiteboard and send the scene and PNG as feedback.
+  Its editor bundle is downloaded on demand, or supplied through `REDCODE_WHITEBOARD_DIR`.
+- Generate or edit images through connected MCP/plugin tools that declare image capabilities.
+  Imported assets retain their source tool, hash and version. Redcode does not include a paid
+  image service or bypass the connected tool's permissions.
+- Ask for an animated SVG and export it as GIF. The SVG stays editable; rendering captures its
+  CSS/SMIL animation locally. Export jobs expose progress, cancellation and downloads. Standalone
+  HTML export embeds local resources; unsupported external references must be localized first.
 
-### Finish
+### Approve and resume
 
-End the review from the `⋮` menu or with **Send & End**; the agent stops waiting for notes. When
-the design is settled, the agent calls `design_exit`, which writes the plan from what it recorded
-in `design.json` — the decisions, the open questions, a link to the prototype — and offers to
-switch to the plan agent to refine it. The agent may also call `design_export` when you ask for a
-file to share.
+Approve a published revision to freeze its source, asset metadata and feedback into an approval
+package. The handoff updates only the Design-owned section of `plan.md`, preserving manual work,
+and selects Plan. Build begins through an authorized Plan handoff.
 
-### Files
+`/status` shows the session ID, mode, activity, Goal and pending requests. `/stop` or Ctrl+C
+interrupts execution while keeping the terminal open. `/quit` exits. Reopen with
+`redcode design --session ses_existing_v2`; `/resume` explicitly continues provider work.
+Adoption and reconnection do not restart paid work automatically.
 
-| Path | What it is |
+The terminal prints completed text and tool output as durable events arrive. Provisional token
+streaming and migration of the full-screen TUI renderer remain future work.
+
+### Files and compatibility
+
+| Location | Contents |
 | --- | --- |
-| `.red/code/designs/<name>/index.html` | The prototype, with its assets beside it |
-| `.red/code/designs/<name>/design.json` | `kind` (`screen`, `flow`, `comparison`, `deck`), `decisions`, `questions` — the reasoning the plan is written from |
-| `.red/code/designs/<name>/.review/` | Review state, whiteboard scenes and exports; never served, not part of the design |
-| `DESIGN.md` or `.red/DESIGN.md` | The project's design system as the agent understands it; edit it to correct the agent |
+| `.red/code/design/<designID>/work/` | Editable prototype source and local assets |
+| Design storage in SQLite and content-addressed blobs | Revision history, feedback receipts, asset provenance and job status |
+| `approvals/<revision>.json` in the design storage | Frozen approval package |
+| The plan's marked Design section | Reviewed scope and evidence for the implementation handoff |
+| `DESIGN.md` or `.red/DESIGN.md` | Project design guidance used as source evidence |
 
-### Settings
+Version 0.22 moves Design off the legacy agents and `/design` HTTP routes. Existing V1 Design
+state and `design.json` files are not migrated automatically. Keep old artifacts when upgrading;
+new reviews use `/api/session/:sessionID/design/review`. Legacy Design configuration options do
+not configure the new review surface.
 
-Everything is on by default. Under `experimental.design` in the config: `attachments` (per-image,
-per-note and disk caps for pasted images), `viewports` (which of `mobile`, `compact`, `desktop` the
-layout audit reports on), `gate` and `gate_timeout` (the short curtain before a prototype is
-shown), `export` (size caps for the standalone file), and `hosts` (extra names the review surface
-answers to). `REDCODE_DESIGN_NO_OPEN=1` stops the browser from opening;
-`REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` never fetches the whiteboard bundle, and
-`REDCODE_WHITEBOARD_DIR` points at a local build of it. To review from a phone, run
-`redcode serve --hostname 0.0.0.0` and use the network URL `design_preview` prints.
+See [Design Studio](specs/design/studio.md) for storage, permissions, exports and MCP configuration,
+and [Design terminal](specs/design/terminal.md) for connection and interaction commands.
 
 ## Goal
 
 <img src="docs/modes/goal.svg" alt="Goal" width="100%" />
 
-Every mode is turn by turn: the agent answers, the harness waits for you. `/goal` changes that for
-one session. You give it a definition of done, and the harness keeps the agent on it across turns
-until it holds, until it is blocked, or until the budget runs out.
+`/goal` gives the current session a definition of done that persists across provider turns. It
+continues within its mode and budget until the objective is verified, blocked or paused.
 
+```text
+/goal implement the settings form; verify: exercise valid and invalid input; gate: bun test test/settings;
+constraints: preserve the existing API
 ```
-/goal make the design suite pass; verify: bun test test/design; gate: bun test test/design;
-constraints: do not touch the app package; stop when: a test needs a network
-```
 
-Free text is the objective. The optional fields — one per line or separated by `;` — are the
-contract the judge holds the agent to:
+Put verification criteria, constraints and stopping conditions in the objective. `gate:` clauses
+become executable checks and obey shell permissions. In the full-screen TUI, `/goal` opens a
+dialog; in `redcode design`, `/goal objective` starts directly.
 
-| Field | What it fixes |
-| --- | --- |
-| `outcome:` / `done when:` | What has to be true at the end |
-| `verify:` | How the agent should prove it |
-| `gate:` | A shell command that must exit 0 before the goal can even be judged done; several allowed |
-| `constraints:` / `scope:` | What may not be touched or changed |
-| `stop when:` | What should make the agent stop and ask instead of pushing on |
+SessionV2 stores the Goal's scope, status, budget, evidence and checks. `goal_complete` reads
+actual artifacts, checks pending work, runs gates and requests an independent review. Completion
+is finalized after sibling tools and their hooks settle; changed evidence or new steering can
+invalidate the proposal. A successful review does not authorize a broader task.
 
-Then, at the end of every turn:
+Each provider attempt consumes budget, including retries. Exhaustion pauses the Goal rather than
+marking it done; provider failure blocks it with a reason. Reported primary and review usage is
+retained even when a verdict is rejected or execution is interrupted. The default limit is 50
+attempts for SessionV2; the legacy TUI defaults to 20, configurable under `experimental.goal`.
 
-- The gates run. A failing gate feeds its output into the next turn; the judge is not asked.
-- A small judge reads the objective and the last answer and says **DONE**, **CONTINUE**,
-  **BLOCKED** or **WAIT**. CONTINUE starts the next turn with the objective re-rendered in full —
-  it lives in the session's metadata, not the transcript, so compaction cannot paraphrase it away
-  and the model cannot quietly shrink it. BLOCKED parks the loop with the reason. WAIT means
-  background subagents are still working and does not spend a turn.
-- The agent may claim completion itself with `goal_complete` and its evidence; the next judgement
-  consumes that claim rather than trusting it.
+| Control | Full-screen TUI | `redcode design` |
+| --- | --- | --- |
+| Start or inspect | `/goal` dialog and Goal status line | `/goal objective`, `/goal-status` |
+| Pause | `/goal-pause` or Ctrl+C | `/goal-pause` or Ctrl+C |
+| Change total budget | `/goal-budget` opens a dialog | `/goal-budget N` |
+| Continue | `/goal-resume` | `/goal-resume` |
+| Remove | `/goal-drop` | `/goal-drop` |
 
-The budget is 20 turns by default, and running out of turns is not completion — the goal pauses and
-says so. `Ctrl+C` pauses it; so does a new process, because a loop must never restart itself.
-`/goal-pause`, `/goal-resume` and `/goal-drop` do what they say, and the goal's line under the
-session shows where it stands. When the judge cannot answer, the loop fails open: three unreadable
-verdicts in a row pause it rather than spin.
+After exhaustion, increase the total budget and then resume. Opening an existing session or
+reconnecting its event stream does not automatically resume execution. A Goal started in Plan
+stays there unless execution is explicitly authorized.
 
-Defaults live under `experimental.goal` in the config: `max_turns`, `judge_timeout` and
-`gate_timeout`.
+The legacy TUI uses its own Goal judge and recorded tool/gate results. SessionV2 adds durable
+revision checks and evidence history; its stronger completion guarantees do not retroactively
+apply to legacy sessions. See [Goal and mode continuity](specs/goal-modes.md) and the
+[CLI reliability report](specs/cli-reliability.md) for validation and limits.
 
 ## Architecture
 

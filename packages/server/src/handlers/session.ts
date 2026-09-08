@@ -1,4 +1,6 @@
 import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionGoal } from "@reddb-io/redcode-core/session/goal"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -18,8 +20,71 @@ const DefaultSessionHistoryLimit = 50
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* SessionV2.Service
+    const goals = yield* SessionGoal.Service
+    const plans = yield* SessionPlan.Service
+    const goalError = (error: SessionGoal.Error) => new ConflictError({ message: error.message })
+    const requireSession = (sessionID: SessionV2.ID) =>
+      session
+        .get(sessionID)
+        .pipe(
+          Effect.catchTag(
+            "Session.NotFoundError",
+            (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: "Session not found" }),
+          ),
+        )
 
     return handlers
+      .handle(
+        "session.goal",
+        Effect.fn(function* (ctx) {
+          yield* requireSession(ctx.params.sessionID)
+          return { data: yield* goals.get(ctx.params.sessionID).pipe(Effect.mapError(goalError)) }
+        }),
+      )
+      .handle(
+        "session.plans",
+        Effect.fn(function* (ctx) {
+          yield* requireSession(ctx.params.sessionID)
+          return { data: yield* plans.list(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.goalSet",
+        Effect.fn(function* (ctx) {
+          const info = yield* requireSession(ctx.params.sessionID)
+          const goal = yield* goals
+            .start(info.id, { ...ctx.payload, agent: ctx.payload.agent ?? info.agent })
+            .pipe(Effect.mapError(goalError))
+          if (ctx.payload.agent)
+            yield* session.switchAgent({ sessionID: info.id, agent: ctx.payload.agent }).pipe(Effect.orDie)
+          if (ctx.payload.model)
+            yield* session.switchModel({ sessionID: info.id, model: ctx.payload.model }).pipe(Effect.orDie)
+          yield* session.prompt({ sessionID: info.id, prompt: { text: goal.objective } }).pipe(
+            Effect.tapError(() => goals.control(info.id, { action: "pause" }).pipe(Effect.orDie)),
+            Effect.mapError((error) => new InvalidRequestError({ message: error.message, kind: "goal_admission" })),
+          )
+          return { data: goal }
+        }),
+      )
+      .handle(
+        "session.goalControl",
+        Effect.fn(function* (ctx) {
+          yield* requireSession(ctx.params.sessionID)
+          const goal = yield* goals.control(ctx.params.sessionID, ctx.payload).pipe(Effect.mapError(goalError))
+          if (ctx.payload.action === "pause" || ctx.payload.action === "drop")
+            yield* session.interrupt(ctx.params.sessionID)
+          if (ctx.payload.action === "resume" && goal?.status === "active")
+            yield* session
+              .prompt({
+                sessionID: ctx.params.sessionID,
+                prompt: { text: `Resume goal ${goal.id}: ${goal.objective}` },
+              })
+              .pipe(
+                Effect.mapError((error) => new InvalidRequestError({ message: error.message, kind: "goal_admission" })),
+              )
+          return { data: goal }
+        }),
+      )
       .handle(
         "session.list",
         Effect.fn((ctx) => listSessions(session, ctx.query)),

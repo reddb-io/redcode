@@ -15,7 +15,7 @@ export function eventSource(): EventSource {
   return { subscribe: async () => () => {} }
 }
 
-export function createEventSource() {
+export function createEventSource(input: { buffer?: boolean } = {}) {
   let fn: ((event: GlobalEvent) => void) | undefined
   let stream: ReadableStreamDefaultController<Uint8Array> | undefined
   const pending: Uint8Array[] = []
@@ -32,6 +32,7 @@ export function createEventSource() {
       if (!fn) throw new Error("event source not ready")
       fn(event)
       if (!("properties" in event.payload)) return
+      if (!stream && input.buffer === false) return
       const chunk = new TextEncoder().encode(
         `data: ${JSON.stringify({
           ...event.payload,
@@ -78,6 +79,8 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         "/experimental/workspace/status",
         "/formatter",
         "/lsp",
+        "/permission",
+        "/question",
       ].includes(url.pathname)
     )
       return json([])

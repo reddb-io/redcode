@@ -7,6 +7,8 @@ import { Credential } from "@reddb-io/redcode-core/credential"
 import { PermissionSaved } from "@reddb-io/redcode-core/permission/saved"
 import { PtyTicket } from "@reddb-io/redcode-core/pty/ticket"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionGoal } from "@reddb-io/redcode-core/session/goal"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
 import { LocationServiceMap } from "@reddb-io/redcode-core/location-service-map"
 import { SessionExecutionLocal } from "@reddb-io/redcode-core/session/execution/local"
@@ -31,6 +33,8 @@ const applicationServices = LayerNode.group([
   httpClient,
   ToolOutputStore.cleanupNode,
   SessionV2.node,
+  SessionGoal.node,
+  SessionPlan.node,
   PermissionSaved.node,
   PtyTicket.node,
   Credential.node,

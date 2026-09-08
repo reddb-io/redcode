@@ -44,6 +44,9 @@ export function fromPromise(plugin: Plugin) {
 
         const context2: PluginContext = {
           options: host.options,
+          tools: {
+            register: (entries) => Effect.runPromiseWith(context)(Scope.provide(scope)(host.tools.register(entries))),
+          },
           agent: {
             transform: transform(host.agent),
             reload: () => run(host.agent.reload()),
@@ -90,7 +93,9 @@ export function fromPromise(plugin: Plugin) {
               ),
             parallel: (definition, callback) =>
               register(
-                host.hook.parallel(definition, (event) => Effect.promise((_signal) => Promise.resolve(callback(event)))),
+                host.hook.parallel(definition, (event) =>
+                  Effect.promise((_signal) => Promise.resolve(callback(event))),
+                ),
               ),
           },
           plugin: {

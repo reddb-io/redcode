@@ -9,7 +9,7 @@ import { SessionSchema } from "../session/schema"
 import { ToolOutputStore } from "../tool-output-store"
 import { Wildcard } from "../util/wildcard"
 import { ApplicationTools } from "./application-tools"
-import { definition, permission, settle, validateName, type AnyTool, type RegistrationError } from "./tool"
+import { definition, media, permission, settle, validateName, type AnyTool, type RegistrationError } from "./tool"
 import { Tools } from "./tools"
 import { makeLocationNode } from "../effect/app-node"
 
@@ -27,6 +27,7 @@ export interface Interface {
 }
 
 export interface Materialization {
+  readonly media: ReadonlyArray<{ name: string; capability: NonNullable<ReturnType<typeof media>> }>
   readonly definitions: ReadonlyArray<ToolDefinition>
   readonly settle: (input: ExecuteInput) => Effect.Effect<Settlement, ToolOutputStore.Error>
 }
@@ -112,6 +113,10 @@ const registryLayer = Layer.effect(
         for (const [name, registration] of registrations)
           if (whollyDisabled(permission(registration.tool, name), permissions)) registrations.delete(name)
         return {
+          media: Array.from(registrations).flatMap(([name, registration]) => {
+            const capability = media(registration.tool)
+            return capability ? [{ name, capability }] : []
+          }),
           definitions: Array.from(registrations, ([name, registration]) => definition(name, registration.tool)),
           settle: (input) => {
             const registration = registrations.get(input.call.name)

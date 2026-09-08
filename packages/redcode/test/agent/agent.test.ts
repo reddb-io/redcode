@@ -84,6 +84,8 @@ it.instance("plan agent denies edits except the project directories' plans", () 
     expect(plan).toBeDefined()
     // Wildcard is denied
     expect(evalPerm(plan, "edit")).toBe("deny")
+    expect(evalPerm(plan, "bash")).toBe("deny")
+    expect(evalPerm(plan, "external_write")).toBe("deny")
     // But specific path is allowed
     expect(Permission.evaluate("edit", ".red/code/plans/foo.md", plan!.permission).action).toBe("allow")
     // The older names keep working, so a plan written before the rename is still editable.
@@ -98,7 +100,7 @@ it.instance("plan agent denies the general subagent by default", () =>
     expect(plan).toBeDefined()
     expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("deny")
     expect(Permission.evaluate("task", "explore", plan!.permission).action).toBe("allow")
-    expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("allow")
+    expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("deny")
   }),
 )
 

@@ -20,6 +20,9 @@ import { ProviderV2 } from "../../provider"
 import { QuestionV2 } from "../../question"
 import { SystemContext } from "../../system-context/index"
 import { SystemContextRegistry } from "../../system-context/registry"
+import { DesignContext } from "../../design/context"
+import { DesignRenderer } from "../../design/renderer"
+import { DesignStore } from "../../design/store"
 import { SkillGuidance } from "../../skill/guidance"
 import { ReferenceGuidance } from "../../reference/guidance"
 import { ToolRegistry } from "../../tool/registry"
@@ -33,9 +36,13 @@ import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionMessage } from "../message"
 import { SessionTodo } from "../todo"
+import { SessionGoal } from "../goal"
+import { SessionGoalCompletion } from "../goal-completion"
+import { SessionPlan } from "../plan"
+import { SessionProgressContext } from "../progress-context"
 import { type RunError, Service } from "./index"
 import { SessionRunnerModel } from "./model"
-import { createLLMEventPublisher } from "./publish-llm-event"
+import { createLLMEventPublisher, usageTokens } from "./publish-llm-event"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
@@ -104,12 +111,17 @@ const layer = Layer.effect(
     const store = yield* SessionStore.Service
     const location = yield* Location.Service
     const systemContext = yield* SystemContextRegistry.Service
+    const designs = yield* DesignStore.Service
+    const renderer = yield* DesignRenderer.Service
     const skillGuidance = yield* SkillGuidance.Service
     const referenceGuidance = yield* ReferenceGuidance.Service
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
     const hooks = yield* HookV2.Service
     const todos = yield* SessionTodo.Service
+    const goals = yield* SessionGoal.Service
+    const completion = yield* SessionGoalCompletion.Service
+    const plans = yield* SessionPlan.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({
       events,
@@ -176,10 +188,22 @@ const layer = Layer.effect(
     const continueAfterOverflowCompaction = (step: number) =>
       new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step })
 
-    const loadSystemContext = (agent: AgentV2.Selection) =>
-      Effect.all([systemContext.load(), skillGuidance.load(agent), referenceGuidance.load()], {
-        concurrency: "unbounded",
-      }).pipe(Effect.map(SystemContext.combine))
+    const loadSystemContext = (agent: AgentV2.Selection, sessionID: SessionSchema.ID) =>
+      Effect.all(
+        [
+          systemContext.load(),
+          skillGuidance.load(agent),
+          referenceGuidance.load(),
+          DesignContext.load(sessionID).pipe(Effect.provideService(DesignStore.Service, designs)),
+          SessionProgressContext.load(sessionID).pipe(
+            Effect.provideService(SessionGoal.Service, goals),
+            Effect.provideService(SessionPlan.Service, plans),
+          ),
+        ],
+        {
+          concurrency: "unbounded",
+        },
+      ).pipe(Effect.map(SystemContext.combine))
 
     const runTurnAttempt = Effect.fn("SessionRunner.runTurn")(function* (
       sessionID: SessionSchema.ID,
@@ -191,7 +215,7 @@ const layer = Layer.effect(
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
       const agent = yield* agents.select(session.agent)
-      const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent), session.id)
+      const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent, session.id), session.id)
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       let needsContinuation = false
       let currentStep = step
@@ -206,7 +230,8 @@ const layer = Layer.effect(
         if (promoted > 0) currentStep = 1
       }
       const system =
-        initialized ?? (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent), session.id))
+        initialized ??
+        (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id))
       const model = yield* models.resolve(session)
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
@@ -224,7 +249,9 @@ const layer = Layer.effect(
         },
         providerOptions: { openai: { promptCacheKey } },
         system: [agent.info?.system, system.baseline]
-          .concat(toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [])
+          .concat(
+            toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [],
+          )
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
@@ -233,6 +260,17 @@ const layer = Layer.effect(
       })
       if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
         return yield* Effect.die(continueAfterCompaction(currentStep))
+      const goalID = yield* goals.beginTurn(sessionID).pipe(Effect.orDie)
+      if (goalID === false)
+        return {
+          needsContinuation: false,
+          todoEligible: false,
+          step: currentStep,
+          goalStopped: true,
+          goalID: undefined,
+          failed: false,
+          tokens: 0,
+        }
       const startSnapshot = yield* snapshots.capture()
       const publisher = createLLMEventPublisher(events, {
         sessionID: session.id,
@@ -248,11 +286,15 @@ const layer = Layer.effect(
       const withPublication = Semaphore.makeUnsafe(1).withPermit
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
         withPublication(publisher.publish(event, outputPaths))
+      const completionTools: Effect.Effect<void, ToolOutputStore.Error>[] = []
+      let reportedTokens: ReturnType<typeof usageTokens> | undefined
       let overflowFailure: ProviderErrorEvent | undefined
       const providerStream = llm.stream(request).pipe(
         Stream.runForEach((event) =>
           Effect.gen(function* () {
             if (overflowFailure || publisher.hasProviderError()) return
+            // Preserve received usage even if cancellation wins while publication waits for a sibling tool.
+            if (event.type === "step-finish" && !reportedTokens) reportedTokens = usageTokens(event.usage)
             if (LLMEvent.is.providerError(event)) {
               if (isContextOverflowFailure(event) && !publisher.hasAssistantStarted()) {
                 overflowFailure = event
@@ -267,7 +309,7 @@ const layer = Layer.effect(
             }
             needsContinuation = true
             const assistantMessageID = yield* publisher.assistantMessageID(event.id)
-            yield* Effect.uninterruptibleMask((restore) =>
+            const execute = Effect.uninterruptibleMask((restore) =>
               restore(
                 Effect.gen(function* () {
                   const pre = yield* hooks.run({
@@ -310,7 +352,13 @@ const layer = Layer.effect(
                   ),
                 ),
               ),
-            ).pipe(FiberSet.run(toolFibers))
+            )
+            // Review sees the settled artifacts, including effects of every ordinary sibling tool.
+            if (event.name === "goal_complete") {
+              completionTools.push(execute)
+              return
+            }
+            yield* execute.pipe(FiberSet.run(toolFibers))
           }),
         ),
         Effect.ensuring(withPublication(publisher.flush())),
@@ -335,7 +383,24 @@ const layer = Layer.effect(
             yield* withPublication(publisher.failAssistant(llmFailure.reason.message))
           }
           if (stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)) yield* FiberSet.clear(toolFibers)
-          const settled = yield* restore(awaitToolFibers(toolFibers)).pipe(Effect.exit)
+          const settled = yield* restore(
+            awaitToolFibers(toolFibers).pipe(
+              Effect.andThen(() =>
+                stream._tag === "Success" && !publisher.hasProviderError()
+                  ? Effect.forEach(completionTools, (execute) => execute, { discard: true })
+                  : Effect.void,
+              ),
+            ),
+          ).pipe(Effect.exit)
+          const stepSettlement = publisher.stepSettlement()
+          const tokens =
+            (reportedTokens?.input ?? 0) +
+            (reportedTokens?.output ?? 0) +
+            (reportedTokens?.reasoning ?? 0) +
+            (reportedTokens?.cache.read ?? 0) +
+            (reportedTokens?.cache.write ?? 0)
+          // Charge the known provider usage once, before interruption or completion can leave this turn.
+          if (goalID) yield* goals.recordUsage(sessionID, goalID, tokens)
           if (settled._tag === "Failure" && isUserDeclined(settled.cause)) {
             yield* FiberSet.clear(toolFibers)
             yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
@@ -355,7 +420,6 @@ const layer = Layer.effect(
             const message = failure instanceof Error ? failure.message : String(failure)
             yield* withPublication(publisher.failUnsettledTools(`Tool execution failed: ${message}`))
           }
-          const stepSettlement = publisher.stepSettlement()
           if (stepSettlement && !publisher.hasProviderError()) {
             const endSnapshot = yield* snapshots.capture()
             const files =
@@ -381,10 +445,37 @@ const layer = Layer.effect(
             yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
-          if (stream._tag === "Failure") return yield* Effect.failCause(stream.cause)
+          if (stream._tag === "Failure") {
+            if (goalID)
+              yield* goals
+                .settle(sessionID, { goalID, tokens: 0, failed: true, interrupted: Cause.hasInterrupts(stream.cause) })
+                .pipe(Effect.orDie)
+            return yield* Effect.failCause(stream.cause)
+          }
           if (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
             return yield* Effect.failCause(settled.cause)
+          if (settled._tag === "Success" && !publisher.hasProviderError()) {
+            const failure = yield* restore(completion.settle(sessionID)).pipe(
+              Effect.match({
+                onSuccess: () => undefined,
+                onFailure: (error) => error.message,
+              }),
+            )
+            if (failure) {
+              needsContinuation = true
+              yield* events.publish(SessionEvent.Synthetic, {
+                sessionID,
+                messageID: SessionMessage.ID.create(),
+                timestamp: yield* DateTime.now,
+                text: `Goal verification could not be accepted: ${failure}`,
+              })
+            }
+          }
           return {
+            goalStopped: false,
+            goalID,
+            failed: publisher.hasProviderError(),
+            tokens: 0,
             needsContinuation: !publisher.hasProviderError() && needsContinuation,
             todoEligible:
               !publisher.hasProviderError() &&
@@ -401,7 +492,15 @@ const layer = Layer.effect(
       promotion: SessionInput.Delivery | undefined,
       step: number,
     ) => Effect.Effect<
-      { readonly needsContinuation: boolean; readonly todoEligible: boolean; readonly step: number },
+      {
+        readonly needsContinuation: boolean
+        readonly todoEligible: boolean
+        readonly step: number
+        readonly goalStopped: boolean
+        readonly goalID: string | undefined
+        readonly failed: boolean
+        readonly tokens: number
+      },
       RunError
     >
 
@@ -449,45 +548,90 @@ const layer = Layer.effect(
       readonly sessionID: SessionSchema.ID
       readonly force: boolean
     }) {
-      const hasSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")
-      const hasQueue = hasSteer ? false : yield* SessionInput.hasPending(db, input.sessionID, "queue")
-      if (!input.force && !hasSteer && !hasQueue) return
-      yield* failInterruptedTools(input.sessionID)
-      let promotion: SessionInput.Delivery | undefined = hasSteer ? "steer" : hasQueue ? "queue" : undefined
-      let shouldRun = input.force || hasSteer || hasQueue
-      while (shouldRun) {
-        let needsContinuation = true
-        let step = 1
-        let todoContinuations = 0
-        while (needsContinuation) {
-          const result = yield* runTurn(input.sessionID, promotion, step)
-          needsContinuation = result.needsContinuation
-          step = result.step + 1
-          promotion = "steer"
-          if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
-          if (!needsContinuation && result.todoEligible) {
-            const reminder = SessionTodo.reminder(yield* todos.get(input.sessionID))
-            if (reminder && todoContinuations < 7) {
-              yield* events.publish(SessionEvent.Synthetic, {
-                sessionID: input.sessionID,
-                messageID: SessionMessage.ID.create(),
-                timestamp: yield* DateTime.now,
-                text: reminder,
-              })
-              todoContinuations++
-              needsContinuation = true
-            } else if (reminder) {
-              yield* Effect.logWarning("Todo continuation limit reached", {
-                sessionID: input.sessionID,
-                attempts: todoContinuations,
-              })
+      const runGoal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
+      yield* completion.discard(input.sessionID)
+      return yield* Effect.gen(function* () {
+        const hasSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+        const hasQueue = hasSteer ? false : yield* SessionInput.hasPending(db, input.sessionID, "queue")
+        if (!input.force && !hasSteer && !hasQueue) return
+        yield* failInterruptedTools(input.sessionID)
+        let promotion: SessionInput.Delivery | undefined = hasSteer ? "steer" : hasQueue ? "queue" : undefined
+        let shouldRun = input.force || hasSteer || hasQueue
+        while (shouldRun) {
+          let needsContinuation = true
+          let step = 1
+          let todoContinuations = 0
+          while (needsContinuation) {
+            const result = yield* runTurn(input.sessionID, promotion, step)
+            if (result.goalStopped) return
+            if (result.goalID) {
+              const continuing = yield* goals
+                .settle(input.sessionID, { goalID: result.goalID, tokens: result.tokens, failed: result.failed })
+                .pipe(Effect.orDie)
+              if (!continuing) return
+            }
+            needsContinuation = result.needsContinuation
+            step = result.step + 1
+            promotion = "steer"
+            if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+            if (!needsContinuation && result.todoEligible) {
+              const reminder = SessionTodo.reminder(yield* todos.get(input.sessionID))
+              if (reminder && todoContinuations < 7) {
+                yield* events.publish(SessionEvent.Synthetic, {
+                  sessionID: input.sessionID,
+                  messageID: SessionMessage.ID.create(),
+                  timestamp: yield* DateTime.now,
+                  text: reminder,
+                })
+                todoContinuations++
+                needsContinuation = true
+              } else if (reminder) {
+                yield* Effect.logWarning("Todo continuation limit reached", {
+                  sessionID: input.sessionID,
+                  attempts: todoContinuations,
+                })
+              }
+            }
+            if (!needsContinuation) {
+              const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
+              if (goal?.status === "active") {
+                const documents = yield* designs.list(input.sessionID).pipe(Effect.orDie)
+                const jobs = yield* Effect.forEach(documents, (document) =>
+                  renderer.jobs(document.id).pipe(Effect.orDie),
+                )
+                if (jobs.flat().some((job) => job.status === "running" || job.status === "queued")) {
+                  yield* goals.settle(input.sessionID, { goalID: goal.id, tokens: 0, waiting: true }).pipe(Effect.orDie)
+                  return
+                }
+                yield* events.publish(SessionEvent.Synthetic, {
+                  sessionID: input.sessionID,
+                  messageID: SessionMessage.ID.create(),
+                  timestamp: yield* DateTime.now,
+                  text: `Goal is still active: ${goal.objective}. ${goal.reason}. Continue within scope, verify completion with goal_complete, or report a concrete blocker with goal_status.`,
+                })
+                needsContinuation = true
+              }
             }
           }
+          shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
+          promotion = shouldRun ? "queue" : undefined
         }
-        shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
-        promotion = shouldRun ? "queue" : undefined
-      }
-      yield* continueAfterStop(input.sessionID, 0)
+        yield* continueAfterStop(input.sessionID, 0)
+      }).pipe(
+        Effect.ensuring(completion.discard(input.sessionID)),
+        Effect.onError((cause) =>
+          runGoal
+            ? goals
+                .settle(input.sessionID, {
+                  goalID: runGoal.id,
+                  tokens: 0,
+                  failed: true,
+                  interrupted: Cause.hasInterrupts(cause),
+                })
+                .pipe(Effect.ignore)
+            : Effect.void,
+        ),
+      )
     })
 
     return Service.of({
@@ -508,6 +652,8 @@ export const node = makeLocationNode({
     SessionStore.node,
     Location.node,
     SystemContextRegistry.node,
+    DesignStore.node,
+    DesignRenderer.node,
     SkillGuidance.node,
     ReferenceGuidance.node,
     Config.node,
@@ -515,5 +661,8 @@ export const node = makeLocationNode({
     Database.node,
     HookV2.node,
     SessionTodo.node,
+    SessionGoal.node,
+    SessionGoalCompletion.node,
+    SessionPlan.node,
   ],
 })

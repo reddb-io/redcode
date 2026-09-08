@@ -12,22 +12,22 @@ const tool = (id: string, tool: string, status: "completed" | "running", metadat
     callID: id,
     state:
       status === "completed"
-        ? { status, input: {}, output: "", title: "settings", metadata, time: { start: 0, end: 1 } }
-        : { status, input: {}, title: "settings", metadata, time: { start: 0 } },
+        ? { status, input: metadata, output: "", title: "settings", metadata, time: { start: 0, end: 1 } }
+        : { status, input: metadata, title: "settings", metadata, time: { start: 0 } },
   }) as unknown as Part
 
 describe("latestDesignPreview", () => {
   test("picks the newest completed preview, ignoring other tools and unfinished calls", () => {
     const parts: Record<string, Part[]> = {
-      m1: [tool("c1", "design_preview", "completed", { id: "old", revision: 1 })],
+      m1: [tool("c1", "design_preview", "completed", { id: "design_old" })],
       m2: [
         tool("c2", "read", "completed", { id: "nope" }),
-        tool("c3", "design_preview", "completed", { id: "new", revision: 3 }),
+        tool("c3", "design_preview", "completed", { id: "design_new" }),
       ],
-      m3: [tool("c4", "design_preview", "running", { id: "later" })],
+      m3: [tool("c4", "design_preview", "running", { id: "design_later" })],
     }
     const found = latestDesignPreview([{ id: "m1" }, { id: "m2" }, { id: "m3" }], (id) => parts[id] ?? [])
-    expect(found).toEqual({ id: "new", name: "settings", revision: 3 })
+    expect(found).toEqual({ id: "design_new", name: "settings" })
   })
 
   test("nothing when no preview was ever opened", () => {

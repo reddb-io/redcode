@@ -28,7 +28,7 @@ import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
-import { batch, onCleanup, onMount } from "solid-js"
+import { batch, createEffect, onCleanup, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
@@ -56,6 +56,7 @@ function compareMessage(a: Message, b: Message) {
 }
 
 const messageKey = (message: Message) => message.time.created + message.id
+export const SESSION_CACHE_LIMIT = 20
 
 export const {
   context: SyncContext,
@@ -149,7 +150,76 @@ export const {
 
     const fullSyncedSessions = new Set<string>()
     const syncingSessions = new Map<string, Promise<void>>()
-    const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string> }>()
+    const hydratingSessions = new Map<
+      string,
+      { messages: Set<string>; parts: Set<string>; fields: Set<string>; abort: AbortController }
+    >()
+    const cachedSessions = new Map<string, true>()
+    const retainedSessions = new Map<string, number>()
+    let disposed = false
+    let generation = 0
+    let bootstrapAbort: AbortController | undefined
+    let sessionListGeneration = 0
+    let refreshingSessions: { changed: Set<string>; abort: AbortController } | undefined
+    let snapshot:
+      | {
+          sessions: Set<string>
+          statuses: Set<string>
+          permissions: Set<string>
+          questions: Set<string>
+          deleted: Set<string>
+        }
+      | undefined
+    onCleanup(() => {
+      disposed = true
+      generation++
+      bootstrapAbort?.abort()
+      refreshingSessions?.abort.abort()
+      for (const tracker of hydratingSessions.values()) tracker.abort.abort()
+      hydratingSessions.clear()
+      syncingSessions.clear()
+    })
+
+    function evict(sessionID: string, deleted = false) {
+      fullSyncedSessions.delete(sessionID)
+      syncingSessions.delete(sessionID)
+      hydratingSessions.get(sessionID)?.abort.abort()
+      hydratingSessions.delete(sessionID)
+      cachedSessions.delete(sessionID)
+      setStore(
+        produce((draft) => {
+          for (const [messageID, parts] of Object.entries(draft.part)) {
+            if (
+              parts.some((part) => part.sessionID === sessionID) ||
+              draft.message[sessionID]?.some((message) => message.id === messageID)
+            )
+              delete draft.part[messageID]
+          }
+          delete draft.message[sessionID]
+          delete draft.todo[sessionID]
+          delete draft.session_diff[sessionID]
+          if (!deleted) return
+          delete draft.session_status[sessionID]
+          delete draft.permission[sessionID]
+          delete draft.question[sessionID]
+        }),
+      )
+    }
+
+    function trimSessions() {
+      const inactive = [...cachedSessions.keys()].filter((id) => !retainedSessions.has(id))
+      for (const id of inactive.slice(0, Math.max(0, inactive.length - SESSION_CACHE_LIMIT))) evict(id)
+    }
+
+    function cacheSession(sessionID: string) {
+      cachedSessions.delete(sessionID)
+      cachedSessions.set(sessionID, true)
+      trimSessions()
+    }
+    function touchSession(sessionID: string) {
+      snapshot?.sessions.add(sessionID)
+      refreshingSessions?.changed.add(sessionID)
+    }
     const touchMessage = (sessionID: string, messageID: string) => {
       hydratingSessions.get(sessionID)?.messages.add(messageID)
     }
@@ -167,9 +237,9 @@ export const {
       }
     }
 
-    function listSessions() {
+    function listSessions(signal?: AbortSignal) {
       return sdk.client.session
-        .list({ start: Date.now() - 30 * 24 * 60 * 60 * 1000, ...sessionListQuery() })
+        .list({ start: Date.now() - 30 * 24 * 60 * 60 * 1000, ...sessionListQuery() }, { signal })
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
     }
 
@@ -195,6 +265,13 @@ export const {
     }
 
     event.subscribe((event, { directory, workspace }) => {
+      if ("sessionID" in event.properties && typeof event.properties.sessionID === "string") {
+        const sessionID = event.properties.sessionID
+        if (event.type === "todo.updated" || event.type === "session.diff") cacheSession(sessionID)
+        if (event.type === "todo.updated") hydratingSessions.get(sessionID)?.fields.add("todo")
+        if (event.type === "session.diff") hydratingSessions.get(sessionID)?.fields.add("diff")
+        if (event.type === "session.status") snapshot?.statuses.add(sessionID)
+      }
       switch (event.type) {
         case "server.instance.disposed":
           void bootstrap()
@@ -204,6 +281,7 @@ export const {
           void reloadProviders()
           break
         case "permission.replied": {
+          snapshot?.permissions.add(event.properties.requestID)
           const requests = store.permission[event.properties.sessionID]
           if (!requests) break
           const match = search(requests, event.properties.requestID, (r) => r.id)
@@ -220,6 +298,7 @@ export const {
 
         case "permission.asked": {
           const request = event.properties
+          snapshot?.permissions.add(request.id)
           if (permission.mode === "auto") {
             void sdk.client.permission.reply({
               requestID: request.id,
@@ -251,6 +330,7 @@ export const {
 
         case "question.replied":
         case "question.rejected": {
+          snapshot?.questions.add(event.properties.requestID)
           const requests = store.question[event.properties.sessionID]
           if (!requests) break
           const match = search(requests, event.properties.requestID, (r) => r.id)
@@ -267,6 +347,7 @@ export const {
 
         case "question.asked": {
           const request = event.properties
+          snapshot?.questions.add(request.id)
           const requests = store.question[request.sessionID]
           if (!requests) {
             setStore("question", request.sessionID, [request])
@@ -296,6 +377,10 @@ export const {
           break
 
         case "session.deleted": {
+          touchSession(event.properties.info.id)
+          snapshot?.deleted.add(event.properties.info.id)
+          snapshot?.statuses.add(event.properties.info.id)
+          evict(event.properties.info.id, true)
           const result = search(store.session, event.properties.info.id, (s) => s.id)
           if (result.found) {
             setStore(
@@ -308,6 +393,8 @@ export const {
           break
         }
         case "session.updated": {
+          touchSession(event.properties.info.id)
+          hydratingSessions.get(event.properties.info.id)?.fields.add("session")
           const result = search(store.session, event.properties.info.id, (s) => s.id)
           if (result.found) {
             setStore("session", result.index, reconcile(event.properties.info))
@@ -323,6 +410,8 @@ export const {
         }
 
         case "session.next.moved": {
+          touchSession(event.properties.sessionID)
+          hydratingSessions.get(event.properties.sessionID)?.fields.add("session")
           const result = search(store.session, event.properties.sessionID, (s) => s.id)
           if (!result.found) break
           setStore(
@@ -344,6 +433,7 @@ export const {
         }
 
         case "message.updated": {
+          cacheSession(event.properties.info.sessionID)
           touchMessage(event.properties.info.sessionID, event.properties.info.id)
           const messages = store.message[event.properties.info.sessionID]
           if (!messages) {
@@ -385,7 +475,7 @@ export const {
         }
         case "message.removed": {
           touchMessage(event.properties.sessionID, event.properties.messageID)
-          const messages = store.message[event.properties.sessionID]
+          const messages = store.message[event.properties.sessionID] ?? []
           const index = messages.findIndex((message) => message.id === event.properties.messageID)
           if (index !== -1) {
             setStore(
@@ -396,9 +486,25 @@ export const {
               }),
             )
           }
+          setStore(
+            "part",
+            produce((draft) => {
+              delete draft[event.properties.messageID]
+            }),
+          )
           break
         }
         case "message.part.updated": {
+          // Parts have no visible owner after message/session eviction. Only an active history
+          // read may receive a part before its message; its snapshot supplies that owner.
+          if (
+            !hydratingSessions.has(event.properties.part.sessionID) &&
+            !store.message[event.properties.part.sessionID]?.some(
+              (message) => message.id === event.properties.part.messageID,
+            )
+          )
+            break
+          cacheSession(event.properties.part.sessionID)
           touchPart(event.properties.part.sessionID, event.properties.part.id)
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
@@ -421,7 +527,7 @@ export const {
         }
 
         case "message.part.delta": {
-          const parts = store.part[event.properties.messageID]
+          const parts = store.part[event.properties.messageID] ?? []
           if (!parts) break
           const result = search(parts, event.properties.partID, (part) => part.id)
           if (!result.found) break
@@ -441,7 +547,7 @@ export const {
 
         case "message.part.removed": {
           touchPart(event.properties.sessionID, event.properties.partID)
-          const parts = store.part[event.properties.messageID]
+          const parts = store.part[event.properties.messageID] ?? []
           const result = search(parts, event.properties.partID, (part) => part.id)
           if (result.found) {
             setStore(
@@ -474,109 +580,170 @@ export const {
     const args = useArgs()
 
     async function bootstrap(input: { fatal?: boolean } = {}) {
-      const fatal = input.fatal ?? true
+      const epoch = ++generation
+      const listEpoch = ++sessionListGeneration
+      refreshingSessions?.abort.abort()
+      refreshingSessions = undefined
+      bootstrapAbort?.abort()
+      const abort = new AbortController()
+      bootstrapAbort = abort
+      const current = () => !disposed && epoch === generation
+      const tracker = {
+        sessions: new Set<string>(),
+        statuses: new Set<string>(),
+        permissions: new Set<string>(),
+        questions: new Set<string>(),
+        deleted: new Set<string>(),
+      }
+      snapshot = tracker
+      const refresh = [...new Set([...cachedSessions.keys(), ...retainedSessions.keys()])]
+      // Discard old in-flight snapshots before starting another connection/workspace generation.
+      fullSyncedSessions.clear()
+      for (const tracker of hydratingSessions.values()) tracker.abort.abort()
+      hydratingSessions.clear()
+      syncingSessions.clear()
       const workspace = project.workspace.current()
       const projectPromise = project.sync()
-      const sessionListPromise = projectPromise.then(() => listSessions())
-
-      // blocking - include session.list when continuing a session
-      const providersPromise = sdk.client.config.providers({ workspace }, { throwOnError: true })
-      const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true })
-      const capabilitiesPromise = sdk.client.experimental.capabilities
-        .get({ workspace }, { throwOnError: true })
-        .then((x) => x.data)
-        .catch(() => undefined)
-      const consoleStatePromise = sdk.client.experimental.console
-        .get({ workspace }, { throwOnError: true })
-        .then((x) => x.data)
-        .catch(() => emptyConsoleState)
-      const agentsPromise = sdk.client.app.agents({ workspace }, { throwOnError: true })
-      const configPromise = sdk.client.config.get({ workspace }, { throwOnError: true })
-      await Promise.all([
-        providersPromise,
-        providerListPromise,
-        capabilitiesPromise,
-        agentsPromise,
-        configPromise,
-        projectPromise,
-        ...(args.continue ? [sessionListPromise] : []),
+      const sessionsPromise = projectPromise.then(() => listSessions(abort.signal))
+      const refreshPromise = Promise.allSettled(refresh.map((id) => result.session.sync(id, { refresh: true })))
+      const optional = Promise.allSettled([
+        sdk.client.command.list({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("command", reconcile(x.data ?? []))
+        }),
+        sdk.client.lsp.status({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("lsp", reconcile(x.data ?? []))
+        }),
+        sdk.client.mcp.status({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("mcp", reconcile(x.data ?? {}))
+        }),
+        sdk.client.experimental.resource.list({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("mcp_resource", reconcile(x.data ?? {}))
+        }),
+        sdk.client.formatter.status({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("formatter", reconcile(x.data ?? []))
+        }),
+        sdk.client.provider.auth({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("provider_auth", reconcile(x.data ?? {}))
+        }),
+        sdk.client.vcs.get({ workspace }, { signal: abort.signal }).then((x) => {
+          if (current()) setStore("vcs", reconcile(x.data))
+        }),
+        project.workspace.sync(),
       ])
-        .then(async () => {
-          const providersResponse = providersPromise.then((x) => x.data!)
-          const providerListResponse = providerListPromise.then((x) => x.data!)
-          const capabilitiesResponse = capabilitiesPromise
-          const consoleStateResponse = consoleStatePromise
-          const agentsResponse = agentsPromise.then((x) => x.data ?? [])
-          const configResponse = configPromise.then((x) => x.data!)
-          const sessionListResponse = args.continue ? sessionListPromise : undefined
-
-          return Promise.all([
-            providersResponse,
-            providerListResponse,
-            capabilitiesResponse,
-            consoleStateResponse,
-            agentsResponse,
-            configResponse,
-            ...(sessionListResponse ? [sessionListResponse] : []),
-          ]).then((responses) => {
-            const providers = responses[0]
-            const providerList = responses[1]
-            const capabilities = responses[2]
-            const consoleState = responses[3]
-            const agents = responses[4]
-            const config = responses[5]
-            const sessions = responses[6]
-
-            batch(() => {
-              setStore("provider", reconcile(providers.providers))
-              setStore("provider_default", reconcile(providers.default))
-              setStore("provider_next", reconcile(providerList))
-              setStore("capabilities", "experimentalBackgroundSubagents", capabilities?.backgroundSubagents === true)
-              setStore("console_state", reconcile(consoleState))
-              setStore("agent", reconcile(agents))
-              setStore("config", reconcile(config))
-              if (sessions !== undefined) setStore("session", reconcile(sessions))
-            })
+      const secondary = Promise.all([
+        sdk.client.session.status({ workspace }, { signal: abort.signal }),
+        sdk.client.permission.list({ workspace }, { signal: abort.signal }),
+        sdk.client.question.list({ workspace }, { signal: abort.signal }),
+        sessionsPromise,
+      ])
+      // Attach a rejection handler immediately while the blocking startup reads are running.
+      void secondary.catch(() => {})
+      await Promise.all([
+        sdk.client.config.providers({ workspace }, { throwOnError: true, signal: abort.signal }),
+        sdk.client.provider.list({ workspace }, { throwOnError: true, signal: abort.signal }),
+        sdk.client.experimental.capabilities.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
+        sdk.client.experimental.console.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
+        sdk.client.app.agents({ workspace }, { throwOnError: true, signal: abort.signal }),
+        sdk.client.config.get({ workspace }, { throwOnError: true, signal: abort.signal }),
+        projectPromise,
+      ])
+        .then(async ([providers, providerList, capabilities, consoleState, agents, config]) => {
+          if (!current()) return
+          if (args.continue) {
+            const sessions = await sessionsPromise
+            if (!current()) return
+            if (listEpoch === sessionListGeneration)
+              setStore(
+                "session",
+                reconcile(
+                  [
+                    ...sessions.filter((session) => !tracker.sessions.has(session.id)),
+                    ...store.session.filter((session) => tracker.sessions.has(session.id)),
+                  ].toSorted((a, b) => a.id.localeCompare(b.id)),
+                ),
+              )
+          }
+          batch(() => {
+            setStore("provider", reconcile(providers.data!.providers))
+            setStore("provider_default", reconcile(providers.data!.default))
+            setStore("provider_next", reconcile(providerList.data!))
+            setStore(
+              "capabilities",
+              "experimentalBackgroundSubagents",
+              capabilities?.data?.backgroundSubagents === true,
+            )
+            setStore("console_state", reconcile(consoleState?.data ?? emptyConsoleState))
+            setStore("agent", reconcile(agents.data ?? []))
+            setStore("config", reconcile(config.data!))
+            if (store.status !== "complete") setStore("status", "partial")
           })
-        })
-        .then(() => {
-          if (store.status !== "complete") setStore("status", "partial")
+          const [statuses, permissions, questions, sessions] = await secondary
+          if (!current()) return
+          setStore(
+            produce((draft) => {
+              if (listEpoch === sessionListGeneration)
+                draft.session = [
+                  ...sessions.filter((session) => !tracker.sessions.has(session.id)),
+                  ...draft.session.filter((session) => tracker.sessions.has(session.id)),
+                ].toSorted((a, b) => a.id.localeCompare(b.id))
+              if (statuses.data)
+                draft.session_status = {
+                  ...Object.fromEntries(Object.entries(statuses.data).filter(([id]) => !tracker.statuses.has(id))),
+                  ...Object.fromEntries(
+                    Object.entries(draft.session_status).filter(([id]) => tracker.statuses.has(id)),
+                  ),
+                }
+              if (permissions.data) {
+                const live = Object.values(draft.permission)
+                  .flat()
+                  .filter((request) => tracker.permissions.has(request.id))
+                draft.permission = {}
+                for (const request of [
+                  ...permissions.data.filter(
+                    (request) => !tracker.permissions.has(request.id) && !tracker.deleted.has(request.sessionID),
+                  ),
+                  ...live,
+                ].toSorted((a, b) => a.id.localeCompare(b.id))) {
+                  ;(draft.permission[request.sessionID] ??= []).push(request)
+                }
+              }
+              if (questions.data) {
+                const live = Object.values(draft.question)
+                  .flat()
+                  .filter((request) => tracker.questions.has(request.id))
+                draft.question = {}
+                for (const request of [
+                  ...questions.data.filter(
+                    (request) => !tracker.questions.has(request.id) && !tracker.deleted.has(request.sessionID),
+                  ),
+                  ...live,
+                ].toSorted((a, b) => a.id.localeCompare(b.id))) {
+                  ;(draft.question[request.sessionID] ??= []).push(request)
+                }
+              }
+            }),
+          )
+          snapshot = undefined
+          if (permission.mode === "auto") {
+            for (const request of Object.values(store.permission).flat()) {
+              void sdk.client.permission.reply({ requestID: request.id, reply: "once", workspace }).catch(() => {})
+            }
+          }
           if (providerReloadPending) {
             providerReloadPending = false
             void reloadProviders()
           }
-          // non-blocking
-          void Promise.all([
-            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
-            consoleStatePromise.then((consoleState) => setStore("console_state", reconcile(consoleState))),
-            sdk.client.command.list({ workspace }).then((x) => setStore("command", reconcile(x.data ?? []))),
-            sdk.client.lsp.status({ workspace }).then((x) => setStore("lsp", reconcile(x.data ?? []))),
-            sdk.client.mcp.status({ workspace }).then((x) => setStore("mcp", reconcile(x.data ?? {}))),
-            sdk.client.experimental.resource
-              .list({ workspace })
-              .then((x) => setStore("mcp_resource", reconcile(x.data ?? {}))),
-            sdk.client.formatter.status({ workspace }).then((x) => setStore("formatter", reconcile(x.data ?? []))),
-            sdk.client.session.status({ workspace }).then((x) => {
-              setStore("session_status", reconcile(x.data ?? {}))
-            }),
-            sdk.client.provider.auth({ workspace }).then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
-            sdk.client.vcs.get({ workspace }).then((x) => setStore("vcs", reconcile(x.data))),
-            project.workspace.sync(),
-          ]).then(() => {
-            setStore("status", "complete")
-          })
+          await Promise.all([optional, refreshPromise])
+          if (current()) setStore("status", "complete")
         })
-        .catch(async (e) => {
-          console.error("tui bootstrap failed", {
-            error: e instanceof Error ? e.message : String(e),
-            name: e instanceof Error ? e.name : undefined,
-            stack: e instanceof Error ? e.stack : undefined,
-          })
-          if (fatal) {
-            exit(e)
-          } else {
-            throw e
-          }
+        .catch((error) => {
+          if (!current()) return
+          console.error("tui bootstrap failed", { error: error instanceof Error ? error.message : String(error) })
+          if (input.fatal ?? true) return exit(error)
+          throw error
+        })
+        .finally(() => {
+          if (current()) snapshot = undefined
         })
     }
 
@@ -610,8 +777,30 @@ export const {
           return sessionListQuery()
         },
         async refresh() {
-          const list = await listSessions()
-          setStore("session", reconcile(list))
+          const epoch = ++sessionListGeneration
+          refreshingSessions?.abort.abort()
+          const tracker = { changed: new Set<string>(), abort: new AbortController() }
+          refreshingSessions = tracker
+          await listSessions(tracker.abort.signal)
+            .then((list) => {
+              if (disposed || epoch !== sessionListGeneration) return
+              setStore(
+                "session",
+                reconcile(
+                  [
+                    ...list.filter((session) => !tracker.changed.has(session.id)),
+                    ...store.session.filter((session) => tracker.changed.has(session.id)),
+                  ].toSorted((a, b) => a.id.localeCompare(b.id)),
+                ),
+              )
+            })
+            .catch((error) => {
+              if (disposed || epoch !== sessionListGeneration) return
+              throw error
+            })
+            .finally(() => {
+              if (refreshingSessions === tracker) refreshingSessions = undefined
+            })
         },
         status(sessionID: string) {
           const session = result.session.get(sessionID)
@@ -623,25 +812,45 @@ export const {
           if (last.role === "user") return "working"
           return last.time.completed ? "idle" : "working"
         },
-        async sync(sessionID: string) {
-          if (fullSyncedSessions.has(sessionID)) return
+        retain(sessionID: string) {
+          retainedSessions.set(sessionID, (retainedSessions.get(sessionID) ?? 0) + 1)
+          let released = false
+          return () => {
+            if (released) return
+            released = true
+            const remaining = (retainedSessions.get(sessionID) ?? 1) - 1
+            if (remaining) retainedSessions.set(sessionID, remaining)
+            if (!remaining) retainedSessions.delete(sessionID)
+            trimSessions()
+          }
+        },
+        async sync(sessionID: string, input: { refresh?: boolean } = {}) {
+          cacheSession(sessionID)
+          if (fullSyncedSessions.has(sessionID) && !input.refresh) return
           const syncing = syncingSessions.get(sessionID)
           if (syncing) return syncing
-          const tracker = { messages: new Set<string>(), parts: new Set<string>() }
+          const tracker = {
+            messages: new Set<string>(),
+            parts: new Set<string>(),
+            fields: new Set<string>(),
+            abort: new AbortController(),
+          }
           hydratingSessions.set(sessionID, tracker)
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
-              sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 100 }),
-              sdk.client.session.todo({ sessionID }),
-              sdk.client.session.diff({ sessionID }),
+              sdk.client.session.get({ sessionID }, { throwOnError: true, signal: tracker.abort.signal }),
+              sdk.client.session.messages({ sessionID, limit: 100 }, { signal: tracker.abort.signal }),
+              sdk.client.session.todo({ sessionID }, { signal: tracker.abort.signal }),
+              sdk.client.session.diff({ sessionID }, { signal: tracker.abort.signal }),
             ])
+            if (disposed || hydratingSessions.get(sessionID) !== tracker) return
+            if (!messages.data) return
             setStore(
               produce((draft) => {
                 const match = search(draft.session, sessionID, (s) => s.id)
-                if (match.found) draft.session[match.index] = session.data!
+                if (match.found && !tracker.fields.has("session")) draft.session[match.index] = session.data!
                 if (!match.found) draft.session.splice(match.index, 0, session.data!)
-                draft.todo[sessionID] = todo.data ?? []
+                if (!tracker.fields.has("todo") && todo.data) draft.todo[sessionID] = todo.data
                 const currentMessages = draft.message[sessionID] ?? []
                 const infos = (messages.data ?? []).flatMap((message) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
@@ -654,7 +863,7 @@ export const {
                   ),
                 )
                 infos.sort(compareMessage)
-                const removed = infos.slice(0, -100)
+                const removed = [...currentMessages, ...infos.slice(0, -100)]
                 const visible = infos.slice(-100)
                 const visibleIDs = new Set(visible.map((message) => message.id))
                 for (const message of messages.data ?? []) {
@@ -667,6 +876,7 @@ export const {
                     const current = currentParts.find((item) => item.id === part.id)
                     if (tracker.parts.has(part.id)) return current ? [current] : []
                     if (
+                      !input.refresh &&
                       current &&
                       (part.type === "text" || part.type === "reasoning") &&
                       (current.type === "text" || current.type === "reasoning") &&
@@ -684,16 +894,27 @@ export const {
                   )
                   draft.part[message.info.id] = parts
                 }
-                for (const message of removed) delete draft.part[message.id]
+                for (const message of removed) if (!visibleIDs.has(message.id)) delete draft.part[message.id]
+                for (const [messageID, parts] of Object.entries(draft.part)) {
+                  if (!visibleIDs.has(messageID) && parts.some((part) => part.sessionID === sessionID))
+                    delete draft.part[messageID]
+                }
                 draft.message[sessionID] = visible
-                draft.session_diff[sessionID] = diff.data ?? []
+                if (!tracker.fields.has("diff") && diff.data) draft.session_diff[sessionID] = diff.data
               }),
             )
+            touchSession(sessionID)
             fullSyncedSessions.add(sessionID)
-          })().finally(() => {
-            syncingSessions.delete(sessionID)
-            hydratingSessions.delete(sessionID)
-          })
+          })()
+            .catch((error) => {
+              if (disposed || hydratingSessions.get(sessionID) !== tracker) return
+              throw error
+            })
+            .finally(() => {
+              if (hydratingSessions.get(sessionID) !== tracker) return
+              syncingSessions.delete(sessionID)
+              hydratingSessions.delete(sessionID)
+            })
           syncingSessions.set(sessionID, task)
           return task
         },
@@ -703,3 +924,15 @@ export const {
     return result
   },
 })
+
+/** A mounted history consumer keeps its cache alive, including IDs supplied after tool startup. */
+export function useSessionHistory(sessionID: () => string | undefined) {
+  const sync = useSync()
+  createEffect(() => {
+    const id = sessionID()
+    if (!id) return
+    onCleanup(sync.session.retain(id))
+    // Task detail is advisory; a failed read must not create an unhandled session error.
+    void sync.session.sync(id).catch(() => {})
+  })
+}

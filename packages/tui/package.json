@@ -7,6 +7,7 @@
   "license": "MIT",
   "scripts": {
     "test": "bun test --timeout 30000 --only-failures",
+    "bench:lifecycle": "bun run script/benchmark-lifecycle.tsx",
     "typecheck": "tsgo --noEmit"
   },
   "exports": {

@@ -120,7 +120,6 @@ const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
-          design_enter: "deny",
           design_exit: "deny",
           goal_complete: "deny",
           external_directory: {
@@ -153,7 +152,6 @@ const layer = Layer.effect(
                 goal_complete: "allow",
                 question: "allow",
                 plan_enter: "allow",
-                design_enter: "allow",
               }),
               user,
             ),
@@ -166,13 +164,21 @@ const layer = Layer.effect(
             description: "Plan mode. Disallows all edit tools.",
             options: {},
             permission: Permission.merge(
-              defaults,
+              defaults.map((rule) => (rule.permission === "*" ? { ...rule, action: "deny" as const } : rule)),
               Permission.fromConfig({
+                glob: "allow",
+                grep: "allow",
+                list: "allow",
+                webfetch: "allow",
+                websearch: "allow",
+                skill: "allow",
+                todowrite: "allow",
                 goal_complete: "allow",
                 question: "allow",
                 plan_exit: "allow",
                 task: {
-                  general: "deny",
+                  "*": "deny",
+                  explore: "allow",
                 },
                 external_directory: {
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
@@ -181,34 +187,6 @@ const layer = Layer.effect(
                   "*": "deny",
                   ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "plans", "*.md"), "allow"])),
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
-                },
-              }),
-              user,
-            ),
-            mode: "primary",
-            native: true,
-          },
-          design: {
-            name: "design",
-            color: "info",
-            description:
-              "Design mode. Builds an interactive prototype the user reviews in a browser, and turns what they decide into a plan.",
-            options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                goal_complete: "allow",
-                question: "allow",
-                design_exit: "allow",
-                // Edits belong to the prototype. A design session that starts changing the product
-                // has stopped being a design session, and the user has no way to see it happen.
-                edit: {
-                  "*": "deny",
-                  ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "designs", "*"), "allow"])),
-                  [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("designs", "*")))]: "allow",
-                },
-                external_directory: {
-                  [path.join(Global.Path.data, "designs", "*")]: "allow",
                 },
               }),
               user,
@@ -239,7 +217,7 @@ const layer = Layer.effect(
                 grep: "allow",
                 glob: "allow",
                 list: "allow",
-                bash: "allow",
+                bash: "deny",
                 webfetch: "allow",
                 websearch: "allow",
                 read: "allow",

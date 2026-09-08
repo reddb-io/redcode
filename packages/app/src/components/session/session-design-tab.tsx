@@ -1,59 +1,56 @@
-import { Show, createMemo } from "solid-js"
+import { createEffect, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
-import type { Part } from "@reddb-io/redcode-sdk/v2/client"
-import { latestDesignPreview } from "./session-design-preview"
-import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
+import { useServerSDK } from "@/context/server-sdk"
+import { usePlatform } from "@/context/platform"
+import { authTokenFromCredentials } from "@/utils/server"
 
-/**
- * The prototype the agent last opened, embedded.
- *
- * Nothing here is a second implementation of the review surface: the panel loads the same shell
- * the browser tab does, with `?embed=1` so the shell drops its own header. Annotations, the
- * feedback route and the revision poll all stay in that one document, which is also the only
- * one holding the prototype's token.
- */
 export function SessionDesignTab() {
   const params = useParams()
-  const sync = useSync()
   const sdk = useSDK()
+  const server = useServerSDK()
+  const platform = usePlatform()
   const language = useLanguage()
-
-  const preview = createMemo(() => {
+  const root = document.createElement("div")
+  root.className = "h-full w-full"
+  createEffect(() => {
     const sessionID = params.id
-    if (!sessionID) return undefined
-    return latestDesignPreview(sync().data.message[sessionID] ?? [], (id) => (sync().data.part[id] ?? []) as Part[])
+    if (!sessionID) return
+    const base = sdk().url
+    const connection = server().server.http
+    const host = document.createElement("div")
+    host.style.height = "100%"
+    root.replaceChildren(host)
+    const state = { disposed: false, cleanup: undefined as (() => void) | undefined }
+    void Promise.all([import("@reddb-io/redcode-design/review"), import("@reddb-io/redcode-design/copy")]).then(
+      ([review, copy]) => {
+        if (state.disposed) return
+        state.cleanup = review.mountReview(host, {
+          base,
+          sessionID,
+          copy: Object.fromEntries(
+            Object.keys(copy.reviewCopy).map((key) => [
+              key,
+              language.t(`session.design.studio.${key as keyof typeof copy.reviewCopy}`),
+            ]),
+          ) as typeof copy.reviewCopy,
+          request: (url, init) => {
+            const headers = new Headers(init?.headers)
+            if (connection.password)
+              headers.set(
+                "Authorization",
+                `Basic ${authTokenFromCredentials({ username: connection.username, password: connection.password })}`,
+              )
+            return (platform.fetch ?? fetch)(url, { ...init, headers })
+          },
+        })
+      },
+    )
+    onCleanup(() => {
+      state.disposed = true
+      state.cleanup?.()
+    })
   })
-
-  const src = createMemo(() => {
-    const current = preview()
-    if (!current) return undefined
-    const base = sdk().url.replace(/\/$/, "")
-    // No revision in the URL on purpose: the id is stable for a session and directory, and the
-    // shell reloads the prototype itself. Remounting the shell would throw away notes being held.
-    return `${base}/design/${current.id}?embed=1`
-  })
-
-  return (
-    <Show
-      when={src()}
-      fallback={
-        <div class="h-full flex items-center justify-center text-14-regular text-text-weak px-6 text-center">
-          {language.t("session.design.empty")}
-        </div>
-      }
-    >
-      {(url) => (
-        <iframe
-          data-component="session-design-frame"
-          src={url()}
-          title={preview()?.name}
-          class="w-full h-full border-0 bg-background-base"
-          // The shell is ours, but the prototype inside it is not: the shell sandboxes it again.
-          allow=""
-        />
-      )}
-    </Show>
-  )
+  return root
 }

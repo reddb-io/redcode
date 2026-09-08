@@ -358,17 +358,17 @@ describe("HttpApiCodegen.generate", () => {
       ),
     ).toThrow("Unsupported Promise success encoding: session.text")
 
-    expect(() =>
-      emitPromise(
-        compileContract(
-          api(
-            HttpApiEndpoint.get("binary", "/binary", {
-              success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
-            }),
-          ),
+    const binary = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("binary", "/binary", {
+            success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+          }),
         ),
       ),
-    ).toThrow("Unsupported Promise success encoding: session.binary")
+    )
+    expect(binary.files.find((file) => file.path === "types.ts")?.content).toContain("Output = Uint8Array")
+    expect(binary.files.find((file) => file.path === "client.ts")?.content).toContain("binary: true")
 
     expect(() =>
       emitPromise(compileContract(api(HttpApiEndpoint.get("read", "/file/*", { success: Schema.String })))),
@@ -415,6 +415,29 @@ describe("HttpApiCodegen.generate", () => {
       expect(await client.session.get({ sessionID: "a/b" })).toBe("hello")
       expect(request?.method).toBe("GET")
       expect(request?.url).toBe("https://example.com/session/a%2Fb")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("decodes binary responses without attempting JSON parsing", async () => {
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("binary", "/binary", { success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()) }),
+        ),
+      ),
+    )
+    const directory = await mkdtemp(join(tmpdir(), "redcode-binary-client-"))
+    try {
+      await Promise.all(output.files.map((file) => Bun.write(join(directory, file.path), file.content)))
+      const generated = await import(`${join(directory, "index.ts")}?t=${crypto.randomUUID()}`)
+      const client = generated.Redcode.make({
+        baseUrl: "https://example.com",
+        fetch: async () =>
+          new Response(new Uint8Array([71, 73, 70, 0, 255]), { headers: { "content-type": "image/gif" } }),
+      })
+      expect(await client.session.binary()).toEqual(new Uint8Array([71, 73, 70, 0, 255]))
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

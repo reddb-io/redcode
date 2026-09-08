@@ -17,6 +17,8 @@ import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { PluginV2 } from "@reddb-io/redcode-core/plugin"
 import { Reference } from "@reddb-io/redcode-core/reference"
 import { SkillV2 } from "@reddb-io/redcode-core/skill"
+import { ExternalTools } from "@reddb-io/redcode-core/tool/external"
+import { ToolRegistry } from "@reddb-io/redcode-core/tool/registry"
 import { Effect, Layer } from "effect"
 import { tempLocationLayer } from "../fixture/location"
 
@@ -50,6 +52,8 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Integration.node,
     Reference.node,
     SkillV2.node,
+    ExternalTools.node,
+    ToolRegistry.node,
   ]),
   [
     [Location.node, tempLocationLayer],

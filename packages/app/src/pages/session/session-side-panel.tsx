@@ -248,6 +248,18 @@ export function SessionSidePanel(props: {
   // A prototype the agent just opened lands in the panel the way a browser tab would open: once
   // per preview, never again for the same one, so closing the tab means closed.
   const sync = useSync()
+  command.register("design-review", () => [
+    {
+      id: "session.design",
+      title: language.t("session.tab.design"),
+      category: language.t("command.category.view"),
+      onSelect: () => {
+        tabs().open(SESSION_DESIGN_TAB)
+        openReviewPanel()
+        tabs().setActive(SESSION_DESIGN_TAB)
+      },
+    },
+  ])
   const designPreview = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
@@ -256,10 +268,8 @@ export function SessionSidePanel(props: {
   createEffect((seen: string | undefined) => {
     const current = designPreview()
     if (!current) return seen
-    const key = `${current.id}:${current.revision}`
+    const key = current.id
     if (key === seen) return key
-    // Opening the app onto an old session must not pop the tab for a preview from last week.
-    if (seen === undefined && current.revision > 1) return key
     tabs().open(SESSION_DESIGN_TAB)
     openReviewPanel()
     queueMicrotask(() => tabs().setActive(SESSION_DESIGN_TAB))

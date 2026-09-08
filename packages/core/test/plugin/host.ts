@@ -13,6 +13,7 @@ type Overrides = Partial<Omit<PluginContext, "options">>
 export function host(overrides: Overrides = {}): PluginContext {
   return {
     options: {},
+    tools: overrides.tools ?? { register: () => Effect.die("unused tools.register") },
     agent: overrides.agent ?? {
       transform: () => Effect.die("unused agent.transform"),
       reload: () => Effect.die("unused agent.reload"),

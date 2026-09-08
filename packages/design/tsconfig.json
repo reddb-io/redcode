@@ -1,0 +1,8 @@
+{
+  "extends": "@tsconfig/bun/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src"]
+}

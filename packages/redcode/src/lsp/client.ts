@@ -66,6 +66,7 @@ type ServerCapabilities = {
     | number
     | {
         change?: number
+        save?: boolean | { includeText?: boolean }
       }
   diagnosticProvider?: unknown
   [key: string]: unknown
@@ -245,6 +246,7 @@ export async function create(input: {
             synchronization: {
               didOpen: true,
               didChange: true,
+              didSave: true,
             },
             diagnostic: {
               dynamicRegistration: true,
@@ -266,6 +268,8 @@ export async function create(input: {
   })
 
   const syncKind = getSyncKind(initialized.capabilities)
+  const sync = initialized.capabilities?.textDocumentSync
+  const save = typeof sync === "object" ? sync.save : undefined
   const hasStaticPullDiagnostics = Boolean(initialized.capabilities?.diagnosticProvider)
 
   await connection.sendNotification("initialized", {})
@@ -642,6 +646,14 @@ export async function create(input: {
                   ]
                 : [{ text }],
           })
+          // Tools have already written this content to disk. Servers such as rust-analyzer
+          // run their compiler checks on save, rather than on didChange alone.
+          if (save && text !== document.text) {
+            await connection.sendNotification("textDocument/didSave", {
+              textDocument: { uri: pathToFileURL(request.path).href },
+              ...(typeof save === "object" && save.includeText ? { text } : {}),
+            })
+          }
           return next
         }
 

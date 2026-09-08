@@ -45,7 +45,9 @@ export interface Interface {
   readonly claim: (sessionID: SessionID, evidence: string) => Effect.Effect<void>
   /** Active → paused with a reason; anything else untouched. */
   readonly pause: (sessionID: SessionID, reason: string) => Effect.Effect<SessionGoal.Goal | undefined>
+  readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<void>
   /** The end of a turn: gates, judge, decision, record. */
+  readonly beginTurn: (sessionID: SessionID) => Effect.Effect<boolean>
   readonly afterTurn: (input: AfterTurnInput) => Effect.Effect<AfterTurnResult | undefined>
 }
 
@@ -85,6 +87,17 @@ const layer = Layer.effect(
       yield* sessions.setMetadata({ sessionID, metadata: SessionGoal.toMetadata(session.metadata, stamped) })
     })
 
+    const beginTurn = Effect.fn("GoalRuntime.beginTurn")(function* (sessionID: SessionID) {
+      const goal = yield* get(sessionID)
+      if (!goal || goal.status !== "active") return true
+      if (goal.turns.used >= goal.turns.max) {
+        yield* set(sessionID, SessionGoal.paused(goal, SessionGoal.budgetReason(goal), Date.now()))
+        return false
+      }
+      yield* set(sessionID, { ...goal, turns: { ...goal.turns, used: goal.turns.used + 1 }, updated: Date.now() })
+      return true
+    })
+
     const claim = Effect.fn("GoalRuntime.claim")(function* (sessionID: SessionID, evidence: string) {
       const goal = yield* get(sessionID)
       if (!goal || goal.status !== "active") return
@@ -98,6 +111,13 @@ const layer = Layer.effect(
       yield* set(sessionID, next)
       yield* guards.record({ sessionID, guard: "goal", action: "stop", subject: "paused", detail: reason })
       return next
+    })
+
+    const block = Effect.fn("GoalRuntime.block")(function* (sessionID: SessionID, reason: string) {
+      const goal = yield* get(sessionID)
+      if (!goal || goal.status !== "active") return
+      yield* set(sessionID, { ...goal, status: "blocked", reason, updated: Date.now() })
+      yield* guards.record({ sessionID, guard: "goal", action: "stop", subject: "blocked", detail: reason })
     })
 
     /** Gates run in the instance directory, each bounded; a gate that cannot run has failed. */
@@ -128,6 +148,7 @@ const layer = Layer.effect(
       lastUser: SessionV1.User
       answer: string
       background: readonly string[]
+      evidence: string
     }) {
       const ag = yield* agents.get("goal_judge")
       if (!ag) return undefined
@@ -147,13 +168,14 @@ const layer = Layer.effect(
         ...(goal.contract.boundaries ? [`Boundaries: ${goal.contract.boundaries}`] : []),
         ...(goal.contract.stop_when ? [`Stop when: ${goal.contract.stop_when}`] : []),
         ...(goal.gates.length ? [`Gates (all passed this turn): ${goal.gates.join(" && ")}`] : []),
-        `Turn ${goal.turns.used + 1} of ${goal.turns.max}.`,
+        `Turn ${goal.turns.used} of ${goal.turns.max}.`,
         "</goal>",
         "",
         goal.claimed
           ? `<claim>\nThe agent called goal_complete with this evidence:\n${goal.claimed.evidence}\n</claim>`
           : "<claim>The agent did not claim completion this turn.</claim>",
         "",
+        `<observed-evidence>\n${input.evidence || "No executed checks or completed tools."}\n</observed-evidence>`,
         `<last-turn>\n${input.answer || "(the agent produced no text this turn)"}\n</last-turn>`,
         "",
         input.background.length
@@ -214,8 +236,25 @@ const layer = Layer.effect(
         )
         const background = running.map((job) => String(job.metadata?.["description"] ?? job.id))
 
+        if (running.length) return { action: "wait" as const, goal }
         const gateResults = yield* gates(goal)
         const failed = gateResults.find((g) => !g.ok)
+        const messages = yield* sessions.messages({ sessionID }).pipe(Effect.orDie)
+        const observed = messages
+          .filter((message) => message.info.time.created >= goal.created)
+          .flatMap((message) =>
+            message.parts.flatMap((part) =>
+              part.type === "tool" && part.tool !== "goal_complete" && part.state.status === "completed"
+                ? [`${part.tool}: ${part.state.output}`]
+                : [],
+            ),
+          )
+        const evidence = [
+          ...gateResults.map((check) => `${check.command}: ${check.ok ? "PASS" : "FAIL"}\n${check.output}`),
+          ...observed,
+        ]
+          .join("\n\n")
+          .slice(-24000)
         const verdict = failed
           ? undefined
           : yield* judge({
@@ -224,6 +263,7 @@ const layer = Layer.effect(
               lastUser: input.lastUser,
               answer: answerOf(input.lastAssistant),
               background,
+              evidence,
             }).pipe(
               Effect.catchCause((cause) =>
                 Effect.logWarning("goal judge could not run", { "session.id": sessionID, cause }).pipe(
@@ -236,6 +276,7 @@ const layer = Layer.effect(
           ...(verdict ? { verdict } : {}),
           gates: gateResults,
           waiting: running.length > 0,
+          evidence: evidence.length > 0,
         })
         // A failed gate is not a judge failure: the judge was never asked.
         const next = SessionGoal.apply(
@@ -244,6 +285,9 @@ const layer = Layer.effect(
           failed ? { verdict: "continue", reason: decision.reason } : verdict,
           now,
         )
+        const current = yield* get(sessionID)
+        if (!current || current.id !== goal.id || current.updated !== goal.updated || current.status !== "active")
+          return undefined
         yield* set(sessionID, next)
         yield* guards.record({
           sessionID,
@@ -259,7 +303,7 @@ const layer = Layer.effect(
         return { action: decision.action, ...(text ? { text } : {}), goal: next }
       }).pipe(Effect.withSpan("GoalRuntime.afterTurn"))
 
-    return Service.of({ get, set, claim, pause, afterTurn })
+    return Service.of({ get, set, claim, pause, block, beginTurn, afterTurn })
   }),
 )
 

@@ -70,6 +70,7 @@ export function SessionComposerRegion(props: {
         </Show>
 
         <Show when={controller.showComposer()}>
+          <SessionGoalDock metadata={goalMetadata()} sessionID={params.id} />
           <Show when={controller.dock()}>
             <div
               classList={{
@@ -81,7 +82,6 @@ export function SessionComposerRegion(props: {
               }}
             >
               <div ref={controller.setDockBodyRef}>
-                <SessionGoalDock metadata={goalMetadata()} />
                 <SessionTodoDock
                   todos={controller.state.todos()}
                   collapsed={controller.todo.collapsed()}

@@ -48,6 +48,8 @@ import {
   SessionTable,
 } from "@reddb-io/redcode-core/session/sql"
 import { SessionStore } from "@reddb-io/redcode-core/session/store"
+import { SessionGoal } from "../src/session/goal"
+import { SessionPlan } from "../src/session/plan"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SystemContext } from "@reddb-io/redcode-core/system-context"
 import { SystemContextRegistry } from "@reddb-io/redcode-core/system-context/registry"
@@ -261,6 +263,8 @@ const it = testEffect(
       SessionProjector.node,
       SessionStore.node,
       SessionTodo.node,
+      SessionGoal.node,
+      SessionPlan.node,
       ApplicationTools.node,
       AgentV2.node,
       ToolRegistry.node,
@@ -629,6 +633,112 @@ describe("SessionRunnerLLM", () => {
       expect(yield* session.messages({ sessionID })).toMatchObject([
         { id: message.id, type: "user", text: "Run automatically" },
       ])
+    }),
+  )
+
+  it.effect("continues a Goal without duplicating its approved plan and stops before a third provider turn", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const goals = yield* SessionGoal.Service
+      const plans = yield* SessionPlan.Service
+      yield* plans.record({
+        sessionID,
+        revision: "approved-revision",
+        path: "plan.md",
+        content: "Implement the approved checkout and verify the receipt",
+        status: "approved",
+        created: 1,
+      })
+      yield* goals.start(sessionID, { objective: "Verify the requested change", maxTurns: 2 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Work on the goal" }), resume: false })
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "goal-one", ["Investigated"]).completeEvents,
+        fragmentFixture("text", "goal-two", ["More work remains"]).completeEvents,
+      ]
+      yield* session.resume(sessionID)
+      expect(requests).toHaveLength(2)
+      requests.forEach((request) => {
+        expect(
+          JSON.stringify([request.system, request.messages]).match(/Implement the approved checkout/g),
+        ).toHaveLength(1)
+      })
+      expect((yield* goals.get(sessionID))?.status).toBe("paused")
+      expect((yield* goals.get(sessionID))?.turns.used).toBe(2)
+    }),
+  )
+
+  it.effect("provider failure blocks a Goal instead of scheduling another attempt", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const goals = yield* SessionGoal.Service
+      yield* goals.start(sessionID, { objective: "Keep the failure visible", maxTurns: 2 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Work" }), resume: false })
+      requests.length = 0
+      streamFailure = providerUnavailable()
+      yield* session.resume(sessionID).pipe(Effect.exit)
+      expect(requests).toHaveLength(1)
+      expect((yield* goals.get(sessionID))?.status).toBe("blocked")
+    }),
+  )
+
+  it.effect("keeps usage reported before a terminal provider transport failure", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const goals = yield* SessionGoal.Service
+      yield* goals.start(sessionID, { objective: "Keep provider usage visible", maxTurns: 2 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Work" }), resume: false })
+      responseStream = Stream.concat(
+        Stream.fromIterable([
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "partial" }),
+          LLMEvent.textDelta({ id: "partial", text: "Work in progress" }),
+          LLMEvent.textEnd({ id: "partial" }),
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "stop",
+            usage: { inputTokens: 10, nonCachedInputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          }),
+        ]),
+        Stream.fail(providerUnavailable()),
+      )
+      yield* session.resume(sessionID).pipe(Effect.exit)
+      expect((yield* goals.get(sessionID))?.status).toBe("blocked")
+      expect((yield* goals.get(sessionID))?.tokens).toBe(15)
+    }),
+  )
+
+  it.effect("keeps reported usage when a provider stream is interrupted before closing", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const goals = yield* SessionGoal.Service
+      const reported = yield* Deferred.make<void>()
+      yield* goals.start(sessionID, { objective: "Keep interrupted usage visible", maxTurns: 2 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Work" }), resume: false })
+      responseStream = Stream.concat(
+        Stream.fromIterable([
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "partial" }),
+          LLMEvent.textDelta({ id: "partial", text: "Work in progress" }),
+          LLMEvent.textEnd({ id: "partial" }),
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "stop",
+            usage: { inputTokens: 10, nonCachedInputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          }),
+        ]),
+        Stream.unwrap(Deferred.succeed(reported, undefined).pipe(Effect.as(Stream.never))),
+      )
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      yield* Deferred.await(reported)
+      yield* session.interrupt(sessionID)
+      yield* Fiber.await(run)
+      expect((yield* goals.get(sessionID))?.status).toBe("paused")
+      expect((yield* goals.get(sessionID))?.tokens).toBe(15)
     }),
   )
 

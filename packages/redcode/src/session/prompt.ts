@@ -81,7 +81,6 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
-import { DesignSystem } from "@/design/system"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@reddb-io/redcode-llm"
@@ -91,6 +90,7 @@ import { Todo } from "./todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
+import { errorMessage } from "@/util/error"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -160,7 +160,6 @@ const layer = Layer.effect(
     const guards = yield* SessionGuardLog.Service
     const permission = yield* Permission.Service
     const fsys = yield* FSUtil.Service
-    const designSystem = yield* DesignSystem.Service
     const mcp = yield* MCP.Service
     const lsp = yield* LSP.Service
     const registry = yield* ToolRegistry.Service
@@ -1421,6 +1420,9 @@ const layer = Layer.effect(
                 .pipe(
                   Effect.catchCause((cause) =>
                     Effect.logError("goal loop failed; ending the turn", { "session.id": sessionID, cause }).pipe(
+                      Effect.andThen(
+                        goals.block(sessionID, `Goal verification failed: ${errorMessage(Cause.squash(cause))}`),
+                      ),
                       Effect.as(undefined),
                     ),
                   ),
@@ -1515,7 +1517,6 @@ const layer = Layer.effect(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
-            Effect.provideService(DesignSystem.Service, designSystem),
           )
 
           const msg: SessionV1.Assistant = {
@@ -1553,6 +1554,8 @@ const layer = Layer.effect(
               // Already incremented for this iteration, so this is the 1-based step number.
               model,
               step,
+              beforeAttempt: () => goals.beginTurn(sessionID),
+              onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 
@@ -1707,6 +1710,10 @@ const layer = Layer.effect(
         runLoop(input.sessionID).pipe(
           Effect.onExit((exit) =>
             Effect.gen(function* () {
+              if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
+                yield* goals.block(input.sessionID, `Execution failed: ${errorMessage(Cause.squash(exit.cause))}`)
+              if (Exit.isSuccess(exit) && exit.value.info.role === "assistant" && exit.value.info.error)
+                yield* goals.block(input.sessionID, `Execution failed: ${errorMessage(exit.value.info.error)}`)
               const turnEnded = {
                 sessionID: input.sessionID,
                 timestamp: yield* DateTime.now,
@@ -1981,7 +1988,6 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
-    DesignSystem.node,
     GoalRuntime.node,
     SessionGuardLog.node,
     SessionStatus.node,

@@ -9,9 +9,12 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "test": "bun test --timeout 30000 --only-failures",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@reddb-io/redcode-design": "workspace:*",
+    "@reddb-io/redcode-schema": "workspace:*",
     "@reddb-io/redcode-core": "workspace:*",
     "@reddb-io/redcode-protocol": "workspace:*",
     "@reddb-io/multi-rpc": "0.29.6",
@@ -23,6 +26,8 @@
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "gifuct-js": "2.1.2",
+    "playwright-core": "1.59.1"
   }
 }

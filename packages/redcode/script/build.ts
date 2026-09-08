@@ -54,6 +54,14 @@ const createEmbeddedWebUIBundle = async () => {
 
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
 const treeSitterWorker = await Bun.file(fileURLToPath(import.meta.resolve("@opentui/core/parser.worker"))).text()
+const rasterWorker = await Bun.build({
+  entrypoints: ["../core/src/design/raster-worker.ts"],
+  target: "bun",
+  format: "esm",
+  minify: true,
+})
+if (!rasterWorker.success) throw new AggregateError(rasterWorker.logs, "Unable to bundle the Design raster worker")
+const rasterWorkerSource = await rasterWorker.outputs[0].text()
 
 const allTargets: {
   os: string
@@ -162,6 +170,7 @@ for (const item of targets) {
   await $`mkdir -p dist/${name}/bin`
 
   const workerPath = "./src/cli/tui/worker.ts"
+  const designWorkerPath = "design-raster-worker.js"
   const treeSitterWorkerPath = "opentui-tree-sitter-worker.js"
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
 
@@ -186,11 +195,13 @@ for (const item of targets) {
     },
     files: {
       [treeSitterWorkerPath]: treeSitterWorker,
+      [designWorkerPath]: rasterWorkerSource,
       ...(embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {}),
     },
     entrypoints: [
       "./src/index.ts",
       workerPath,
+      designWorkerPath,
       treeSitterWorkerPath,
       ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),
     ],
@@ -200,6 +211,8 @@ for (const item of targets) {
       REDCODE_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + treeSitterWorkerPath,
       REDCODE_WORKER_PATH: workerPath,
+      REDCODE_DESIGN_WORKER_PATH: JSON.stringify(bunfsRoot + designWorkerPath),
+      REDCODE_DESIGN_RUNTIME: "true",
       REDCODE_CHANNEL: `'${Script.channel}'`,
       REDCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
       ...(item.os === "linux" ? { "process.env.OPENTUI_LIBC": JSON.stringify(item.abi ?? "glibc") } : {}),
