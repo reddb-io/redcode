@@ -193,7 +193,7 @@ it.instance("queued browser feedback does not restart an interrupted TUI session
     )
     yield* status.set(session.id, { type: "busy" })
     const receipt = yield* feedback.admit(session.id, document.id, {
-      id: "msg_queued_interrupt",
+      id: MessageID.make("msg_queued_interrupt"),
       revision: document.revision,
       text: "Wait for the current work",
       items: [],
