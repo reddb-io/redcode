@@ -61,6 +61,9 @@ function makeRoutes<AuthError, AuthServices>(auth: Layer.Layer<ServerAuth.Config
     HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(Layer.provide(handlers)),
     HttpApiBuilder.layer(RpcApi).pipe(Layer.provide(RpcHandler)),
   ).pipe(
+    // Handler construction and request execution have separate requirements.
+    // Reuse the application layer so both see the same Session and Goal services.
+    HttpRouter.provideRequest(serviceLayer),
     Layer.provide(sessionLocationLayer),
     Layer.provide(locationLayer),
     Layer.provide(authorizationLayer),

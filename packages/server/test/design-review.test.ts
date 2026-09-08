@@ -6,14 +6,13 @@ import { chromium, type Browser } from "playwright-core"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
-import { Context } from "effect"
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
 const web = webHandler()
 const server = Bun.serve({
   port: 0,
   hostname: "127.0.0.1",
-  fetch: (request) => web.handler(request, Context.makeUnsafe<unknown>(new Map())),
+  fetch: (request) => web.handler(request),
 })
 const base = server.url.origin
 let browser: Browser

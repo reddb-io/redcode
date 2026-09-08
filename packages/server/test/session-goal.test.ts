@@ -2,7 +2,6 @@ import { afterAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
-import { Context } from "effect"
 import { webHandler } from "../src/routes"
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "goal-api-"))
@@ -10,7 +9,7 @@ const web = webHandler()
 const server = Bun.serve({
   port: 0,
   hostname: "127.0.0.1",
-  fetch: (request) => web.handler(request, Context.makeUnsafe<unknown>(new Map())),
+  fetch: (request) => web.handler(request),
 })
 const api = (route: string, method = "GET", input?: unknown) =>
   fetch(new URL(route, server.url), {
