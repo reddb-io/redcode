@@ -327,6 +327,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   expect(await page.getByRole("tab", { name: "Assets", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.getByLabel("Seconds", { exact: true }).waitFor()
   await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect((await page.locator("#preview").boundingBox())!.height).toBeGreaterThan(150)
   await page.close()
