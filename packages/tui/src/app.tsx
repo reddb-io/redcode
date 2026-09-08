@@ -590,9 +590,14 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "Session",
         slashName: "new",
         slashAliases: ["clear"],
-        run: () => {
+        run: async () => {
+          const result = await sdk.client.session
+            .create({ directory: sync.path.directory, workspace: project.workspace.current() }, { throwOnError: true })
+            .catch(toast.error)
+          if (!result?.data) return
           route.navigate({
-            type: "home",
+            type: "session",
+            sessionID: result.data.id,
           })
           dialog.clear()
         },
