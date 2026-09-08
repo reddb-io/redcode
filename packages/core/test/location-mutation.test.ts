@@ -29,6 +29,41 @@ function withTmp<A, E, R>(f: (directory: string) => Effect.Effect<A, E, R>) {
 }
 
 describe("LocationMutation", () => {
+  it.live("keeps canonical targets internal for an aliased Location without allowing escapes", () =>
+    withTmp((directory) =>
+      Effect.gen(function* () {
+        const root = path.join(directory, "actual")
+        const alias = path.join(directory, "alias")
+        const outside = path.join(directory, "outside")
+        yield* Effect.promise(async () => {
+          await fs.mkdir(root)
+          await fs.mkdir(outside)
+          await fs.writeFile(path.join(root, ".env.fixture"), "ONLY_TEST_DATA")
+          await fs.symlink(root, alias, process.platform === "win32" ? "junction" : "dir")
+          await fs.symlink(outside, path.join(root, "escape"), process.platform === "win32" ? "junction" : "dir")
+        })
+        yield* Effect.gen(function* () {
+          const mutation = yield* LocationMutation.Service
+          yield* Effect.forEach([".env.fixture", "nested/new.txt"], (file) =>
+            Effect.gen(function* () {
+              const target = yield* mutation.resolve({ path: path.join(root, file) })
+              expect(target.canonical).toBe(path.join(root, file))
+              expect(target.resource).toBe(file)
+              expect(target.externalDirectory).toBeUndefined()
+            }),
+          )
+          const relative = yield* Effect.flip(mutation.resolve({ path: "../actual/.env.fixture" }))
+          expect(relative).toMatchObject({ reason: "relative_escape" })
+          const escaped = yield* Effect.flip(mutation.resolve({ path: "escape/new.txt" }))
+          expect(escaped).toMatchObject({ reason: "location_escape" })
+          const external = yield* mutation.resolve({ path: path.join(outside, "new.txt") })
+          expect(external.externalDirectory?.directory).toBe(outside)
+          expect(external.resource).toBe(path.join(outside, "new.txt").replaceAll("\\", "/"))
+        }).pipe(provide(alias))
+      }),
+    ),
+  )
+
   it.live("resolves an active relative existing file target", () =>
     withTmp((directory) =>
       Effect.gen(function* () {

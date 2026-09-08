@@ -128,7 +128,8 @@ const layer = Layer.effect(
         return yield* new PathError({ path: input.path, reason: "location_escape" })
       }
 
-      const external = !lexicallyInternal
+      // Canonical paths can name internal files even when the Location uses a directory alias.
+      const external = !FSUtil.contains(locationRoot, resolved.canonical)
       const resource = external
         ? slash(resolved.canonical)
         : slash(path.relative(locationRoot, resolved.canonical) || ".")
