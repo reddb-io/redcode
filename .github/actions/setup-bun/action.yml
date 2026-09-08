@@ -1,6 +1,14 @@
 name: "Setup Bun"
 description: "Setup Bun with caching and install dependencies"
 inputs:
+  install:
+    description: "Install workspace dependencies"
+    required: false
+    default: "true"
+  node-version:
+    description: "Node version used by native build tools"
+    required: false
+    default: "24"
   install-flags:
     description: "Additional flags to pass to 'bun install'"
     required: false
@@ -13,7 +21,7 @@ runs:
     - name: Setup Node
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
-        node-version: "24"
+        node-version: ${{ inputs.node-version }}
 
     - name: Get baseline download URL
       id: bun-url
@@ -36,11 +44,13 @@ runs:
         bun-download-url: ${{ steps.bun-url.outputs.url }}
 
     - name: Get cache directory
+      if: inputs.install == 'true'
       id: cache
       shell: bash
       run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
 
     - name: Restore Bun dependencies
+      if: inputs.install == 'true'
       id: bun-cache
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -50,10 +60,12 @@ runs:
           ${{ runner.os }}-bun-
 
     - name: Install setuptools for distutils compatibility
+      if: inputs.install == 'true'
       run: python3 -m pip install setuptools || pip install setuptools || true
       shell: bash
 
     - name: Install dependencies
+      if: inputs.install == 'true'
       run: |
         # Workaround for patched peer variants
         # e.g. ./patches/ for standard-openapi
@@ -76,7 +88,7 @@ runs:
       shell: bash
 
     - name: Save Bun dependencies
-      if: steps.bun-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+      if: inputs.install == 'true' && steps.bun-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ steps.cache.outputs.dir }}

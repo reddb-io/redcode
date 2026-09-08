@@ -83,9 +83,17 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: ./.github/actions/setup-bun
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
+          install: "false"
           node-version: 24.11.1
+      - name: Install sidecar compiler only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This build only needs scriptc; installing the entire workspace dominates macOS setup time.
+          compiler=$(node -p "require('./packages/rpc-sidecar/package.json').devDependencies.scriptc")
+          npm install --prefix "$RUNNER_TEMP/redcode-sidecar-toolchain" --no-audit --no-fund --package-lock=false "scriptc@$compiler"
+          ln -s "$RUNNER_TEMP/redcode-sidecar-toolchain/node_modules" packages/rpc-sidecar/node_modules
       - name: Install pinned Zig toolchain
         if: runner.os == 'Linux'
         run: |
