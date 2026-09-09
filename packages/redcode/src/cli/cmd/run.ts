@@ -262,6 +262,7 @@ export const RunCommand = effectCmd({
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
+    if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))
@@ -990,6 +991,8 @@ export const RunCommand = effectCmd({
 })
 
 type MiniCommandInput = {
+  auto?: boolean
+  yolo?: boolean
   directory?: string
   attach?: string
   password?: string
@@ -1033,8 +1036,8 @@ export async function runMini(input: MiniCommandInput) {
     replay: input.replay ?? true,
     "replay-limit": input.replayLimit,
     replayLimit: input.replayLimit,
-    auto: false,
-    yolo: false,
+    auto: input.auto ?? false,
+    yolo: input.yolo ?? false,
     "dangerously-skip-permissions": false,
     dangerouslySkipPermissions: false,
     demo: input.demo ?? false,

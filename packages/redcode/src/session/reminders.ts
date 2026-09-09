@@ -110,7 +110,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   }
 
   const ctx = yield* InstanceState.context
-  const plan = Session.plan(input.session, ctx)
+  const plan = yield* Session.preparePlan(input.session, ctx)
   const exists = yield* fsys.existsSafe(plan)
   if (!exists) yield* fsys.ensureDir(path.dirname(plan)).pipe(Effect.catch(Effect.die))
   userMessage.parts.push({

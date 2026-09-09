@@ -2316,7 +2316,7 @@ function Shell(props: ToolProps) {
     if (!workdir || workdir === ".") return undefined
     const formatted = pathFormatter.format(workdir)
     if (formatted === ".") return undefined
-    return formatted
+    return Locale.truncate(formatted, 180)
   })
 
   const title = createMemo(() => {

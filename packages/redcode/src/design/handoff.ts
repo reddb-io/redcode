@@ -28,7 +28,7 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
       const info = yield* studio.assertSession(sessionID)
       const store = yield* DesignStore.Service
       const document = yield* store.get(id, sessionID)
-      const plan = Session.plan(info, instance)
+      const plan = yield* Session.preparePlan(info, instance)
       const begin = "<!-- redcode:design:start -->"
       const end = "<!-- redcode:design:end -->"
       const existing = yield* Effect.promise(async () => ((await Bun.file(plan).exists()) ? Bun.file(plan).text() : ""))

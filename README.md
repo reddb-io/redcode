@@ -259,6 +259,45 @@ model turn. Reload between tool calls: a call using a connection that is restart
 Configuration errors keep the existing connections, and individual connection failures appear
 in `/mcps` so you can fix the server and retry.
 
+## Repository protection and YOLO
+
+Repository preflight is part of the harness. Before coding, the agent calls
+`worktree_prepare`, records the checks in its task checklist, reads the returned worktree's
+instructions and files, and uses its absolute paths for edits and commands. The tool creates
+or resumes a worktree belonging to that session. A new branch in the original checkout does
+not satisfy the requirement. Non-Git directories can be edited directly.
+
+The mandatory checklist covers repository/root identity, branch, existing changes, linked
+worktree placement, applicable instructions, and the paths used for edits and validation.
+Normal `git push` is allowed, including from the original checkout. Native file tools reject
+source writes to the primary checkout, including through symlinks; commands that may write
+must run in the task worktree. Read-only inspection and safe worktree creation remain available.
+
+| Operation | Default policy |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `git reset`, `git stash`, `git clean` | Blocked, including their variants |
+| `git restore`, `git checkout`, `git read-tree`, `git checkout-index`, `git update-ref` | Blocked |
+| Forced/deleting pushes, forced branch changes/deletions, discard switches | Blocked |
+| Worktree removal/pruning and reflog expiration | Blocked |
+| Normal commits in the task worktree and normal `git push` | Allowed under configured permissions |
+| `--auto` | Approves permission requests while keeping explicit denials and repository protection |
+| `--yolo` / `--dangerously-skip-permissions` | Disables repository restrictions, mandatory worktrees, permission denials and tool filtering for the local harness process |
+
+YOLO is shown explicitly in the TUI and remains active until that process exits. It is distinct
+from the normal/auto toggle. A client attached to a separate server does not change that
+server's execution policy; the server can be started with `REDCODE_YOLO=1`.
+
+Plan and Design prepare their artifact worktree automatically, while session records, caches
+and audit storage remain managed by the harness. Existing plans are copied without overwriting
+a worktree draft. A new worktree starts from HEAD: local source changes remain untouched and
+must be inspected before relevant material is copied into the task. Worktrees are retained at
+delivery rather than automatically removed.
+
+The shell guard conservatively checks command text and explicit path arguments; it is not an
+OS sandbox for arbitrary scripts or extension implementations. Those tools must follow the
+same preservation policy. An invalid shell `workdir` is rejected before execution with the
+session directory and recovery instructions; it never changes the directory of later calls.
+
 ## Modes
 
 Build, Plan and Design are the three primary modes in the regular `redcode` TUI.
@@ -268,8 +307,9 @@ conversation. For a complete UI design walkthrough, see [Design Mode](#design-mo
 
 <img src="docs/modes/build.svg" alt="Build mode" width="100%" />
 
-**Build** reads, edits and runs commands under your configured permissions. Use it to implement
-an approved plan or work directly on product code.
+**Build** reads, edits and runs commands under your configured permissions and the
+[repository policy](#repository-protection-and-yolo). Use it to implement an approved plan or work
+directly on product code.
 
 <img src="docs/modes/plan.svg" alt="Plan mode" width="100%" />
 

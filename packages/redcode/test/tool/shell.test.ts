@@ -21,6 +21,7 @@ import { testEffect } from "../lib/effect"
 import { Tool } from "@/tool/tool"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceStore } from "@/project/instance-store"
+import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 
 const shellLayer = Layer.mergeAll(
   LayerNode.compile(
@@ -183,6 +184,45 @@ const mustTruncate = (result: {
 }
 
 describe("tool.shell", () => {
+  each("protects a dirty primary checkout and blocks destructive Git inside a task worktree", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const repo = yield* Effect.promise(() => gitWorktree(tmp))
+      yield* runIn(
+        repo.root,
+        Effect.gen(function* () {
+          expect((yield* run({ command: "git status --short" })).output).toContain("source.txt")
+          expect((yield* fail({ command: "echo replaced > source.txt" })).message).toContain("separate linked worktree")
+          expect((yield* fail({ command: "git reset --hard", workdir: repo.tree })).message).toContain(
+            "prohibits git reset",
+          )
+          expect((yield* run({ command: "git status --short", workdir: repo.tree })).metadata.exit).toBe(0)
+        }),
+      )
+      expect(yield* Effect.promise(() => Bun.file(path.join(repo.root, "source.txt")).text())).toBe("user changes\n")
+      expect(yield* Effect.promise(() => Bun.file(path.join(repo.root, "untracked.txt")).text())).toBe("keep me\n")
+    }),
+  )
+  each("rejects a repeated missing workdir with bounded recovery guidance and preserves the default directory", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      yield* runIn(
+        tmp,
+        Effect.gen(function* () {
+          const error = yield* fail({
+            command: "pwd",
+            workdir: ".red/tmp/closer-env/" + "closer/".repeat(150),
+          })
+          expect(error.message).toContain("Invalid working directory")
+          expect(error.message).toContain(tmp)
+          expect(error.message).toContain("Omit workdir")
+          expect(error.message.length).toBeLessThan(1000)
+          const result = yield* run({ command: invoke(`${bin} -e ${evalarg("console.log(process.cwd())")}`) })
+          expect(result.output).toContain(tmp)
+        }),
+      )
+    }),
+  )
   each("basic", () =>
     runIn(
       projectRoot,

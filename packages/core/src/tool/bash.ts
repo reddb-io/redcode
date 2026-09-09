@@ -1,5 +1,6 @@
 export * as BashTool from "./bash"
 
+import { RepositoryGuard } from "../repository-guard"
 import path from "path"
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Duration, Effect, Layer, Schema } from "effect"
@@ -11,6 +12,7 @@ import { LocationMutation } from "../location-mutation"
 import { AppProcess } from "../process"
 import { PermissionV2 } from "../permission"
 import { PositiveInt } from "../schema"
+import { ShellWorkdir } from "../shell-workdir"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
@@ -23,7 +25,8 @@ export const MAX_CAPTURE_BYTES = 1024 * 1024
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
   workdir: Schema.String.pipe(Schema.optional).annotate({
-    description: "Working directory. Defaults to the active Location; relative paths resolve from that Location.",
+    description:
+      "Existing working directory. Relative paths always resolve from the active Location, never a previous call. Prefer a verified absolute path; omit workdir to recover after an invalid-path error.",
   }),
   timeout: PositiveInt.check(Schema.isLessThanOrEqualTo(MAX_TIMEOUT_MS))
     .pipe(Schema.optional)
@@ -127,6 +130,9 @@ const layer = Layer.effectDiscard(
                 callID: context.toolCallID,
               }
               const target = yield* mutation.resolve({ path: input.workdir ?? ".", kind: "directory" })
+              const root = yield* mutation.resolve({ path: ".", kind: "directory" })
+              yield* ShellWorkdir.validate(fs, target.canonical, root.canonical)
+              yield* RepositoryGuard.assertShell(target.canonical, input.command)
               const external = target.externalDirectory
               if (external)
                 yield* permission.assert({
@@ -151,6 +157,7 @@ const layer = Layer.effectDiscard(
               if ((yield* fs.stat(target.canonical)).type !== "Directory")
                 return yield* Effect.fail(new Error(`Working directory is not a directory: ${target.canonical}`))
 
+              yield* RepositoryGuard.assertShell(target.canonical, input.command)
               const entries = yield* config.entries()
               const shell =
                 Object.assign({}, ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info] : [])))
@@ -193,7 +200,17 @@ const layer = Layer.effectDiscard(
                 truncated: result.outputTruncated === true,
                 ...(warnings.length ? { warnings } : {}),
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to execute command: ${input.command}` }))),
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message:
+                      error instanceof ShellWorkdir.Invalid || error instanceof RepositoryGuard.Violation
+                        ? error.message
+                        : `Unable to execute command: ${input.command}`,
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

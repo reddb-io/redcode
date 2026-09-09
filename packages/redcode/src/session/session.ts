@@ -6,6 +6,7 @@ import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import path from "path"
 import { existsSync } from "fs"
 import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { BackgroundJob } from "@/background/job"
 import { Decimal } from "decimal.js"
 import type { ProviderMetadata, Usage } from "@reddb-io/redcode-llm"
@@ -335,6 +336,25 @@ export function plan(input: { slug: string; time: { created: number } }, instanc
   if (!instance.project.vcs) return path.join(Global.Path.data, "plans", name)
   return inProject(instance.worktree, "plans", name)
 }
+
+export const preparePlan = (input: Info, instance: InstanceContext) =>
+  Effect.promise(async () => {
+    const workspace = await RepositoryGuard.prepare(instance.directory, input.id)
+    const original = plan(input, instance)
+    if (workspace === instance.directory) return original
+    const target = plan(input, {
+      ...instance,
+      worktree: path.resolve(workspace, path.relative(instance.directory, instance.worktree)),
+    })
+    if (!(await Bun.file(original).exists()) || (await Bun.file(target).exists())) return target
+    const { mkdir, copyFile } = await import("node:fs/promises")
+    const { constants } = await import("node:fs")
+    await mkdir(path.dirname(target), { recursive: true })
+    await copyFile(original, target, constants.COPYFILE_EXCL).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "EEXIST") throw error
+    })
+    return target
+  })
 
 /**
  * A path inside the project's own directory: `.red/code`, unless this plan or design already sits

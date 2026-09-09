@@ -1,4 +1,5 @@
 export * as ToolRegistry from "./registry"
+import { RepositoryGuard } from "../repository-guard"
 
 import { ToolOutput, type ToolCall, type ToolDefinition, type ToolResultValue } from "@reddb-io/redcode-llm"
 import { Context, Effect, Layer, Scope } from "effect"
@@ -135,6 +136,7 @@ const layer = Layer.effect(
 ).pipe(Layer.provideMerge(registryLayer))
 
 function whollyDisabled(action: string, rules: PermissionV2.Ruleset) {
+  if (RepositoryGuard.yolo()) return false
   const rule = rules.findLast((rule) => Wildcard.match(action, rule.action))
   return rule?.resource === "*" && rule.effect === "deny"
 }

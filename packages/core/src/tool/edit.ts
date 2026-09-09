@@ -6,6 +6,7 @@
  */
 export * as EditTool from "./edit"
 
+import { RepositoryGuard } from "../repository-guard"
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { FileDiff } from "@reddb-io/redcode-schema/file-diff"
 import { createTwoFilesPatch, diffLines } from "diff"
@@ -114,7 +115,10 @@ const layer = Layer.effectDiscard(
                       ? new ToolFailure({
                           message: "File changed after permission approval. Read it again before editing.",
                         })
-                      : new ToolFailure({ message: `Unable to edit ${input.path}` }),
+                      : new ToolFailure({
+                          message:
+                            error instanceof RepositoryGuard.Violation ? error.message : `Unable to edit ${input.path}`,
+                        }),
                   ),
                 )
 
@@ -136,6 +140,7 @@ const layer = Layer.effectDiscard(
                 }
 
                 const target = yield* unableToEdit(mutation.resolve({ path: input.path, kind: "file" }))
+                yield* unableToEdit(RepositoryGuard.assertWrite(target.canonical))
                 const external = target.externalDirectory
                 if (external) {
                   yield* unableToEdit(
@@ -188,6 +193,7 @@ const layer = Layer.effectDiscard(
                   { additions: 0, deletions: 0 },
                 )
                 const next = splitBom(replaced)
+                yield* unableToEdit(RepositoryGuard.assertWrite(target.canonical))
                 const result = yield* unableToEdit(
                   files.writeIfUnchanged({
                     target,

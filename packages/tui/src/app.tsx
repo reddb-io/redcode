@@ -984,8 +984,13 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "permission.mode",
+        enabled: () => local.permission.mode !== "yolo",
         title:
-          local.permission.mode === "auto" ? "Disable auto-approve permissions" : "Enable auto-approve permissions",
+          local.permission.mode === "yolo"
+            ? "YOLO is active for this process"
+            : local.permission.mode === "auto"
+              ? "Disable auto-approve permissions"
+              : "Enable auto-approve permissions",
         category: "System",
         run: () => {
           local.permission.toggle()

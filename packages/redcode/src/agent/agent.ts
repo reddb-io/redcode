@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Config } from "@/config/config"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
@@ -177,6 +178,7 @@ const layer = Layer.effect(
                 goal_complete: "allow",
                 question: "allow",
                 plan_exit: "allow",
+                worktree_prepare: "allow",
                 design_read: "allow",
                 task: {
                   "*": "deny",
@@ -185,11 +187,18 @@ const layer = Layer.effect(
                 external_directory: {
                   // Windows tool checks can expand short directory names to their canonical paths.
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
+                  [RepositoryGuard.worktreePattern(ctx.worktree)]: "allow",
                   [path.join(FSUtil.normalizePath(Global.Path.data), "plans", "*")]: "allow",
                 },
                 edit: {
                   "*": "deny",
                   ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "plans", "*.md"), "allow"])),
+                  ...Object.fromEntries(
+                    RepositoryGuard.planPatterns(ctx.worktree).flatMap((pattern) => [
+                      [pattern, "allow"],
+                      [path.relative(ctx.worktree, pattern), "allow"],
+                    ]),
+                  ),
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
                   [path.relative(ctx.worktree, path.join(FSUtil.normalizePath(Global.Path.data), "plans", "*.md"))]:
                     "allow",
@@ -226,6 +235,12 @@ const layer = Layer.effect(
                 // has stopped being a design session, and the user has no way to see it happen.
                 edit: {
                   "*": "deny",
+                  ...Object.fromEntries(
+                    RepositoryGuard.prototypePatterns(ctx.worktree).flatMap((pattern) => [
+                      [pattern, "allow"],
+                      [path.relative(ctx.worktree, pattern), "allow"],
+                    ]),
+                  ),
                   [path.join(ctx.directory, ".red", "code", "design", "*", "work", "*")]: "allow",
                   [path.relative(ctx.worktree, path.join(ctx.directory, ".red", "code", "design", "*", "work", "*"))]:
                     "allow",
@@ -234,6 +249,7 @@ const layer = Layer.effect(
                 },
                 external_directory: {
                   [path.join(Global.Path.data, "designs", "*")]: "allow",
+                  [RepositoryGuard.worktreePattern(ctx.worktree)]: "allow",
                 },
               }),
               user,
