@@ -1,5 +1,13 @@
 # opencode
 
+## 0.23.3
+
+### Patch Changes
+
+- 8d0e560: Preserve explicit Amazon Bedrock model ARNs and DeepSeek V3.2 IDs, while retaining regional inference prefixes for DeepSeek R1 in both Core and the CLI.
+- 8d0e560: Update the GitLab provider to 6.15.0 in Core and the CLI, adding GPT-6 Astra model mappings with Responses API routing.
+- 915cb15: Reload individual MCP servers or all configured MCPs from /mcps without closing the session. Reread configuration, refresh tools and resources, preserve manual enable/disable choices, and report failures in the dialog.
+
 ## 0.23.2
 
 ### Patch Changes
