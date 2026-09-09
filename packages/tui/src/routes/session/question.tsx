@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { useRenderer } from "@opentui/solid"
-import type { TextareaRenderable } from "@opentui/core"
+import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@reddb-io/redcode-sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -15,6 +15,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const sdk = useSDK()
   const { theme } = useTheme()
   const renderer = useRenderer()
+  const dimensions = useTerminalDimensions()
   const tuiConfig = useTuiConfig()
   const modeStack = useOpencodeModeStack()
 
@@ -31,6 +32,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   })
 
   let textarea: TextareaRenderable | undefined
+  let body: ScrollBoxRenderable | undefined
 
   const question = createMemo(() => questions()[store.tab])
   const confirm = createMemo(() => !single() && store.tab === questions().length)
@@ -225,6 +227,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         },
       ],
       bindings: [
+        { key: "pageup", desc: "Scroll question up", group: "Question", cmd: () => body?.scrollBy(-body.height) },
+        { key: "pagedown", desc: "Scroll question down", group: "Question", cmd: () => body?.scrollBy(body.height) },
         {
           key: "left",
           desc: "Previous question",
@@ -354,13 +358,19 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
 
         <Show when={!confirm()}>
           <box paddingLeft={1} gap={1}>
-            <box>
+            <scrollbox
+              ref={(value: ScrollBoxRenderable) => {
+                body = value
+              }}
+              maxHeight={Math.max(3, Math.min(dimensions().height - 16, Math.floor(dimensions().height * 0.45)))}
+              flexShrink={0}
+            >
               <text fg={theme.text}>
                 {question()?.question}
                 {multi() ? " (select all that apply)" : ""}
               </text>
-            </box>
-            <box>
+            </scrollbox>
+            <box flexShrink={0}>
               <For each={options()}>
                 {(opt, i) => {
                   const active = () => i() === store.selected
@@ -508,6 +518,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           <text fg={theme.text}>
             esc <span style={{ fg: theme.textMuted }}>dismiss</span>
           </text>
+          <text fg={theme.textMuted}>pgup/pgdn scroll</text>
         </box>
       </box>
     </box>

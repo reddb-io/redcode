@@ -325,6 +325,20 @@ flowchart LR
    its URL appears in the tool output. Click through the prototype and try different widths.
    Until a revision has been published, there may be no preview to display; opening the browser
    alone does not build one.
+
+   **Variants are alternatives inside one revision.** Select a named tab to explore one at a
+   time, or choose **Side by side** and select the second variant to compare. Each preview is
+   interactive and scrolls independently. **Mobile (390 px)**, **Tablet (768 px)** and
+   **Desktop (1440 px)** set the actual preview viewport width; **Fit panel** uses the available
+   space. Wider previews scroll inside their panel without stretching the review page.
+
+   **Add variant** opens a prompt such as “Try a warmer palette with denser navigation”. The
+   request goes to the same conversation, preserves the existing alternatives and asks the
+   agent to publish a new revision. Select **New revision available** when it arrives. Your
+   unsent review notes remain separate. For older prototypes with alternatives stacked in one
+   page, **Separate existing variants** asks the agent to organize them into tabs; existing
+   HTML is not split by guesswork. The revision selector remains the history of published snapshots.
+
 5. **Send changes from the browser or chat.** For example, annotate the background with
    “This is too dark; keep more contrast between cards and the page” and click **Send feedback**.
    Unsent notes remain drafts in the browser. Submitted feedback names the revision and returns
@@ -335,6 +349,9 @@ flowchart LR
    “I am happy with this version; finish the design and prepare the implementation plan.” The
    agent asks for approval before recording the handoff. Approval freezes the chosen revision
    as the implementation reference and normally moves the conversation to Plan.
+   Approval covers the **entire revision**. Send feedback naming your chosen variant and let
+   the agent record that decision before approving. The browser shows a confirmation, a busy
+   state while saving, and an explicit message to continue in the terminal when approval succeeds.
 7. **Review the plan, then authorize Build.** The plan explains how to apply the approved design
    to the actual app. Approve that implementation before Build changes product files. A working
    prototype and an approved design are not, by themselves, an implemented feature. After the

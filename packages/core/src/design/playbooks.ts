@@ -39,7 +39,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
       "Do not claim a state works from a screenshot alone.",
     ],
     review_notes: [
-      "Publish named alternatives with design_preview. Run an audit and use its exercised scenarios and screenshots to check the selected direction.",
+      'Wrap each alternative in its own data-design-variant="stable-id" root with data-design-label="Name". The review shell provides variant tabs, comparison and device widths; do not stack unmarked alternatives. Publish snapshots with design_preview. Run an audit and use its exercised scenarios and screenshots to check the selected direction.',
     ],
   },
   {
