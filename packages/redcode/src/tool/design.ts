@@ -1,4 +1,5 @@
 import { DesignDocumentTool } from "@reddb-io/redcode-core/design/document-tool"
+import { DesignQuality } from "@reddb-io/redcode-core/design/quality"
 import { DesignApproval } from "@reddb-io/redcode-core/design/approval"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignLegacy } from "@/design/legacy"
@@ -331,19 +332,11 @@ export const DesignTools = Effect.gen(function* () {
           Effect.gen(function* () {
             const store = yield* DesignStore.Service
             const renderer = yield* DesignRenderer.Service
-            yield* store.get(input.id, ctx.sessionID)
+            const document = yield* store.get(input.id, ctx.sessionID)
             const jobs = input.cancel
               ? [yield* renderer.cancel(input.id, input.cancel)]
               : yield* renderer.jobs(input.id)
-            return result(
-              jobs
-                .map(
-                  (job) =>
-                    `${job.id}: ${job.status} (${Math.round(job.progress * 100)}%) ${job.result ?? job.error ?? ""}`,
-                )
-                .join("\n"),
-              { jobs },
-            )
+            return result(DesignQuality.report(jobs, document.revision), { jobs })
           }),
         ),
     }),

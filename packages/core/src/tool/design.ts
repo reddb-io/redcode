@@ -15,6 +15,7 @@ import { SessionGoal } from "../session/goal"
 import { makeLocationNode } from "../effect/app-node"
 import { DesignStore } from "../design/store"
 import { DesignDocumentTool } from "../design/document-tool"
+import { DesignQuality } from "../design/quality"
 import { DesignApproval } from "../design/approval"
 import { DesignRenderer } from "../design/renderer"
 import { DesignPlaybooks } from "../design/playbooks"
@@ -293,24 +294,16 @@ const layer = Layer.effectDiscard(
           description:
             "Read export and audit progress. Interrupted jobs require an explicit new request; they never repeat a provider operation.",
           input: Schema.Struct({ id: Design.ID, cancel: Schema.optional(Schema.String) }),
-          output: Schema.Array(Design.Job),
-          toModelOutput: ({ output }) => [
-            {
-              type: "text",
-              text: output
-                .map(
-                  (job) =>
-                    `${job.id}: ${job.status} (${Math.round(job.progress * 100)}%) ${job.result ?? job.error ?? ""}`,
-                )
-                .join("\n"),
-            },
-          ],
+          output: Schema.Struct({ jobs: Schema.Array(Design.Job), revision: Schema.NullOr(Schema.String) }),
+          toModelOutput: ({ output }) => [{ type: "text", text: DesignQuality.report(output.jobs, output.revision) }],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_jobs", context)
-              yield* owned(input.id, context)
-              if (input.cancel) return [yield* renderer.cancel(input.id, input.cancel)]
-              return yield* renderer.jobs(input.id)
+              const document = yield* owned(input.id, context)
+              const jobs = input.cancel
+                ? [yield* renderer.cancel(input.id, input.cancel)]
+                : yield* renderer.jobs(input.id)
+              return { jobs, revision: document.revision }
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_exit: Tool.make({

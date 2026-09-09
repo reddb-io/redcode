@@ -22,6 +22,7 @@ export interface Decision extends Schema.Schema.Type<typeof Decision> {}
 export const Scenario = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  variant: Schema.String.pipe(optional),
   selector: Schema.String,
   state: Schema.Literals(["loading", "empty", "error", "populated", "edge"]),
   actions: Schema.Array(
@@ -205,11 +206,34 @@ export const Render = Schema.Struct({
 }).annotate({ identifier: "Design.Render" })
 export interface Render extends Schema.Schema.Type<typeof Render> {}
 
+export const AuditCheck = Schema.Struct({
+  rule: Schema.String,
+  severity: Schema.Literals(["error", "review"]),
+  selector: Schema.String,
+  evidence: Schema.String,
+  fix: Schema.String,
+  width: Schema.Number,
+  variant: Schema.String.pipe(optional),
+  scenario: Schema.String.pipe(optional),
+}).annotate({ identifier: "Design.AuditCheck" })
+export interface AuditCheck extends Schema.Schema.Type<typeof AuditCheck> {}
+
+export const AuditCapture = Schema.Struct({
+  file: Schema.String,
+  width: Schema.Number,
+  variant: Schema.String.pipe(optional),
+  scenario: Schema.String.pipe(optional),
+  fullPage: Schema.Boolean,
+}).annotate({ identifier: "Design.AuditCapture" })
+export interface AuditCapture extends Schema.Schema.Type<typeof AuditCapture> {}
+
 export const Audit = Schema.Struct({
   revision: Schema.String,
   findings: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
   widths: Schema.Array(Schema.Number),
+  checks: Schema.Array(AuditCheck).pipe(optional),
+  captures: Schema.Array(AuditCapture).pipe(optional),
 }).annotate({ identifier: "Design.Audit" })
 export interface Audit extends Schema.Schema.Type<typeof Audit> {}
 

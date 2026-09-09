@@ -435,6 +435,10 @@ it.live("Design-only approval presents current findings and preserves its scope"
         widths: [390],
       },
     })
+    const report = yield* test.run("design_jobs", { id: document.id }, AgentV2.ID.make("design"))
+    expect(report.type).toBe("text")
+    expect(report.value).toContain("Small screen overflow")
+    expect(report.value).toContain("Historical audit has no capture manifest")
     yield* goals.start(test.sessionID, { objective: "Approve a prototype", agent: AgentV2.ID.make("design") })
     answer = "Approve"
     expect((yield* test.run("design_exit", { id: document.id }, AgentV2.ID.make("design"))).type).not.toBe("error")

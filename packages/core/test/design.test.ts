@@ -12,6 +12,7 @@ import { DesignContext } from "../src/design/context"
 import { SystemContext } from "../src/system-context"
 import { DesignFiles } from "../src/design/files"
 import { DesignAssets } from "../src/design/assets"
+import { DesignQuality } from "../src/design/quality"
 import { DesignRenderer } from "../src/design/renderer"
 import { DesignExport } from "../src/design/export"
 import { Location } from "../src/location"
@@ -238,6 +239,79 @@ describe("Design revisions and review", () => {
         expect((yield* store.get(document.id)).approvedRevision).toBe(revision.id)
       }),
     120000,
+  )
+  it.live(
+    "quality audits isolate variants, inspect initial and exercised states, and recheck corrected revisions",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        const original = `<!doctype html><html lang="en"><head><title>Checkout</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:24px;color:#17202a;background:#fff}button{padding:12px;color:#17202a;background:#fff}#heading-a{background:linear-gradient(red,blue);background-clip:text;color:transparent}</style></head><body><main id="variant-a" data-design-variant="a" data-state="empty"><h1 id="heading-a">Pay invoice</h1><button id="pay-a" data-state="empty" onclick="this.parentElement.dataset.state='populated';this.style.width='2000px';this.textContent='Payment received'">Pay invoice</button></main><main data-design-variant="b"><h1>Review invoice</h1><img src="missing.png" alt="Invoice preview" width="240" height="120"><button>Download invoice</button></main></body></html>`
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), original))
+        yield* store.update(document.id, {
+          scenarios: [
+            {
+              id: "pay",
+              variant: "a",
+              name: "Pay invoice",
+              selector: "#variant-a",
+              state: "populated",
+              actions: [{ action: "click", selector: "#pay-a" }],
+            },
+          ],
+        })
+        const before = yield* store.publish(document.id, "Before quality review")
+        const audit = (revision: string) =>
+          Effect.gen(function* () {
+            const job = yield* renderer.start(document.id, { revision, format: "audit" })
+            for (;;) {
+              const current = (yield* renderer.jobs(document.id)).find((item) => item.id === job.id)!
+              if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+                return current
+              yield* Effect.sleep("50 millis")
+            }
+          }).pipe(Effect.timeout("90 seconds"))
+        const first = yield* audit(before.id)
+        expect(first.error).toBeNull()
+        expect(first.status).toBe("completed")
+        expect(first.audit?.captures).toHaveLength(9)
+        expect(first.audit?.scenarios).toHaveLength(3)
+        expect(
+          first.audit?.checks?.some(
+            (check) => check.rule === "gradient-heading" && check.variant === "a" && !check.scenario,
+          ),
+        ).toBe(true)
+        expect(first.audit?.checks?.some((check) => check.rule === "broken-image" && check.variant === "b")).toBe(true)
+        expect(first.audit?.checks?.some((check) => check.rule === "broken-image" && check.variant === "a")).toBe(false)
+        expect(first.audit?.findings.some((finding) => finding.includes("a · pay: horizontal overflow"))).toBe(true)
+        const message = DesignQuality.report([first], before.id)
+        expect(message).toContain("gradient-heading")
+        expect(message).toContain("Fix:")
+        expect(message).toContain(first.audit!.captures![0].file)
+        expect(message).toContain("two correction cycles")
+        const corrected = original
+          .replace("#heading-a{background:linear-gradient(red,blue);background-clip:text;color:transparent}", "")
+          .replace("this.style.width='2000px';", "")
+          .replace(
+            '<img src="missing.png" alt="Invoice preview" width="240" height="120">',
+            "<p>Invoice preview will appear here.</p>",
+          )
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), corrected))
+        const after = yield* store.publish(document.id, "After quality review")
+        expect(DesignQuality.report([first], after.id)).toContain("No completed audit for current revision")
+        expect(DesignQuality.report([first], after.id)).not.toContain("Current audit:")
+        const second = yield* audit(after.id)
+        expect(second.status).toBe("completed")
+        expect(second.audit?.checks?.some((check) => ["broken-image", "gradient-heading"].includes(check.rule))).toBe(
+          false,
+        )
+        expect(second.audit?.findings.some((finding) => finding.includes("horizontal overflow"))).toBe(false)
+        expect(second.audit?.captures).toHaveLength(9)
+        expect(DesignQuality.report([first, second], after.id)).toContain(`Previous audit ${first.id}`)
+        expect((yield* store.get(document.id)).approvedRevision).toBeNull()
+        expect((yield* store.jobs(document.id)).find((job) => job.id === first.id)?.audit).toEqual(first.audit)
+      }),
+    180000,
   )
   it.live(
     "cancels rendering, preserves terminal results and permits an explicit retry",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Agent } from "../src/agent"
+import { Design } from "../src/design"
 import { FileSystem } from "../src/filesystem"
 import { Model } from "../src/model"
 import { Project } from "../src/project"
@@ -28,6 +29,20 @@ describe("contract hygiene", () => {
     })
   })
 
+  test("historical Design audits and scenarios decode without new quality fields", () => {
+    const audit = { revision: "rev_previous", findings: [], scenarios: [], widths: [390] }
+    expect(Schema.decodeUnknownSync(Design.Audit)(audit)).toEqual(audit)
+    expect(Schema.encodeSync(Design.Audit)({ ...audit, checks: undefined, captures: undefined })).toEqual(audit)
+    const scenario = Schema.decodeUnknownSync(Design.Scenario)({
+      id: "checkout",
+      name: "Checkout",
+      selector: "#checkout",
+      state: "populated",
+      actions: [],
+    })
+    expect(Schema.encodeSync(Design.Scenario)({ ...scenario, variant: undefined })).not.toHaveProperty("variant")
+  })
+
   test("current ID constructors expose create", () => {
     expect(Question.ID.create()).toStartWith("que_")
     expect(Pty.ID.create()).toStartWith("pty_")
@@ -36,6 +51,8 @@ describe("contract hygiene", () => {
   test("reusable public identifiers are stable and unique", () => {
     const identifiers = [
       Agent.Color,
+      Design.AuditCheck,
+      Design.AuditCapture,
       FileSystem.Submatch,
       Model.Ref,
       Model.Capabilities,
