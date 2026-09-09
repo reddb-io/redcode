@@ -1,7 +1,10 @@
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Effect, Layer } from "effect"
+import { Context, Effect, Layer } from "effect"
+import { NodeHttpServer } from "@effect/platform-node"
+import Http from "node:http"
+import { HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import path from "path"
 import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
@@ -261,6 +264,53 @@ function setEnvScoped(key: string, value: string) {
 }
 
 describe("provider HttpApi", () => {
+  it.instance(
+    "discovers models through the public API and returns actionable URL errors",
+    () =>
+      Effect.gen(function* () {
+        const directory = (yield* TestInstance).directory
+        const context = yield* Layer.build(NodeHttpServer.layer(Http.createServer, { host: "127.0.0.1", port: 0 }))
+        const upstream = Context.get(context, HttpServer.HttpServer)
+        const received: string[] = []
+        yield* upstream.serve(
+          Effect.gen(function* () {
+            const req = yield* HttpServerRequest.HttpServerRequest
+            received.push(req.url)
+            expect(req.headers.authorization).toBe("Bearer catalog-test")
+            return HttpServerResponse.jsonUnsafe({
+              data: [{ id: "cc/test-model" }, { id: "coding-combo", name: "Coding" }],
+            })
+          }),
+        )
+        const baseURL = `${HttpServer.formatAddress(upstream.address)}/v1`
+        const response = yield* request("/provider/discover", {
+          method: "POST",
+          headers: { "x-opencode-directory": directory, "content-type": "application/json" },
+          body: JSON.stringify({ baseURL, apiKey: "catalog-test" }),
+        })
+        expect(response.status).toBe(200)
+        expect(yield* response.json).toEqual({
+          baseURL,
+          models: [
+            { id: "cc/test-model", name: "cc/test-model" },
+            { id: "coding-combo", name: "Coding" },
+          ],
+        })
+        expect(received).toEqual(["/v1/models"])
+        const invalid = yield* request("/provider/discover", {
+          method: "POST",
+          headers: { "x-opencode-directory": directory, "content-type": "application/json" },
+          body: JSON.stringify({ baseURL: "file:///tmp/key", apiKey: "catalog-test" }),
+        })
+        expect(invalid.status).toBe(400)
+        expect(yield* invalid.json).toEqual({
+          message: "Use an HTTP or HTTPS API URL without credentials, query or fragment.",
+        })
+        expect(received).toEqual(["/v1/models"])
+      }),
+    projectOptions,
+  )
+
   it.instance.skip(
     "returns public v2 provider not found errors",
     Effect.gen(function* () {
