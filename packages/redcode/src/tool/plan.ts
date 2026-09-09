@@ -98,7 +98,11 @@ export const PlanExitTool = Tool.define(
           yield* session.setAgentModel({
             sessionID: ctx.sessionID,
             agent: "build",
-            model: { id: model.modelID, providerID: model.providerID },
+            model: {
+              id: model.modelID,
+              providerID: model.providerID,
+              variant: lastUser?.info.role === "user" ? lastUser.info.model.variant : undefined,
+            },
             time: Date.now(),
           })
 

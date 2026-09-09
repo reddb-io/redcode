@@ -3527,6 +3527,7 @@ it.instance(
       yield* prompt.prompt({
         sessionID: chat.id,
         agent: "plan",
+        variant: "high",
         noReply: true,
         parts: [{ type: "text", text: "Plan an idempotent payment endpoint" }],
       })
@@ -3548,6 +3549,7 @@ it.instance(
       const messages = yield* sessions.messages({ sessionID: chat.id })
       expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "build" })
       expect((yield* sessions.get(chat.id)).agent).toBe("build")
+      expect((yield* sessions.get(chat.id)).model?.variant).toBe("high")
       expect(JSON.stringify((yield* llm.inputs).at(-1))).toContain(content.slice(7))
     }),
   30000,
