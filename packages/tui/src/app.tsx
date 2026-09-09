@@ -49,6 +49,7 @@ import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
+import { DialogDesignList } from "./component/dialog-design-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
@@ -692,6 +693,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           local.agent.set("design")
           dialog.clear()
+        },
+      },
+      {
+        name: "design.open",
+        title: "Resume Design conversation",
+        category: "Session",
+        slashName: "design-open",
+        run: () => {
+          dialog.replace(() => <DialogDesignList />)
         },
       },
       {

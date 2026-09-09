@@ -14,6 +14,7 @@ import { SessionMessage } from "../session/message"
 import { SessionGoal } from "../session/goal"
 import { makeLocationNode } from "../effect/app-node"
 import { DesignStore } from "../design/store"
+import { DesignDocumentTool } from "../design/document-tool"
 import { DesignRenderer } from "../design/renderer"
 import { DesignPlaybooks } from "../design/playbooks"
 import { LocationMutation } from "../location-mutation"
@@ -167,15 +168,8 @@ const layer = Layer.effectDiscard(
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_document: Tool.make({
-          description:
-            "Create, inspect or update a design. The returned root is the only directory Design may edit. Persist briefing, decisions and exercised scenarios here.",
-          input: Schema.Union([
-            Schema.Struct({ action: Schema.Literal("list") }),
-            Schema.Struct({ action: Schema.Literal("create"), input: Design.Create }),
-            Schema.Struct({ action: Schema.Literal("update"), id: Design.ID, input: Design.Update }),
-            Schema.Struct({ action: Schema.Literal("reopen"), id: Design.ID }),
-            Schema.Struct({ action: Schema.Literal("refresh"), id: Design.ID }),
-          ]),
+          description: DesignDocumentTool.description,
+          input: DesignDocumentTool.Input,
           output: Schema.Array(Design.Info),
           toModelOutput: ({ output }) => [
             {

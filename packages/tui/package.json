@@ -51,6 +51,7 @@
   "dependencies": {
     "@reddb-io/redcode-core": "workspace:*",
     "@reddb-io/redcode-plugin": "workspace:*",
+    "@reddb-io/redcode-schema": "workspace:*",
     "@reddb-io/redcode-sdk": "workspace:*",
     "@reddb-io/redcode-ui": "workspace:*",
     "@opentui/core": "catalog:",

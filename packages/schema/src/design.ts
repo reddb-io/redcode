@@ -101,6 +101,22 @@ export const Info = Schema.Struct({
 }).annotate({ identifier: "Design.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
+export const Conversation = Schema.Struct({
+  sessionID: Session.ID,
+  title: Schema.String,
+  updated: Schema.Number,
+  designs: Schema.Array(
+    Schema.Struct({
+      id: ID,
+      name: Schema.String,
+      revision: Schema.NullOr(Schema.String),
+      approvedRevision: Schema.NullOr(Schema.String),
+      ended: Schema.Boolean,
+    }),
+  ),
+})
+export interface Conversation extends Schema.Schema.Type<typeof Conversation> {}
+
 export const Revision = Schema.Struct({
   id: Schema.String,
   designID: ID,

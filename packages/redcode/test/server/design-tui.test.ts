@@ -145,3 +145,59 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     await model.stop(true)
   }
 }, 60000)
+
+test("Design picker groups prototypes by conversation and excludes other workspaces and deleted sessions", async () => {
+  await using first = await tmpdir({ git: true })
+  await using second = await tmpdir({ git: true })
+  const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
+  const request = (directory: string, route: string, method = "GET", body?: unknown) =>
+    server.handler(
+      new Request(`http://localhost${route}`, {
+        method,
+        headers: { "content-type": "application/json", "x-opencode-directory": directory },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      HttpApiApp.context,
+    )
+  try {
+    const session = await (await request(first.path, "/session", "POST", { agent: "design" })).json()
+    await request(first.path, "/session", "POST", {})
+    const pending = await (await request(first.path, "/session", "POST", { agent: "design" })).json()
+    for (const name of ["Dark mode", "Mobile layout"]) {
+      const response = await request(first.path, `/design/session/${session.id}`, "POST", {
+        name,
+        engine: "html",
+        journey: "new",
+        kind: "screen",
+      })
+      expect(response.status).toBe(200)
+    }
+    expect((await request(first.path, "/design/list")).status).toBe(400)
+    const list = `/design/list?directory=${encodeURIComponent(first.path)}`
+    const response = await request(first.path, list)
+    expect(response.status).toBe(200)
+    const conversations = await response.json()
+    expect(conversations).toHaveLength(2)
+    expect(conversations).toContainEqual({
+      sessionID: pending.id,
+      title: pending.title,
+      updated: expect.any(Number),
+      designs: [],
+    })
+    const conversation = conversations.find((item: { sessionID: string }) => item.sessionID === session.id)
+    expect(conversation.designs.map((design: { name: string }) => design.name).sort()).toEqual([
+      "Dark mode",
+      "Mobile layout",
+    ])
+    expect(conversation.designs[0]).not.toHaveProperty("root")
+    expect(
+      await (await request(second.path, `/design/list?directory=${encodeURIComponent(second.path)}`)).json(),
+    ).toEqual([])
+    expect((await request(first.path, `/session/${session.id}`, "DELETE")).status).toBe(200)
+    expect(await (await request(first.path, list)).json()).toMatchObject([{ sessionID: pending.id, designs: [] }])
+    expect((await request(first.path, `/session/${pending.id}`, "DELETE")).status).toBe(200)
+    expect(await (await request(first.path, list)).json()).toEqual([])
+  } finally {
+    await server.dispose()
+  }
+}, 30000)

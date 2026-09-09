@@ -246,15 +246,10 @@ HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 
 ## Modes
 
-Build, Plan and Design are the three primary modes in the full-screen TUI. Press `Tab`
-to cycle between them: Build is red, Plan is gold and Design is cyan. `/design` selects
-Design in the current conversation; `/design-review` reopens its browser review. Prototype
-changes, generated assets, browser feedback and approved handoffs remain in that same
-conversation. Design edits only its prototype work directory.
-
-The web app and the optional `redcode design` terminal also use the shared Design
-storage and rendering services. Existing TUI sessions keep their history and execution
-runtime; using Design does not require moving to another terminal.
+Build, Plan and Design are the three primary modes in the regular `redcode` TUI.
+`Tab` cycles forward and `Shift+Tab` cycles backward: Build is red, Plan is gold and Design
+is cyan. Switching mode changes how the agent handles your next message; it keeps the current
+conversation. For a complete UI design walkthrough, see [Design Mode](#design-mode).
 
 <img src="docs/modes/build.svg" alt="Build mode" width="100%" />
 
@@ -276,26 +271,93 @@ reuse application components and design-system evidence through authorized reads
 
 ## Design Mode
 
-Design combines the full-screen TUI conversation with a browser review surface. It supports HTML,
-React and Solid prototypes, versioned assets, editable SVG-to-GIF exports, and recorded approval.
+Use Design to **see and try a proposed interface before implementing it in your app**.
+The terminal conversation, prototype and browser review belong to the same work: you ask in
+chat, inspect the proposal in the browser, and send feedback back to that chat. During Design,
+the agent edits the prototype work directory; product implementation happens in Build.
 
-### Start
+**Start with the regular `redcode` TUI.** You do not need to launch `redcode design` or move to
+the web app to use this workflow.
 
-```sh
-redcode
-# Press Tab to select Design, or use /design.
-# Use /design-review to reopen the current conversation’s browser review.
+```mermaid
+flowchart LR
+  Ask[Describe the interface in Design] --> Prototype[Agent creates a prototype]
+  Prototype --> Review[Try it in the browser]
+  Review --> Feedback[Send feedback to the same conversation]
+  Feedback --> Prototype
+  Review --> Approve[Approve a published revision]
+  Approve --> Plan[Review the implementation plan]
+  Plan --> Authorize[Authorize implementation]
+  Authorize --> Build[Build changes and verifies the app]
 ```
 
-Use `/design-review` inside the terminal to open the browser. Choose a starting point, the target
-application, an engine and an objective. The agent publishes revisions with `design_preview`.
-The web app opens the same review implementation in its **Design** tab.
+### Walkthrough: explore dark mode for app-admin
 
-React and Solid prototypes resolve their framework from the target application's installed
-dependencies. Project Vite configurations and arbitrary build plugins are not executed; supply
-local fixtures for routing, data providers or other application services. Prototype frames are
-sandboxed, and their assets must be local. First use of browser rendering or component building
-may need network access to prepare its runtime dependencies and Chromium.
+1. **Open your project.** Run `redcode` from the repository directory. Use the current
+   conversation, or `/new` if you want a separate conversation for this design.
+2. **Select Design.** Type `/design`, or cycle with `Tab` / `Shift+Tab` until the prompt shows
+   Design in cyan. This selects the agent; it does not create a prototype by itself.
+3. **Describe the outcome in chat.** For example:
+
+   > Explore dark mode for app-admin. Reuse its components and design tokens. Show the dashboard
+   > and settings screen, including empty and error states, so I can try them before implementation.
+
+   The agent identifies the target application, asks for missing information, and creates a
+   design document and prototype. You do not need to choose an engine or write tool arguments
+   to start this conversation.
+
+4. **Try the first preview.** When the agent publishes a revision, the browser review opens and
+   its URL appears in the tool output. Click through the prototype and try different widths.
+   Until a revision has been published, there may be no preview to display; opening the browser
+   alone does not build one.
+5. **Send changes from the browser or chat.** For example, annotate the background with
+   “This is too dark; keep more contrast between cards and the page” and click **Send feedback**.
+   Unsent notes remain drafts in the browser. Submitted feedback names the revision and returns
+   to the same terminal conversation. The agent adjusts the prototype and publishes another
+   revision. Repeat until you are satisfied. Feedback sent during an active turn is handled at
+   a safe turn boundary.
+6. **Approve the proposal.** Click **Approve this revision** in the browser, or tell the agent
+   “I am happy with this version; finish the design and prepare the implementation plan.” The
+   agent asks for approval before recording the handoff. Approval freezes the chosen revision
+   as the implementation reference and normally moves the conversation to Plan.
+7. **Review the plan, then authorize Build.** The plan explains how to apply the approved design
+   to the actual app. Approve that implementation before Build changes product files. A working
+   prototype and an approved design are not, by themselves, an implemented feature. After the
+   implementation, ask the agent to verify the interactions and compare the app with the approved
+   revision.
+
+### Commands in the regular TUI
+
+These are the current behaviors. `/design` selects a mode; it does not currently combine the
+conversation picker and browser preview into one command.
+
+| What you want to do                            | Command or control               | What happens                                                                                                          |
+| ---------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Explore a UI in the current conversation       | `/design` or `Tab` / `Shift+Tab` | Selects Design; send a message describing the work                                                                    |
+| Start a separate conversation for a design     | `/new`, then `/design`           | Creates a fresh conversation, then selects Design                                                                     |
+| Find an existing Design conversation           | `/design-open`                   | Opens a searchable modal with prototype names, conversation titles and state; Enter resumes the selected conversation |
+| Find any existing conversation                 | `/sessions` or `/resume`         | Opens the regular session picker                                                                                      |
+| Open the current conversation's browser review | `/design-review`                 | Opens its review page; does not change mode or create a prototype                                                     |
+
+**Version availability:** `/design-open` is introduced in [PR #178](https://github.com/reddb-io/redcode/pull/178)
+and is not in v0.23.1. Until you install a release containing it, use `/sessions` or `/resume` to
+select the conversation, then `/design-review` to open its preview.
+
+Names such as `design_document`, `design_preview` and `design_exit` in the transcript are
+**tools called by the agent**, not slash commands you need to run. They create the document,
+publish a revision and request approval, respectively.
+
+### Return to a design later
+
+Open `/design-open`, search by prototype or conversation name, and select the conversation.
+The picker only lists the current workspace. Several prototypes in one conversation appear
+together, and Design conversations without a document yet are included as **Not started**.
+
+Resuming preserves the conversation's history and current mode. It does not send a message,
+start model execution, open a browser or reopen an ended review automatically. Use
+`/design-review` to see its preview. If you want to explore more changes after a handoff to Plan
+or Build, select `/design` again and describe the changes. If the conversation has several
+prototypes, name the one you want to continue. Explicitly ask to reopen a review that you ended.
 
 ### Review and assets
 
@@ -316,39 +378,52 @@ may need network access to prepare its runtime dependencies and Chromium.
   CSS/SMIL animation locally. Export jobs expose progress, cancellation and downloads. Standalone
   HTML export embeds local resources; unsupported external references must be localized first.
 
-### Approve and resume
+React and Solid prototypes resolve their framework from the target application's installed
+dependencies. Project Vite configurations and arbitrary build plugins are not executed; supply
+local fixtures for routing, data providers or other application services. Prototype frames are
+sandboxed, and their assets must be local. First use of browser rendering or component building
+may need network access to prepare its runtime dependencies and Chromium.
 
-Approve a published revision to freeze its source, asset metadata and feedback into an approval
-package. The handoff updates only the Design-owned section of `plan.md`, preserving manual work,
-and selects Plan. Build begins through an authorized Plan handoff.
+### Approval and implementation
 
-`/status` shows the session ID, mode, activity, Goal and pending requests. `/stop` or Ctrl+C
-interrupts execution while keeping the terminal open. `/quit` exits. Reopen with
-`redcode design --session ses_existing_v2`; `/resume` explicitly continues provider work.
-Adoption and reconnection do not restart paid work automatically.
+Approval freezes the published source, asset metadata and feedback into an approval package.
+The handoff updates only the Design-owned section of `plan.md`, preserving manual work. A Goal
+configured to stop after Design records approval and stays in Design; otherwise the normal
+handoff selects Plan. Build begins through an authorized Plan handoff.
 
-The terminal prints completed text and tool output as durable events arrive. Provisional token
-streaming and migration of the full-screen TUI renderer remain future work.
+### Other interfaces (optional)
+
+The web app displays the review in its **Design** tab. The optional `redcode design` command
+starts a separate SessionV2 terminal with its own command set. It is not required for the
+regular TUI workflow above.
+
+**Only inside the `redcode design` terminal:** `/review` opens the browser, `/status` shows the
+session and pending requests, `/stop` or Ctrl+C interrupts execution, and `/quit` exits.
+Reopen that terminal with `redcode design --session ses_existing_v2`. There, `/resume`
+explicitly continues model execution; in the regular TUI, `/resume` opens the session picker.
+Opening an existing session or reconnecting does not restart execution automatically.
+
+The optional terminal prints completed text and tool output as durable events arrive.
+Provisional token streaming and migration of the full-screen TUI renderer remain future work.
 
 ### Files and compatibility
 
-| Location | Contents |
-| --- | --- |
-| `.red/code/design/<designID>/work/` | Editable prototype source and local assets |
+| Location                                             | Contents                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `.red/code/design/<designID>/work/`                  | Editable prototype source and local assets                           |
 | Design storage in SQLite and content-addressed blobs | Revision history, feedback receipts, asset provenance and job status |
-| `approvals/<revision>.json` in the design storage | Frozen approval package |
-| The plan's marked Design section | Reviewed scope and evidence for the implementation handoff |
-| `DESIGN.md` or `.red/DESIGN.md` | Project design guidance used as source evidence |
+| `approvals/<revision>.json` in the design storage    | Frozen approval package                                              |
+| The plan's marked Design section                     | Reviewed scope and evidence for the implementation handoff           |
+| `DESIGN.md` or `.red/DESIGN.md`                      | Project design guidance used as source evidence                      |
 
-Design is available in the existing full-screen TUI again. New documents use the shared
-revision and asset store. When continuing a pre-0.22 prototype, `design_preview` still
-accepts its original `path`: it imports the source into a new document, keeps private
-review files out of the published snapshot, and preserves the original directory.
+New documents use the shared revision and asset store. When continuing a pre-0.22 prototype,
+`design_preview` still accepts its original `path`: it imports the source into a new document,
+keeps private review files out of the published snapshot, and preserves the original directory.
 TUI feedback and approvals return through `/design/session/:sessionID`; web-app sessions
 use `/api/session/:sessionID/design`.
 
 See [Design Studio](specs/design/studio.md) for storage, permissions, exports and MCP configuration,
-and [Design terminal](specs/design/terminal.md) for connection and interaction commands.
+and [Design terminal](specs/design/terminal.md) for the optional terminal's connection and interaction commands.
 
 ## Goal
 

@@ -1,3 +1,4 @@
+import { DesignDocumentTool } from "@reddb-io/redcode-core/design/document-tool"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignLegacy } from "@/design/legacy"
 import { DesignRead } from "@/design/read"
@@ -166,14 +167,8 @@ export const DesignTools = Effect.gen(function* () {
         ),
     }),
     define("design_document", {
-      description:
-        "Create, inspect or update a design in this TUI conversation. Edit only the returned root. Persist briefing, decisions and scenarios.",
-      parameters: Schema.Union([
-        Schema.Struct({ action: Schema.Literal("list") }),
-        Schema.Struct({ action: Schema.Literal("create"), input: Design.Create }),
-        Schema.Struct({ action: Schema.Literal("update"), id: Design.ID, input: Design.Update }),
-        Schema.Struct({ action: Schema.Literals(["reopen", "refresh"]), id: Design.ID }),
-      ]),
+      description: DesignDocumentTool.description,
+      parameters: DesignDocumentTool.Input,
       execute: (input, ctx) =>
         run(
           "design_document",
