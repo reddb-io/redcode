@@ -1,5 +1,14 @@
 # opencode
 
+## 0.23.2
+
+### Patch Changes
+
+- 0643f90: Expose design_document arguments as a provider-compatible object with a required action and explicit usage guidance, while preserving validation of each operation.
+- 0643f90: Add /design-open to search existing Design conversations in the current workspace and resume their history from a session picker.
+
+  Document the complete Design-to-review-to-implementation workflow, command availability, and the differences between the regular TUI and optional Design terminal.
+
 ## 0.23.1
 
 ### Patch Changes
