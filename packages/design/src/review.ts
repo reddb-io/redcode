@@ -405,6 +405,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawVariants()
     }
     state.design = current
+    // Lock stale revision actions before the remaining refresh requests can yield.
+    controls()
     if (changed || state.approval?.revision.id !== current.approvedRevision)
       state.approval = current.approvedRevision
         ? await api<Design.Approval>(`/${current.id}/approval/${encodeURIComponent(current.approvedRevision)}`)

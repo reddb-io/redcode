@@ -252,6 +252,7 @@ test("variants switch independently, compare at device widths and request anothe
     if (feedback.length === 1) return route.abort("failed")
     await route.fulfill({ response })
   })
+  const assets = Promise.withResolvers<void>()
   try {
     await page.goto(`${base}${current.root}/review`)
     const preview = page.frameLocator("#preview")
@@ -297,6 +298,10 @@ test("variants switch independently, compare at device widths and request anothe
     const updated = await api<Design.Info>(`${current.root}/${current.document.id}`)
     expect(updated.ended).toBe(false)
     expect(await page.locator("#preview").getAttribute("sandbox")).not.toContain("allow-same-origin")
+    await page.route("**/asset", async (route) => {
+      await assets.promise
+      await route.continue()
+    })
     await Bun.write(
       path.join(current.document.root, current.document.entry),
       `<!doctype html><html><body><section data-design-variant="warm" data-design-label="Warm"><h1>Warm checkout</h1></section></body></html>`,
@@ -304,6 +309,7 @@ test("variants switch independently, compare at device widths and request anothe
     await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Warmer direction" })
     await page.getByRole("button", { name: "New revision available", exact: true }).waitFor()
     expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
+    assets.resolve()
     await page.getByRole("button", { name: "New revision available", exact: true }).click()
     await page.getByRole("tab", { name: "Warm", exact: true }).waitFor()
     await preview.getByRole("heading", { name: "Warm checkout" }).waitFor()
@@ -311,6 +317,7 @@ test("variants switch independently, compare at device widths and request anothe
     await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
     expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
   } finally {
+    assets.resolve()
     await page.close()
   }
 }, 60000)
