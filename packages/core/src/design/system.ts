@@ -9,7 +9,10 @@ export async function discover(application: string) {
   const paths = (
     await Promise.all(
       [
-        "{DESIGN.md,design-system.md,tailwind.config.*,components.json}",
+        "{PRODUCT.md,product.md,DESIGN.md,design.md,design-system.md,tailwind.config.*,components.json}",
+        ".red/{PRODUCT.md,product.md,DESIGN.md,design.md}",
+        ".agents/context/{PRODUCT.md,product.md,DESIGN.md,design.md}",
+        "docs/{PRODUCT.md,product.md,DESIGN.md,design.md}",
         "src/**/{tokens.css,tokens.ts,tokens.json,theme.css,theme.ts,global.css,globals.css}",
       ].map((pattern) =>
         Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: application, onlyFiles: true, followSymlinks: false })),
@@ -27,7 +30,7 @@ export async function discover(application: string) {
         file,
         hash: DesignFiles.hash(bytes),
         observed: Date.now(),
-        authoritative: /(?:DESIGN|design-system)\.md$/.test(path.basename(file)),
+        authoritative: /^(?:product|design|design-system)\.md$/i.test(path.basename(file)),
         excerpt: new TextDecoder().decode(bytes.subarray(0, 12000)),
       }
     }),

@@ -19,6 +19,7 @@ import { DesignExport } from "./export"
 import { DesignAssets } from "./assets"
 import { DesignRaster } from "./raster"
 import { DesignRuntime } from "./runtime"
+import { DesignQuality } from "./quality"
 
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
@@ -298,79 +299,172 @@ const make = Effect.gen(function* () {
         if (job.input.format === "audit") {
           const findings: string[] = []
           const evidence: string[] = []
+          const checks: Design.AuditCheck[] = []
+          const captures: Design.AuditCapture[] = []
+          const runtimeErrors: string[] = []
+          page.on("pageerror", (error) => runtimeErrors.push(error.message))
+          const variants = yield* io(() =>
+            page
+              .locator("[data-design-variant]")
+              .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-design-variant") ?? "")),
+          )
+          const valid = [...new Set(variants.filter((id) => /^[a-zA-Z0-9_-]{1,64}$/.test(id)))]
+          if (valid.length !== variants.length)
+            findings.push("Variant roots must have unique, valid data-design-variant IDs.")
+          if (yield* io(() => page.locator("[data-design-variant] [data-design-variant]").count()))
+            findings.push("Variant roots are nested; separate them before claiming each direction was inspected.")
+          if (valid.length > 6)
+            findings.push("Only the first six variants were inspected. Review the remaining directions separately.")
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
-          for (const width of [390, 768, 1440]) {
-            yield* io(() => page.setViewportSize({ width, height: 900 }))
-            for (const scenario of revision.document.scenarios) {
-              if (scenario.notApplicable) continue
-              yield* io(() => page.goto(`http://design.local/${entry}`, { waitUntil: "load" }))
-              yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
-              const result = yield* io(async () => {
-                for (const action of scenario.actions) {
-                  const target = page.locator(action.selector)
-                  if (action.action === "click") await target.click()
-                  if (action.action === "fill") await target.fill(action.value ?? "")
-                  if (action.action === "press") await target.press(action.value ?? "Enter")
-                }
-                const target = page.locator(scenario.selector)
-                await target.waitFor({ state: "visible" })
-                return (await target.getAttribute("data-state")) === scenario.state
-              }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
-              if (result !== true)
-                findings.push(
-                  `${width}px · ${scenario.name}: ${typeof result === "string" ? result : "state does not match"}`,
-                )
-              if (result === true) evidence.push(`${width}px · ${scenario.name}: exercised`)
-            }
+          const reset = (variant: string | undefined) =>
+            io(async () => {
+              runtimeErrors.length = 0
+              await page.goto(`http://design.local/${entry}`, { waitUntil: "load" })
+              await page.evaluate(() => document.fonts.ready.then(() => undefined))
+              if (variant)
+                await page.evaluate((id) => {
+                  document.querySelectorAll<HTMLElement>("[data-design-variant]").forEach((element) => {
+                    if (element.dataset.designVariant !== id) element.style.setProperty("display", "none", "important")
+                  })
+                }, variant)
+            })
+          const inspect = Effect.fn("DesignRenderer.inspect")(function* (
+            width: number,
+            variant?: string,
+            scenario?: string,
+          ) {
+            const label = `${width}px${variant ? ` · ${variant}` : ""}${scenario ? ` · ${scenario}` : " · initial"}`
+            if (variant && !(yield* io(() => page.locator(`[data-design-variant="${variant}"]`).first().isVisible())))
+              findings.push(`${label}: variant root is hidden; this direction remains unverified`)
+            checks.push(
+              ...(yield* io(() => page.evaluate(DesignQuality.inspect))).map((check) => ({
+                ...check,
+                width,
+                variant,
+                scenario,
+              })),
+            )
             const layout = yield* io(() =>
               page.evaluate(() => ({
                 overflow: document.documentElement.scrollWidth > innerWidth + 1,
-                unnamed: [...document.querySelectorAll("button,input,select,textarea")].filter((element) => {
-                  if (!(element instanceof HTMLElement) || element.offsetParent === null) return false
-                  return (
-                    !element.getAttribute("aria-label") &&
-                    !element.getAttribute("aria-labelledby") &&
-                    !element.textContent?.trim() &&
-                    !("labels" in element && (element as HTMLInputElement).labels?.length)
-                  )
-                }).length,
+                height: document.documentElement.scrollHeight,
+                controls: [
+                  ...document.querySelectorAll<HTMLElement>(
+                    "button,a[href],input:not([type=hidden]),select,textarea,[tabindex]",
+                  ),
+                ].some((element) => element.getBoundingClientRect().height > 0),
               })),
             )
-            if (layout.overflow) findings.push(`${width}px: horizontal overflow`)
-            if (layout.unnamed) findings.push(`${width}px: ${layout.unnamed} controls without accessible names`)
+            if (layout.overflow) findings.push(`${label}: horizontal overflow`)
+            findings.push(...runtimeErrors.map((error) => `${label}: script error: ${error}`))
             const accessibility = yield* io(() =>
               new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze(),
             )
-            findings.push(
-              ...accessibility.violations.map(
-                (violation) => `${width}px · ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`,
-              ),
-            )
-            yield* io(() => page.keyboard.press("Tab"))
-            const focus = yield* io(() =>
-              page.evaluate(() => document.activeElement !== document.body && document.activeElement !== null),
-            )
-            if (!focus) findings.push(`${width}px: keyboard Tab did not reach an interactive element`)
-            yield* io(async () =>
-              DesignFiles.atomic(path.join(path.dirname(output), `${job.id}-${width}.png`), await page.screenshot()),
-            )
+            for (const violation of accessibility.violations) {
+              findings.push(`${label} · ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`)
+              checks.push(
+                ...violation.nodes.slice(0, 8).map((node) => ({
+                  rule: violation.id,
+                  severity: "error" as const,
+                  selector: node.target.join(" "),
+                  evidence: node.failureSummary ?? violation.help,
+                  fix: violation.helpUrl,
+                  width,
+                  variant,
+                  scenario,
+                })),
+              )
+            }
+            if (layout.controls) {
+              yield* io(() => page.keyboard.press("Tab"))
+              const focused = yield* io(() =>
+                page.evaluate(() => document.activeElement !== document.body && document.activeElement !== null),
+              )
+              if (!focused) findings.push(`${label}: keyboard Tab did not reach an interactive element`)
+            }
+            const fullPage = layout.height <= 12000
+            if (!fullPage)
+              findings.push(
+                `${label}: page exceeds 12000px; capture covers only the current viewport. Inspect remaining content before a visual verdict.`,
+              )
+            const file = path.join(path.dirname(output), `${job.id}-${captures.length}.png`)
+            yield* io(async () => DesignFiles.atomic(file, await page.screenshot({ fullPage, animations: "disabled" })))
+            captures.push({ file, width, variant, scenario, fullPage })
+          })
+          for (const width of [390, 768, 1440]) {
+            yield* io(() => page.setViewportSize({ width, height: 900 }))
+            for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
+              if (captures.length >= 36) continue
+              yield* reset(variant)
+              yield* inspect(width, variant)
+              for (const scenario of revision.document.scenarios) {
+                if (
+                  scenario.notApplicable ||
+                  (scenario.variant && scenario.variant !== variant) ||
+                  captures.length >= 36
+                )
+                  continue
+                yield* reset(variant)
+                const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
+                // A scenario may observe state on the variant root itself.
+                const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
+                const result = yield* io(async () => {
+                  for (const action of scenario.actions) {
+                    if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
+                    if (action.action === "fill")
+                      await target(action.selector).fill(action.value ?? "", { timeout: 3000 })
+                    if (action.action === "press")
+                      await target(action.selector).press(action.value ?? "Enter", { timeout: 3000 })
+                  }
+                  await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
+                  return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
+                }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
+                const label = `${width}px${variant ? ` · ${variant}` : ""} · ${scenario.name}`
+                if (result !== true)
+                  findings.push(`${label}: ${typeof result === "string" ? result : "state does not match"}`)
+                if (result === true) evidence.push(`${label}: exercised`)
+                yield* inspect(width, variant, scenario.id)
+              }
+            }
+            yield* progress(([390, 768, 1440].indexOf(width) + 1) / 3)
           }
-          if (!revision.document.scenarios.length) findings.push("No scenarios have been exercised")
-          report.audit = { revision: revision.id, findings, scenarios: evidence, widths: [390, 768, 1440] }
+          if (captures.length >= 36)
+            findings.push(
+              "Capture budget reached (36 views). Check the capture manifest and inspect any missing variants or states separately.",
+            )
+          if (!evidence.length)
+            findings.push("No scenarios have been exercised; interaction behavior remains unverified.")
+          for (const scenario of revision.document.scenarios.filter(
+            (scenario) => scenario.variant && !valid.includes(scenario.variant) && !scenario.notApplicable,
+          ))
+            findings.push(`Scenario ${scenario.name}: variant ${scenario.variant} was not rendered.`)
+          findings.push(
+            ...checks
+              .filter((check) => check.severity === "error" && check.rule === "broken-image")
+              .map((check) => `${check.width}px · ${check.selector}: ${check.evidence}`),
+          )
+          report.audit = {
+            revision: revision.id,
+            findings,
+            scenarios: evidence,
+            widths: [...new Set(captures.map((capture) => capture.width))],
+            checks,
+            captures,
+          }
           const escape = (text: string) =>
             text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
           const screenshots = yield* io(() =>
             Promise.all(
-              [390, 768, 1440].map(
-                async (width) =>
-                  `<h2>${width}px</h2><img style="max-width:100%" alt="${width}px rendered state" src="data:image/png;base64,${Buffer.from(await Bun.file(path.join(path.dirname(output), `${job.id}-${width}.png`)).bytes()).toString("base64")}">`,
+              captures.map(
+                async (capture) =>
+                  `<h2>${capture.width}px · ${escape(capture.variant ?? "Page")} · ${escape(capture.scenario ?? "Initial")}</h2><p>${capture.fullPage ? "Full page" : "Viewport only"}</p><img style="max-width:100%" alt="Rendered review evidence" src="data:image/png;base64,${Buffer.from(await Bun.file(capture.file).bytes()).toString("base64")}">`,
               ),
             ),
           )
           yield* io(() =>
             DesignFiles.atomic(
               output,
-              `<!doctype html><meta charset="utf-8"><title>Design audit</title><h1>${escape(revision.document.name)}</h1><p>Revision ${escape(revision.id)}</p><h2>Exercised scenarios</h2><ul>${evidence.map((item) => `<li>${escape(item)}</li>`).join("")}</ul><h2>Findings</h2><ul>${findings.map((finding) => `<li>${escape(finding)}</li>`).join("")}</ul>${screenshots.join("")}`,
+              `<!doctype html><meta charset="utf-8"><title>Design audit</title><h1>${escape(revision.document.name)}</h1><p>Revision ${escape(revision.id)}. Automated findings require visual and task review; advisory signals are not proof of AI authorship.</p><h2>Exercised scenarios</h2><ul>${evidence.map((item) => `<li>${escape(item)}</li>`).join("")}</ul><h2>Findings</h2><ul>${findings.map((finding) => `<li>${escape(finding)}</li>`).join("")}</ul><h2>Quality checks</h2><ul>${checks.map((check) => `<li>${escape(`${check.severity} · ${check.width}px · ${check.variant ?? "Page"} · ${check.scenario ?? "Initial"} · ${check.rule} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`)}</li>`).join("")}</ul>${screenshots.join("")}`,
             ),
           )
         }

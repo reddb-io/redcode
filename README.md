@@ -299,7 +299,8 @@ the web app to use this workflow.
 ```mermaid
 flowchart LR
   Ask[Describe the interface in Design] --> Prototype[Agent creates a prototype]
-  Prototype --> Review[Try it in the browser]
+  Prototype --> Quality[Inspect and correct: up to two cycles]
+  Quality --> Review[Try the reviewed version in the browser]
   Review --> Feedback[Send feedback to the same conversation]
   Feedback --> Prototype
   Review --> Approve[Approve a published revision]
@@ -323,7 +324,28 @@ flowchart LR
    design document and prototype. You do not need to choose an engine or write tool arguments
    to start this conversation.
 
-4. **Try the first preview.** When the agent publishes a revision, the browser review opens and
+4. **Let Design review its draft, then try it.** You do not need to invoke Unslop, OpenDesign,
+   Impeccable or a separate audit command. For frontend work, Design automatically loads its
+   quality playbook: first review structure and the main task, then craft and regressions.
+   It uses rendered audits, reads the captures, fixes material issues and rechecks changed
+   revisions, with at most **two correction cycles** before the first formal handoff. It stops
+   earlier when no material issues remain, when a cycle makes no progress, or when you interrupt
+   or request a quick preview. This is the agent's built-in workflow, not a scheduler that forces
+   extra provider turns or a replacement for your approval.
+
+   Audits inspect each variant at **390, 768 and 1440 px**, including initial and applicable
+   scenario states, within a limit of six variants and 36 captures per audit; missing coverage
+   is reported. Accessibility/layout failures and advisory signals (such as repeated card
+   compositions, decorative glass, gradient headings or filler copy) come with targets and
+   evidence. Signals are contextual: a legitimate product pattern or an explicit brand choice
+   is not an error. They do not identify whether an interface was authored by AI.
+
+   The agent keeps the review details with the revision and gives you a compact summary of
+   corrections, checks and unresolved items. If rendering, image inspection or coverage is
+   incomplete, it presents an **unverified draft**, never an automatic pass. The live preview
+   can show work in progress while review is running, so you can steer at any time.
+
+   **Try the preview.** When the agent publishes a revision, the browser review opens and
    its URL appears in the tool output. Click through the prototype and try different widths.
    Until a revision has been published, there may be no preview to display; opening the browser
    alone does not build one.

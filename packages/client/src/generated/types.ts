@@ -1987,6 +1987,7 @@ export type DesignsListOutput = ReadonlyArray<{
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2077,6 +2078,7 @@ export type DesignsCreateOutput = {
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2133,6 +2135,7 @@ export type DesignsGetOutput = {
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2179,6 +2182,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2211,6 +2215,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2243,6 +2248,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2275,6 +2281,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2307,6 +2314,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2339,6 +2347,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2371,6 +2380,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2403,6 +2413,7 @@ export type DesignsUpdateInput = {
     readonly scenarios?: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2445,6 +2456,7 @@ export type DesignsUpdateOutput = {
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2508,6 +2520,7 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
     readonly scenarios: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2589,6 +2602,7 @@ export type DesignsPublishOutput = {
     readonly scenarios: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2654,6 +2668,7 @@ export type DesignsRestoreOutput = {
     readonly scenarios: ReadonlyArray<{
       readonly id: string
       readonly name: string
+      readonly variant?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2711,6 +2726,7 @@ export type DesignsReopenOutput = {
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2767,6 +2783,7 @@ export type DesignsRefreshOutput = {
   readonly scenarios: ReadonlyArray<{
     readonly id: string
     readonly name: string
+    readonly variant?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2964,6 +2981,7 @@ export type DesignsApprovalOutput = {
       readonly scenarios: ReadonlyArray<{
         readonly id: string
         readonly name: string
+        readonly variant?: string
         readonly selector: string
         readonly state: "loading" | "empty" | "error" | "populated" | "edge"
         readonly actions: ReadonlyArray<{
@@ -3018,6 +3036,23 @@ export type DesignsApprovalOutput = {
       readonly findings: ReadonlyArray<string>
       readonly scenarios: ReadonlyArray<string>
       readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+      readonly checks?: ReadonlyArray<{
+        readonly rule: string
+        readonly severity: "error" | "review"
+        readonly selector: string
+        readonly evidence: string
+        readonly fix: string
+        readonly width: number | "Infinity" | "-Infinity" | "NaN"
+        readonly variant?: string
+        readonly scenario?: string
+      }>
+      readonly captures?: ReadonlyArray<{
+        readonly file: string
+        readonly width: number | "Infinity" | "-Infinity" | "NaN"
+        readonly variant?: string
+        readonly scenario?: string
+        readonly fullPage: boolean
+      }>
     }
   }>
 }
@@ -3124,6 +3159,23 @@ export type DesignsJobsOutput = ReadonlyArray<{
     readonly findings: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<string>
     readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+    readonly checks?: ReadonlyArray<{
+      readonly rule: string
+      readonly severity: "error" | "review"
+      readonly selector: string
+      readonly evidence: string
+      readonly fix: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+    }>
+    readonly captures?: ReadonlyArray<{
+      readonly file: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+      readonly fullPage: boolean
+    }>
   }
 }>
 
@@ -3303,6 +3355,23 @@ export type DesignsRenderOutput = {
     readonly findings: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<string>
     readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+    readonly checks?: ReadonlyArray<{
+      readonly rule: string
+      readonly severity: "error" | "review"
+      readonly selector: string
+      readonly evidence: string
+      readonly fix: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+    }>
+    readonly captures?: ReadonlyArray<{
+      readonly file: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+      readonly fullPage: boolean
+    }>
   }
 }
 
@@ -3340,6 +3409,23 @@ export type DesignsCancelOutput = {
     readonly findings: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<string>
     readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+    readonly checks?: ReadonlyArray<{
+      readonly rule: string
+      readonly severity: "error" | "review"
+      readonly selector: string
+      readonly evidence: string
+      readonly fix: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+    }>
+    readonly captures?: ReadonlyArray<{
+      readonly file: string
+      readonly width: number | "Infinity" | "-Infinity" | "NaN"
+      readonly variant?: string
+      readonly scenario?: string
+      readonly fullPage: boolean
+    }>
   }
 }
 
