@@ -599,6 +599,40 @@ it.instance("the TUI model receives and executes the new Design toolset", () =>
     )
     expect(yield* Effect.promise(() => Bun.file(imported.root + "/.review/private.txt").exists())).toBe(false)
     expect(yield* Effect.promise(() => Bun.file(legacy + "/.review/private.txt").text())).toBe("Private review notes")
+    const playbook = yield* tools.find((tool) => tool.id === "design_playbook")!.execute({ id: "quality" }, context)
+    expect(playbook.output).toContain("two correction cycles")
+    const audited = yield* studio.use(
+      Effect.gen(function* () {
+        const store = yield* DesignStore.Service
+        const revision = yield* store.publish(imported.id, "Quality evidence")
+        return yield* store.putJob({
+          id: "job_quality_evidence",
+          designID: imported.id,
+          input: { revision: revision.id, format: "audit" },
+          status: "completed",
+          progress: 1,
+          result: imported.root + "/.review/audit.html",
+          error: null,
+          created: Date.now(),
+          audit: {
+            revision: revision.id,
+            findings: ["390px: horizontal overflow"],
+            scenarios: [],
+            widths: [390],
+            captures: [{ file: imported.root + "/.review/mobile.png", width: 390, fullPage: true }],
+          },
+        })
+      }),
+    )
+    const jobs = tools.find((tool) => tool.id === "design_jobs")!
+    const evidence = yield* jobs.execute({ id: imported.id }, context)
+    expect(evidence.output).toContain("390px: horizontal overflow")
+    expect(evidence.output).toContain(audited.audit!.captures![0].file)
+    expect(evidence.output).toContain(`Current audit: ${audited.id}`)
+    yield* studio.use(DesignStore.Service.use((store) => store.publish(imported.id, "Unaudited revision")))
+    const stale = yield* jobs.execute({ id: imported.id }, context)
+    expect(stale.output).toContain("No completed audit for current revision")
+    expect(stale.output).not.toContain("Current audit:")
   }),
 )
 

@@ -8,6 +8,8 @@ test("discovers root design guidance and supported nested source files with cont
   await using tmp = await tmpdir()
   const files = [
     "DESIGN.md",
+    "PRODUCT.md",
+    "docs/DESIGN.md",
     "design-system.md",
     "tailwind.config.ts",
     "components.json",
@@ -20,7 +22,7 @@ test("discovers root design guidance and supported nested source files with cont
     "src/app/globals.css",
   ]
   await Promise.all(
-    [...files, "docs/DESIGN.md", "tokens.css", "src/tokens.jsx", "node_modules/package/DESIGN.md"].map((file) =>
+    [...files, "tokens.css", "src/tokens.jsx", "node_modules/package/DESIGN.md"].map((file) =>
       Bun.write(path.join(tmp.path, file), file === "DESIGN.md" ? "" : file),
     ),
   )
@@ -29,7 +31,9 @@ test("discovers root design guidance and supported nested source files with cont
   expect(sources.map((source) => source.file.split(path.sep).join("/"))).toEqual(files.toSorted())
   expect(sources.filter((source) => source.authoritative).map((source) => source.file)).toEqual([
     "DESIGN.md",
+    "PRODUCT.md",
     "design-system.md",
+    "docs/DESIGN.md",
   ])
   expect(sources[0].hash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
   expect(sources[0].excerpt).toBe("")
@@ -39,6 +43,17 @@ test("discovers root design guidance and supported nested source files with cont
   const refreshed = await DesignSystem.discover(tmp.path)
   expect(refreshed[0].hash).not.toBe(sources[0].hash)
   expect(refreshed[0].excerpt).toBe("# Design system\nUse a cyan accent for checkout.")
+})
+
+test("discovers product context in supported context directories without losing its provenance", async () => {
+  await using tmp = await tmpdir()
+  const files = [".red/PRODUCT.md", ".red/DESIGN.md", ".agents/context/product.md", "docs/design.md"]
+  await Promise.all(files.map((file) => Bun.write(path.join(tmp.path, file), `Guidance from ${file}`)))
+  const sources = await DesignSystem.discover(tmp.path)
+  expect(sources.map((source) => source.file)).toEqual(files.toSorted())
+  expect(sources.every((source) => source.authoritative && source.excerpt === `Guidance from ${source.file}`)).toBe(
+    true,
+  )
 })
 
 test("keeps the deterministic thirty-source limit", async () => {
