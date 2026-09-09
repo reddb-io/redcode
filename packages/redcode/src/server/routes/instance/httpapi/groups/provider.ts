@@ -8,6 +8,11 @@ import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
+import { ProviderDiscovery } from "@/provider/discovery"
+
+export class ProviderDiscoveryApiError extends Schema.ErrorClass<ProviderDiscoveryApiError>(
+  "ProviderDiscoveryApiError",
+)({ message: Schema.String }, { httpApiStatus: 400 }) {}
 
 const root = "/provider"
 
@@ -35,6 +40,19 @@ export const ProviderApi = HttpApi.make("provider")
   .add(
     HttpApiGroup.make("provider")
       .add(
+        HttpApiEndpoint.post("discover", `${root}/discover`, {
+          query: WorkspaceRoutingQuery,
+          payload: ProviderDiscovery.Input,
+          success: ProviderDiscovery.Result,
+          error: ProviderDiscoveryApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.discover",
+            summary: "Discover compatible provider models",
+            description:
+              "Check an OpenAI-compatible model catalog from the Redcode server without saving credentials or configuration.",
+          }),
+        ),
         HttpApiEndpoint.get("list", root, {
           query: WorkspaceRoutingQuery,
           success: described(Provider.ListResult, "List of providers"),

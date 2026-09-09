@@ -150,6 +150,8 @@ import type {
   PromptInput,
   ProviderAuthErrors,
   ProviderAuthResponses,
+  ProviderDiscoverErrors,
+  ProviderDiscoverResponses,
   ProviderListErrors,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -3386,6 +3388,45 @@ export class Oauth extends HeyApiClient {
 }
 
 export class Provider extends HeyApiClient {
+  /**
+   * Discover compatible provider models
+   *
+   * Check an OpenAI-compatible model catalog from the Redcode server without saving credentials or configuration.
+   */
+  public discover<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      baseURL?: string
+      apiKey?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "baseURL" },
+            { in: "body", key: "apiKey" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProviderDiscoverResponses, ProviderDiscoverErrors, ThrowOnError>({
+      url: "/provider/discover",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * List providers
    *
