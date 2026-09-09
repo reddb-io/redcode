@@ -82,6 +82,8 @@ jobs:
     runs-on: ${{ matrix.host }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: ./.github/actions/setup-bun
         with:
           install: "false"
@@ -90,9 +92,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # This build only needs scriptc; installing the entire workspace dominates macOS setup time.
+          # Keep the compiler's inherited tsconfig available without installing the workspace.
           compiler=$(node -p "require('./packages/rpc-sidecar/package.json').devDependencies.scriptc")
-          npm install --prefix "$RUNNER_TEMP/redcode-sidecar-toolchain" --no-audit --no-fund --package-lock=false "scriptc@$compiler"
+          tsconfig=$(node -p "require('./package.json').workspaces.catalog['@tsconfig/bun']")
+          npm install --prefix "$RUNNER_TEMP/redcode-sidecar-toolchain" --no-audit --no-fund --package-lock=false "scriptc@$compiler" "@tsconfig/bun@$tsconfig"
+          # npm does not apply Bun's runtime patch for the supported older glibc targets.
+          runtime_patch=$(node -p "require('./package.json').patchedDependencies['@scriptc/runtime@$compiler']")
+          git -C "$RUNNER_TEMP/redcode-sidecar-toolchain/node_modules/@scriptc/runtime" apply --unidiff-zero "$GITHUB_WORKSPACE/$runtime_patch"
           ln -s "$RUNNER_TEMP/redcode-sidecar-toolchain/node_modules" packages/rpc-sidecar/node_modules
       - name: Install pinned Zig toolchain
         if: runner.os == 'Linux'
