@@ -46,7 +46,7 @@ const published = async (engine: "html" | "solid") => {
     path.join(document.root, document.entry),
     engine === "html"
       ? '<!doctype html><html lang="en"><head><title>Checkout</title></head><body><main><h1 id="title">Checkout</h1><button id="submit" onclick="this.textContent=\'Added\';this.dataset.state=\'populated\'" data-state="empty">Add item</button></main></body></html>'
-      : 'import { render } from "solid-js/web"; import { createSignal } from "solid-js"; const App=()=>{const [added,setAdded]=createSignal(false);return <main><h1>Checkout</h1><button onClick={()=>setAdded(true)}>{added()?"Added":"Add item"}</button></main>};render(()=><App />,document.getElementById("root")!)',
+      : 'import { render } from "solid-js/web"; import { createSignal } from "solid-js"; const App=()=>{const [added,setAdded]=createSignal(false);return <main><section data-design-variant="compact" data-design-label="Compact"><h1>Checkout</h1><button onClick={()=>setAdded(true)}>{added()?"Added":"Add item"}</button></section><section data-design-variant="spacious" data-design-label="Spacious"><h1>Spacious checkout</h1></section></main>};render(()=><App />,document.getElementById("root")!)',
   )
   const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "First direction" })
   return { document, revision, root, sessionID: current.data.id }
@@ -113,8 +113,8 @@ test("new interface: native review, annotation draft, lost response retry and ap
   await page.getByText("Feedback received", { exact: true }).waitFor()
   expect(feedback).toHaveLength(2)
   expect(feedback[1]).toEqual(feedback[0])
-  page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("button", { name: "Approve this revision" }).click()
+  await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
   await page.getByRole("button", { name: "Reopen review" }).waitFor()
   const approved = await api<Design.Info>(`${current.root}/${current.document.id}`)
   expect(approved.approvedRevision).toBe(current.revision.id)
@@ -129,6 +129,9 @@ test("existing Solid component: isolated interactive preview and history restora
   const frame = page.frameLocator("#preview")
   await frame.getByRole("button", { name: "Add item" }).click()
   expect(await frame.getByRole("button", { name: "Added" }).textContent()).toBe("Added")
+  await page.getByRole("tab", { name: "Spacious", exact: true }).click()
+  await frame.getByRole("heading", { name: "Spacious checkout" }).waitFor()
+  expect(await frame.getByRole("heading", { name: "Checkout", exact: true }).isVisible()).toBe(false)
   await page.getByRole("button", { name: "Restore as new revision" }).click()
   await page.getByRole("option", { name: /Restored: First direction/ }).waitFor({ state: "attached" })
   const revisions = await api<Design.Revision[]>(`${current.root}/${current.document.id}/revision`)
@@ -137,10 +140,146 @@ test("existing Solid component: isolated interactive preview and history restora
   await page.close()
 }, 90000)
 
+test("refresh reloads the preview and keeps request errors visible across polling", async () => {
+  const current = await published("html")
+  const page = await browser.newPage()
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    await frame.getByRole("button", { name: "Add item" }).click()
+    await page.getByRole("button", { name: "Refresh", exact: true }).click()
+    await frame.getByRole("button", { name: "Add item" }).waitFor({ timeout: 3000 })
+    await page.route("**/restore", (route) =>
+      route.fulfill({ status: 409, json: { message: "Reopen this design before restoring" } }),
+    )
+    await page.getByRole("button", { name: "Restore as new revision" }).click()
+    await page.getByRole("status").filter({ hasText: "Reopen this design before restoring" }).waitFor({ timeout: 3000 })
+    await page.waitForTimeout(5500)
+    expect(await page.getByRole("status").textContent()).toContain("Reopen this design before restoring")
+  } finally {
+    await page.close()
+  }
+}, 30000)
+
+test("approval provides pending feedback, prevents duplicate clicks and confirms the terminal handoff", async () => {
+  const current = await published("html")
+  const page = await browser.newPage()
+  const gate = Promise.withResolvers<void>()
+  const requests: unknown[] = []
+  await page.route("**/approve", async (route) => {
+    requests.push(route.request().postDataJSON())
+    await gate.promise
+    await route.continue()
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    const approve = page.getByRole("button", { name: "Approve and continue in Plan", exact: true })
+    await approve.click()
+    expect(await approve.getAttribute("aria-busy")).toBe("true")
+    expect(await approve.isDisabled()).toBe(true)
+    await approve.evaluate((button: HTMLButtonElement) => button.click())
+    expect(requests).toHaveLength(1)
+    gate.resolve()
+    await page.getByRole("button", { name: "Reopen review" }).waitFor()
+    await page.locator("#status").filter({ hasText: "Design approved. Continue in the terminal" }).waitFor()
+    expect(await page.locator("#status").textContent()).toContain("Design approved. Continue in the terminal")
+    const document = await api<Design.Info>(`${current.root}/${current.document.id}`)
+    expect(document.approvedRevision).toBe(current.revision.id)
+  } finally {
+    gate.resolve()
+    await page.close()
+  }
+}, 30000)
+
+test("variants switch independently, compare at device widths and request another direction without losing notes", async () => {
+  const current = await published("html")
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    `<!doctype html><html><body>
+    <section data-design-variant="graphite" data-design-label="Graphite"><h1>Graphite checkout</h1><button onclick="this.textContent='Graphite added'">Add graphite</button></section>
+    <section data-design-variant="stone" data-design-label="Stone"><h1>Stone checkout</h1><button onclick="this.textContent='Stone added'">Add stone</button></section>
+    </body></html>`,
+  )
+  const revision = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Two directions",
+  })
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
+  const feedback: Design.Feedback[] = []
+  await page.route("**/feedback", async (route) => {
+    feedback.push(route.request().postDataJSON())
+    const response = await route.fetch()
+    if (feedback.length === 1) return route.abort("failed")
+    await route.fulfill({ response })
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const preview = page.frameLocator("#preview")
+    const peer = page.frameLocator("#peer-preview")
+    await page.getByRole("tab", { name: "Graphite", exact: true }).waitFor()
+    await preview.getByRole("heading", { name: "Graphite checkout" }).waitFor()
+    expect(await preview.getByRole("heading", { name: "Stone checkout" }).isVisible()).toBe(false)
+    await page.getByRole("tab", { name: "Graphite", exact: true }).focus()
+    await page.keyboard.press("ArrowRight")
+    await preview.getByRole("heading", { name: "Stone checkout" }).waitFor()
+    expect(await preview.getByRole("heading", { name: "Graphite checkout" }).isVisible()).toBe(false)
+    await page.getByRole("button", { name: "Side by side", exact: true }).click()
+    await peer.getByRole("heading", { name: "Graphite checkout" }).waitFor()
+    await peer.getByRole("button", { name: "Add graphite" }).click()
+    await preview.getByRole("button", { name: "Add stone" }).waitFor()
+    await page.getByLabel("Preview width", { exact: true }).selectOption("390")
+    expect(await preview.locator("body").evaluate(() => innerWidth)).toBe(390)
+    expect(await peer.locator("body").evaluate(() => innerWidth)).toBe(390)
+    await page.getByLabel("Preview width", { exact: true }).selectOption("1440")
+    expect(await preview.locator("body").evaluate(() => innerWidth)).toBe(1440)
+    expect(await peer.locator("body").evaluate(() => innerWidth)).toBe(1440)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByLabel("Review notes", { exact: true }).fill("Keep my unsent notes")
+    await page.getByRole("button", { name: "Add variant", exact: true }).click()
+    await page.getByLabel("What should the new variant explore?").fill("Try a warmer palette with denser navigation")
+    await page.getByRole("button", { name: "Request variant", exact: true }).click()
+    await page
+      .locator("#variant-dialog [data-action-status]")
+      .filter({ hasText: /Failed to fetch/ })
+      .waitFor()
+    await page.reload()
+    await page.getByRole("button", { name: "Add variant", exact: true }).click()
+    expect(await page.getByLabel("What should the new variant explore?").inputValue()).toContain("warmer palette")
+    await page.getByRole("button", { name: "Request variant", exact: true }).click()
+    await page.getByText("Variant requested. The agent will publish a new revision here.", { exact: true }).waitFor()
+    expect(feedback).toHaveLength(2)
+    expect(feedback[1]).toEqual(feedback[0])
+    expect(feedback[0].revision).toBe(revision.id)
+    expect(feedback[0].text).toContain("Reference variant: stone")
+    expect(feedback[0].text).toContain("warmer palette")
+    expect(feedback[0].end).toBe(false)
+    expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
+    const updated = await api<Design.Info>(`${current.root}/${current.document.id}`)
+    expect(updated.ended).toBe(false)
+    expect(await page.locator("#preview").getAttribute("sandbox")).not.toContain("allow-same-origin")
+    await Bun.write(
+      path.join(current.document.root, current.document.entry),
+      `<!doctype html><html><body><section data-design-variant="warm" data-design-label="Warm"><h1>Warm checkout</h1></section></body></html>`,
+    )
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Warmer direction" })
+    await page.getByRole("button", { name: "New revision available", exact: true }).waitFor()
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "New revision available", exact: true }).click()
+    await page.getByRole("tab", { name: "Warm", exact: true }).waitFor()
+    await preview.getByRole("heading", { name: "Warm checkout" }).waitFor()
+    await page.getByLabel("Revision", { exact: true }).selectOption(revision.id)
+    await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
+    expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
 test("SVG asset: browser import, local GIF progress and downloadable animation", async () => {
   const current = await published("html")
   const page = await browser.newPage({ acceptDownloads: true })
   await page.goto(`${base}${current.root}/review`)
+  await page.locator("#attachment:enabled").waitFor()
   await page.getByLabel("Attach image or SVG").setInputFiles({
     name: "motion.svg",
     mimeType: "image/svg+xml",
@@ -319,7 +458,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
       .evaluate((button) => getComputedStyle(button).backgroundColor),
   ).not.toBe("rgb(255, 0, 255)")
   const preview = await page.locator("#preview").boundingBox()
-  expect(preview!.y).toBeLessThan(140)
+  expect(preview!.y).toBeLessThan(190)
   expect(preview!.height).toBeGreaterThan(600)
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
   await page.getByRole("tab", { name: "Review", exact: true }).focus()
