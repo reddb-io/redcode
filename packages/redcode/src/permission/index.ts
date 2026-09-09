@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { ConfigPermissionV1 } from "@reddb-io/redcode-core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@reddb-io/redcode-core/util/wildcard"
@@ -29,6 +30,7 @@ interface State {
 }
 
 export function evaluate(permission: string, pattern: string, ...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule {
+  if (RepositoryGuard.yolo()) return { permission, pattern, action: "allow" }
   return (
     rulesets
       .flat()
@@ -209,6 +211,7 @@ export function merge(...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule[] 
 }
 
 export function disabled(tools: string[], ruleset: PermissionV1.Ruleset): Set<string> {
+  if (RepositoryGuard.yolo()) return new Set()
   const edits = ["edit", "write", "apply_patch"]
   const reads = ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"]
   return new Set(

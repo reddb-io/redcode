@@ -17,6 +17,7 @@ import { ToolOutputStore } from "@reddb-io/redcode-core/tool-output-store"
 import { WriteTool } from "@reddb-io/redcode-core/tool/write"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
+import { gitWorktree } from "./fixture/git-worktree"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
 
@@ -97,6 +98,34 @@ const call = (input: typeof WriteTool.Input.Type, id = "call-write") => ({
 const it = testEffect(Layer.empty)
 
 describe("WriteTool", () => {
+  it.live("rejects the primary checkout and permits an explicit linked copy", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          reset()
+          const repo = yield* Effect.promise(() => gitWorktree(tmp.path))
+          yield* withTool(repo.root, (registry) =>
+            Effect.gen(function* () {
+              const blocked = yield* executeTool(registry, call({ path: "source.txt", content: "replaced" }))
+              expect(blocked.type).toBe("error")
+              expect(blocked.value).toContain("primary Git checkout")
+              expect(writes).toEqual([])
+              const written = yield* executeTool(
+                registry,
+                call({ path: path.join(repo.tree, "source.txt"), content: "task change" }),
+              )
+              expect(written.type).not.toBe("error")
+            }),
+          )
+          expect(yield* Effect.promise(() => Bun.file(path.join(repo.root, "source.txt")).text())).toBe(
+            "user changes\n",
+          )
+          expect(yield* Effect.promise(() => Bun.file(path.join(repo.tree, "source.txt")).text())).toBe("task change")
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
   it.live("registers and creates a relative file through FileMutation once", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

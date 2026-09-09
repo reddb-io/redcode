@@ -6,6 +6,7 @@
  */
 export * as WriteTool from "./write"
 
+import { RepositoryGuard } from "../repository-guard"
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Effect, Layer, Schema } from "effect"
 import { makeLocationNode } from "../effect/app-node"
@@ -68,6 +69,7 @@ const layer = Layer.effectDiscard(
                   callID: context.toolCallID,
                 }
                 const target = yield* mutation.resolve({ path: input.path, kind: "file" })
+                yield* RepositoryGuard.assertWrite(target.canonical)
                 const external = target.externalDirectory
                 if (external)
                   yield* permission.assert({
@@ -84,8 +86,17 @@ const layer = Layer.effectDiscard(
                   agent: context.agent,
                   source,
                 })
+                yield* RepositoryGuard.assertWrite(target.canonical)
                 return yield* files.writeTextPreservingBom({ target, content: input.content })
-              }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to write ${input.path}` }))),
+              }).pipe(
+                Effect.mapError(
+                  (error) =>
+                    new ToolFailure({
+                      message:
+                        error instanceof RepositoryGuard.Violation ? error.message : `Unable to write ${input.path}`,
+                    }),
+                ),
+              ),
           }),
           "edit",
         ),

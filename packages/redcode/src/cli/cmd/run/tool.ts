@@ -636,7 +636,7 @@ function scrollBashStart(p: ToolProps<typeof BashTool>): string {
   const cmd = p.input.command ?? ""
   const wd = p.input.workdir ?? ""
   const formatted = wd && wd !== "." ? toolPath(wd) : ""
-  const dir = formatted === "." ? "" : formatted
+  const dir = formatted === "." ? "" : formatted.length > 180 ? formatted.slice(0, 179) + "…" : formatted
   if (cmd && !dir) {
     return `$ ${cmd}`
   }

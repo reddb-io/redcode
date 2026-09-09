@@ -15,6 +15,7 @@ import { Tools } from "./tools"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { SessionEvidence } from "./session-evidence"
+import { RepositoryGuard } from "../repository-guard"
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -27,6 +28,31 @@ const layer = Layer.effectDiscard(
     const goals = yield* SessionGoal.Service
     yield* tools
       .register({
+        worktree_prepare: Tool.make({
+          description:
+            "Run the mandatory repository preflight before coding. Create or reuse this session's linked worktree, return its absolute paths and Git status, and preserve the source checkout. Non-Git directories and YOLO mode keep their directory.",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: (_input, context) =>
+            Effect.gen(function* () {
+              yield* permissions.assert({
+                action: "worktree_prepare",
+                resources: [location.directory],
+                save: [location.directory],
+                sessionID: context.sessionID,
+                agent: context.agent,
+                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+              })
+              return yield* Effect.tryPromise({
+                try: () => RepositoryGuard.preflight(location.directory, context.sessionID),
+                catch: (error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error) }),
+              })
+            }).pipe(
+              Effect.mapError(
+                (error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error) }),
+              ),
+            ),
+        }),
         plan_exit: Tool.make({
           description:
             "Read and record the finished implementation plan. Provide its file path. The plan must be self-contained, name decisions and include concrete verification. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",

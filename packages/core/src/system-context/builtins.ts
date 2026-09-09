@@ -1,5 +1,6 @@
 export * as SystemContextBuiltIns from "./builtins"
 
+import { RepositoryGuard } from "../repository-guard"
 import { makeLocationNode } from "../effect/app-node"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Location } from "../location"
@@ -22,6 +23,13 @@ const builtIns = Layer.effectDiscard(
       "</env>",
     ].join("\n")
     const context = SystemContext.combine([
+      SystemContext.make({
+        key: SystemContext.Key.make("core/repository-policy"),
+        codec: Schema.toCodecJson(Schema.String),
+        load: Effect.sync(RepositoryGuard.instructions),
+        baseline: (instructions) => instructions,
+        update: (_previous, instructions) => instructions,
+      }),
       SystemContext.make({
         key: SystemContext.Key.make("core/environment"),
         codec: Schema.toCodecJson(Schema.String),

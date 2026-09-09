@@ -1,6 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Cause, Exit } from "effect"
 import path from "path"
 import fs from "fs/promises"
 import { WriteTool } from "../../src/tool/write"
@@ -15,6 +15,7 @@ import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 
 const ctx = {
   sessionID: SessionID.make("ses_test-write-session"),
@@ -59,6 +60,20 @@ const run = Effect.fn("WriteToolTest.run")(function* (
 })
 
 describe("tool.write", () => {
+  it.instance("rejects primary checkout edits and writes only to the linked copy", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const repo = yield* Effect.promise(() => gitWorktree(test.directory))
+      const blocked = yield* run({ filePath: path.join(repo.root, "source.txt"), content: "replaced" }).pipe(
+        Effect.exit,
+      )
+      expect(Exit.isFailure(blocked)).toBe(true)
+      if (Exit.isFailure(blocked)) expect(Cause.pretty(blocked.cause)).toContain("primary Git checkout")
+      yield* run({ filePath: path.join(repo.tree, "source.txt"), content: "task change" })
+      expect(yield* Effect.promise(() => Bun.file(path.join(repo.tree, "source.txt")).text())).toBe("task change")
+      expect(yield* Effect.promise(() => Bun.file(path.join(repo.root, "source.txt")).text())).toBe("user changes\n")
+    }),
+  )
   describe("new file creation", () => {
     it.instance("writes content to new file", () =>
       Effect.gen(function* () {

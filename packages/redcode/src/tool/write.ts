@@ -1,3 +1,4 @@
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { Schema } from "effect"
 import * as path from "path"
 import { Effect } from "effect"
@@ -41,6 +42,7 @@ export const WriteTool = Tool.define(
           const filepath = path.isAbsolute(params.filePath)
             ? params.filePath
             : path.join(instance.directory, params.filePath)
+          yield* RepositoryGuard.assertWrite(filepath).pipe(Effect.orDie)
           yield* assertExternalDirectoryEffect(ctx, filepath)
 
           const exists = yield* fs.existsSafe(filepath)
@@ -61,6 +63,7 @@ export const WriteTool = Tool.define(
             },
           })
 
+          yield* RepositoryGuard.assertWrite(filepath).pipe(Effect.orDie)
           yield* fs.writeWithDirs(filepath, Bom.join(contentNew, desiredBom))
           if (yield* format.file(filepath)) {
             yield* Bom.syncFile(fs, filepath, desiredBom)

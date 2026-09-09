@@ -1,3 +1,4 @@
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 // the approaches in this edit tool are sourced from
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-23-25.ts
 // https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/utils/editCorrector.ts
@@ -80,6 +81,7 @@ export const EditTool = Tool.define(
           const filePath = path.isAbsolute(params.filePath)
             ? params.filePath
             : path.join(instance.directory, params.filePath)
+          yield* RepositoryGuard.assertWrite(filePath).pipe(Effect.orDie)
           yield* assertExternalDirectoryEffect(ctx, filePath)
 
           let diff = ""
@@ -108,6 +110,7 @@ export const EditTool = Tool.define(
                     diff,
                   },
                 })
+                yield* RepositoryGuard.assertWrite(filePath).pipe(Effect.orDie)
                 yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
                 if (yield* format.file(filePath)) {
                   contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
@@ -152,6 +155,7 @@ export const EditTool = Tool.define(
                 },
               })
 
+              yield* RepositoryGuard.assertWrite(filePath).pipe(Effect.orDie)
               yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
               if (yield* format.file(filePath)) {
                 contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)

@@ -2550,7 +2550,6 @@ unix(
       expect(tool.state.output).toMatch(/Full output saved to:\s+\S+/)
       expect(tool.state.output).not.toContain("Tool execution aborted")
     }),
-  { git: true },
   30_000,
 )
 

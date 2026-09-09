@@ -11,7 +11,9 @@ import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { Truncate } from "@/tool/truncate"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, provideInstance } from "../fixture/fixture"
+import { gitWorktree } from "../../../core/test/fixture/git-worktree"
+import { tmpdir } from "../../../core/test/fixture/tmpdir"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { testEffect } from "../lib/effect"
 
@@ -86,6 +88,20 @@ const expectFailure = <A, E, R>(effect: Effect.Effect<A, E, R>, message?: string
 
 const expectReadFailure = (filepath: string) => expectFailure(readText(filepath))
 
+const inTaskWorktree = <A, E, R>(body: Effect.Effect<A, E, R>) =>
+  Effect.acquireUseRelease(
+    Effect.promise(() => tmpdir()),
+    (tmp) =>
+      Effect.gen(function* () {
+        const repo = yield* Effect.promise(() => gitWorktree(tmp.path))
+        return yield* body.pipe(
+          provideInstance(repo.tree),
+          Effect.provideService(TestInstance, { directory: repo.tree }),
+        )
+      }),
+    (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+  )
+
 describe("tool.apply_patch freeform", () => {
   it.live("requires patchText", () =>
     Effect.gen(function* () {
@@ -111,96 +127,102 @@ describe("tool.apply_patch freeform", () => {
   it.instance(
     "produces JSON-encodable permission metadata",
     () =>
-      Effect.gen(function* () {
-        const { ctx, calls } = makeCtx()
-        yield* execute({ patchText: "*** Begin Patch\n*** Add File: new.txt\n+created\n*** End Patch" }, ctx)
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const { ctx, calls } = makeCtx()
+          yield* execute({ patchText: "*** Begin Patch\n*** Add File: new.txt\n+created\n*** End Patch" }, ctx)
 
-        expect(() => {
-          const request = Schema.encodeUnknownSync(PermissionV1.Request)({
-            id: PermissionV1.ID.ascending(),
-            sessionID: baseCtx.sessionID,
-            ...calls[0],
-          })
-          Schema.encodeUnknownSync(Schema.Json)(request)
-        }).not.toThrow()
-      }),
+          expect(() => {
+            const request = Schema.encodeUnknownSync(PermissionV1.Request)({
+              id: PermissionV1.ID.ascending(),
+              sessionID: baseCtx.sessionID,
+              ...calls[0],
+            })
+            Schema.encodeUnknownSync(Schema.Json)(request)
+          }).not.toThrow()
+        }),
+      ),
     { git: true },
   )
 
   it.instance(
     "applies add/update/delete in one patch",
     () =>
-      Effect.gen(function* () {
-        const test = yield* TestInstance
-        const { ctx, calls } = makeCtx()
-        const modifyPath = path.join(test.directory, "modify.txt")
-        const deletePath = path.join(test.directory, "delete.txt")
-        yield* writeText(modifyPath, "line1\nline2\n")
-        yield* writeText(deletePath, "obsolete\n")
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const { ctx, calls } = makeCtx()
+          const modifyPath = path.join(test.directory, "modify.txt")
+          const deletePath = path.join(test.directory, "delete.txt")
+          yield* writeText(modifyPath, "line1\nline2\n")
+          yield* writeText(deletePath, "obsolete\n")
 
-        const patchText =
-          "*** Begin Patch\n*** Add File: nested/new.txt\n+created\n*** Delete File: delete.txt\n*** Update File: modify.txt\n@@\n-line2\n+changed\n*** End Patch"
+          const patchText =
+            "*** Begin Patch\n*** Add File: nested/new.txt\n+created\n*** Delete File: delete.txt\n*** Update File: modify.txt\n@@\n-line2\n+changed\n*** End Patch"
 
-        const result = yield* execute({ patchText }, ctx)
+          const result = yield* execute({ patchText }, ctx)
 
-        expect(result.title).toContain("Success. Updated the following files")
-        expect(result.output).toContain("Success. Updated the following files")
-        // Strict formatting assertions for slashes
-        expect(result.output).toMatch(/A nested\/new\.txt/)
-        expect(result.output).toMatch(/D delete\.txt/)
-        expect(result.output).toMatch(/M modify\.txt/)
-        if (process.platform === "win32") {
-          expect(result.output).not.toContain("\\")
-        }
-        expect(result.metadata.diff).toContain("Index:")
-        expect(calls.length).toBe(1)
+          expect(result.title).toContain("Success. Updated the following files")
+          expect(result.output).toContain("Success. Updated the following files")
+          // Strict formatting assertions for slashes
+          expect(result.output).toMatch(/A nested\/new\.txt/)
+          expect(result.output).toMatch(/D delete\.txt/)
+          expect(result.output).toMatch(/M modify\.txt/)
+          if (process.platform === "win32") {
+            expect(result.output).not.toContain("\\")
+          }
+          expect(result.metadata.diff).toContain("Index:")
+          expect(calls.length).toBe(1)
 
-        // Verify permission metadata includes files array for UI rendering
-        const permissionCall = calls[0]
-        expect(permissionCall.metadata.files).toHaveLength(3)
-        expect(permissionCall.metadata.files.map((f) => f.type).sort()).toEqual(["add", "delete", "update"])
+          // Verify permission metadata includes files array for UI rendering
+          const permissionCall = calls[0]
+          expect(permissionCall.metadata.files).toHaveLength(3)
+          expect(permissionCall.metadata.files.map((f) => f.type).sort()).toEqual(["add", "delete", "update"])
 
-        const addFile = permissionCall.metadata.files.find((f) => f.type === "add")
-        expect(addFile?.relativePath).toBe("nested/new.txt")
-        expect(addFile?.patch).toContain("+created")
+          const addFile = permissionCall.metadata.files.find((f) => f.type === "add")
+          expect(addFile?.relativePath).toBe("nested/new.txt")
+          expect(addFile?.patch).toContain("+created")
 
-        const updateFile = permissionCall.metadata.files.find((f) => f.type === "update")
-        expect(updateFile?.patch).toContain("-line2")
-        expect(updateFile?.patch).toContain("+changed")
+          const updateFile = permissionCall.metadata.files.find((f) => f.type === "update")
+          expect(updateFile?.patch).toContain("-line2")
+          expect(updateFile?.patch).toContain("+changed")
 
-        expect(yield* readText(path.join(test.directory, "nested", "new.txt"))).toBe("created\n")
-        expect(yield* readText(modifyPath)).toBe("line1\nchanged\n")
-        yield* expectReadFailure(deletePath)
-      }),
+          expect(yield* readText(path.join(test.directory, "nested", "new.txt"))).toBe("created\n")
+          expect(yield* readText(modifyPath)).toBe("line1\nchanged\n")
+          yield* expectReadFailure(deletePath)
+        }),
+      ),
     { git: true },
   )
 
   it.instance(
     "permission metadata includes move file info",
     () =>
-      Effect.gen(function* () {
-        const test = yield* TestInstance
-        const { ctx, calls } = makeCtx()
-        const original = path.join(test.directory, "old", "name.txt")
-        yield* makeDir(path.dirname(original))
-        yield* writeText(original, "old content\n")
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const { ctx, calls } = makeCtx()
+          const original = path.join(test.directory, "old", "name.txt")
+          yield* makeDir(path.dirname(original))
+          yield* writeText(original, "old content\n")
 
-        const patchText =
-          "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-old content\n+new content\n*** End Patch"
+          const patchText =
+            "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-old content\n+new content\n*** End Patch"
 
-        yield* execute({ patchText }, ctx)
+          yield* execute({ patchText }, ctx)
 
-        expect(calls.length).toBe(1)
-        const permissionCall = calls[0]
-        expect(permissionCall.metadata.files).toHaveLength(1)
+          expect(calls.length).toBe(1)
+          const permissionCall = calls[0]
+          expect(permissionCall.metadata.files).toHaveLength(1)
 
-        const moveFile = permissionCall.metadata.files[0]
-        expect(moveFile.type).toBe("move")
-        expect(moveFile.relativePath).toBe("renamed/dir/name.txt")
-        expect(moveFile.movePath).toBe(path.join(test.directory, "renamed/dir/name.txt"))
-        expect(moveFile.patch).toContain("-old content")
-        expect(moveFile.patch).toContain("+new content")
-      }),
+          const moveFile = permissionCall.metadata.files[0]
+          expect(moveFile.type).toBe("move")
+          expect(moveFile.relativePath).toBe("renamed/dir/name.txt")
+          expect(moveFile.movePath).toBe(path.join(test.directory, "renamed/dir/name.txt"))
+          expect(moveFile.patch).toContain("-old content")
+          expect(moveFile.patch).toContain("+new content")
+        }),
+      ),
     { git: true },
   )
 

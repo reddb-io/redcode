@@ -5,7 +5,7 @@ import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
-import { PlanExitTool } from "./plan"
+import { PlanExitTool, WorktreePrepareTool } from "./plan"
 import { GoalCompleteTool } from "./goal"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { Session } from "@/session/session"
@@ -112,6 +112,7 @@ const layer = Layer.effect(
     const lsptool = yield* LspTool
     const design = yield* DesignTools
     const plan = yield* PlanExitTool
+    const worktree = yield* WorktreePrepareTool
     const goalComplete = yield* GoalCompleteTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
@@ -231,6 +232,7 @@ const layer = Layer.effect(
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
+          worktree: Tool.init(worktree),
           goal_complete: Tool.init(goalComplete),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
@@ -255,6 +257,7 @@ const layer = Layer.effect(
             ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
             tool.plan,
+            tool.worktree,
             ...design,
             // The goal loop's only tool: a claim of completion, judged at the end of the turn.
             tool.goal_complete,

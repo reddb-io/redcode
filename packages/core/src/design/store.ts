@@ -10,6 +10,7 @@ import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { Location } from "../location"
 import { SessionStore } from "../session/store"
+import { RepositoryGuard } from "../repository-guard"
 import { DesignFiles } from "./files"
 import { DesignAssets } from "./assets"
 import { DesignSystem } from "./system"
@@ -70,18 +71,20 @@ const make = Effect.gen(function* () {
     if (!session || session.location.directory !== location.directory)
       return yield* new Design.Error({ code: "not-found", message: "Session not found in this location" })
     const id = Design.ID.make(`design_${crypto.randomUUID()}`)
-    const application = yield* io(() =>
+    const source = yield* io(() =>
       DesignFiles.resolve(
         location.directory,
         path.relative(location.directory, path.resolve(location.directory, input.application ?? ".")) || ".",
       ),
     )
+    const workspace = yield* io(() => RepositoryGuard.prepare(location.directory, sessionID))
+    const application = path.resolve(workspace, path.relative(location.directory, source))
     const data: Design.Info = {
       ...input,
       id,
       sessionID,
       application,
-      root: path.join(storage, id, "work"),
+      root: path.join(workspace, ".red", "code", "design", id, "work"),
       entry: input.engine === "html" ? "index.html" : "src/main.tsx",
       brief: { objective: "", audience: "", content: "", constraints: "", references: [] },
       decisions: [],
@@ -206,6 +209,9 @@ const make = Effect.gen(function* () {
     if (document.ended)
       return yield* new Design.Error({ code: "conflict", message: "Reopen this design before restoring" })
     const previous = yield* revision(id, revisionID)
+    yield* RepositoryGuard.assertWrite(document.root).pipe(
+      Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
+    )
     yield* io(() => DesignFiles.restore(document.root, blobs, previous.files))
     yield* save({
       ...previous.document,

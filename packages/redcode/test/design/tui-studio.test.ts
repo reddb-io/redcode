@@ -29,6 +29,10 @@ import { Session } from "../../src/session/session"
 import { Agent } from "../../src/agent/agent"
 import { Permission } from "../../src/permission"
 import { testEffect } from "../lib/effect"
+import path from "node:path"
+import { rm } from "node:fs/promises"
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
+import { InstanceState } from "../../src/effect/instance-state"
 
 const it = testEffect(
   AppNodeBuilderV1.build(
@@ -49,6 +53,75 @@ const it = testEffect(
       Permission.node,
     ]),
   ),
+)
+
+it.instance(
+  "Plan and Design prepare the same session worktree without overwriting the source plan",
+  () =>
+    Effect.gen(function* () {
+      const instance = yield* InstanceState.context
+      const sessions = yield* Session.Service
+      const agents = yield* Agent.Service
+      const permissions = yield* Permission.Service
+      const registry = yield* ToolRegistry.Service
+      const tools = yield* registry.all()
+      const session = yield* sessions.create({ agent: "plan" })
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() =>
+          rm(path.dirname(RepositoryGuard.worktreePattern(instance.worktree)), { recursive: true, force: true }),
+        ),
+      )
+      const original = Session.plan(session, instance)
+      yield* Effect.promise(() => Bun.write(original, "# Existing user plan\n"))
+      const plan = yield* Session.preparePlan(session, instance)
+      expect(plan).not.toBe(original)
+      expect(yield* Effect.promise(() => Bun.file(plan).text())).toBe("# Existing user plan\n")
+      const context = (name: string) =>
+        Effect.gen(function* () {
+          const agent = yield* agents.get(name)
+          return {
+            sessionID: session.id,
+            messageID: MessageID.ascending(),
+            agent: name,
+            abort: new AbortController().signal,
+            messages: [],
+            metadata: () => Effect.void,
+            ask: (request: Parameters<Tool.Context["ask"]>[0]) =>
+              permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie),
+          } satisfies Tool.Context
+        })
+      const planner = yield* context("plan")
+      const preflight = yield* tools.find((tool) => tool.id === "worktree_prepare")!.execute({}, planner)
+      expect(preflight.output).toContain(plan)
+      yield* tools
+        .find((tool) => tool.id === "write")!
+        .execute({ filePath: plan, content: "# Revised task plan\n" }, planner)
+      expect(yield* Session.preparePlan(session, instance)).toBe(plan)
+      expect(yield* Effect.promise(() => Bun.file(plan).text())).toBe("# Revised task plan\n")
+      expect(yield* Effect.promise(() => Bun.file(original).text())).toBe("# Existing user plan\n")
+      const designer = yield* context("design")
+      const document = yield* tools
+        .find((tool) => tool.id === "design_document")!
+        .execute(
+          { action: "create", input: { name: "Protected prototype", journey: "new", engine: "html", kind: "screen" } },
+          designer,
+        )
+      const root = document.output
+        .split("\n")
+        .find((line) => line.startsWith("Root: "))!
+        .slice(6)
+      expect((yield* Effect.promise(() => RepositoryGuard.inspect(root)))?.linked).toBe(true)
+      expect(root).toContain(path.dirname(path.dirname(plan)))
+      yield* tools
+        .find((tool) => tool.id === "write")!
+        .execute(
+          { filePath: path.join(root, "index.html"), content: "<!doctype html><h1>Task prototype</h1>" },
+          designer,
+        )
+      expect(yield* Effect.promise(() => Bun.file(path.join(root, "index.html")).text())).toContain("Task prototype")
+    }),
+  { git: true },
+  30000,
 )
 
 it.instance(

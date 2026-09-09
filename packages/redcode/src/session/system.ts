@@ -1,3 +1,4 @@
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 
@@ -81,6 +82,7 @@ const layer = Layer.effect(
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
           ].join("\n"),
+          RepositoryGuard.instructions(),
           references.length === 0
             ? undefined
             : [

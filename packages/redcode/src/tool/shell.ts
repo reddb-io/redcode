@@ -1,3 +1,4 @@
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { Effect, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
@@ -13,6 +14,7 @@ import { fileURLToPath } from "url"
 import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Shell } from "@reddb-io/redcode-core/shell"
+import { ShellWorkdir } from "@reddb-io/redcode-core/shell-workdir"
 import { ShellID } from "./shell/id"
 
 import * as Truncate from "./truncate"
@@ -618,6 +620,8 @@ export const ShellTool = Tool.define(
               const cwd = params.workdir
                 ? yield* resolvePath(params.workdir, instanceCtx.directory, shell)
                 : instanceCtx.directory
+              yield* ShellWorkdir.validate(fs, cwd, instanceCtx.directory).pipe(Effect.orDie)
+              yield* RepositoryGuard.assertShell(cwd, params.command).pipe(Effect.orDie)
               if (params.timeout !== undefined && params.timeout < 0) {
                 throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
               }
@@ -634,6 +638,7 @@ export const ShellTool = Tool.define(
                 }),
               )
 
+              yield* RepositoryGuard.assertShell(cwd, params.command).pipe(Effect.orDie)
               return yield* run(
                 {
                   shell,

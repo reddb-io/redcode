@@ -324,7 +324,7 @@ export const {
         case "permission.asked": {
           const request = event.properties
           snapshot?.permissions.add(request.id)
-          if (permission.mode === "auto") {
+          if (permission.mode !== "normal") {
             void sdk.client.permission.reply({
               requestID: request.id,
               reply: "once",
@@ -749,7 +749,7 @@ export const {
             }),
           )
           snapshot = undefined
-          if (permission.mode === "auto") {
+          if (permission.mode !== "normal") {
             for (const request of Object.values(store.permission).flat()) {
               void sdk.client.permission.reply({ requestID: request.id, reply: "once", workspace }).catch(() => {})
             }

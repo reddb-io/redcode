@@ -12,8 +12,35 @@ import { Provider } from "@/provider/provider"
 import { InstanceState } from "@/effect/instance-state"
 import { MessageID, PartID } from "../session/schema"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 
 export const Parameters = Schema.Struct({})
+
+export const WorktreePrepareTool = Tool.define(
+  "worktree_prepare",
+  Effect.gen(function* () {
+    const sessions = yield* Session.Service
+    return {
+      description:
+        "Run the mandatory repository preflight before coding. Create or reuse this session's linked worktree and return its absolute paths and status. The source checkout is preserved. Non-Git directories and YOLO keep their directory.",
+      parameters: Parameters,
+      execute: (_input: {}, ctx: Tool.Context) =>
+        Effect.gen(function* () {
+          const instance = yield* InstanceState.context
+          yield* ctx.ask({
+            permission: "worktree_prepare",
+            patterns: [instance.directory],
+            always: [instance.directory],
+            metadata: {},
+          })
+          const info = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
+          const plan = yield* Session.preparePlan(info, instance)
+          const output = yield* Effect.promise(() => RepositoryGuard.preflight(instance.directory, ctx.sessionID, plan))
+          return { title: "Repository preflight", output, metadata: {} }
+        }),
+    }
+  }),
+)
 
 export const PlanExitTool = Tool.define(
   "plan_exit",
@@ -31,7 +58,7 @@ export const PlanExitTool = Tool.define(
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
-          const plan = path.relative(instance.worktree, Session.plan(info, instance))
+          const plan = path.relative(instance.worktree, yield* Session.preparePlan(info, instance))
           const content = yield* readPlan(path.resolve(instance.worktree, plan))
           if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
           const revision = createHash("sha256").update(content).digest("hex")

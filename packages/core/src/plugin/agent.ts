@@ -9,12 +9,13 @@ import { Location } from "../location"
 import { PermissionV2 } from "../permission"
 import { ProjectDir } from "../project-dir"
 import { DESIGN_INSTRUCTIONS } from "../design/instructions"
+import { RepositoryGuard } from "../repository-guard"
 
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
   "You are an AI coding agent. Help the user accomplish software engineering tasks by inspecting the workspace, making targeted changes, and using tools according to the configured permissions."
 
-const PLAN_SYSTEM = `You are the Plan agent. Research the actual code and resolve implementation decisions without changing product code. Write the implementation plan to .red/code/plans/<name>.md, or refine the plan handed off by Design. Include the objective, ordered changes, important decisions and concrete verification commands with expected behavior. Keep the plan self-contained so a fresh agent can execute it. Ask only about preferences or tradeoffs the code cannot answer. Reuse prior authorization and preserve the goal's scope. When ready, call plan_exit with the real plan path. Shell and unclassified external tools are disabled by default in Plan; use read, glob, grep and research tools.`
+const PLAN_SYSTEM = `You are the Plan agent. Research the actual code and resolve implementation decisions without changing product code. Call worktree_prepare before writing and save the implementation plan at its returned Plan path, or refine the plan handed off by Design in that worktree. Include the objective, ordered changes, important decisions and concrete verification commands with expected behavior. Keep the plan self-contained so a fresh agent can execute it. Ask only about preferences or tradeoffs the code cannot answer. Reuse prior authorization and preserve the goal's scope. When ready, call plan_exit with the real plan path. Shell and unclassified external tools are disabled by default in Plan; use read, glob, grep and research tools.`
 
 const PROMPT_EXPLORE = `You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 
@@ -158,6 +159,7 @@ export const Plugin = define({
             { action: "goal_complete", resource: "*", effect: "allow" },
             { action: "question", resource: "*", effect: "allow" },
             { action: "plan_exit", resource: "*", effect: "allow" },
+            { action: "worktree_prepare", resource: "*", effect: "allow" },
             { action: "design_document", resource: "*", effect: "allow" },
             { action: "design_read", resource: "*", effect: "allow" },
             { action: "external_directory", resource: path.join(Global.Path.data, "plans", "*"), effect: "allow" },
@@ -168,6 +170,10 @@ export const Plugin = define({
               effect: "allow",
             },
             { action: "edit", resource: ".red/code/design/*/plan.md", effect: "allow" },
+            ...RepositoryGuard.planPatterns(worktree).map(
+              (resource): PermissionV2.Rule => ({ action: "edit", resource, effect: "allow" }),
+            ),
+            { action: "external_directory", resource: RepositoryGuard.worktreePattern(worktree), effect: "allow" },
             ...ProjectDir.DIRS.map((dir) => ({
               action: "edit" as const,
               resource: path.join(dir, "plans", "*.md"),
@@ -201,6 +207,10 @@ export const Plugin = define({
               effect: "allow",
             },
             { action: "edit", resource: ".red/code/design/*/work/*", effect: "allow" },
+            ...RepositoryGuard.prototypePatterns(worktree).map(
+              (resource): PermissionV2.Rule => ({ action: "edit", resource, effect: "allow" }),
+            ),
+            { action: "external_directory", resource: RepositoryGuard.worktreePattern(worktree), effect: "allow" },
           ]),
         )
       })

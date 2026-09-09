@@ -150,6 +150,7 @@ export const TuiThreadCommand = cmd({
         hidden: true,
       }),
   handler: async (args) => {
+    if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
     if (args.replay === true) {
       UI.error("--replay is not supported; replay is enabled by default")
       process.exitCode = 1
@@ -179,6 +180,8 @@ export const TuiThreadCommand = cmd({
         replay: noReplay ? false : undefined,
         replayLimit: args.replayLimit,
         demo: args.demo,
+        auto: args.auto,
+        yolo: args.yolo || args["dangerously-skip-permissions"],
       })
       return
     }
@@ -332,6 +335,7 @@ export const TuiThreadCommand = cmd({
               prompt,
               fork: args.fork,
               auto: args.auto || args.yolo || args["dangerously-skip-permissions"],
+              yolo: process.env.REDCODE_YOLO === "1",
             },
           }),
         )

@@ -103,6 +103,30 @@ function waitForRequest() {
 }
 
 describe("PermissionV2", () => {
+  it.effect("YOLO bypasses configured denials without saving a permission exception", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const previous = process.env.REDCODE_YOLO
+        process.env.REDCODE_YOLO = "1"
+        return previous
+      }),
+      () =>
+        Effect.gen(function* () {
+          yield* setup([{ action: "*", resource: "*", effect: "deny" }])
+          const permissions = yield* PermissionV2.Service
+          yield* permissions.assert(assertion({ action: "edit" }))
+          expect(yield* permissions.forSession(SessionV2.ID.make("ses_test"))).toEqual([])
+          const saved = yield* PermissionSaved.Service
+          expect(yield* saved.list({ projectID: Project.ID.global })).toEqual([])
+          expect(yield* permissions.list()).toEqual([])
+        }),
+      (previous) =>
+        Effect.sync(() => {
+          if (previous === undefined) delete process.env.REDCODE_YOLO
+          else process.env.REDCODE_YOLO = previous
+        }),
+    ),
+  )
   it.effect("returns the evaluated effect and only queues prompts", () =>
     Effect.gen(function* () {
       yield* setup([{ action: "read", resource: "*", effect: "allow" }])

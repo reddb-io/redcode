@@ -1,3 +1,4 @@
+import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import * as path from "path"
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
@@ -71,6 +72,7 @@ export const ApplyPatchTool = Tool.define(
 
       for (const hunk of hunks) {
         const filePath = path.resolve(instance.directory, hunk.path)
+        yield* RepositoryGuard.assertWrite(filePath).pipe(Effect.orDie)
         yield* assertExternalDirectoryEffect(ctx, filePath)
 
         switch (hunk.type) {
@@ -140,6 +142,7 @@ export const ApplyPatchTool = Tool.define(
             }
 
             const movePath = hunk.move_path ? path.resolve(instance.directory, hunk.move_path) : undefined
+            if (movePath) yield* RepositoryGuard.assertWrite(movePath).pipe(Effect.orDie)
             yield* assertExternalDirectoryEffect(ctx, movePath)
 
             fileChanges.push({
@@ -215,6 +218,10 @@ export const ApplyPatchTool = Tool.define(
       })
 
       // Apply the changes
+      for (const change of fileChanges) {
+        yield* RepositoryGuard.assertWrite(change.filePath).pipe(Effect.orDie)
+        if (change.movePath) yield* RepositoryGuard.assertWrite(change.movePath).pipe(Effect.orDie)
+      }
       const updates: Array<{ file: string; event: "add" | "change" | "unlink" }> = []
 
       for (const change of fileChanges) {

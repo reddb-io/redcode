@@ -10,6 +10,7 @@ import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { SystemContext } from "@reddb-io/redcode-core/system-context"
 import { SystemContextBuiltIns } from "@reddb-io/redcode-core/system-context/builtins"
 import { SystemContextRegistry } from "@reddb-io/redcode-core/system-context/registry"
+import { RepositoryGuard } from "../../src/repository-guard"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 
@@ -63,6 +64,8 @@ describe("SystemContextBuiltIns", () => {
 
       expect(initialized.baseline).toBe(
         [
+          RepositoryGuard.instructions(),
+          "",
           "Here is some useful information about the environment you are running in:",
           "<env>",
           `  Working directory: ${directory}`,
@@ -111,6 +114,8 @@ describe("SystemContextBuiltIns", () => {
 
       expect((yield* SystemContext.initialize(yield* context.load())).baseline).toBe(
         [
+          RepositoryGuard.instructions(),
+          "",
           "Here is some useful information about the environment you are running in:",
           "<env>",
           `  Working directory: ${directory}`,

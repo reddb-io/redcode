@@ -254,12 +254,15 @@ describe("opencode run (non-interactive subprocess)", () => {
   )
 
   cliIt.live(
-    "rejects requested permissions by default and allows them with the dangerous flag",
+    "normal and auto preserve denials while YOLO bypasses them",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         yield* llm.tool("bash", { command: "rm -f denied-file", description: "Remove a test file" })
         yield* llm.text("continued after rejection")
-        const denied = yield* opencode.run("request permission", { permission: { bash: "ask" } })
+        const denied = yield* opencode.run("request permission", {
+          permission: { bash: "ask" },
+          extraArgs: ["--dir", home],
+        })
         opencode.expectExit(denied, 0)
         expect(denied.stderr).toContain("permission requested: bash")
         expect(denied.stdout).toBe("")
@@ -269,7 +272,7 @@ describe("opencode run (non-interactive subprocess)", () => {
         yield* llm.text("continued after approval")
         const allowed = yield* opencode.run("request permission", {
           permission: { bash: "ask" },
-          extraArgs: ["--dangerously-skip-permissions"],
+          extraArgs: ["--dir", home, "--dangerously-skip-permissions"],
         })
         opencode.expectExit(allowed, 0)
         expect(allowed.stderr).not.toContain("permission requested: bash")
@@ -280,11 +283,22 @@ describe("opencode run (non-interactive subprocess)", () => {
         yield* llm.text("continued after explicit denial")
         const explicitlyDenied = yield* opencode.run("request denied permission", {
           permission: { bash: "deny" },
-          extraArgs: ["--dangerously-skip-permissions"],
+          extraArgs: ["--dir", home, "--auto"],
         })
         opencode.expectExit(explicitlyDenied, 0)
         expect(explicitlyDenied.stdout).toContain("continued after explicit denial")
         expect(yield* Effect.promise(() => Bun.file(`${home}/explicitly-denied`).exists())).toBe(false)
+
+        yield* llm.reset
+        yield* llm.tool("bash", { command: "touch yolo-allowed", description: "Create a YOLO marker" })
+        yield* llm.text("continued under YOLO")
+        const unrestricted = yield* opencode.run("bypass denied permission", {
+          permission: { bash: "deny" },
+          extraArgs: ["--dir", home, "--yolo"],
+        })
+        opencode.expectExit(unrestricted, 0)
+        expect(unrestricted.stdout).toContain("continued under YOLO")
+        expect(yield* Effect.promise(() => Bun.file(`${home}/yolo-allowed`).exists())).toBe(true)
       }),
     60_000,
   )
