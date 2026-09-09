@@ -1,5 +1,12 @@
 # opencode
 
+## 0.25.0
+
+### Minor Changes
+
+- a541de5: Integrate frontend quality review into Design: two bounded correction cycles, evidence-based anti-slop guidance, per-variant and scenario audits, persisted screenshot manifests and actionable findings in both runtime tool responses. Preserve human approval and report incomplete verification explicitly.
+- 3793912: Require repository preflight and linked worktrees for native source edits, guard destructive Git commands while allowing normal pushes, and prepare Design prototype worktrees automatically. Separate unrestricted local --yolo execution from --auto, with an explicit TUI indicator. Validate shell working directories before execution and provide bounded recovery guidance for invalid repeated paths. Disable stale Design approval immediately when a newer revision arrives, before loading assets.
+
 ## 0.24.0
 
 ### Minor Changes
