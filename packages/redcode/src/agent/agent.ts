@@ -176,6 +176,7 @@ const layer = Layer.effect(
                 goal_complete: "allow",
                 question: "allow",
                 plan_exit: "allow",
+                design_read: "allow",
                 task: {
                   "*": "deny",
                   explore: "allow",

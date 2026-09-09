@@ -68,7 +68,9 @@ export const reviewCopy = {
   approved: "Design approved. Continue in the terminal to review the implementation plan.",
   approveAction: "Approve and continue in Plan",
   approvalScope:
-    "This approves the entire revision, including its variants. Record your chosen direction in feedback before approving. Product implementation still requires plan approval in the terminal.",
+    "Your selected direction, decisions and acceptance criteria will be recorded with this revision. Product implementation still requires plan approval in the terminal.",
+  approvalWhole: "Entire revision (no variant selected)",
+  approvalDetails: "View approved decisions",
   variants: "Variants",
   variant: "Variant",
   single: "Single view",

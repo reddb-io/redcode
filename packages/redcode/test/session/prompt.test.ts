@@ -1,3 +1,6 @@
+import { DesignStudio } from "../../src/design/studio"
+import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -180,6 +183,8 @@ const runtimeFlags = RuntimeFlags.layer({ experimentalEventSystem: true, experim
 const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
 
 const promptRoot = LayerNode.group([
+  DesignStudio.node,
+  SessionPlan.node,
   SessionPrompt.node,
   SessionGuardLog.node,
   GoalRuntime.node,
@@ -3127,6 +3132,11 @@ it.instance(
         "plan",
       ])
       expect(JSON.stringify(messages)).toContain("Plan-only goal: revision")
+      const plans = yield* SessionPlan.Service
+      expect((yield* plans.list(chat.id))[0]).toMatchObject({
+        status: "ready",
+        content: "# Plan\nChange src/index.ts and verify with bun test.",
+      })
       const exit = messages
         .flatMap((message) => message.parts)
         .find((part) => part.type === "tool" && part.tool === "plan_exit")
@@ -3416,4 +3426,53 @@ it.instance(
       expect(yield* llm.calls).toBe(4)
     }),
   60_000,
+)
+
+it.instance(
+  "Plan provider requests hydrate approved Design absent from the transcript",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const studio = yield* DesignStudio.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Payment plan" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "Continue planning" }],
+      })
+      yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          const document = yield* store.create(chat.id, {
+            name: "Payment",
+            engine: "html",
+            journey: "new",
+            kind: "screen",
+          })
+          yield* store.update(document.id, {
+            decisions: [{ id: "retry", text: "Keep transaction key on every retry" }],
+          })
+          const revision = yield* store.publish(document.id, "Approved payment")
+          yield* store.approve(document.id, revision.id)
+          yield* store.reopen(document.id)
+          yield* store.update(document.id, {
+            decisions: [{ id: "retry", text: "UNAPPROVED: discard transaction key" }],
+          })
+          yield* store.publish(document.id, "Draft payment")
+        }),
+      )
+      yield* llm.text("The implementation plan is ready for review.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Plan request did not finish", "30 seconds")
+      const hits = yield* llm.hits
+      expect(hits.length).toBeGreaterThan(0)
+      expect(JSON.stringify(hits.map((hit) => hit.body))).toContain("Keep transaction key on every retry")
+      expect(JSON.stringify(hits.map((hit) => hit.body))).not.toContain("UNAPPROVED: discard transaction key")
+      expect(JSON.stringify(yield* sessions.messages({ sessionID: chat.id }))).not.toContain(
+        "Keep transaction key on every retry",
+      )
+    }),
+  30000,
 )

@@ -1,3 +1,4 @@
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
@@ -162,6 +163,7 @@ const layer = Layer.effect(
     const permission = yield* Permission.Service
     const fsys = yield* FSUtil.Service
     const design = yield* DesignStudio.Service
+    const plans = yield* SessionPlan.Service
     const mcp = yield* MCP.Service
     const lsp = yield* LSP.Service
     const registry = yield* ToolRegistry.Service
@@ -1520,6 +1522,8 @@ const layer = Layer.effect(
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
             Effect.provideService(DesignStudio.Service, design),
+            Effect.provideService(SessionPlan.Service, plans),
+            Effect.orDie,
           )
 
           const msg: SessionV1.Assistant = {
@@ -1993,6 +1997,7 @@ export const node = LayerNode.make({
   deps: [
     DesignStudio.node,
     GoalRuntime.node,
+    SessionPlan.node,
     SessionGuardLog.node,
     SessionStatus.node,
     Session.node,

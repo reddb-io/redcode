@@ -274,7 +274,7 @@ an approved plan or work directly on product code.
 <img src="docs/modes/plan.svg" alt="Plan mode" width="100%" />
 
 **Plan** explores the repository and writes the implementation plan under `.red/code/plans/`.
-`plan_exit` reads and records the reviewed file before a handoff. In SessionV2, the approved
+`plan_exit` reads and records the reviewed file before a handoff. In the TUI and SessionV2, the approved
 revision and contents survive continuation and compaction. A Plan-only Goal stays in Plan;
 entering Build requires approval or prior explicit execution authorization.
 
@@ -349,9 +349,11 @@ flowchart LR
    “I am happy with this version; finish the design and prepare the implementation plan.” The
    agent asks for approval before recording the handoff. Approval freezes the chosen revision
    as the implementation reference and normally moves the conversation to Plan.
-   Approval covers the **entire revision**. Send feedback naming your chosen variant and let
-   the agent record that decision before approving. The browser shows a confirmation, a busy
-   state while saving, and an explicit message to continue in the terminal when approval succeeds.
+   The confirmation names the **selected variant** (the first preview when comparing side by side).
+   Approval saves that selection together with the complete immutable revision. Without marked
+   variants, it records the entire revision. The browser shows progress and confirmation;
+   **View approved decisions** shows the saved reference even after newer drafts are published.
+   The TUI shows a compact approval notice with a shortcut back to the review.
 7. **Review the plan, then authorize Build.** The plan explains how to apply the approved design
    to the actual app. Approve that implementation before Build changes product files. A working
    prototype and an approved design are not, by themselves, an implemented feature. After the
@@ -418,7 +420,17 @@ may need network access to prepare its runtime dependencies and Chromium.
 
 ### Approval and implementation
 
-Approval freezes the published source, asset metadata and feedback into an approval package.
+Approval freezes the published source, selected variant, decisions, scenarios, asset metadata,
+feedback and audit evidence into a typed approval package. Plan and Build automatically receive
+the approved objective, constraints, decisions and acceptance criteria on each turn, including
+after resuming or compacting the conversation. The chat contains a short handoff; the complete
+review history stays in storage. The agent can call `design_read` for decisions, scenarios, assets,
+feedback, audit evidence or an exact prototype file without reopening Design.
+
+A newer draft does not replace the approved reference. Approving a different direction returns
+to Plan; review and approve an updated implementation plan before executing its changed scope.
+Historical approval packages remain readable and are not rewritten; packages created before
+variant selection was recorded cannot identify a chosen variant.
 The handoff updates only the Design-owned section of `plan.md`, preserving manual work. A Goal
 configured to stop after Design records approval and stays in Design; otherwise the normal
 handoff selects Plan. Build begins through an authorized Plan handoff.

@@ -15,6 +15,7 @@ import { SessionGoal } from "../session/goal"
 import { makeLocationNode } from "../effect/app-node"
 import { DesignStore } from "../design/store"
 import { DesignDocumentTool } from "../design/document-tool"
+import { DesignApproval } from "../design/approval"
 import { DesignRenderer } from "../design/renderer"
 import { DesignPlaybooks } from "../design/playbooks"
 import { LocationMutation } from "../location-mutation"
@@ -204,6 +205,18 @@ const layer = Layer.effectDiscard(
               return [yield* store.update(input.id, input.input)]
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
+        design_read: Tool.make({
+          description:
+            "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval; use file for exact snapshot source. Available during Plan and Build without reopening Design.",
+          input: DesignApproval.Read,
+          output: Schema.String,
+          execute: (input, context) =>
+            Effect.gen(function* () {
+              yield* allow("design_read", context)
+              yield* owned(input.id, context)
+              return yield* store.readApproval(input)
+            }).pipe(Effect.catchTag("Design.Error", fail)),
+        }),
         design_preview: Tool.make({
           description:
             "Publish an immutable, reviewable revision after coherent edits. Updates the embedded preview without opening another browser window.",
@@ -303,7 +316,7 @@ const layer = Layer.effectDiscard(
         design_exit: Tool.make({
           description:
             "Ask the user to approve the currently published revision. Only after approval, update the design section of the plan and switch to Plan. Never silently approve open work.",
-          input: Schema.Struct({ id: Design.ID }),
+          input: Schema.Struct({ id: Design.ID, variant: Schema.optional(Design.Variant) }),
           output: Schema.Struct({ plan: Schema.String, revision: Schema.String }),
           toModelOutput: ({ output }) => [
             {
@@ -339,7 +352,7 @@ const layer = Layer.effectDiscard(
                   tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
                   questions: [
                     {
-                      question: `Approve ${document.name} (${document.revision})? ${stay ? "The goal ends in Design." : "Approval continues in Plan."} Open questions: ${document.questions.join("; ") || "none"}\n${evidence}`,
+                      question: `Approve ${document.name} (${document.revision}), ${input.variant ? `variant ${input.variant.name} (${input.variant.id})` : "entire revision"}? ${stay ? "The goal ends in Design." : "Approval continues in Plan."} Open questions: ${document.questions.join("; ") || "none"}\n${evidence}`,
                       header: "Design approval",
                       custom: false,
                       options: [
@@ -364,7 +377,7 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({
                   message: "Goal changed during Design approval; review the current scope again",
                 })
-              const result = yield* store.approve(input.id, document.revision)
+              const result = yield* store.approve(input.id, document.revision, input.variant)
               if (stay) return result
               yield* events.publish(SessionEvent.AgentSwitched, {
                 sessionID: context.sessionID,

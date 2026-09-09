@@ -2900,10 +2900,127 @@ export type DesignsFeedbackOutput = { readonly id: string; readonly status: "pen
 export type DesignsApproveInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
-  readonly revision: { readonly revision: string }["revision"]
+  readonly revision: {
+    readonly revision: string
+    readonly variant?: { readonly id: string; readonly name: string }
+  }["revision"]
+  readonly variant?: {
+    readonly revision: string
+    readonly variant?: { readonly id: string; readonly name: string }
+  }["variant"]
 }
 
 export type DesignsApproveOutput = { readonly plan: string; readonly revision: string }
+
+export type DesignsApprovalInput = {
+  readonly sessionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revisionID: string
+  }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly revisionID: string }["designID"]
+  readonly revisionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revisionID: string
+  }["revisionID"]
+}
+
+export type DesignsApprovalOutput = {
+  readonly version: 0 | 1
+  readonly approvedAt: number | "Infinity" | "-Infinity" | "NaN" | null
+  readonly variant: { readonly id: string; readonly name: string } | null
+  readonly revision: {
+    readonly id: string
+    readonly designID: string
+    readonly parent: string | null
+    readonly name: string
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+    readonly files: { readonly [x: string]: string }
+    readonly document: {
+      readonly id: string
+      readonly sessionID: string
+      readonly name: string
+      readonly journey: "new" | "existing"
+      readonly engine: "html" | "react" | "solid"
+      readonly kind: "screen" | "flow" | "comparison" | "deck"
+      readonly root: string
+      readonly application: string
+      readonly entry: string
+      readonly brief: {
+        readonly objective: string
+        readonly audience: string
+        readonly content: string
+        readonly constraints: string
+        readonly references: ReadonlyArray<string>
+      }
+      readonly decisions: ReadonlyArray<{
+        readonly id: string
+        readonly text: string
+        readonly revision?: string
+        readonly feedback?: string
+      }>
+      readonly questions: ReadonlyArray<string>
+      readonly scenarios: ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+        readonly actions: ReadonlyArray<{
+          readonly selector: string
+          readonly action: "click" | "fill" | "press"
+          readonly value?: string
+        }>
+        readonly notApplicable?: string
+      }>
+      readonly designSystem: string
+      readonly sources: ReadonlyArray<{
+        readonly file: string
+        readonly hash: string
+        readonly observed: number | "Infinity" | "-Infinity" | "NaN"
+        readonly authoritative: boolean
+        readonly excerpt: string
+      }>
+      readonly tweaks: { readonly [x: string]: string }
+      readonly revision: string | null
+      readonly approvedRevision: string | null
+      readonly ended: boolean
+      readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  readonly assets: ReadonlyArray<{
+    readonly id: string
+    readonly designID: string
+    readonly name: string
+    readonly mime: string
+    readonly bytes: number | "Infinity" | "-Infinity" | "NaN"
+    readonly hash: string
+    readonly source: string
+    readonly parent: string | null
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+  }>
+  readonly feedback: ReadonlyArray<{
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }>
+  readonly audits: ReadonlyArray<{
+    readonly id: string
+    readonly result: string | null
+    readonly audit: {
+      readonly revision: string
+      readonly findings: ReadonlyArray<string>
+      readonly scenarios: ReadonlyArray<string>
+      readonly widths: ReadonlyArray<number | "Infinity" | "-Infinity" | "NaN">
+    }
+  }>
+}
 
 export type DesignsAssetsInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]

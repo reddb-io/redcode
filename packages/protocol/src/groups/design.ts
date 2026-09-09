@@ -84,8 +84,15 @@ export const makeDesignGroup = <Id extends HttpApiMiddleware.AnyId, Service>(mid
     .add(
       HttpApiEndpoint.post("design.approve", `${item}/approve`, {
         params,
-        payload: Schema.Struct({ revision: Schema.String }),
+        payload: Design.Approve,
         success: Schema.Struct({ plan: Schema.String, revision: Schema.String }),
+        error,
+      }),
+    )
+    .add(
+      HttpApiEndpoint.get("design.approval", `${item}/approval/:revisionID`, {
+        params: { ...params, revisionID: Schema.String },
+        success: Design.Approval,
         error,
       }),
     )

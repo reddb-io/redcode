@@ -1,6 +1,9 @@
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DESIGN_INSTRUCTIONS } from "@reddb-io/redcode-core/design/instructions"
 import { DesignStudio } from "@/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignContext } from "@reddb-io/redcode-core/design/context"
+import { SystemContext } from "@reddb-io/redcode-core/system-context/index"
 import path from "path"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Effect } from "effect"
@@ -42,6 +45,36 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text: SessionGoal.render(goal),
       synthetic: true,
     })
+  }
+
+  if (["plan", "build"].includes(input.agent.name)) {
+    const plans = yield* SessionPlan.Service
+    const guidance = SessionPlan.guidance(yield* plans.list(input.session.id))
+    if (guidance)
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        synthetic: true,
+        text: guidance,
+      })
+  }
+
+  if (["design", "plan", "build"].includes(input.agent.name)) {
+    const studio = yield* DesignStudio.Service
+    const context = yield* studio.use(
+      DesignContext.load(input.session.id).pipe(Effect.flatMap(SystemContext.initialize)),
+    )
+    if (context.baseline)
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        synthetic: true,
+        text: context.baseline,
+      })
   }
 
   if (input.agent.name === "design") {

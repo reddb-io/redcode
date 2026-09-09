@@ -73,6 +73,8 @@ import type {
   DesignsFeedbackOutput,
   DesignsApproveInput,
   DesignsApproveOutput,
+  DesignsApprovalInput,
+  DesignsApprovalOutput,
   DesignsAssetsInput,
   DesignsAssetsOutput,
   DesignsImportAssetInput,
@@ -796,7 +798,18 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/approve`,
-            body: { revision: input["revision"] },
+            body: { revision: input["revision"], variant: input["variant"] },
+            successStatus: 200,
+            declaredStatuses: [409, 400, 404, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      approval: (input: DesignsApprovalInput, requestOptions?: RequestOptions) =>
+        request<DesignsApprovalOutput>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/approval/${encodeURIComponent(input.revisionID)}`,
             successStatus: 200,
             declaredStatuses: [409, 400, 404, 401],
             empty: false,

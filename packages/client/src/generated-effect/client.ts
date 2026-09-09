@@ -466,34 +466,46 @@ type Endpoint4_13Input = {
   readonly sessionID: Endpoint4_13Request["params"]["sessionID"]
   readonly designID: Endpoint4_13Request["params"]["designID"]
   readonly revision: Endpoint4_13Request["payload"]["revision"]
+  readonly variant?: Endpoint4_13Request["payload"]["variant"]
 }
 const Endpoint4_13 = (raw: RawClient["server.design"]) => (input: Endpoint4_13Input) =>
   raw["design.approve"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
-    payload: { revision: input["revision"] },
+    payload: { revision: input["revision"], variant: input["variant"] },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint4_14Request = Parameters<RawClient["server.design"]["design.assets"]>[0]
+type Endpoint4_14Request = Parameters<RawClient["server.design"]["design.approval"]>[0]
 type Endpoint4_14Input = {
   readonly sessionID: Endpoint4_14Request["params"]["sessionID"]
   readonly designID: Endpoint4_14Request["params"]["designID"]
+  readonly revisionID: Endpoint4_14Request["params"]["revisionID"]
 }
 const Endpoint4_14 = (raw: RawClient["server.design"]) => (input: Endpoint4_14Input) =>
+  raw["design.approval"]({
+    params: { sessionID: input["sessionID"], designID: input["designID"], revisionID: input["revisionID"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint4_15Request = Parameters<RawClient["server.design"]["design.assets"]>[0]
+type Endpoint4_15Input = {
+  readonly sessionID: Endpoint4_15Request["params"]["sessionID"]
+  readonly designID: Endpoint4_15Request["params"]["designID"]
+}
+const Endpoint4_15 = (raw: RawClient["server.design"]) => (input: Endpoint4_15Input) =>
   raw["design.assets"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
     Effect.mapError(mapClientError),
   )
 
-type Endpoint4_15Request = Parameters<RawClient["server.design"]["design.importAsset"]>[0]
-type Endpoint4_15Input = {
-  readonly sessionID: Endpoint4_15Request["params"]["sessionID"]
-  readonly designID: Endpoint4_15Request["params"]["designID"]
-  readonly name: Endpoint4_15Request["payload"]["name"]
-  readonly mime: Endpoint4_15Request["payload"]["mime"]
-  readonly data: Endpoint4_15Request["payload"]["data"]
-  readonly source: Endpoint4_15Request["payload"]["source"]
-  readonly parent?: Endpoint4_15Request["payload"]["parent"]
+type Endpoint4_16Request = Parameters<RawClient["server.design"]["design.importAsset"]>[0]
+type Endpoint4_16Input = {
+  readonly sessionID: Endpoint4_16Request["params"]["sessionID"]
+  readonly designID: Endpoint4_16Request["params"]["designID"]
+  readonly name: Endpoint4_16Request["payload"]["name"]
+  readonly mime: Endpoint4_16Request["payload"]["mime"]
+  readonly data: Endpoint4_16Request["payload"]["data"]
+  readonly source: Endpoint4_16Request["payload"]["source"]
+  readonly parent?: Endpoint4_16Request["payload"]["parent"]
 }
-const Endpoint4_15 = (raw: RawClient["server.design"]) => (input: Endpoint4_15Input) =>
+const Endpoint4_16 = (raw: RawClient["server.design"]) => (input: Endpoint4_16Input) =>
   raw["design.importAsset"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
@@ -505,33 +517,33 @@ const Endpoint4_15 = (raw: RawClient["server.design"]) => (input: Endpoint4_15In
     },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint4_16Request = Parameters<RawClient["server.design"]["design.jobs"]>[0]
-type Endpoint4_16Input = {
-  readonly sessionID: Endpoint4_16Request["params"]["sessionID"]
-  readonly designID: Endpoint4_16Request["params"]["designID"]
+type Endpoint4_17Request = Parameters<RawClient["server.design"]["design.jobs"]>[0]
+type Endpoint4_17Input = {
+  readonly sessionID: Endpoint4_17Request["params"]["sessionID"]
+  readonly designID: Endpoint4_17Request["params"]["designID"]
 }
-const Endpoint4_16 = (raw: RawClient["server.design"]) => (input: Endpoint4_16Input) =>
+const Endpoint4_17 = (raw: RawClient["server.design"]) => (input: Endpoint4_17Input) =>
   raw["design.jobs"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
     Effect.mapError(mapClientError),
   )
 
-type Endpoint4_17Request = Parameters<RawClient["server.design"]["design.render"]>[0]
-type Endpoint4_17Input = {
-  readonly sessionID: Endpoint4_17Request["params"]["sessionID"]
-  readonly designID: Endpoint4_17Request["params"]["designID"]
-  readonly revision: Endpoint4_17Request["payload"]["revision"]
-  readonly format: Endpoint4_17Request["payload"]["format"]
-  readonly implementation?: Endpoint4_17Request["payload"]["implementation"]
-  readonly candidate?: Endpoint4_17Request["payload"]["candidate"]
-  readonly asset?: Endpoint4_17Request["payload"]["asset"]
-  readonly duration?: Endpoint4_17Request["payload"]["duration"]
-  readonly fps?: Endpoint4_17Request["payload"]["fps"]
-  readonly size?: Endpoint4_17Request["payload"]["size"]
-  readonly repeat?: Endpoint4_17Request["payload"]["repeat"]
-  readonly background?: Endpoint4_17Request["payload"]["background"]
-  readonly transparent?: Endpoint4_17Request["payload"]["transparent"]
+type Endpoint4_18Request = Parameters<RawClient["server.design"]["design.render"]>[0]
+type Endpoint4_18Input = {
+  readonly sessionID: Endpoint4_18Request["params"]["sessionID"]
+  readonly designID: Endpoint4_18Request["params"]["designID"]
+  readonly revision: Endpoint4_18Request["payload"]["revision"]
+  readonly format: Endpoint4_18Request["payload"]["format"]
+  readonly implementation?: Endpoint4_18Request["payload"]["implementation"]
+  readonly candidate?: Endpoint4_18Request["payload"]["candidate"]
+  readonly asset?: Endpoint4_18Request["payload"]["asset"]
+  readonly duration?: Endpoint4_18Request["payload"]["duration"]
+  readonly fps?: Endpoint4_18Request["payload"]["fps"]
+  readonly size?: Endpoint4_18Request["payload"]["size"]
+  readonly repeat?: Endpoint4_18Request["payload"]["repeat"]
+  readonly background?: Endpoint4_18Request["payload"]["background"]
+  readonly transparent?: Endpoint4_18Request["payload"]["transparent"]
 }
-const Endpoint4_17 = (raw: RawClient["server.design"]) => (input: Endpoint4_17Input) =>
+const Endpoint4_18 = (raw: RawClient["server.design"]) => (input: Endpoint4_18Input) =>
   raw["design.render"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
@@ -549,35 +561,35 @@ const Endpoint4_17 = (raw: RawClient["server.design"]) => (input: Endpoint4_17In
     },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint4_18Request = Parameters<RawClient["server.design"]["design.cancel"]>[0]
-type Endpoint4_18Input = {
-  readonly sessionID: Endpoint4_18Request["params"]["sessionID"]
-  readonly designID: Endpoint4_18Request["params"]["designID"]
-  readonly jobID: Endpoint4_18Request["params"]["jobID"]
-}
-const Endpoint4_18 = (raw: RawClient["server.design"]) => (input: Endpoint4_18Input) =>
-  raw["design.cancel"]({
-    params: { sessionID: input["sessionID"], designID: input["designID"], jobID: input["jobID"] },
-  }).pipe(Effect.mapError(mapClientError))
-
-type Endpoint4_19Request = Parameters<RawClient["server.design"]["design.download"]>[0]
+type Endpoint4_19Request = Parameters<RawClient["server.design"]["design.cancel"]>[0]
 type Endpoint4_19Input = {
   readonly sessionID: Endpoint4_19Request["params"]["sessionID"]
   readonly designID: Endpoint4_19Request["params"]["designID"]
   readonly jobID: Endpoint4_19Request["params"]["jobID"]
 }
 const Endpoint4_19 = (raw: RawClient["server.design"]) => (input: Endpoint4_19Input) =>
+  raw["design.cancel"]({
+    params: { sessionID: input["sessionID"], designID: input["designID"], jobID: input["jobID"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint4_20Request = Parameters<RawClient["server.design"]["design.download"]>[0]
+type Endpoint4_20Input = {
+  readonly sessionID: Endpoint4_20Request["params"]["sessionID"]
+  readonly designID: Endpoint4_20Request["params"]["designID"]
+  readonly jobID: Endpoint4_20Request["params"]["jobID"]
+}
+const Endpoint4_20 = (raw: RawClient["server.design"]) => (input: Endpoint4_20Input) =>
   raw["design.download"]({
     params: { sessionID: input["sessionID"], designID: input["designID"], jobID: input["jobID"] },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint4_20Request = Parameters<RawClient["server.design"]["design.assetFile"]>[0]
-type Endpoint4_20Input = {
-  readonly sessionID: Endpoint4_20Request["params"]["sessionID"]
-  readonly designID: Endpoint4_20Request["params"]["designID"]
-  readonly assetID: Endpoint4_20Request["params"]["assetID"]
+type Endpoint4_21Request = Parameters<RawClient["server.design"]["design.assetFile"]>[0]
+type Endpoint4_21Input = {
+  readonly sessionID: Endpoint4_21Request["params"]["sessionID"]
+  readonly designID: Endpoint4_21Request["params"]["designID"]
+  readonly assetID: Endpoint4_21Request["params"]["assetID"]
 }
-const Endpoint4_20 = (raw: RawClient["server.design"]) => (input: Endpoint4_20Input) =>
+const Endpoint4_21 = (raw: RawClient["server.design"]) => (input: Endpoint4_21Input) =>
   raw["design.assetFile"]({
     params: { sessionID: input["sessionID"], designID: input["designID"], assetID: input["assetID"] },
   }).pipe(Effect.mapError(mapClientError))
@@ -597,13 +609,14 @@ const adaptGroup4 = (raw: RawClient["server.design"]) => ({
   refresh: Endpoint4_11(raw),
   feedback: Endpoint4_12(raw),
   approve: Endpoint4_13(raw),
-  assets: Endpoint4_14(raw),
-  importAsset: Endpoint4_15(raw),
-  jobs: Endpoint4_16(raw),
-  render: Endpoint4_17(raw),
-  cancel: Endpoint4_18(raw),
-  download: Endpoint4_19(raw),
-  assetFile: Endpoint4_20(raw),
+  approval: Endpoint4_14(raw),
+  assets: Endpoint4_15(raw),
+  importAsset: Endpoint4_16(raw),
+  jobs: Endpoint4_17(raw),
+  render: Endpoint4_18(raw),
+  cancel: Endpoint4_19(raw),
+  download: Endpoint4_20(raw),
+  assetFile: Endpoint4_21(raw),
 })
 
 type Endpoint5_0Request = Parameters<RawClient["server.message"]["session.messages"]>[0]

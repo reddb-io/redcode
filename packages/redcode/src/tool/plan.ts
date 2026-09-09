@@ -1,8 +1,9 @@
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import path from "path"
 import { createHash } from "node:crypto"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Effect, Schema } from "effect"
-import * as Tool from "./tool"
+import { Tool } from "./tool"
 import { Question } from "../question"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { Session } from "@/session/session"
@@ -17,6 +18,7 @@ export const Parameters = Schema.Struct({})
 export const PlanExitTool = Tool.define(
   "plan_exit",
   Effect.gen(function* () {
+    const plans = yield* SessionPlan.Service
     const session = yield* Session.Service
     const goals = yield* GoalRuntime.Service
     const question = yield* Question.Service
@@ -33,11 +35,19 @@ export const PlanExitTool = Tool.define(
           const content = yield* Effect.tryPromise(() => Bun.file(path.resolve(instance.worktree, plan)).text())
           if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
           const revision = createHash("sha256").update(content).digest("hex")
+          const ready = yield* plans.record({
+            sessionID: ctx.sessionID,
+            revision,
+            path: plan,
+            content,
+            status: "ready",
+            created: Date.now(),
+          })
           const goal = yield* goals.get(ctx.sessionID)
           if (goal?.status === "active" && goal.stopAfter === "plan")
             return {
               title: "Plan ready",
-              output: `Plan-only goal: revision ${revision} is ready for review.\n\n${content}`,
+              output: `Plan-only goal: revision ${revision} is recorded and ready for review at ${plan}.`,
               metadata: { agent: "plan", revision },
             }
           const answers = yield* question.ask({
@@ -61,6 +71,7 @@ export const PlanExitTool = Tool.define(
           if (createHash("sha256").update(current).digest("hex") !== revision)
             return yield* Effect.die("Plan changed during approval; review the current revision before executing")
 
+          yield* plans.record({ ...ready, status: "approved", created: Date.now() })
           const messages = yield* session.messages({ sessionID: ctx.sessionID }).pipe(Effect.orDie)
           const lastUser = messages.findLast((item) => item.info.role === "user" && item.info.model)
           const model =
@@ -80,7 +91,7 @@ export const PlanExitTool = Tool.define(
             messageID: msg.id,
             sessionID: ctx.sessionID,
             type: "text",
-            text: `Plan ${plan}, revision ${revision}, has been approved. Execute this recorded content within the authorized scope:\n\n${content}`,
+            text: `Plan ${plan}, revision ${revision}, has been approved. The immutable plan and Design decisions are supplied automatically in context. Execute within the approved scope.`,
             synthetic: true,
           } satisfies SessionV1.TextPart)
 

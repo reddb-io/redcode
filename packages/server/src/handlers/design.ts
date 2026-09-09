@@ -173,7 +173,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
       Effect.fn(function* (ctx) {
         const store = yield* owned(ctx.params)
         const session = yield* SessionV2.Service
-        const result = yield* store.approve(ctx.params.designID, ctx.payload.revision)
+        const result = yield* store.approve(ctx.params.designID, ctx.payload.revision, ctx.payload.variant)
         const goals = yield* SessionGoal.Service
         const goal = yield* goals
           .get(ctx.params.sessionID)
@@ -183,6 +183,13 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           .switchAgent({ sessionID: ctx.params.sessionID, agent: "plan" })
           .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
         return result
+      }),
+    )
+    .handle(
+      "design.approval",
+      Effect.fn(function* (ctx) {
+        const store = yield* owned(ctx.params)
+        return yield* store.approval(ctx.params.designID, ctx.params.revisionID)
       }),
     )
     .handle(

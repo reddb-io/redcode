@@ -8,6 +8,8 @@ import { Database } from "../src/database/database"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { LayerNode } from "../src/effect/layer-node"
 import { DesignStore } from "../src/design/store"
+import { DesignContext } from "../src/design/context"
+import { SystemContext } from "../src/system-context"
 import { DesignFiles } from "../src/design/files"
 import { DesignAssets } from "../src/design/assets"
 import { DesignRenderer } from "../src/design/renderer"
@@ -56,6 +58,121 @@ const setup = Effect.gen(function* () {
 })
 
 describe("Design revisions and review", () => {
+  it.effect("sessions without Design documents do not add empty guidance", () =>
+    Effect.gen(function* () {
+      const source = yield* DesignContext.load(SessionV2.ID.make("ses_without_design"))
+      const generation = yield* SystemContext.initialize(source)
+      expect(generation.baseline).toBe("")
+      expect(yield* SystemContext.reconcile(source, generation.snapshot)).toMatchObject({ _tag: "Unchanged" })
+    }),
+  )
+
+  it.effect("approved context survives new drafts and fresh context generations without replaying review history", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      yield* store.update(document.id, {
+        brief: {
+          objective: "Accessible checkout",
+          audience: "Cashiers",
+          content: "",
+          constraints: "No external fonts; preserve keyboard navigation",
+          references: [],
+        },
+        decisions: [{ id: "palette", text: "Use the Stone palette" }],
+        scenarios: [
+          {
+            id: "empty",
+            name: "Empty cart",
+            state: "empty",
+            selector: "#cart",
+            actions: [{ action: "click", selector: "#clear" }],
+          },
+        ],
+      })
+      yield* Effect.promise(() =>
+        Bun.write(`${document.root}/index.html`, '<section data-design-variant="stone">Approved Stone</section>'),
+      )
+      const first = yield* store.publish(document.id, "Two directions")
+      const feedback = {
+        id: SessionMessage.ID.create(),
+        revision: first.id,
+        text: "Choose Stone",
+        items: [],
+        assets: [],
+        snapshot: "OBSOLETE SCREEN CONTENT ".repeat(4000),
+        delivery: "queue" as const,
+        end: false,
+      }
+      yield* store.prepareFeedback(document.id, feedback)
+      yield* store.acknowledge(document.id, feedback)
+      const variant = { id: "stone", name: "Stone" }
+      yield* store.approve(document.id, first.id, variant)
+      const frozen = yield* Effect.promise(() => Bun.file(`${document.root}/../approvals/${first.id}.json`).text())
+      expect((yield* store.approval(document.id)).variant).toEqual(variant)
+      const source = yield* DesignContext.load(document.sessionID)
+      const initial = yield* SystemContext.initialize(source)
+      expect(initial.baseline).toContain("Use the Stone palette")
+      expect(initial.baseline).toContain("No external fonts; preserve keyboard navigation")
+      expect(initial.baseline).toContain("click #clear")
+      expect(initial.baseline).not.toContain("OBSOLETE SCREEN CONTENT")
+      expect(Array.isArray(initial.snapshot["design/session"].value)).toBe(true)
+      expect(initial.baseline.length).toBeLessThan(frozen.length / 5)
+      const legacyContext = yield* SystemContext.reconcile(source, {
+        "design/session": { value: "Legacy mutable Design context" },
+      })
+      expect(legacyContext).toMatchObject({ _tag: "ReplacementReady" })
+      expect(JSON.stringify(legacyContext)).toContain("Use the Stone palette")
+
+      yield* store.reopen(document.id)
+      yield* store.update(document.id, {
+        brief: { ...document.brief, objective: "UNAPPROVED REDESIGN", constraints: "Use external fonts" },
+      })
+      yield* Effect.promise(() => Bun.write(`${document.root}/index.html`, "UNAPPROVED REDESIGN"))
+      const second = yield* store.publish(document.id, "Unapproved")
+      const resumed = yield* SystemContext.initialize(yield* DesignContext.load(document.sessionID))
+      const compacted = yield* SystemContext.initialize(source)
+      expect(resumed).toEqual(compacted)
+      expect(compacted.baseline).toContain(first.id)
+      expect(compacted.baseline).toContain("Use the Stone palette")
+      expect(compacted.baseline).not.toContain("UNAPPROVED REDESIGN")
+      expect(yield* store.readApproval({ id: document.id, file: "index.html" })).toContain("Approved Stone")
+      expect(yield* store.readApproval({ id: document.id, section: "feedback" })).toContain("Choose Stone")
+      expect(yield* store.readApproval({ id: document.id, file: "../../secret" }).pipe(Effect.result)).toMatchObject({
+        _tag: "Failure",
+      })
+      yield* store.approve(document.id, second.id)
+      const updated = yield* SystemContext.reconcile(source, initial.snapshot)
+      expect(updated).toMatchObject({ _tag: "Updated" })
+      expect(JSON.stringify(updated)).toContain("UNAPPROVED REDESIGN")
+      expect(JSON.stringify(updated)).toContain(second.id)
+      expect((yield* store.approval(document.id, first.id)).variant).toEqual(variant)
+    }),
+  )
+
+  it.effect("approval retries cannot change the selected direction and legacy packages remain untouched", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      const revision = yield* store.publish(document.id, "First")
+      const variant = { id: "stone", name: "Stone" }
+      yield* store.approve(document.id, revision.id, variant)
+      const file = `${document.root}/../approvals/${revision.id}.json`
+      const bytes = yield* Effect.promise(() => Bun.file(file).text())
+      yield* store.approve(document.id, revision.id, variant)
+      expect(
+        yield* store.approve(document.id, revision.id, { id: "graphite", name: "Graphite" }).pipe(Effect.result),
+      ).toMatchObject({ _tag: "Failure" })
+      expect(yield* Effect.promise(() => Bun.file(file).text())).toBe(bytes)
+      const legacy = JSON.parse(bytes)
+      delete legacy.version
+      delete legacy.variant
+      delete legacy.approvedAt
+      yield* Effect.promise(() => Bun.write(file, JSON.stringify(legacy)))
+      expect(yield* store.approval(document.id)).toMatchObject({ version: 0, variant: null, approvedAt: null })
+      expect(yield* Effect.promise(() => Bun.file(file).text())).toBe(JSON.stringify(legacy))
+      yield* Effect.promise(() => Bun.write(file, "broken approval"))
+      expect(yield* store.approval(document.id).pipe(Effect.result)).toMatchObject({ _tag: "Failure" })
+    }),
+  )
   it.live(
     "audits exercised states and compares a frozen built implementation with the approved design",
     () =>
@@ -108,7 +225,7 @@ describe("Design revisions and review", () => {
             expect(result.audit?.scenarios).toHaveLength(3)
             const approved = yield* store.approve(document.id, revision.id)
             const frozen = yield* Effect.promise(() => Bun.file(approved.plan).text())
-            expect(frozen).toContain(`Audit ${result.id}`)
+            expect(frozen).toContain("1 recorded audits")
             yield* store.putJob({
               ...result,
               id: "later-audit",

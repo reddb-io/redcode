@@ -192,6 +192,46 @@ test("approval provides pending feedback, prevents duplicate clicks and confirms
   }
 }, 30000)
 
+test("approval freezes the selected variant and exposes it after reload and newer drafts", async () => {
+  const current = await published("solid")
+  const page = await browser.newPage()
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Spacious", exact: true }).click()
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    expect(await page.locator("#approval-revision").textContent()).toContain("Spacious")
+    await page.locator("#cancel-approve").click()
+    expect((await api<Design.Info>(`${current.root}/${current.document.id}`)).approvedRevision).toBeNull()
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
+    await page.getByRole("button", { name: "Reopen review" }).waitFor()
+    const record = await api<Design.Approval>(`${current.root}/${current.document.id}/approval/${current.revision.id}`)
+    expect(record.variant).toEqual({ id: "spacious", name: "Spacious" })
+    expect(record.version).toBe(1)
+    await page.reload()
+    await page.locator("#approved-record summary").click()
+    expect(await page.locator("#approved-details").textContent()).toContain("Spacious (spacious)")
+    const conflict = await fetch(`${base}${current.root}/${current.document.id}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision: current.revision.id, variant: { id: "compact", name: "Compact" } }),
+    })
+    expect(conflict.ok).toBe(false)
+    await api(`${current.root}/${current.document.id}/reopen`, "POST")
+    await Bun.write(
+      path.join(current.document.root, current.document.entry),
+      'document.getElementById("root").textContent="A completely new draft"',
+    )
+    await api(`${current.root}/${current.document.id}/revision`, "POST", { name: "Unapproved replacement" })
+    await page.reload()
+    await page.locator("#approved-record summary").click()
+    expect(await page.locator("#approved-details").textContent()).toContain("Spacious (spacious)")
+    expect(await page.locator("#approved-details").textContent()).not.toContain("Unapproved replacement")
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
 test("variants switch independently, compare at device widths and request another direction without losing notes", async () => {
   const current = await published("html")
   await Bun.write(

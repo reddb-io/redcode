@@ -1,5 +1,6 @@
 import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
+import { DesignApprovalNotice } from "../../component/design-approval"
 import { modeTransition } from "../../util/mode-transition"
 import {
   batch,
@@ -1631,9 +1632,15 @@ function UserMessage(props: {
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+  const approvals = createMemo(() =>
+    props.parts.flatMap((part) =>
+      part.type === "text" && part.synthetic && part.metadata?.designApproval ? [part.metadata.designApproval] : [],
+    ),
+  )
 
   return (
     <>
+      <For each={approvals()}>{(value) => <DesignApprovalNotice value={value} />}</For>
       <Show when={text()}>
         <box
           id={props.message.id}

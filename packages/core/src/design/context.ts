@@ -1,35 +1,69 @@
 export * as DesignContext from "./context"
 
-import path from "node:path"
 import { Effect, Schema } from "effect"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { DesignStore } from "./store"
+import { DesignApproval } from "./approval"
 import { SystemContext } from "../system-context/index"
+
+const Entry = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  root: Schema.String,
+  revision: Schema.NullOr(Schema.String),
+  ended: Schema.Boolean,
+  objective: Schema.String,
+  questions: Schema.Array(Schema.String),
+  approval: Schema.NullOr(DesignApproval.Summary),
+})
+
+const render = (entries: readonly (typeof Entry.Type)[]) =>
+  entries.length
+    ? entries
+        .map((entry) =>
+          [
+            `Design ${entry.id}: ${entry.name}. Review ${entry.ended ? "closed" : "open"}. Working revision: ${entry.revision ?? "unpublished"}.`,
+            entry.approval
+              ? DesignApproval.guidance(entry.approval)
+              : `Work: ${entry.root}. Objective: ${entry.objective}. Open questions: ${entry.questions.join("; ")}. This design is not approved.`,
+          ].join("\n"),
+        )
+        .join("\n\n")
+    : "This Session has no Design documents or approved Design requirements."
 
 export const load = Effect.fn(function* (sessionID: Session.ID) {
   const store = yield* DesignStore.Service
-  const documents = yield* store.list(sessionID)
-  if (!documents.length) return SystemContext.empty
+  if (!(yield* store.list(sessionID)).length) return SystemContext.empty
   return SystemContext.make({
     key: SystemContext.Key.make("design/session"),
-    codec: Schema.toCodecJson(Schema.String),
-    load: Effect.succeed(documents).pipe(
-      Effect.map((documents) =>
-        documents
-          .map((document) =>
-            [
-              `Design ${document.id}: ${document.name}. Review ${document.ended ? "closed" : "open"}. Revision ${document.revision ?? "unpublished"}. Approved ${document.approvedRevision ?? "none"}.`,
-              `Work: ${document.root}. Plan: ${path.join(store.storage, document.id, "plan.md")}.`,
-              `Objective: ${document.brief.objective}`,
-              `Open questions: ${document.questions.join("; ")}`,
-              `Design-system evidence: ${document.sources.map((source) => `${source.file} at ${source.hash}`).join("; ")}. Refresh with design_document before relying on potentially changed files.`,
-            ].join("\n"),
-          )
-          .join("\n\n"),
+    codec: Schema.toCodecJson(Schema.Array(Entry)),
+    load: store.list(sessionID).pipe(
+      Effect.flatMap((documents) =>
+        Effect.forEach(documents, (document) =>
+          Effect.gen(function* () {
+            const record = document.approvedRevision
+              ? yield* store.approval(document.id, document.approvedRevision)
+              : undefined
+            return {
+              id: document.id,
+              name: document.name,
+              root: document.root,
+              revision: document.revision,
+              ended: document.ended,
+              objective: record ? "" : document.brief.objective,
+              questions: record ? [] : document.questions,
+              approval: record ? DesignApproval.summary(record) : null,
+            }
+          }),
+        ),
       ),
+      Effect.orDie,
     ),
-    baseline: (text) => text,
-    update: (_previous, text) => text,
+    baseline: render,
+    update: (_previous, entries) =>
+      entries.length
+        ? render(entries)
+        : "This Session no longer has Design documents. Do not rely on the previous Design context.",
     removed: () => "This Session no longer has Design documents. Do not rely on the previous Design context.",
   })
 })
