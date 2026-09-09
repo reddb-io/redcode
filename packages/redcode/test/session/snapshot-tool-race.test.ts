@@ -24,8 +24,9 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
-import { provideTmpdirServer } from "../fixture/fixture"
+import { provideInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 import { TestLLMServer } from "../lib/llm-server"
 
 import { LSP } from "@/lsp/lsp"
@@ -128,65 +129,71 @@ const providerCfg = (url: string) => ({
 it.live("tool execution produces non-empty session diff (snapshot race)", () =>
   provideTmpdirServer(
     Effect.fnUntraced(function* ({ dir, llm }) {
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const summary = yield* SessionSummary.Service
-
-      const session = yield* sessions.create({
-        title: "snapshot race test",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
-
-      // Use bash tool (always registered) to create a file
-      const command = `echo 'snapshot race test content' > ${path.join(dir, "race-test.txt")}`
-      yield* llm.toolMatch((hit) => JSON.stringify(hit.body).includes("create the file"), "bash", {
-        command,
-      })
-      yield* llm.textMatch((hit) => JSON.stringify(hit.body).includes("bash"), "done")
-
-      // Seed user message
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "create the file" }],
-      })
-
-      // Run the agent loop
-      const result = yield* prompt.loop({ sessionID: session.id })
-      expect(result.info.role).toBe("assistant")
-
-      // Verify the tool call completed (in the first assistant message)
-      const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
-      const user = allMsgs.find(
-        (msg): msg is SessionV1.WithParts & { info: SessionV1.User } => msg.info.role === "user",
+      const workspace = yield* Effect.promise(() => gitWorktree(dir))
+      yield* Effect.promise(() =>
+        Bun.write(path.join(workspace.tree, "opencode.json"), JSON.stringify(providerCfg(llm.url))),
       )
-      const tool = allMsgs
-        .flatMap((m) => m.parts)
-        .find((p): p is SessionV1.ToolPart => p.type === "tool" && p.tool === "bash")
-      expect(tool?.state).toMatchObject({ status: "completed" })
+      return yield* Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const summary = yield* SessionSummary.Service
 
-      // Verify the file was created
-      const filePath = path.join(dir, "race-test.txt")
-      const fileExists = yield* Effect.promise(() =>
-        fs
-          .access(filePath)
-          .then(() => true)
-          .catch(() => false),
-      )
-      expect(fileExists).toBe(true)
+        const session = yield* sessions.create({
+          title: "snapshot race test",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      if (!user) throw new Error("Expected user message")
+        // Use bash tool (always registered) to create a file
+        const command = `echo 'snapshot race test content' > ${path.join(workspace.tree, "race-test.txt")}`
+        yield* llm.toolMatch((hit) => JSON.stringify(hit.body).includes("create the file"), "bash", {
+          command,
+        })
+        yield* llm.textMatch((hit) => JSON.stringify(hit.body).includes("bash"), "done")
 
-      // Poll for the turn diff — summarize() is fire-and-forget.
-      let diff: Array<{ file?: string }> = []
-      for (let i = 0; i < 50; i++) {
-        diff = yield* summary.diff({ sessionID: session.id, messageID: user.info.id })
-        if (diff.length > 0) break
-        yield* Effect.sleep("100 millis")
-      }
-      expect(diff.length).toBeGreaterThan(0)
+        // Seed user message
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "create the file" }],
+        })
+
+        // Run the agent loop
+        const result = yield* prompt.loop({ sessionID: session.id })
+        expect(result.info.role).toBe("assistant")
+
+        // Verify the tool call completed (in the first assistant message)
+        const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
+        const user = allMsgs.find(
+          (msg): msg is SessionV1.WithParts & { info: SessionV1.User } => msg.info.role === "user",
+        )
+        const tool = allMsgs
+          .flatMap((m) => m.parts)
+          .find((p): p is SessionV1.ToolPart => p.type === "tool" && p.tool === "bash")
+        expect(tool?.state).toMatchObject({ status: "completed" })
+
+        // Verify the file was created
+        const filePath = path.join(workspace.tree, "race-test.txt")
+        const fileExists = yield* Effect.promise(() =>
+          fs
+            .access(filePath)
+            .then(() => true)
+            .catch(() => false),
+        )
+        expect(fileExists).toBe(true)
+
+        if (!user) throw new Error("Expected user message")
+
+        // Poll for the turn diff — summarize() is fire-and-forget.
+        let diff: Array<{ file?: string }> = []
+        for (let i = 0; i < 50; i++) {
+          diff = yield* summary.diff({ sessionID: session.id, messageID: user.info.id })
+          if (diff.length > 0) break
+          yield* Effect.sleep("100 millis")
+        }
+        expect(diff.length).toBeGreaterThan(0)
+      }).pipe(provideInstance(workspace.tree))
     }),
-    { git: true, config: providerCfg },
+    { config: providerCfg },
   ),
 )

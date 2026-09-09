@@ -59,6 +59,10 @@ const run = Effect.fn("ShellToolTest.run")(function* (
 })
 
 const runIn = <A, E, R>(directory: string, self: Effect.Effect<A, E, R>) => self.pipe(provideInstance(directory))
+const runIsolated = <A, E, R>(self: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    return yield* runIn(yield* tmpdirScoped(), self)
+  })
 
 const fail = Effect.fn("ShellToolTest.fail")(function* (
   args: Tool.InferParameters<typeof ShellTool>,
@@ -86,7 +90,6 @@ const ctx = {
 Shell.acceptable.reset()
 const quote = (text: string) => `"${text}"`
 const squote = (text: string) => `'${text}'`
-const projectRoot = path.join(__dirname, "../..")
 const bin = quote(process.execPath.replaceAll("\\", "/"))
 const bash = (() => {
   const shell = Shell.acceptable()
@@ -224,8 +227,7 @@ describe("tool.shell", () => {
     }),
   )
   each("basic", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const result = yield* run({
           command: "echo test",
@@ -309,8 +311,7 @@ describe("tool.shell permissions", () => {
     it.live(`parses PowerShell conditionals for permission prompts [${item.label}]`, () =>
       withShell(
         item,
-        runIn(
-          projectRoot,
+        runIsolated(
           Effect.gen(function* () {
             const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
             yield* run(
@@ -361,8 +362,7 @@ describe("tool.shell permissions", () => {
   }
 
   each("asks for external_directory permission for wildcard external paths", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const err = new Error("stop after permission")
         const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -391,8 +391,7 @@ describe("tool.shell permissions", () => {
           Effect.gen(function* () {
             const outerTmp = yield* tmpdirScoped()
             yield* Effect.promise(() => Bun.write(path.join(outerTmp, "outside.txt"), "x"))
-            yield* runIn(
-              projectRoot,
+            yield* runIsolated(
               Effect.gen(function* () {
                 const file = path.join(outerTmp, "outside.txt").replaceAll("\\", "/")
                 const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -419,8 +418,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for PowerShell paths after switches [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -445,8 +443,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for nested PowerShell command permissions [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
               const file = `${process.env.WINDIR!.replaceAll("\\", "/")}/win.ini`
@@ -501,8 +498,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for $HOME PowerShell paths [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -556,8 +552,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for $PSHOME PowerShell paths [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -590,8 +585,7 @@ describe("tool.shell permissions", () => {
               return { key, prev }
             }),
             ({ key }) =>
-              runIn(
-                projectRoot,
+              runIsolated(
                 Effect.gen(function* () {
                   const err = new Error("stop after permission")
                   const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -623,8 +617,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for PowerShell env paths [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
               yield* run(
@@ -648,8 +641,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for PowerShell FileSystem paths [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -676,8 +668,7 @@ describe("tool.shell permissions", () => {
       it.live(`asks for external_directory permission for braced PowerShell env paths [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -704,8 +695,7 @@ describe("tool.shell permissions", () => {
       it.live(`treats Set-Location like cd for permissions [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
               yield* run(
@@ -731,8 +721,7 @@ describe("tool.shell permissions", () => {
       it.live(`does not add nested PowerShell expressions to permission prompts [${item.label}]`, () =>
         withShell(
           item,
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
               yield* run(
@@ -756,8 +745,7 @@ describe("tool.shell permissions", () => {
     it.live("asks for external_directory permission for cmd file commands [cmd]", () =>
       withShell(
         cmdShell,
-        runIn(
-          projectRoot,
+        runIsolated(
           Effect.gen(function* () {
             const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
             yield* run(
@@ -862,8 +850,7 @@ describe("tool.shell permissions", () => {
       it.live("uses Git Bash /tmp semantics for external workdir", () =>
         withShell(
           { label: "bash", shell: bash },
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -890,8 +877,7 @@ describe("tool.shell permissions", () => {
       it.live("uses Git Bash /tmp semantics for external file paths", () =>
         withShell(
           { label: "bash", shell: bash },
-          runIn(
-            projectRoot,
+          runIsolated(
             Effect.gen(function* () {
               const err = new Error("stop after permission")
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
@@ -1052,8 +1038,7 @@ describe("tool.shell abort", () => {
   it.live(
     "preserves output when aborted",
     () =>
-      runIn(
-        projectRoot,
+      runIsolated(
         Effect.gen(function* () {
           const controller = new AbortController()
           const collected: string[] = []
@@ -1085,8 +1070,7 @@ describe("tool.shell abort", () => {
   it.live(
     "terminates command on timeout",
     () =>
-      runIn(
-        projectRoot,
+      runIsolated(
         Effect.gen(function* () {
           const result = yield* run({
             command: `sleep 60`,
@@ -1102,8 +1086,7 @@ describe("tool.shell abort", () => {
   it.live(
     "uses RuntimeFlags bashDefaultTimeoutMs when timeout is omitted",
     () =>
-      runIn(
-        projectRoot,
+      runIsolated(
         Effect.gen(function* () {
           const tool = yield* initShell()
           expect(tool.description).toContain("commands will time out after 500ms")
@@ -1121,8 +1104,7 @@ describe("tool.shell abort", () => {
 
   if (process.platform !== "win32") {
     it.live("captures stderr in output", () =>
-      runIn(
-        projectRoot,
+      runIsolated(
         Effect.gen(function* () {
           const result = yield* run({
             command: `echo stdout_msg && echo stderr_msg >&2`,
@@ -1136,8 +1118,7 @@ describe("tool.shell abort", () => {
   }
 
   it.live("returns non-zero exit code", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const result = yield* run({
           command: `exit 42`,
@@ -1148,8 +1129,7 @@ describe("tool.shell abort", () => {
   )
 
   it.live("streams metadata updates progressively", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const updates: string[] = []
         const result = yield* run(
@@ -1173,8 +1153,7 @@ describe("tool.shell abort", () => {
   )
 
   it.live("coalesces bursty metadata updates without losing final output", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const updates: string[] = []
         const script = "for (let i = 0; i < 64; i++) { console.log(i); await Bun.sleep(10) }"
@@ -1201,8 +1180,7 @@ describe("tool.shell abort", () => {
 
 describe("tool.shell truncation", () => {
   it.live("truncates output exceeding line limit", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const lineCount = Truncate.MAX_LINES + 500
         const result = yield* run({
@@ -1216,8 +1194,7 @@ describe("tool.shell truncation", () => {
   )
 
   it.live("truncates output exceeding byte limit", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const byteCount = Truncate.MAX_BYTES + 10000
         const result = yield* run({
@@ -1231,8 +1208,7 @@ describe("tool.shell truncation", () => {
   )
 
   it.live("does not truncate small output", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const result = yield* run({
           command: fill("lines", 1),
@@ -1244,8 +1220,7 @@ describe("tool.shell truncation", () => {
   )
 
   it.live("full output is saved to file when truncated", () =>
-    runIn(
-      projectRoot,
+    runIsolated(
       Effect.gen(function* () {
         const lineCount = Truncate.MAX_LINES + 100
         const result = yield* run({

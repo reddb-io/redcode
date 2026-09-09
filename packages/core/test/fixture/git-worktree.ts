@@ -13,6 +13,7 @@ export async function gitWorktree(directory: string) {
     if (exit !== 0) throw new Error(error)
   }
   await git("init", "--quiet", root)
+  await git("-C", root, "config", "core.autocrlf", "false")
   await Bun.write(path.join(root, "source.txt"), "committed\n")
   await git("-C", root, "add", "source.txt")
   await git(
