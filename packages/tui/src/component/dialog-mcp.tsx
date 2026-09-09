@@ -1,85 +1,102 @@
-import { createMemo, createSignal } from "solid-js"
-import { useLocal } from "../context/local"
+import { createMemo, createSignal, onCleanup } from "solid-js"
+import { reconcile } from "solid-js/store"
 import { useSync } from "../context/sync"
-import { map, pipe, entries, sortBy } from "remeda"
-import { DialogSelect, type DialogSelectRef, type DialogSelectOption } from "../ui/dialog-select"
+import { useProject } from "../context/project"
+import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useTheme } from "../context/theme"
-import { TextAttributes } from "@opentui/core"
 import { useSDK } from "../context/sdk"
-
-function Status(props: { enabled: boolean; loading: boolean }) {
-  const { theme } = useTheme()
-  if (props.loading) {
-    return <span style={{ fg: theme.textMuted }}>⋯ Loading</span>
-  }
-  if (props.enabled) {
-    return <span style={{ fg: theme.success, attributes: TextAttributes.BOLD }}>✓ Enabled</span>
-  }
-  return <span style={{ fg: theme.textMuted }}>○ Disabled</span>
-}
+import { useToast } from "../ui/toast"
 
 export function DialogMcp() {
-  const local = useLocal()
   const sync = useSync()
+  const project = useProject()
   const sdk = useSDK()
-  const [, setRef] = createSignal<DialogSelectRef<unknown>>()
-  const [loading, setLoading] = createSignal<string | null>(null)
+  const toast = useToast()
+  const { theme } = useTheme()
+  const [loading, setLoading] = createSignal<string | true>()
+  const abort = new AbortController()
+  onCleanup(() => abort.abort())
 
-  const options = createMemo(() => {
-    // Track sync data and loading state to trigger re-render when they change
-    const mcpData = sync.data.mcp
-    const loadingMcp = loading()
-
-    return pipe(
-      mcpData ?? {},
-      entries(),
-      sortBy(([name]) => name),
-      map(([name, status]) => ({
-        value: name,
+  const options = createMemo<DialogSelectOption<{ name?: string }>[]>(() => [
+    ...Object.entries(sync.data.mcp)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, status]) => ({
+        value: { name },
         title: name,
-        description: status.status === "failed" ? "failed" : status.status,
-        footer: <Status enabled={local.mcp.isEnabled(name)} loading={loadingMcp === name} />,
-        category: undefined,
+        description: status.status === "failed" ? status.error : status.status,
+        footer:
+          loading() === true || loading() === name
+            ? "Updating…"
+            : status.status === "connected"
+              ? "✓ Enabled"
+              : "○ Disabled",
+        category: "Servers",
       })),
-    )
-  })
-
-  const actions = createMemo(() => [
     {
-      command: "dialog.mcp.toggle",
-      title: "toggle",
-      onTrigger: async (option: DialogSelectOption<string>) => {
-        // Prevent toggling while an operation is already in progress
-        if (loading() !== null) return
-
-        setLoading(option.value)
-        try {
-          await local.mcp.toggle(option.value)
-          // Refresh MCP status from server
-          const status = await sdk.client.mcp.status()
-          if (status.data) {
-            sync.set("mcp", status.data)
-          } else {
-            console.error("Failed to refresh MCP status: no data returned")
-          }
-        } catch (error) {
-          console.error("Failed to toggle MCP:", error)
-        } finally {
-          setLoading(null)
-        }
-      },
+      value: {},
+      title: "Reload all MCPs",
+      description: "Reread configuration and reconnect enabled servers",
+      category: "Actions",
     },
   ])
 
+  async function run(operation: "reload" | "toggle", name?: string) {
+    if (loading() !== undefined || (operation === "toggle" && !name)) return
+    const workspace = project.workspace.current()
+    setLoading(name ?? true)
+    try {
+      // A requested reload may finish after this dialog closes; only cancel its UI refresh.
+      const status =
+        operation === "reload"
+          ? await sdk.client.mcp.reload({ name, workspace }, { throwOnError: true })
+          : await (
+              sync.data.mcp[name!]?.status === "connected"
+                ? sdk.client.mcp.disconnect({ name: name!, workspace }, { throwOnError: true })
+                : sdk.client.mcp.connect({ name: name!, workspace }, { throwOnError: true })
+            ).then(() => sdk.client.mcp.status({ workspace }, { throwOnError: true, signal: abort.signal }))
+      if (abort.signal.aborted || project.workspace.current() !== workspace) return
+      sync.set("mcp", reconcile(status.data))
+      const failed = Object.entries(status.data).filter(
+        ([key, item]) => (!name || key === name) && item.status !== "connected" && item.status !== "disabled",
+      )
+      toast.show({
+        variant: failed.length ? "warning" : "success",
+        message: failed.length
+          ? `${failed.length} MCP server(s) need attention. See the status in /mcps.`
+          : operation === "reload"
+            ? "MCP reload complete. Session kept open."
+            : "MCP connection updated.",
+      })
+      const resources = await sdk.client.experimental.resource.list(
+        { workspace },
+        { throwOnError: true, signal: abort.signal },
+      )
+      if (abort.signal.aborted || project.workspace.current() !== workspace) return
+      sync.set("mcp_resource", reconcile(resources.data))
+    } catch (error) {
+      if (!abort.signal.aborted && project.workspace.current() === workspace) toast.error(error)
+    } finally {
+      if (!abort.signal.aborted) setLoading(undefined)
+    }
+  }
+
   return (
     <DialogSelect
-      ref={setRef}
-      title="MCPs"
+      title="MCP servers"
       options={options()}
-      actions={actions()}
-      onSelect={(_option) => {
-        // Don't close on select, only on escape
-      }}
+      locked={loading() !== undefined}
+      preserveSelection
+      footer={<text fg={theme.textMuted}>Reload between tool calls. The conversation stays open.</text>}
+      actions={[
+        {
+          command: "dialog.mcp.toggle",
+          title: "toggle",
+          disabled: (option) => !option?.value.name,
+          onTrigger: (option) => void run("toggle", option.value.name),
+        },
+        { command: "dialog.mcp.reload", title: "reload", onTrigger: (option) => void run("reload", option.value.name) },
+      ]}
+      onSelect={(option) => void run("reload", option.value.name)}
     />
   )
 }

@@ -264,6 +264,7 @@ export const {
       })
     }
 
+    let mcpRefresh = 0
     event.subscribe((event, { directory, workspace }) => {
       if ("sessionID" in event.properties && typeof event.properties.sessionID === "string") {
         const sessionID = event.properties.sessionID
@@ -273,6 +274,30 @@ export const {
         if (event.type === "session.status") snapshot?.statuses.add(sessionID)
       }
       switch (event.type) {
+        case "mcp.tools.changed": {
+          if (workspace !== project.workspace.current()) break
+          const revision = ++mcpRefresh
+          const epoch = generation
+          void Promise.all([
+            sdk.client.mcp.status({ workspace }, { throwOnError: true }),
+            sdk.client.experimental.resource.list({ workspace }, { throwOnError: true }),
+          ])
+            .then(([status, resources]) => {
+              if (
+                disposed ||
+                generation !== epoch ||
+                revision !== mcpRefresh ||
+                project.workspace.current() !== workspace
+              )
+                return
+              batch(() => {
+                setStore("mcp", reconcile(status.data))
+                setStore("mcp_resource", reconcile(resources.data))
+              })
+            })
+            .catch(() => {})
+          break
+        }
         case "server.instance.disposed":
           void bootstrap()
           break

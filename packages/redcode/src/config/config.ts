@@ -123,6 +123,7 @@ type State = {
 
 export interface Interface {
   readonly get: () => Effect.Effect<Info>
+  readonly reload: () => Effect.Effect<Info>
   readonly getGlobal: () => Effect.Effect<Info>
   readonly getConsoleState: () => Effect.Effect<ConsoleState>
   readonly update: (config: Info) => Effect.Effect<void>
@@ -635,6 +636,17 @@ const layer = Layer.effect(
       return yield* InstanceState.use(state, (s) => s.config)
     })
 
+    const reload = Effect.fn("Config.reload")(function* () {
+      const current = yield* InstanceState.get(state)
+      // Validate global config before invalidating its tolerant startup cache.
+      yield* loadGlobal().pipe(Effect.orDie)
+      yield* invalidateGlobal
+      const next = yield* loadInstanceState(yield* InstanceState.context).pipe(Effect.orDie)
+      // Keep the last usable configuration if reading or validating the replacement fails.
+      Object.assign(current, next)
+      return next.config
+    })
+
     const directories = Effect.fn("Config.directories")(function* () {
       return yield* InstanceState.use(state, (s) => s.directories)
     })
@@ -700,6 +712,7 @@ const layer = Layer.effect(
 
     return Service.of({
       get,
+      reload,
       getGlobal,
       getConsoleState,
       update,

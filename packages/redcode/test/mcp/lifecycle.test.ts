@@ -236,6 +236,104 @@ it.instance("tools() reuses cached definitions until a protocol notification", (
   }),
 )
 
+it.instance("reload refreshes a server's tools while preserving other live clients", () =>
+  Effect.gen(function* () {
+    const first = yield* lifecycleServer()
+    const other = yield* lifecycleServer()
+    const mcp = yield* MCP.Service
+    yield* mcp.add("first", remote(first.url))
+    yield* mcp.add("other", remote(other.url))
+    const clients = { ...(yield* mcp.clients()) }
+    first.state.tools = [{ name: "new_tool", inputSchema: { type: "object" } }]
+    yield* Effect.promise(first.restart)
+    const result = yield* mcp.reload("first")
+    expect(result.first.status).toBe("connected")
+    expect((yield* mcp.clients()).first).not.toBe(clients.first)
+    expect((yield* mcp.clients()).other).toBe(clients.other)
+    expect(Object.keys(yield* mcp.tools()).sort()).toEqual(["first_new_tool", "other_test_tool"])
+  }),
+)
+
+it.instance("reload rereads files, adds and removes servers, and preserves manual disable choices", () =>
+  Effect.gen(function* () {
+    const mcp = yield* MCP.Service
+    const test = yield* TestInstance
+    const command = [process.execPath, stdioFixture]
+    const file = path.join(test.directory, "opencode.json")
+    yield* mcp.status()
+    yield* Effect.promise(() =>
+      Bun.write(
+        file,
+        JSON.stringify({
+          mcp: {
+            first: { type: "local", command },
+            second: { type: "local", command },
+            disabled: { type: "local", command, enabled: false },
+          },
+        }),
+      ),
+    )
+    expect(yield* mcp.reload()).toMatchObject({
+      first: { status: "connected" },
+      second: { status: "connected" },
+      disabled: { status: "disabled" },
+    })
+    yield* mcp.disconnect("second")
+    yield* Effect.promise(() =>
+      Bun.write(
+        file,
+        JSON.stringify({
+          mcp: {
+            second: { type: "local", command },
+            third: { type: "local", command },
+            disabled: { type: "local", command, enabled: false },
+          },
+        }),
+      ),
+    )
+    expect((yield* mcp.reload("second")).first.status).toBe("connected")
+    expect(yield* mcp.reload()).toEqual({
+      second: { status: "disabled" },
+      third: { status: "connected" },
+      disabled: { status: "disabled" },
+    })
+    expect(Object.keys(yield* mcp.tools())).toEqual(["third_current_directory"])
+    yield* mcp.connect("second")
+    expect((yield* mcp.reload("second")).second.status).toBe("connected")
+  }),
+)
+
+it.instance("invalid configuration leaves connected clients and cached tools usable", () =>
+  Effect.gen(function* () {
+    const server = yield* lifecycleServer()
+    const mcp = yield* MCP.Service
+    const test = yield* TestInstance
+    yield* mcp.add("keep", remote(server.url))
+    const client = (yield* mcp.clients()).keep
+    yield* Effect.promise(() => Bun.write(path.join(test.directory, "opencode.json"), "{ invalid"))
+    const error = yield* mcp.reload().pipe(Effect.flip)
+    expect(error._tag).toBe("MCP.ReloadError")
+    expect((yield* mcp.clients()).keep).toBe(client)
+    expect(Object.keys(yield* mcp.tools())).toEqual(["keep_test_tool"])
+  }),
+)
+
+it.instance("reload reports a failed replacement without dropping an unrelated server", () =>
+  Effect.gen(function* () {
+    const server = yield* lifecycleServer()
+    const other = yield* lifecycleServer()
+    const mcp = yield* MCP.Service
+    yield* mcp.add("failing", remote(server.url))
+    yield* mcp.add("other", remote(other.url))
+    const client = (yield* mcp.clients()).other
+    server.state.listToolsError = "unavailable"
+    yield* Effect.promise(server.restart)
+    expect((yield* mcp.reload("failing")).failing.status).toBe("failed")
+    expect((yield* mcp.clients()).other).toBe(client)
+    expect(Object.keys(yield* mcp.tools())).toEqual(["other_test_tool"])
+  }),
+)
+
 it.instance("instructions() returns non-empty connected server instructions with tool names", () =>
   Effect.gen(function* () {
     const guide = yield* lifecycleServer({ instructions: "Use lookup before mutate." })

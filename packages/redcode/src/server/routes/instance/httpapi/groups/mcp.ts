@@ -14,6 +14,11 @@ export const AddPayload = Schema.Struct({
 })
 
 export const StatusMap = Schema.Record(Schema.String, MCP.Status)
+export const ReloadPayload = Schema.Struct({ name: Schema.optional(Schema.String) })
+export class McpReloadError extends Schema.ErrorClass<McpReloadError>("McpReloadError")(
+  { message: Schema.String },
+  { httpApiStatus: 400 },
+) {}
 export const AuthStartResponse = Schema.Struct({
   authorizationUrl: Schema.String,
   oauthState: Schema.String,
@@ -31,6 +36,7 @@ export class UnsupportedOAuthError extends Schema.ErrorClass<UnsupportedOAuthErr
 
 export const McpPaths = {
   status: "/mcp",
+  reload: "/mcp/reload",
   auth: "/mcp/:name/auth",
   authCallback: "/mcp/:name/auth/callback",
   authAuthenticate: "/mcp/:name/auth/authenticate",
@@ -42,6 +48,19 @@ export const McpApi = HttpApi.make("mcp")
   .add(
     HttpApiGroup.make("mcp")
       .add(
+        HttpApiEndpoint.post("reload", McpPaths.reload, {
+          query: WorkspaceRoutingQuery,
+          payload: ReloadPayload,
+          success: described(StatusMap, "MCP server status after reload"),
+          error: [McpReloadError, McpServerNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "mcp.reload",
+            summary: "Reload MCP servers",
+            description:
+              "Reread MCP configuration and reconnect one server, or all configured servers when name is omitted, without disposing the session. Manual enable/disable choices are preserved.",
+          }),
+        ),
         HttpApiEndpoint.get("status", McpPaths.status, {
           query: WorkspaceRoutingQuery,
           success: described(Schema.Record(Schema.String, MCP.Status), "MCP server status"),

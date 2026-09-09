@@ -394,6 +394,11 @@ const scenarios: Scenario[] = [
     ),
   http.protected.get("/mcp", "mcp.status").json(),
   http.protected
+    .post("/mcp/reload", "mcp.reload")
+    .mutating()
+    .at((ctx) => ({ path: "/mcp/reload", headers: ctx.headers(), body: {} }))
+    .json(),
+  http.protected
     .post("/mcp", "mcp.add")
     .mutating()
     .at((ctx) => ({

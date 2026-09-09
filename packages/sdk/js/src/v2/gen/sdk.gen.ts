@@ -113,6 +113,8 @@ import type {
   McpDisconnectErrors,
   McpDisconnectResponses,
   McpLocalConfig,
+  McpReloadErrors,
+  McpReloadResponses,
   McpRemoteConfig,
   McpStatusErrors,
   McpStatusResponses,
@@ -2485,6 +2487,43 @@ export class Auth2 extends HeyApiClient {
 }
 
 export class Mcp extends HeyApiClient {
+  /**
+   * Reload MCP servers
+   *
+   * Reread MCP configuration and reconnect one server, or all configured servers when name is omitted, without disposing the session. Manual enable/disable choices are preserved.
+   */
+  public reload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpReloadResponses, McpReloadErrors, ThrowOnError>({
+      url: "/mcp/reload",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Get MCP status
    *
