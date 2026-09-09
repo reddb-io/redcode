@@ -191,15 +191,35 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_preview", {
       description:
-        "Publish an immutable revision and open its browser review. Feedback returns to this same TUI conversation. Call after coherent edits.",
-      parameters: Schema.Union([
-        Schema.Struct({ id: Design.ID, name: Schema.String }),
-        Schema.Struct({
-          path: Schema.String,
-          name: Schema.optional(Schema.String),
-          reopen: Schema.optional(Schema.Boolean),
+        'Publish an immutable revision and open its browser review after coherent edits. Supply id (the actual Design ID returned by design_document) and name (a label for this revision). If the ID is unknown, call design_document with {"action":"list"}, or create a document first. For a pre-0.22 prototype, supply path to its directory instead of id; name and reopen are optional for that import. Never call with empty arguments. Feedback returns to this same TUI conversation.',
+      // Keep the provider-facing root an object; validate the two supported forms after decoding.
+      parameters: Schema.Struct({
+        id: Schema.optional(Design.ID).annotate({
+          description: "Design ID returned by design_document. Required with name when publishing a current design.",
         }),
-      ]),
+        name: Schema.optional(Schema.String).annotate({
+          description: "Revision label. Required with id; optional when importing a legacy path.",
+        }),
+        path: Schema.optional(Schema.String).annotate({
+          description: "Directory of a pre-0.22 prototype containing index.html. Use only instead of id for an import.",
+        }),
+        reopen: Schema.optional(Schema.Boolean).annotate({
+          description: "For a legacy path only: reopen an ended review when the user explicitly requests it.",
+        }),
+      }).pipe(
+        Schema.decodeTo(
+          Schema.Union([
+            Schema.Struct({ id: Design.ID, name: Schema.String }),
+            Schema.Struct({
+              path: Schema.String,
+              name: Schema.optional(Schema.String),
+              reopen: Schema.optional(Schema.Boolean),
+            }),
+          ]),
+        ),
+      ),
+      formatValidationError: (error) =>
+        `${String(error)}\nSupply {"id":"<actual Design ID>","name":"<revision label>"}. Find the ID with design_document {"action":"list"}, or create a design first. To import a pre-0.22 prototype, supply {"path":"<prototype directory>"} instead. Do not retry the same empty or incomplete arguments.`,
       execute: (input, ctx) =>
         run(
           "design_preview",
@@ -371,7 +391,7 @@ export const DesignTools = Effect.gen(function* () {
 })
 
 function describe(document: Design.Info) {
-  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\n${document.designSystem}\nQuestions: ${document.questions.join("; ")}`
+  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\nQuestions: ${document.questions.join("; ")}`
 }
 
 function define<S extends Schema.Decoder<unknown>>(
@@ -379,6 +399,7 @@ function define<S extends Schema.Decoder<unknown>>(
   config: {
     description: string
     parameters: S
+    formatValidationError?: (error: unknown) => string
     execute: (
       input: Schema.Schema.Type<S>,
       ctx: Tool.Context,
