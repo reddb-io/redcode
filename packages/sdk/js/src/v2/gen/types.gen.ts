@@ -2516,14 +2516,18 @@ export type McpStatus =
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
 
-export type McpUnsupportedOAuthError = {
-  error: string
+export type McpReloadError = {
+  message: string
 }
 
 export type McpServerNotFoundError = {
   _tag: "McpServerNotFoundError"
   name: string
   message: string
+}
+
+export type McpUnsupportedOAuthError = {
+  error: string
 }
 
 export type Project = {
@@ -8846,6 +8850,42 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type McpReloadData = {
+  body?: {
+    name?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/reload"
+}
+
+export type McpReloadErrors = {
+  /**
+   * McpReloadError | InvalidRequestError
+   */
+  400: McpReloadError | InvalidRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
+}
+
+export type McpReloadError2 = McpReloadErrors[keyof McpReloadErrors]
+
+export type McpReloadResponses = {
+  /**
+   * MCP server status after reload
+   */
+  200: {
+    [key: string]: McpStatus
+  }
+}
+
+export type McpReloadResponse = McpReloadResponses[keyof McpReloadResponses]
 
 export type McpStatusData = {
   body?: never

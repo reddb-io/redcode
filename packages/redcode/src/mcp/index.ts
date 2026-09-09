@@ -26,7 +26,7 @@ import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { TuiEvent } from "@/server/tui-event"
-import { Cause, Effect, Exit, Layer, Context, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, Context, Schema, Semaphore, Stream } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
@@ -68,6 +68,10 @@ export const Failed = NamedError.create("MCPFailed", {
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("MCP.NotFoundError", {
   name: Schema.String,
+}) {}
+
+export class ReloadError extends Schema.TaggedErrorClass<ReloadError>()("MCP.ReloadError", {
+  message: Schema.String,
 }) {}
 
 type MCPClient = Client
@@ -140,6 +144,9 @@ interface AuthResult {
 // --- Effect Service ---
 
 interface State {
+  lock: Semaphore.Semaphore
+  enabled: Record<string, boolean>
+  configured: Record<string, McpEntry>
   config: Record<string, ConfigMCPV1.Info>
   status: Record<string, Status>
   clients: Record<string, MCPClient>
@@ -173,6 +180,7 @@ export interface Interface {
   ) => Effect.Effect<Record<string, ResourceTemplateInfo & { client: string }>>
   readonly add: (name: string, mcp: ConfigMCPV1.Info) => Effect.Effect<{ status: Record<string, Status> | Status }>
   readonly connect: (name: string) => Effect.Effect<void, NotFoundError>
+  readonly reload: (name?: string) => Effect.Effect<Record<string, Status>, NotFoundError | ReloadError>
   readonly disconnect: (name: string) => Effect.Effect<void, NotFoundError>
   readonly getPrompt: (
     clientName: string,
@@ -495,6 +503,9 @@ const layer = Layer.effect(
         const bridge = yield* EffectBridge.make()
         const config = cfg.mcp ?? {}
         const s: State = {
+          lock: yield* Semaphore.make(1),
+          enabled: {},
+          configured: { ...config },
           config: {},
           status: {},
           clients: {},
@@ -568,6 +579,10 @@ const layer = Layer.effect(
       return Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
     }
 
+    function mutate<A, E, R>(effect: Effect.Effect<A, E, R>) {
+      return InstanceState.get(state).pipe(Effect.flatMap((s) => s.lock.withPermit(effect)))
+    }
+
     const storeClient = Effect.fnUntraced(function* (
       s: State,
       name: string,
@@ -591,8 +606,7 @@ const layer = Layer.effect(
     const status = Effect.fn("MCP.status")(function* () {
       const s = yield* InstanceState.get(state)
 
-      const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = s.configured
       const result: Record<string, Status> = {}
 
       for (const [key, mcp] of Object.entries(config)) {
@@ -641,22 +655,71 @@ const layer = Layer.effect(
     const add = Effect.fn("MCP.add")(function* (name: string, mcp: ConfigMCPV1.Info) {
       const s = yield* InstanceState.get(state)
       s.config[name] = mcp
+      delete s.enabled[name]
       yield* createAndStore(name, mcp)
+      yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
       return { status: s.status }
-    })
+    }, mutate)
 
     const connect = Effect.fn("MCP.connect")(function* (name: string) {
       const mcp = yield* requireMcpConfig(name)
+      const s = yield* InstanceState.get(state)
+      s.enabled[name] = true
       yield* createAndStore(name, { ...mcp, enabled: true })
-    })
+      yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+    }, mutate)
 
     const disconnect = Effect.fn("MCP.disconnect")(function* (name: string) {
       yield* requireMcpConfig(name)
       const s = yield* InstanceState.get(state)
+      s.enabled[name] = false
       yield* closeClient(s, name)
       delete s.clients[name]
       s.status[name] = { status: "disabled" }
-    })
+      yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+    }, mutate)
+
+    const reload = Effect.fn("MCP.reload")(function* (name?: string) {
+      const s = yield* InstanceState.get(state)
+      const cfg = yield* cfgSvc.reload().pipe(
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
+          return Effect.fail(
+            new ReloadError({
+              message:
+                "Could not reload MCP configuration. Check your config files and retry. Existing MCP connections were kept.",
+            }),
+          )
+        }),
+      )
+      const config = { ...cfg.mcp, ...s.config }
+      const names = name === undefined ? [...new Set([...Object.keys(s.status), ...Object.keys(config)])] : [name]
+      if (name !== undefined && !(name in s.status) && !isMcpConfigured(config[name])) {
+        return yield* new NotFoundError({ name })
+      }
+      yield* Effect.forEach(
+        names,
+        (key) =>
+          Effect.gen(function* () {
+            const mcp = config[key]
+            if (!isMcpConfigured(mcp)) {
+              yield* closeClient(s, key)
+              delete s.status[key]
+              delete s.enabled[key]
+              delete s.configured[key]
+              yield* events.publish(ToolsChanged, { server: key }).pipe(Effect.ignore)
+              return
+            }
+            // A selected-server reload must not change the effective config of other live clients.
+            delete s.configured[key]
+            if (cfg.mcp?.[key]) s.configured[key] = cfg.mcp[key]
+            yield* createAndStore(key, { ...mcp, enabled: s.enabled[key] ?? mcp.enabled })
+            yield* events.publish(ToolsChanged, { server: key }).pipe(Effect.ignore)
+          }),
+        { concurrency: 4, discard: true },
+      )
+      return yield* status()
+    }, mutate)
 
     function requestTimeout(s: State, name: string, configured: McpEntry | undefined, fallback?: number) {
       const staticTimeout = configured && isMcpConfigured(configured) ? configured.timeout : undefined
@@ -668,7 +731,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = s.configured
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
       for (const [clientName, client] of Object.entries(s.clients)) {
@@ -704,7 +767,7 @@ const layer = Layer.effect(
             McpCatalog.fetch(
               clientName,
               client,
-              (c) => listFn(c, requestTimeout(s, clientName, cfg.mcp?.[clientName], cfg.experimental?.mcp_timeout)),
+              (c) => listFn(c, requestTimeout(s, clientName, s.configured[clientName], cfg.experimental?.mcp_timeout)),
               label,
               key,
             ).pipe(Effect.map((items) => Object.entries(items ?? {}))),
@@ -751,7 +814,7 @@ const layer = Layer.effect(
       }
       const cfg = yield* cfgSvc.get()
       return yield* Effect.tryPromise({
-        try: () => fn(client, requestTimeout(s, clientName, cfg.mcp?.[clientName], cfg.experimental?.mcp_timeout)),
+        try: () => fn(client, requestTimeout(s, clientName, s.configured[clientName], cfg.experimental?.mcp_timeout)),
         catch: (error) => error,
       }).pipe(
         Effect.tapError((error) =>
@@ -791,8 +854,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
       if (s.config[mcpName]) return s.config[mcpName]
 
-      const cfg = yield* cfgSvc.get()
-      const mcpConfig = cfg.mcp?.[mcpName]
+      const mcpConfig = s.configured[mcpName]
       if (!mcpConfig || !isMcpConfigured(mcpConfig)) return undefined
       return mcpConfig
     })
@@ -979,6 +1041,7 @@ const layer = Layer.effect(
       resourceTemplates,
       add,
       connect,
+      reload,
       disconnect,
       getPrompt,
       readResource,

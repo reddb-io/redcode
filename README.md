@@ -244,6 +244,21 @@ HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`, or accepts a complete
 `REDCODE_AUTHORIZATION` header.
 
+### Reloading MCP servers
+
+Open `/mcps` while keeping your conversation open:
+
+- Select a server and press **Enter** or **Ctrl+R** to reload it.
+- Choose **Reload all MCPs** to reread configuration and reload all servers, including newly added entries.
+- **Space** still enables or disables the selected server. Reload preserves these manual choices.
+
+Reload reads the current configuration, reconnects the selected MCPs and refreshes their tools
+and resources. Removed entries are disconnected; disabled servers stay disabled. It does not
+restart Redcode, close your session or erase its history. Tools become available on the next
+model turn. Reload between tool calls: a call using a connection that is restarted can fail.
+Configuration errors keep the existing connections, and individual connection failures appear
+in `/mcps` so you can fix the server and retry.
+
 ## Modes
 
 Build, Plan and Design are the three primary modes in the regular `redcode` TUI.

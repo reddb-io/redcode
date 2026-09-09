@@ -715,7 +715,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "mcp.list",
-        title: "Toggle MCPs",
+        title: "Manage MCPs",
         category: "Agent",
         slashName: "mcps",
         run: () => {
