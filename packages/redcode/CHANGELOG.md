@@ -1,5 +1,16 @@
 # opencode
 
+## 0.24.0
+
+### Minor Changes
+
+- 83a88a9: Persist selected Design variants and immutable approval context across Plan, Build, resume and compaction. Replace large chat handoffs with a compact approval notice, automatically supplied requirements, and a read-only tool for detailed evidence and prototype files.
+
+### Patch Changes
+
+- b3a0688: Make Design review actions show progress, persistent errors and approval confirmation; reload the preview on Refresh. Add variant tabs, side-by-side comparison, named device widths and prompt-driven requests for new or separated variants. Keep long plan approval questions scrollable in the TUI so answers and keyboard controls remain visible.
+- f2c7b00: Fix Plan-to-Build handoff: always identify and allow the session plan file, recognize canonical Windows plan paths, report missing or unreadable plans with actionable errors, and persist Build mode after the user approves the recorded plan. Product editing remains gated by that approval.
+
 ## 0.23.4
 
 ### Patch Changes
