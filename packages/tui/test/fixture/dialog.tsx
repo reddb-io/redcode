@@ -11,8 +11,14 @@ import { ToastProvider } from "../../src/ui/toast"
 import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../../src/keymap"
 import { TestTuiContexts } from "./tui-environment"
 import { createTuiResolvedConfig } from "./tui-runtime"
+import { SDKProvider, type EventSource } from "../../src/context/sdk"
 
-export async function mountDialog(input: { root: string; children: () => JSX.Element; clipboard?: ClipboardService }) {
+export async function mountDialog(input: {
+  root: string
+  children: () => JSX.Element
+  clipboard?: ClipboardService
+  sdk?: { url: string; events: EventSource }
+}) {
   await Bun.write(`${input.root}/kv.json`, "{}")
   function Harness() {
     const renderer = useRenderer()
@@ -27,7 +33,13 @@ export async function mountDialog(input: { root: string; children: () => JSX.Ele
               <ThemeProvider mode="dark">
                 <ClipboardProvider value={input.clipboard}>
                   <ToastProvider>
-                    <DialogProvider>{input.children()}</DialogProvider>
+                    {input.sdk ? (
+                      <SDKProvider {...input.sdk}>
+                        <DialogProvider>{input.children()}</DialogProvider>
+                      </SDKProvider>
+                    ) : (
+                      <DialogProvider>{input.children()}</DialogProvider>
+                    )}
                   </ToastProvider>
                 </ClipboardProvider>
               </ThemeProvider>

@@ -45,6 +45,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 
 - [Install](#install) — native CLI and installation methods
 - [Use](#use) — every command, and what it is for
+- [9Router](#9router) — connect a local or remote router without editing configuration
 - [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 - [Goal](#goal) — a definition of done the harness pursues across turns
@@ -243,6 +244,29 @@ The sibling `redcode-rpc-sidecar` bridges bounded `Content-Length` frames on std
 HTTP endpoint. Set `REDCODE_RPC_URL` to the printed URL. It reuses
 `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`, or accepts a complete
 `REDCODE_AUTHORIZATION` header.
+
+## 9Router
+
+With [9Router](https://github.com/decolua/9router) running and an account or combo configured in
+its dashboard:
+
+1. Open `/connect` and choose **9Router**.
+2. Confirm the API URL. The default is `http://127.0.0.1:20128/v1`; change it for another host or port.
+3. Paste the API key from your 9Router dashboard.
+4. Choose a discovered model. You can switch again with `/models`.
+
+Redcode checks access to `/models`, stores the key in its credential store, and merges the
+provider and discovered models into the server's global configuration. Existing model settings
+are preserved. No manual JSON editing or restart is needed. This checks catalog access; it does
+not send a paid generation request or guarantee every upstream account has quota.
+
+For `redcode attach`, the API URL is reached **from the Redcode server**: `localhost` means that
+server, not the terminal's computer. Connection errors explain whether the address is unreachable,
+the key was refused, or no models are available. Configure an account or combo in 9Router and retry
+if its model list is empty. Run `/connect` → **9Router** again to import newly added models.
+
+Project configuration still takes precedence over global configuration. If an existing API-key
+override, endpoint override or provider/model filter prevents activation, Redcode reports it.
 
 ## Modes
 

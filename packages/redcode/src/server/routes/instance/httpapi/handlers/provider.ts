@@ -6,11 +6,12 @@ import { Auth } from "@/auth"
 
 import { mapValues } from "remeda"
 import { Effect, Schema } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { HttpClient, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ProviderAuthApiError } from "../groups/provider"
+import { ProviderAuthApiError, ProviderDiscoveryApiError } from "../groups/provider"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
+import { ProviderDiscovery } from "@/provider/discovery"
 
 function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
   return self.pipe(
@@ -38,6 +39,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const provider = yield* Provider.Service
     const svc = yield* ProviderAuth.Service
     const authStore = yield* Auth.Service
+    const http = yield* HttpClient.HttpClient
 
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
       const config = yield* cfg.get()
@@ -108,6 +110,11 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     })
 
     return handlers
+      .handle("discover", (ctx) =>
+        ProviderDiscovery.discover(http, ctx.payload).pipe(
+          Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+        ),
+      )
       .handle("list", list)
       .handle("auth", auth)
       .handleRaw("authorize", authorizeRaw)

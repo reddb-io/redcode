@@ -2591,6 +2591,10 @@ export type PermissionNotFoundError = {
   message: string
 }
 
+export type ProviderDiscoveryApiError = {
+  message: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -9716,6 +9720,43 @@ export type PermissionReplyResponses = {
 }
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
+
+export type ProviderDiscoverData = {
+  body?: {
+    baseURL: string
+    apiKey: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/discover"
+}
+
+export type ProviderDiscoverErrors = {
+  /**
+   * ProviderDiscoveryApiError | InvalidRequestError
+   */
+  400: ProviderDiscoveryApiError | InvalidRequestError
+}
+
+export type ProviderDiscoverError = ProviderDiscoverErrors[keyof ProviderDiscoverErrors]
+
+export type ProviderDiscoverResponses = {
+  /**
+   * Success
+   */
+  200: {
+    baseURL: string
+    models: Array<{
+      id: string
+      name: string
+    }>
+  }
+}
+
+export type ProviderDiscoverResponse = ProviderDiscoverResponses[keyof ProviderDiscoverResponses]
 
 export type ProviderListData = {
   body?: never
