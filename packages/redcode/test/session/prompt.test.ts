@@ -3540,6 +3540,22 @@ it.instance(
         questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
         "Plan approval never opened",
         "15 seconds",
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const permissions = yield* Permission.Service
+            const pending = yield* permissions.list()
+            const messages = yield* sessions.messages({ sessionID: chat.id })
+            return yield* Effect.fail(
+              new Error(
+                `${error.message}: ${JSON.stringify({
+                  permissions: pending.filter((item) => item.sessionID === chat.id),
+                  tools: messages.flatMap((item) => item.parts).filter((part) => part.type === "tool"),
+                })}`,
+              ),
+            )
+          }),
+        ),
       )
       expect(question.questions[0].question).toContain(content)
       expect((yield* plans.list(chat.id))[0].status).toBe("ready")
