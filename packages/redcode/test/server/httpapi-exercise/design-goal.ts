@@ -265,7 +265,13 @@ export const designGoalScenarios: Scenario[] = [
     .seeded((ctx) =>
       Effect.gen(function* () {
         const current = yield* document(ctx)
-        yield* ctx.file("DESIGN.md", "# Design system\nUse a cyan accent for checkout.")
+        yield* ctx.file("DESIGN.md", "# Source design system\nUse a magenta accent for checkout.")
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(current.document.application, "DESIGN.md"),
+            "# Task design system\nUse a cyan accent for checkout.",
+          ),
+        )
         return current
       }),
     )
