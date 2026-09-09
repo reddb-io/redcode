@@ -15,6 +15,7 @@ import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
+import { DialogNineRouter } from "./dialog-nine-router"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -47,7 +48,7 @@ type ProviderOption =
 export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
   return [
     ...pipe(
-      list,
+      list.some((provider) => provider.id === "9router") ? list : [...list, { id: "9router", name: "9Router" }],
       sortBy(
         (x) => PROVIDER_PRIORITY[x.id] ?? 99,
         (x) => x.name.toLowerCase(),
@@ -63,6 +64,7 @@ export function providerOptions(list: { id: string; name: string }[]): ProviderO
           anthropic: "(API key)",
           openai: "(ChatGPT Plus/Pro or API key)",
           "opencode-go": "Low cost subscription for everyone",
+          "9router": "Local router · automatic model setup",
         }[provider.id],
         category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
       })),
@@ -144,6 +146,40 @@ export function createDialogProviderOptions() {
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,
           async onSelect() {
             if (consoleManaged) return
+
+            if (providerID === "9router") {
+              const configured = sync.data.config.provider?.[providerID]?.options?.baseURL
+              return dialog.replace(() => (
+                <DialogNineRouter
+                  baseURL={typeof configured === "string" ? configured : undefined}
+                  onConnected={async (baseURL, signal) => {
+                    await sdk.client.instance.dispose({}, { throwOnError: true, signal })
+                    if (signal.aborted) return
+                    await sync.bootstrap()
+                    if (signal.aborted) return
+                    const options = sync.data.config.provider?.[providerID]?.options
+                    if (
+                      options?.apiKey ||
+                      (typeof options?.baseURL === "string" && options.baseURL.replace(/\/+$/, "") !== baseURL)
+                    ) {
+                      throw new Error(
+                        "9Router was saved, but an existing provider.options.apiKey or project baseURL overrides this connection. Remove the override from your config to use the saved connection.",
+                      )
+                    }
+                    if (
+                      !sync.data.provider.some(
+                        (provider) => provider.id === providerID && Object.keys(provider.models).length,
+                      )
+                    ) {
+                      throw new Error(
+                        "9Router was saved, but no models are enabled in this project. Check enabled_providers, disabled_providers and model filters in your config.",
+                      )
+                    }
+                    dialog.replace(() => <DialogModel providerID={providerID} />)
+                  }}
+                />
+              ))
+            }
 
             const methods = sync.data.provider_auth[providerID] ?? [
               {
