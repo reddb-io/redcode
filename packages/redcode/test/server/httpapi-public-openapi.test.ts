@@ -75,13 +75,14 @@ function isBuiltInEndpointError(name: string) {
 describe("PublicApi OpenAPI v2 errors", () => {
   test("uses Redcode product identity in metadata and code samples", () => {
     const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    // OpenTUI's runtime loader also rewrites import-like text inside string literals.
+    const sdk = "@reddb-io/redcode-sdk"
 
     expect(spec.info).toEqual({ title: "Redcode", version: "1.0.0", description: "Redcode API" })
     expect(spec.paths["/api/session"]?.post?.["x-codeSamples"]).toEqual([
       {
         lang: "js",
-        source:
-          'import { createRedcodeClient } from "@reddb-io/redcode-sdk"\n\nconst client = createRedcodeClient()\nawait client.v2.session.create({\n  ...\n})',
+        source: `import { createRedcodeClient } from "${sdk}"\n\nconst client = createRedcodeClient()\nawait client.v2.session.create({\n  ...\n})`,
       },
     ])
   })

@@ -35,3 +35,7 @@ c2e39bb55  # not applicable: the permission assertion it fixes belongs to a test
 23ec4f55c8bf4009068c44635a448d602914f1f7  # ported: OpenAI SDK 3.0.88 in Core and CLI
 bec9ee41afc64c0333f7ace8e73ea6ab47f30213  # ported: Azure SDK 3.0.93 in Core and CLI
 ea2d59d7ca8028951a16d4ebc558104258440bf9  # ported: explicit OpenAI service-tier patch with transport regression tests
+
+# 2026-09-09: remaining provider updates from upstream dev at dff8fbc149.
+ac1758c0e6b8e7368be133e87e8e27a5f60dec04  # ported: preserve Bedrock DeepSeek identifiers and explicit ARNs in Core and CLI
+0b082b065d2b6bdf2cc6e6234176cbdaa2544d31  # ported: GitLab provider 6.15.0 with GPT-6 Astra Responses API mappings
