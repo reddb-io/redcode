@@ -24,7 +24,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
-import { provideInstance, provideTmpdirServer } from "../fixture/fixture"
+import { provideInstance, provideTmpdirServer, testInstanceStoreLayer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 import { TestLLMServer } from "../lib/llm-server"
@@ -192,7 +192,7 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
           yield* Effect.sleep("100 millis")
         }
         expect(diff.length).toBeGreaterThan(0)
-      }).pipe(provideInstance(workspace.tree))
+      }).pipe(provideInstance(workspace.tree), Effect.provide(testInstanceStoreLayer))
     }),
     { config: providerCfg },
   ),
