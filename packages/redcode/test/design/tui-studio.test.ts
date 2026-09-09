@@ -1,3 +1,9 @@
+import { Provider } from "../../src/provider/provider"
+import { RuntimeFlags } from "../../src/effect/runtime-flags"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { DesignHandoff } from "../../src/design/handoff"
+import { SessionReminders } from "../../src/session/reminders"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { DesignFeedback } from "../../src/design/feedback"
 import { SessionStatus } from "../../src/session/status"
@@ -28,8 +34,12 @@ const it = testEffect(
   AppNodeBuilderV1.build(
     LayerNode.group([
       DesignStudio.node,
+      Provider.node,
+      RuntimeFlags.node,
+      FSUtil.node,
       DesignFeedback.node,
       SessionStatus.node,
+      SessionPlan.node,
       SessionPrompt.node,
       EventV2Bridge.node,
       Agent.node,
@@ -39,6 +49,125 @@ const it = testEffect(
       Permission.node,
     ]),
   ),
+)
+
+it.instance(
+  "approved Design and plan hydrate fresh TUI history without persisting review dumps",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const studio = yield* DesignStudio.Service
+      const prompt = yield* SessionPrompt.Service
+      const agents = yield* Agent.Service
+      const plans = yield* SessionPlan.Service
+      const registry = yield* ToolRegistry.Service
+      const session = yield* sessions.create({ agent: "design" })
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "design",
+        noReply: true,
+        parts: [{ type: "text", text: "Design checkout" }],
+      })
+      const document = yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          const document = yield* store.create(session.id, {
+            name: "Checkout",
+            journey: "new",
+            engine: "html",
+            kind: "screen",
+          })
+          yield* store.update(document.id, {
+            brief: {
+              objective: "Complete checkout",
+              audience: "Customers",
+              content: "Order total",
+              constraints: "Never charge twice",
+              references: [],
+            },
+            decisions: [{ id: "payment", text: "Preserve cart after payment failure" }],
+          })
+          const revision = yield* store.publish(document.id, "Approved checkout")
+          return { id: document.id, revision: revision.id }
+        }),
+      )
+      yield* DesignHandoff.approve(session.id, document.id, document.revision)
+      const persisted = yield* sessions.messages({ sessionID: session.id })
+      const handoff = persisted.at(-1)!
+      const part = handoff.parts.find((part) => part.type === "text" && part.synthetic)
+      expect(part?.type === "text" && part.text.length).toBeLessThan(1000)
+      expect(part?.type === "text" && part.metadata?.designApproval).toMatchObject({
+        id: document.id,
+        revision: document.revision,
+        variant: null,
+      })
+      expect(JSON.stringify(persisted)).not.toContain("Never charge twice")
+      expect((yield* sessions.get(session.id)).agent).toBe("plan")
+      yield* plans.record({
+        sessionID: session.id,
+        revision: "plan-checkout",
+        path: "plan.md",
+        content: "Implement an idempotent payment endpoint",
+        status: "approved",
+        created: Date.now(),
+      })
+      yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          yield* store.reopen(document.id)
+          yield* store.update(document.id, {
+            brief: { objective: "UNAPPROVED CHANGE", audience: "", content: "", constraints: "", references: [] },
+          })
+          yield* store.publish(document.id, "Unapproved draft")
+        }),
+      )
+      for (const name of ["plan", "build"]) {
+        const agent = (yield* agents.get(name))!
+        const fresh = yield* SessionReminders.apply({
+          messages: structuredClone([handoff]),
+          agent,
+          session: yield* sessions.get(session.id),
+        })
+        const context = JSON.stringify(fresh)
+        expect(context).toContain("Never charge twice")
+        expect(context).toContain("Preserve cart after payment failure")
+        expect(context).toContain("Implement an idempotent payment endpoint")
+        expect(context).not.toContain("UNAPPROVED CHANGE")
+        expect(Permission.evaluate("design_read", "*", agent.permission).action).toBe("allow")
+      }
+      expect(JSON.stringify(yield* sessions.messages({ sessionID: session.id }))).not.toContain("Never charge twice")
+      const reader = (yield* registry.all()).find((tool) => tool.id === "design_read")!
+      const context: Tool.Context = {
+        sessionID: session.id,
+        messageID: MessageID.ascending(),
+        agent: "plan",
+        abort: new AbortController().signal,
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      expect((yield* reader.execute({ id: document.id, section: "decisions" }, context)).output).toContain(
+        "Never charge twice",
+      )
+      const other = yield* sessions.create({ agent: "plan" })
+      expect(
+        Exit.isFailure(
+          yield* reader.execute({ id: document.id }, { ...context, sessionID: other.id }).pipe(Effect.exit),
+        ),
+      ).toBe(true)
+    }),
+  {
+    config: {
+      model: "fixture/fixture",
+      provider: {
+        fixture: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { fixture: { name: "Fixture", limit: { context: 100000, output: 4096 } } },
+          options: { apiKey: "fixture", baseURL: "http://127.0.0.1:1/v1" },
+        },
+      },
+    },
+  },
 )
 
 it.instance("Design remains a cyan primary mode and edits only prototype work", () =>
@@ -400,58 +529,60 @@ it.instance("the TUI model receives and executes the new Design toolset", () =>
   }),
 )
 
-it.instance("queued browser feedback does not restart an interrupted TUI session", () =>
-  Effect.gen(function* () {
-    const sessions = yield* Session.Service
-    const studio = yield* DesignStudio.Service
-    const feedback = yield* DesignFeedback.Service
-    const status = yield* SessionStatus.Service
-    const events = yield* EventV2Bridge.Service
-    const session = yield* sessions.create({ agent: "design" })
-    const prompt = yield* SessionPrompt.Service
-    const initial = yield* prompt.prompt({
-      sessionID: session.id,
-      agent: "design",
-      noReply: true,
-      parts: [{ type: "text", text: "Create a settings prototype" }],
-    })
-    const document = yield* studio.use(
-      Effect.gen(function* () {
-        const store = yield* DesignStore.Service
-        const document = yield* store.create(session.id, {
-          name: "Queue",
-          journey: "new",
-          engine: "html",
-          kind: "screen",
-        })
-        const revision = yield* store.publish(document.id, "Queue review")
-        return { id: document.id, revision: revision.id }
-      }),
-    )
-    yield* status.set(session.id, { type: "busy" })
-    const receipt = yield* feedback.admit(session.id, document.id, {
-      id: SessionMessage.ID.make("msg_queued_interrupt"),
-      revision: document.revision,
-      text: "Wait for the current work",
-      items: [],
-      assets: [],
-      snapshot: "",
-      end: false,
-      delivery: "queue",
-    })
-    expect(receipt.status).toBe("pending")
-    yield* events.publish(SessionEvent.Turn.Ended, {
-      sessionID: session.id,
-      timestamp: yield* DateTime.now,
-      finished: false,
-    })
-    yield* status.set(session.id, { type: "idle" })
-    yield* Effect.sleep("2 seconds")
-    expect((yield* sessions.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
-      initial.info.id,
-    ])
-    expect(yield* status.get(session.id)).toEqual({ type: "idle" })
-  }),
+it.instance(
+  "queued browser feedback does not restart an interrupted TUI session",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const studio = yield* DesignStudio.Service
+      const feedback = yield* DesignFeedback.Service
+      const status = yield* SessionStatus.Service
+      const events = yield* EventV2Bridge.Service
+      const session = yield* sessions.create({ agent: "design" })
+      const prompt = yield* SessionPrompt.Service
+      const initial = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "design",
+        noReply: true,
+        parts: [{ type: "text", text: "Create a settings prototype" }],
+      })
+      const document = yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          const document = yield* store.create(session.id, {
+            name: "Queue",
+            journey: "new",
+            engine: "html",
+            kind: "screen",
+          })
+          const revision = yield* store.publish(document.id, "Queue review")
+          return { id: document.id, revision: revision.id }
+        }),
+      )
+      yield* status.set(session.id, { type: "busy" })
+      const receipt = yield* feedback.admit(session.id, document.id, {
+        id: SessionMessage.ID.make("msg_queued_interrupt"),
+        revision: document.revision,
+        text: "Wait for the current work",
+        items: [],
+        assets: [],
+        snapshot: "",
+        end: false,
+        delivery: "queue",
+      })
+      expect(receipt.status).toBe("pending")
+      yield* events.publish(SessionEvent.Turn.Ended, {
+        sessionID: session.id,
+        timestamp: yield* DateTime.now,
+        finished: false,
+      })
+      yield* status.set(session.id, { type: "idle" })
+      yield* Effect.sleep("2 seconds")
+      expect((yield* sessions.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+        initial.info.id,
+      ])
+      expect(yield* status.get(session.id)).toEqual({ type: "idle" })
+    }),
   {
     config: {
       model: "fixture/fixture",

@@ -128,6 +128,27 @@ export const Revision = Schema.Struct({
 }).annotate({ identifier: "Design.Revision" })
 export interface Revision extends Schema.Schema.Type<typeof Revision> {}
 
+/** A user-selected direction within the immutable prototype snapshot. */
+export const Variant = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{1,64}$/)),
+  name: Schema.NonEmptyString.check(Schema.isMaxLength(100)),
+}).annotate({ identifier: "Design.Variant" })
+export interface Variant extends Schema.Schema.Type<typeof Variant> {}
+
+export const Approve = Schema.Struct({
+  revision: Schema.NonEmptyString,
+  variant: Variant.pipe(optional),
+}).annotate({ identifier: "Design.Approve" })
+export interface Approve extends Schema.Schema.Type<typeof Approve> {}
+
+export const ApprovalNotice = Schema.Struct({
+  id: ID,
+  name: Schema.String,
+  revision: Schema.String,
+  variant: Schema.NullOr(Variant),
+}).annotate({ identifier: "Design.ApprovalNotice" })
+export interface ApprovalNotice extends Schema.Schema.Type<typeof ApprovalNotice> {}
+
 export const Feedback = Schema.Struct({
   id: SessionMessage.ID,
   revision: Schema.String,
@@ -206,6 +227,18 @@ export const Job = Schema.Struct({
   audit: Audit.pipe(optional),
 }).annotate({ identifier: "Design.Job" })
 export interface Job extends Schema.Schema.Type<typeof Job> {}
+
+/** Version 0 denotes a historical package without recorded selection or approval time. */
+export const Approval = Schema.Struct({
+  version: Schema.Literals([0, 1]),
+  approvedAt: Schema.NullOr(Schema.Number),
+  variant: Schema.NullOr(Variant),
+  revision: Revision,
+  assets: Schema.Array(Asset),
+  feedback: Schema.Array(Feedback),
+  audits: Schema.Array(Schema.Struct({ id: Schema.String, result: Schema.NullOr(Schema.String), audit: Audit })),
+}).annotate({ identifier: "Design.Approval" })
+export interface Approval extends Schema.Schema.Type<typeof Approval> {}
 
 export class Error extends Schema.TaggedErrorClass<Error>()("Design.Error", {
   code: Schema.Literals(["not-found", "conflict", "invalid", "unavailable"]),

@@ -68,7 +68,9 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.approved": "Design aprovado. Continue no terminal para revisar o plano de implementação.",
   "session.design.studio.approveAction": "Aprovar e continuar no modo Plan",
   "session.design.studio.approvalScope":
-    "A aprovação inclui toda a revisão e suas variantes. Registre a direção escolhida no feedback antes de aprovar. A implementação ainda exige aprovar o plano no terminal.",
+    "A aprovação salva a revisão e a variante selecionada como referência para a implementação. A implementação ainda exige aprovar o plano no terminal.",
+  "session.design.studio.approvalWhole": "Revisão inteira (sem variante selecionada)",
+  "session.design.studio.approvalDetails": "Ver decisões aprovadas",
   "session.design.studio.variants": "Variantes",
   "session.design.studio.variant": "Variante",
   "session.design.studio.single": "Visualização individual",

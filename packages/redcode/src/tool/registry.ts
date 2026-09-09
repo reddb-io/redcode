@@ -1,3 +1,4 @@
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignTools } from "./design"
 import { DesignStudio } from "@/design/studio"
@@ -442,6 +443,7 @@ export const node = LayerNode.make({
     DesignStudio.node,
     DesignReviewServer.node,
     GoalRuntime.node,
+    SessionPlan.node,
     Config.node,
     Plugin.node,
     Question.node,

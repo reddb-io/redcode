@@ -1,4 +1,5 @@
 import { DesignDocumentTool } from "@reddb-io/redcode-core/design/document-tool"
+import { DesignApproval } from "@reddb-io/redcode-core/design/approval"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignLegacy } from "@/design/legacy"
 import { DesignRead } from "@/design/read"
@@ -251,6 +252,21 @@ export const DesignTools = Effect.gen(function* () {
           }),
         ),
     }),
+    define("design_read", {
+      description:
+        "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval; use file for exact snapshot source. Available during Plan and Build without reopening Design.",
+      parameters: DesignApproval.Read,
+      execute: (input, ctx) =>
+        run(
+          "design_read",
+          ctx,
+          Effect.gen(function* () {
+            const store = yield* DesignStore.Service
+            yield* store.get(input.id, ctx.sessionID)
+            return result(yield* store.readApproval(input))
+          }),
+        ),
+    }),
     define("design_history", {
       description: "List immutable alternatives or restore one as a new revision, retaining the approved baseline.",
       parameters: Schema.Struct({ id: Design.ID, restore: Schema.optional(Schema.String) }),
@@ -334,7 +350,7 @@ export const DesignTools = Effect.gen(function* () {
     define("design_exit", {
       description:
         "Ask the user to approve the published revision, record its immutable handoff, and continue in Plan in this same TUI session.",
-      parameters: Schema.Struct({ id: Design.ID }),
+      parameters: Schema.Struct({ id: Design.ID, variant: Schema.optional(Design.Variant) }),
       execute: (input, ctx) =>
         run(
           "design_exit",
@@ -354,7 +370,7 @@ export const DesignTools = Effect.gen(function* () {
                   {
                     header: "Design approval",
                     custom: false,
-                    question: `Approve ${document.name}, revision ${document.revision}? Open questions: ${document.questions.join("; ") || "none"}`,
+                    question: `Approve ${document.name}, revision ${document.revision}, ${input.variant ? `variant ${input.variant.name} (${input.variant.id})` : "entire revision"}? Open questions: ${document.questions.join("; ") || "none"}`,
                     options: [
                       {
                         label: "Approve",
@@ -375,7 +391,12 @@ export const DesignTools = Effect.gen(function* () {
                 code: "conflict",
                 message: "Goal changed during approval; review the current scope again",
               })
-            const approved = yield* DesignHandoff.approve(ctx.sessionID, input.id, document.revision).pipe(
+            const approved = yield* DesignHandoff.approve(
+              ctx.sessionID,
+              input.id,
+              document.revision,
+              input.variant,
+            ).pipe(
               Effect.provideService(DesignStudio.Service, studio),
               Effect.provideService(Session.Service, sessions),
               Effect.provideService(Provider.Service, provider),

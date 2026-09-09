@@ -18,6 +18,7 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@reddb-io/redcode-core/global"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
@@ -161,7 +162,7 @@ const layer = Layer.effect(
           plan: {
             name: "plan",
             color: "accent",
-            description: "Plan mode. Disallows all edit tools.",
+            description: "Plan mode. Research and edit the implementation plan; product files remain read-only.",
             options: {},
             permission: Permission.merge(
               defaults.map((rule) => (rule.permission === "*" ? { ...rule, action: "deny" as const } : rule)),
@@ -176,17 +177,22 @@ const layer = Layer.effect(
                 goal_complete: "allow",
                 question: "allow",
                 plan_exit: "allow",
+                design_read: "allow",
                 task: {
                   "*": "deny",
                   explore: "allow",
                 },
                 external_directory: {
+                  // Windows tool checks can expand short directory names to their canonical paths.
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
+                  [path.join(FSUtil.normalizePath(Global.Path.data), "plans", "*")]: "allow",
                 },
                 edit: {
                   "*": "deny",
                   ...Object.fromEntries(ProjectDir.DIRS.map((dir) => [path.join(dir, "plans", "*.md"), "allow"])),
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
+                  [path.relative(ctx.worktree, path.join(FSUtil.normalizePath(Global.Path.data), "plans", "*.md"))]:
+                    "allow",
                 },
               }),
               user,

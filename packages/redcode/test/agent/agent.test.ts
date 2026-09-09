@@ -8,7 +8,9 @@ import { Agent } from "../../src/agent/agent"
 import { Auth } from "../../src/auth"
 import { Config } from "../../src/config/config"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
+import { InstanceState } from "../../src/effect/instance-state"
 import { Global } from "@reddb-io/redcode-core/global"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { Permission } from "../../src/permission"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Plugin } from "../../src/plugin"
@@ -92,6 +94,23 @@ it.instance("plan agent denies edits except the project directories' plans", () 
     // The older names keep working, so a plan written before the rename is still editable.
     expect(Permission.evaluate("edit", ".redcode/plans/foo.md", plan!.permission).action).toBe("allow")
     expect(Permission.evaluate("edit", ".opencode/plans/foo.md", plan!.permission).action).toBe("allow")
+  }),
+)
+
+it.instance("plan agent permits global plans through native canonical paths", () =>
+  Effect.gen(function* () {
+    const plan = yield* load((svc) => svc.get("plan"))
+    const instance = yield* InstanceState.context
+    const root = path.join(FSUtil.normalizePath(Global.Path.data), "plans")
+    expect(Permission.evaluate("external_directory", path.join(root, "*"), plan!.permission).action).toBe("allow")
+    expect(
+      Permission.evaluate("edit", path.relative(instance.worktree, path.join(root, "approved.md")), plan!.permission)
+        .action,
+    ).toBe("allow")
+    expect(
+      Permission.evaluate("edit", path.relative(instance.worktree, path.join(root, "product.ts")), plan!.permission)
+        .action,
+    ).toBe("deny")
   }),
 )
 

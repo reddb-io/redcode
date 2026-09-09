@@ -213,6 +213,34 @@ export const designGoalScenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .get(`${item}/approval/{revisionID}`, "v2.design.approval")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const current = yield* published(ctx)
+        yield* json(ctx, "POST", `${current.item}/approve`, { revision: current.revision.id })
+        yield* json(ctx, "POST", `${current.item}/reopen`)
+        yield* json(ctx, "PATCH", current.item, { name: "Unapproved draft" })
+        return current
+      }),
+    )
+    .at((ctx) => ({
+      path: `${ctx.state.item}/approval/${ctx.state.revision.id}`,
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      const approval = Schema.decodeUnknownSync(Design.Approval)(body)
+      check(
+        approval.version === 1 && approval.approvedAt !== null && approval.variant === null,
+        "approval should retain its recorded time and whole-revision selection",
+      )
+      check(
+        approval.revision.id === ctx.state.revision.id &&
+          approval.revision.designID === ctx.state.document.id &&
+          approval.revision.document.name === ctx.state.document.name,
+        "approval should preserve the owned snapshot after the working draft changes",
+      )
+    }),
+  http.protected
     .post(`${item}/reopen`, "v2.design.reopen")
     .seeded((ctx) =>
       Effect.gen(function* () {

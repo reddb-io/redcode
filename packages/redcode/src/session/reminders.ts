@@ -1,18 +1,18 @@
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DESIGN_INSTRUCTIONS } from "@reddb-io/redcode-core/design/instructions"
 import { DesignStudio } from "@/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignContext } from "@reddb-io/redcode-core/design/context"
+import { SystemContext } from "@reddb-io/redcode-core/system-context/index"
 import path from "path"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Effect } from "effect"
 import { Agent } from "@/agent/agent"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
-import { RuntimeFlags } from "@/effect/runtime-flags"
 import { PartID } from "./schema"
-import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionGoal } from "./goal"
-import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
 
@@ -21,13 +21,10 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   agent: Agent.Info
   session: Session.Info
 }) {
-  const flags = yield* RuntimeFlags.Service
   const fsys = yield* FSUtil.Service
   const sessions = yield* Session.Service
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
   if (!userMessage) return input.messages
-
-  const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
 
   // The goal is re-rendered from the session record on every step, so compaction can drop every
   // earlier copy and the model still reads the objective as it was set — and the turn it is on.
@@ -42,6 +39,36 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text: SessionGoal.render(goal),
       synthetic: true,
     })
+  }
+
+  if (["plan", "build"].includes(input.agent.name)) {
+    const plans = yield* SessionPlan.Service
+    const guidance = SessionPlan.guidance(yield* plans.list(input.session.id))
+    if (guidance)
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        synthetic: true,
+        text: guidance,
+      })
+  }
+
+  if (["design", "plan", "build"].includes(input.agent.name)) {
+    const studio = yield* DesignStudio.Service
+    const context = yield* studio.use(
+      DesignContext.load(input.session.id).pipe(Effect.flatMap(SystemContext.initialize)),
+    )
+    if (context.baseline)
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        synthetic: true,
+        text: context.baseline,
+      })
   }
 
   if (input.agent.name === "design") {
@@ -66,68 +93,38 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     return input.messages
   }
 
-  if (!flags.experimentalPlanMode) {
-    if (input.agent.name === "plan") {
+  if (input.agent.name !== "plan") {
+    if (
+      input.agent.name === "build" &&
+      input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
+    )
       userMessage.parts.push({
         id: PartID.ascending(),
         messageID: userMessage.info.id,
         sessionID: userMessage.info.sessionID,
         type: "text",
-        text: PROMPT_PLAN,
         synthetic: true,
-      })
-    }
-    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
-    if (wasPlan && input.agent.name === "build") {
-      userMessage.parts.push({
-        id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
         text: BUILD_SWITCH,
-        synthetic: true,
       })
-    }
     return input.messages
   }
-
-  if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
-    const ctx = yield* InstanceState.context
-    const plan = Session.plan(input.session, ctx)
-    const exists = yield* fsys.existsSafe(plan)
-    const part = yield* sessions.updatePart({
-      id: PartID.ascending(),
-      messageID: userMessage.info.id,
-      sessionID: userMessage.info.sessionID,
-      type: "text",
-      text: exists
-        ? `${BUILD_SWITCH}\n\nA plan file exists at ${plan}. You should execute on the plan defined within it`
-        : BUILD_SWITCH,
-      synthetic: true,
-    })
-    userMessage.parts.push(part)
-    return input.messages
-  }
-
-  if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
 
   const ctx = yield* InstanceState.context
   const plan = Session.plan(input.session, ctx)
   const exists = yield* fsys.existsSafe(plan)
   if (!exists) yield* fsys.ensureDir(path.dirname(plan)).pipe(Effect.catch(Effect.die))
-  const part = yield* sessions.updatePart({
+  userMessage.parts.push({
     id: PartID.ascending(),
     messageID: userMessage.info.id,
     sessionID: userMessage.info.sessionID,
     type: "text",
+    synthetic: true,
     text: PLAN_MODE.replace("${planInfo}", () =>
       exists
-        ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.`
-        : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`,
+        ? `A plan file already exists at ${plan}. Read it before making incremental edits.`
+        : `Save your complete plan at ${plan} using the write tool before calling plan_exit. A plan written only in chat cannot be approved for execution.`,
     ),
-    synthetic: true,
   })
-  userMessage.parts.push(part)
   return input.messages
 })
 

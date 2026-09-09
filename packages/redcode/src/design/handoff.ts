@@ -17,6 +17,7 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
   sessionID: SessionID,
   id: Design.ID,
   revision: string,
+  variant?: Design.Variant,
 ) {
   const studio = yield* DesignStudio.Service
   const sessions = yield* Session.Service
@@ -38,7 +39,8 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
           code: "conflict",
           message: "The plan's Design section markers are incomplete",
         })
-      const approved = yield* store.approve(id, revision)
+      const approved = yield* store.approve(id, revision, variant)
+      const record = yield* store.approval(id, revision)
       const handoff = yield* Effect.promise(() => Bun.file(approved.plan).text())
       const block = handoff.slice(handoff.indexOf(begin), handoff.indexOf(end) + end.length)
       yield* Effect.promise(async () => {
@@ -75,7 +77,8 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
         sessionID,
         type: "text",
         synthetic: true,
-        text: `Design ${revision} approved. Continue planning from ${plan} within the authorized scope:\n\n${block}`,
+        metadata: { designApproval: { id, name: record.revision.document.name, revision, variant: record.variant } },
+        text: `Design ${record.revision.document.name}, revision ${revision}${variant ? `, variant ${variant.name} (${variant.id})` : ""}, approved. Continue in Plan. Approved decisions and constraints are supplied automatically in context. Details: design_read {"id":"${id}","revision":"${revision}"}. Plan: ${plan}. Open review with /design-review.`,
       })
       yield* sessions.setAgentModel({
         sessionID,

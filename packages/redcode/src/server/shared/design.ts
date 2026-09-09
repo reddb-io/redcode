@@ -206,17 +206,16 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               )
             }
             if (parts[4] === "approve" && request.method === "POST") {
-              const approved = yield* DesignHandoff.approve(
-                sessionID,
-                id,
-                (yield* json(Schema.Struct({ revision: Schema.String }))).revision,
-              )
+              const input = yield* json(Design.Approve)
+              const approved = yield* DesignHandoff.approve(sessionID, id, input.revision, input.variant)
               if (approved.resume) {
                 const feedback = yield* DesignFeedback.Service
                 yield* feedback.resume(sessionID)
               }
               return reply(approved)
             }
+            if (parts[4] === "approval" && parts[5] && request.method === "GET")
+              return reply(yield* store.approval(id, parts[5]))
             if (parts[4] === "feedback" && request.method === "POST") {
               const feedback = yield* DesignFeedback.Service
               return reply(yield* feedback.admit(sessionID, id, yield* json(Design.Feedback)))
