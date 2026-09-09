@@ -3476,3 +3476,128 @@ it.instance(
     }),
   30000,
 )
+
+it.instance(
+  "Plan explains its writable file and recovers from plan_exit before the file exists",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Missing plan" })
+      const instance = yield* InstanceState.context
+      const file = Session.plan(chat, instance)
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "Prepare the implementation" }],
+      })
+      yield* llm.tool("plan_exit", {})
+      yield* llm.text("I will save the plan before asking for approval.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Plan failed to recover", "30 seconds")
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const part = messages
+        .flatMap((item) => item.parts)
+        .find((part) => part.type === "tool" && part.tool === "plan_exit")
+      if (part?.type !== "tool" || part.state.status !== "error")
+        throw new Error("Expected a recoverable plan_exit error")
+      expect(part.state.error).toContain("Plan file not found")
+      expect(part.state.error).toContain(file)
+      const requests = JSON.stringify(yield* llm.inputs)
+      expect(requests).toContain("permitted editing surface")
+      expect(requests).not.toContain("ZERO exceptions")
+      expect((yield* sessions.get(chat.id)).agent).toBe("plan")
+    }),
+  30000,
+)
+
+it.instance(
+  "Plan writes its permitted file, asks for approval and continues in Build with the recorded plan",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const questions = yield* Question.Service
+      const plans = yield* SessionPlan.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Approved plan" })
+      const instance = yield* InstanceState.context
+      const file = Session.plan(chat, instance)
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "Plan an idempotent payment endpoint" }],
+      })
+      const content = "# Plan\nPreserve the transaction key on payment retries. Verify duplicate requests charge once."
+      yield* llm.tool("write", { filePath: file, content })
+      yield* llm.tool("plan_exit", {})
+      yield* llm.text("Implementing the approved payment plan.")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      const question = yield* pollWithTimeout(
+        questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+        "Plan approval never opened",
+        "15 seconds",
+      )
+      expect(question.questions[0].question).toContain(content)
+      expect((yield* plans.list(chat.id))[0].status).toBe("ready")
+      yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
+      yield* awaitWithTimeout(Fiber.join(fiber), "Approved plan never reached Build", "30 seconds")
+      expect((yield* plans.list(chat.id))[0]).toMatchObject({ content, status: "approved" })
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "build" })
+      expect((yield* sessions.get(chat.id)).agent).toBe("build")
+      expect(JSON.stringify((yield* llm.inputs).at(-1))).toContain(content.slice(7))
+    }),
+  30000,
+)
+
+for (const outcome of ["reject", "change", "remove"] as const) {
+  it.instance(
+    `Plan approval ${outcome} keeps the session in Plan and never authorizes changed content`,
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => providerCfg(url))
+        const sessions = yield* Session.Service
+        const prompt = yield* SessionPrompt.Service
+        const questions = yield* Question.Service
+        const plans = yield* SessionPlan.Service
+        const chat = yield* sessions.create({ agent: "plan", title: "Review plan safely" })
+        const instance = yield* InstanceState.context
+        const file = Session.plan(chat, instance)
+        const content = "# Plan\nReview before implementation."
+        yield* Effect.promise(() => Bun.write(file, content))
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "plan",
+          noReply: true,
+          parts: [{ type: "text", text: "Review my implementation plan" }],
+        })
+        yield* llm.tool("plan_exit", {})
+        yield* llm.text("Continuing to refine the plan.")
+        const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+        const question = yield* pollWithTimeout(
+          questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+          "Plan approval never opened",
+          "15 seconds",
+        )
+        if (outcome === "change") yield* Effect.promise(() => Bun.write(file, "UNAPPROVED REPLACEMENT"))
+        if (outcome === "remove") yield* Effect.promise(() => Bun.file(file).delete())
+        yield* questions.reply({ requestID: question.id, answers: [[outcome === "reject" ? "No" : "Yes"]] })
+        yield* awaitWithTimeout(Fiber.join(fiber), "Plan did not recover from the approval outcome", "30 seconds")
+        expect((yield* plans.list(chat.id))[0]).toMatchObject({ content, status: "ready" })
+        expect((yield* sessions.get(chat.id)).agent).toBe("plan")
+        const messages = yield* sessions.messages({ sessionID: chat.id })
+        expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "plan" })
+        const part = messages
+          .flatMap((item) => item.parts)
+          .find((part) => part.type === "tool" && part.tool === "plan_exit")
+        if (part?.type !== "tool" || part.state.status !== "error")
+          throw new Error("Expected plan_exit to reject the transition")
+        if (outcome === "change") expect(part.state.error).toContain("Plan changed during approval")
+        if (outcome === "remove") expect(part.state.error).toContain("Plan file not found")
+      }),
+    30000,
+  )
+}

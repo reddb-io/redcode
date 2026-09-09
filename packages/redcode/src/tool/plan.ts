@@ -32,7 +32,7 @@ export const PlanExitTool = Tool.define(
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(instance.worktree, Session.plan(info, instance))
-          const content = yield* Effect.tryPromise(() => Bun.file(path.resolve(instance.worktree, plan)).text())
+          const content = yield* readPlan(path.resolve(instance.worktree, plan))
           if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
           const revision = createHash("sha256").update(content).digest("hex")
           const ready = yield* plans.record({
@@ -67,7 +67,7 @@ export const PlanExitTool = Tool.define(
           })
 
           if (answers[0]?.[0] !== "Yes") yield* new Question.RejectedError()
-          const current = yield* Effect.tryPromise(() => Bun.file(path.resolve(instance.worktree, plan)).text())
+          const current = yield* readPlan(path.resolve(instance.worktree, plan))
           if (createHash("sha256").update(current).digest("hex") !== revision)
             return yield* Effect.die("Plan changed during approval; review the current revision before executing")
 
@@ -95,6 +95,13 @@ export const PlanExitTool = Tool.define(
             synthetic: true,
           } satisfies SessionV1.TextPart)
 
+          yield* session.setAgentModel({
+            sessionID: ctx.sessionID,
+            agent: "build",
+            model: { id: model.modelID, providerID: model.providerID },
+            time: Date.now(),
+          })
+
           return {
             title: "Switching to build agent",
             output: `User approved plan revision ${revision}. Switch to Build and execute the recorded plan.`,
@@ -104,3 +111,15 @@ export const PlanExitTool = Tool.define(
     }
   }),
 )
+
+function readPlan(file: string) {
+  return Effect.tryPromise({
+    try: () => Bun.file(file).text(),
+    catch: (cause) =>
+      new Error(
+        cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+          ? `Plan file not found at ${file}. Save the complete implementation plan to this exact file using write, then call plan_exit again to request approval. A plan written only in chat is not ready for execution.`
+          : `Cannot read plan file ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+  })
+}

@@ -161,7 +161,7 @@ const layer = Layer.effect(
           plan: {
             name: "plan",
             color: "accent",
-            description: "Plan mode. Disallows all edit tools.",
+            description: "Plan mode. Research and edit the implementation plan; product files remain read-only.",
             options: {},
             permission: Permission.merge(
               defaults.map((rule) => (rule.permission === "*" ? { ...rule, action: "deny" as const } : rule)),

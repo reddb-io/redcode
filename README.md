@@ -276,7 +276,9 @@ an approved plan or work directly on product code.
 **Plan** explores the repository and writes the implementation plan under `.red/code/plans/`.
 `plan_exit` reads and records the reviewed file before a handoff. In the TUI and SessionV2, the approved
 revision and contents survive continuation and compaction. A Plan-only Goal stays in Plan;
-entering Build requires approval or prior explicit execution authorization.
+entering Build requires approval or prior explicit execution authorization. Plan can edit its
+implementation plan file with no experimental flag. If the model only wrote the plan in chat,
+`plan_exit` explains where to save it before requesting approval.
 
 <img src="docs/modes/design.svg" alt="Design mode" width="100%" />
 
