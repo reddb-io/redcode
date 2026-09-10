@@ -153,12 +153,18 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             if (parts[4] === "revision" && parts[6] === "preview" && request.method === "GET") {
               const revision = yield* store.revision(id, parts[5])
               const directory = yield* renderer.directory(revision)
-              const content = yield* Effect.promise(() =>
-                DesignExport.html(
-                  directory,
-                  revision.document.engine === "html" ? revision.document.entry : "index.html",
-                ),
-              )
+              const content = yield* Effect.tryPromise({
+                try: () =>
+                  DesignExport.html(
+                    directory,
+                    revision.document.engine === "html" ? revision.document.entry : "index.html",
+                  ),
+                catch: (error) =>
+                  new Design.Error({
+                    code: "invalid",
+                    message: error instanceof Error ? error.message : String(error),
+                  }),
+              })
               return html(
                 `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${content}<script>(${annotations.toString()})()</script>`,
               )

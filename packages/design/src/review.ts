@@ -22,6 +22,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     creating: false,
     design: undefined as Design.Info | undefined,
     revision: "",
+    failedPreview: "",
     revisionInfo: undefined as Design.Revision | undefined,
     audits: [] as Design.Job[],
     notes: [] as { target: string; text: string }[],
@@ -119,7 +120,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
     </style><header><h1><span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><button id="new"><span data-copy="create">${copy.create}</span></button><button id="refresh"><span data-copy="refresh">${copy.refresh}</span></button></header>
     <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="review">${copy.review}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="review">${copy.review}</span></h2><p id="review-state" class="muted"></p><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
+    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="review">${copy.review}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="review">${copy.review}</span></h2><p id="review-state" class="muted"></p><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
     <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="findings">${copy.findings}</span></summary><div id="findings"></div></details><details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
@@ -157,20 +158,28 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       "compare",
     ])
       element<HTMLButtonElement>(id).disabled ||=
-        !state.revision || (!!state.design?.ended && !["html", "audit", "gif", "compare"].includes(id))
+        !state.revision ||
+        !!state.failedPreview ||
+        (!!state.design?.ended && !["html", "audit", "gif", "compare"].includes(id))
     element<HTMLButtonElement>("approve").disabled ||= state.revision !== state.design?.revision
     element<HTMLButtonElement>("confirm-approve").disabled ||=
-      !state.revision || state.revision !== state.design?.revision || !!state.design?.ended
+      !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
     element<HTMLButtonElement>("send").disabled =
-      state.working || !state.revision || (!!state.design?.ended && !state.pending)
+      state.working || !state.revision || !!state.failedPreview || (!!state.design?.ended && !state.pending)
     input("note").disabled ||= !!state.pending
     input("variant-prompt").disabled ||= !!state.variantPending
     for (const id of ["add", "attachment", "queue", "end"])
       input(id).disabled ||= !!state.pending || !!state.design?.ended
-    for (const id of ["view-single", "view-compare", "peer-variant"]) input(id).disabled ||= state.variants.length < 2
+    for (const id of ["view-single", "view-compare", "peer-variant"])
+      input(id).disabled ||= !!state.failedPreview || state.variants.length < 2
+    element("variants")
+      .querySelectorAll("button")
+      .forEach((button) => {
+        button.disabled ||= !!state.failedPreview
+      })
   }
   const selectVariant = (id: string) => {
-    if (state.working) return
+    if (state.working || state.failedPreview) return
     state.variant = id
     element("target").textContent = ""
     input("selection").value = ""
@@ -223,7 +232,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     )
     input("peer-variant").value = state.peer
     state.comparing &&= items.length > 1
-    element("peer-pane").hidden = !state.comparing
+    element("peer-pane").hidden = !!state.failedPreview || !state.comparing
     element("primary-label").hidden = !state.comparing
     element("primary-label").textContent = items.find((item) => item.id === state.variant)?.name ?? ""
     element("canvas").dataset.comparing = String(state.comparing)
@@ -360,8 +369,21 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const response = await request(`${endpoint}/${state.design!.id}/revision/${revisionID}/preview`, {
       signal: controller.signal,
     })
-    if (!response.ok) throw new Error(copy.failure)
+    if (!response.ok) {
+      const body = await response.json().catch(() => undefined)
+      const message = typeof body?.message === "string" ? body.message : `${copy.failure} (${response.status})`
+      state.failedPreview = revisionID
+      element("preview-error").textContent = `${revision.name}: ${message}`
+      element("preview-error").hidden = false
+      element("primary-pane").hidden = true
+      element("peer-pane").hidden = true
+      controls()
+      throw new Error(message)
+    }
     const html = await response.text()
+    state.failedPreview = ""
+    element("preview-error").hidden = true
+    element("primary-pane").hidden = false
     if (state.revision) save()
     if (state.revision !== revisionID) {
       state.variant = ""
@@ -394,6 +416,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (!current) return
     const changed = state.design?.id !== current.id
     if (changed) {
+      state.failedPreview = ""
+      element("preview-error").hidden = true
+      element("primary-pane").hidden = false
       save()
       state.revision = ""
       state.html = ""
@@ -437,8 +462,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           `<option value="${escape(revision.id)}">${escape(revision.name)} · ${escape(revision.id.slice(-8))}</option>`,
       )
       .join("")
-    if (current.revision && (changed || !state.revision)) await chooseRevision(current.revision)
-    input("revisions").value = state.revision
+    if (current.revision && (changed || !state.revision) && state.failedPreview !== current.revision)
+      await chooseRevision(current.revision)
+    input("revisions").value = state.failedPreview || state.revision
     element("newer").hidden = current.revision === state.revision
     drawSources(revisions.find((revision) => revision.id === state.revision))
     const assets = await api<Design.Asset[]>(`/${current.id}/asset`)
@@ -536,8 +562,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element(id).onclick = () => void run(action, element(id))
   }
   click("refresh", async () => {
+    const failed = state.failedPreview
     await refresh()
-    if (state.revision) await chooseRevision(state.revision)
+    const revision = failed && state.failedPreview === failed ? failed : state.revision
+    if (revision) await chooseRevision(revision)
     status(copy.refreshed, "refreshed", "success")
   })
   click("new", async () => {

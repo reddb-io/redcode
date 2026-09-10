@@ -518,3 +518,44 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   expect((await page.locator("#preview").boundingBox())!.height).toBeGreaterThan(150)
   await page.close()
 }, 60000)
+
+test("preview failures show the resource, stop repeated requests and recover variants after a new revision", async () => {
+  const current = await published("html")
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    '<!doctype html><html><head><link rel="stylesheet" href="missing.css"></head><body><section data-design-variant="a" data-design-label="Variant A"><h1>Variant A</h1></section><section data-design-variant="b" data-design-label="Variant B"><h1>Variant B</h1></section></body></html>',
+  )
+  const broken = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Missing resource",
+  })
+  const page = await browser.newPage()
+  const requests: string[] = []
+  page.on("request", (request) => {
+    if (request.url().endsWith(`/revision/${broken.id}/preview`)) requests.push(request.url())
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.locator("#preview-error:not([hidden])").waitFor()
+    expect(await page.locator("#preview-error").textContent()).toContain("missing.css")
+    expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isDisabled()).toBe(true)
+    // Cross the real five-second refresh interval to ensure it doesn't hammer a broken revision.
+    await page.waitForTimeout(5500)
+    expect(requests).toHaveLength(1)
+    await Bun.write(path.join(current.document.root, "missing.css"), "body{color:navy}")
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Resource restored" })
+    await page.getByRole("button", { name: "Refresh", exact: true }).click()
+    await page.getByRole("tab", { name: "Variant B", exact: true }).click()
+    await page.frameLocator("#preview").getByRole("heading", { name: "Variant B" }).waitFor()
+    expect(await page.locator("#preview-error").isVisible()).toBe(false)
+    expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isEnabled()).toBe(true)
+    await page.locator("#revisions").selectOption(broken.id)
+    await page.locator("#preview-error:not([hidden])").waitFor()
+    await page.getByRole("button", { name: "Refresh", exact: true }).click()
+    await page.locator("#refresh:not([disabled])").waitFor()
+    expect(await page.locator("#revisions").inputValue()).toBe(broken.id)
+    expect(requests).toHaveLength(3)
+    expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isDisabled()).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 60000)

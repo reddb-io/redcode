@@ -201,3 +201,38 @@ test("Design picker groups prototypes by conversation and excludes other workspa
     await server.dispose()
   }
 }, 30000)
+
+// A published HTML revision may contain a missing local resource. Keep the
+// failure actionable at the same HTTP boundary as the fullscreen TUI.
+test("TUI preview reports a missing resource without an opaque internal error", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
+  const request = (route: string, method = "GET", body?: unknown) =>
+    server.handler(
+      new Request(`http://localhost${route}`, {
+        method,
+        headers: { "content-type": "application/json", "x-opencode-directory": tmp.path },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      HttpApiApp.context,
+    )
+  try {
+    const session = await (await request("/session", "POST", { agent: "design" })).json()
+    const root = `/design/session/${session.id}`
+    const document = await (
+      await request(root, "POST", { name: "Missing CSS", engine: "html", journey: "new", kind: "screen" })
+    ).json()
+    await Bun.write(
+      `${document.root}/index.html`,
+      '<!doctype html><html><head><link rel="stylesheet" href="missing.css"></head><body><section data-design-variant="a">Variant A</section></body></html>',
+    )
+    const revision = await (
+      await request(`${root}/${document.id}/revision`, "POST", { name: "Missing stylesheet" })
+    ).json()
+    const preview = await request(`${root}/${document.id}/revision/${revision.id}/preview`)
+    expect(preview.status).toBe(409)
+    expect((await preview.json()).message).toContain("missing.css")
+  } finally {
+    await server.dispose()
+  }
+}, 60000)
