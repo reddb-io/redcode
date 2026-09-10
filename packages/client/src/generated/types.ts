@@ -557,6 +557,12 @@ export type SessionsPlansOutput = {
     readonly revision: string
     readonly path: string
     readonly content: string
+    readonly tasks?: ReadonlyArray<{
+      readonly key: string
+      readonly content: string
+      readonly criterion: string
+      readonly quote: string
+    }>
     readonly status: "ready" | "approved"
     readonly created: number
   }>

@@ -33,7 +33,7 @@ const make = Effect.gen(function* () {
   const candidates = new Map<SessionSchema.ID, Candidate>()
 
   const check = Effect.fn("SessionGoalCompletion.check")(function* (sessionID: SessionSchema.ID) {
-    if (SessionTodo.active(yield* todos.get(sessionID)).length)
+    if (SessionTodo.active(yield* todos.review(sessionID)).length)
       return yield* new ToolFailure({ message: "Resolve unfinished todos before completing the goal" })
     yield* Effect.forEach(yield* designs.list(sessionID), (design) =>
       Effect.gen(function* () {

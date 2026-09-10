@@ -1382,7 +1382,7 @@ const layer = Layer.effect(
               break
             }
             if (!lastAssistant.error && todoContinuations < 7) {
-              const reminder = SessionTodo.reminder(yield* todos.get(sessionID))
+              const reminder = SessionTodo.reminder(yield* todos.review(sessionID).pipe(Effect.orDie))
               const agent = reminder ? yield* agents.get(lastUser.agent) : undefined
               const disabled = agent
                 ? Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
@@ -1411,6 +1411,14 @@ const layer = Layer.effect(
                 continue
               }
             } else if (!lastAssistant.error && SessionTodo.active(yield* todos.get(sessionID)).length > 0) {
+              yield* goals.pause(sessionID, SessionTodo.limitReason)
+              yield* guards.record({
+                sessionID,
+                guard: "steps",
+                action: "stop",
+                subject: "task-continuation",
+                detail: SessionTodo.limitReason,
+              })
               yield* Effect.logWarning("todo continuation limit reached", { "session.id": sessionID })
             }
             // The goal loop: gates, judge, decision. A CONTINUE is one more synthetic user message
@@ -1418,6 +1426,11 @@ const layer = Layer.effect(
             // session stays busy and the surfaces see one turn. Anything else ends the turn here
             // with the goal's status saying why.
             if (!lastAssistant.error) {
+              const blocked = SessionTodo.blocker(yield* todos.get(sessionID))
+              if (blocked) {
+                yield* goals.block(sessionID, blocked)
+                break
+              }
               const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
               const outcome = yield* goals
                 .afterTurn({ session: fresh, lastUser, lastAssistant: lastAssistantMsg })
@@ -1632,7 +1645,7 @@ const layer = Layer.effect(
               ...(!Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
                 "todowrite",
               )
-                ? [SessionTodo.guidance]
+                ? [SessionTodo.guidance, SessionTodo.context(yield* todos.review(sessionID).pipe(Effect.orDie))]
                 : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }

@@ -1374,8 +1374,9 @@ const scenarios: Scenario[] = [
     .seeded((ctx) =>
       Effect.gen(function* () {
         const session = yield* ctx.session({ title: "Todo session" })
-        const todos = [{ content: "cover session todo", status: "pending" as const, priority: "high" as const }]
-        yield* ctx.todos(session.id, todos)
+        const todos = yield* ctx.todos(session.id, [
+          { content: "cover session todo", status: "pending", priority: "high" },
+        ])
         return { session, todos }
       }),
     )
@@ -1384,7 +1385,13 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
     }))
     .json(200, (body, ctx) => {
-      check(stable(body) === stable(ctx.state.todos), "todos should match seeded state")
+      check(stable(body) === stable(ctx.state.todos), "todos should match persisted seeded state")
+      array(body)
+      check(body.length === 1, "todos should preserve the seeded task")
+      object(body[0])
+      check(typeof body[0].id === "string" && body[0].id.startsWith("todo_"), "task should have a stable ID")
+      check(body[0].revision === 1, "new task should start at revision one")
+      check(body[0].status === "in_progress", "first pending task should advance automatically")
     }),
   http.protected
     .get("/session/{sessionID}/goal", "session.goal")

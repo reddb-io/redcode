@@ -3,16 +3,31 @@ export * as SessionProgressContext from "./progress-context"
 import { Effect, Schema } from "effect"
 import { SystemContext } from "../system-context/index"
 import { SessionSchema } from "./schema"
+import { SessionTodo } from "./todo"
 import { SessionGoal } from "./goal"
 import { SessionPlan } from "./plan"
 
 export const load = Effect.fn(function* (sessionID: SessionSchema.ID) {
+  const todos = yield* SessionTodo.Service
+  const tasks = yield* todos.review(sessionID).pipe(Effect.orDie)
   const goals = yield* SessionGoal.Service
   const plans = yield* SessionPlan.Service
   const goal = yield* goals.get(sessionID).pipe(Effect.orDie)
   const plan = SessionPlan.guidance(yield* plans.list(sessionID))
   // Budget/usage changes must not resend the entire approved plan on every provider turn.
   return SystemContext.combine([
+    ...(tasks.length
+      ? [
+          SystemContext.make({
+            key: SystemContext.Key.make("session/tasks"),
+            codec: Schema.toCodecJson(Schema.Array(SessionTodo.Info)),
+            load: Effect.succeed(tasks),
+            baseline: SessionTodo.context,
+            update: (_previous, current) => SessionTodo.context(current),
+            removed: () => "Task state removed; inspect current work before continuing.",
+          }),
+        ]
+      : []),
     ...(goal
       ? [
           SystemContext.make({

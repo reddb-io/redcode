@@ -44,5 +44,7 @@ export const migrations = (
     import("./migration/20260907054831_design_studio"),
     import("./migration/20260908001613_session_goals_plans"),
     import("./migration/20260908015235_goal_review_usage"),
+    import("./migration/20260910022338_task-tracking"),
+    import("./migration/20260910032823_task-evidence"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

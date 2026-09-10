@@ -658,12 +658,24 @@ export type Pty = {
 }
 
 export type Todo = {
+  id?: string
+  revision?: number
+  reason?: string
+  legacyStatus?: string
+  source?: TodoSource
+  criterion?: string
+  evidence?: TodoEvidence
+  scopeChange?: {
+    messageID: string
+    quote: string
+    created?: number
+  }
   /**
    * Brief description of the task
    */
   content: string
   /**
-   * Current status of the task: pending, in_progress, completed, cancelled
+   * pending, in_progress, blocked, completed, cancelled; historical snapshots may contain other values
    */
   status: string
   /**
@@ -3321,6 +3333,23 @@ export type QuestionV2Tool = {
 
 export type QuestionV2Answer = Array<string>
 
+export type TodoSource = {
+  type: "request" | "plan"
+  id: string
+  quote: string
+  created: number
+  key?: string
+}
+
+export type TodoEvidence = {
+  callID: string
+  messageID: string
+  explanation: string
+  tool: string
+  hash: string
+  observed: number
+}
+
 export type ProjectVcs = "git"
 
 export type ProjectIcon = {
@@ -4138,11 +4167,19 @@ export type SessionGoalControl = {
   maxTurns?: number
 }
 
+export type TodoPlanTask = {
+  key: string
+  content: string
+  criterion: string
+  quote: string
+}
+
 export type SessionPlanInfo = {
   sessionID: string
   revision: string
   path: string
   content: string
+  tasks?: Array<TodoPlanTask>
   status: "ready" | "approved"
   created: number
 }
@@ -5007,6 +5044,7 @@ export type DesignDecision = {
 export type DesignScenario = {
   id: string
   name: string
+  variant?: string
   selector: string
   state: "loading" | "empty" | "error" | "populated" | "edge"
   actions: Array<{
@@ -5104,6 +5142,16 @@ export type DesignReceipt = {
   status: "pending" | "admitted"
 }
 
+export type DesignVariant = {
+  id: string
+  name: string
+}
+
+export type DesignApprove = {
+  revision: string
+  variant?: DesignVariant
+}
+
 export type DesignAsset = {
   id: string
   designID: string
@@ -5114,6 +5162,48 @@ export type DesignAsset = {
   source: string
   parent: string
   created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignAuditCheck = {
+  rule: string
+  severity: "error" | "review"
+  selector: string
+  evidence: string
+  fix: string
+  width: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  variant?: string
+  scenario?: string
+}
+
+export type DesignAuditCapture = {
+  file: string
+  width: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  variant?: string
+  scenario?: string
+  fullPage: boolean
+}
+
+export type DesignAudit = {
+  revision: string
+  findings: Array<string>
+  scenarios: Array<string>
+  widths: Array<number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN">
+  checks?: Array<DesignAuditCheck>
+  captures?: Array<DesignAuditCapture>
+}
+
+export type DesignApproval = {
+  version: 0 | 1
+  approvedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  variant: DesignVariant
+  revision: DesignRevision
+  assets: Array<DesignAsset>
+  feedback: Array<DesignFeedback>
+  audits: Array<{
+    id: string
+    result: string
+    audit: DesignAudit
+  }>
 }
 
 export type DesignImportAsset = {
@@ -5136,13 +5226,6 @@ export type DesignRender = {
   repeat?: number
   background?: string
   transparent?: boolean
-}
-
-export type DesignAudit = {
-  revision: string
-  findings: Array<string>
-  scenarios: Array<string>
-  widths: Array<number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN">
 }
 
 export type DesignJob = {
@@ -14266,9 +14349,7 @@ export type ServerDesignDesignFeedbackResponse =
   ServerDesignDesignFeedbackResponses[keyof ServerDesignDesignFeedbackResponses]
 
 export type ServerDesignDesignApproveData = {
-  body: {
-    revision: string
-  }
+  body: DesignApprove
   path: {
     sessionID: string
     designID: string
@@ -14310,6 +14391,48 @@ export type ServerDesignDesignApproveResponses = {
 
 export type ServerDesignDesignApproveResponse =
   ServerDesignDesignApproveResponses[keyof ServerDesignDesignApproveResponses]
+
+export type ServerDesignDesignApprovalData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+    revisionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/design/{designID}/approval/{revisionID}"
+}
+
+export type ServerDesignDesignApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignApprovalError = ServerDesignDesignApprovalErrors[keyof ServerDesignDesignApprovalErrors]
+
+export type ServerDesignDesignApprovalResponses = {
+  /**
+   * Design.Approval
+   */
+  200: DesignApproval
+}
+
+export type ServerDesignDesignApprovalResponse =
+  ServerDesignDesignApprovalResponses[keyof ServerDesignDesignApprovalResponses]
 
 export type ServerDesignDesignAssetsData = {
   body?: never

@@ -1,20 +1,22 @@
+import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { Effect, Schema } from "effect"
-import * as Tool from "./tool"
+import { Tool } from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
 import { Todo } from "../session/todo"
 
 export const Parameters = Schema.Struct({
-  todos: Schema.mutable(Schema.Array(Todo.Info)).annotate({ description: "The updated todo list" }),
+  todos: Schema.mutable(Schema.Array(Todo.Input)).annotate({ description: "The updated todo list" }),
 })
 
 type Metadata = {
-  todos: Todo.Info[]
+  todos: ReadonlyArray<Todo.Info>
 }
 
-export const TodoWriteTool = Tool.define<typeof Parameters, Metadata, Todo.Service>(
+export const TodoWriteTool = Tool.define<typeof Parameters, Metadata, Todo.Service | SessionTaskFacts.Service>(
   "todowrite",
   Effect.gen(function* () {
     const todo = yield* Todo.Service
+    const facts = yield* SessionTaskFacts.Service
 
     return {
       description: DESCRIPTION_WRITE,
@@ -28,16 +30,22 @@ export const TodoWriteTool = Tool.define<typeof Parameters, Metadata, Todo.Servi
             metadata: {},
           })
 
-          yield* todo.update({
-            sessionID: ctx.sessionID,
-            todos: params.todos,
-          })
+          const todos = yield* todo
+            .update({
+              sessionID: ctx.sessionID,
+              todos: params.todos,
+            })
+            .pipe(Effect.orDie)
 
           return {
-            title: `${params.todos.filter((x) => x.status !== "completed").length} todos`,
-            output: JSON.stringify(params.todos, null, 2),
+            title: `${todos.filter((x) => x.status !== "completed" && x.status !== "cancelled").length} todos`,
+            output: JSON.stringify(
+              params.todos.length ? todos : { todos, availableEvidence: yield* facts.available(ctx.sessionID) },
+              null,
+              2,
+            ),
             metadata: {
-              todos: params.todos,
+              todos,
             },
           }
         }),

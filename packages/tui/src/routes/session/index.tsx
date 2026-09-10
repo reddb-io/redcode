@@ -2766,13 +2766,15 @@ function ApplyPatch(props: ToolProps) {
 }
 
 function TodoWrite(props: ToolProps) {
-  const todos = createMemo(() => parseTodos(props.input.todos))
+  const todos = createMemo(() => parseTodos(props.metadata.todos ?? props.input.todos))
   return (
     <Switch>
       <Match when={parseTodos(props.metadata.todos).length}>
         <BlockTool title="# Todos" part={props.part}>
           <box>
-            <For each={todos()}>{(todo) => <TodoItem status={todo.status} content={todo.content} />}</For>
+            <For each={todos()}>
+              {(todo) => <TodoItem status={todo.status} content={todo.content} reason={todo.reason} />}
+            </For>
           </box>
         </BlockTool>
       </Match>
@@ -2919,7 +2921,8 @@ export function parseTodos(value: unknown) {
     const todo = recordValue(item)
     const status = stringValue(todo?.status)
     const content = stringValue(todo?.content)
-    return status && content ? [{ status, content }] : []
+    const reason = stringValue(todo?.reason)
+    return status && content ? [{ status, content, ...(reason ? { reason } : {}) }] : []
   })
 }
 

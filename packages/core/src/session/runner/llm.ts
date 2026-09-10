@@ -31,6 +31,7 @@ import { SessionContextEpoch } from "../context-epoch"
 import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
 import { SessionHistory } from "../history"
+import { SessionGuardTripTable } from "../sql"
 import { SessionInput } from "../input"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
@@ -198,6 +199,7 @@ const layer = Layer.effect(
           SessionProgressContext.load(sessionID).pipe(
             Effect.provideService(SessionGoal.Service, goals),
             Effect.provideService(SessionPlan.Service, plans),
+            Effect.provideService(SessionTodo.Service, todos),
           ),
         ],
         {
@@ -454,6 +456,7 @@ const layer = Layer.effect(
           }
           if (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
             return yield* Effect.failCause(settled.cause)
+          yield* todos.review(sessionID).pipe(Effect.orDie)
           if (settled._tag === "Success" && !publisher.hasProviderError()) {
             const failure = yield* restore(completion.settle(sessionID)).pipe(
               Effect.match({
@@ -575,7 +578,7 @@ const layer = Layer.effect(
             promotion = "steer"
             if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
             if (!needsContinuation && result.todoEligible) {
-              const reminder = SessionTodo.reminder(yield* todos.get(input.sessionID))
+              const reminder = SessionTodo.reminder(yield* todos.review(input.sessionID).pipe(Effect.orDie))
               if (reminder && todoContinuations < 7) {
                 yield* events.publish(SessionEvent.Synthetic, {
                   sessionID: input.sessionID,
@@ -586,6 +589,31 @@ const layer = Layer.effect(
                 todoContinuations++
                 needsContinuation = true
               } else if (reminder) {
+                const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
+                if (goal?.status === "active")
+                  yield* goals
+                    .save(goal, { ...goal, status: "paused", reason: SessionTodo.limitReason })
+                    .pipe(Effect.orDie)
+                yield* db
+                  .insert(SessionGuardTripTable)
+                  .values({
+                    id: crypto.randomUUID(),
+                    session_id: input.sessionID,
+                    guard: "steps",
+                    action: "stop",
+                    subject: "task-continuation",
+                    detail: SessionTodo.limitReason,
+                  })
+                  .run()
+                  .pipe(Effect.orDie)
+                yield* events.publish(SessionEvent.Guard.Tripped, {
+                  sessionID: input.sessionID,
+                  timestamp: yield* DateTime.now,
+                  guard: "steps",
+                  action: "stop",
+                  subject: "task-continuation",
+                  detail: SessionTodo.limitReason,
+                })
                 yield* Effect.logWarning("Todo continuation limit reached", {
                   sessionID: input.sessionID,
                   attempts: todoContinuations,
@@ -594,7 +622,10 @@ const layer = Layer.effect(
             }
             if (!needsContinuation) {
               const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
-              if (goal?.status === "active") {
+              const blocked = SessionTodo.blocker(yield* todos.get(input.sessionID))
+              if (goal?.status === "active" && blocked)
+                yield* goals.save(goal, { ...goal, status: "blocked", reason: blocked }).pipe(Effect.orDie)
+              if (goal?.status === "active" && !blocked) {
                 const documents = yield* designs.list(input.sessionID).pipe(Effect.orDie)
                 const jobs = yield* Effect.forEach(documents, (document) =>
                   renderer.jobs(document.id).pipe(Effect.orDie),
