@@ -125,6 +125,7 @@ const layer = Layer.effect(
     const plans = yield* SessionPlan.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({
+      latestUser: (sessionID) => SessionHistory.latestUser(db, sessionID).pipe(Effect.orDie),
       events,
       llm,
       config: yield* config.entries(),

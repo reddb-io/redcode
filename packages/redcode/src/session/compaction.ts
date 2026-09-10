@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionGoal } from "./goal"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
@@ -24,7 +25,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
-import { buildPrompt } from "@reddb-io/redcode-core/session/compaction"
+import { buildPrompt, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
 import { SessionCompactionEvent } from "@reddb-io/redcode-schema/session-compaction-event"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
@@ -203,6 +204,7 @@ export const use = serviceUse(Service)
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    const database = yield* Database.Service
     const config = yield* Config.Service
     const guards = yield* SessionGuardLog.Service
     const session = yield* Session.Service
@@ -391,6 +393,16 @@ const layer = Layer.effect(
         cfg,
         model,
       })
+      const latestRequest = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).findLast(
+        (message) =>
+          message.info.role === "user" &&
+          !message.parts.some((part) => part.type === "compaction") &&
+          !isReplay(message.parts),
+      )
+      const preservedRequest =
+        !replay && latestRequest && (!selected.tail_start_id || latestRequest.info.id < selected.tail_start_id)
+          ? `\n\n<latest-user-request>\n${serialize(latestRequest)}\n</latest-user-request>`
+          : ""
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
@@ -464,7 +476,7 @@ const layer = Layer.effect(
           agent,
           sessionID: input.sessionID,
           tools: {},
-          system: [],
+          system: [systemPrompt],
           messages: [
             {
               role: "user",
@@ -521,12 +533,42 @@ const layer = Layer.effect(
         return "stop"
       }
 
+      if (processor.message.error) return "stop"
+      const checkpoint = yield* MessageV2.get({ sessionID: input.sessionID, messageID: msg.id }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )
+      const error = summaryError({
+        summary: summaryText(checkpoint) ?? "",
+        retained: preservedRequest,
+        source: [previousSummary, conversation].filter(Boolean).join("\n\n"),
+        finish: processor.message.finish,
+      })
+      if (error) {
+        processor.message.error = new SessionV1.ContextOverflowError({ message: error }).toObject()
+        processor.message.finish = "error"
+        yield* session.updateMessage(processor.message)
+        return "stop"
+      }
+      if (preservedRequest) {
+        yield* session.updatePart({
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: preservedRequest,
+        })
+      }
+
       if (compactionPart && selected.tail_start_id && compactionPart.tail_start_id !== selected.tail_start_id) {
         yield* session.updatePart({
           ...compactionPart,
           tail_start_id: selected.tail_start_id,
         })
       }
+      // The summary becomes a history boundary only after validation and tail persistence.
+      yield* session.updateMessage(processor.message)
 
       if (result === "continue" && input.auto) {
         if (replay) {
@@ -666,6 +708,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    Database.node,
     SessionGuardLog.node,
     Config.node,
     Session.node,

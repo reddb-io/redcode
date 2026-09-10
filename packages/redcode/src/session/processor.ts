@@ -473,7 +473,7 @@ const layer = Layer.effect(
               usage: value.usage ?? new Usage({}),
               metadata: value.providerMetadata,
             })
-            ctx.assistantMessage.finish = value.reason
+            if (!ctx.assistantMessage.summary) ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
             yield* session.updatePart({
@@ -574,6 +574,7 @@ const layer = Layer.effect(
             return
 
           case "finish":
+            if (ctx.assistantMessage.summary) ctx.assistantMessage.finish = value.reason
             return
         }
       })
@@ -635,7 +636,11 @@ const layer = Layer.effect(
         }
         ctx.toolcalls = {}
         ctx.assistantMessage.time.completed = Date.now()
-        yield* session.updateMessage(ctx.assistantMessage)
+        // Compaction owns validation and publication of a successful history boundary.
+        yield* session.updateMessage({
+          ...ctx.assistantMessage,
+          finish: ctx.assistantMessage.summary && !ctx.assistantMessage.error ? undefined : ctx.assistantMessage.finish,
+        })
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
