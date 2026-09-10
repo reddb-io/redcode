@@ -9,6 +9,7 @@ import type {
 } from "@agentclientprotocol/sdk"
 import { Duration, Effect, Fiber } from "effect"
 import { cliIt } from "../../lib/cli-process"
+import { pollWithTimeout } from "../../lib/effect"
 import { expectOk, selectConfigOption } from "./acp-test-client"
 import { createAcpClient, initialize, newSession, verifierConfig } from "./helpers"
 
@@ -83,7 +84,13 @@ describe("opencode acp lifecycle subprocess", () => {
             prompt: [{ type: "text", text: "keep working" }],
           })
           .pipe(Effect.forkChild)
-        yield* llm.wait(1)
+        // Title generation can be the first provider call. Wait until the prompt consumes
+        // the queued hanging response, or the next prompt may inherit it after cancellation.
+        yield* pollWithTimeout(
+          llm.pending.pipe(Effect.map((pending) => (pending === 0 ? true : undefined))),
+          "prompt provider never consumed the queued response",
+          "15 seconds",
+        )
         yield* acp.notify("session/cancel", { sessionId: session.sessionId })
         const cancelled = expectOk(yield* Fiber.join(running))
 
