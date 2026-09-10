@@ -24,6 +24,15 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`session_monitor\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`owner\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_session_monitor_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`session_goal_review\` (
           \`id\` text PRIMARY KEY,
           \`session_id\` text NOT NULL,
@@ -336,6 +345,7 @@ export default {
           CONSTRAINT \`fk_session_share_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
         );
       `)
+      yield* tx.run(`CREATE INDEX \`session_monitor_session_idx\` ON \`session_monitor\` (\`session_id\`);`)
       yield* tx.run(
         `CREATE INDEX \`session_goal_review_session_goal_idx\` ON \`session_goal_review\` (\`session_id\`,\`goal_id\`);`,
       )

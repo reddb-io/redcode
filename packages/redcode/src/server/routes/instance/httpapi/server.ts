@@ -12,6 +12,7 @@ import { Account } from "@/account/account"
 import { Agent } from "@/agent/agent"
 import { Auth } from "@/auth"
 import { BackgroundJob } from "@/background/job"
+import { MonitorRuntime } from "@/background/monitor"
 import { Command } from "@/command"
 import { Config } from "@/config/config"
 import { Workspace } from "@/control-plane/workspace"
@@ -261,6 +262,7 @@ const app = LayerNode.group([
   SessionProjector.node,
   SessionStatus.node,
   BackgroundJob.node,
+  MonitorRuntime.node,
   RuntimeFlags.node,
   EventV2Bridge.node,
   SessionRunState.node,

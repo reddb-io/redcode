@@ -75,6 +75,7 @@ import {
 } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
+import { MonitorRuntime } from "@/background/monitor"
 import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -181,14 +182,39 @@ const layer = Layer.effect(
     const hooks = yield* OperationHookBridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
     const { db } = database
-    const ops = Effect.fn("SessionPrompt.ops")(function* () {
+    const ops = Effect.fn("SessionPrompt.ops")(function* (sessionID: SessionID) {
+      const generation = yield* state.generation(sessionID)
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
         resolvePromptParts: (template: string) => resolvePromptParts(template),
         prompt: (input: PromptInput) => prompt(input).pipe(Effect.catch(Effect.die)),
+        notify: (input: PromptInput) =>
+          Effect.gen(function* () {
+            if (input.sessionID !== sessionID || (yield* state.generation(sessionID)) !== generation) return false
+            yield* prompt({ ...input, noReply: true }).pipe(Effect.orDie)
+            yield* Effect.gen(function* () {
+              if ((yield* state.generation(input.sessionID)) !== generation) return
+              yield* loop({ sessionID: input.sessionID })
+              if ((yield* state.generation(input.sessionID)) !== generation) return
+              // Joining a drain at its final boundary can miss the newly admitted message.
+              // Recheck after it becomes idle; an explicit stop invalidates this advisory wake.
+              const pending = yield* sessions
+                .findMessage(input.sessionID, (message) => message.info.role === "user")
+                .pipe(Effect.orDie)
+              const answer = yield* lastAssistant(input.sessionID)
+              if (
+                Option.isSome(pending) &&
+                answer.info.role === "assistant" &&
+                answer.info.parentID !== pending.value.info.id
+              )
+                yield* loop({ sessionID: input.sessionID })
+            }).pipe(Effect.forkIn(scope))
+            return true
+          }),
       } satisfies TaskPromptOps
     })
 
@@ -330,7 +356,7 @@ const layer = Layer.effect(
     }) {
       const { task, model, lastUser, sessionID, session, msgs } = input
       const ctx = yield* InstanceState.context
-      const promptOps = yield* ops()
+      const promptOps = yield* ops(sessionID)
       const { task: taskTool } = yield* registry.named()
       const taskModel = task.model ? yield* getModel(task.model.providerID, task.model.modelID, sessionID) : model
       const assistantMessage: SessionV1.Assistant = yield* sessions.updateMessage({
@@ -1381,6 +1407,9 @@ const layer = Layer.effect(
               })
               break
             }
+            // Waiting is a scheduler boundary: neither the todo nudger nor the goal judge
+            // should spend provider calls while an external observation is outstanding.
+            if ((yield* monitors.list(sessionID)).some((monitor) => monitor.status === "running")) break
             if (!lastAssistant.error && todoContinuations < 7) {
               const reminder = SessionTodo.reminder(yield* todos.review(sessionID).pipe(Effect.orDie))
               const agent = reminder ? yield* agents.get(lastUser.agent) : undefined
@@ -1594,7 +1623,7 @@ const layer = Layer.effect(
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
             const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
-            const promptOps = yield* ops()
+            const promptOps = yield* ops(sessionID)
 
             if (step === 1)
               yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
@@ -2050,6 +2079,7 @@ export const node = LayerNode.make({
     OperationHookBridge.node,
     RuntimeFlags.node,
     Database.node,
+    MonitorRuntime.node,
     Todo.node,
   ],
 })

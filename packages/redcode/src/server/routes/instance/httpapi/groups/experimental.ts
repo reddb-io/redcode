@@ -18,6 +18,7 @@ import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
 
 const ConsoleStateResponse = Schema.Struct({
   consoleManagedProviders: Schema.mutable(Schema.Array(Schema.String)),
@@ -243,6 +244,23 @@ export const ExperimentalApi = HttpApi.make("experimental")
             summary: "Background subagents",
             description:
               "Detach any synchronous subagents currently blocking the session and continue them in the background.",
+          }),
+        ),
+        HttpApiEndpoint.get("monitors", "/experimental/session/:sessionID/monitors", {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: Schema.Array(Monitor.Info),
+        }).annotateMerge(
+          OpenApi.annotations({ identifier: "experimental.monitors.list", summary: "List session monitors" }),
+        ),
+        HttpApiEndpoint.post("cancelMonitor", "/experimental/session/:sessionID/monitors/:monitorID/cancel", {
+          params: { sessionID: SessionID, monitorID: Schema.String },
+          query: WorkspaceRoutingQuery,
+          success: Schema.NullOr(Monitor.Info),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.monitors.cancel",
+            summary: "Stop local monitoring without cancelling the external job",
           }),
         ),
         HttpApiEndpoint.get("resource", ExperimentalPaths.resource, {

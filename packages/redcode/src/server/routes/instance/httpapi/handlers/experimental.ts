@@ -1,6 +1,7 @@
 import { Account } from "@/account/account"
 import { Agent } from "@/agent/agent"
 import { BackgroundJob } from "@/background/job"
+import { MonitorRuntime } from "@/background/monitor"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -34,6 +35,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const worktreeSvc = yield* Worktree.Service
     const sessions = yield* Session.Service
     const background = yield* BackgroundJob.Service
+    const monitors = yield* MonitorRuntime.Service
     const flags = yield* RuntimeFlags.Service
 
     const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
@@ -176,6 +178,10 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     })
 
     return handlers
+      .handle("monitors", (ctx) => monitors.list(ctx.params.sessionID))
+      .handle("cancelMonitor", (ctx) =>
+        monitors.cancel(ctx.params.sessionID, ctx.params.monitorID).pipe(Effect.map((info) => info ?? null)),
+      )
       .handle("capabilities", capabilities)
       .handle("console", getConsole)
       .handle("consoleOrgs", listConsoleOrgs)

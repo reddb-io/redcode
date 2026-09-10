@@ -4033,6 +4033,39 @@ export type ConfigV2ExperimentalPolicy = {
   resource: string
 }
 
+export type MonitorOptions = {
+  mode: "once" | "poll"
+  wait_ms?: number
+  deadline_ms?: number
+  interval_ms?: number
+  success_contains?: string
+  failure_contains?: string
+}
+
+export type MonitorEvidence = {
+  exit: number
+  output: string
+  truncated: boolean
+  timedOut?: boolean
+  outputPath?: string
+}
+
+export type MonitorInfo = {
+  id: string
+  sessionID: string
+  originMessageID?: string
+  command: string
+  workdir: string
+  options: MonitorOptions
+  status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted"
+  created: number
+  updated: number
+  attempts: number
+  evidence?: MonitorEvidence
+  error?: string
+  delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+}
+
 export type ProjectDirectories = Array<{
   directory: string
   strategy?: string
@@ -8364,6 +8397,69 @@ export type ExperimentalSessionBackgroundResponses = {
 
 export type ExperimentalSessionBackgroundResponse =
   ExperimentalSessionBackgroundResponses[keyof ExperimentalSessionBackgroundResponses]
+
+export type ExperimentalMonitorsListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/session/{sessionID}/monitors"
+}
+
+export type ExperimentalMonitorsListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalMonitorsListError = ExperimentalMonitorsListErrors[keyof ExperimentalMonitorsListErrors]
+
+export type ExperimentalMonitorsListResponses = {
+  /**
+   * Success
+   */
+  200: Array<MonitorInfo>
+}
+
+export type ExperimentalMonitorsListResponse =
+  ExperimentalMonitorsListResponses[keyof ExperimentalMonitorsListResponses]
+
+export type ExperimentalMonitorsCancelData = {
+  body?: never
+  path: {
+    sessionID: string
+    monitorID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/session/{sessionID}/monitors/{monitorID}/cancel"
+}
+
+export type ExperimentalMonitorsCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalMonitorsCancelError = ExperimentalMonitorsCancelErrors[keyof ExperimentalMonitorsCancelErrors]
+
+export type ExperimentalMonitorsCancelResponses = {
+  /**
+   * Success
+   */
+  200: MonitorInfo
+}
+
+export type ExperimentalMonitorsCancelResponse =
+  ExperimentalMonitorsCancelResponses[keyof ExperimentalMonitorsCancelResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

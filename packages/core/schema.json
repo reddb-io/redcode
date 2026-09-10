@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "db67a51e-ebd4-44c4-8a46-cdf5ee52b29e",
+  "id": "b1dd16b4-0f83-4e53-ac87-21bfdefea23b",
   "prevIds": [
-    "29645902-3159-4e70-9f31-548def0cccf9"
+    "db67a51e-ebd4-44c4-8a46-cdf5ee52b29e"
   ],
   "ddl": [
     {
@@ -12,6 +12,10 @@
     },
     {
       "name": "data_migration",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_monitor",
       "entityType": "tables"
     },
     {
@@ -221,6 +225,46 @@
       "name": "time_completed",
       "entityType": "columns",
       "table": "data_migration"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_monitor"
     },
     {
       "type": "text",
@@ -2048,6 +2092,21 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
+      "name": "fk_session_monitor_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "session_monitor"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
       "name": "fk_session_goal_review_session_id_session_id_fk",
       "entityType": "fks",
       "table": "session_goal_review"
@@ -2411,6 +2470,15 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "session_monitor_pk",
+      "table": "session_monitor",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "session_goal_review_pk",
       "table": "session_goal_review",
       "entityType": "pks"
@@ -2603,6 +2671,20 @@
       "name": "session_share_pk",
       "table": "session_share",
       "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_monitor_session_idx",
+      "entityType": "indexes",
+      "table": "session_monitor"
     },
     {
       "columns": [
