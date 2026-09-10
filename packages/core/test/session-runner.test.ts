@@ -1341,12 +1341,16 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("summarizes an oversized newest message without retaining a fragment", () =>
+  it.effect("preserves the complete latest user request beyond the recent token budget", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       response = fragmentFixture("text", "text-earlier", ["Earlier answer"]).completeEvents
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Earlier question" }), resume: false })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Earlier question ".repeat(180) }),
+        resume: false,
+      })
       yield* session.resume(sessionID)
 
       const oversized = `OVERSIZED_BOUNDARY ${"x".repeat(4_500)} OVERSIZED_END`
@@ -1362,11 +1366,9 @@ describe("SessionRunnerLLM", () => {
       expect(requests).toHaveLength(2)
       const summary = userTexts(requests[0])[0]
       const continuation = userTexts(requests[1])[0]
-      expect(summary.match(/OVERSIZED_BOUNDARY/g)).toHaveLength(1)
-      expect(summary).toContain(oversized)
-      expect(continuation).not.toContain("OVERSIZED_BOUNDARY")
-      expect(continuation).not.toContain("OVERSIZED_END")
-      expect(continuation).toContain("<recent-context>\n\n</recent-context>")
+      expect(summary).not.toContain("OVERSIZED_BOUNDARY")
+      expect(continuation).toContain(oversized)
+      expect(continuation.match(/OVERSIZED_BOUNDARY/g)).toHaveLength(1)
     }),
   )
 
@@ -1467,6 +1469,92 @@ describe("SessionRunnerLLM", () => {
         { type: "user", text: "Continue" },
         { type: "assistant", finish: "error", error: { message: "prompt too long" } },
       ])
+    }),
+  )
+
+  for (const invalid of ["unfinished", "length", "growing", "empty"] as const) {
+    it.effect(`rejects ${invalid} compaction without replacing durable history`, () =>
+      Effect.gen(function* () {
+        const session = yield* setupOverflowRecovery
+        const text =
+          invalid === "empty" ? " " : invalid === "growing" ? "summary ".repeat(10_000) : "Partial checkpoint"
+        responses = [
+          [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
+          [
+            LLMEvent.textDelta({ id: "summary", text }),
+            ...(invalid === "unfinished"
+              ? []
+              : [LLMEvent.finish({ reason: invalid === "length" ? "length" : "stop" })]),
+          ],
+        ]
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
+        yield* session.resume(sessionID)
+
+        expect(requests).toHaveLength(2)
+        const context = yield* session.context(sessionID)
+        expect(context.some((message) => message.type === "compaction")).toBe(false)
+        expect(context).toContainEqual(expect.objectContaining({ type: "user", text: "Keep this exact request" }))
+        expect(context.at(-1)).toMatchObject({ type: "assistant", finish: "error" })
+      }),
+    )
+  }
+
+  it.effect("restores the original request across repeated compactions without a new user turn", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const request = "Do not publish. Preserve my unfinished parser tests."
+      responses = [
+        [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
+        fragmentFixture("text", "summary-first", ["Earlier work completed"]).completeEvents,
+        fragmentFixture("text", "work-first", ["Investigation result ".repeat(300)]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: request }), resume: false })
+      yield* session.resume(sessionID)
+      currentModel = compactModel
+      for (const index of [1, 2, 3]) {
+        requests.length = 0
+        responses = [
+          fragmentFixture("text", `summary-${index}`, [`Checkpoint ${index}`]).completeEvents,
+          fragmentFixture("text", `work-${index}`, ["Investigation result ".repeat(300)]).completeEvents,
+        ]
+        yield* session.resume(sessionID)
+        expect(requests).toHaveLength(2)
+        expect(userTexts(requests[1])[0]).toContain(request)
+        expect(userTexts(requests[1])[0]).toContain(`<recent-context>\n[User]: ${request}`)
+        const context = yield* session.context(sessionID)
+        expect(context[0]).toMatchObject({ type: "compaction", recent: expect.stringContaining(request) })
+      }
+    }),
+  )
+
+  it.effect("preserves a new input admitted while the checkpoint is being generated", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      responses = [
+        [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
+        fragmentFixture("text", "summary", ["Previous investigation completed"]).completeEvents,
+        fragmentFixture("text", "continued", ["Continued"]).completeEvents,
+        fragmentFixture("text", "corrected", ["Correction applied"]).completeEvents,
+      ]
+      const firstGate = yield* Deferred.make<void>()
+      const summaryGate = yield* Deferred.make<void>()
+      streamGate = firstGate
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue the investigation" }), resume: false })
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      while (requests.length < 1) yield* Effect.yieldNow
+      streamGate = summaryGate
+      yield* Deferred.succeed(firstGate, undefined)
+      while (requests.length < 2) yield* Effect.yieldNow
+      streamGate = undefined
+      const correction = "Do not publish. Validate the parser first."
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: correction }), resume: false })
+      yield* Deferred.succeed(summaryGate, undefined)
+      yield* Fiber.join(run)
+
+      const context = yield* session.context(sessionID)
+      expect(context.filter((message) => message.type === "user" && message.text === correction)).toHaveLength(1)
+      expect(requests.some((request) => userTexts(request).includes(correction))).toBe(true)
+      expect(context.some((message) => message.type === "compaction")).toBe(true)
     }),
   )
 

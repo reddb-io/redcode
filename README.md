@@ -593,6 +593,26 @@ Cancelling tracked work requires a reason and an exact quote from a later user i
 removing it from scope. Tasks track execution; [Goal](#goal) adds its separate criteria,
 gates and completion review.
 
+## Context compaction
+
+When a conversation approaches the model's context limit, Redcode summarizes older history
+and keeps recent context for continuation. Both runtimes preserve the latest original user
+request as serialized text outside the model-generated summary, even across repeated
+compactions. Attachment references are retained; this does not preserve image or file bytes
+in the model context.
+
+A new checkpoint becomes active only after the summary stream finishes successfully, the
+summary is nonempty, and the estimated replacement context is smaller than its source.
+An interrupted, truncated, empty or growing summary leaves the previous history active.
+Messages received during summarization remain available for continuation.
+
+The shared summary instructions preserve applicable constraints and approval scope, give
+later corrections precedence, and distinguish verified work from pending work. Current
+Task and Plan state is restored from storage, so a summary cannot mark a task complete.
+These structural checks do not prove that the model preserved every older detail correctly.
+Compaction still runs at a blocking execution boundary; background preparation is not
+implemented yet.
+
 ## Goal
 
 <img src="docs/modes/goal.svg" alt="Goal" width="100%" />
