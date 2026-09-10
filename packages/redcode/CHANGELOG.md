@@ -1,5 +1,12 @@
 # opencode
 
+## 0.25.2
+
+### Patch Changes
+
+- 40204c7: Prepare context summaries in the background near the compaction threshold in both runtimes. Reuse validated candidates between provider turns, retain messages added during preparation, discard stale candidates, and cancel auxiliary work when execution ends. Add `compaction.background` to disable preparation independently of automatic compaction.
+- 99c8158: Preserve the latest original user request across repeated context compactions in both runtimes. Reject unfinished, truncated, empty or non-shrinking summaries before they replace active history, and keep legacy history visible until checkpoint validation completes. Share summary instructions that preserve user constraints, approval scope and verified work state.
+
 ## 0.25.1
 
 ### Patch Changes
