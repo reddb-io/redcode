@@ -836,6 +836,71 @@ describe("session.compaction.prune", () => {
 })
 
 describe("session.compaction.process", () => {
+  for (const scenario of ["reuse", "rewrite", "cancel"] as const) {
+    itCompaction.instance(`handles ${scenario} of a prepared legacy summary without losing new messages`, () => {
+      const stub = llm()
+      const calls: string[] = []
+      return Effect.gen(function* () {
+        const ready = yield* Deferred.make<void>()
+        const finish = yield* Deferred.make<void>()
+        stub.push((input) =>
+          Stream.unwrap(
+            Deferred.succeed(ready, undefined).pipe(
+              Effect.andThen(Deferred.await(finish)),
+              Effect.as(reply("Investigated the parser", () => calls.push("summary"))(input)),
+            ),
+          ),
+        )
+        const ssn = yield* SessionNs.Service
+        const compaction = yield* SessionCompaction.Service
+        const session = yield* ssn.create({})
+        const original = yield* createUserMessage(session.id, "Earlier findings. ".repeat(1000))
+        const request = yield* createUserMessage(session.id, "Do not publish; preserve the parser tests.")
+        const messages = yield* ssn.messages({ sessionID: session.id })
+        yield* compaction.prepare({
+          parentID: request.id,
+          messages,
+          sessionID: session.id,
+          auto: true,
+          model: defaultProvider.model,
+          tokens: { input: 65_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        yield* Deferred.await(ready)
+        const during = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+        expect(during.some((message) => message.info.id === original.id)).toBe(true)
+        expect(during.some((message) => message.info.role === "assistant" && message.info.summary)).toBe(false)
+        if (scenario === "rewrite") {
+          const part = messages[0].parts.find((part) => part.type === "text")!
+          yield* ssn.updatePart({ ...part, text: "Updated earlier findings. ".repeat(1000) })
+        }
+        if (scenario === "cancel") yield* compaction.discard(session.id)
+        if (scenario !== "reuse") stub.push(reply("Fresh checkpoint", () => calls.push("fresh summary")))
+        const correction = yield* createUserMessage(session.id, "Only update the tests now.")
+        yield* compaction.create({ sessionID: session.id, agent: "build", model: ref, auto: true })
+        const current = yield* ssn.messages({ sessionID: session.id })
+        const run = yield* compaction
+          .process({ parentID: current.at(-1)!.info.id, messages: current, sessionID: session.id, auto: true })
+          .pipe(Effect.forkChild)
+        yield* Deferred.succeed(finish, undefined)
+        expect(yield* Fiber.join(run)).toBe("continue")
+        expect(calls).toHaveLength(scenario === "reuse" ? 1 : 2)
+        const after = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+        expect(after.some((message) => message.info.id === original.id)).toBe(false)
+        const text = after
+          .flatMap((message) => message.parts.filter((part) => part.type === "text").map((part) => part.text))
+          .join("\n")
+        expect(text).toContain("Only update the tests now.")
+        if (scenario === "reuse") {
+          expect(after.filter((message) => message.info.id === correction.id)).toHaveLength(1)
+          expect(text).toContain("Do not publish; preserve the parser tests.")
+        }
+        expect(after.find((message) => message.info.role === "assistant" && message.info.summary)?.info).toMatchObject({
+          tokens: { input: 1, output: 1 },
+        })
+      }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
+    })
+  }
+
   itCompaction.instance("keeps the old history visible until the summary stream finishes", () =>
     Effect.gen(function* () {
       const stub = llm()

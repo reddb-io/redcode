@@ -610,8 +610,24 @@ The shared summary instructions preserve applicable constraints and approval sco
 later corrections precedence, and distinguish verified work from pending work. Current
 Task and Plan state is restored from storage, so a summary cannot mark a task complete.
 These structural checks do not prove that the model preserved every older detail correctly.
-Compaction still runs at a blocking execution boundary; background preparation is not
-implemented yet.
+Both runtimes can prepare a summary while the next provider turn runs. Preparation starts
+within 10% of the existing compaction threshold, capped at an 8,000-token lead. Each active
+session keeps at most one candidate. Applying it still happens between provider turns,
+after checking the source history and model; messages added since preparation are retained.
+Rewritten history or changed model settings invalidate the candidate. If it is unsuitable,
+Redcode falls back to ordinary compaction.
+
+Preparation stops when the session's current execution ends or is interrupted. The Core
+limits each preparation to two minutes; the legacy runtime follows its existing auxiliary
+timeout (ten minutes by default). This overlaps work to reduce waiting; it does not make the
+summary model faster. A discarded candidate can still incur provider usage. To disable
+preparation while keeping automatic compaction:
+
+```json
+{
+  "compaction": { "auto": true, "background": false }
+}
+```
 
 ## Goal
 

@@ -8,7 +8,7 @@ import {
   isContextOverflowFailure,
   type ProviderErrorEvent,
 } from "@reddb-io/redcode-llm"
-import { Cause, DateTime, Effect, FiberSet, Layer, Option, Semaphore, Stream } from "effect"
+import { Cause, DateTime, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
 import { Config } from "../../config"
 import { Database } from "../../database/database"
@@ -125,7 +125,8 @@ const layer = Layer.effect(
     const plans = yield* SessionPlan.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({
-      latestUser: (sessionID) => SessionHistory.latestUser(db, sessionID).pipe(Effect.orDie),
+      scope: yield* Scope.Scope,
+      latestUser: (sessionID, beforeSeq) => SessionHistory.latestUser(db, sessionID, beforeSeq).pipe(Effect.orDie),
       events,
       llm,
       config: yield* config.entries(),
@@ -651,6 +652,7 @@ const layer = Layer.effect(
         yield* continueAfterStop(input.sessionID, 0)
       }).pipe(
         Effect.ensuring(completion.discard(input.sessionID)),
+        Effect.ensuring(compaction.discard(input.sessionID)),
         Effect.onError((cause) =>
           runGoal
             ? goals

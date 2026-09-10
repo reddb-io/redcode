@@ -67,7 +67,7 @@ export interface Handle {
    * A `stop` decision also ends the turn after this step.
    */
   readonly guardLoop: (input: { tool: string; input: unknown }) => Effect.Effect<LoopGuard.Decision>
-  readonly process: (streamInput: LLM.StreamInput) => Effect.Effect<Result>
+  readonly process: (streamInput: LLM.StreamInput, preparedEvents?: readonly LLMEvent[]) => Effect.Effect<Result>
 }
 
 type Input = {
@@ -673,7 +673,10 @@ const layer = Layer.effect(
         yield* status.set(ctx.sessionID, { type: "idle" })
       })
 
-      const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
+      const process = Effect.fn("SessionProcessor.process")(function* (
+        streamInput: LLM.StreamInput,
+        preparedEvents?: readonly LLMEvent[],
+      ) {
         yield* Effect.logInfo("process", {
           "session.id": input.sessionID,
           messageID: input.assistantMessage.id,
@@ -693,7 +696,7 @@ const layer = Layer.effect(
             ctx.phase = undefined
             ctx.phaseTool = undefined
             yield* phase("preparing")
-            const stream = llm.stream(streamInput)
+            const stream = preparedEvents ? Stream.fromIterable(preparedEvents) : llm.stream(streamInput)
 
             ctx.lastEventAt = Date.now()
             yield* stream.pipe(

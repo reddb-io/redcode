@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, ne, or } from "drizzle-orm"
+import { and, asc, desc, eq, gt, gte, lte, ne, or } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "../database/database"
 import { MessageDecodeError } from "./error"
@@ -66,11 +66,18 @@ const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>
 export const latestUser = Effect.fn("SessionHistory.latestUser")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
+  beforeSeq?: number,
 ) {
   const row = yield* db
     .select()
     .from(SessionMessageTable)
-    .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "user")))
+    .where(
+      and(
+        eq(SessionMessageTable.session_id, sessionID),
+        eq(SessionMessageTable.type, "user"),
+        beforeSeq === undefined ? undefined : lte(SessionMessageTable.seq, beforeSeq),
+      ),
+    )
     .orderBy(desc(SessionMessageTable.seq))
     .limit(1)
     .get()

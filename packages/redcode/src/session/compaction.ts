@@ -9,6 +9,8 @@ import { Provider } from "@/provider/provider"
 import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
+import { LLM } from "./llm"
+import { LLMEvent } from "@reddb-io/redcode-llm"
 import { AuxDeadline } from "./aux-deadline"
 import { SessionGuardLog } from "./guard-log"
 import { Agent } from "@/agent/agent"
@@ -17,7 +19,7 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { DateTime, Duration, Effect, Layer, Context } from "effect"
+import { DateTime, Duration, Effect, Fiber, Layer, Context, Scope, Stream } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
@@ -25,7 +27,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
-import { buildPrompt, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
+import { buildPrompt, forkPreparation, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
 import { SessionCompactionEvent } from "@reddb-io/redcode-schema/session-compaction-event"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
@@ -175,19 +177,25 @@ function splitTurn(input: {
   })
 }
 
+type ProcessInput = {
+  parentID: MessageID
+  messages: SessionV1.WithParts[]
+  sessionID: SessionID
+  auto: boolean
+  overflow?: boolean
+}
+
 export interface Interface {
   readonly isOverflow: (input: {
     tokens: SessionV1.Assistant["tokens"]
     model: Provider.Model
   }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
-  readonly process: (input: {
-    parentID: MessageID
-    messages: SessionV1.WithParts[]
-    sessionID: SessionID
-    auto: boolean
-    overflow?: boolean
-  }) => Effect.Effect<"continue" | "stop">
+  readonly process: (input: ProcessInput) => Effect.Effect<"continue" | "stop">
+  readonly prepare: (
+    input: ProcessInput & { tokens: SessionV1.Assistant["tokens"]; model: Provider.Model },
+  ) => Effect.Effect<void>
+  readonly discard: (sessionID: SessionID) => Effect.Effect<void>
   readonly create: (input: {
     sessionID: SessionID
     agent: string
@@ -204,6 +212,8 @@ export const use = serviceUse(Service)
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    const scope = yield* Scope.Scope
+    const llm = yield* LLM.Service
     const database = yield* Database.Service
     const config = yield* Config.Service
     const guards = yield* SessionGuardLog.Service
@@ -332,13 +342,7 @@ const layer = Layer.effect(
       }
     })
 
-    const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {
-      parentID: MessageID
-      messages: SessionV1.WithParts[]
-      sessionID: SessionID
-      auto: boolean
-      overflow?: boolean
-    }) {
+    const build = Effect.fn("SessionCompaction.build")(function* (input: ProcessInput) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
         throw new Error(`Compaction parent must be a user message: ${input.parentID}`)
@@ -396,6 +400,7 @@ const layer = Layer.effect(
       const latestRequest = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).findLast(
         (message) =>
           message.info.role === "user" &&
+          message.info.id <= input.messages.at(-1)!.info.id &&
           !message.parts.some((part) => part.type === "compaction") &&
           !isReplay(message.parts),
       )
@@ -433,50 +438,23 @@ const layer = Layer.effect(
         ]
           .filter(Boolean)
           .join("\n\n")
-      const ctx = yield* InstanceState.context
-      const msg: SessionV1.Assistant = {
-        id: MessageID.ascending(),
-        role: "assistant",
-        parentID: input.parentID,
-        sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
-        variant: userMessage.model.variant,
-        summary: true,
-        path: {
-          cwd: ctx.directory,
-          root: ctx.worktree,
-        },
-        cost: 0,
-        tokens: {
-          output: 0,
-          input: 0,
-          reasoning: 0,
-          cache: { read: 0, write: 0 },
-        },
-        modelID: model.id,
-        providerID: model.providerID,
-        time: {
-          created: Date.now(),
-        },
-      }
-      yield* session.updateMessage(msg)
-      const processor = yield* processors.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
+      return {
+        userMessage,
+        compactionPart,
+        replay,
+        agent,
         model,
-      })
-      // The turn's watchdog reads the step handle, and this processor is not it, so a provider
-      // that stops answering here holds the turn open with nothing to show. A compaction that did
-      // not happen is reported as itself rather than as silence.
-      const compactionMs = AuxDeadline.deadlineMs("compaction", (yield* config.get()).experimental?.aux_timeout)
-      const result = yield* processor
-        .process({
+        selected,
+        preservedRequest,
+        previousSummary,
+        conversation,
+        stream: {
           user: userMessage,
           agent,
           sessionID: input.sessionID,
           tools: {},
           system: [systemPrompt],
+          model,
           messages: [
             {
               role: "user",
@@ -493,8 +471,169 @@ const layer = Layer.effect(
               ],
             },
           ],
-          model,
-        })
+        } satisfies LLM.StreamInput,
+      }
+    })
+
+    type Prepared = Effect.Success<ReturnType<typeof build>>
+    type Candidate = { prepared: Prepared; events: LLMEvent[] }
+    const pending = new Map<
+      SessionID,
+      {
+        prefix: string[]
+        model: string
+        config: string
+        agent: string
+        fiber: Fiber.Fiber<Candidate | undefined>
+      }
+    >()
+    const discard = Effect.fn("SessionCompaction.discard")(function* (sessionID: SessionID) {
+      const candidate = pending.get(sessionID)
+      pending.delete(sessionID)
+      if (candidate) yield* Fiber.interrupt(candidate.fiber)
+    })
+    const prepare = Effect.fn("SessionCompaction.prepare")(function* (
+      input: ProcessInput & {
+        tokens: SessionV1.Assistant["tokens"]
+        model: Provider.Model
+      },
+    ) {
+      const cfg = yield* config.get()
+      const previous = pending.get(input.sessionID)
+      if (
+        previous &&
+        (previous.config !== JSON.stringify(cfg) ||
+          previous.model !== JSON.stringify(input.model) ||
+          !previous.prefix.every((message, index) => message === JSON.stringify(input.messages[index])))
+      )
+        yield* discard(input.sessionID)
+      if (
+        cfg.compaction?.auto === false ||
+        cfg.compaction?.background === false ||
+        !input.model.limit.context ||
+        input.overflow
+      )
+        return
+      const threshold = usable({ cfg, model: input.model, outputTokenMax: flags.outputTokenMax })
+      const count =
+        input.tokens.total ||
+        input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
+      if (count < threshold - Math.min(8_000, Math.floor(threshold * 0.1)) || count >= threshold) return
+      if (pending.has(input.sessionID)) return
+      const prefix = input.messages.map((message) => JSON.stringify(message))
+      const task = Effect.gen(function* () {
+        const prepared = yield* build(input)
+        const events = yield* llm.stream(prepared.stream).pipe(
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+        )
+        const text = events
+          .filter(LLMEvent.is.textDelta)
+          .map((event) => event.text)
+          .join("")
+        if (
+          events.some(
+            (event) => LLMEvent.is.providerError(event) || (LLMEvent.is.stepFinish(event) && event.reason !== "stop"),
+          )
+        )
+          return
+        if (
+          summaryError({
+            summary: text,
+            source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
+            retained: prepared.preservedRequest,
+            finish: events.findLast(LLMEvent.is.finish)?.reason,
+          })
+        )
+          return
+        return { prepared, events }
+      })
+      const fiber = yield* forkPreparation(
+        task,
+        scope,
+        AuxDeadline.deadlineMs("compaction", cfg.experimental?.aux_timeout) ?? false,
+      )
+      pending.set(input.sessionID, {
+        prefix,
+        model: JSON.stringify(input.model),
+        config: JSON.stringify(cfg),
+        agent: input.messages.findLast((message) => message.info.role === "user")?.info.agent ?? "",
+        fiber,
+      })
+    })
+
+    const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: ProcessInput) {
+      const cached = pending.get(input.sessionID)
+      const parent = input.messages.find((message) => message.info.id === input.parentID)
+      const candidate =
+        cached &&
+        input.auto &&
+        !input.overflow &&
+        parent?.info.role === "user" &&
+        cached.agent === parent.info.agent &&
+        cached.config === JSON.stringify(yield* config.get()) &&
+        cached.model ===
+          JSON.stringify(
+            yield* provider.getModel(parent.info.model.providerID, parent.info.model.modelID).pipe(Effect.orDie),
+          ) &&
+        cached.prefix.every((message, index) => message === JSON.stringify(input.messages[index]))
+          ? yield* Fiber.join(cached.fiber)
+          : undefined
+      yield* discard(input.sessionID)
+      const prepared =
+        candidate && parent?.info.role === "user" && cached
+          ? {
+              ...candidate.prepared,
+              userMessage: parent.info,
+              compactionPart: parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction"),
+              selected: {
+                ...candidate.prepared.selected,
+                tail_start_id:
+                  candidate.prepared.selected.tail_start_id ??
+                  input.messages.slice(cached.prefix.length).find((message) => message.info.id !== input.parentID)?.info
+                    .id,
+              },
+            }
+          : yield* build(input)
+      const ctx = yield* InstanceState.context
+      const msg: SessionV1.Assistant = {
+        id: MessageID.ascending(),
+        role: "assistant",
+        parentID: input.parentID,
+        sessionID: input.sessionID,
+        mode: "compaction",
+        agent: "compaction",
+        variant: prepared.userMessage.model.variant,
+        summary: true,
+        path: {
+          cwd: ctx.directory,
+          root: ctx.worktree,
+        },
+        cost: 0,
+        tokens: {
+          output: 0,
+          input: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+        modelID: prepared.model.id,
+        providerID: prepared.model.providerID,
+        time: {
+          created: Date.now(),
+        },
+      }
+      yield* session.updateMessage(msg)
+      const processor = yield* processors.create({
+        assistantMessage: msg,
+        sessionID: input.sessionID,
+        model: prepared.model,
+      })
+      // The turn's watchdog reads the step handle, and this processor is not it, so a provider
+      // that stops answering here holds the turn open with nothing to show. A compaction that did
+      // not happen is reported as itself rather than as silence.
+      const compactionMs = AuxDeadline.deadlineMs("compaction", (yield* config.get()).experimental?.aux_timeout)
+      const result = yield* processor
+        .process({ ...prepared.stream, user: prepared.userMessage }, candidate?.events)
         .pipe(
           compactionMs === undefined
             ? (self) => self
@@ -524,7 +663,7 @@ const layer = Layer.effect(
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({
-          message: replay
+          message: prepared.replay
             ? "Conversation history too large to compact - exceeds model context limit"
             : "Session too large to compact - context exceeds model limit even after stripping media",
         }).toObject()
@@ -540,8 +679,8 @@ const layer = Layer.effect(
       )
       const error = summaryError({
         summary: summaryText(checkpoint) ?? "",
-        retained: preservedRequest,
-        source: [previousSummary, conversation].filter(Boolean).join("\n\n"),
+        retained: prepared.preservedRequest,
+        source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
         finish: processor.message.finish,
       })
       if (error) {
@@ -550,29 +689,33 @@ const layer = Layer.effect(
         yield* session.updateMessage(processor.message)
         return "stop"
       }
-      if (preservedRequest) {
+      if (prepared.preservedRequest) {
         yield* session.updatePart({
           id: PartID.ascending(),
           messageID: msg.id,
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: preservedRequest,
+          text: prepared.preservedRequest,
         })
       }
 
-      if (compactionPart && selected.tail_start_id && compactionPart.tail_start_id !== selected.tail_start_id) {
+      if (
+        prepared.compactionPart &&
+        prepared.selected.tail_start_id &&
+        prepared.compactionPart.tail_start_id !== prepared.selected.tail_start_id
+      ) {
         yield* session.updatePart({
-          ...compactionPart,
-          tail_start_id: selected.tail_start_id,
+          ...prepared.compactionPart,
+          tail_start_id: prepared.selected.tail_start_id,
         })
       }
       // The summary becomes a history boundary only after validation and tail persistence.
       yield* session.updateMessage(processor.message)
 
       if (result === "continue" && input.auto) {
-        if (replay) {
-          const original = replay.info
+        if (prepared.replay) {
+          const original = prepared.replay.info
           const replayMsg = yield* session.updateMessage({
             id: MessageID.ascending(),
             role: "user",
@@ -584,7 +727,7 @@ const layer = Layer.effect(
             tools: original.tools,
             system: original.system,
           })
-          for (const part of replay.parts) {
+          for (const part of prepared.replay.parts) {
             if (part.type === "compaction") continue
             const replayPart =
               part.type === "file" && MessageV2.isMedia(part.mime)
@@ -602,23 +745,23 @@ const layer = Layer.effect(
           }
         }
 
-        if (!replay) {
-          const info = yield* provider.getProvider(userMessage.model.providerID)
+        if (!prepared.replay) {
+          const info = yield* provider.getProvider(prepared.userMessage.model.providerID)
           if (
             (yield* plugin.trigger(
               "experimental.compaction.autocontinue",
               {
                 sessionID: input.sessionID,
-                agent: userMessage.agent,
+                agent: prepared.userMessage.agent,
                 model: yield* provider
-                  .getModel(userMessage.model.providerID, userMessage.model.modelID)
+                  .getModel(prepared.userMessage.model.providerID, prepared.userMessage.model.modelID)
                   .pipe(Effect.orDie),
                 provider: {
                   source: info.source,
                   info,
                   options: info.options,
                 },
-                message: userMessage,
+                message: prepared.userMessage,
                 overflow: input.overflow === true,
               },
               { enabled: true },
@@ -635,8 +778,8 @@ const layer = Layer.effect(
               role: "user",
               sessionID: input.sessionID,
               time: { created: Date.now() },
-              agent: userMessage.agent,
-              model: userMessage.model,
+              agent: prepared.userMessage.agent,
+              model: prepared.userMessage.model,
             })
             const text =
               (input.overflow
@@ -699,6 +842,8 @@ const layer = Layer.effect(
       isOverflow,
       prune,
       process: processCompaction,
+      prepare,
+      discard,
       create,
     })
   }),
@@ -708,6 +853,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    LLM.node,
     Database.node,
     SessionGuardLog.node,
     Config.node,

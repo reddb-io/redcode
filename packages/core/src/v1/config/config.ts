@@ -151,6 +151,9 @@ export const Info = Schema.Struct({
       auto: Schema.optional(Schema.Boolean).annotate({
         description: "Enable automatic compaction when context is full (default: true)",
       }),
+      background: Schema.optional(Schema.Boolean).annotate({
+        description: "Prepare compaction summaries in the background near the context limit (default: true)",
+      }),
       prune: Schema.optional(Schema.Boolean).annotate({
         description: "Enable pruning of old tool outputs (default: false)",
       }),
@@ -230,9 +233,15 @@ export const Info = Schema.Struct({
         Schema.Struct({
           attachments: Schema.optional(
             Schema.Struct({
-              max_bytes: Schema.optional(PositiveInt).annotate({ description: "Bytes one attached image may have (default: 10 MiB)" }),
-              max_per_prompt: Schema.optional(PositiveInt).annotate({ description: "Images one note may carry (default: 4)" }),
-              max_prompt_bytes: Schema.optional(PositiveInt).annotate({ description: "Bytes one note's images may total (default: 25 MiB)" }),
+              max_bytes: Schema.optional(PositiveInt).annotate({
+                description: "Bytes one attached image may have (default: 10 MiB)",
+              }),
+              max_per_prompt: Schema.optional(PositiveInt).annotate({
+                description: "Images one note may carry (default: 4)",
+              }),
+              max_prompt_bytes: Schema.optional(PositiveInt).annotate({
+                description: "Bytes one note's images may total (default: 25 MiB)",
+              }),
               ttl_ms: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
                 description: "How long an unreferenced image is kept (default: 7 days; false keeps them)",
               }),
@@ -250,7 +259,8 @@ export const Info = Schema.Struct({
               "Hold the prototype behind a curtain until its first layout pass, so a person never sees a half-laid-out page (default: true; ?gate=0 on the review URL disables it for one tab).",
           }),
           gate_timeout: Schema.optional(PositiveInt).annotate({
-            description: "Milliseconds the gate may hold the prototype before revealing it anyway (default: 12000, at most 60000).",
+            description:
+              "Milliseconds the gate may hold the prototype before revealing it anyway (default: 12000, at most 60000).",
           }),
           export: Schema.optional(
             Schema.Struct({
