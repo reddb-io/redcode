@@ -586,6 +586,7 @@ const layer = Layer.effect(
                 todoContinuations++
                 needsContinuation = true
               } else if (reminder) {
+                yield* todos.block(input.sessionID, SessionTodo.limitReason).pipe(Effect.orDie)
                 yield* Effect.logWarning("Todo continuation limit reached", {
                   sessionID: input.sessionID,
                   attempts: todoContinuations,
@@ -594,7 +595,10 @@ const layer = Layer.effect(
             }
             if (!needsContinuation) {
               const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
-              if (goal?.status === "active") {
+              const blocked = SessionTodo.blocker(yield* todos.get(input.sessionID))
+              if (goal?.status === "active" && blocked)
+                yield* goals.save(goal, { ...goal, status: "blocked", reason: blocked }).pipe(Effect.orDie)
+              if (goal?.status === "active" && !blocked) {
                 const documents = yield* designs.list(input.sessionID).pipe(Effect.orDie)
                 const jobs = yield* Effect.forEach(documents, (document) =>
                   renderer.jobs(document.id).pipe(Effect.orDie),

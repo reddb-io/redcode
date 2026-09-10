@@ -1411,6 +1411,7 @@ const layer = Layer.effect(
                 continue
               }
             } else if (!lastAssistant.error && SessionTodo.active(yield* todos.get(sessionID)).length > 0) {
+              yield* todos.block(sessionID, SessionTodo.limitReason).pipe(Effect.orDie)
               yield* Effect.logWarning("todo continuation limit reached", { "session.id": sessionID })
             }
             // The goal loop: gates, judge, decision. A CONTINUE is one more synthetic user message
@@ -1418,6 +1419,11 @@ const layer = Layer.effect(
             // session stays busy and the surfaces see one turn. Anything else ends the turn here
             // with the goal's status saying why.
             if (!lastAssistant.error) {
+              const blocked = SessionTodo.blocker(yield* todos.get(sessionID))
+              if (blocked) {
+                yield* goals.block(sessionID, blocked)
+                break
+              }
               const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
               const outcome = yield* goals
                 .afterTurn({ session: fresh, lastUser, lastAssistant: lastAssistantMsg })

@@ -24,6 +24,7 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DesignApprove,
   DesignCreate,
   DesignFeedback,
   DesignImportAsset,
@@ -198,6 +199,8 @@ import type {
   RedskilledWorkerSteerStatusResponses,
   RedskilledWorkerStopErrors,
   RedskilledWorkerStopResponses,
+  ServerDesignDesignApprovalErrors,
+  ServerDesignDesignApprovalResponses,
   ServerDesignDesignApproveErrors,
   ServerDesignDesignApproveResponses,
   ServerDesignDesignAssetFileErrors,
@@ -8302,7 +8305,7 @@ export class Design extends HeyApiClient {
     parameters: {
       sessionID: string
       designID: string
-      revision?: string
+      designApprove: DesignApprove
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8313,7 +8316,7 @@ export class Design extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "path", key: "designID" },
-            { in: "body", key: "revision" },
+            { key: "designApprove", map: "body" },
           ],
         },
       ],
@@ -8331,6 +8334,37 @@ export class Design extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  public approval<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      revisionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "path", key: "revisionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignApprovalResponses,
+      ServerDesignDesignApprovalErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/approval/{revisionID}",
+      ...options,
+      ...params,
     })
   }
 

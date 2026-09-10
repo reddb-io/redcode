@@ -1,0 +1,210 @@
+export * as SessionTodoStore from "./todo-store"
+
+import { createHash } from "node:crypto"
+import { asc, eq } from "drizzle-orm"
+import { Context, Effect, Layer, Schema, Semaphore } from "effect"
+import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
+import { Database } from "../database/database"
+import { makeGlobalNode } from "../effect/app-node"
+import { SessionSchema } from "./schema"
+import { TodoHistoryTable, TodoTable } from "./sql"
+
+const make = Effect.gen(function* () {
+  const { db } = yield* Database.Service
+  // Both runtimes hold this lock through publication so an older list cannot arrive last.
+  const lock = yield* Semaphore.make(1)
+
+  const get = Effect.fn("SessionTodoStore.get")(function* (sessionID: SessionSchema.ID) {
+    return (yield* db
+      .select()
+      .from(TodoTable)
+      .where(eq(TodoTable.session_id, sessionID))
+      .orderBy(asc(TodoTable.position))
+      .all()
+      .pipe(Effect.orDie)).map(read)
+  })
+
+  const update = Effect.fn("SessionTodoStore.update")(function* (input: {
+    sessionID: SessionSchema.ID
+    todos: ReadonlyArray<SessionTodo.Input>
+  }) {
+    const incoming = yield* Schema.decodeUnknownEffect(Schema.Array(SessionTodo.Input))(input.todos).pipe(
+      Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
+    )
+    if (!incoming.length) return yield* get(input.sessionID)
+    // Read, reconcile and write under the same DB transaction, including legacy callers.
+    return yield* db
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          const previous = (yield* tx
+            .select()
+            .from(TodoTable)
+            .where(eq(TodoTable.session_id, input.sessionID))
+            .orderBy(asc(TodoTable.position))
+            .all()
+            .pipe(Effect.orDie)).map(read)
+          const seen = new Set<string>()
+          const changes = yield* Effect.forEach(incoming, (item) =>
+            Effect.gen(function* () {
+              const content = item.content.trim()
+              if (!content) return yield* new SessionTodo.Error({ message: "Task content must not be empty" })
+              const matches = previous.filter((task) => (item.id ? task.id === item.id : task.content === content))
+              if (matches.length > 1)
+                return yield* new SessionTodo.Error({
+                  message: `Multiple tasks match ${content}; use the task id and revision`,
+                })
+              const before = matches[0]
+              if (item.id && !before)
+                return yield* new SessionTodo.Error({
+                  message: `Unknown task ${item.id}; omit id when creating a task`,
+                })
+              if (item.id && item.revision === undefined)
+                return yield* new SessionTodo.Error({ message: `Supply the current revision for task ${item.id}` })
+              const key = before?.id ?? content
+              if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
+              seen.add(key)
+              const reason = item.reason?.trim() || (before?.status === item.status ? before.reason : undefined)
+              if ((item.status === "blocked" || item.status === "cancelled") && !reason)
+                return yield* new SessionTodo.Error({
+                  message: `${item.status} requires a concrete reason; do not discard remaining work`,
+                })
+              return {
+                id: before?.id ?? `todo_${crypto.randomUUID()}`,
+                revision: before?.revision ?? 1,
+                content,
+                status: item.status,
+                priority: item.priority,
+                ...(reason ? { reason } : {}),
+                ...(before?.legacyStatus ? { legacyStatus: before.legacyStatus } : {}),
+              }
+            }),
+          )
+          const merged = previous
+            .map((task) => changes.find((item) => item.id === task.id) ?? task)
+            .concat(changes.filter((task) => !previous.some((item) => item.id === task.id)))
+          // Updating one task never removes another. The first actionable task advances automatically.
+          const current =
+            changes.find((task) => task.status === "in_progress") ??
+            merged.find((task) => task.status === "in_progress") ??
+            merged.find((task) => task.status === "pending")
+          const result = merged.map((task) => {
+            const status =
+              task.id === current?.id ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
+            const before = previous.find((item) => item.id === task.id)
+            const unchanged =
+              before &&
+              before.content === task.content &&
+              before.status === status &&
+              before.priority === task.priority &&
+              before.reason === task.reason
+            return unchanged ? before : { ...task, status, revision: before ? before.revision + 1 : 1 }
+          })
+          // Compare against the reconciled state, including automatic promotion, for exact retries.
+          yield* Effect.forEach(incoming, (item) =>
+            Effect.gen(function* () {
+              if (item.revision === undefined) return
+              const before = previous.find((task) =>
+                item.id ? task.id === item.id : task.content === item.content.trim(),
+              )
+              if (!before) return
+              const after = result.find((task) => task.id === before.id)!
+              if (item.revision !== before.revision && after.revision !== before.revision)
+                return yield* new SessionTodo.Error({
+                  message: `Task ${before.id} changed; read its current revision before updating`,
+                })
+            }),
+          )
+          yield* Effect.forEach(result, (task, position) =>
+            Effect.gen(function* () {
+              const before = previous.find((item) => item.id === task.id)
+              for (const entry of before ? [before, task] : [task]) {
+                yield* tx
+                  .insert(TodoHistoryTable)
+                  .values({
+                    session_id: input.sessionID,
+                    task_id: entry.id,
+                    revision: entry.revision,
+                    data: entry,
+                    created: Date.now(),
+                  })
+                  .onConflictDoNothing()
+                  .run()
+                  .pipe(Effect.orDie)
+              }
+              yield* tx
+                .insert(TodoTable)
+                .values({
+                  session_id: input.sessionID,
+                  position,
+                  task_id: task.id,
+                  revision: task.revision,
+                  content: task.content,
+                  status: task.status,
+                  priority: task.priority,
+                  reason: task.reason ?? null,
+                  legacy_status: task.legacyStatus ?? null,
+                })
+                .onConflictDoUpdate({
+                  target: [TodoTable.session_id, TodoTable.position],
+                  set: {
+                    task_id: task.id,
+                    revision: task.revision,
+                    content: task.content,
+                    status: task.status,
+                    priority: task.priority,
+                    reason: task.reason ?? null,
+                    legacy_status: task.legacyStatus ?? null,
+                  },
+                })
+                .run()
+                .pipe(Effect.orDie)
+            }),
+          )
+          return result
+        }),
+      )
+      .pipe(Effect.catchTag("SqlError", Effect.die))
+  })
+
+  const block = Effect.fn("SessionTodoStore.block")(function* (sessionID: SessionSchema.ID, reason: string) {
+    return yield* update({
+      sessionID,
+      todos: (yield* get(sessionID))
+        .filter((task) => task.status === "pending" || task.status === "in_progress")
+        .map((task) => ({
+          id: task.id,
+          revision: task.revision,
+          content: task.content,
+          priority: Schema.is(SessionTodo.Priority)(task.priority) ? task.priority : "medium",
+          status: "blocked",
+          reason,
+        })),
+    })
+  })
+  return { get, update, block, withMutation: lock.withPermits(1) }
+})
+
+function read(row: typeof TodoTable.$inferSelect) {
+  const known = Schema.is(SessionTodo.Status)(row.status)
+  return {
+    id:
+      row.task_id ??
+      `todo_${createHash("sha256").update(`${row.session_id}:${row.position}`).digest("hex").slice(0, 24)}`,
+    revision: row.revision,
+    content: row.content,
+    status: known ? row.status : "blocked",
+    priority: row.priority,
+    ...(!known
+      ? {
+          legacyStatus: row.status,
+          reason: `Historical status ${JSON.stringify(row.status)} needs reconciliation. Inspect the task and set its actual state.`,
+        }
+      : {
+          ...(row.reason ? { reason: row.reason } : {}),
+          ...(row.legacy_status ? { legacyStatus: row.legacy_status } : {}),
+        }),
+  }
+}
+
+export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/SessionTodoStore") {}
+export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Database.node] })

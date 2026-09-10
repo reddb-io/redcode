@@ -14,6 +14,7 @@ import { Timestamps } from "../database/schema.sql"
 import type { SystemContext } from "../system-context/index"
 import { AgentV2 } from "../agent"
 import type { Revert } from "@reddb-io/redcode-schema/revert"
+import type { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
 
 type SessionMessageData = Omit<(typeof SessionMessage.Message)["Encoded"], "type" | "id">
 type V1MessageData = Omit<SessionV1.Info, "id" | "sessionID">
@@ -108,12 +109,31 @@ export const TodoTable = sqliteTable(
     status: text().notNull(),
     priority: text().notNull(),
     position: integer().notNull(),
+    task_id: text(),
+    revision: integer().notNull().default(1),
+    reason: text(),
+    legacy_status: text(),
     ...Timestamps,
   },
   (table) => [
     primaryKey({ columns: [table.session_id, table.position] }),
     index("todo_session_idx").on(table.session_id),
   ],
+)
+
+export const TodoHistoryTable = sqliteTable(
+  "todo_history",
+  {
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    task_id: text().notNull(),
+    revision: integer().notNull(),
+    data: text({ mode: "json" }).$type<SessionTodo.Info>().notNull(),
+    created: integer().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.session_id, table.task_id, table.revision] })],
 )
 
 export const SessionMessageTable = sqliteTable(

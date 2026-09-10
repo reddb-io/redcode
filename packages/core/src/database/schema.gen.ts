@@ -297,12 +297,27 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`todo_history\` (
+          \`session_id\` text NOT NULL,
+          \`task_id\` text NOT NULL,
+          \`revision\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          CONSTRAINT \`todo_history_pk\` PRIMARY KEY(\`session_id\`, \`task_id\`, \`revision\`),
+          CONSTRAINT \`fk_todo_history_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`todo\` (
           \`session_id\` text NOT NULL,
           \`content\` text NOT NULL,
           \`status\` text NOT NULL,
           \`priority\` text NOT NULL,
           \`position\` integer NOT NULL,
+          \`task_id\` text,
+          \`revision\` integer DEFAULT 1 NOT NULL,
+          \`reason\` text,
+          \`legacy_status\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`todo_pk\` PRIMARY KEY(\`session_id\`, \`position\`),

@@ -47,6 +47,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 - [Use](#use) — every command, and what it is for
 - [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
+- [Tasks](#tasks) — requested work, progress and explicit blockers
 - [Goal](#goal) — a definition of done the harness pursues across turns
 
 **Reference**
@@ -530,8 +531,47 @@ keeps private review files out of the published snapshot, and preserves the orig
 TUI feedback and approvals return through `/design/session/:sessionID`; web-app sessions
 use `/api/session/:sessionID/design`.
 
+If a preview cannot be assembled, the canvas shows the failing resource or server error
+instead of an empty frame. Review actions stay disabled for that failed preview. Ask the
+agent to correct the resource and publish a new revision, then select it or use **Refresh**.
+Polling does not repeatedly retry the same failed revision; **Refresh** explicitly retries
+it. Published revisions are snapshots, so editing a source file alone does not repair an
+older revision.
+
 See [Design Studio](specs/design/studio.md) for storage, permissions, exports and MCP configuration,
 and [Design terminal](specs/design/terminal.md) for the optional terminal's connection and interaction commands.
+
+## Tasks
+
+For a request with several steps, the agent is instructed to record every requested item,
+including verification, and start working in the same turn. Simple questions do not need a
+checklist. The regular TUI shows tasks in its sidebar and tool results; both session runtimes
+use the same persisted task store.
+
+| State       | Meaning                                                         |
+| ----------- | --------------------------------------------------------------- |
+| Pending     | Requested work still to do                                      |
+| In progress | The current task; the next pending item advances automatically  |
+| Blocked     | Unfinished work with a concrete obstacle, shown beside the task |
+| Completed   | Work the agent reports as verified                              |
+| Cancelled   | Work removed from scope, with an explicit reason                |
+
+Updating one task keeps the others. Each task has a stable ID, a revision and stored change
+history. The agent uses the latest ID and revision to update it; a conflicting stale update
+is rejected. Older task lists remain readable, and unknown historical states appear as
+blocked until reconciled. Blocked and cancelled updates require a reason.
+
+When the model tries to finish with actionable tasks remaining, the harness asks it to
+continue, within the agent's limits and permissions. After seven such reminders in a run,
+remaining actionable tasks become blocked with the continuation-limit reason. Independent
+work can continue while another task is blocked. If every unfinished task is blocked, an
+active Goal is marked blocked too. To resume, resolve the obstacle and ask the agent to
+reopen the relevant task.
+
+Tasks track execution; [Goal](#goal) supplies the separate completion and verification loop.
+A completed checkbox alone does not prove the result. An approved Plan is preserved as
+context, but does not yet automatically create tasks: the agent must turn its authorized
+steps into work and execute them.
 
 ## Goal
 

@@ -23,7 +23,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           </text>
         </box>
         <Show when={list().length <= 2 || open()}>
-          <For each={list()}>{(item) => <TodoItem status={item.status} content={item.content} />}</For>
+          <For each={list()}>
+            {(item) => <TodoItem status={item.status} content={item.content} reason={item.reason} />}
+          </For>
         </Show>
       </box>
     </Show>

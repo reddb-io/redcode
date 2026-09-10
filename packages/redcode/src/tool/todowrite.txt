@@ -1,44 +1,12 @@
-Create and maintain a structured task list for the current coding session. Tracks progress, organizes multi-step work, and surfaces status to the user.
+Track multi-step work as concrete tasks. Enumerate EVERY item in a multi-part user request, including verification, then start real work in the same turn. Skip this tool for simple or informational requests.
 
-## When to use
-Use proactively when:
-- The task requires 3+ distinct steps or actions (not just 3 tool calls for a single conceptual step)
-- The work is non-trivial and benefits from planning
-- The user provides multiple tasks (numbered or comma-separated) or explicitly asks for a todo list
-- New instructions arrive - capture them as todos
-- You start a task - mark it `in_progress` (only one at a time) before working
-- You finish a task - mark it `completed` and add any follow-ups discovered during the work
+Each call creates or updates the supplied tasks. Omitted tasks are preserved. Send {"todos": []} to read the current list. Use the id and current revision returned by the tool for subsequent updates; an exact content match supports older callers. Do not invent IDs or rename a task by dropping it and creating another.
 
-## When NOT to use
-Skip when:
-- The work is a single, straightforward task (or <3 trivial steps)
-- The request is purely informational or conversational
-- Tracking adds no organizational value
+States:
+- pending: actionable work not yet started.
+- in_progress: the task being executed. Keep one active task; the next pending task is promoted automatically.
+- blocked: a concrete obstacle prevents progress. Supply reason, preserve the requirement and execute independent tasks. Unblock by updating to pending or in_progress when the obstacle is resolved.
+- completed: the requested result has been implemented and verified. A plan or promise is not completion.
+- cancelled: work was removed from the authorized scope. Supply the scope-change reason. Never cancel just to finish the conversation, hide a failure or avoid a blocked item.
 
-## States
-- `pending` - not started
-- `in_progress` - actively working (exactly ONE at a time)
-- `completed` - finished successfully
-- `cancelled` - no longer needed
-
-## Rules
-- Update status in real time; don't batch completions
-- Mark `completed` only after the required work is actually done, including any required verification. Never based on intent.
-- Keep exactly one `in_progress` while work remains
-- If blocked or partial, keep it `in_progress` and add a follow-up todo describing the blocker
-- Preserve user-provided commands verbatim (flags, args, order)
-- Items should be specific and actionable; break large work into smaller steps
-
-## Examples
-
-Use it:
-- "Add a dark mode toggle and run the tests" -> multi-step feature + explicit verification
-- "Rename getCwd -> getCurrentWorkingDirectory across the repo" -> grep reveals 15 occurrences in 8 files
-- "Implement registration, catalog, cart, checkout" -> multiple complex features
-
-Skip it:
-- "How do I print Hello World in Python?" -> informational
-- "Add a comment to calculateTotal" -> single edit
-- "Run npm install and tell me what happened" -> one command
-
-When in doubt, use it.
+Update progress when it changes. Partial updates and empty lists never clear unfinished work. Conflicting stale revisions are rejected; read the current list before retrying. A blocked task is not complete: state what remains, why it cannot proceed and the next action.

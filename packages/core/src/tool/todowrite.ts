@@ -12,7 +12,9 @@ import { Tools } from "./tools"
 export const name = "todowrite"
 
 export const Input = Schema.Struct({
-  todos: Schema.Array(SessionTodo.Info).annotate({ description: "The updated todo list" }),
+  todos: Schema.Array(SessionTodo.Input).annotate({
+    description: "Tasks to create or update; omitted tasks are preserved. Empty array reads the current list.",
+  }),
 })
 
 export const Output = Schema.Struct({
@@ -32,7 +34,8 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Create and maintain a structured task list for multi-step work. Keep exactly one item in progress while work remains, update statuses as work happens, and complete or cancel every item before the final response. Skip this tool for simple or purely informational requests. Each call replaces the full list.",
+            SessionTodo.guidance +
+            " Supply id and revision from the last result when updating. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
           input: Input,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
@@ -46,9 +49,15 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
-              yield* todos.update({ sessionID: context.sessionID, todos: input.todos })
-              return { todos: input.todos }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: "Unable to update todos" }))),
+              return { todos: yield* todos.update({ sessionID: context.sessionID, todos: input.todos }) }
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message: error instanceof SessionTodo.Error ? error.message : "Unable to update todos",
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

@@ -1698,6 +1698,50 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("blocks remaining tasks after seven reminders instead of reporting them complete", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const todos = yield* SessionTodo.Service
+      const applicationTools = yield* ApplicationTools.Service
+      yield* applicationTools.register({
+        todowrite: Tool.make({
+          description: "Update todos",
+          input: Schema.Struct({}),
+          output: Schema.Struct({}),
+          execute: () => Effect.succeed({}),
+        }),
+      })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Finish the task" }), resume: false })
+      yield* todos.update({ sessionID, todos: [{ content: "Verify", status: "pending", priority: "high" }] })
+      requests.length = 0
+      response = fragmentFixture("text", "premature", ["More remains"]).completeEvents
+      yield* session.resume(sessionID)
+      expect(requests).toHaveLength(8)
+      expect(yield* todos.get(sessionID)).toMatchObject([{ status: "blocked", reason: SessionTodo.limitReason }])
+    }),
+  )
+
+  it.effect("blocks an active Goal when every unfinished task has a concrete blocker", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const todos = yield* SessionTodo.Service
+      const goals = yield* SessionGoal.Service
+      yield* goals.start(sessionID, { objective: "Deploy", maxTurns: 3 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Deploy" }), resume: false })
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "Deploy", status: "blocked", priority: "high", reason: "Need credentials" }],
+      })
+      requests.length = 0
+      response = fragmentFixture("text", "blocked", ["Need credentials"]).completeEvents
+      yield* session.resume(sessionID)
+      expect(requests).toHaveLength(1)
+      expect(yield* goals.get(sessionID)).toMatchObject({ status: "blocked", reason: "Deploy: Need credentials" })
+    }),
+  )
+
   it.effect("does not continue unfinished todos when todowrite is unavailable", () =>
     Effect.gen(function* () {
       yield* setup

@@ -1,21 +1,23 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { SessionID } from "./schema"
 import { Effect, Layer, Context } from "effect"
-import { Database } from "@reddb-io/redcode-core/database/database"
-import { eq } from "drizzle-orm"
-import { asc } from "drizzle-orm"
-import { TodoTable } from "@reddb-io/redcode-core/session/sql"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
+import { SessionTodoStore } from "@reddb-io/redcode-core/session/todo-store"
 
 export const Info = SessionTodo.Info
 export type Info = SessionTodo.Info
-
+export const Input = SessionTodo.Input
+export type Input = SessionTodo.Input
 export const Event = SessionTodo.Event
 
 export interface Interface {
-  readonly update: (input: { sessionID: SessionID; todos: ReadonlyArray<Info> }) => Effect.Effect<void>
+  readonly update: (input: {
+    sessionID: SessionID
+    todos: ReadonlyArray<Input>
+  }) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly get: (sessionID: SessionID) => Effect.Effect<Info[]>
+  readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/SessionTodo") {}
@@ -24,51 +26,21 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
-    const { db } = yield* Database.Service
-
-    const update = Effect.fn("Todo.update")(function* (input: { sessionID: SessionID; todos: ReadonlyArray<Info> }) {
-      yield* db
-        .transaction((tx) =>
-          Effect.gen(function* () {
-            yield* tx.delete(TodoTable).where(eq(TodoTable.session_id, input.sessionID)).run()
-            if (input.todos.length === 0) return
-            yield* tx
-              .insert(TodoTable)
-              .values(
-                input.todos.map((todo, position) => ({
-                  session_id: input.sessionID,
-                  content: todo.content,
-                  status: todo.status,
-                  priority: todo.priority,
-                  position,
-                })),
-              )
-              .run()
-          }),
-        )
-        .pipe(Effect.orDie)
-      yield* events.publish(Event.Updated, input)
-    })
-
-    const get = Effect.fn("Todo.get")(function* (sessionID: SessionID) {
-      const rows = yield* db
-        .select()
-        .from(TodoTable)
-        .where(eq(TodoTable.session_id, sessionID))
-        .orderBy(asc(TodoTable.position))
-        .all()
-        .pipe(Effect.orDie)
-      return rows.map((row) => ({
-        content: row.content,
-        status: row.status,
-        priority: row.priority,
-      }))
-    })
-
-    return Service.of({ update, get })
+    const store = yield* SessionTodoStore.Service
+    const update: Interface["update"] = Effect.fn("Todo.update")(function* (input) {
+      const todos = yield* store.update(input)
+      yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos })
+      return todos
+    }, store.withMutation)
+    const block: Interface["block"] = Effect.fn("Todo.block")(function* (sessionID, reason) {
+      const todos = yield* store.block(sessionID, reason)
+      yield* events.publish(Event.Updated, { sessionID, todos })
+      return todos
+    }, store.withMutation)
+    return Service.of({ update, get: store.get, block })
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [EventV2Bridge.node, Database.node] })
+export const node = LayerNode.make({ service: Service, layer, deps: [EventV2Bridge.node, SessionTodoStore.node] })
 
 export * as Todo from "./todo"

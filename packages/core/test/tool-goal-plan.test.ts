@@ -217,10 +217,12 @@ it.live("work added during review prevents completion even when the reviewer pas
     const goals = yield* SessionGoal.Service
     const todos = yield* SessionTodo.Service
     yield* goals.start(test.sessionID, { objective: "Record a plan" })
-    duringReview = todos.update({
-      sessionID: test.sessionID,
-      todos: [{ content: "Verify the newly requested error state", status: "pending", priority: "high" }],
-    })
+    duringReview = todos
+      .update({
+        sessionID: test.sessionID,
+        todos: [{ content: "Verify the newly requested error state", status: "pending", priority: "high" }],
+      })
+      .pipe(Effect.asVoid, Effect.orDie)
     expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Ready" })).type).toBe("error")
     expect(requests).toHaveLength(1)
     expect((yield* goals.get(test.sessionID))?.status).toBe("active")
