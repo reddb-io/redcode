@@ -8,6 +8,7 @@ import { ExperimentalPaths } from "../../src/server/routes/instance/httpapi/grou
 import { Session } from "@/session/session"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { MonitorTable } from "@reddb-io/redcode-core/monitor.sql"
 import { AccountV2 } from "@reddb-io/redcode-core/account"
 import { AccountTable } from "@reddb-io/redcode-core/account/sql"
 import { Worktree } from "../../src/worktree"
@@ -18,6 +19,45 @@ import { httpApiLayer, requestInDirectory } from "./httpapi-layer"
 
 const it = testEffect(Layer.mergeAll(LayerNode.compile(LayerNode.group([Session.node, Database.node])), httpApiLayer))
 const testWorktreeMutations = process.platform === "win32" ? it.instance.skip : it.instance
+
+it.instance("monitors expose persisted results and isolate controls by session", () =>
+  Effect.gen(function* () {
+    const instance = yield* TestInstance
+    const database = yield* Database.Service
+    const owner = yield* createSession({ title: "Monitor owner" })
+    const other = yield* createSession({ title: "Other session" })
+    const info = {
+      id: `monitor_${crypto.randomUUID()}`,
+      sessionID: owner.id,
+      command: "status job-42",
+      workdir: instance.directory,
+      options: { mode: "poll" as const },
+      status: "succeeded" as const,
+      created: Date.now(),
+      updated: Date.now(),
+      attempts: 2,
+      delivery: "delivered" as const,
+      evidence: { exit: 0, output: "ready", truncated: false },
+    }
+    yield* database.db
+      .insert(MonitorTable)
+      .values({ id: info.id, session_id: owner.id, owner: "previous-process", data: info })
+      .run()
+      .pipe(Effect.orDie)
+    const found = yield* request(`/experimental/session/${owner.id}/monitors`, instance.directory)
+    expect(found.status).toBe(200)
+    expect(yield* found.json).toEqual([info])
+    const absent = yield* request(`/experimental/session/${other.id}/monitors`, instance.directory)
+    expect(yield* absent.json).toEqual([])
+    const cancel = yield* request(`/experimental/session/${other.id}/monitors/${info.id}/cancel`, instance.directory, {
+      method: "POST",
+    })
+    expect(cancel.status).toBe(200)
+    expect(yield* cancel.json).toBeNull()
+    const unchanged = yield* request(`/experimental/session/${owner.id}/monitors`, instance.directory)
+    expect(yield* unchanged.json).toEqual([info])
+  }),
+)
 
 function request(path: string, directory: string, init: RequestInit = {}) {
   return requestInDirectory(path, directory, init)
