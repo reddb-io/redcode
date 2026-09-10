@@ -1,7 +1,7 @@
 export * as SessionCompaction from "./compaction"
 
 import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@reddb-io/redcode-llm"
-import { DateTime, Effect, Stream } from "effect"
+import { Cause, DateTime, Effect, Exit, Fiber, Scope, Stream } from "effect"
 import type { Config } from "../config"
 import type { EventV2 } from "../event"
 import { SessionEvent } from "./event"
@@ -67,13 +67,18 @@ type Entry = {
 
 type Settings = {
   readonly auto: boolean
+  readonly background: boolean
   readonly buffer: number
   readonly tokens: number
 }
 
 type Dependencies = {
-  readonly latestUser: (sessionID: SessionSchema.ID) => Effect.Effect<SessionMessage.User | undefined>
-  readonly events: EventV2.Interface
+  readonly scope: Scope.Scope
+  readonly latestUser: (
+    sessionID: SessionSchema.ID,
+    beforeSeq?: number,
+  ) => Effect.Effect<SessionMessage.User | undefined>
+  readonly events: Pick<EventV2.Interface, "publish">
   readonly llm: {
     readonly stream: (request: LLMRequest) => Stream.Stream<LLMEvent, LLMError>
   }
@@ -138,10 +143,11 @@ const settings = (documents: readonly Config.Entry[]) => {
   return configured.reduce<Settings>(
     (result, current) => ({
       auto: current.auto ?? result.auto,
+      background: current.background ?? result.background,
       buffer: current.buffer ?? result.buffer,
       tokens: current.keep?.tokens ?? result.tokens,
     }),
-    { auto: true, buffer: DEFAULT_BUFFER, tokens: DEFAULT_KEEP_TOKENS },
+    { auto: true, background: true, buffer: DEFAULT_BUFFER, tokens: DEFAULT_KEEP_TOKENS },
   )
 }
 
@@ -202,32 +208,81 @@ export const summaryError = (input: { summary: string; source: string; finish?: 
     return "Compaction summary did not reduce context. Original history was preserved."
 }
 
+export const forkPreparation = <A, E>(
+  task: Effect.Effect<A, E>,
+  scope: Scope.Scope,
+  deadlineMs: number | false = 120_000,
+) =>
+  Effect.gen(function* () {
+    const worker = yield* task.pipe(Effect.forkScoped)
+    // A scope owns both fibers so cancellation awaits provider cleanup, including during the deadline wait.
+    if (deadlineMs !== false)
+      yield* Effect.sleep(deadlineMs).pipe(Effect.andThen(Fiber.interrupt(worker)), Effect.forkScoped)
+    const result = yield* Fiber.await(worker)
+    if (Exit.isSuccess(result)) return result.value
+    if (!Cause.hasInterruptsOnly(result.cause))
+      yield* Effect.logWarning("Background compaction failed", { cause: result.cause })
+  }).pipe(Effect.scoped, Effect.forkIn(scope))
+
 export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
-  const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
+  const snapshot = (input: Input) => ({
+    prefix: input.entries.map((entry) => JSON.stringify(entry)),
+    model: JSON.stringify(input.model),
+    system: JSON.stringify(input.request.system),
+    http: JSON.stringify(input.request.http),
+  })
+  const matches = (prepared: ReturnType<typeof snapshot>, input: Input) =>
+    prepared.model === JSON.stringify(input.model) &&
+    prepared.system === JSON.stringify(input.request.system) &&
+    prepared.http === JSON.stringify(input.request.http) &&
+    prepared.prefix.every((entry, index) => entry === JSON.stringify(input.entries[index]))
+
+  const prepare = Effect.fn("SessionCompaction.prepare")(function* (input: Input) {
     const context = input.model.route.defaults.limits?.context
-    if (context === undefined || context <= 0) return false
+    if (context === undefined || context <= 0) return
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
     // Read the original even when an earlier checkpoint no longer contains a user row.
-    const selected = select(input.entries, config.tokens, yield* dependencies.latestUser(input.sessionID))
+    const selected = select(
+      input.entries,
+      config.tokens,
+      yield* dependencies.latestUser(input.sessionID, input.entries.at(-1)?.seq),
+    )
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
-    if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
+    if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return
     const summaryPrompt = buildPrompt({
       previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
       context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
     })
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
-    if (Token.estimate(systemPrompt + summaryPrompt) > context - summaryOutput) return false
+    if (Token.estimate(systemPrompt + summaryPrompt) > context - summaryOutput) return
     const hook = yield* dependencies.beforeCompact({ sessionID: input.sessionID, reason: "auto" })
-    if (!hook.continue || hook.decision === "deny") return false
-    const messageID = SessionMessage.ID.create()
-    yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: "auto",
-    })
+    if (!hook.continue || hook.decision === "deny") return
+    return {
+      input,
+      selected,
+      summaryPrompt,
+      summaryOutput,
+      // A checkpoint may only replace this exact prefix, never a rewritten transcript.
+      ...snapshot(input),
+    }
+  })
 
+  type Prepared = NonNullable<Effect.Success<ReturnType<typeof prepare>>>
+  type Candidate = { prepared: Prepared; summary: string }
+  const pending = new Map<
+    SessionSchema.ID,
+    { snapshot: ReturnType<typeof snapshot>; fiber: Fiber.Fiber<Candidate | undefined> }
+  >()
+
+  const discard = Effect.fn("SessionCompaction.discard")(function* (sessionID: SessionSchema.ID) {
+    const candidate = pending.get(sessionID)
+    pending.delete(sessionID)
+    if (candidate) yield* Fiber.interrupt(candidate.fiber)
+  })
+
+  const summarize = Effect.fn("SessionCompaction.summarize")(function* (prepared: Prepared) {
+    const input = prepared.input
     const chunks: string[] = []
     let failed = false
     let finish: string | undefined
@@ -237,9 +292,9 @@ export const make = (dependencies: Dependencies) => {
           model: input.model,
           http: input.request.http,
           system: systemPrompt,
-          messages: [Message.user(summaryPrompt)],
+          messages: [Message.user(prepared.summaryPrompt)],
           tools: [],
-          generation: { maxTokens: summaryOutput },
+          generation: { maxTokens: prepared.summaryOutput },
         }),
       )
       .pipe(
@@ -254,10 +309,10 @@ export const make = (dependencies: Dependencies) => {
         Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
       )
     const summary = chunks.join("")
-    if (!summarized || failed) return false
+    if (!summarized || failed) return
     const error = summaryError({
       summary,
-      retained: "\n\n" + selected.recent,
+      retained: "\n\n" + prepared.selected.recent,
       source: input.entries
         .map((entry) =>
           entry.message.type === "compaction"
@@ -269,32 +324,93 @@ export const make = (dependencies: Dependencies) => {
     })
     if (error) {
       yield* Effect.logWarning(error, { sessionID: input.sessionID })
-      return false
+      return
     }
+    return { prepared, summary }
+  })
+
+  const begin = Effect.fn("SessionCompaction.begin")(function* (sessionID: SessionSchema.ID) {
+    const messageID = SessionMessage.ID.create()
+    yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+      sessionID,
+      messageID,
+      timestamp: yield* DateTime.now,
+      reason: "auto",
+    })
+    return messageID
+  })
+  const publish = Effect.fn("SessionCompaction.publish")(function* (
+    candidate: Candidate,
+    input: Input,
+    messageID: SessionMessage.ID,
+  ) {
+    const recent = [
+      candidate.prepared.selected.recent,
+      ...input.entries.slice(candidate.prepared.prefix.length).map((entry) => serialize(entry.message)),
+    ]
+      .filter(Boolean)
+      .join("\n\n")
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,
       timestamp: yield* DateTime.now,
       reason: "auto",
-      text: summary,
-      recent: selected.recent,
+      text: candidate.summary,
+      recent,
     })
     return true
   })
+  const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
+    const previous = pending.get(input.sessionID)
+    if (previous && matches(previous.snapshot, input)) {
+      const messageID = yield* begin(input.sessionID)
+      const candidate = yield* Fiber.join(previous.fiber)
+      pending.delete(input.sessionID)
+      if (candidate) return yield* publish(candidate, input, messageID)
+    }
+    yield* discard(input.sessionID)
+    const prepared = yield* prepare(input)
+    if (!prepared) return false
+    const messageID = yield* begin(input.sessionID)
+    const candidate = yield* summarize(prepared)
+    return candidate ? yield* publish(candidate, input, messageID) : false
+  })
+
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
     if (!config.auto) return false
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return false
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    if (
-      estimate({ system: input.request.system, messages: input.request.messages, tools: input.request.tools }) <=
-      context - Math.max(output, config.buffer)
-    )
+    const size = estimate({
+      system: input.request.system,
+      messages: input.request.messages,
+      tools: input.request.tools,
+    })
+    const threshold = context - Math.max(output, config.buffer)
+    if (size <= threshold) {
+      const previous = pending.get(input.sessionID)
+      if (previous && !matches(previous.snapshot, input)) yield* discard(input.sessionID)
+      // Prepare only near the limit; below that, the extra provider call is unlikely to help.
+      if (
+        config.background &&
+        size >= threshold - Math.min(8_000, Math.floor(threshold * 0.1)) &&
+        !pending.has(input.sessionID)
+      ) {
+        const fiber = yield* forkPreparation(
+          prepare(input).pipe(
+            Effect.flatMap((prepared) => (prepared ? summarize(prepared) : Effect.succeed(undefined))),
+          ),
+          dependencies.scope,
+        )
+        pending.set(input.sessionID, { snapshot: snapshot(input), fiber })
+      }
       return false
+    }
     return yield* compactAfterOverflow(input)
   })
   return {
     compactIfNeeded,
     compactAfterOverflow,
+    discard,
   }
 }

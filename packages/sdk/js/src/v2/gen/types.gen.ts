@@ -2060,6 +2060,7 @@ export type Config = {
   }
   compaction?: {
     auto?: boolean
+    background?: boolean
     prune?: boolean
     tail_turns?: number
     preserve_recent_tokens?: number

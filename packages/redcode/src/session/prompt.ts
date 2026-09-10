@@ -1518,6 +1518,16 @@ const layer = Layer.effect(
             continue
           }
 
+          if (lastFinished && !lastFinished.summary)
+            yield* compaction.prepare({
+              messages: msgs,
+              parentID: lastUser.id,
+              sessionID,
+              auto: true,
+              tokens: lastFinished.tokens,
+              model,
+            })
+
           const agent = yield* agents.get(lastUser.agent)
           if (!agent) {
             const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
@@ -1728,6 +1738,7 @@ const layer = Layer.effect(
         input.sessionID,
         lastAssistant(input.sessionID),
         runLoop(input.sessionID).pipe(
+          Effect.ensuring(compaction.discard(input.sessionID)),
           Effect.onExit((exit) =>
             Effect.gen(function* () {
               if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
