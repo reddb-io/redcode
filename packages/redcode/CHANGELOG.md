@@ -1,5 +1,13 @@
 # opencode
 
+## 0.25.1
+
+### Patch Changes
+
+- d6f3685: Report preview assembly failures from the TUI Design server as actionable errors instead of opaque HTTP 500 responses. Show the failure in the preview canvas, disable actions against a failed preview, stop repeated polling retries, and retain the selected revision when explicitly retrying with Refresh.
+- d6f3685: Preserve requested tasks across partial updates in both session runtimes. Add stable task IDs, revisions, change history, automatic next-task selection and explicit reasons for blocked or cancelled work. Reject conflicting stale updates, show blockers in the TUI, and preserve unfinished work when continuation attempts are exhausted instead of silently abandoning it.
+- d6f3685: Connect approved Plan revisions to persistent execution tasks in both runtimes. Restore task state across continuation and compaction, require actual tool evidence for tracked completion, preserve scope changes, and pause continuation budgets without converting remaining work into blockers.
+
 ## 0.25.0
 
 ### Minor Changes
