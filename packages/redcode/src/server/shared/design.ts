@@ -1,3 +1,5 @@
+import { appearance } from "@reddb-io/redcode-design/brand.gen"
+import { params } from "@reddb-io/redcode-design/params"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignHost } from "@/design/host"
 import { DesignFeedback } from "@/design/feedback"
@@ -122,7 +124,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               })
             if (request.method === "GET" && parts[3] === "review")
               return html(
-                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy }).replaceAll("<", "\\u003c")})</script></body></html>`,
+                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")})</script></body></html>`,
               )
             if (request.method === "GET" && parts[3] === "whiteboard")
               return html(yield* Effect.promise(DesignWhiteboard.frame))
@@ -166,7 +168,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
                   }),
               })
               return html(
-                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${content}<script>(${annotations.toString()})()</script>`,
+                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${content}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
               )
             }
             if (parts[4] === "job" && request.method === "GET" && !parts[5]) return reply(yield* renderer.jobs(id))

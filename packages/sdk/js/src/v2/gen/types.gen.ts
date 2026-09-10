@@ -5027,6 +5027,56 @@ export type SessionNextRevertCommitted = {
   }
 }
 
+export type DesignParamField =
+  | {
+      id: string
+      name: string
+      type: "text"
+      default: string
+    }
+  | {
+      id: string
+      name: string
+      type: "boolean"
+      default: boolean
+    }
+  | {
+      id: string
+      name: string
+      type: "number"
+      default: number
+      min?: number
+      max?: number
+    }
+  | {
+      id: string
+      name: string
+      type: "select"
+      default: string
+      options: Array<string>
+    }
+
+export type DesignParamComponent = {
+  id: string
+  name: string
+  selector: string
+  variant?: string
+  fields: Array<DesignParamField>
+}
+
+export type DesignParamValues = {
+  [key: string]: {
+    [key: string]: string | number | boolean
+  }
+}
+
+export type DesignParamPreset = {
+  id: string
+  name: string
+  variant?: string
+  values: DesignParamValues
+}
+
 export type DesignBrief = {
   objective: string
   audience: string
@@ -5043,6 +5093,7 @@ export type DesignDecision = {
 }
 
 export type DesignScenario = {
+  params?: DesignParamValues
   id: string
   name: string
   variant?: string
@@ -5057,6 +5108,8 @@ export type DesignScenario = {
 }
 
 export type DesignInfo = {
+  controls?: Array<DesignParamComponent>
+  presets?: Array<DesignParamPreset>
   id: string
   sessionID: string
   name: string
@@ -5096,6 +5149,8 @@ export type DesignCreate = {
 }
 
 export type DesignUpdate = {
+  controls?: Array<DesignParamComponent>
+  presets?: Array<DesignParamPreset>
   name?: string
   brief?: DesignBrief
   decisions?: Array<DesignDecision>
@@ -5120,13 +5175,22 @@ export type DesignRevision = {
   document: DesignInfo
 }
 
+export type DesignParamContext = {
+  values: DesignParamValues
+  preset?: string
+  variant?: string
+  component?: string
+}
+
 export type DesignFeedback = {
+  params?: DesignParamContext
   id: string
   revision: string
   text: string
   items: Array<{
     target: string
     text: string
+    params?: DesignParamContext
   }>
   assets: Array<string>
   snapshot: string

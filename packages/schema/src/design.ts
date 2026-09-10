@@ -19,7 +19,57 @@ export const Decision = Schema.Struct({
 }).annotate({ identifier: "Design.Decision" })
 export interface Decision extends Schema.Schema.Type<typeof Decision> {}
 
+const ParamID = Schema.String.check(Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/))
+export const ParamValues = Schema.Record(
+  Schema.String,
+  Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])),
+).annotate({ identifier: "Design.ParamValues" })
+export type ParamValues = typeof ParamValues.Type
+
+const FieldBase = { id: ParamID, name: Schema.NonEmptyString }
+export const ParamField = Schema.Union([
+  Schema.Struct({ ...FieldBase, type: Schema.Literal("text"), default: Schema.String }),
+  Schema.Struct({ ...FieldBase, type: Schema.Literal("boolean"), default: Schema.Boolean }),
+  Schema.Struct({
+    ...FieldBase,
+    type: Schema.Literal("number"),
+    default: Schema.Finite,
+    min: Schema.Finite.pipe(optional),
+    max: Schema.Finite.pipe(optional),
+  }),
+  Schema.Struct({
+    ...FieldBase,
+    type: Schema.Literal("select"),
+    default: Schema.String,
+    options: Schema.Array(Schema.String),
+  }),
+]).annotate({ identifier: "Design.ParamField" })
+export type ParamField = typeof ParamField.Type
+export const ParamComponent = Schema.Struct({
+  id: ParamID,
+  name: Schema.NonEmptyString,
+  selector: Schema.NonEmptyString,
+  variant: Schema.String.pipe(optional),
+  fields: Schema.Array(ParamField).check(Schema.isMaxLength(32)),
+}).annotate({ identifier: "Design.ParamComponent" })
+export interface ParamComponent extends Schema.Schema.Type<typeof ParamComponent> {}
+export const ParamPreset = Schema.Struct({
+  id: ParamID,
+  name: Schema.NonEmptyString,
+  variant: Schema.String.pipe(optional),
+  values: ParamValues,
+}).annotate({ identifier: "Design.ParamPreset" })
+export interface ParamPreset extends Schema.Schema.Type<typeof ParamPreset> {}
+export const ParamContext = Schema.Struct({
+  values: ParamValues,
+  preset: Schema.String.pipe(optional),
+  variant: Schema.String.pipe(optional),
+  component: Schema.String.pipe(optional),
+}).annotate({ identifier: "Design.ParamContext" })
+export interface ParamContext extends Schema.Schema.Type<typeof ParamContext> {}
+
 export const Scenario = Schema.Struct({
+  params: ParamValues.pipe(optional),
   id: Schema.String,
   name: Schema.String,
   variant: Schema.String.pipe(optional),
@@ -67,6 +117,8 @@ export const Create = Schema.Struct({
 export interface Create extends Schema.Schema.Type<typeof Create> {}
 
 export const Update = Schema.Struct({
+  controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
+  presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   name: Schema.NonEmptyString.pipe(optional),
   brief: Brief.pipe(optional),
   decisions: Schema.Array(Decision).pipe(optional),
@@ -79,6 +131,8 @@ export const Update = Schema.Struct({
 export interface Update extends Schema.Schema.Type<typeof Update> {}
 
 export const Info = Schema.Struct({
+  controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
+  presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   id: ID,
   sessionID: Session.ID,
   name: Schema.String,
@@ -151,10 +205,13 @@ export const ApprovalNotice = Schema.Struct({
 export interface ApprovalNotice extends Schema.Schema.Type<typeof ApprovalNotice> {}
 
 export const Feedback = Schema.Struct({
+  params: ParamContext.pipe(optional),
   id: SessionMessage.ID,
   revision: Schema.String,
   text: Schema.NonEmptyString,
-  items: Schema.Array(Schema.Struct({ target: Schema.String, text: Schema.String })),
+  items: Schema.Array(
+    Schema.Struct({ target: Schema.String, text: Schema.String, params: ParamContext.pipe(optional) }),
+  ),
   assets: Schema.Array(Schema.String),
   snapshot: Schema.String,
   whiteboards: Schema.Array(Schema.Struct({ target: Schema.String, scene: Schema.Unknown })).pipe(optional),

@@ -559,3 +559,223 @@ test("preview failures show the resource, stop repeated requests and recover var
     await page.close()
   }
 }, 60000)
+
+test("Params synchronizes wizard and modal, persists scenarios and captures note-time context", async () => {
+  const current = await published("html")
+  const controls: Design.ParamComponent[] = [
+    {
+      id: "wizard",
+      name: "Wizard",
+      selector: "#wizard",
+      fields: [
+        { id: "step", name: "Current step", type: "number", default: 1, min: 1, max: 3 },
+        {
+          id: "outcome",
+          name: "Simulated outcome",
+          type: "select",
+          default: "success",
+          options: ["success", "error", "loading"],
+        },
+        {
+          id: "result",
+          name: "Result state",
+          type: "select",
+          default: "empty",
+          options: ["empty", "populated", "error", "loading"],
+        },
+      ],
+    },
+    {
+      id: "modal",
+      name: "Modal",
+      selector: "#modal",
+      fields: [
+        {
+          id: "kind",
+          name: "Modal type",
+          type: "select",
+          default: "confirmation",
+          options: ["confirmation", "warning"],
+        },
+        { id: "cancel", name: "Show Cancel", type: "boolean", default: true },
+        { id: "title", name: "Modal title", type: "text", default: "Confirm your choice" },
+      ],
+    },
+  ]
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    Bun.file(new URL("./fixture/design-params.html", import.meta.url)),
+  )
+  await api(`${current.root}/${current.document.id}`, "PATCH", {
+    controls,
+    scenarios: [
+      {
+        id: "wizard-error",
+        name: "Error at step two",
+        selector: "#result",
+        state: "error",
+        params: { wizard: { step: 2, outcome: "error" } },
+        actions: [{ selector: "#submit", action: "click" }],
+      },
+    ],
+  })
+  await api(`${current.root}/${current.document.id}/revision`, "POST", { name: "Interactive scenarios" })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await frame.getByRole("button", { name: "Next", exact: true }).click()
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#review")!.shadowRoot!.querySelector<HTMLInputElement>("#param-field-step")?.value ===
+        "2",
+    )
+    await frame.getByRole("button", { name: "Previous", exact: true }).click()
+    await frame.getByRole("heading", { name: "Step 1 of 3" }).waitFor()
+    await page.getByLabel("Current step", { exact: true }).fill("2")
+    await page.getByLabel("Current step", { exact: true }).press("Tab")
+    await frame.getByRole("heading", { name: "Step 2 of 3" }).waitFor()
+    await page.getByLabel("Simulated outcome", { exact: true }).selectOption("error")
+    await frame.getByRole("button", { name: "Submit", exact: true }).click()
+    await frame.getByText("Something went wrong", { exact: true }).waitFor()
+    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    await page.getByLabel("Review notes", { exact: true }).fill("Make the retry action clearer")
+    await page.getByRole("button", { name: "Add note", exact: true }).click()
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await frame.getByRole("button", { name: "Try again", exact: true }).click()
+    await page.getByLabel("Simulated outcome", { exact: true }).selectOption("success")
+    await frame.getByRole("button", { name: "Submit", exact: true }).click()
+    await frame.getByText("Procedure completed", { exact: true }).waitFor()
+    // Picking consumes exactly one click, then restores normal prototype interaction.
+    await page.getByLabel("Pick a component in the preview", { exact: true }).check()
+    await frame.getByRole("button", { name: "OK", exact: true }).click()
+    await page.getByLabel("Modal type", { exact: true }).selectOption("warning")
+    await page.getByLabel("Show Cancel", { exact: true }).uncheck()
+    await frame.getByRole("button", { name: "Cancel", exact: true }).waitFor({ state: "hidden" })
+    await frame.getByRole("button", { name: "OK", exact: true }).click()
+    await frame.getByRole("heading", { name: "Acknowledged", exact: true }).waitFor()
+    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    const feedback = page.waitForRequest(
+      (request) => request.url().endsWith("/feedback") && request.method() === "POST",
+    )
+    await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+    const body = (await feedback).postDataJSON() as Design.Feedback
+    expect(body.items[0].params?.values.wizard).toMatchObject({ step: 2, outcome: "error", result: "error" })
+    expect(body.params?.values.wizard.result).toBe("populated")
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await page.getByLabel("Scenario name", { exact: true }).fill("Warning after success")
+    await page.getByRole("button", { name: "Save scenario", exact: true }).click()
+    await page.getByText("Scenario saved in a new revision", { exact: true }).waitFor()
+    await page.reload()
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await page.getByLabel("Scenario", { exact: true }).selectOption({ label: "Warning after success" })
+    await frame.getByRole("heading", { name: "Acknowledged", exact: true }).waitFor()
+    await page.getByLabel("Component", { exact: true }).selectOption("wizard")
+    await frame.getByRole("button", { name: "Next", exact: true }).click()
+    await frame.getByRole("heading", { name: "Step 3 of 3" }).waitFor()
+    await page.getByRole("button", { name: "Restart scenario", exact: true }).click()
+    await frame.getByRole("heading", { name: "Step 2 of 3" }).waitFor()
+    // Values outside declared bounds and messages from the wrong window are ignored.
+    await page.evaluate(() =>
+      window.postMessage({ type: "design:params-state", values: { wizard: { step: 99 } } }, "*"),
+    )
+    expect(await page.getByLabel("Current step", { exact: true }).inputValue()).toBe("2")
+    const saved = await api<Design.Info>(`${current.root}/${current.document.id}`)
+    expect(saved.presets?.[0].values.modal.cancel).toBe(false)
+    expect(saved.presets?.[0].values.wizard.step).toBe(2)
+    const job = await api<Design.Job>(`${current.root}/${current.document.id}/job`, "POST", {
+      revision: saved.revision,
+      format: "audit",
+    })
+    const deadline = Date.now() + 90000
+    while (Date.now() < deadline) {
+      const jobs = await api<Design.Job[]>(`${current.root}/${current.document.id}/job`)
+      const done = jobs.find((item) => item.id === job.id)!
+      if (done.status === "failed") throw new Error(done.error ?? "Design audit failed")
+      if (done.status === "completed") {
+        expect(
+          done.audit?.scenarios.some((item) => item.includes("Error at step two") && item.includes("exercised")),
+        ).toBe(true)
+        break
+      }
+      await Bun.sleep(200)
+    }
+    expect(Date.now()).toBeLessThan(deadline)
+    expect(errors).toEqual([])
+    const favicon = await page.locator('link[rel="icon"]').getAttribute("href")
+    expect(decodeURIComponent(favicon!)).toContain("<title>RedDB</title>")
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.querySelector("#review")!).getPropertyValue("--accent").trim(),
+      ),
+    ).toBe("#ff2056")
+    await page.screenshot({ path: path.join(temporary, "redcode-design-params.png") })
+    await page.emulateMedia({ colorScheme: "dark" })
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("#review")!.dataset.colorScheme === "dark")
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector("#review")!).backgroundColor)).toBe(
+      "rgb(18, 20, 27)",
+    )
+    await page.screenshot({ path: path.join(temporary, "redcode-design-params-dark.png") })
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByLabel("Current step", { exact: true }).fill("1")
+    await page.getByLabel("Current step", { exact: true }).press("Tab")
+    await frame.getByRole("heading", { name: "Step 1 of 3" }).waitFor()
+    await page.screenshot({ path: path.join(temporary, "redcode-design-params-mobile.png") })
+  } finally {
+    await page.close()
+  }
+}, 120000)
+
+test("Params component picking respects variant scope and rejects invalid runtime values", async () => {
+  const current = await published("html")
+  const controls: Design.ParamComponent[] = ["a", "b"].map((variant) => ({
+    id: `card-${variant}`,
+    name: `Card ${variant}`,
+    selector: ".card",
+    variant,
+    fields: [{ id: "quantity", name: "Quantity", type: "number", default: 1, min: 1, max: 3 }],
+  }))
+  await api(`${current.root}/${current.document.id}`, "PATCH", { controls })
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    '<!doctype html><html><body><section data-design-variant="a" data-design-label="Option A"><article class="card"><h2>Card A</h2></article></section><section data-design-variant="b" data-design-label="Option B"><article class="card"><h2>Card B</h2></article></section></body></html>',
+  )
+  await api(`${current.root}/${current.document.id}/revision`, "POST", { name: "Scoped components" })
+  const page = await browser.newPage()
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Option B", exact: true }).click()
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await page.getByLabel("Pick a component in the preview", { exact: true }).check()
+    await page.frameLocator("#preview").getByRole("heading", { name: "Card B", exact: true }).click()
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#review")!.shadowRoot!.querySelector<HTMLInputElement>("#param-select")?.checked ===
+        false,
+    )
+    expect(await page.getByLabel("Component", { exact: true }).inputValue()).toBe("card-b")
+    const frame = await (await page.locator("#preview").elementHandle())!.contentFrame()
+    await frame!.evaluate(() =>
+      window.dispatchEvent(new CustomEvent("design:state", { detail: { values: { "card-b": { quantity: 99 } } } })),
+    )
+    expect(await page.getByLabel("Quantity", { exact: true }).inputValue()).toBe("1")
+    await page.getByLabel("Quantity", { exact: true }).fill("3")
+    await page.getByLabel("Quantity", { exact: true }).press("Tab")
+    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    await page.reload()
+    await page.getByRole("tab", { name: "Option B", exact: true }).click()
+    await page.getByRole("tab", { name: "Params", exact: true }).click()
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#review")!.shadowRoot!.querySelector<HTMLInputElement>("#param-field-quantity")
+          ?.value === "3",
+    )
+  } finally {
+    await page.close()
+  }
+}, 30000)

@@ -687,6 +687,8 @@ export function make(options: ClientOptions) {
             method: "PATCH",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
             body: {
+              controls: input["controls"],
+              presets: input["presets"],
               name: input["name"],
               brief: input["brief"],
               decisions: input["decisions"],
@@ -777,6 +779,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/feedback`,
             body: {
+              params: input["params"],
               id: input["id"],
               revision: input["revision"],
               text: input["text"],

@@ -1967,6 +1967,37 @@ export type DesignsWhiteboardOutput = Uint8Array
 export type DesignsListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type DesignsListOutput = ReadonlyArray<{
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -1991,6 +2022,7 @@ export type DesignsListOutput = ReadonlyArray<{
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2058,6 +2090,37 @@ export type DesignsCreateInput = {
 }
 
 export type DesignsCreateOutput = {
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -2082,6 +2145,7 @@ export type DesignsCreateOutput = {
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2115,6 +2179,37 @@ export type DesignsGetInput = {
 }
 
 export type DesignsGetOutput = {
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -2139,6 +2234,7 @@ export type DesignsGetOutput = {
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2169,7 +2265,38 @@ export type DesignsGetOutput = {
 export type DesignsUpdateInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
-  readonly name?: {
+  readonly controls?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2186,6 +2313,137 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["controls"]
+  readonly presets?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["presets"]
+  readonly name?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2203,6 +2461,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["name"]
   readonly brief?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2219,6 +2508,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2236,6 +2526,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["brief"]
   readonly decisions?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2252,6 +2573,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2269,6 +2591,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["decisions"]
   readonly questions?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2285,6 +2638,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2302,6 +2656,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["questions"]
   readonly scenarios?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2318,6 +2703,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2335,6 +2721,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["scenarios"]
   readonly designSystem?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2351,6 +2768,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2368,6 +2786,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["designSystem"]
   readonly entry?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2384,6 +2833,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2401,6 +2851,37 @@ export type DesignsUpdateInput = {
     readonly tweaks?: { readonly [x: string]: string }
   }["entry"]
   readonly tweaks?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly name?: string
     readonly brief?: {
       readonly objective: string
@@ -2417,6 +2898,7 @@ export type DesignsUpdateInput = {
     }>
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2436,6 +2918,37 @@ export type DesignsUpdateInput = {
 }
 
 export type DesignsUpdateOutput = {
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -2460,6 +2973,7 @@ export type DesignsUpdateOutput = {
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2500,6 +3014,37 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
   readonly created: number | "Infinity" | "-Infinity" | "NaN"
   readonly files: { readonly [x: string]: string }
   readonly document: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly id: string
     readonly sessionID: string
     readonly name: string
@@ -2524,6 +3069,7 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
     }>
     readonly questions: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2582,6 +3128,37 @@ export type DesignsPublishOutput = {
   readonly created: number | "Infinity" | "-Infinity" | "NaN"
   readonly files: { readonly [x: string]: string }
   readonly document: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly id: string
     readonly sessionID: string
     readonly name: string
@@ -2606,6 +3183,7 @@ export type DesignsPublishOutput = {
     }>
     readonly questions: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2648,6 +3226,37 @@ export type DesignsRestoreOutput = {
   readonly created: number | "Infinity" | "-Infinity" | "NaN"
   readonly files: { readonly [x: string]: string }
   readonly document: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
     readonly id: string
     readonly sessionID: string
     readonly name: string
@@ -2672,6 +3281,7 @@ export type DesignsRestoreOutput = {
     }>
     readonly questions: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -2706,6 +3316,37 @@ export type DesignsReopenInput = {
 }
 
 export type DesignsReopenOutput = {
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -2730,6 +3371,7 @@ export type DesignsReopenOutput = {
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2763,6 +3405,37 @@ export type DesignsRefreshInput = {
 }
 
 export type DesignsRefreshOutput = {
+  readonly controls?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly selector: string
+    readonly variant?: string
+    readonly fields: ReadonlyArray<
+      | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+      | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "number"
+          readonly default: number
+          readonly min?: number
+          readonly max?: number
+        }
+      | {
+          readonly id: string
+          readonly name: string
+          readonly type: "select"
+          readonly default: string
+          readonly options: ReadonlyArray<string>
+        }
+    >
+  }>
+  readonly presets?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly variant?: string
+    readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+  }>
   readonly id: string
   readonly sessionID: string
   readonly name: string
@@ -2787,6 +3460,7 @@ export type DesignsRefreshOutput = {
   }>
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     readonly id: string
     readonly name: string
     readonly variant?: string
@@ -2817,11 +3491,52 @@ export type DesignsRefreshOutput = {
 export type DesignsFeedbackInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
-  readonly id: {
+  readonly params?: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["params"]
+  readonly id: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2829,10 +3544,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["id"]
   readonly revision: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2840,10 +3570,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["revision"]
   readonly text: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2851,10 +3596,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["text"]
   readonly items: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2862,10 +3622,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["items"]
   readonly assets: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2873,10 +3648,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["assets"]
   readonly snapshot: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2884,10 +3674,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["snapshot"]
   readonly whiteboards?: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2895,10 +3700,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["whiteboards"]
   readonly delivery: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2906,10 +3726,25 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["delivery"]
   readonly end: {
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
@@ -2961,6 +3796,37 @@ export type DesignsApprovalOutput = {
     readonly created: number | "Infinity" | "-Infinity" | "NaN"
     readonly files: { readonly [x: string]: string }
     readonly document: {
+      readonly controls?: ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number
+              readonly max?: number
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+      readonly presets?: ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
       readonly id: string
       readonly sessionID: string
       readonly name: string
@@ -2985,6 +3851,7 @@ export type DesignsApprovalOutput = {
       }>
       readonly questions: ReadonlyArray<string>
       readonly scenarios: ReadonlyArray<{
+        readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
         readonly id: string
         readonly name: string
         readonly variant?: string
@@ -3024,10 +3891,25 @@ export type DesignsApprovalOutput = {
     readonly created: number | "Infinity" | "-Infinity" | "NaN"
   }>
   readonly feedback: ReadonlyArray<{
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
     readonly id: string
     readonly revision: string
     readonly text: string
-    readonly items: ReadonlyArray<{ readonly target: string; readonly text: string }>
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+    }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
     readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
