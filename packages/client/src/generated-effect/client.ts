@@ -342,6 +342,8 @@ type Endpoint4_5Request = Parameters<RawClient["server.design"]["design.update"]
 type Endpoint4_5Input = {
   readonly sessionID: Endpoint4_5Request["params"]["sessionID"]
   readonly designID: Endpoint4_5Request["params"]["designID"]
+  readonly controls?: Endpoint4_5Request["payload"]["controls"]
+  readonly presets?: Endpoint4_5Request["payload"]["presets"]
   readonly name?: Endpoint4_5Request["payload"]["name"]
   readonly brief?: Endpoint4_5Request["payload"]["brief"]
   readonly decisions?: Endpoint4_5Request["payload"]["decisions"]
@@ -355,6 +357,8 @@ const Endpoint4_5 = (raw: RawClient["server.design"]) => (input: Endpoint4_5Inpu
   raw["design.update"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
+      controls: input["controls"],
+      presets: input["presets"],
       name: input["name"],
       brief: input["brief"],
       decisions: input["decisions"],
@@ -435,6 +439,7 @@ type Endpoint4_12Request = Parameters<RawClient["server.design"]["design.feedbac
 type Endpoint4_12Input = {
   readonly sessionID: Endpoint4_12Request["params"]["sessionID"]
   readonly designID: Endpoint4_12Request["params"]["designID"]
+  readonly params?: Endpoint4_12Request["payload"]["params"]
   readonly id: Endpoint4_12Request["payload"]["id"]
   readonly revision: Endpoint4_12Request["payload"]["revision"]
   readonly text: Endpoint4_12Request["payload"]["text"]
@@ -449,6 +454,7 @@ const Endpoint4_12 = (raw: RawClient["server.design"]) => (input: Endpoint4_12In
   raw["design.feedback"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
+      params: input["params"],
       id: input["id"],
       revision: input["revision"],
       text: input["text"],

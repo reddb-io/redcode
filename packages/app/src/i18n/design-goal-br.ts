@@ -1,4 +1,19 @@
 export const designGoalPortuguese: Record<string, string> = {
+  "session.design.studio.params": "Params",
+  "session.design.studio.paramEmpty":
+    "Esta revisão não tem controles interativos. Peça ao agente para expor os parâmetros dos componentes ao publicar o protótipo.",
+  "session.design.studio.paramScenario": "Cenário",
+  "session.design.studio.paramCustom": "Valores personalizados",
+  "session.design.studio.paramReset": "Reiniciar cenário",
+  "session.design.studio.paramSelect": "Selecionar um componente no preview",
+  "session.design.studio.paramComponent": "Componente",
+  "session.design.studio.paramName": "Nome do cenário",
+  "session.design.studio.paramSave": "Salvar cenário",
+  "session.design.studio.paramPublish":
+    "Salvar publica uma nova revisão com estes parâmetros. Experimente antes de salvar.",
+  "session.design.studio.paramLatest": "Abra a revisão mais recente antes de salvar um cenário.",
+  "session.design.studio.paramSaved": "Cenário salvo em uma nova revisão",
+
   "session.design.studio.title": "Design",
   "session.design.studio.details": "Detalhes",
   "session.design.studio.create": "Criar design",

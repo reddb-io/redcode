@@ -1,5 +1,19 @@
 export const reviewCopy = {
   title: "Design",
+  params: "Params",
+  paramEmpty:
+    "This revision has no interactive controls. Ask the agent to expose component parameters when publishing the prototype.",
+  paramScenario: "Scenario",
+  paramCustom: "Custom values",
+  paramReset: "Restart scenario",
+  paramSelect: "Pick a component in the preview",
+  paramComponent: "Component",
+  paramName: "Scenario name",
+  paramSave: "Save scenario",
+  paramPublish: "Saving publishes a new revision with these parameters. Explore freely before saving.",
+  paramLatest: "Open the latest revision before saving a scenario.",
+  paramSaved: "Scenario saved in a new revision",
+
   details: "Details",
   create: "Create design",
   name: "Name",

@@ -1,3 +1,4 @@
+import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { createEffect, createMemo, createResource, onCleanup, untrack } from "solid-js"
 import { reviewCopy, type ReviewCopy } from "@reddb-io/redcode-design/copy"
 import type { mountReview, ReviewOptions } from "@reddb-io/redcode-design/review"
@@ -23,7 +24,7 @@ export function createSessionDesignMount(input: {
     const host = document.createElement("div")
     host.style.height = "100%"
     input.root.replaceChildren(host)
-    const mounted = module.mountReview(host, { ...options, copy: untrack(copy) })
+    const mounted = module.mountReview(host, { ...options, copy: untrack(copy), appearance })
     onCleanup(mounted)
     createEffect(() => mounted.updateCopy(copy()))
   })

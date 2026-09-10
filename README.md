@@ -350,6 +350,16 @@ flowchart LR
   Authorize --> Build[Build changes and verifies the app]
 ```
 
+### Try component states with Params
+
+![Design Params with the RedDB theme, an interactive wizard and a warning modal](docs/design/params.png)
+
+Open **Params** beside Review, Assets and Details to change the controls exposed by the prototype: wizard step, success/error/loading, modal type, available buttons or text. Operate the prototype's buttons normally; the panel follows its state. **Pick a component in the preview** selects which controls to edit and then returns to interaction.
+
+Choose or save named scenarios, and use **Restart scenario** to repeat them. Saving publishes a revision so scenarios can be reopened with the same prototype. Review notes include the parameter values at the time they were added, allowing the agent to reproduce the reported state. Parameter edits run locally without another model call.
+
+Design agents prepare these controls and scenario checks for interactive flows automatically. Older prototypes may need bindings added first. See the [Params contract and walkthrough](specs/design/params.md).
+
 ### Walkthrough: explore dark mode for app-admin
 
 1. **Open your project.** Run `redcode` from the repository directory. Use the current

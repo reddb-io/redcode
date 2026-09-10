@@ -115,7 +115,7 @@ export function detail(record: Design.Approval, section: (typeof Read.Type)["sec
       designSystem: document.designSystem,
       sources: document.sources,
     },
-    scenarios: document.scenarios,
+    scenarios: { acceptance: document.scenarios, controls: document.controls ?? [], presets: document.presets ?? [] },
     feedback: record.feedback,
     assets: record.assets,
     evidence: record.audits,

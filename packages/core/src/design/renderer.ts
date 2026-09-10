@@ -261,6 +261,21 @@ const make = Effect.gen(function* () {
                 yield* io(() => page.goto(`http://design.local/${source === root ? entry : "index.html"}`))
                 yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
                 const outcome = yield* io(async () => {
+                  if (scenario?.params)
+                    await page.evaluate(
+                      (values) => {
+                        window.dispatchEvent(new CustomEvent("design:params", { detail: { values, reset: true } }))
+                      },
+                      Object.fromEntries(
+                        (revision.document.controls ?? []).map((component) => [
+                          component.id,
+                          {
+                            ...Object.fromEntries(component.fields.map((field) => [field.id, field.default])),
+                            ...scenario.params?.[component.id],
+                          },
+                        ]),
+                      ),
+                    )
                   for (const action of scenario?.actions ?? []) {
                     const target = page.locator(action.selector)
                     if (action.action === "click") await target.click({ timeout: 5000 })
@@ -409,6 +424,21 @@ const make = Effect.gen(function* () {
                 // A scenario may observe state on the variant root itself.
                 const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
                 const result = yield* io(async () => {
+                  if (scenario?.params)
+                    await page.evaluate(
+                      (values) => {
+                        window.dispatchEvent(new CustomEvent("design:params", { detail: { values, reset: true } }))
+                      },
+                      Object.fromEntries(
+                        (revision.document.controls ?? []).map((component) => [
+                          component.id,
+                          {
+                            ...Object.fromEntries(component.fields.map((field) => [field.id, field.default])),
+                            ...scenario.params?.[component.id],
+                          },
+                        ]),
+                      ),
+                    )
                   for (const action of scenario.actions) {
                     if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
                     if (action.action === "fill")

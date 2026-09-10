@@ -1,3 +1,4 @@
+import { DesignParams } from "./params"
 export * as DesignStore from "./store"
 
 import path from "node:path"
@@ -137,6 +138,11 @@ const make = Effect.gen(function* () {
         try: () => DesignFiles.relative(input.entry!),
         catch: () => new Design.Error({ code: "invalid", message: "Invalid artifact entry" }),
       })
+    yield* Effect.try({
+      try: () => DesignParams.validate({ ...document, ...input }),
+      catch: (error) =>
+        error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: String(error) }),
+    })
     return yield* save({ ...document, ...input })
   }, lock.withPermits(1))
 

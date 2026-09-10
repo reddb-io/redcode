@@ -1,3 +1,5 @@
+import { appearance } from "@reddb-io/redcode-design/brand.gen"
+import { params } from "@reddb-io/redcode-design/params"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerResponse } from "effect/unstable/http"
@@ -69,7 +71,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
     .handleRaw("design.review", (ctx) =>
       Effect.succeed(
         HttpServerResponse.text(
-          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy }).replaceAll("<", "\\u003c")})</script></body></html>`,
+          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")})</script></body></html>`,
           {
             contentType: "text/html",
             headers: {
@@ -134,7 +136,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           catch: (error) => new Design.Error({ code: "invalid", message: String(error) }),
         })
         return HttpServerResponse.text(
-          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${html}<script>(${annotations.toString()})()</script>`,
+          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${html}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
           { contentType: "text/html", headers: { "cache-control": "private, max-age=31536000, immutable" } },
         )
       }),

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><title>Checkout scenarios</title>
+  <style>
+    body {
+      font: 16px/1.5 system-ui;
+      background: #f5f7f6;
+      color: #23352f;
+      margin: 0;
+      padding: 32px;
+    }
+    main {
+      max-width: 560px;
+      margin: auto;
+    }
+    section {
+      padding: 24px;
+      background: #fffefb;
+      border: 1px solid #c7d2cc;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    h2 {
+      font-size: 20px;
+    }
+    button {
+      font: inherit;
+      border: 1px solid #6a8276;
+      background: #edf2ee;
+      color: #203d30;
+      border-radius: 5px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+    button:focus-visible {
+      outline: 2px solid #235f43;
+      outline-offset: 3px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+    }
+    #modal .actions {
+      justify-content: center;
+    }
+    [hidden] {
+      display: none !important;
+    }
+  </style>
+  <main>
+    <h1>Checkout scenarios</h1>
+    <section id="wizard">
+      <h2 id="step"></h2>
+      <p id="result" data-state="empty"></p>
+      <div class="actions">
+        <button id="previous">Previous</button><button id="next">Next</button><button id="submit">Submit</button
+        ><button id="retry">Try again</button>
+      </div>
+    </section>
+    <section id="modal" role="dialog" aria-labelledby="modal-title">
+      <h2 id="modal-title"></h2>
+      <p id="modal-copy">Please review your choice.</p>
+      <div class="actions"><button id="ok">OK</button><button id="cancel">Cancel</button></div>
+    </section>
+  </main>
+  <script>
+    const values = {
+      wizard: { step: 1, outcome: "success", result: "empty" },
+      modal: { kind: "confirmation", cancel: true, title: "Confirm your choice" },
+    }
+    function render() {
+      document.getElementById("step").textContent = "Step " + values.wizard.step + " of 3"
+      const result = document.getElementById("result")
+      result.dataset.state = values.wizard.result
+      result.textContent = {
+        empty: "Ready to continue",
+        populated: "Procedure completed",
+        error: "Something went wrong",
+        loading: "Waiting for a response",
+      }[values.wizard.result]
+      document.getElementById("previous").disabled = values.wizard.step === 1
+      document.getElementById("next").disabled = values.wizard.step === 3
+      document.getElementById("retry").hidden = values.wizard.result !== "error"
+      document.getElementById("modal-title").textContent = values.modal.title
+      document.getElementById("modal-copy").textContent =
+        values.modal.kind === "warning" ? "Warning: please acknowledge." : "Please confirm or cancel."
+      document.getElementById("cancel").hidden = !values.modal.cancel
+      window.dispatchEvent(new CustomEvent("design:state", { detail: { values } }))
+    }
+    window.addEventListener("design:params", (event) => {
+      for (const key of ["wizard", "modal"]) Object.assign(values[key], event.detail.values[key] || {})
+      render()
+    })
+    document.getElementById("next").onclick = () => {
+      values.wizard.step = Math.min(3, values.wizard.step + 1)
+      render()
+    }
+    document.getElementById("previous").onclick = () => {
+      values.wizard.step = Math.max(1, values.wizard.step - 1)
+      render()
+    }
+    document.getElementById("submit").onclick = () => {
+      values.wizard.result = values.wizard.outcome === "success" ? "populated" : values.wizard.outcome
+      render()
+    }
+    document.getElementById("retry").onclick = () => {
+      values.wizard.result = "empty"
+      render()
+    }
+    document.getElementById("ok").onclick = () => {
+      values.modal.title = "Acknowledged"
+      render()
+    }
+    document.getElementById("cancel").onclick = () => {
+      values.modal.title = "Cancelled"
+      render()
+    }
+    render()
+  </script>
+</html>
