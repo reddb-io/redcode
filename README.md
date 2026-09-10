@@ -48,6 +48,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 - [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 - [Tasks](#tasks) — requested work, progress and explicit blockers
+- [Monitors](#monitors) — wait for commands and external jobs without blocking the chat
 - [Goal](#goal) — a definition of done the harness pursues across turns
 
 **Reference**
@@ -540,6 +541,66 @@ older revision.
 
 See [Design Studio](specs/design/studio.md) for storage, permissions, exports and MCP configuration,
 and [Design terminal](specs/design/terminal.md) for the optional terminal's connection and interaction commands.
+
+## Monitors
+
+In the full-screen TUI, ask Redcode to **run a long command in the background** or
+**watch an external job until it is ready**. Open **`/monitors`** to see this session's
+monitors, inspect the latest result, or stop monitoring. The list refreshes automatically.
+
+There are two execution patterns:
+
+| Pattern                               | What Redcode executes                                                          | When it resumes the conversation                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| A synchronous command that takes time | Starts the command once; the same process continues after the chat is released | When it exits, fails, or reaches its deadline                                   |
+| An external asynchronous operation    | Repeats an approved status command referencing the existing job                | When the success/failure condition matches, or the observation deadline expires |
+
+For example: “Run the tests; let me keep chatting while they run,” or “Deployment
+`job-42` is already submitted. Check its status every 10 seconds and continue when it
+reports `succeeded`; report `failed` immediately.” Status commands must only observe
+the existing operation. Never repeat the command that submits a deployment or creates a job.
+
+The model uses `bash` with `monitor` options:
+
+```json
+{
+  "command": "customcli status job-42",
+  "timeout": 30000,
+  "monitor": {
+    "mode": "poll",
+    "wait_ms": 1000,
+    "interval_ms": 10000,
+    "deadline_ms": 3600000,
+    "success_contains": "succeeded",
+    "failure_contains": "failed"
+  }
+}
+```
+
+Use `mode: "once"` for a command that should execute once. `wait_ms` controls how long
+the initial tool call waits (default 1 second, maximum 60 seconds); it **does not kill
+the command**. `timeout` limits each shell execution. `deadline_ms` limits the entire
+monitor (default 1 hour, maximum 24 hours). A successful check requires exit code 0 and,
+when specified, the success substring. The failure substring takes priority. A nonzero
+exit ends a one-shot monitor as failed; a poll keeps observing. Prefer compact status
+output because condition matching uses the shell's bounded captured result.
+
+While monitors are running, the agent can do independent work. When it yields, the
+task and Goal continuation loops wait without polling the model. Completion returns
+one bounded, synthetic result to the originating session, with monitor identity,
+status, exit code, and a retained output path when available. Newer user instructions
+still apply. The `monitor` tool supports `list`, `get`, `wait`, and `cancel`; controls are
+restricted to the current session. There are at most eight live monitors per session,
+and automatic follow-up chains are limited to three monitors per user request.
+
+**Stop monitoring** terminates the local command/check and suppresses its automatic
+continuation. It does not cancel a job running in an external service. Stopping the
+session also stops its monitors. Status and the last result are persisted, but a
+process restart does not restore process handles, rerun commands, or resume observation
+automatically: inspect the external job before starting a new status monitor. Webhooks
+and log-stream readiness triggers are not part of this initial implementation. These
+controls currently belong to the full-screen TUI runtime; the separate V2 SDK session
+runner retains its synchronous shell behavior.
 
 ## Tasks
 

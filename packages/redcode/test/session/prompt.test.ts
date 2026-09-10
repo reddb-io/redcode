@@ -16,6 +16,7 @@ import { fileURLToPath } from "url"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
+import { MonitorRuntime } from "@/background/monitor"
 import { Command } from "../../src/command"
 import { Config } from "@/config/config"
 import { LSP } from "@/lsp/lsp"
@@ -204,6 +205,7 @@ const promptRoot = LayerNode.group([
   MCP.node,
   FSUtil.node,
   BackgroundJob.node,
+  MonitorRuntime.node,
   SessionStatus.node,
   SessionRunState.node,
   Database.node,
@@ -3790,3 +3792,77 @@ for (const outcome of ["reject", "change", "remove"] as const) {
     30000,
   )
 }
+
+it.instance(
+  "a shell monitor parks the goal and resumes once with synthetic evidence",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const { chat, goals, prompt, sessions } = yield* startGoal("wait for external readiness", { maxTurns: 5 })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const monitors = yield* MonitorRuntime.Service
+      yield* llm.tool("bash", {
+        command: "test -f monitor-ready && printf ready",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, success_contains: "ready", deadline_ms: 30000 },
+      })
+      yield* llm.text("Waiting for the external operation.")
+      yield* llm.textMatch(
+        (hit) => JSON.stringify(hit.body).includes("A monitor finished."),
+        "The external operation is ready.",
+      )
+      yield* llm.textMatch(judgeRequest, verdict("done", "The status command confirmed ready."))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "monitor did not release the session", "30 seconds")
+      expect(yield* llm.calls).toBe(2)
+      expect((yield* monitors.list(chat.id))[0]?.status).toBe("running")
+      expect((yield* goals.get(chat.id))?.status).toBe("active")
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(0)
+      yield* writeText(path.join(dir, "monitor-ready"), "ready")
+      yield* pollWithTimeout(
+        goals.get(chat.id).pipe(Effect.map((goal) => (goal?.status === "done" ? true : undefined))),
+        "monitor never resumed its owner",
+        "30 seconds",
+      )
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const delivered = messages.filter(
+        (message) =>
+          message.info.role === "user" &&
+          message.parts.some((part) => part.type === "text" && part.text.includes("A monitor finished.")),
+      )
+      expect(delivered).toHaveLength(1)
+      expect(delivered[0]?.parts.every((part) => "synthetic" in part && part.synthetic)).toBe(true)
+      expect((yield* monitors.list(chat.id))[0]).toMatchObject({ status: "succeeded", delivery: "delivered" })
+    }),
+  60000,
+)
+
+it.instance(
+  "stopping the session cancels its monitor without resuming the goal",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const { chat, prompt, sessions } = yield* startGoal("wait for a service", { maxTurns: 5 })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const monitors = yield* MonitorRuntime.Service
+      yield* llm.tool("bash", {
+        command: "false",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, deadline_ms: 30000 },
+      })
+      yield* llm.text("Waiting.")
+      yield* prompt.loop({ sessionID: chat.id })
+      yield* prompt.cancel(chat.id)
+      expect((yield* monitors.list(chat.id))[0]).toMatchObject({ status: "cancelled", delivery: "suppressed" })
+      expect(yield* llm.calls).toBe(2)
+      expect(
+        (yield* sessions.messages({ sessionID: chat.id })).some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text.includes("A monitor finished.")),
+        ),
+      ).toBe(false)
+    }),
+  60000,
+)

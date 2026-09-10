@@ -3,6 +3,7 @@ import DESCRIPTION from "./shell.txt"
 import { PositiveInt } from "@reddb-io/redcode-core/schema"
 import { Global } from "@reddb-io/redcode-core/global"
 import { ShellID } from "./id"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
 
 const PS = new Set(["powershell", "pwsh"])
 const CMD = new Set(["cmd"])
@@ -15,6 +16,7 @@ export type Limits = {
 export function parameterSchema() {
   return Schema.Struct({
     command: Schema.String.annotate({ description: "The command to execute" }),
+    monitor: Schema.optional(Monitor.Options).annotate({ description: Monitor.instructions }),
     timeout: Schema.optional(PositiveInt).annotate({ description: "Optional timeout in milliseconds" }),
     workdir: Schema.optional(Schema.String).annotate({
       description: `Existing directory to run the command in. Relative paths resolve from the fixed session directory, never from a previous call. Prefer a verified absolute path. Omit workdir to recover the session directory after a path error; do not repeat or extend the failed path.`,

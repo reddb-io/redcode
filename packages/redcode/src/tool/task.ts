@@ -17,6 +17,7 @@ import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionGoal } from "@/session/goal"
 
 export interface TaskPromptOps {
+  notify?(input: SessionPrompt.PromptInput): Effect.Effect<boolean>
   cancel(sessionID: SessionID): Effect.Effect<void>
   resolvePromptParts(template: string): Effect.Effect<SessionPrompt.PromptInput["parts"]>
   prompt(input: SessionPrompt.PromptInput): Effect.Effect<SessionV1.WithParts>

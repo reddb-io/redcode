@@ -44,6 +44,10 @@ import type {
   ExperimentalConsoleSwitchOrgResponses,
   ExperimentalControlPlaneMoveSessionErrors,
   ExperimentalControlPlaneMoveSessionResponses,
+  ExperimentalMonitorsCancelErrors,
+  ExperimentalMonitorsCancelResponses,
+  ExperimentalMonitorsListErrors,
+  ExperimentalMonitorsListResponses,
   ExperimentalProjectCopyGenerateNameErrors,
   ExperimentalProjectCopyGenerateNameResponses,
   ExperimentalResourceListErrors,
@@ -984,6 +988,78 @@ export class Session extends HeyApiClient {
   }
 }
 
+export class Monitors extends HeyApiClient {
+  /**
+   * List session monitors
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalMonitorsListResponses,
+      ExperimentalMonitorsListErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/session/{sessionID}/monitors",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stop local monitoring without cancelling the external job
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      monitorID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "monitorID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentalMonitorsCancelResponses,
+      ExperimentalMonitorsCancelErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/session/{sessionID}/monitors/{monitorID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Resource extends HeyApiClient {
   /**
    * Get MCP resources
@@ -1357,6 +1433,11 @@ export class Experimental extends HeyApiClient {
   private _session?: Session
   get session(): Session {
     return (this._session ??= new Session({ client: this.client }))
+  }
+
+  private _monitors?: Monitors
+  get monitors(): Monitors {
+    return (this._monitors ??= new Monitors({ client: this.client }))
   }
 
   private _resource?: Resource

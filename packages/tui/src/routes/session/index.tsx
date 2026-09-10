@@ -1,5 +1,6 @@
 import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
+import { DialogMonitors } from "../../component/dialog-monitors"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { modeTransition } from "../../util/mode-transition"
 import {
@@ -1241,6 +1242,13 @@ export function Session() {
         })
         dialog.clear()
       },
+    },
+    {
+      title: "Session monitors",
+      value: "session.monitors",
+      category: "Session",
+      slash: { name: "monitors" },
+      run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
     },
     {
       title: "Go to child session",

@@ -22,7 +22,7 @@ export function getWorkspaceRouteSessionID(url: URL) {
 
   const id =
     url.pathname.match(/^\/session\/([^/]+)(?:\/|$)/)?.[1] ??
-    url.pathname.match(/^\/experimental\/session\/([^/]+)\/background$/)?.[1]
+    url.pathname.match(/^\/experimental\/session\/([^/]+)\/(?:background|monitors(?:\/[^/]+\/cancel)?)$/)?.[1]
   if (!id) return null
 
   return SessionID.make(id)
