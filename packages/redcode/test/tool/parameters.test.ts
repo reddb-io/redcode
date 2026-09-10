@@ -15,7 +15,7 @@ import { Parameters as Glob } from "../../src/tool/glob"
 import { Parameters as Grep } from "../../src/tool/grep"
 import { Parameters as Invalid } from "../../src/tool/invalid"
 import { Parameters as Lsp } from "../../src/tool/lsp"
-import { Parameters as Plan } from "../../src/tool/plan"
+import { PlanParameters } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
 import { Parameters as Shell } from "../../src/tool/shell"
@@ -43,7 +43,7 @@ describe("tool parameters", () => {
     test("grep", () => expect(toJsonSchema(Grep)).toMatchSnapshot())
     test("invalid", () => expect(toJsonSchema(Invalid)).toMatchSnapshot())
     test("lsp", () => expect(toJsonSchema(Lsp)).toMatchSnapshot())
-    test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
+    test("plan", () => expect(toJsonSchema(PlanParameters)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
@@ -191,7 +191,7 @@ describe("tool parameters", () => {
 
   describe("plan", () => {
     test("accepts empty object", () => {
-      expect(parse(Plan, {})).toEqual({})
+      expect(parse(PlanParameters, {})).toEqual({})
     })
   })
 
