@@ -1,3 +1,4 @@
+import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignTools } from "./design"
@@ -451,6 +452,7 @@ export const node = LayerNode.make({
     Plugin.node,
     Question.node,
     Todo.node,
+    SessionTaskFacts.node,
     Agent.node,
     Skill.node,
     Session.node,

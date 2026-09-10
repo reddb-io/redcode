@@ -113,6 +113,9 @@ export const TodoTable = sqliteTable(
     revision: integer().notNull().default(1),
     reason: text(),
     legacy_status: text(),
+    details: text({ mode: "json" }).$type<
+      Pick<SessionTodo.Info, "source" | "criterion" | "evidence" | "scopeChange">
+    >(),
     ...Timestamps,
   },
   (table) => [

@@ -563,15 +563,35 @@ blocked until reconciled. Blocked and cancelled updates require a reason.
 
 When the model tries to finish with actionable tasks remaining, the harness asks it to
 continue, within the agent's limits and permissions. After seven such reminders in a run,
-remaining actionable tasks become blocked with the continuation-limit reason. Independent
+execution pauses with a recorded continuation-limit reason; pending and active tasks keep
+their states. Ask the agent to continue to resume that work. Independent
 work can continue while another task is blocked. If every unfinished task is blocked, an
 active Goal is marked blocked too. To resume, resolve the obstacle and ask the agent to
 reopen the relevant task.
 
-Tasks track execution; [Goal](#goal) supplies the separate completion and verification loop.
-A completed checkbox alone does not prove the result. An approved Plan is preserved as
-context, but does not yet automatically create tasks: the agent must turn its authorized
-steps into work and execute them.
+The workflow is **request → tasks → execution → evidence → completion**. New tasks retain
+an exact quote from the request and an acceptance criterion. Before an implementation
+handoff, Plan supplies a structured list of deliverables and verification steps. Approval
+creates tasks linked to that immutable revision; approving it again keeps their progress.
+Plan-only Goals can stop with a ready plan. New approved revisions preserve earlier work.
+The agent is responsible for decomposing the entire request and assessing semantic coverage.
+
+Both runtimes restore current task IDs, criteria, sources and blockers from storage in the
+model context, including after compaction or resumption. Completed work is summarized;
+the agent can read the full list and recent tool evidence with `todowrite({"todos": []})`.
+
+Completing a task linked to a request or Plan requires a successful tool result from that
+session and an explanation of how it satisfies the criterion. Evidence includes its message
+ID, so repeated provider call IDs cannot select a different result. The runtime rejects missing,
+failed, bookkeeping and outdated evidence. Subsequent edit or shell actions conservatively
+invalidate earlier evidence and reopen affected completed claims for verification. Run the
+final checks after implementation before closing the task set. This verifies provenance and
+freshness, not semantic correctness: the model must judge whether a check actually proves
+the requested outcome. Historical tasks without a source remain compatible.
+
+Cancelling tracked work requires a reason and an exact quote from a later user instruction
+removing it from scope. Tasks track execution; [Goal](#goal) adds its separate criteria,
+gates and completion review.
 
 ## Goal
 

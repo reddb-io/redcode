@@ -1,3 +1,4 @@
+import { SessionGuardTripTable } from "@reddb-io/redcode-core/session/sql"
 import { describe, expect } from "bun:test"
 import {
   LLMClient,
@@ -1187,6 +1188,54 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("restores task identities and blockers after compaction and projection replay", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const todos = yield* SessionTodo.Service
+      const events = yield* EventV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Implement and deploy" }), resume: false })
+      response = []
+      yield* session.resume(sessionID)
+      const before = yield* todos.update({
+        sessionID,
+        todos: [
+          {
+            content: "Deploy",
+            criterion: "Production responds",
+            requirement: "deploy",
+            status: "blocked",
+            priority: "high",
+            reason: "Need credentials",
+          },
+        ],
+      })
+      const compactionID = SessionMessage.ID.create()
+      yield* events.publish(SessionEvent.Compaction.Started, {
+        sessionID,
+        messageID: compactionID,
+        timestamp: DateTime.makeUnsafe(1),
+        reason: "manual",
+      })
+      yield* events.publish(SessionEvent.Compaction.Ended, {
+        sessionID,
+        messageID: compactionID,
+        timestamp: DateTime.makeUnsafe(2),
+        reason: "manual",
+        text: "A summary that omitted the deployment task",
+        recent: "",
+      })
+      yield* replaySessionProjection(sessionID)
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+      const context = JSON.stringify(requests.at(-1)?.system)
+      expect(context).toContain(before[0].id!)
+      expect(context).toContain("Need credentials")
+      expect(context).toContain("Production responds")
+      expect(yield* todos.get(sessionID)).toEqual(before)
+    }),
+  )
+
   it.effect("automatically compacts into a completed summary and retained recent turn", () =>
     Effect.gen(function* () {
       yield* setup
@@ -1698,7 +1747,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("blocks remaining tasks after seven reminders instead of reporting them complete", () =>
+  it.effect("pauses after seven reminders and keeps remaining tasks actionable", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -1718,7 +1767,16 @@ describe("SessionRunnerLLM", () => {
       response = fragmentFixture("text", "premature", ["More remains"]).completeEvents
       yield* session.resume(sessionID)
       expect(requests).toHaveLength(8)
-      expect(yield* todos.get(sessionID)).toMatchObject([{ status: "blocked", reason: SessionTodo.limitReason }])
+      expect(yield* todos.get(sessionID)).toMatchObject([{ status: "in_progress" }])
+      const database = yield* Database.Service
+      expect(yield* database.db.select().from(SessionGuardTripTable).all().pipe(Effect.orDie)).toContainEqual(
+        expect.objectContaining({
+          session_id: sessionID,
+          action: "stop",
+          subject: "task-continuation",
+          detail: SessionTodo.limitReason,
+        }),
+      )
     }),
   )
 

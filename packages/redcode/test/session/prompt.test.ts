@@ -579,7 +579,7 @@ it.instance("loop continues a natural stop while persisted todos are unfinished"
   }),
 )
 
-it.instance("loop persists todo blockers after seven unfinished continuations", () =>
+it.instance("loop records a pause and preserves actionable tasks after seven unfinished continuations", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
     const prompt = yield* SessionPrompt.Service
@@ -596,9 +596,11 @@ it.instance("loop persists todo blockers after seven unfinished continuations", 
     yield* Effect.forEach(Array.from({ length: 8 }), () => llm.text("More work remains"))
     yield* prompt.loop({ sessionID: chat.id })
     expect(yield* llm.calls).toBe(8)
-    expect(yield* todos.get(chat.id)).toMatchObject([
-      { status: "blocked", reason: expect.stringContaining("continuation limit") },
-    ])
+    expect(yield* todos.get(chat.id)).toMatchObject([{ status: "in_progress" }])
+    const guards = yield* SessionGuardLog.Service
+    expect(yield* guards.recent()).toContainEqual(
+      expect.objectContaining({ sessionID: chat.id, guard: "steps", action: "stop", subject: "task-continuation" }),
+    )
   }),
 )
 
@@ -629,6 +631,85 @@ it.instance("todowrite preserves omitted work and reports an invalid cancellatio
           part.state.error.includes("requires a concrete reason"),
       ),
     ).toBe(true)
+  }),
+)
+
+it.instance("todowrite rejects invented evidence and completes from a real tool result after resumption", () =>
+  Effect.gen(function* () {
+    const fixture = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 3 } } }))
+    const sessions = yield* Session.Service
+    const prompt = yield* SessionPrompt.Service
+    const todos = yield* Todo.Service
+    const chat = yield* sessions.create({ title: "Verified task" })
+    const file = path.join(fixture.dir, "report.txt")
+    yield* Effect.promise(() => Bun.write(file, "Retries charge once"))
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "Inspect the report" }],
+    })
+    const task = (yield* todos.update({
+      sessionID: chat.id,
+      todos: [
+        {
+          content: "Inspect the report",
+          criterion: "Report states retries charge once",
+          requirement: "Inspect the report",
+          status: "pending",
+          priority: "high",
+        },
+      ],
+    }))[0]
+    const completion = {
+      id: task.id,
+      revision: task.revision,
+      content: task.content,
+      status: "completed",
+      priority: "high",
+    }
+    yield* fixture.llm.tool("todowrite", {
+      todos: [{ ...completion, evidence: { callID: "invented", explanation: "Verified" } }],
+    })
+    yield* fixture.llm.tool("read", { filePath: file })
+    yield* fixture.llm.text("The report says retries charge once")
+    yield* prompt.loop({ sessionID: chat.id })
+    const parts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) => message.parts)
+    expect(
+      parts.some(
+        (part) =>
+          part.type === "tool" &&
+          part.tool === "todowrite" &&
+          part.state.status === "error" &&
+          part.state.error.includes("Completion requires evidence"),
+      ),
+    ).toBe(true)
+    const proof = parts.find(
+      (part) => part.type === "tool" && part.tool === "read" && part.state.status === "completed",
+    )
+    if (proof?.type !== "tool") throw new Error("Expected persisted read result")
+    yield* fixture.llm.tool("todowrite", {
+      todos: [
+        {
+          ...completion,
+          evidence: {
+            callID: proof.callID,
+            messageID: proof.messageID,
+            explanation: "Read report states retries charge once",
+          },
+        },
+      ],
+    })
+    yield* fixture.llm.text("Verified and completed")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      parts: [{ type: "text", text: "Continue and record the verification" }],
+    })
+    const completed = (yield* todos.get(chat.id))[0]
+    expect(completed.status).toBe("completed")
+    expect(completed.evidence?.callID).toBe(proof.callID)
+    expect(completed.source?.quote).toBe("Inspect the report")
   }),
 )
 
@@ -3584,7 +3665,7 @@ it.instance(
   "Plan writes its permitted file, asks for approval and continues in Build with the recorded plan",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 3 } } }))
       const sessions = yield* Session.Service
       const prompt = yield* SessionPrompt.Service
       const questions = yield* Question.Service
@@ -3601,7 +3682,16 @@ it.instance(
       })
       const content = "# Plan\nPreserve the transaction key on payment retries. Verify duplicate requests charge once."
       yield* llm.tool("write", { filePath: file, content })
-      yield* llm.tool("plan_exit", {})
+      yield* llm.tool("plan_exit", {
+        tasks: [
+          {
+            key: "implement",
+            content: "Execute the reviewed plan",
+            criterion: "Requested behavior verified",
+            quote: content.slice(7),
+          },
+        ],
+      })
       yield* llm.text("Implementing the approved payment plan.")
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
       const question = yield* pollWithTimeout(
@@ -3630,6 +3720,10 @@ it.instance(
       yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
       yield* awaitWithTimeout(Fiber.join(fiber), "Approved plan never reached Build", "30 seconds")
       expect((yield* plans.list(chat.id))[0]).toMatchObject({ content, status: "approved" })
+      const todos = yield* Todo.Service
+      expect(yield* todos.get(chat.id)).toMatchObject([
+        { source: { type: "plan", key: "implement" }, criterion: "Requested behavior verified" },
+      ])
       const messages = yield* sessions.messages({ sessionID: chat.id })
       expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "build" })
       expect((yield* sessions.get(chat.id)).agent).toBe("build")
@@ -3660,7 +3754,16 @@ for (const outcome of ["reject", "change", "remove"] as const) {
           noReply: true,
           parts: [{ type: "text", text: "Review my implementation plan" }],
         })
-        yield* llm.tool("plan_exit", {})
+        yield* llm.tool("plan_exit", {
+          tasks: [
+            {
+              key: "implement",
+              content: "Execute the reviewed plan",
+              criterion: "Requested behavior verified",
+              quote: content.slice(7),
+            },
+          ],
+        })
         yield* llm.text("Continuing to refine the plan.")
         const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
         const question = yield* pollWithTimeout(

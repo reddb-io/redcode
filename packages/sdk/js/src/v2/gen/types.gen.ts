@@ -662,6 +662,14 @@ export type Todo = {
   revision?: number
   reason?: string
   legacyStatus?: string
+  source?: TodoSource
+  criterion?: string
+  evidence?: TodoEvidence
+  scopeChange?: {
+    messageID: string
+    quote: string
+    created?: number
+  }
   /**
    * Brief description of the task
    */
@@ -3325,6 +3333,23 @@ export type QuestionV2Tool = {
 
 export type QuestionV2Answer = Array<string>
 
+export type TodoSource = {
+  type: "request" | "plan"
+  id: string
+  quote: string
+  created: number
+  key?: string
+}
+
+export type TodoEvidence = {
+  callID: string
+  messageID: string
+  explanation: string
+  tool: string
+  hash: string
+  observed: number
+}
+
 export type ProjectVcs = "git"
 
 export type ProjectIcon = {
@@ -4142,11 +4167,19 @@ export type SessionGoalControl = {
   maxTurns?: number
 }
 
+export type TodoPlanTask = {
+  key: string
+  content: string
+  criterion: string
+  quote: string
+}
+
 export type SessionPlanInfo = {
   sessionID: string
   revision: string
   path: string
   content: string
+  tasks?: Array<TodoPlanTask>
   status: "ready" | "approved"
   created: number
 }

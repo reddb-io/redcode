@@ -129,6 +129,15 @@ const it = testEffect(
   ),
 )
 
+const planTasks = [
+  {
+    key: "button",
+    content: "Change and verify the button label",
+    criterion: "Chromium shows the new label",
+    quote: "Change the button label.",
+  },
+]
+
 const setup = Effect.gen(function* () {
   requests.length = 0
   questions.length = 0
@@ -326,11 +335,13 @@ it.live("plan approval shows the content and rejects a changed revision", () =>
     expect((yield* test.run("plan_exit", { path: test.file + ".missing" })).type).toBe("error")
     expect(questions).toHaveLength(0)
     duringApproval = Effect.promise(() => Bun.write(test.file, "A different plan")).pipe(Effect.asVoid)
-    expect((yield* test.run("plan_exit", { path: test.file })).type).toBe("error")
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
     expect(questions[0].questions[0].question).toContain("# Plan")
     expect((yield* plans.list(test.sessionID))[0].status).toBe("ready")
     duringApproval = Effect.void
-    expect((yield* test.run("plan_exit", { path: test.file })).type).not.toBe("error")
+    expect(
+      (yield* test.run("plan_exit", { path: test.file, tasks: [{ ...planTasks[0], quote: "A different plan" }] })).type,
+    ).not.toBe("error")
     // Revisions can share a millisecond; approval belongs to the reviewed content, not an array position.
     const revisions = yield* plans.list(test.sessionID)
     expect(revisions).toHaveLength(2)
@@ -350,7 +361,7 @@ it.live("explicit Goal execution consent approves Plan without another question"
       executePlan: true,
     })
     expect(goal.stopAfter).toBe("build")
-    expect((yield* test.run("plan_exit", { path: test.file })).type).not.toBe("error")
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
     expect(questions).toHaveLength(0)
     expect((yield* plans.list(test.sessionID))[0].status).toBe("approved")
   }),
@@ -364,8 +375,79 @@ it.live("a Goal created during a pending Plan approval prevents a stale transiti
     duringApproval = goals
       .start(test.sessionID, { objective: "Only plan", agent: AgentV2.ID.make("plan") })
       .pipe(Effect.orDie, Effect.asVoid)
-    expect((yield* test.run("plan_exit", { path: test.file })).type).toBe("error")
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
     expect((yield* plans.list(test.sessionID))[0].status).toBe("ready")
+  }),
+)
+
+it.live("Build requires decomposition and repeated approval preserves renamed task progress", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const todos = yield* SessionTodo.Service
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: [] })).type).toBe("error")
+    expect(questions).toHaveLength(0)
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    expect(questions[0].questions[0].question).toContain(planTasks[0].criterion)
+    const created = (yield* todos.get(test.sessionID))[0]
+    expect(created).toMatchObject({ source: { type: "plan", key: "button" }, criterion: planTasks[0].criterion })
+    const updated = yield* todos.update({
+      sessionID: test.sessionID,
+      todos: [
+        {
+          id: created.id,
+          revision: created.revision,
+          content: "Button implementation under review",
+          priority: "high",
+          status: "blocked",
+          reason: "Need browser access",
+        },
+      ],
+    })
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    expect(questions).toHaveLength(1)
+    expect(yield* todos.get(test.sessionID)).toEqual(updated)
+    expect(
+      (yield* test.run("plan_exit", { path: test.file, tasks: [{ ...planTasks[0], criterion: "Different scope" }] }))
+        .type,
+    ).toBe("error")
+  }),
+)
+
+it.live("plan decomposition rejects unmatched quotes and duplicates, while a new revision preserves prior work", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const todos = yield* SessionTodo.Service
+    expect(
+      (yield* test.run("plan_exit", { path: test.file, tasks: [{ ...planTasks[0], quote: "Invented" }] })).type,
+    ).toBe("error")
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: [planTasks[0], planTasks[0]] })).type).toBe("error")
+    expect(yield* todos.get(test.sessionID)).toHaveLength(0)
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    const before = (yield* todos.get(test.sessionID))[0]
+    yield* Effect.promise(() => Bun.write(test.file, "# Plan\nChange the button label. Add keyboard verification."))
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    const after = yield* todos.get(test.sessionID)
+    expect(after).toHaveLength(2)
+    expect(after[0]).toEqual(before)
+    expect(after[1].source?.id).not.toBe(before.source?.id)
+  }),
+)
+
+it.live("an older approved plan can add a reviewed decomposition without trapping the handoff", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const goals = yield* SessionGoal.Service
+    const plans = yield* SessionPlan.Service
+    yield* goals.start(test.sessionID, { objective: "Only plan", agent: AgentV2.ID.make("plan") })
+    yield* test.run("plan_exit", { path: test.file })
+    const ready = (yield* plans.list(test.sessionID))[0]
+    yield* plans.record({ ...ready, status: "approved" })
+    const goal = yield* goals.get(test.sessionID)
+    if (!goal) throw new Error("Expected goal")
+    yield* goals.save(goal, { ...goal, status: "paused" })
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    expect(questions).toHaveLength(1)
+    expect((yield* plans.list(test.sessionID))[0]).toMatchObject({ status: "approved", tasks: planTasks })
   }),
 )
 

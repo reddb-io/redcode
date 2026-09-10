@@ -4,6 +4,7 @@ import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Effect, Layer, Schema } from "effect"
 import { makeLocationNode } from "../effect/app-node"
 import { PermissionV2 } from "../permission"
+import { SessionTaskFacts } from "../session/task-facts"
 import { SessionTodo } from "../session/todo"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
@@ -19,15 +20,31 @@ export const Input = Schema.Struct({
 
 export const Output = Schema.Struct({
   todos: Schema.Array(SessionTodo.Info),
+  availableEvidence: Schema.optional(
+    Schema.Struct({
+      requests: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String, created: Schema.Number })),
+      results: Schema.Array(
+        Schema.Struct({
+          callID: Schema.String,
+          messageID: Schema.String,
+          tool: Schema.String,
+          successful: Schema.Boolean,
+          summary: Schema.String,
+        }),
+      ),
+    }),
+  ),
 })
 export type Output = typeof Output.Type
 
-export const toModelOutput = (output: Output) => JSON.stringify(output.todos, null, 2)
+export const toModelOutput = (output: Output) =>
+  JSON.stringify(output.availableEvidence ? output : output.todos, null, 2)
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
     const todos = yield* SessionTodo.Service
+    const facts = yield* SessionTaskFacts.Service
     const permission = yield* PermissionV2.Service
 
     yield* tools
@@ -49,7 +66,10 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
-              return { todos: yield* todos.update({ sessionID: context.sessionID, todos: input.todos }) }
+              return {
+                todos: yield* todos.update({ sessionID: context.sessionID, todos: input.todos }),
+                ...(input.todos.length ? {} : { availableEvidence: yield* facts.available(context.sessionID) }),
+              }
             }).pipe(
               Effect.mapError(
                 (error) =>
@@ -67,5 +87,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/todowrite",
   layer,
-  deps: [ToolRegistry.node, PermissionV2.node, SessionTodo.node],
+  deps: [ToolRegistry.node, PermissionV2.node, SessionTodo.node, SessionTaskFacts.node],
 })

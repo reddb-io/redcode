@@ -1,3 +1,5 @@
+import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
+import { Todo } from "../session/todo"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import path from "path"
 import { createHash } from "node:crypto"
@@ -15,6 +17,7 @@ import EXIT_DESCRIPTION from "./plan-exit.txt"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 
 export const Parameters = Schema.Struct({})
+export const PlanParameters = Schema.Struct({ tasks: Schema.optional(Schema.Array(SessionTodo.PlanTask)) })
 
 export const WorktreePrepareTool = Tool.define(
   "worktree_prepare",
@@ -46,6 +49,7 @@ export const PlanExitTool = Tool.define(
   "plan_exit",
   Effect.gen(function* () {
     const plans = yield* SessionPlan.Service
+    const todos = yield* Todo.Service
     const session = yield* Session.Service
     const goals = yield* GoalRuntime.Service
     const question = yield* Question.Service
@@ -53,8 +57,8 @@ export const PlanExitTool = Tool.define(
 
     return {
       description: EXIT_DESCRIPTION,
-      parameters: Parameters,
-      execute: (_params: {}, ctx: Tool.Context) =>
+      parameters: PlanParameters,
+      execute: (params: typeof PlanParameters.Type, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
@@ -62,11 +66,13 @@ export const PlanExitTool = Tool.define(
           const content = yield* readPlan(path.resolve(instance.worktree, plan))
           if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
           const revision = createHash("sha256").update(content).digest("hex")
+          const previous = (yield* plans.list(ctx.sessionID)).find((entry) => entry.revision === revision)
           const ready = yield* plans.record({
             sessionID: ctx.sessionID,
             revision,
             path: plan,
             content,
+            tasks: params.tasks ?? previous?.tasks,
             status: "ready",
             created: Date.now(),
           })
@@ -77,28 +83,50 @@ export const PlanExitTool = Tool.define(
               output: `Plan-only goal: revision ${revision} is recorded and ready for review at ${plan}.`,
               metadata: { agent: "plan", revision },
             }
-          const answers = yield* question.ask({
-            sessionID: ctx.sessionID,
-            questions: [
-              {
-                question: `Execute plan ${plan} (revision ${revision})?\n\n${content}`,
-                header: "Build Agent",
-                custom: false,
-                options: [
-                  { label: "Yes", description: "Switch to build agent and start implementing the plan" },
-                  { label: "No", description: "Stay with plan agent to continue refining the plan" },
-                ],
-              },
-            ],
-            tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-          })
+          if (!ready.tasks?.length)
+            return yield* Effect.die(
+              "Before Build, call plan_exit with tasks covering every plan deliverable and verification: key, content, criterion and exact quote from the plan.",
+            )
+          const answers =
+            previous?.status === "approved" && previous.tasks?.length
+              ? [["Yes"]]
+              : yield* question.ask({
+                  sessionID: ctx.sessionID,
+                  questions: [
+                    {
+                      question: `Execute plan ${plan} (revision ${revision})?\n\n${content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}`,
+                      header: "Build Agent",
+                      custom: false,
+                      options: [
+                        { label: "Yes", description: "Switch to build agent and start implementing the plan" },
+                        { label: "No", description: "Stay with plan agent to continue refining the plan" },
+                      ],
+                    },
+                  ],
+                  tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                })
 
           if (answers[0]?.[0] !== "Yes") yield* new Question.RejectedError()
           const current = yield* readPlan(path.resolve(instance.worktree, plan))
           if (createHash("sha256").update(current).digest("hex") !== revision)
             return yield* Effect.die("Plan changed during approval; review the current revision before executing")
 
-          yield* plans.record({ ...ready, status: "approved", created: Date.now() })
+          const latestGoal = yield* goals.get(ctx.sessionID)
+          if (latestGoal?.id !== goal?.id || latestGoal?.updated !== goal?.updated)
+            return yield* Effect.die("Goal changed during plan approval; inspect the current goal before executing")
+          const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
+          yield* todos.update({
+            sessionID: ctx.sessionID,
+            origin: { type: "plan", id: approved.revision, quote: approved.content, created: approved.created },
+            todos: ready.tasks.map((task) => ({
+              planKey: task.key,
+              content: task.content,
+              criterion: task.criterion,
+              requirement: task.quote,
+              status: "pending",
+              priority: "high",
+            })),
+          })
           const messages = yield* session.messages({ sessionID: ctx.sessionID }).pipe(Effect.orDie)
           const lastUser = messages.findLast((item) => item.info.role === "user" && item.info.model)
           const model =

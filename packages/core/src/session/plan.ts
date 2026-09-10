@@ -23,8 +23,37 @@ const make = Effect.gen(function* () {
   })
   const record = Effect.fn("SessionPlan.record")(function* (input: SessionPlan.Info) {
     if (!input.content.trim()) return yield* new SessionPlan.Error({ message: "The plan is empty" })
+    if (input.tasks) {
+      const keys = new Set<string>()
+      const contents = new Set<string>()
+      for (const task of input.tasks) {
+        if (
+          !task.key.trim() ||
+          !task.content.trim() ||
+          !task.criterion.trim() ||
+          !task.quote.trim() ||
+          !input.content.includes(task.quote)
+        )
+          return yield* new SessionPlan.Error({
+            message: "Each plan task needs a key, content, acceptance criterion and exact quote from the plan",
+          })
+        if (keys.has(task.key) || contents.has(task.content.trim()))
+          return yield* new SessionPlan.Error({ message: "Plan task keys and contents must be unique" })
+        keys.add(task.key)
+        contents.add(task.content.trim())
+      }
+    }
     const existing = (yield* list(input.sessionID)).find((plan) => plan.revision === input.revision)
-    if (existing?.status === "approved" || existing?.status === input.status) return existing
+    if (existing?.tasks?.length && input.tasks && JSON.stringify(existing.tasks) !== JSON.stringify(input.tasks))
+      return yield* new SessionPlan.Error({
+        message:
+          "Task decomposition is frozen for this plan revision. Revise the plan content before changing its tasks.",
+      })
+    if (
+      (existing?.status === "approved" && (existing.tasks?.length || !input.tasks?.length)) ||
+      (existing?.status === input.status && (existing.tasks?.length || !input.tasks?.length))
+    )
+      return existing
     if (existing) {
       yield* database.db
         .update(SessionPlanTable)

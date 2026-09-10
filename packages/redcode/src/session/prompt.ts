@@ -1382,7 +1382,7 @@ const layer = Layer.effect(
               break
             }
             if (!lastAssistant.error && todoContinuations < 7) {
-              const reminder = SessionTodo.reminder(yield* todos.get(sessionID))
+              const reminder = SessionTodo.reminder(yield* todos.review(sessionID).pipe(Effect.orDie))
               const agent = reminder ? yield* agents.get(lastUser.agent) : undefined
               const disabled = agent
                 ? Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
@@ -1411,7 +1411,14 @@ const layer = Layer.effect(
                 continue
               }
             } else if (!lastAssistant.error && SessionTodo.active(yield* todos.get(sessionID)).length > 0) {
-              yield* todos.block(sessionID, SessionTodo.limitReason).pipe(Effect.orDie)
+              yield* goals.pause(sessionID, SessionTodo.limitReason)
+              yield* guards.record({
+                sessionID,
+                guard: "steps",
+                action: "stop",
+                subject: "task-continuation",
+                detail: SessionTodo.limitReason,
+              })
               yield* Effect.logWarning("todo continuation limit reached", { "session.id": sessionID })
             }
             // The goal loop: gates, judge, decision. A CONTINUE is one more synthetic user message
@@ -1638,7 +1645,7 @@ const layer = Layer.effect(
               ...(!Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
                 "todowrite",
               )
-                ? [SessionTodo.guidance]
+                ? [SessionTodo.guidance, SessionTodo.context(yield* todos.review(sessionID).pipe(Effect.orDie))]
                 : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }

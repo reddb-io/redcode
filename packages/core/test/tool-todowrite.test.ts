@@ -106,6 +106,15 @@ describe("TodoWriteTool", () => {
       })
       expect(assertions).toMatchObject([{ sessionID, action: "todowrite", resources: ["*"], save: ["*"] }])
       expect(stored[0].id).toMatch(/^todo_/)
+      const inspected = yield* settleTool(registry, call([]))
+      expect(inspected.output?.structured).toMatchObject({
+        todos: stored,
+        availableEvidence: { requests: [], results: [] },
+      })
+      expect(inspected.result).toEqual({
+        type: "text",
+        value: JSON.stringify({ todos: stored, availableEvidence: { requests: [], results: [] } }, null, 2),
+      })
     }),
   )
 

@@ -15,8 +15,10 @@ export interface Interface {
   readonly update: (input: {
     sessionID: SessionID
     todos: ReadonlyArray<Input>
+    origin?: SessionTodo.Source
   }) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly get: (sessionID: SessionID) => Effect.Effect<Info[]>
+  readonly review: (sessionID: SessionID) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
 }
 
@@ -37,7 +39,13 @@ const layer = Layer.effect(
       yield* events.publish(Event.Updated, { sessionID, todos })
       return todos
     }, store.withMutation)
-    return Service.of({ update, get: store.get, block })
+    const review: Interface["review"] = Effect.fn("Todo.review")(function* (sessionID) {
+      const before = yield* store.get(sessionID)
+      const todos = yield* store.review(sessionID)
+      if (JSON.stringify(before) !== JSON.stringify(todos)) yield* events.publish(Event.Updated, { sessionID, todos })
+      return todos
+    }, store.withMutation)
+    return Service.of({ update, get: store.get, block, review })
   }),
 )
 

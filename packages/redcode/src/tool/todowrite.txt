@@ -1,6 +1,6 @@
 Track multi-step work as concrete tasks. Enumerate EVERY item in a multi-part user request, including verification, then start real work in the same turn. Skip this tool for simple or informational requests.
 
-Each call creates or updates the supplied tasks. Omitted tasks are preserved. Send {"todos": []} to read the current list. Use the id and current revision returned by the tool for subsequent updates; an exact content match supports older callers. Do not invent IDs or rename a task by dropping it and creating another.
+Each call creates or updates the supplied tasks. Omitted tasks are preserved. Send {"todos": []} to read the current list, the five latest user request IDs and up to twenty recent tool results with callID, messageID and success status. Use the id and current revision returned by the tool for subsequent updates; an exact content match supports older callers. Do not invent IDs or rename a task by dropping it and creating another.
 
 States:
 - pending: actionable work not yet started.
@@ -10,3 +10,9 @@ States:
 - cancelled: work was removed from the authorized scope. Supply the scope-change reason. Never cancel just to finish the conversation, hide a failure or avoid a blocked item.
 
 Update progress when it changes. Partial updates and empty lists never clear unfinished work. Conflicting stale revisions are rejected; read the current list before retrying. A blocked task is not complete: state what remains, why it cannot proceed and the next action.
+
+For a new task, supply criterion (an observable result) and requirement (an exact quote from the user request). The runtime records that request as its source. Existing approved Plan tasks already have their source and criterion; update them by ID.
+
+To complete a tracked task, supply evidence: {"callID":"<actual successful result ID>","messageID":"<message holding that result>","explanation":"<how the result satisfies criterion>"}. Run the relevant check first, then read the available IDs if needed. Unknown, failed, bookkeeping and stale results are rejected. Later edit or shell actions conservatively require fresh verification; finish implementation and checks before marking the final task set complete. Tool provenance is checked by the runtime; you must still judge relevance and coverage honestly.
+
+To cancel tracked work, include scopeChange: {"messageID":"<later user request ID>","quote":"<exact instruction removing the requirement>"} and reason. Technical obstacles belong in blocked with their concrete cause. A continuation budget pause preserves actionable tasks; resume them when the user requests continuation.

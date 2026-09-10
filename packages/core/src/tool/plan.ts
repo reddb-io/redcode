@@ -1,5 +1,7 @@
 export * as PlanTools from "./plan"
 
+import { SessionTodo } from "../session/todo"
+
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { makeLocationNode } from "../effect/app-node"
@@ -26,6 +28,7 @@ const layer = Layer.effectDiscard(
     const location = yield* Location.Service
     const plans = yield* SessionPlan.Service
     const goals = yield* SessionGoal.Service
+    const todos = yield* SessionTodo.Service
     yield* tools
       .register({
         worktree_prepare: Tool.make({
@@ -55,8 +58,8 @@ const layer = Layer.effectDiscard(
         }),
         plan_exit: Tool.make({
           description:
-            "Read and record the finished implementation plan. Provide its file path. The plan must be self-contained, name decisions and include concrete verification. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",
-          input: Schema.Struct({ path: Schema.String }),
+            "Read and record the finished implementation plan. Provide its file path and tasks covering every deliverable and verification, each with key, content, criterion and exact quote from the plan. Build requires this decomposition, which creates persistent tasks after approval. The plan must be self-contained, name decisions and include concrete verification. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",
+          input: Schema.Struct({ path: Schema.String, tasks: Schema.optional(Schema.Array(SessionTodo.PlanTask)) }),
           output: SessionPlan.Info,
           execute: (input, context) =>
             Effect.gen(function* () {
@@ -77,18 +80,24 @@ const layer = Layer.effectDiscard(
                 revision: evidence.hash,
                 path: evidence.path,
                 content: evidence.content,
+                tasks: input.tasks ?? previous?.tasks,
                 status: "ready",
                 created: Date.now(),
               })
               if (goal && goal.stopAfter !== "build") return ready
-              if (!goal?.executePlan && previous?.status !== "approved") {
+              if (!ready.tasks?.length)
+                return yield* new ToolFailure({
+                  message:
+                    "Before Build, call plan_exit with tasks covering every plan deliverable, including verification. Each needs key, content, criterion and an exact quote from the plan.",
+                })
+              if (!goal?.executePlan && !(previous?.status === "approved" && previous.tasks?.length)) {
                 const answer = yield* questions.ask({
                   sessionID: context.sessionID,
                   tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
                   questions: [
                     {
                       header: "Plan approval",
-                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}`,
+                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}`,
                       custom: false,
                       options: [
                         { label: "Execute", description: "Approve this revision and start Build" },
@@ -110,6 +119,18 @@ const layer = Layer.effectDiscard(
                   message: "Goal changed during plan approval. Inspect the current goal before executing.",
                 })
               const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
+              yield* todos.update({
+                sessionID: context.sessionID,
+                origin: { type: "plan", id: approved.revision, quote: approved.content, created: approved.created },
+                todos: ready.tasks.map((task) => ({
+                  planKey: task.key,
+                  content: task.content,
+                  criterion: task.criterion,
+                  requirement: task.quote,
+                  status: "pending",
+                  priority: "high",
+                })),
+              })
               yield* events.publish(SessionEvent.AgentSwitched, {
                 sessionID: context.sessionID,
                 messageID: SessionMessage.ID.create(),
@@ -141,5 +162,6 @@ export const node = makeLocationNode({
     Location.node,
     SessionPlan.node,
     SessionGoal.node,
+    SessionTodo.node,
   ],
 })

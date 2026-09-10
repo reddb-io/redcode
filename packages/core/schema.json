@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "29645902-3159-4e70-9f31-548def0cccf9",
+  "id": "db67a51e-ebd4-44c4-8a46-cdf5ee52b29e",
   "prevIds": [
-    "764c1dfd-45fc-4124-bfdb-902b52f3196e"
+    "29645902-3159-4e70-9f31-548def0cccf9"
   ],
   "ddl": [
     {
@@ -1929,6 +1929,16 @@
       "default": null,
       "generated": null,
       "name": "legacy_status",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "details",
       "entityType": "columns",
       "table": "todo"
     },

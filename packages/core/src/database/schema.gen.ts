@@ -318,6 +318,7 @@ export default {
           \`revision\` integer DEFAULT 1 NOT NULL,
           \`reason\` text,
           \`legacy_status\` text,
+          \`details\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`todo_pk\` PRIMARY KEY(\`session_id\`, \`position\`),
