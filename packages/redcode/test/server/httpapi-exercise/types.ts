@@ -1,5 +1,6 @@
 import type { Duration, Effect } from "effect"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
+import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import type { Config } from "../../../src/config/config"
 import type { Project } from "../../../src/project/project"
@@ -60,7 +61,7 @@ export type ScenarioContext = {
   project: () => Effect.Effect<Project.Info>
   message: (sessionID: SessionID, input?: { text?: string }) => Effect.Effect<MessageSeed>
   messages: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts[]>
-  todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<void>
+  todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<ReadonlyArray<SessionTodo.Info>>
   sessionMetadata: (sessionID: SessionID, metadata: Record<string, unknown>) => Effect.Effect<void>
   worktree: (input?: { name?: string }) => Effect.Effect<Worktree.Info>
   worktreeRemove: (directory: string) => Effect.Effect<void>
