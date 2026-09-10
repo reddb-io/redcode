@@ -23,6 +23,8 @@ import { Tool } from "@/tool/tool"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceStore } from "@/project/instance-store"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
+import { MonitorRuntime } from "@/background/monitor"
+import { Session } from "@/session/session"
 
 const shellLayer = Layer.mergeAll(
   LayerNode.compile(
@@ -34,6 +36,8 @@ const shellLayer = Layer.mergeAll(
       Config.node,
       Agent.node,
       RuntimeFlags.node,
+      MonitorRuntime.node,
+      Session.node,
     ]),
   ),
   testInstanceStoreLayer,

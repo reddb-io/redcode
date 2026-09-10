@@ -621,6 +621,26 @@ const scenarios: Scenario[] = [
     }),
   http.protected.get("/experimental/resource", "experimental.resource.list").json(),
   http.protected
+    .get("/experimental/session/{sessionID}/monitors", "experimental.monitors.list")
+    .seeded((ctx) => ctx.session({ title: "Monitor route owner" }))
+    .at((ctx) => ({
+      path: route("/experimental/session/{sessionID}/monitors", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, array),
+  http.protected
+    .post("/experimental/session/{sessionID}/monitors/{monitorID}/cancel", "experimental.monitors.cancel")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Monitor cancellation owner" }))
+    .at((ctx) => ({
+      path: route("/experimental/session/{sessionID}/monitors/{monitorID}/cancel", {
+        sessionID: ctx.state.id,
+        monitorID: "missing",
+      }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => check(body === null, "missing monitor cancellation should return null")),
+  http.protected
     .post("/sync/history", "sync.history.list")
     .at((ctx) => ({ path: "/sync/history", headers: ctx.headers(), body: {} }))
     .json(200, array),
