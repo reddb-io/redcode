@@ -7,10 +7,10 @@ import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { expect } from "bun:test"
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
+import { Cause, Context, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
 import path from "path"
 import { fileURLToPath } from "url"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
@@ -31,7 +31,7 @@ import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { Session } from "@/session/session"
-import { SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
+import { SessionContextEpochTable, SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -4107,3 +4107,269 @@ for (const outcome of ["reject", "change", "remove"] as const) {
     30000,
   )
 }
+
+// Context epochs: the durable baseline system context and its mid-conversation updates.
+
+const bodyMessages = (hit: { body: Record<string, unknown> }) => {
+  const list = hit.body.messages
+  return Array.isArray(list) ? (list as Array<{ role: string; content: unknown }>) : []
+}
+
+const bodySystem = (hit: { body: Record<string, unknown> }) =>
+  bodyMessages(hit)
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+
+const epochRows = (sessionID: SessionID) =>
+  Effect.gen(function* () {
+    const db = (yield* Database.Service).db
+    return yield* db
+      .select()
+      .from(SessionContextEpochTable)
+      .where(eq(SessionContextEpochTable.session_id, sessionID))
+      .all()
+  })
+
+const systemRows = (sessionID: SessionID) =>
+  Effect.gen(function* () {
+    const db = (yield* Database.Service).db
+    return yield* db
+      .select()
+      .from(SessionMessageTable)
+      .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "system")))
+      .all()
+  })
+
+// Swaps the read tool for one that rewrites AGENTS.md while the turn is between provider steps.
+const rewriteOnRead = (file: string, text: string) =>
+  Effect.gen(function* () {
+    const registry = yield* ToolRegistry.Service
+    const { read } = yield* registry.named()
+    const original = read.execute
+    read.execute = () =>
+      Effect.promise(() => Bun.write(file, text)).pipe(
+        Effect.as({
+          title: "AGENTS.md",
+          metadata: { preview: text, truncated: false, loaded: [] },
+          output: "rewritten",
+        }),
+      )
+    yield* Effect.addFinalizer(() => Effect.sync(() => void (read.execute = original)))
+  })
+
+it.instance("a tool step and the stop after it send one durable baseline system context", () =>
+  Effect.gen(function* () {
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    const file = path.join(dir, "notes.txt")
+    yield* writeText(file, "some notes")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "read the notes" }],
+    })
+    yield* llm.tool("read", { filePath: file })
+    yield* llm.text("done")
+
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(2)
+    expect(bodySystem(hits[1]!)).toEqual(bodySystem(hits[0]!))
+    const epochs = yield* epochRows(chat.id)
+    expect(epochs).toHaveLength(1)
+    expect(JSON.stringify(bodySystem(hits[0]!))).toContain(JSON.stringify(epochs[0]!.baseline).slice(1, -1))
+    // The parts the legacy loop used to assemble per step are all in the durable baseline.
+    expect(epochs[0]!.baseline).toContain("<env>")
+    expect(epochs[0]!.baseline).toContain(`Working directory: ${dir}`)
+    expect(epochs[0]!.baseline).toContain("Skills provide specialized instructions")
+    // The selected model stays a per-turn line, ahead of the baseline.
+    expect(JSON.stringify(bodySystem(hits[0]!))).toContain("You are powered by the model named test-model")
+  }),
+)
+
+it.instance("an instruction change between steps keeps the baseline and admits one system update", () =>
+  Effect.gen(function* () {
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const agents = path.join(dir, "AGENTS.md")
+    yield* writeText(agents, "Be terse.")
+    yield* rewriteOnRead(agents, "Always answer in haiku.")
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "read the instructions" }],
+    })
+    yield* llm.tool("read", { filePath: agents })
+    yield* llm.text("done")
+
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(2)
+    // The cached prefix survives the change: the second request sends the same system text.
+    expect(bodySystem(hits[1]!)).toEqual(bodySystem(hits[0]!))
+    expect(JSON.stringify(bodySystem(hits[0]!))).toContain("Be terse.")
+    expect(JSON.stringify(bodySystem(hits[1]!))).not.toContain("Always answer in haiku.")
+    expect(yield* systemRows(chat.id)).toHaveLength(1)
+    // The change reaches the model once, as a wrapped update after the assistant's tool step.
+    const messages = bodyMessages(hits[1]!)
+    const update = messages.findIndex((message) => JSON.stringify(message).includes("<system_update>"))
+    const assistant = messages.findLastIndex((message) => message.role === "assistant")
+    expect(update).toBeGreaterThan(assistant)
+    expect(messages[update]!.role).toBe("user")
+    expect(JSON.stringify(messages[update])).toContain(
+      "These instructions replace all previously loaded ambient instructions",
+    )
+    expect(JSON.stringify(messages[update])).toContain("Always answer in haiku.")
+    expect(JSON.stringify(bodyMessages(hits[0]!))).not.toContain("<system_update>")
+  }),
+)
+
+it.instance("switching agents mid-turn admits one skill-guidance update and keeps the baseline", () =>
+  Effect.gen(function* () {
+    // Plan is denied skills here, so the switch changes what the model may be told about them.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      agent: { plan: { permission: { skill: "deny" } } },
+    }))
+    const gate = yield* Deferred.make<void>()
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* llm.hold("first", deferredAsPromise(gate))
+    yield* llm.text("second")
+
+    const first = yield* prompt
+      .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "first" }] })
+      .pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    yield* waitForBusy(chat.id)
+    const id = MessageID.ascending()
+    const second = yield* prompt
+      .prompt({
+        sessionID: chat.id,
+        messageID: id,
+        agent: "plan",
+        model: ref,
+        parts: [{ type: "text", text: "plan it" }],
+      })
+      .pipe(Effect.forkChild)
+    yield* pollWithTimeout(
+      sessions
+        .messages({ sessionID: chat.id })
+        .pipe(
+          Effect.map((msgs) => (msgs.some((msg) => msg.info.role === "user" && msg.info.id === id) ? true : undefined)),
+        ),
+      "timed out waiting for the second prompt to save",
+    )
+    yield* Deferred.succeed(gate, void 0)
+    yield* Effect.all([Fiber.await(first), Fiber.await(second)])
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(2)
+    const epochs = yield* epochRows(chat.id)
+    expect(epochs).toHaveLength(1)
+    expect(JSON.stringify(bodySystem(hits[1]!))).toContain(JSON.stringify(epochs[0]!.baseline).slice(1, -1))
+    const rows = yield* systemRows(chat.id)
+    expect(rows).toHaveLength(1)
+    expect(JSON.stringify(rows[0]!.data)).toContain("Previously listed skills are no longer available.")
+    expect(JSON.stringify(bodyMessages(hits[1]!))).toContain("Previously listed skills are no longer available.")
+  }),
+)
+
+it.instance("compaction starts a new epoch and leaves earlier system updates behind", () =>
+  Effect.gen(function* () {
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const agents = path.join(dir, "AGENTS.md")
+    yield* writeText(agents, "Be terse.")
+    yield* rewriteOnRead(agents, "Always answer in haiku.")
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "read the instructions and then tell me at length what they say" }],
+    })
+    yield* llm.tool("read", { filePath: agents })
+    yield* llm.text("The instructions say to be terse, which I will honour from now on in every reply.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    expect(yield* systemRows(chat.id)).toHaveLength(1)
+
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    yield* llm.text("Summary.")
+    yield* prompt.loop({ sessionID: chat.id })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+    yield* llm.text("ok")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    // The new baseline already carries the rewritten instructions, so the old update is not replayed.
+    expect(after[0]!.baseline).toContain("Always answer in haiku.")
+    const hits = yield* llm.hits
+    const last = hits[hits.length - 1]!
+    expect(JSON.stringify(bodySystem(last))).toContain("Always answer in haiku.")
+    expect(JSON.stringify(bodyMessages(last))).not.toContain("<system_update>")
+    expect(JSON.stringify(bodyMessages(hits[1]!))).toContain("<system_update>")
+  }),
+)
+
+it.instance("a restarted runtime reuses the stored baseline verbatim", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const database = yield* Database.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "one" }] })
+    yield* llm.text("first")
+    yield* prompt.loop({ sessionID: chat.id })
+    const epochs = yield* epochRows(chat.id)
+    expect(epochs).toHaveLength(1)
+    // A marker only the stored row carries: a runtime that re-rendered the baseline would lose it.
+    yield* database.db
+      .update(SessionContextEpochTable)
+      .set({
+        baseline: `${epochs[0]!.baseline}
+
+STORED BASELINE MARKER`,
+      })
+      .where(eq(SessionContextEpochTable.session_id, chat.id))
+      .run()
+
+    // A second service graph on the same database, the way a restarted process would build one.
+    const restarted = yield* Layer.build(
+      AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [SessionSummary.node, summary],
+        [LSP.node, lsp],
+        [MCP.node, makeMcp()],
+        [RuntimeFlags.node, runtimeFlags],
+        [Database.node, Layer.succeed(Database.Service, database)],
+        [testLLMServerNode, Layer.succeed(TestLLMServer, llm)],
+      ]),
+    )
+    const again = Context.get(restarted, SessionPrompt.Service)
+    yield* again.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "two" }] })
+    yield* llm.text("second")
+    yield* again.loop({ sessionID: chat.id })
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(2)
+    expect(JSON.stringify(bodySystem(hits[1]!))).toContain("STORED BASELINE MARKER")
+    expect(yield* epochRows(chat.id)).toHaveLength(1)
+    expect(yield* systemRows(chat.id)).toHaveLength(0)
+  }),
+)

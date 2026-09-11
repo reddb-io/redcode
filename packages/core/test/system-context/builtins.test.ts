@@ -80,6 +80,27 @@ describe("SystemContextBuiltIns", () => {
     }),
   )
 
+  it.effect("exports the registry's built-in generation as a composable context", () =>
+    Effect.gen(function* () {
+      // The legacy loop composes the built-ins without the registry so its own instruction source
+      // does not double the ambient instructions the registry adds after them.
+      yield* TestClock.setTime(timestamp)
+      const registry = yield* SystemContextRegistry.Service
+      const registered = yield* SystemContext.initialize(yield* registry.load())
+      const composed = yield* SystemContext.initialize(
+        SystemContextBuiltIns.context(
+          location(
+            { directory },
+            { projectDirectory, vcs: { type: "git", store: AbsolutePath.make(FSUtil.resolve("/repo/.git")) } },
+          ),
+        ),
+      )
+
+      expect(composed.baseline).toBe(registered.baseline)
+      expect(Object.keys(composed.snapshot)).toEqual(["core/repository-policy", "core/environment", "core/date"])
+    }),
+  )
+
   it.effect("reconciles the date without repeating unchanged environment context", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(timestamp)

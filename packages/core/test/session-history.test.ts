@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Layer, Schema } from "effect"
+import { DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -9,7 +9,10 @@ import { ProjectV2 } from "@reddb-io/redcode-core/project"
 import { ProjectTable } from "@reddb-io/redcode-core/project/sql"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
+import { SessionHistory } from "@reddb-io/redcode-core/session/history"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { SessionStore } from "@reddb-io/redcode-core/session/store"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
@@ -160,6 +163,46 @@ describe("SessionV2.history", () => {
       const error = yield* session.history({ sessionID: SessionV2.ID.make("ses_missing"), limit: 10 }).pipe(Effect.flip)
 
       expect(error._tag).toBe("Session.NotFoundError")
+    }),
+  )
+})
+
+describe("SessionHistory.systemMessagesAfter", () => {
+  it.effect("returns only system messages admitted after the baseline, in aggregate order", () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const created = yield* session.create({ location })
+      const publish = (text: string) =>
+        events.publish(SessionEvent.ContextUpdated, {
+          sessionID: created.id,
+          messageID: SessionMessage.ID.create(),
+          timestamp: DateTime.makeUnsafe(Date.parse("2026-06-03T12:00:00.000Z")),
+          text,
+        })
+      yield* publish("before the baseline")
+      const baselineSeq = yield* EventV2.latestSequence(db, created.id)
+      yield* events.publish(SessionEvent.Synthetic, {
+        sessionID: created.id,
+        messageID: SessionMessage.ID.create(),
+        timestamp: DateTime.makeUnsafe(Date.parse("2026-06-03T12:00:00.000Z")),
+        text: "not a system message",
+      })
+      yield* publish("first update")
+      yield* publish("second update")
+
+      const after = yield* SessionHistory.systemMessagesAfter(db, created.id, baselineSeq)
+
+      expect(after.map((message) => message.text)).toEqual(["first update", "second update"])
+      expect(after.map((message) => message.seq)).toEqual(
+        [...after.map((message) => message.seq)].sort((a, b) => a - b),
+      )
+      expect(after.every((message) => message.seq > baselineSeq)).toBe(true)
+      expect(after.map((message) => DateTime.toEpochMillis(message.timeCreated))).toEqual([
+        Date.parse("2026-06-03T12:00:00.000Z"),
+        Date.parse("2026-06-03T12:00:00.000Z"),
+      ])
     }),
   )
 })
