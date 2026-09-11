@@ -50,6 +50,9 @@ import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
 import { Skill } from "../../src/skill"
 import { SystemPrompt } from "../../src/session/system"
@@ -1090,7 +1093,7 @@ it.instance("loop emits interrupted turn lifecycle events", () =>
   }),
 )
 
-it.instance("legacy prompt emits message events without session.next events", () =>
+it.instance("legacy prompt emits message events and only prompt admission from session.next", () =>
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
     const prompt = yield* SessionPrompt.Service
@@ -1134,7 +1137,12 @@ it.instance("legacy prompt emits message events without session.next events", ()
     expect(seen).toContain(Session.Event.Updated.type)
     expect(seen).toContain(MessageV2.Event.Updated.type)
     expect(seen).toContain(MessageV2.Event.PartUpdated.type)
-    expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
+    // The inbox row is a sidecar next to the V1 message: admission is durable, but nothing
+    // projects a V2 user row for a legacy session.
+    expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([
+      SessionEvent.PromptAdmitted.type,
+      SessionEvent.PromptAdmitted.type,
+    ])
   }),
 )
 
@@ -1464,6 +1472,246 @@ it.instance("cancel while a turn is finishing does not start another run", () =>
     const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
     const { user: lastUser, assistant: lastAssistant } = MessageV2.latest(msgs)
     expect(lastAssistant?.parentID).not.toBe(lastUser?.id)
+  }),
+)
+
+// The inbox row an accepted prompt leaves next to its V1 message rows.
+const admittedRow = (id: MessageID) =>
+  Database.Service.use(({ db }) => SessionInput.find(db, SessionMessage.ID.make(id)))
+
+const messagesOf = (hit: { body: Record<string, unknown> }) =>
+  Array.isArray(hit.body.messages) ? (hit.body.messages as Array<{ role: string; content: unknown }>) : []
+
+const toolRunning = (sessionID: SessionID) =>
+  pollWithTimeout(
+    Effect.gen(function* () {
+      const msgs = yield* MessageV2.filterCompactedEffect(sessionID)
+      const assistant = msgs.findLast((msg) => msg.info.role === "assistant")
+      const tool = assistant ? toolPart(assistant.parts) : undefined
+      return tool?.state.status === "running" ? (true as const) : undefined
+    }),
+    "the held tool never started",
+    "10 seconds",
+  )
+
+const heldTool = (dir: string) => {
+  const flag = path.join(dir, "release-tool")
+  return {
+    input: {
+      command: `until [ -e "${flag}" ]; do sleep 0.05; done; echo released`,
+      timeout: 30_000,
+      workdir: path.resolve(dir),
+    },
+    release: Effect.promise(() => Bun.write(flag, "go")),
+  }
+}
+
+unix(
+  "a steer admitted while a tool is held lands in the next provider request",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Steer",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("after the tool")
+
+      const first = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      const id = MessageID.ascending()
+      const second = yield* prompt
+        .prompt({
+          sessionID: chat.id,
+          messageID: id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "and also this" }],
+        })
+        .pipe(Effect.forkChild)
+      yield* pollWithTimeout(
+        admittedRow(id).pipe(Effect.map((row) => (row ? (true as const) : undefined))),
+        "second prompt never admitted",
+      )
+      // Stored for the TUI and admitted, but the running step is left alone.
+      expect((yield* admittedRow(id))?.promotedSeq).toBeUndefined()
+      expect((yield* sessions.messages({ sessionID: chat.id })).some((msg) => msg.info.id === id)).toBe(true)
+      expect(yield* llm.calls).toBe(1)
+
+      yield* held.release
+      const one = yield* awaitWithTimeout(Fiber.join(first), "first prompt never resolved", "20 seconds")
+      const two = yield* awaitWithTimeout(Fiber.join(second), "second prompt never resolved", "20 seconds")
+      expect(one.parts.some((part) => part.type === "text" && part.text === "after the tool")).toBe(true)
+      expect(two.info.id).toBe(one.info.id)
+
+      // The steer became visible at the boundary after the tool: the tool-result request is the
+      // first one that carries it, as its last user message.
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(2)
+      expect(JSON.stringify(messagesOf(hits[0]!))).not.toContain("and also this")
+      expect(messagesOf(hits[1]!).at(-1)?.role).toBe("user")
+      expect(JSON.stringify(messagesOf(hits[1]!).at(-1))).toContain("and also this")
+      const row = yield* admittedRow(id)
+      expect(row?.delivery).toBe("steer")
+      expect(row?.promotedSeq).toBeGreaterThan(row?.admittedSeq ?? Infinity)
+      expect(one.info.role === "assistant" && one.info.parentID).toBe(id)
+      expect(yield* llm.pending).toBe(0)
+    }),
+  30_000,
+)
+
+unix(
+  "queued prompts wait for the turn to end, then are promoted one at a time in admission order",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Queue",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("first done")
+      yield* llm.text("second done")
+      yield* llm.text("third done")
+
+      const run = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      const alpha = MessageID.ascending()
+      const beta = MessageID.ascending()
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        messageID: alpha,
+        agent: "build",
+        model: ref,
+        noReply: true,
+        delivery: "queue",
+        parts: [{ type: "text", text: "alpha-queued-prompt" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        messageID: beta,
+        agent: "build",
+        model: ref,
+        noReply: true,
+        delivery: "queue",
+        parts: [{ type: "text", text: "beta-queued-prompt" }],
+      })
+      expect((yield* admittedRow(alpha))?.promotedSeq).toBeUndefined()
+      expect((yield* admittedRow(beta))?.promotedSeq).toBeUndefined()
+
+      yield* held.release
+      const last = yield* awaitWithTimeout(Fiber.join(run), "the drain never finished", "20 seconds")
+      expect(last.parts.some((part) => part.type === "text" && part.text === "third done")).toBe(true)
+      expect(last.info.role === "assistant" && last.info.parentID).toBe(beta)
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(4)
+      // The tool-result request carries no queued prompt: the turn still required continuation.
+      expect(JSON.stringify(messagesOf(hits[1]!))).not.toContain("-queued-prompt")
+      // Once the turn would have ended, exactly one queued prompt at a time, oldest first.
+      expect(JSON.stringify(messagesOf(hits[2]!))).toContain("alpha-queued-prompt")
+      expect(JSON.stringify(messagesOf(hits[2]!))).not.toContain("beta-queued-prompt")
+      expect(JSON.stringify(messagesOf(hits[3]!))).toContain("beta-queued-prompt")
+      const one = yield* admittedRow(alpha)
+      const two = yield* admittedRow(beta)
+      expect(one?.admittedSeq ?? Infinity).toBeLessThan(two?.admittedSeq ?? -Infinity)
+      expect(one?.promotedSeq ?? Infinity).toBeLessThan(two?.promotedSeq ?? -Infinity)
+      expect(yield* llm.pending).toBe(0)
+    }),
+  30_000,
+)
+
+it.instance("noReply admits the prompt without answering it", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const status = yield* SessionStatus.Service
+    const chat = yield* sessions.create({ title: "Admit only" })
+
+    const id = MessageID.ascending()
+    const message = yield* prompt.prompt({
+      sessionID: chat.id,
+      messageID: id,
+      agent: "build",
+      model: ref,
+      noReply: true,
+      parts: [{ type: "text", text: "later" }],
+    })
+    expect(message.info.role).toBe("user")
+
+    const row = yield* admittedRow(id)
+    expect(row?.delivery).toBe("steer")
+    expect(row?.prompt.text).toBe("later")
+    expect(row?.promotedSeq).toBeUndefined()
+    // Stored for the surfaces, nothing sent to the model.
+    expect((yield* sessions.messages({ sessionID: chat.id })).some((msg) => msg.info.id === id)).toBe(true)
+    expect(yield* llm.calls).toBe(0)
+    expect((yield* status.get(chat.id)).type).toBe("idle")
+  }),
+)
+
+it.instance("a prompt admitted by a process that died is promoted by the next loop", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { db } = yield* Database.Service
+    const events = yield* EventV2Bridge.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Restart" })
+
+    // Exactly what an accepted prompt leaves in the database when the process dies before the
+    // loop runs: the inbox row and the V1 rows, with nothing in memory.
+    const id = MessageID.ascending()
+    yield* SessionInput.admit(db, events, {
+      id: SessionMessage.ID.make(id),
+      sessionID: chat.id,
+      prompt: Prompt.fromUserMessage({ text: "from before" }),
+      delivery: "steer",
+    })
+    yield* sessions.updateMessage({
+      id,
+      role: "user",
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      time: { created: Date.now() },
+    })
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: id,
+      sessionID: chat.id,
+      type: "text",
+      text: "from before",
+    })
+    expect((yield* admittedRow(id))?.promotedSeq).toBeUndefined()
+
+    yield* llm.text("picked up")
+    const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "20 seconds")
+    expect(result.info.role === "assistant" && result.info.parentID).toBe(id)
+    expect(result.parts.some((part) => part.type === "text" && part.text === "picked up")).toBe(true)
+    expect((yield* admittedRow(id))?.promotedSeq).toBeDefined()
+    expect(yield* llm.calls).toBe(1)
+    expect(JSON.stringify(messagesOf((yield* llm.hits)[0]!))).toContain("from before")
   }),
 )
 

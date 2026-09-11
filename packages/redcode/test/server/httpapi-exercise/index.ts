@@ -1708,6 +1708,7 @@ const scenarios: Scenario[] = [
       body: {
         agent: "build",
         model: { providerID: "test", modelID: "test-model" },
+        delivery: "steer",
         parts: [{ type: "text", text: "hello llm" }],
       },
     }))
@@ -1743,6 +1744,7 @@ const scenarios: Scenario[] = [
       body: {
         agent: "build",
         model: { providerID: "test", modelID: "test-model" },
+        delivery: "queue",
         parts: [{ type: "text", text: "hello async" }],
       },
     }))

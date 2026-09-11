@@ -5,6 +5,10 @@ import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import path from "path"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { Prompt } from "@reddb-io/redcode-core/session/prompt"
+import { EventV2 } from "@reddb-io/redcode-core/event"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
@@ -1140,11 +1144,65 @@ const layer = Layer.effect(
         })
       }
 
+      // Admitted before the message rows exist, so the message is never model-visible ahead of
+      // its Prompt Promotion: the loop republishes it at the next safe boundary, and the projector
+      // stamps the inbox row with that durable sequence. The row is a sidecar next to the V1
+      // message rather than a V2 user row (which the `Prompted` projector would create).
+      const files = parts.flatMap((part) =>
+        part.type === "file"
+          ? [{ uri: part.url, mime: part.mime, ...(part.filename ? { name: part.filename } : {}) }]
+          : [],
+      )
+      const mentions = parts.flatMap((part) => (part.type === "agent" ? [{ name: part.name }] : []))
+      yield* SessionInput.admit(db, events, {
+        id: SessionMessage.ID.make(info.id),
+        sessionID: input.sessionID,
+        prompt: Prompt.fromUserMessage({
+          text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+          ...(files.length > 0 ? { files } : {}),
+          ...(mentions.length > 0 ? { agents: mentions } : {}),
+        }),
+        delivery: input.delivery ?? "steer",
+      })
       yield* sessions.updateMessage(info)
       for (const part of parts) yield* sessions.updatePart(part)
 
       return { info, parts }
     }, Effect.scoped)
+
+    // Prompt Promotion for a V1 session: publishing the stored user message again is the durable
+    // event that makes it model-visible. A row whose message is gone stays pending and is skipped.
+    const promote = Effect.fn("SessionPrompt.promote")(function* (
+      sessionID: SessionID,
+      rows: ReadonlyArray<SessionInput.Admitted>,
+    ) {
+      let promoted = 0
+      for (const row of rows) {
+        const message = yield* MessageV2.get({ sessionID, messageID: MessageID.make(row.id) }).pipe(
+          Effect.provideService(Database.Service, database),
+          Effect.option,
+        )
+        if (Option.isNone(message) || message.value.info.role !== "user") {
+          yield* Effect.logWarning("admitted prompt has no stored user message", {
+            "session.id": sessionID,
+            messageID: row.id,
+          })
+          continue
+        }
+        yield* sessions.updateMessage(message.value.info)
+        promoted++
+      }
+      return promoted
+    })
+
+    // The boundary where the session would otherwise go idle: every steer still pending comes
+    // first, then exactly one queued prompt. Returns whether the drain has new work.
+    const promoteAtIdle = Effect.fn("SessionPrompt.promoteAtIdle")(function* (sessionID: SessionID) {
+      const steers = yield* SessionInput.listPending(db, sessionID, { delivery: "steer" })
+      if ((yield* promote(sessionID, steers)) > 0) return true
+      const queued = yield* SessionInput.listPending(db, sessionID, { delivery: "queue" })
+      return (yield* promote(sessionID, queued.slice(0, 1))) > 0
+    })
 
     const prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
       "SessionPrompt.prompt",
@@ -1314,6 +1372,13 @@ const layer = Layer.effect(
         )
 
         while (true) {
+          // Safe boundary: steers admitted up to here become visible together, and a promotion
+          // starts the step allowance over once for the batch. Anything admitted from now on
+          // waits for the next boundary rather than landing in the middle of a provider turn.
+          const cutoff = yield* EventV2.latestSequence(db, sessionID)
+          const steers = yield* SessionInput.listPending(db, sessionID, { delivery: "steer", cutoffSeq: cutoff })
+          if ((yield* promote(sessionID, steers)) > 0) step = 0
+
           yield* status.set(sessionID, { type: "busy", phase: "preparing", step: step + 1, since: Date.now() })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
 
@@ -1362,10 +1427,20 @@ const layer = Layer.effect(
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
           )
+          // An Admitted Prompt is stored (the TUI shows it as queued) but not yet model-visible.
+          const admitted = new Set<string>((yield* SessionInput.listPending(db, sessionID)).map((row) => row.id))
+          if (admitted.size > 0) msgs = msgs.filter((msg) => !admitted.has(msg.info.id))
 
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
-          if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
+          if (!lastUser) {
+            if (yield* promoteAtIdle(sessionID)) {
+              step = 0
+              continue
+            }
+            yield* Effect.logWarning("no visible user message and nothing admitted", { "session.id": sessionID })
+            break
+          }
 
           const lastAssistantMsg = msgs.findLast(
             (msg) => msg.info.role === "assistant" && msg.info.id === lastAssistant?.id,
@@ -1482,6 +1557,10 @@ const layer = Layer.effect(
                 })
                 continue
               }
+            }
+            if (yield* promoteAtIdle(sessionID)) {
+              step = 0
+              continue
             }
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
@@ -1972,6 +2051,10 @@ export const PromptInput = Schema.Struct({
   model: Schema.optional(ModelRef),
   agent: Schema.optional(Schema.String),
   noReply: Schema.optional(Schema.Boolean),
+  delivery: Schema.optional(SessionInput.Delivery).annotate({
+    description:
+      "How the prompt reaches the model: `steer` (default) is promoted at the next safe boundary of a running turn, `queue` waits until the session would otherwise go idle",
+  }),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({
     description:
       "@deprecated tools and permissions have been merged, you can set permissions on the session itself now",

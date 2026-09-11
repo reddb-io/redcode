@@ -167,6 +167,55 @@ export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(functio
     .pipe(Effect.orDie)
 })
 
+export const listPending = Effect.fn("SessionInput.listPending")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  filter?: { readonly delivery?: Delivery; readonly cutoffSeq?: number },
+) {
+  const rows = yield* db
+    .select()
+    .from(SessionInputTable)
+    .where(
+      and(
+        eq(SessionInputTable.session_id, sessionID),
+        isNull(SessionInputTable.promoted_seq),
+        ...(filter?.delivery === undefined ? [] : [eq(SessionInputTable.delivery, filter.delivery)]),
+        ...(filter?.cutoffSeq === undefined ? [] : [lte(SessionInputTable.admitted_seq, filter.cutoffSeq)]),
+      ),
+    )
+    .orderBy(asc(SessionInputTable.admitted_seq))
+    .all()
+    .pipe(Effect.orDie)
+  return rows.map(fromRow)
+})
+
+// A V1 session keeps its user message in the canonical `message` table, so its inbox row is a
+// sidecar: promotion is the durable re-publication of that message, not a `Prompted` event (which
+// would project a second, V2 user row). The re-publication's sequence is the promotion sequence.
+export const projectLegacyPromotion = Effect.fn("SessionInput.projectLegacyPromotion")(function* (
+  db: DatabaseService,
+  input: {
+    readonly id: SessionMessage.ID
+    readonly sessionID: SessionSchema.ID
+    readonly promotedSeq: number
+  },
+) {
+  const updated = yield* db
+    .update(SessionInputTable)
+    .set({ promoted_seq: input.promotedSeq })
+    .where(
+      and(
+        eq(SessionInputTable.id, input.id),
+        eq(SessionInputTable.session_id, input.sessionID),
+        isNull(SessionInputTable.promoted_seq),
+      ),
+    )
+    .returning({ id: SessionInputTable.id })
+    .get()
+    .pipe(Effect.orDie)
+  return updated !== undefined
+})
+
 export const hasPending = Effect.fn("SessionInput.hasPending")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
