@@ -945,6 +945,19 @@ export const {
         },
       },
       bootstrap,
+      removeQuestion(sessionID: string, requestID: string) {
+        const requests = store.question[sessionID]
+        if (!requests) return
+        const match = search(requests, requestID, (r) => r.id)
+        if (!match.found) return
+        setStore(
+          "question",
+          sessionID,
+          produce((draft) => {
+            draft.splice(match.index, 1)
+          }),
+        )
+      },
     }
     return result
   },

@@ -5,6 +5,8 @@ import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@reddb-io/redcode-sdk/v2"
 import { useSDK } from "../../context/sdk"
+import { useSync } from "../../context/sync"
+import { useToast } from "../../ui/toast"
 import { SplitBorder } from "../../ui/border"
 import { useTuiConfig } from "../../config"
 import { useBindings, useOpencodeModeStack } from "../../keymap"
@@ -13,6 +15,8 @@ const QUESTION_MODE = "question"
 
 export function QuestionPrompt(props: { request: QuestionRequest; directory?: string }) {
   const sdk = useSDK()
+  const sync = useSync()
+  const toast = useToast()
   const { theme } = useTheme()
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
@@ -47,20 +51,35 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
+  // A failed reply/reject (e.g. the asking tool was interrupted server-side) must never
+  // leave this dialog unresponsive: surface why and drop the stale request.
+  function fail(error: unknown) {
+    sync.removeQuestion(props.request.sessionID, props.request.id)
+    toast.show({
+      variant: "error",
+      message: "This question is no longer active — the request was interrupted. You can continue typing.",
+    })
+    console.error("question reply/reject failed", error)
+  }
+
   function submit() {
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    void sdk.client.question.reply({
-      requestID: props.request.id,
-      directory: props.directory,
-      answers,
-    })
+    sdk.client.question
+      .reply({
+        requestID: props.request.id,
+        directory: props.directory,
+        answers,
+      })
+      .catch(fail)
   }
 
   function reject() {
-    void sdk.client.question.reject({
-      requestID: props.request.id,
-      directory: props.directory,
-    })
+    sdk.client.question
+      .reject({
+        requestID: props.request.id,
+        directory: props.directory,
+      })
+      .catch(fail)
   }
 
   function pick(answer: string, custom: boolean = false) {
@@ -73,11 +92,13 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       setStore("custom", inputs)
     }
     if (single()) {
-      void sdk.client.question.reply({
-        requestID: props.request.id,
-        directory: props.directory,
-        answers: [[answer]],
-      })
+      sdk.client.question
+        .reply({
+          requestID: props.request.id,
+          directory: props.directory,
+          answers: [[answer]],
+        })
+        .catch(fail)
       return
     }
     setStore("tab", store.tab + 1)

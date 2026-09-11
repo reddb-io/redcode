@@ -103,10 +103,16 @@ const layer = Layer.effect(
       pending.set(id, { info, deferred })
       yield* events.publish(Event.Asked, info)
 
+      // If the asking fiber dies (interrupt, crash) the request must not linger:
+      // publish Rejected so clients drop the dialog instead of replying into the void.
       return yield* Effect.ensuring(
         Deferred.await(deferred),
-        Effect.sync(() => {
-          pending.delete(id)
+        Effect.gen(function* () {
+          if (!pending.delete(id)) return
+          yield* events.publish(Event.Rejected, {
+            sessionID: input.sessionID,
+            requestID: id,
+          })
         }),
       )
     })
