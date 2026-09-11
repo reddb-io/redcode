@@ -9,12 +9,12 @@ on:
 
 jobs:
   shard:
-    name: typecheck (${{ matrix.shard }}/5)
+    name: typecheck (${{ matrix.shard }}/3)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3]
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -23,10 +23,11 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       # One slice of the workspace per job: all 37 packages at once is more than a 4-vCPU runner
-      # can hold, and the job that tried used to die mid-run. Assignment is by sorted package
-      # name (see script/typecheck-shard.ts), so a failure names the package.
+      # can hold, and the job that tried used to die mid-run. Three shards keep each job well
+      # inside memory while spending far less on per-job setup than five did. Assignment is by
+      # sorted package name (see script/typecheck-shard.ts), so a failure names the package.
       - name: Run typecheck
-        run: bun script/typecheck-shard.ts $((${{ matrix.shard }} - 1)) 5
+        run: bun script/typecheck-shard.ts $((${{ matrix.shard }} - 1)) 3
 
   # The one check branch protection requires. It passes only when every shard did, so the
   # protection rule keeps its name and the matrix can change shape underneath it.
