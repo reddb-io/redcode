@@ -165,6 +165,76 @@ describe("SessionContextEpoch.requestReplacement", () => {
     }),
   )
 
+  it.effect("a request with no durable event since the baseline still replaces at the next preparation", () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      const events = yield* EventV2.Service
+      const session = yield* SessionV2.Service
+      const flaky = yield* Ref.make<string | SystemContext.Unavailable>("flaky one")
+      const created = yield* session.create({ location })
+      const first = yield* SessionContextEpoch.prepare(db, events, context(flaky), created.id)
+      yield* SessionContextEpoch.requestReplacement(db, created.id)
+      expect((yield* epoch(created.id))?.replacement_seq).toBe(first.baselineSeq)
+
+      // A changed source is rendered into a whole new baseline, not admitted as an update.
+      yield* Ref.set(flaky, "flaky two")
+      const replaced = yield* SessionContextEpoch.prepare(db, events, context(flaky), created.id)
+
+      expect(replaced).toEqual({ baseline: "stable text\n\nflaky two", baselineSeq: first.baselineSeq })
+      expect(yield* systemRows(created.id)).toHaveLength(0)
+      const row = yield* epoch(created.id)
+      expect(row?.baseline).toBe(replaced.baseline)
+      expect(row?.replacement_seq).toBeNull()
+    }),
+  )
+
+  it.effect("a request that lands while the replacement is rendered is kept for the next preparation", () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      const events = yield* EventV2.Service
+      const session = yield* SessionV2.Service
+      const created = yield* session.create({ location })
+      const armed = yield* Ref.make(true)
+      // Observed between the row being read and the generation being written: a later compaction
+      // boundary requests a replacement of its own.
+      const racing = Effect.succeed(
+        SystemContext.combine([
+          stable,
+          SystemContext.make({
+            key: SystemContext.Key.make("test/racer"),
+            codec: Schema.toCodecJson(Schema.String),
+            load: Effect.gen(function* () {
+              if (!(yield* Ref.getAndSet(armed, false))) return "racer"
+              yield* events.publish(Boundary, { sessionID: created.id, value: "later compaction" })
+              yield* SessionContextEpoch.requestReplacement(db, created.id)
+              return "racer"
+            }),
+            baseline: (text) => text,
+            update: (_previous, text) => `racer now: ${text}`,
+          }),
+        ]),
+      )
+      const first = yield* SessionContextEpoch.prepare(db, events, stableOnly, created.id)
+      yield* events.publish(Boundary, { sessionID: created.id, value: "summary" })
+      yield* SessionContextEpoch.requestReplacement(db, created.id)
+      const requested = (yield* epoch(created.id))!.replacement_seq!
+
+      const replaced = yield* SessionContextEpoch.prepare(db, events, racing, created.id)
+
+      expect(replaced).toEqual({ baseline: "stable text\n\nracer", baselineSeq: requested })
+      const row = yield* epoch(created.id)
+      expect(row?.baseline_seq).toBe(requested)
+      expect(row?.replacement_seq).toBe(yield* EventV2.latestSequence(db, created.id))
+      expect(row?.replacement_seq).toBeGreaterThan(requested)
+      expect(first.baselineSeq).toBeLessThan(requested)
+
+      const again = yield* SessionContextEpoch.prepare(db, events, racing, created.id)
+      expect(again.baselineSeq).toBe(row!.replacement_seq!)
+      expect((yield* epoch(created.id))?.replacement_seq).toBeNull()
+      expect(yield* systemRows(created.id)).toHaveLength(0)
+    }),
+  )
+
   it.effect("a request without an active epoch is a no-op and the next preparation initializes", () =>
     Effect.gen(function* () {
       const db = (yield* Database.Service).db

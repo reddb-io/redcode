@@ -1,6 +1,6 @@
 export * as SessionContextEpoch from "./context-epoch"
 
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { DateTime, Effect, Schema } from "effect"
 import type { Database } from "../database/database"
 import { EventV2 } from "../event"
@@ -56,21 +56,24 @@ const prepareOnce = Effect.fnUntraced(function* (
   const snapshot = yield* Schema.decodeUnknownEffect(SystemContext.Snapshot)(stored.snapshot).pipe(
     Effect.mapError((error) => new ContextSnapshotDecodeError({ sessionID, details: String(error) })),
   )
-  // A replacement is pending while a boundary lies after the baseline: the latest compaction
-  // message, or a replacement requested by a runtime whose compaction leaves no such message.
-  // It stays pending, and blocks admission of ordinary updates, until every previously admitted
-  // source is observable again and the generation is rendered whole.
-  const boundary = Math.max(compaction?.seq ?? stored.baseline_seq, stored.replacement_seq ?? stored.baseline_seq)
-  const replacementSeq = boundary > stored.baseline_seq ? boundary : undefined
-  const result = replacementSeq
-    ? yield* SystemContext.replace(value, snapshot)
-    : yield* SystemContext.reconcile(value, snapshot)
+  // A replacement is pending while a boundary lies after the baseline: a compaction message
+  // admitted after it, or any replacement requested by a runtime whose compaction leaves no such
+  // message. It stays pending, and blocks admission of ordinary updates, until every previously
+  // admitted source is observable again and the generation is rendered whole.
+  const requested = stored.replacement_seq ?? undefined
+  const compacted = compaction !== undefined && compaction.seq > stored.baseline_seq ? compaction.seq : undefined
+  const boundaries = [requested, compacted].filter((seq): seq is number => seq !== undefined)
+  const replacementSeq = boundaries.length === 0 ? undefined : Math.max(...boundaries)
+  const result =
+    replacementSeq === undefined
+      ? yield* SystemContext.reconcile(value, snapshot)
+      : yield* SystemContext.replace(value, snapshot)
   if (result._tag === "Unchanged" || result._tag === "ReplacementBlocked") {
     return { baseline: stored.baseline, baselineSeq: stored.baseline_seq }
   }
   if (result._tag === "ReplacementReady") {
     const baselineSeq = replacementSeq ?? (yield* EventV2.latestSequence(db, sessionID))
-    yield* replace(db, sessionID, baselineSeq, result.generation)
+    yield* replace(db, sessionID, baselineSeq, result.generation, stored.replacement_seq)
     return { baseline: result.generation.baseline, baselineSeq }
   }
 
@@ -163,11 +166,14 @@ const insert = Effect.fnUntraced(function* (
   return baselineSeq
 })
 
+// Clears only the request this generation answers: one that landed after the row was read is
+// kept, so the next preparation replaces again at that later boundary instead of losing it.
 const replace = Effect.fnUntraced(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
   baselineSeq: number,
   generation: SystemContext.Generation,
+  requested: number | null,
 ) {
   const updated = yield* db
     .update(SessionContextEpochTable)
@@ -175,7 +181,9 @@ const replace = Effect.fnUntraced(function* (
       baseline: generation.baseline,
       snapshot: generation.snapshot,
       baseline_seq: baselineSeq,
-      replacement_seq: null,
+      replacement_seq: sql<
+        number | null
+      >`CASE WHEN ${SessionContextEpochTable.replacement_seq} IS ${requested} THEN NULL ELSE ${SessionContextEpochTable.replacement_seq} END`,
     })
     .where(eq(SessionContextEpochTable.session_id, sessionID))
     .returning({ sessionID: SessionContextEpochTable.session_id })
