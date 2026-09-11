@@ -31,7 +31,7 @@ import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { Session } from "@/session/session"
-import { SessionContextEpochTable, SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
+import { SessionContextEpochTable, SessionInputTable, SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -1712,7 +1712,8 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
     const sessions = yield* Session.Service
     const chat = yield* sessions.create({ title: "Orphan" })
 
-    // Admission committed, then the process died before the message rows were written.
+    // Admission committed, then the process died before the message rows were written — long
+    // enough ago that this is not a row whose rows are still on their way.
     const orphan = MessageID.ascending()
     yield* SessionInput.admit(db, events, {
       id: SessionMessage.ID.make(orphan),
@@ -1720,6 +1721,12 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
       prompt: Prompt.fromUserMessage({ text: "never stored" }),
       delivery: "queue",
     })
+    yield* db
+      .update(SessionInputTable)
+      .set({ time_created: Date.now() - 60_000 })
+      .where(eq(SessionInputTable.id, SessionMessage.ID.make(orphan)))
+      .run()
+      .pipe(Effect.orDie)
     const real = MessageID.ascending()
     yield* prompt.prompt({
       sessionID: chat.id,
@@ -1743,6 +1750,90 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
     expect(JSON.stringify(messagesOf((yield* llm.hits)[1]!))).toContain("real-queued-prompt")
     expect(yield* admittedRow(orphan)).toBeUndefined()
     expect((yield* admittedRow(real))?.promotedSeq).toBeDefined()
+  }),
+)
+
+it.instance("a boundary between admission and the message rows leaves the prompt admitted", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { db } = yield* Database.Service
+    const events = yield* EventV2Bridge.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Admission race" })
+    yield* seed(chat.id, { finish: "stop" })
+
+    // Admission is committed; the message rows are a separate publication that has not landed.
+    const id = MessageID.ascending()
+    yield* SessionInput.admit(db, events, {
+      id: SessionMessage.ID.make(id),
+      sessionID: chat.id,
+      prompt: Prompt.fromUserMessage({ text: "rows on their way" }),
+      delivery: "steer",
+    })
+    // A boundary in between: the row is young, so it is neither promoted nor discarded.
+    const idle = yield* awaitWithTimeout(
+      prompt.loop({ sessionID: chat.id }),
+      "the idle loop never finished",
+      "20 seconds",
+    )
+    expect(idle.info.role).toBe("assistant")
+    expect(yield* llm.calls).toBe(0)
+    expect((yield* admittedRow(id))?.promotedSeq).toBeUndefined()
+
+    yield* sessions.updateMessage({
+      id,
+      role: "user",
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      time: { created: Date.now() },
+    })
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: id,
+      sessionID: chat.id,
+      type: "text",
+      text: "rows on their way",
+    })
+    yield* llm.text("answered after the rows landed")
+    const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "20 seconds")
+    expect(result.info.role === "assistant" && result.info.parentID).toBe(id)
+    expect((yield* admittedRow(id))?.promotedSeq).toBeDefined()
+    expect(JSON.stringify(messagesOf((yield* llm.hits)[0]!))).toContain("rows on their way")
+  }),
+)
+
+it.instance("promotion is recorded as a durable message.promoted event", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const events = yield* EventV2Bridge.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Promotion event" })
+    const seen: Array<{ type: string; seq: number | undefined }> = []
+    const off = yield* events.listen((event) => {
+      if (event.type === SessionV1.Event.MessagePromoted.type || event.type === SessionEvent.PromptAdmitted.type)
+        seen.push({ type: event.type, seq: event.durable?.seq })
+      return Effect.void
+    })
+    yield* llm.text("hi")
+    const id = MessageID.ascending()
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      messageID: id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text", text: "hello" }],
+    })
+    yield* off
+    const row = yield* admittedRow(id)
+    expect(seen.map((event) => event.type)).toEqual([
+      SessionEvent.PromptAdmitted.type,
+      SessionV1.Event.MessagePromoted.type,
+    ])
+    expect(seen[0]?.seq).toBe(row?.admittedSeq)
+    expect(seen[1]?.seq).toBe(row?.promotedSeq)
   }),
 )
 

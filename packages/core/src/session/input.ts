@@ -191,11 +191,10 @@ export const listPending = Effect.fn("SessionInput.listPending")(function* (
 
 // A V1 session keeps its user message in the canonical `message` table, so its inbox row is a
 // sidecar: promotion is the durable re-publication of that message, not a `Prompted` event (which
-// would project a second, V2 user row). The V1 loop calls this from the `commit` hook of that
-// `message.updated` publication, so the stamp is atomic with the event and explicit — a retried
-// publication of the same message (an idempotent prompt retry) never promotes anything. Commit
-// hooks are not replayed: a rebuilt projection leaves legacy inbox rows pending, and the next V1
-// drain promotes them again at its first boundary.
+// would project a second, V2 user row). The projector calls this for the durable
+// `message.promoted` event the V1 loop publishes right after that re-publication, so promotion
+// is explicit (a retried `message.updated` never promotes anything) and replayed: sync and steal
+// rebuild the projection from the aggregate and the row comes back stamped.
 export const projectLegacyPromotion = Effect.fn("SessionInput.projectLegacyPromotion")(function* (
   db: DatabaseService,
   input: {

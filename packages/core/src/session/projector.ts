@@ -266,12 +266,16 @@ const layer = Layer.effectDiscard(
         const id = event.data.info.id
         const sessionID = event.data.info.sessionID
         const data = messageData(event.data.info)
-        // `time_created` follows the message: a V1 Prompt Promotion re-stamps the stored user
-        // message so it takes its place in history at promotion time, not at admission.
+        // `time_created` only moves forward: a V1 Prompt Promotion re-stamps the stored user
+        // message so it takes its place in history at promotion time, not at admission, while a
+        // stale or reordered publication can never move a message earlier than it already is.
         yield* db
           .insert(MessageTable)
           .values({ id, session_id: sessionID, time_created, data })
-          .onConflictDoUpdate({ target: MessageTable.id, set: { data, time_created } })
+          .onConflictDoUpdate({
+            target: MessageTable.id,
+            set: { data, time_created: sql`max(${MessageTable.time_created}, excluded.time_created)` },
+          })
           .run()
           .pipe(Effect.orDie)
         // The usage sidecar mirrors the same row, minus the content: it is the file usage reporters read, and it
@@ -281,6 +285,19 @@ const layer = Layer.effectDiscard(
           warnedAboutSidecar = true
           yield* Effect.logWarning("usage sidecar disabled after a write failure", { error: Usage.lastError() })
         }
+      }),
+    )
+    // The durable, replayed fact of a V1 Prompt Promotion (sync and steal replay the aggregate
+    // into a fresh projection, and commit hooks are not replayed). Idempotent: a row already
+    // stamped, or absent, is left alone.
+    yield* events.project(SessionV1.Event.MessagePromoted, (event) =>
+      Effect.gen(function* () {
+        if (event.durable === undefined) return yield* Effect.die("Durable Session event is missing aggregate sequence")
+        yield* SessionInput.projectLegacyPromotion(db, {
+          id: SessionMessage.ID.make(event.data.messageID),
+          sessionID: event.data.sessionID,
+          promotedSeq: event.durable.seq,
+        })
       }),
     )
     yield* events.project(SessionV1.Event.MessageRemoved, (event) =>

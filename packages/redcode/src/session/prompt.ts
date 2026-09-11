@@ -31,6 +31,13 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
 
+/**
+ * How long an admitted prompt may exist without its V1 message rows before the loop treats it as
+ * abandoned by a process that died. Admission and the rows are published back to back by the same
+ * fiber, so anything older than this never got its rows.
+ */
+const ORPHAN_GRACE_MILLIS = 10_000
+
 /** Surfaces where a person is present to read a warning and stop the turn themselves. */
 function attendedClient(client: string) {
   return client === "tui" || client === "app" || client === "desktop"
@@ -1171,12 +1178,15 @@ const layer = Layer.effect(
       return { info, parts }
     }, Effect.scoped)
 
-    // Prompt Promotion for a V1 session: publishing the stored user message again is the durable
-    // event that makes it model-visible, and the commit hook stamps the inbox row atomically with
-    // it — an explicit act, so a retried publication of the same message promotes nothing. A row
+    // Prompt Promotion for a V1 session. The stored user message is published again, re-stamped
+    // to now (history is ordered by creation time, and an admitted prompt is older than everything
+    // the drain wrote since), and then `message.promoted` records the promotion as a durable event
+    // the projector stamps on the inbox row — explicit, so a retried `message.updated` promotes
+    // nothing, and replayed, so a synced or stolen session comes back with its rows stamped. A row
     // whose message never made it to the database (the process died between admission and the
-    // message rows) can never be promoted and would otherwise head the queue forever; it is
-    // discarded through `message.removed`, which drops pending rows. Up to `limit` rows promote.
+    // message rows) can never be promoted and would otherwise head the queue forever; once it is
+    // older than the grace window it is discarded through `message.removed`, which drops pending
+    // rows. Up to `limit` rows promote.
     const promote = Effect.fnUntraced(function* (
       sessionID: SessionID,
       rows: ReadonlyArray<SessionInput.Admitted>,
@@ -1190,7 +1200,11 @@ const layer = Layer.effect(
           Effect.provideService(Database.Service, database),
           Effect.option,
         )
-        if (Option.isNone(message) || message.value.info.role !== "user") {
+        const now = yield* DateTime.now
+        if (Option.isNone(message)) {
+          // Admission and the message rows are separate publications a boundary can fall between;
+          // a row younger than the grace window is still on its way, not abandoned.
+          if (DateTime.toEpochMillis(now) - DateTime.toEpochMillis(row.timeCreated) < ORPHAN_GRACE_MILLIS) continue
           yield* Effect.logWarning("discarding an admitted prompt with no stored user message", {
             "session.id": sessionID,
             messageID,
@@ -1198,25 +1212,19 @@ const layer = Layer.effect(
           yield* sessions.removeMessage({ sessionID, messageID })
           continue
         }
-        // History is ordered by creation time, so the message takes its place now: an admitted
-        // prompt is older than everything the drain wrote since, and would otherwise sit behind
-        // the assistant that is supposed to answer it.
+        if (message.value.info.role !== "user") {
+          yield* Effect.logWarning("admitted prompt is not a user message; left pending", {
+            "session.id": sessionID,
+            messageID,
+          })
+          continue
+        }
         const info: SessionV1.User = {
           ...message.value.info,
-          time: { ...message.value.info.time, created: DateTime.toEpochMillis(yield* DateTime.now) },
+          time: { ...message.value.info.time, created: DateTime.toEpochMillis(now) },
         }
-        yield* events.publish(
-          SessionV1.Event.MessageUpdated,
-          { sessionID, info },
-          {
-            commit: (seq) =>
-              SessionInput.projectLegacyPromotion(db, {
-                id: row.id,
-                sessionID,
-                promotedSeq: seq,
-              }).pipe(Effect.asVoid),
-          },
-        )
+        yield* sessions.updateMessage(info)
+        yield* events.publish(SessionV1.Event.MessagePromoted, { sessionID, messageID })
         promoted++
       }
       return promoted

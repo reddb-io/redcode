@@ -393,11 +393,8 @@ const layer = Layer.effect(
       const prior = completedCompactions(history)
       const hidden = new Set(prior.flatMap((item) => [item.userIndex, item.assistantIndex]))
       const previousSummary = prior.at(-1)?.summary
-      const selected = yield* select({
-        messages: history.filter((_, index) => !hidden.has(index)),
-        cfg,
-        model,
-      })
+      const retained = history.filter((_, index) => !hidden.has(index))
+      const selected = yield* select({ messages: retained, cfg, model })
       const latestRequest = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).findLast(
         (message) =>
           message.info.role === "user" &&
@@ -405,8 +402,17 @@ const layer = Layer.effect(
           !message.parts.some((part) => part.type === "compaction") &&
           !isReplay(message.parts),
       )
+      // Membership in the retained tail, not an id comparison: a promoted prompt keeps its
+      // admission-time id but sits later in history, and would otherwise be summarised twice.
+      const tailStart = selected.tail_start_id
+        ? retained.findIndex((message) => message.info.id === selected.tail_start_id)
+        : -1
+      const inTail =
+        latestRequest !== undefined &&
+        tailStart >= 0 &&
+        retained.slice(tailStart).some((message) => message.info.id === latestRequest.info.id)
       const preservedRequest =
-        !replay && latestRequest && (!selected.tail_start_id || latestRequest.info.id < selected.tail_start_id)
+        !replay && latestRequest && !inTail
           ? `\n\n<latest-user-request>\n${serialize(latestRequest)}\n</latest-user-request>`
           : ""
       // Allow plugins to inject context or replace compaction prompt.

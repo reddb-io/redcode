@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import type { Message, Part, PermissionRequest, Project, QuestionRequest, Session } from "@reddb-io/redcode-sdk/v2/client"
+import type {
+  Message,
+  Part,
+  PermissionRequest,
+  Project,
+  QuestionRequest,
+  Session,
+} from "@reddb-io/redcode-sdk/v2/client"
 import { createStore } from "solid-js/store"
 import type { State } from "./types"
 import { applyDirectoryEvent, applyGlobalEvent, cleanupDroppedSessionCaches } from "./event-reducer"
@@ -364,6 +371,28 @@ describe("applyDirectoryEvent", () => {
     cleanupDroppedSessionCaches(store, setStore, store.session)
 
     expect(store.part.msg_1).toBeUndefined()
+  })
+
+  test("moves a re-stamped message instead of inserting it twice", () => {
+    const sessionID = "ses_1"
+    const [store, setStore] = createStore(
+      baseState({
+        message: { [sessionID]: [userMessage("msg_a", sessionID, 1), userMessage("msg_b", sessionID, 3)] },
+      }),
+    )
+
+    // A promoted prompt keeps its id and gets a later time: the time+id key misses.
+    applyDirectoryEvent({
+      event: { type: "message.updated", properties: { info: userMessage("msg_a", sessionID, 5) } },
+      store,
+      setStore,
+      push() {},
+      directory: "/tmp",
+      loadLsp() {},
+    })
+
+    expect(store.message[sessionID]?.map((x) => x.id)).toEqual(["msg_b", "msg_a"])
+    expect(store.message[sessionID]?.at(-1)?.time.created).toBe(5)
   })
 
   test("upserts and removes messages while clearing orphaned parts", () => {
