@@ -635,6 +635,13 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     )
     await frame.getByRole("button", { name: "Previous", exact: true }).click()
     await frame.getByRole("heading", { name: "Step 1 of 3" }).waitFor()
+    // The prototype reports its state to the panel asynchronously; wait for the field to settle on
+    // "1" so the edit below is not raced by that report.
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#review")!.shadowRoot!.querySelector<HTMLInputElement>("#param-field-step")?.value ===
+        "1",
+    )
     await page.getByLabel("Current step", { exact: true }).fill("2")
     await page.getByLabel("Current step", { exact: true }).press("Tab")
     await frame.getByRole("heading", { name: "Step 2 of 3" }).waitFor()
