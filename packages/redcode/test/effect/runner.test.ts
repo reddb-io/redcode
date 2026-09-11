@@ -8,6 +8,11 @@ const waitForState = <A, E>(runner: Runner.Runner<A, E>, tag: Runner.State<A, E>
     while (runner.state._tag !== tag) yield* Effect.yieldNow
   }).pipe(Effect.timeout("1 second"))
 
+const waitForPending = <A, E>(runner: Runner.Runner<A, E>) =>
+  Effect.gen(function* () {
+    while (!(runner.state._tag === "Running" && runner.state.pending)) yield* Effect.yieldNow
+  }).pipe(Effect.timeout("1 second"))
+
 describe("Runner", () => {
   // --- ensureRunning semantics ---
 
@@ -35,7 +40,7 @@ describe("Runner", () => {
   )
 
   it.live(
-    "concurrent callers share the same run",
+    "a caller arriving during a run is answered by a follow-up run",
     Effect.gen(function* () {
       const s = yield* Scope.Scope
       const runner = Runner.make<string>(s)
@@ -52,7 +57,8 @@ describe("Runner", () => {
 
       expect(a).toBe("shared")
       expect(b).toBe("shared")
-      expect(yield* Ref.get(calls)).toBe(1)
+      expect(yield* Ref.get(calls)).toBe(2)
+      expect(runner.state._tag).toBe("Idle")
     }),
   )
 
@@ -87,15 +93,17 @@ describe("Runner", () => {
   )
 
   it.live(
-    "second ensureRunning ignores new work if already running",
+    "work arriving during a run starts another run before going idle",
     Effect.gen(function* () {
       const s = yield* Scope.Scope
-      const runner = Runner.make<string>(s)
+      const idles = yield* Ref.make(0)
+      const runner = Runner.make<string>(s, { onIdle: Ref.update(idles, (n) => n + 1) })
       const ran = yield* Ref.make<string[]>([])
+      const gate = yield* Deferred.make<void>()
 
       const first = Effect.gen(function* () {
         yield* Ref.update(ran, (a) => [...a, "first"])
-        yield* Effect.sleep("50 millis")
+        yield* Deferred.await(gate)
         return "first-result"
       })
       const second = Effect.gen(function* () {
@@ -103,13 +111,45 @@ describe("Runner", () => {
         return "second-result"
       })
 
-      const [a, b] = yield* Effect.all([runner.ensureRunning(first), runner.ensureRunning(second)], {
-        concurrency: "unbounded",
-      })
-
-      expect(a).toBe("first-result")
-      expect(b).toBe("first-result")
+      const a = yield* runner.ensureRunning(first).pipe(Effect.forkChild)
+      yield* waitForState(runner, "Running")
+      const b = yield* runner.ensureRunning(second).pipe(Effect.forkChild)
+      yield* waitForPending(runner)
       expect(yield* Ref.get(ran)).toEqual(["first"])
+      expect(yield* Ref.get(idles)).toBe(0)
+
+      yield* Deferred.succeed(gate, undefined)
+      expect(yield* Fiber.join(a)).toBe("first-result")
+      expect(yield* Fiber.join(b)).toBe("second-result")
+      expect(yield* Ref.get(ran)).toEqual(["first", "second"])
+      expect(runner.state._tag).toBe("Idle")
+      expect(yield* Ref.get(idles)).toBe(1)
+    }),
+  )
+
+  it.live(
+    "callers arriving during a run share one follow-up run",
+    Effect.gen(function* () {
+      const s = yield* Scope.Scope
+      const runner = Runner.make<string>(s)
+      const calls = yield* Ref.make(0)
+      const gate = yield* Deferred.make<void>()
+
+      const a = yield* runner.ensureRunning(Deferred.await(gate).pipe(Effect.as("first"))).pipe(Effect.forkChild)
+      yield* waitForState(runner, "Running")
+
+      const work = Ref.update(calls, (n) => n + 1).pipe(Effect.as("again"))
+      const b = yield* runner.ensureRunning(work).pipe(Effect.forkChild)
+      const c = yield* runner.ensureRunning(work).pipe(Effect.forkChild)
+      yield* waitForPending(runner)
+      yield* Effect.sleep("10 millis")
+
+      yield* Deferred.succeed(gate, undefined)
+      expect(yield* Fiber.join(a)).toBe("first")
+      expect(yield* Fiber.join(b)).toBe("again")
+      expect(yield* Fiber.join(c)).toBe("again")
+      expect(yield* Ref.get(calls)).toBe(1)
+      expect(runner.state._tag).toBe("Idle")
     }),
   )
 
@@ -185,6 +225,30 @@ describe("Runner", () => {
       expect(Exit.isSuccess(exitB)).toBe(true)
       if (Exit.isSuccess(exitA)) expect(exitA.value).toBe("fallback")
       if (Exit.isSuccess(exitB)) expect(exitB.value).toBe("fallback")
+    }),
+  )
+
+  it.live(
+    "cancel drops work that arrived during the run instead of restarting",
+    Effect.gen(function* () {
+      const s = yield* Scope.Scope
+      const runner = Runner.make<string>(s, { onInterrupt: Effect.succeed("fallback") })
+      const ran = yield* Ref.make<string[]>([])
+
+      const a = yield* runner.ensureRunning(Effect.never.pipe(Effect.as("x"))).pipe(Effect.forkChild)
+      yield* waitForState(runner, "Running")
+      const b = yield* runner
+        .ensureRunning(Ref.update(ran, (r) => [...r, "second"]).pipe(Effect.as("y")))
+        .pipe(Effect.forkChild)
+      yield* waitForPending(runner)
+
+      yield* runner.cancel
+      expect(yield* Fiber.join(a)).toBe("fallback")
+      expect(yield* Fiber.join(b)).toBe("fallback")
+      yield* Effect.sleep("20 millis")
+      expect(yield* Ref.get(ran)).toEqual([])
+      expect(runner.state._tag).toBe("Idle")
+      expect(runner.busy).toBe(false)
     }),
   )
 
