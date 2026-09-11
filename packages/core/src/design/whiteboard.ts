@@ -14,6 +14,8 @@ export interface Source {
   version: string
   data: string
   checkout: string
+  /** Explicit bundle directory, `REDCODE_WHITEBOARD_DIR`; wins over both the checkout and a release. */
+  directory: string | undefined
   timeout: number
 }
 
@@ -22,6 +24,7 @@ let source: Source = {
   version: InstallationVersion,
   data: Global.Path.data,
   checkout: path.resolve(import.meta.dir, "../../../redcode/dist/whiteboard"),
+  directory: process.env.REDCODE_WHITEBOARD_DIR,
   timeout: 60_000,
 }
 
@@ -115,10 +118,10 @@ async function install(release: string) {
 async function load() {
   const release = path.join(source.data, "design", "whiteboard", source.version)
   const directory =
-    process.env.REDCODE_WHITEBOARD_DIR ??
+    source.directory ??
     ((await Bun.file(path.join(source.checkout, "whiteboard.js")).exists()) ? source.checkout : release)
   if (!(await Bun.file(path.join(directory, "whiteboard.js")).exists())) {
-    if (process.env.REDCODE_WHITEBOARD_DIR || !/^\d+\.\d+\.\d+/.test(source.version))
+    if (source.directory || !/^\d+\.\d+\.\d+/.test(source.version))
       throw new Design.Error({
         code: "unavailable",
         message:
