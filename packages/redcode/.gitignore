@@ -6,3 +6,6 @@ app.log
 script/build-*.ts
 temporary-*.md
 .artifacts
+.scriptc-zod
+scriptc.json
+config.json
