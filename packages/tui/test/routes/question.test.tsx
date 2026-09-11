@@ -7,6 +7,7 @@ import { QuestionPrompt } from "../../src/routes/session/question"
 import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider } from "../../src/config"
 import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../../src/keymap"
+import { ToastProvider } from "../../src/ui/toast"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 import { tmpdir } from "../fixture/fixture"
 import { mount, wait, json } from "../cli/cmd/tui/sync-fixture"
@@ -24,7 +25,8 @@ test("long plan approval keeps answers and dismiss visible and keyboard usable",
       <OpencodeKeymapProvider keymap={keymap}>
         <TuiConfigProvider config={config}>
           <ThemeProvider mode="dark">
-            <QuestionPrompt
+            <ToastProvider>
+              <QuestionPrompt
               request={{
                 id: "que_plan",
                 sessionID: "ses_test",
@@ -41,6 +43,7 @@ test("long plan approval keeps answers and dismiss visible and keyboard usable",
                 ],
               }}
             />
+            </ToastProvider>
           </ThemeProvider>
         </TuiConfigProvider>
       </OpencodeKeymapProvider>
