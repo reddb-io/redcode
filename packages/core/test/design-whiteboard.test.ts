@@ -83,6 +83,8 @@ async function release(input: {
     version,
     data,
     checkout: path.join(root, "missing"),
+    // CI points REDCODE_WHITEBOARD_DIR at the built checkout; these tests exercise the release path.
+    directory: undefined,
     fetch: async (url) => {
       const name = url.split("/").at(-1)!
       requests.push(name)
