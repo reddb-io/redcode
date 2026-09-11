@@ -470,11 +470,15 @@ export const {
             setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
             break
           }
+          // A promoted prompt arrives with the same id and a later time, so its key misses:
+          // move the entry instead of inserting it a second time.
+          const previous = messages.findIndex((message) => message.id === event.properties.info.id)
           setStore(
             "message",
             event.properties.info.sessionID,
             produce((draft) => {
-              draft.splice(result.index, 0, event.properties.info)
+              if (previous >= 0) draft.splice(previous, 1)
+              draft.splice(search(draft, messageKey(event.properties.info), messageKey).index, 0, event.properties.info)
             }),
           )
           const updated = store.message[event.properties.info.sessionID]

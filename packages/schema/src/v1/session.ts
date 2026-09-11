@@ -611,6 +611,15 @@ const events = {
       messageID: MessageID,
     },
   }),
+  /** A V1 Prompt Promotion: the admitted user message became model-visible at this sequence. */
+  MessagePromoted: define({
+    type: "message.promoted",
+    ...options,
+    schema: {
+      sessionID: SessionID,
+      messageID: MessageID,
+    },
+  }),
   PartUpdated: define({
     type: "message.part.updated",
     ...options,
@@ -669,6 +678,7 @@ export const Event = {
     events.Deleted,
     events.MessageUpdated,
     events.MessageRemoved,
+    events.MessagePromoted,
     events.PartUpdated,
     events.PartRemoved,
     PartDelta,

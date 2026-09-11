@@ -3,7 +3,8 @@
 ## 2026-09-11: Add Delivery To Legacy Prompt Payloads
 
 - Add optional `delivery` (`steer` | `queue`) to the V1 `POST /session/:sessionID/message` and `POST /session/:sessionID/prompt_async` payloads; omitted means `steer`. These V1 routes are not part of the generated V2 SDK, so `bun run generate` leaves it unchanged.
-- Legacy prompts now publish `session.next.prompt.admitted.1` for a sidecar `session_input` row next to the canonical V1 `message` rows; the second durable `message.updated` publication of that user message is its promotion. No `session.next.prompted.1` event and no V2 user row are produced for legacy sessions.
+- Legacy prompts now publish `session.next.prompt.admitted.1` for a sidecar `session_input` row next to the canonical V1 `message` rows. No `session.next.prompted.1` event and no V2 user row are produced for legacy sessions.
+- Add the durable V1 session-aggregate event `message.promoted.1` (`{ sessionID, messageID }`): the loop publishes it after re-publishing the promoted user message, and the projector stamps `promoted_seq` on the inbox row from its sequence, so sync/steal replay rebuilds promotion. A re-published `message.updated` only moves `time_created` forward.
 - Add no migration or durable-event version.
 
 ## 2026-06-26: Add Finite Session History

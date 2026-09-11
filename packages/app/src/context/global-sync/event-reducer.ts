@@ -281,11 +281,15 @@ export function applyDirectoryEvent(input: {
         input.setStore("message", info.sessionID, result.index, reconcile(info))
         break
       }
+      // A promoted prompt arrives with the same id and a later time, so its key misses: move
+      // the entry instead of inserting it a second time.
+      const previous = messages.findIndex((message) => message.id === info.id)
       input.setStore(
         "message",
         info.sessionID,
         produce((draft) => {
-          draft.splice(result.index, 0, info)
+          if (previous >= 0) draft.splice(previous, 1)
+          draft.splice(Binary.search(draft, messageKey(info), messageKey).index, 0, info)
         }),
       )
       break

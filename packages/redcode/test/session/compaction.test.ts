@@ -901,6 +901,64 @@ describe("session.compaction.process", () => {
     })
   }
 
+  itCompaction.instance("does not preserve a promoted request that sits inside the retained tail", () => {
+    const stub = llm()
+    return Effect.gen(function* () {
+      stub.push(reply("Checkpoint"))
+      const ssn = yield* SessionNs.Service
+      const compaction = yield* SessionCompaction.Service
+      const session = yield* ssn.create({})
+      const first = yield* createUserMessage(session.id, "Earlier findings.")
+      yield* createAssistantMessage(session.id, first.id, "/tmp")
+      // Admitted before the second turn (older id), promoted after it (newer time): the message
+      // sits inside the retained tail even though its id says otherwise.
+      const promoted = MessageID.ascending()
+      yield* Effect.sleep("2 millis")
+      const second = yield* createUserMessage(session.id, "Recent work.")
+      yield* createAssistantMessage(session.id, second.id, "/tmp")
+      yield* Effect.sleep("2 millis")
+      yield* ssn.updateMessage({
+        id: promoted,
+        role: "user",
+        sessionID: session.id,
+        agent: "build",
+        model: ref,
+        time: { created: Date.now() },
+      })
+      yield* ssn.updatePart({
+        id: PartID.ascending(),
+        messageID: promoted,
+        sessionID: session.id,
+        type: "text",
+        text: "Promoted request.",
+      })
+      yield* Effect.sleep("2 millis")
+      yield* createAssistantMessage(session.id, promoted, "/tmp")
+      yield* Effect.sleep("2 millis")
+      yield* createCompactionMarker(session.id)
+      const messages = yield* ssn.messages({ sessionID: session.id })
+      expect(promoted < second.id).toBe(true)
+      expect(messages.findIndex((message) => message.info.id === promoted)).toBeGreaterThan(
+        messages.findIndex((message) => message.info.id === second.id),
+      )
+      const result = yield* compaction.process({
+        parentID: messages.at(-1)!.info.id,
+        messages,
+        sessionID: session.id,
+        auto: false,
+      })
+      // Duplicated as a retained request, the promoted turn made the checkpoint no smaller than
+      // its source and the compaction gave up; the tail already carries it.
+      expect(result).toBe("continue")
+      const after = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+      const summary = after.find((message) => message.info.role === "assistant" && message.info.summary)
+      expect(summary?.parts.some((part) => part.type === "text" && part.text.includes("<latest-user-request>"))).toBe(
+        false,
+      )
+      expect(after.filter((message) => message.info.id === promoted)).toHaveLength(1)
+    }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 2 }) }))
+  })
+
   itCompaction.instance("keeps the old history visible until the summary stream finishes", () =>
     Effect.gen(function* () {
       const stub = llm()
