@@ -12,6 +12,7 @@ import { Decimal } from "decimal.js"
 import type { ProviderMetadata, Usage } from "@reddb-io/redcode-llm"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import * as SessionExecutionLocal from "@reddb-io/redcode-core/session/execution/local"
@@ -731,10 +732,14 @@ const layer: Layer.Layer<
         metadata: structuredClone(original.metadata),
       })
       const msgs = yield* messages({ sessionID: input.sessionID })
+      // An admitted prompt that has not been promoted is not history yet: copied as a plain
+      // message it would become visible to the fork's model without ever being promoted.
+      const pending = new Set<string>((yield* SessionInput.listPending(db, input.sessionID)).map((row) => row.id))
       const idMap = new Map<string, MessageID>()
       const target = input.messageID ? msgs.findIndex((msg) => msg.info.id === input.messageID) : msgs.length
 
       for (const msg of msgs.slice(0, target < 0 ? msgs.length : target)) {
+        if (msg.info.role === "user" && pending.has(msg.info.id)) continue
         const newID = MessageID.ascending()
         idMap.set(msg.info.id, newID)
 

@@ -52,8 +52,10 @@ const admit = (id: SessionMessage.ID, text: string, delivery: SessionInput.Deliv
   })
 
 // The canonical V1 user message next to an inbox row, published the way `Session.updateMessage` does.
-const publishUser = (id: SessionMessage.ID) =>
+// With `promote`, the publication carries the commit hook the V1 loop uses for Prompt Promotion.
+const publishUser = (id: SessionMessage.ID, opts?: { promote: boolean }) =>
   Effect.gen(function* () {
+    const { db } = yield* Database.Service
     const events = yield* EventV2.Service
     const info: SessionV1.User = {
       id: SessionV1.MessageID.make(id),
@@ -63,14 +65,23 @@ const publishUser = (id: SessionMessage.ID) =>
       agent: "build",
       model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test-model") },
     }
-    return yield* events.publish(SessionV1.Event.MessageUpdated, { sessionID, info })
+    return yield* events.publish(
+      SessionV1.Event.MessageUpdated,
+      { sessionID, info },
+      opts?.promote
+        ? {
+            commit: (seq) =>
+              SessionInput.projectLegacyPromotion(db, { id, sessionID, promotedSeq: seq }).pipe(Effect.asVoid),
+          }
+        : undefined,
+    )
   })
 
 const pending = (filter?: { readonly delivery?: SessionInput.Delivery; readonly cutoffSeq?: number }) =>
   Database.Service.use(({ db }) => SessionInput.listPending(db, sessionID, filter))
 
 describe("SessionInput legacy promotion", () => {
-  it.effect("promotes a pending row when its V1 user message is published a second time", () =>
+  it.effect("promotes a pending row only through the commit hook of its V1 re-publication", () =>
     Effect.gen(function* () {
       yield* setup
       const { db } = yield* Database.Service
@@ -81,12 +92,30 @@ describe("SessionInput legacy promotion", () => {
       expect((yield* SessionInput.find(db, id))?.promotedSeq).toBeUndefined()
       expect((yield* pending()).map((row) => row.id)).toEqual([id])
 
-      const promoted = yield* publishUser(id)
+      // A retried publication of the same message (an idempotent prompt retry) is not a promotion.
+      yield* publishUser(id)
+      expect((yield* SessionInput.find(db, id))?.promotedSeq).toBeUndefined()
+      expect((yield* pending()).map((row) => row.id)).toEqual([id])
+
+      const promoted = yield* publishUser(id, { promote: true })
       const stored = yield* SessionInput.find(db, id)
       expect(stored?.promotedSeq).toBe(promoted.durable?.seq)
       expect(stored?.admittedSeq).toBe(admitted.admittedSeq)
       expect(created.durable?.seq).toBeLessThan(promoted.durable?.seq ?? -1)
       expect(yield* pending()).toEqual([])
+    }),
+  )
+
+  it.effect("drops a pending row when its V1 message is removed", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const { db } = yield* Database.Service
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.create()
+      yield* admit(id, "hello", "queue")
+      yield* publishUser(id)
+      yield* events.publish(SessionV1.Event.MessageRemoved, { sessionID, messageID: SessionV1.MessageID.make(id) })
+      expect(yield* SessionInput.find(db, id)).toBeUndefined()
     }),
   )
 
@@ -122,7 +151,7 @@ describe("SessionInput legacy promotion", () => {
       expect((yield* pending({ cutoffSeq: c.admittedSeq - 1 })).map((row) => row.id)).toEqual([first, second])
 
       yield* publishUser(first)
-      yield* publishUser(first)
+      yield* publishUser(first, { promote: true })
       expect((yield* pending({ delivery: "steer" })).map((row) => row.id)).toEqual([third])
     }),
   )
