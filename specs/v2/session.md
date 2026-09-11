@@ -150,6 +150,17 @@ Status: `complete` is usable in the native V2 path, `partial` covers only part o
 | Prompt/reference expansion | Configured-reference expansion                                           | missing  | Resolve aliases and emit durable model-visible reference context or failures.                                                          |
 | Prompt/reference expansion | Native synthetic expansion replay                                        | partial  | V2 replays synthetic messages but only the V1 compatibility path creates them.                                                         |
 
+### Fork divergence: V1 runtime adopting Core context
+
+The statuses above describe the native V2 path. Separately, this fork's production runtime (the legacy `SessionPrompt` loop in `packages/redcode/src/session/prompt.ts`) consumes Core context primitives directly instead of rebuilding the system prompt every step:
+
+- `SessionContextEpoch.prepare` runs at the safe provider-turn boundary of each step, with `packages/redcode/src/session/context.ts` composing the Baseline System Context in fixed order: `SystemContextBuiltIns.context` (repository policy, environment, date), `redcode/references`, `redcode/instructions`, `redcode/mcp-instructions` (per agent, permission-filtered; unavailable when the MCP service fails), and `redcode/skill-guidance` (per agent). Within an epoch the baseline is reused verbatim; source changes are admitted as one combined `SessionEvent.ContextUpdated` system message.
+- The provider/model header, the selected-model line, task guidance, structured-output policy, per-prompt system text, and plugin system transforms stay per-turn, outside the epoch.
+- `SessionHistory.systemMessagesAfter` selects admitted system messages after the epoch's `baseline_seq`; V1 lowers each one into legacy history as a synthetic user message wrapped in `<system_update>` after the last message created at or before its admission, because the AI SDK rejects mid-conversation `system` messages for some providers and merges adjacent user messages.
+- Compaction (`SessionCompaction.process` returning anything but `"stop"`) and revert cleanup call `SessionContextEpoch.reset`, so the next step starts a new epoch fenced after every earlier system message.
+
+Legacy sessions therefore own `session_context_epoch` and `session_message` system rows but are never run by `SessionRunner`.
+
 Provider timeout, retry, and watchdog policy is intentionally deferred. The runner does not impose a universal provider-stream inactivity or absolute timeout. A future slice should design configurable policy around provider behavior, durable failure reporting, and local drain-chain release rather than hardcoding one default for every provider.
 
 Inbox delivery is explicit:

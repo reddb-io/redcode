@@ -87,6 +87,31 @@ export const latestUser = Effect.fn("SessionHistory.latestUser")(function* (
   return message.type === "user" ? message : undefined
 })
 
+/** System messages admitted after one Context Epoch baseline, in aggregate order. */
+export const systemMessagesAfter = Effect.fn("SessionHistory.systemMessagesAfter")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  baselineSeq: number,
+) {
+  const rows = yield* db
+    .select()
+    .from(SessionMessageTable)
+    .where(
+      and(
+        eq(SessionMessageTable.session_id, sessionID),
+        eq(SessionMessageTable.type, "system"),
+        gt(SessionMessageTable.seq, baselineSeq),
+      ),
+    )
+    .orderBy(asc(SessionMessageTable.seq))
+    .all()
+    .pipe(Effect.orDie)
+  const messages = yield* Effect.forEach(rows, decodeMessageRow)
+  return messages.flatMap((message, index) =>
+    message.type === "system" ? [{ seq: rows[index].seq, timeCreated: message.time.created, text: message.text }] : [],
+  )
+})
+
 export const load = Effect.fn("SessionHistory.load")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   const [epoch, compaction] = yield* Effect.all(
     [

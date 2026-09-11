@@ -17,6 +17,9 @@ import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
+import { SessionContext } from "./context"
+import { SessionContextEpoch } from "@reddb-io/redcode-core/session/context-epoch"
+import { SessionHistory } from "@reddb-io/redcode-core/session/history"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-steps"
@@ -175,7 +178,7 @@ const layer = Layer.effect(
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
-    const sys = yield* SystemPrompt.Service
+    const context = yield* SessionContext.Service
     const llm = yield* LLM.Service
     const events = yield* EventV2Bridge.Service
     const hooks = yield* OperationHookBridge.Service
@@ -1520,6 +1523,9 @@ const layer = Layer.effect(
               overflow: task.overflow,
             })
             if (result === "stop") break
+            // The summary is a new conversation for the model: the next step starts a Context
+            // Epoch whose baseline is fenced after every system message admitted before it.
+            yield* SessionContextEpoch.reset(db, sessionID)
             continue
           }
 
@@ -1663,18 +1669,35 @@ const layer = Layer.effect(
               Effect.provideService(OperationHookBridge.Service, hooks),
             )
 
-            const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
-              sys.skills(agent),
-              sys.environment(model),
-              instruction.system().pipe(Effect.orDie),
-              sys.mcp(agent, session.permission),
-              MessageV2.toModelMessagesEffect(msgs, model),
-            ])
+            // The safe provider-turn boundary: the epoch's baseline is reused verbatim, and any
+            // source that changed since is admitted as one durable system message here rather
+            // than rewriting the cached prefix.
+            const prepared = yield* SessionContextEpoch.prepare(
+              db,
+              events,
+              context.load(agent, session),
+              sessionID,
+            ).pipe(
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  handle.message.error = new NamedError.Unknown({ message: errorMessage(error) }).toObject()
+                  yield* sessions.updateMessage(handle.message)
+                  yield* events.publish(Session.Event.Error, { sessionID, error: handle.message.error })
+                  return undefined
+                }),
+              ),
+            )
+            if (!prepared) return "break" as const
+            const updates = yield* SessionHistory.systemMessagesAfter(db, sessionID, prepared.baselineSeq).pipe(
+              Effect.orDie,
+            )
+            const modelMsgs = yield* MessageV2.toModelMessagesEffect(
+              SessionContext.interleave(msgs, updates, lastUser),
+              model,
+            )
             const system = [
-              ...env,
-              ...instructions,
-              ...(mcpInstructions ? [mcpInstructions] : []),
-              ...(skills ? [skills] : []),
+              SystemPrompt.identity(model),
+              prepared.baseline,
               ...(todowrite ? [SessionTodo.guidance] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
@@ -2062,6 +2085,7 @@ export const node = LayerNode.make({
     Instruction.node,
     SessionRunState.node,
     SessionRevert.node,
+    SessionContext.node,
     SessionSummary.node,
     SystemPrompt.node,
     LLM.node,

@@ -9,6 +9,8 @@ import { MessageV2 } from "./message-v2"
 import { SessionID, MessageID, PartID } from "./schema"
 import { SessionRunState } from "./run-state"
 import { SessionSummary } from "./summary"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionContextEpoch } from "@reddb-io/redcode-core/session/context-epoch"
 
 export const RevertInput = Schema.Struct({
   sessionID: SessionID,
@@ -34,6 +36,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const summary = yield* SessionSummary.Service
     const state = yield* SessionRunState.Service
+    const database = yield* Database.Service
 
     const revert = Effect.fn("SessionRevert.revert")(function* (input: RevertInput) {
       yield* state.assertNotBusy(input.sessionID)
@@ -121,6 +124,8 @@ const layer = Layer.effect(
         }
       }
       yield* sessions.clearRevert(sessionID)
+      // History the model already saw is gone, so the Context Epoch built on it ends with it.
+      yield* SessionContextEpoch.reset(database.db, sessionID)
     })
 
     return Service.of({ revert, unrevert, cleanup })
@@ -130,7 +135,15 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Session.node, Snapshot.node, Storage.node, EventV2Bridge.node, SessionSummary.node, SessionRunState.node],
+  deps: [
+    Session.node,
+    Snapshot.node,
+    Storage.node,
+    EventV2Bridge.node,
+    SessionSummary.node,
+    SessionRunState.node,
+    Database.node,
+  ],
 })
 
 export * as SessionRevert from "./revert"

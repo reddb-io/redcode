@@ -22,7 +22,7 @@ The TUI's legacy session runtime remains distinct from SessionV2. Its budget uni
 
 [`redcode design`](design/terminal.md) provides a separate interactive SessionV2 terminal with durable history, mode controls, permissions, questions and browser review. The legacy full-screen TUI exposes its launcher; legacy session IDs are not adopted as V2 sessions.
 
-The legacy runtime does not acquire SessionV2's evidence-table/CAS guarantees. Its guard against a late judge checks goal identity, status and update time; durable revisions and the App's evidence history belong to SessionV2.
+The legacy runtime does not acquire SessionV2's evidence-table/CAS guarantees. Its guard against a late judge checks goal identity, status and update time; durable revisions and the App's evidence history belong to SessionV2. Legacy sessions own `session_context_epoch` and `session_message` system rows for their Baseline System Context but are never run by `SessionRunner`.
 
 ## Validation
 
