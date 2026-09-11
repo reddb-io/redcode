@@ -1523,9 +1523,6 @@ const layer = Layer.effect(
               overflow: task.overflow,
             })
             if (result === "stop") break
-            // The summary is a new conversation for the model: the next step starts a Context
-            // Epoch whose baseline is fenced after every system message admitted before it.
-            yield* SessionContextEpoch.reset(db, sessionID)
             continue
           }
 
@@ -1678,6 +1675,17 @@ const layer = Layer.effect(
               context.load(agent, session),
               sessionID,
             ).pipe(
+              // A snapshot this build cannot read must not hold the session hostage: start a new
+              // epoch once, and only give up if that fails too.
+              Effect.catchTag("Session.ContextSnapshotDecodeError", (error) =>
+                Effect.logWarning("starting a new context epoch over an unreadable snapshot", {
+                  "session.id": sessionID,
+                  details: error.details,
+                }).pipe(
+                  Effect.andThen(SessionContextEpoch.reset(db, sessionID)),
+                  Effect.andThen(SessionContextEpoch.prepare(db, events, context.load(agent, session), sessionID)),
+                ),
+              ),
               Effect.catch((error) =>
                 Effect.gen(function* () {
                   handle.message.error = new NamedError.Unknown({ message: errorMessage(error) }).toObject()

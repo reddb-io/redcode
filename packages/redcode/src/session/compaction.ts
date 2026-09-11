@@ -30,6 +30,7 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { buildPrompt, forkPreparation, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
 import { SessionCompactionEvent } from "@reddb-io/redcode-schema/session-compaction-event"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
+import { SessionContextEpoch } from "@reddb-io/redcode-core/session/context-epoch"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 
 export const Event = SessionCompactionEvent
@@ -596,6 +597,10 @@ const layer = Layer.effect(
             }
           : yield* build(input)
       const ctx = yield* InstanceState.context
+      // The Context Epoch ends before the summary exists. A crash between here and the commit
+      // below leaves a pending compaction that runs again; the other order could leave a summary
+      // the model reads under a baseline, and system updates, from before it.
+      yield* SessionContextEpoch.reset(database.db, input.sessionID)
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
         role: "assistant",

@@ -123,13 +123,13 @@ function errorTool(parts: SessionV1.Part[]) {
   return part?.state.status === "error" ? (part as ErrorToolPart) : undefined
 }
 
-function makeMcp(instructions: MCP.ServerInstructions[] = []) {
+function makeMcp(instructions: MCP.ServerInstructions[] = [], failure?: string) {
   return Layer.succeed(
     MCP.Service,
     MCP.Service.of({
       status: () => Effect.succeed({}),
       clients: () => Effect.succeed({}),
-      instructions: () => Effect.succeed(instructions),
+      instructions: () => (failure === undefined ? Effect.succeed(instructions) : Effect.die(new Error(failure))),
       tools: () => Effect.succeed({}),
       prompts: () => Effect.succeed({}),
       resources: () => Effect.succeed({}),
@@ -241,12 +241,12 @@ function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; proces
   return AppNodeBuilder.build(promptRoot, replacements)
 }
 
-function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
+function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; mcpFailure?: string; processor?: "blocking" }) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
     [SessionSummary.node, summary],
     [LSP.node, lsp],
-    [MCP.node, makeMcp(input?.mcpInstructions)],
+    [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure)],
     [RuntimeFlags.node, runtimeFlags],
   ] as const
   if (input?.processor === "blocking") {
@@ -273,6 +273,7 @@ const withMcpInstructions = testEffect(
     ],
   }),
 )
+const brokenMcp = testEffect(makeHttp({ mcpFailure: "mcp exploded" }))
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
 
@@ -4188,6 +4189,15 @@ it.instance("a tool step and the stop after it send one durable baseline system 
     expect(epochs[0]!.baseline).toContain("Skills provide specialized instructions")
     // The selected model stays a per-turn line, ahead of the baseline.
     expect(JSON.stringify(bodySystem(hits[0]!))).toContain("You are powered by the model named test-model")
+    // The request opens with the agent prompt, the model line and the baseline, verbatim.
+    const providers = yield* ProviderSvc.Service
+    const agents = yield* AgentSvc.Service
+    const model = yield* providers.getModel(ref.providerID, ref.modelID)
+    const build = yield* agents.get("build")
+    const header = build?.prompt ? [build.prompt] : SystemPrompt.provider(model)
+    expect(String(bodySystem(hits[0]!)[0])).toStartWith(
+      [...header, SystemPrompt.identity(model), epochs[0]!.baseline].join("\n"),
+    )
   }),
 )
 
@@ -4371,5 +4381,138 @@ STORED BASELINE MARKER`,
     expect(JSON.stringify(bodySystem(hits[1]!))).toContain("STORED BASELINE MARKER")
     expect(yield* epochRows(chat.id)).toHaveLength(1)
     expect(yield* systemRows(chat.id)).toHaveLength(0)
+  }),
+)
+
+brokenMcp.instance("a failing MCP service ends the turn instead of being read as an empty source", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "hi" }] })
+    yield* llm.text("never sent")
+
+    const exit = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.exit)
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("mcp exploded")
+    expect(yield* llm.hits).toHaveLength(0)
+    expect(yield* epochRows(chat.id)).toHaveLength(0)
+  }),
+)
+
+it.instance("a summary committed by a run that died right after it still starts a new epoch", () =>
+  Effect.gen(function* () {
+    // The crash window: compaction commits its summary and the process is gone before the loop
+    // runs anything after it. The next turn must not read the summary under the old baseline or
+    // replay the system updates admitted before it.
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const database = yield* Database.Service
+    const agents = path.join(dir, "AGENTS.md")
+    yield* writeText(agents, "Be terse.")
+    yield* rewriteOnRead(agents, "Always answer in haiku.")
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "read the instructions and then tell me at length what they say" }],
+    })
+    yield* llm.tool("read", { filePath: agents })
+    yield* llm.text("The instructions say to be terse, which I will honour from now on in every reply.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    expect(yield* systemRows(chat.id)).toHaveLength(1)
+
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    const messages = yield* MessageV2.filterCompactedEffect(chat.id).pipe(
+      Effect.provideService(Database.Service, database),
+    )
+    const parent = messages.findLast((message) => message.info.role === "user")
+    yield* llm.text("Summary.")
+    expect(yield* compaction.process({ messages, parentID: parent!.info.id, sessionID: chat.id, auto: false })).toBe(
+      "continue",
+    )
+    const summary = (yield* sessions.messages({ sessionID: chat.id })).findLast(
+      (message) => message.info.role === "assistant" && message.info.summary === true,
+    )
+    expect(summary?.info.role === "assistant" ? summary.info.finish : undefined).toBe("stop")
+
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+    yield* llm.text("ok")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    expect(after[0]!.baseline).toContain("Always answer in haiku.")
+    const hits = yield* llm.hits
+    expect(JSON.stringify(bodyMessages(hits[hits.length - 1]!))).not.toContain("<system_update>")
+  }),
+)
+
+it.instance("an unreadable stored snapshot starts a new epoch instead of ending every turn", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const database = yield* Database.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "one" }] })
+    yield* llm.text("first")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    yield* database.db
+      .update(SessionContextEpochTable)
+      .set({ snapshot: { invalid: { value: "bad" } } })
+      .where(eq(SessionContextEpochTable.session_id, chat.id))
+      .run()
+
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "two" }] })
+    yield* llm.text("second")
+    const result = yield* prompt.loop({ sessionID: chat.id })
+
+    expect(result.info.role === "assistant" ? result.info.error : undefined).toBeUndefined()
+    expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "second" }))
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(Object.keys(after[0]!.snapshot)).not.toContain("invalid")
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    expect(JSON.stringify(bodySystem((yield* llm.hits)[1]!))).toContain(JSON.stringify(after[0]!.baseline).slice(1, -1))
+  }),
+)
+
+it.instance("a revert ends the epoch with the history it removes", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "one" }] })
+    yield* llm.text("first")
+    const first = yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    yield* sessions.setRevert({
+      sessionID: chat.id,
+      revert: { messageID: first.info.id },
+      summary: { additions: 0, deletions: 0, files: 0 },
+    })
+
+    // The next prompt commits the staged revert before the turn starts.
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "two" }] })
+    expect(yield* epochRows(chat.id)).toHaveLength(0)
+    yield* llm.text("second")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
   }),
 )
