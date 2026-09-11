@@ -33,6 +33,8 @@ jobs:
           - name: windows
             host: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.settings.host }}
+    # Normal runs finish well under 20 minutes; a stalled setup step must not hold the runner for hours.
+    timeout-minutes: 45
     env:
       REDCODE_WHITEBOARD_DIR: ${{ github.workspace }}/packages/redcode/dist/whiteboard
     defaults:
@@ -93,6 +95,7 @@ jobs:
   redcode-windows:
     name: redcode (windows, ${{ matrix.shard }}/3)
     runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -165,6 +168,8 @@ jobs:
           - name: windows
             host: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.settings.host }}
+    # Normal runs finish well under 20 minutes; a stalled setup step must not hold the runner for hours.
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
