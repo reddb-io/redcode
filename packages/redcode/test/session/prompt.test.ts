@@ -1232,6 +1232,141 @@ it.instance("static loop consumes queued replies across turns", () =>
   }),
 )
 
+// Holds a session's first turn open inside its Turn.Ended hook: after the loop's last look at
+// history, before the runner goes idle. A prompt sent in that window used to be persisted but
+// never answered.
+const holdFirstTurnEnd = Effect.fn("test.holdFirstTurnEnd")(function* (id: string) {
+  const test = yield* TestInstance
+  const locations = yield* LocationServiceMap.Service
+  const reached = yield* Deferred.make<void>()
+  const release = yield* Deferred.make<void>()
+  let ended = 0
+  yield* Effect.gen(function* () {
+    const plugins = yield* PluginV2.Service
+    yield* plugins.add(
+      PluginV2.ID.make(id),
+      define({
+        id,
+        effect: (ctx) =>
+          ctx.hook
+            .parallel(Operation.Turn.Ended, () =>
+              Effect.gen(function* () {
+                ended += 1
+                if (ended > 1) return
+                yield* Deferred.succeed(reached, void 0)
+                yield* Deferred.await(release)
+              }),
+            )
+            .pipe(Effect.asVoid),
+      }).effect,
+    )
+  }).pipe(
+    Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(test.directory) }))),
+    Effect.orDie,
+  )
+  return { reached, release, ended: () => ended }
+})
+
+const secondUserPersisted = (sessionID: SessionID) =>
+  pollWithTimeout(
+    Effect.gen(function* () {
+      const msgs = yield* MessageV2.filterCompactedEffect(sessionID)
+      return msgs.filter((msg) => msg.info.role === "user").length === 2 ? (true as const) : undefined
+    }),
+    "second prompt never persisted its user message",
+  ).pipe(
+    // The user message is durable before the prompt reaches the runner; give it that last step.
+    Effect.andThen(Effect.sleep("200 millis")),
+  )
+
+it.instance("answers a prompt that lands while the previous turn is finishing", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const hold = yield* holdFirstTurnEnd("drain-boundary-prompt")
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const status = yield* SessionStatus.Service
+    const chat = yield* sessions.create({ title: "Drain boundary" })
+    yield* llm.text("world one")
+    yield* llm.text("world two")
+
+    const first = yield* prompt
+      .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "hello one" }] })
+      .pipe(Effect.forkChild)
+    yield* awaitWithTimeout(Deferred.await(hold.reached), "first turn never started ending", "10 seconds")
+
+    const second = yield* prompt
+      .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "hello two" }] })
+      .pipe(Effect.forkChild)
+    yield* secondUserPersisted(chat.id)
+    yield* Deferred.succeed(hold.release, void 0)
+
+    const one = yield* awaitWithTimeout(Fiber.join(first), "first prompt never resolved", "10 seconds")
+    const two = yield* awaitWithTimeout(Fiber.join(second), "second prompt never resolved", "10 seconds")
+    expect(one.parts.some((part) => part.type === "text" && part.text === "world one")).toBe(true)
+    expect(two.parts.some((part) => part.type === "text" && part.text === "world two")).toBe(true)
+
+    const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+    const { user: lastUser, assistant: lastAssistant } = MessageV2.latest(msgs)
+    expect(msgs.at(-1)?.info.role).toBe("assistant")
+    expect(lastAssistant?.parentID).toBe(lastUser?.id)
+    expect(lastAssistant?.finish).toBe("stop")
+    expect(hold.ended()).toBe(2)
+    expect((yield* status.get(chat.id)).type).toBe("idle")
+    expect(yield* llm.pending).toBe(0)
+  }),
+)
+
+it.instance("cancel while a turn is finishing does not start another run", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const hold = yield* holdFirstTurnEnd("drain-boundary-cancel")
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const status = yield* SessionStatus.Service
+    const runState = yield* SessionRunState.Service
+    const chat = yield* sessions.create({ title: "Drain boundary cancel" })
+    yield* llm.text("world one")
+    yield* llm.text("world two")
+
+    const first = yield* prompt
+      .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "hello one" }] })
+      .pipe(Effect.forkChild)
+    yield* awaitWithTimeout(Deferred.await(hold.reached), "first turn never started ending", "10 seconds")
+
+    const second = yield* prompt
+      .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "hello two" }] })
+      .pipe(Effect.forkChild)
+    yield* secondUserPersisted(chat.id)
+
+    // Turn.Ended runs as a finalizer, so the interrupt only lands once the hook lets go; the
+    // runner leaves its running state as soon as cancel is admitted, which is what we wait for.
+    const cancel = yield* prompt.cancel(chat.id).pipe(Effect.forkChild)
+    yield* pollWithTimeout(
+      runState.assertNotBusy(chat.id).pipe(
+        Effect.as(true as const),
+        Effect.orElseSucceed(() => undefined),
+      ),
+      "cancel never left the running state",
+    )
+    yield* Deferred.succeed(hold.release, void 0)
+    yield* awaitWithTimeout(Fiber.join(cancel), "cancel never finished", "10 seconds")
+
+    const one = yield* awaitWithTimeout(Fiber.join(first), "first prompt never resolved", "10 seconds")
+    const two = yield* awaitWithTimeout(Fiber.join(second), "second prompt never resolved", "10 seconds")
+    expect(one.info.role).toBe("assistant")
+    expect(two.info.role).toBe("assistant")
+
+    yield* Effect.sleep("200 millis")
+    expect(hold.ended()).toBe(1)
+    expect((yield* status.get(chat.id)).type).toBe("idle")
+    expect(yield* llm.pending).toBe(1)
+    const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+    const { user: lastUser, assistant: lastAssistant } = MessageV2.latest(msgs)
+    expect(lastAssistant?.parentID).not.toBe(lastUser?.id)
+  }),
+)
+
 it.instance("loop continues when finish is tool-calls", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
