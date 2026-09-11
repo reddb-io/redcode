@@ -13,6 +13,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { PartID } from "./schema"
 import { Session } from "./session"
 import { SessionGoal } from "./goal"
+import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { Todo } from "./todo"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
 
@@ -20,6 +22,8 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
   agent: Agent.Info
   session: Session.Info
+  /** The task list as reviewed for this step; omitted when the agent may not use todowrite. */
+  todos?: ReadonlyArray<Todo.Info>
 }) {
   const fsys = yield* FSUtil.Service
   const sessions = yield* Session.Service
@@ -40,6 +44,19 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       synthetic: true,
     })
   }
+
+  // Task state used to sit in the system prompt, where every todowrite rewrote it and threw away
+  // the provider's cached prefix for the next request. Rendered here it rides the last user
+  // message like the goal, and the system prompt only changes when something durable does.
+  if (input.todos)
+    userMessage.parts.push({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      synthetic: true,
+      text: SessionTodo.context(input.todos),
+    })
 
   if (["plan", "build"].includes(input.agent.name)) {
     const plans = yield* SessionPlan.Service
