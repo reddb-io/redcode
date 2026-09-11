@@ -30,9 +30,10 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       working-directory: packages/app
+      # A stalled download must fail the attempt so the retry runs instead of hanging the job.
       run: |
         for attempt in 1 2 3; do
-          if bunx playwright install-deps chromium; then exit 0; fi
+          if timeout 300 bunx playwright install-deps chromium; then exit 0; fi
           echo "playwright install-deps failed (attempt $attempt)"
           sleep $((attempt * 15))
         done
@@ -44,7 +45,7 @@ runs:
       working-directory: packages/app
       run: |
         for attempt in 1 2 3; do
-          if bunx playwright install chromium; then exit 0; fi
+          if timeout 300 bunx playwright install chromium; then exit 0; fi
           echo "playwright install failed (attempt $attempt)"
           sleep $((attempt * 15))
         done
