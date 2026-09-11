@@ -1,6 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Location } from "@reddb-io/redcode-core/location"
-import { LocationServiceMap } from "@reddb-io/redcode-core/location-services"
+import { LocationServiceMap, locationServiceMapLayer } from "@reddb-io/redcode-core/location-services"
 import { Reference } from "@reddb-io/redcode-core/reference"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { SystemContext } from "@reddb-io/redcode-core/system-context"
@@ -35,50 +35,66 @@ export interface Update {
 }
 
 /**
- * Lowers admitted system messages into legacy history as synthetic user messages, each placed
- * after the last message created at or before its admission. The AI SDK rejects mid-conversation
- * `system` messages for some providers and merges adjacent user messages, so a wrapped user
- * message is the portable lowering.
+ * Lowers admitted system messages into legacy history as synthetic user messages. History is
+ * anchored by identity on the user message that started the turn: an update admitted during the
+ * turn lands after the latest message of the turn created at or before its admission and never
+ * ahead of that user message; an update from an earlier turn stays ahead of it. Array order is
+ * not chronological after a compaction, so only the anchored range is scanned. The AI SDK rejects
+ * mid-conversation `system` messages for some providers and merges adjacent user messages, so a
+ * wrapped user message is the portable lowering.
  */
 export function interleave(
   messages: SessionV1.WithParts[],
   updates: ReadonlyArray<Update>,
   user: SessionV1.User,
 ): SessionV1.WithParts[] {
-  const lowered = updates.map((update) => ({ at: DateTime.toEpochMillis(update.timeCreated), text: update.text }))
-  const before = (at: number) => messages.every((message) => message.info.time.created > at)
-  const between = (index: number, at: number) =>
-    messages[index].info.time.created <= at && (messages[index + 1]?.info.time.created ?? Infinity) > at
-  const lower = (update: { at: number; text: string }): SessionV1.WithParts => {
-    const id = MessageID.ascending()
-    return {
-      info: {
-        id,
-        sessionID: user.sessionID,
-        role: "user",
-        time: { created: update.at },
-        agent: user.agent,
-        model: user.model,
-      },
-      parts: [
-        {
-          id: PartID.ascending(),
-          messageID: id,
-          sessionID: user.sessionID,
-          type: "text",
-          text: `<system_update>\n${update.text}\n</system_update>`,
-          synthetic: true,
-        },
-      ],
+  const anchor = Math.max(
+    messages.findIndex((message) => message.info.id === user.id),
+    0,
+  )
+  // The index of the message each update follows; -1 puts it ahead of everything.
+  const slot = (at: number) => {
+    if (at >= user.time.created) {
+      const index = messages.findLastIndex((message, i) => i >= anchor && message.info.time.created <= at)
+      return Math.max(index, anchor)
     }
+    return messages.findLastIndex((message, i) => i < anchor && message.info.time.created <= at)
   }
+  const lowered = updates.map((update) => {
+    const at = DateTime.toEpochMillis(update.timeCreated)
+    return { slot: slot(at), message: lower(user, at, update.text) }
+  })
   return [
-    ...lowered.filter((update) => before(update.at)).map(lower),
+    ...lowered.filter((update) => update.slot === -1).map((update) => update.message),
     ...messages.flatMap((message, index) => [
       message,
-      ...lowered.filter((update) => between(index, update.at)).map(lower),
+      ...lowered.filter((update) => update.slot === index).map((update) => update.message),
     ]),
   ]
+}
+
+function lower(user: SessionV1.User, at: number, text: string): SessionV1.WithParts {
+  const id = MessageID.ascending()
+  return {
+    info: {
+      id,
+      sessionID: user.sessionID,
+      role: "user",
+      time: { created: at },
+      agent: user.agent,
+      model: user.model,
+    },
+    parts: [
+      {
+        id: PartID.ascending(),
+        messageID: id,
+        sessionID: user.sessionID,
+        type: "text",
+        text: `<system_update>\n${text}\n</system_update>`,
+        synthetic: true,
+      },
+    ],
+  }
 }
 
 const ReferenceList = Schema.Array(
@@ -112,7 +128,11 @@ const layer = Layer.effect(
             return { builtins: SystemContextBuiltIns.context(location), references }
           }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) })))),
           instruction.system().pipe(Effect.orDie),
-          sys.mcp(agent, session.permission).pipe(Effect.catchDefect(() => Effect.succeed(SystemContext.unavailable))),
+          // `undefined` means no connected server has instructions. MCP status cannot tell a
+          // server that is still connecting from a disabled one, and `failed` or `needs_auth` are
+          // sticky, so treating any of them as unavailable would block initialization for every
+          // turn; the source is absent instead, and a failure in the service dies as it always did.
+          sys.mcp(agent, session.permission),
           sys.skills(agent),
         ],
         { concurrency: "unbounded" },
@@ -194,10 +214,19 @@ function renderReferences(references: typeof ReferenceList.Type) {
   ].join("\n")
 }
 
+// A private map, as every legacy service holds one: the legacy service graph is built without a
+// binding for the global `LocationServiceMap.node`, and the unbound node would otherwise be
+// resolved from whatever scope happens to enclose the request.
+const locationServiceMapNode = LayerNode.make({
+  service: LocationServiceMap.Service,
+  layer: locationServiceMapLayer,
+  deps: [],
+})
+
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [Instruction.node, SystemPrompt.node, LocationServiceMap.node],
+  deps: [Instruction.node, SystemPrompt.node, locationServiceMapNode],
 })
 
 export * as SessionContext from "./context"
