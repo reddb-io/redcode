@@ -1298,6 +1298,10 @@ const layer = Layer.effect(
                   message: `stopped: ${decision.reason}`,
                 }).toObject()
                 yield* sessions.updateMessage(handle.message).pipe(Effect.ignore)
+                // Paused here, with the stall as the reason, before the interrupt lands: this path
+                // bypasses `SessionPrompt.cancel`, so an active goal used to survive the stop and
+                // sit active on an idle session with nothing recorded.
+                yield* goals.pause(sessionID, `stalled: ${decision.reason}`).pipe(Effect.ignore)
                 // Detached deliberately: cancel interrupts this very fiber partway through, and
                 // the part that returns the session to idle runs after that point.
                 yield* state.cancel(sessionID).pipe(Effect.ignore, Effect.forkIn(scope))
@@ -1326,6 +1330,11 @@ const layer = Layer.effect(
               "session.id": sessionID,
               steps: step,
             })
+            // The turn ends before `afterTurn` is reached, so the goal has to be parked here or it
+            // stays active on an idle session.
+            yield* goals
+              .pause(sessionID, `stopped at the step ceiling after ${step} steps; /goal-resume starts a fresh turn`)
+              .pipe(Effect.ignore)
             yield* events.publish(Session.Event.Error, {
               sessionID,
               error: new NamedError.Unknown({ message: budget.message }).toObject(),

@@ -12,12 +12,18 @@
  * a WAIT that does not burn a turn while background work runs, pause on interruption and on
  * resume (a loop must never restart itself), fail-open when the judge cannot answer, and a cap
  * on unreadable verdicts. And one sentence against drift, which oh-my-pi found to be enough.
+ *
+ * A turn is one full agent turn ending in a judge cycle. `turns.used` counts those and nothing
+ * else: the tool round-trips inside a turn and the provider retries under it are steps of that
+ * turn, bounded by the step ceiling, the loop guard and the retry policy, not by this budget.
  */
 
 import { Schema } from "effect"
 
 export const DEFAULT_MAX_TURNS = 20
 export const MAX_JUDGE_FAILURES = 3
+/** How much evidence the judge reads; gate results are kept whole ahead of tool output. */
+export const EVIDENCE_CHARS = 24_000
 export const METADATA_KEY = "goal"
 
 export type Verdict = "done" | "continue" | "blocked" | "wait"
@@ -43,6 +49,8 @@ export interface Goal {
   readonly status: Status
   readonly reason?: string
   readonly turns: { readonly used: number; readonly max: number }
+  /** When the last turn was spent. Evidence for the current turn is everything since. */
+  readonly judged?: number
   readonly last?: { readonly verdict: Verdict; readonly reason: string; readonly at: number }
   /** Consecutive verdicts the judge produced that could not be read. */
   readonly judgeFailures: number
@@ -132,6 +140,7 @@ export function fromMetadata(metadata: Record<string, unknown> | undefined): Goa
       used: typeof g.turns?.used === "number" ? g.turns.used : 0,
       max: typeof g.turns?.max === "number" && g.turns.max > 0 ? g.turns.max : DEFAULT_MAX_TURNS,
     },
+    ...(typeof g.judged === "number" ? { judged: g.judged } : {}),
     ...(g.last ? { last: g.last } : {}),
     judgeFailures: typeof g.judgeFailures === "number" ? g.judgeFailures : 0,
     ...(g.claimed ? { claimed: g.claimed } : {}),
@@ -215,6 +224,17 @@ export interface Gates {
   readonly output: string
 }
 
+/**
+ * What the judge reads as evidence for one turn. Gate results come last so the tail cut keeps
+ * them: a run of large tool outputs used to push the one thing that was actually executed out of
+ * the window first.
+ */
+export function evidence(gates: readonly Gates[], observed: readonly string[]): string {
+  return [...observed, ...gates.map((check) => `${check.command}: ${check.ok ? "PASS" : "FAIL"}\n${check.output}`)]
+    .join("\n\n")
+    .slice(-EVIDENCE_CHARS)
+}
+
 /** The synthetic user message that starts the next turn of the loop. */
 export function continuation(goal: Goal, input: { readonly reason?: string; readonly gate?: Gates }): string {
   const head = `[Continuing toward the goal — turn ${goal.turns.used + 1} of ${goal.turns.max}]`
@@ -255,6 +275,9 @@ export interface Decision {
 /**
  * What the loop does with what it learned at the end of a turn. In order: a failing gate is more
  * work; background work in flight is a wait, not a turn; the judge's verdict; the budget.
+ *
+ * `goal.turns.used` counts the turns judged before this one, so the turn being decided is the
+ * last the budget allows when one more would reach the maximum.
  */
 export function decide(input: {
   readonly goal: Goal
@@ -264,9 +287,10 @@ export function decide(input: {
   readonly evidence?: boolean
 }): Decision {
   const { goal } = input
+  const exhausted = goal.turns.used + 1 >= goal.turns.max
   const failed = input.gates?.find((g) => !g.ok)
   if (failed) {
-    if (goal.turns.used >= goal.turns.max) return { action: "stop", reason: budgetReason(goal), gate: failed }
+    if (exhausted) return { action: "stop", reason: budgetReason(goal), gate: failed }
     return { action: "continue", reason: `gate failed: ${failed.command}`, gate: failed }
   }
   if (input.waiting && input.verdict?.verdict !== "blocked") {
@@ -276,14 +300,14 @@ export function decide(input: {
   if (!verdict) {
     if (goal.judgeFailures + 1 >= MAX_JUDGE_FAILURES)
       return { action: "pause", reason: `the judge gave ${MAX_JUDGE_FAILURES} unreadable verdicts in a row` }
-    if (goal.turns.used >= goal.turns.max) return { action: "stop", reason: budgetReason(goal) }
+    if (exhausted) return { action: "stop", reason: budgetReason(goal) }
     return { action: "continue", reason: "the judge's verdict could not be read; continuing" }
   }
   switch (verdict.verdict) {
     case "done":
       if (!input.evidence)
         return {
-          action: goal.turns.used >= goal.turns.max ? "stop" : "continue",
+          action: exhausted ? "stop" : "continue",
           reason: "Completion requires an executed check or recorded tool result; a claim alone is insufficient",
         }
       return { action: "done", reason: verdict.reason }
@@ -292,13 +316,13 @@ export function decide(input: {
     case "wait":
       return { action: "wait", reason: verdict.reason || "waiting on work in flight" }
     case "continue":
-      if (goal.turns.used >= goal.turns.max) return { action: "stop", reason: budgetReason(goal) }
+      if (exhausted) return { action: "stop", reason: budgetReason(goal) }
       return { action: "continue", reason: verdict.reason }
   }
 }
 
 export function budgetReason(goal: Goal) {
-  return `used all ${goal.turns.max} provider attempts without the goal holding — running out of attempts is not completion; use /goal-budget to increase the limit, then /goal-resume to keep going`
+  return `used all ${goal.turns.max} turns without the goal holding — running out of turns is not completion; use /goal-budget to increase the limit, then /goal-resume to keep going`
 }
 
 /** Tolerant: the judge is asked for one JSON object, and models fence, prefix and trail. */
@@ -316,7 +340,7 @@ export function parseVerdict(text: string): { verdict: Verdict; reason: string }
   }
 }
 
-/** Fold a decision back into the goal record. */
+/** Fold a decision back into the goal record. Every judged turn spends one; a WAIT spends none. */
 export function apply(
   goal: Goal,
   decision: Decision,
@@ -327,6 +351,7 @@ export function apply(
   const base: Goal = {
     ...goal,
     ...(last ? { last } : {}),
+    ...(decision.action === "wait" ? {} : { turns: { ...goal.turns, used: goal.turns.used + 1 }, judged: now }),
     judgeFailures: verdict ? 0 : goal.judgeFailures + 1,
     claimed: undefined,
     updated: now,
@@ -361,6 +386,7 @@ export const Info = Schema.Struct({
   status: Schema.Literals(["active", "paused", "blocked", "done", "dropped"]),
   reason: Schema.optional(Schema.String),
   turns: Schema.Struct({ used: Schema.Number, max: Schema.Number }),
+  judged: Schema.optional(Schema.Number),
   last: Schema.optional(
     Schema.Struct({
       verdict: Schema.Literals(["done", "continue", "blocked", "wait"]),

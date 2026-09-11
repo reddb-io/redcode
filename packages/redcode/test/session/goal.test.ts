@@ -107,11 +107,18 @@ describe("the decision at the end of a turn", () => {
   })
 
   test("the budget: the last turn's CONTINUE becomes a stop, with a reason that says so", () => {
-    const spent = { ...g, turns: { used: 3, max: 3 } }
+    // `used` counts judged turns, so with two of three spent this is the third and last.
+    const spent = { ...g, turns: { used: 2, max: 3 } }
     const d = SessionGoal.decide({ goal: spent, verdict: { verdict: "continue", reason: "more" } })
     expect(d.action).toBe("stop")
-    expect(d.reason).toContain("not completion")
+    expect(d.reason).toContain("running out of turns is not completion")
     expect(SessionGoal.decide({ goal: spent, gates: [{ command: "c", ok: false, output: "" }] }).action).toBe("stop")
+    expect(SessionGoal.decide({ goal: spent, evidence: false, verdict: { verdict: "done", reason: "" } }).action).toBe(
+      "stop",
+    )
+    // One turn earlier there is still a turn left to spend.
+    const left = { ...g, turns: { used: 1, max: 3 } }
+    expect(SessionGoal.decide({ goal: left, verdict: { verdict: "continue", reason: "more" } }).action).toBe("continue")
   })
 
   test("an unreadable verdict continues, and three in a row pause", () => {
@@ -119,11 +126,15 @@ describe("the decision at the end of a turn", () => {
     expect(SessionGoal.decide({ goal: { ...g, judgeFailures: 2 } }).action).toBe("pause")
   })
 
-  test("apply folds the decision into the record", () => {
+  test("apply folds the decision into the record; every judged turn spends one, a WAIT spends none", () => {
     const cont = SessionGoal.apply(g, { action: "continue", reason: "r" }, { verdict: "continue", reason: "r" }, now)
-    expect(cont.turns.used).toBe(0)
+    expect(cont.turns.used).toBe(1)
+    expect(cont.judged).toBe(now)
     expect(cont.last?.verdict).toBe("continue")
     expect(cont.judgeFailures).toBe(0)
+    const waited = SessionGoal.apply(g, { action: "wait", reason: "w" }, { verdict: "wait", reason: "w" }, now)
+    expect(waited.turns.used).toBe(0)
+    expect(waited.judged).toBeUndefined()
     const unread = SessionGoal.apply(g, { action: "continue", reason: "" }, undefined, now)
     expect(unread.judgeFailures).toBe(1)
     const done = SessionGoal.apply(g, { action: "done", reason: "yes" }, { verdict: "done", reason: "yes" }, now)
@@ -137,6 +148,17 @@ describe("the decision at the end of a turn", () => {
       now,
     )
     expect(claimed.claimed).toBeUndefined()
+  })
+})
+
+describe("the evidence the judge reads", () => {
+  test("gate results survive the cut; the tool output before them is what gets trimmed", () => {
+    const observed = Array.from({ length: 40 }, (_, i) => `read: ${"x".repeat(1000)} file-${i}`)
+    const text = SessionGoal.evidence([{ command: "bun test", ok: true, output: "12 pass" }], observed)
+    expect(text.length).toBeLessThanOrEqual(SessionGoal.EVIDENCE_CHARS)
+    expect(text).toContain("bun test: PASS\n12 pass")
+    expect(text).toContain("file-39")
+    expect(text).not.toContain("file-0\n")
   })
 })
 

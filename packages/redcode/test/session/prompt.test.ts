@@ -3490,38 +3490,47 @@ it.instance(
 )
 
 it.instance(
-  "a Goal budget admits each provider attempt and prevents a retry after exhaustion",
+  "a provider retry inside a turn spends nothing: the turn is spent once, when it is judged",
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) => providerCfg(url))
       const { chat, goals, prompt } = yield* startGoal("Try the provider once", { maxTurns: 1 })
       yield* llm.error(503, { error: { message: "Service temporarily unavailable", type: "server_error" } })
-      yield* llm.text("This retry must never be sent")
+      yield* llm.text("Recovered on the retry")
       yield* llm.textMatch(judgeRequest, verdict("continue", "Still needs evidence"))
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "retry did not finish", "15 seconds")
       const goal = yield* goals.get(chat.id)
-      expect((yield* llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(1)
+      // The retry was admitted: the failed attempt had not touched the budget of one turn.
+      expect((yield* llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(2)
       expect(goal?.turns.used).toBe(1)
       expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toContain("running out of turns is not completion")
       expect(goal?.reason).toContain("/goal-budget")
     }),
   20000,
 )
 
 it.instance(
-  "a successful provider retry consumes a second Goal attempt",
+  "tool round-trips inside a turn spend nothing: many steps, one judged turn, one turn of the budget",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => providerCfg(url))
-      const { chat, goals, prompt } = yield* startGoal("Recover within the budget", { maxTurns: 2 })
-      yield* llm.error(503, { error: { message: "Service temporarily unavailable", type: "server_error" } })
-      yield* llm.text("Recovered")
-      yield* llm.textMatch(judgeRequest, verdict("continue", "Still needs evidence"))
-      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "retry did not finish", "15 seconds")
-      expect((yield* llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(2)
-      expect((yield* goals.get(chat.id))?.turns.used).toBe(2)
+      const fixture = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("Read the reports", { maxTurns: 1 })
+      const file = path.join(fixture.dir, "report.txt")
+      yield* Effect.promise(() => Bun.write(file, "all green"))
+      yield* fixture.llm.tool("read", { filePath: file })
+      yield* fixture.llm.tool("glob", { pattern: "*.txt" })
+      yield* fixture.llm.tool("glob", { pattern: "**/*.md" })
+      yield* fixture.llm.text("Read everything; all green.")
+      yield* fixture.llm.textMatch(judgeRequest, verdict("done", "the reports were read and are green"))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
+      // Four provider calls, every one admitted against a budget of one turn.
+      expect((yield* fixture.llm.hits).filter((hit) => !judgeRequest(hit))).toHaveLength(4)
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("done")
+      expect(goal?.turns.used).toBe(1)
     }),
-  20000,
+  30000,
 )
 
 it.instance(
@@ -3536,7 +3545,8 @@ it.instance(
       const status = yield* SessionStatus.Service
       expect(goal?.status).toBe("blocked")
       expect(goal?.reason).toContain("Invalid model request")
-      expect(goal?.turns.used).toBe(1)
+      // No turn was judged, so none was spent.
+      expect(goal?.turns.used).toBe(0)
       expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
   20000,
@@ -3645,6 +3655,117 @@ it.instance("a goal driven by another process pauses instead of restarting itsel
 )
 
 it.instance(
+  "a budget change landing while the judge decides is not lost: the turn is recorded against the fresh record",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("hold the line; gate: true", { maxTurns: 1 })
+      const thinking = defer<void>()
+      // The first judgement waits for the test; /goal-budget lands while it does.
+      yield* llm.pushMatch(judgeRequest, reply().wait(thinking.promise).text(verdict("continue", "not yet")).stop())
+      yield* llm.textMatch(judgeRequest, verdict("done", "now it holds"))
+      yield* llm.text("one")
+      yield* llm.text("two")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      yield* awaitWithTimeout(
+        Effect.gen(function* () {
+          while (!(yield* llm.hits).some(judgeRequest)) yield* Effect.sleep("20 millis")
+        }),
+        "the judge was never asked",
+        "20 seconds",
+      )
+      const during = yield* goals.get(chat.id)
+      expect(during?.status).toBe("active")
+      yield* goals.set(chat.id, { ...during!, turns: { ...during!.turns, max: 3 }, updated: during!.updated + 1 })
+      thinking.resolve()
+      yield* awaitWithTimeout(Fiber.await(fiber), "the goal loop never finished", "30 seconds")
+      // Under the old budget this turn was the last; under the raised one it is a CONTINUE, and
+      // the second turn is judged done. Losing the race used to record nothing and leave the
+      // goal active on an idle session.
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("done")
+      expect(goal?.turns.max).toBe(3)
+      expect(goal?.turns.used).toBe(2)
+      expect(yield* userTexts(chat.id)).toHaveLength(2)
+    }),
+  60_000,
+)
+
+it.instance(
+  "the step ceiling pauses the goal with the ceiling as its reason instead of leaving it active",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { turn_steps: { stop_at: 3, wrap_up_at: 2 } },
+      }))
+      const { chat, goals, prompt } = yield* startGoal("keep going")
+      // Never finishing on its own: only the ceiling ends this turn, before any judge runs.
+      yield* llm.tool("glob", { pattern: "**/*.nothing" })
+      yield* llm.tool("glob", { pattern: "**/*.nowhere" })
+      yield* llm.text("never reached")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toContain("step ceiling")
+      expect(goal?.turns.used).toBe(0)
+      expect((yield* llm.hits).some(judgeRequest)).toBe(false)
+    }),
+  60_000,
+)
+
+it.instance(
+  "a stalled turn pauses the goal with the stall as its reason",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        experimental: { turn_stall: { warn_ms: 500, abort_ms: 1500 } },
+      }))
+      const { chat, goals, prompt } = yield* startGoal("wait for a provider that never answers")
+      yield* llm.hang
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      yield* awaitWithTimeout(llm.wait(1), "the provider was never called", "20 seconds")
+      // No cancel of our own: the watchdog is the only thing that can end this.
+      const exit = yield* awaitWithTimeout(Fiber.await(fiber), "watchdog never ended the stalled turn", "20 seconds")
+      expect(Exit.isSuccess(exit)).toBe(true)
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toMatch(/^stalled: no output/)
+    }),
+  60_000,
+)
+
+it.instance(
+  "a tool result from an earlier turn is not evidence for a later claim",
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("prove it", { maxTurns: 2 })
+      const file = path.join(fixture.dir, "proof.txt")
+      yield* Effect.promise(() => Bun.write(file, "proof-from-turn-one"))
+      // Turn 1 reads a file and is sent back; turn 2 claims completion without touching anything.
+      yield* fixture.llm.tool("read", { filePath: file })
+      yield* fixture.llm.text("Looked at the proof.")
+      yield* fixture.llm.textMatch(judgeRequest, verdict("continue", "reading is not doing"))
+      yield* fixture.llm.text("It is done now.")
+      yield* fixture.llm.textMatch(judgeRequest, verdict("done", "the agent says so"))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
+      const judged = (yield* fixture.llm.inputs).filter((body) => judgeRequest({ body }))
+      expect(judged).toHaveLength(2)
+      expect(JSON.stringify(judged[0])).toContain("proof-from-turn-one")
+      expect(JSON.stringify(judged[1])).not.toContain("proof-from-turn-one")
+      // Nothing was executed on the second turn, so the claim is sent back — and, this being the
+      // last turn of the budget, the goal is parked rather than declared done.
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toContain("Completion requires an executed check")
+      expect(goal?.turns.used).toBe(2)
+    }),
+  30000,
+)
+
+it.instance(
   "a background subagent defers judging until its report re-enters the parent",
   () =>
     Effect.gen(function* () {
@@ -3677,7 +3798,8 @@ it.instance(
       const parked = yield* goals.get(chat.id)
       expect(parked?.status).toBe("active")
       expect(parked?.last).toBeUndefined()
-      expect(parked?.turns.used).toBe(2)
+      // A turn that ends waiting on background work spends nothing.
+      expect(parked?.turns.used).toBe(0)
       expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(0)
       const running = (yield* jobs.list()).filter((job) => job.metadata?.["parentSessionId"] === chat.id)
       expect(running).toHaveLength(1)

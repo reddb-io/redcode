@@ -692,7 +692,7 @@ export function Session() {
           variant: goal?.status === "active" ? "success" : "warning",
           message: goal
             ? goal.status === "active"
-              ? `Goal resumed · attempt ${Number(goal.turns.used) + 1} of ${goal.turns.max}`
+              ? `Goal resumed · turn ${Number(goal.turns.used) + 1} of ${goal.turns.max}`
               : `Goal ${goal.status}: ${goal.reason ?? "could not resume"}. ${goal.turns.used >= goal.turns.max ? "Use /goal-budget to increase the total, then /goal-resume." : ""}`
             : "No goal to resume",
           duration: 3000,
