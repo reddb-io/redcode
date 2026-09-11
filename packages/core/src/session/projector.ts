@@ -1,6 +1,6 @@
 export * as SessionProjector from "./projector"
 
-import { and, desc, eq, gt, or, sql } from "drizzle-orm"
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { EventV2 } from "../event"
@@ -266,12 +266,29 @@ const layer = Layer.effectDiscard(
         const id = event.data.info.id
         const sessionID = event.data.info.sessionID
         const data = messageData(event.data.info)
+        // A user message published again after it was stored is a V1 Prompt Promotion: the
+        // first publication only creates the (still model-invisible) row next to its inbox entry.
+        const stored =
+          event.data.info.role === "user"
+            ? yield* db
+                .select({ id: MessageTable.id })
+                .from(MessageTable)
+                .where(eq(MessageTable.id, id))
+                .get()
+                .pipe(Effect.orDie)
+            : undefined
         yield* db
           .insert(MessageTable)
           .values({ id, session_id: sessionID, time_created, data })
           .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
           .run()
           .pipe(Effect.orDie)
+        if (stored !== undefined && event.durable !== undefined)
+          yield* SessionInput.projectLegacyPromotion(db, {
+            id: SessionMessage.ID.make(id),
+            sessionID,
+            promotedSeq: event.durable.seq,
+          })
         // The usage sidecar mirrors the same row, minus the content: it is the file usage reporters read, and it
         // outlives whatever stores the session itself (Usage.record swallows its own failures).
         const mirrored = Usage.recordMessage({ id, sessionID, timeCreated: time_created, info: event.data.info })
@@ -296,6 +313,18 @@ const layer = Layer.effectDiscard(
         yield* db
           .delete(MessageTable)
           .where(and(eq(MessageTable.id, event.data.messageID), eq(MessageTable.session_id, event.data.sessionID)))
+          .run()
+          .pipe(Effect.orDie)
+        // A removed V1 user message (revert) can never be promoted; its pending inbox row goes with it.
+        yield* db
+          .delete(SessionInputTable)
+          .where(
+            and(
+              eq(SessionInputTable.id, SessionMessage.ID.make(event.data.messageID)),
+              eq(SessionInputTable.session_id, event.data.sessionID),
+              isNull(SessionInputTable.promoted_seq),
+            ),
+          )
           .run()
           .pipe(Effect.orDie)
       }),
