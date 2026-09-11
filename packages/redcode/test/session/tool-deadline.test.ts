@@ -30,9 +30,7 @@ describe("tool deadlines", () => {
   })
 
   test("stops a call that outlives its deadline", async () => {
-    const exit = await Effect.runPromiseExit(
-      guard(Effect.never, { tool: "read", ms: 60, waitedMs: () => 0 }),
-    )
+    const exit = await Effect.runPromiseExit(guard(() => Effect.never, { tool: "read", ms: 60, waitedMs: () => 0 }))
     expect(Exit.isFailure(exit)).toBe(true)
     expect(String(exit)).toMatch(/read tool was still running/)
   })
@@ -42,12 +40,76 @@ describe("tool deadlines", () => {
     // tool's, so the deadline must not arrive.
     const started = Date.now()
     const exit = await Effect.runPromiseExit(
-      guard(Effect.sleep("300 millis").pipe(Effect.as("done")), {
+      guard(() => Effect.sleep("300 millis").pipe(Effect.as("done")), {
         tool: "edit",
         ms: 60,
         waitedMs: () => Date.now() - started,
       }),
     )
     expect(exit).toEqual(Exit.succeed("done"))
+  })
+
+  test("aborts the tool it stops, so one that honours ctx.abort actually ends", async () => {
+    // The tool runs as a promise in its own root fiber, so interrupting the race cannot reach it.
+    // The only thing that can is the signal it was handed. A fake tool that settles only when that
+    // signal fires stands in for edit, webfetch, or an LSP request left waiting on a dead peer.
+    const turn = new AbortController()
+    let seen: AbortSignal | undefined
+    let settled: Promise<string> | undefined
+    const exit = await Effect.runPromiseExit(
+      guard(
+        (abort) => {
+          seen = abort
+          settled = new Promise<string>((resolve) =>
+            abort.addEventListener("abort", () => resolve("tool observed abort"), { once: true }),
+          )
+          return Effect.promise(() => settled!)
+        },
+        { tool: "edit", ms: 60, waitedMs: () => 0, abort: turn.signal },
+      ),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(String(exit)).toMatch(/edit tool was still running/)
+    expect(seen?.aborted).toBe(true)
+    expect(await settled).toBe("tool observed abort")
+    // The deadline stops this one call, not the turn that made it.
+    expect(turn.signal.aborted).toBe(false)
+  })
+
+  test("the tool still sees the turn being aborted", async () => {
+    const turn = new AbortController()
+    let seen: AbortSignal | undefined
+    const running = Effect.runPromiseExit(
+      guard(
+        (abort) => {
+          seen = abort
+          return Effect.never
+        },
+        { tool: "edit", ms: 10_000, waitedMs: () => 0, abort: turn.signal },
+      ),
+    )
+    await Effect.runPromise(Effect.sleep("20 millis"))
+    turn.abort(new Error("user stopped the turn"))
+    expect(seen?.aborted).toBe(true)
+    expect(seen?.reason).toBeInstanceOf(Error)
+    // The guard itself stays out of it: the caller owns what an aborted turn means.
+    const exit = await Promise.race([running, Effect.runPromise(Effect.sleep("50 millis").pipe(Effect.as("pending")))])
+    expect(exit).toBe("pending")
+  })
+
+  test("a call that finishes in time is never aborted", async () => {
+    let seen: AbortSignal | undefined
+    const exit = await Effect.runPromiseExit(
+      guard(
+        (abort) => {
+          seen = abort
+          return Effect.succeed("done")
+        },
+        { tool: "read", ms: 60, waitedMs: () => 0 },
+      ),
+    )
+    expect(exit).toEqual(Exit.succeed("done"))
+    await Effect.runPromise(Effect.sleep("100 millis"))
+    expect(seen?.aborted).toBe(false)
   })
 })

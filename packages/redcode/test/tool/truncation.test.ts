@@ -218,6 +218,29 @@ describe("Truncate", () => {
       }),
     )
 
+    it.live("keeps the bounded output when the file cannot be retained", () =>
+      Effect.gen(function* () {
+        // A file where the directory should be is the cheapest unwritable store there is, and it
+        // fails the same way a full disk does: the write is refused, the tool's own work is done.
+        const svc = yield* Truncate.Service
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.remove(Truncate.DIR, { recursive: true }).pipe(Effect.ignore)
+        yield* fs.writeFileString(Truncate.DIR, "not a directory")
+        const lines = Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n")
+        const result = yield* svc
+          .output(lines, { maxLines: 10 })
+          .pipe(Effect.ensuring(fs.remove(Truncate.DIR, { force: true }).pipe(Effect.ignore)))
+
+        expect(result.truncated).toBe(true)
+        if (!result.truncated) throw new Error("expected truncated")
+        expect(result.outputPath).toBeUndefined()
+        expect(result.content).toContain("line0")
+        expect(result.content).toContain("...90 lines truncated...")
+        expect(result.content).not.toContain("Full output saved to")
+        expect(result.content).toContain("could not be saved")
+      }),
+    )
+
     it.live("does not write file when not truncated", () =>
       Effect.gen(function* () {
         const svc = yield* Truncate.Service

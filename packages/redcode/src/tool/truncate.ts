@@ -16,7 +16,8 @@ export const MAX_BYTES = 50 * 1024
 export const DIR = TRUNCATION_DIR
 export const GLOB = path.join(TRUNCATION_DIR, "*")
 
-export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
+/** `outputPath` is absent when the full text could not be retained; the preview is then all there is. */
+export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath?: string }
 
 export interface Options {
   maxLines?: number
@@ -35,6 +36,10 @@ export interface Interface {
   /**
    * Returns output unchanged when it fits within the limits, otherwise writes the full text
    * to the truncation directory and returns a preview plus a hint to inspect the saved file.
+   *
+   * A store that refuses the write does not fail the call: the tool's own work succeeded, and
+   * that is what the session records. The preview is returned alone, its notice says the rest is
+   * gone, and the storage failure is logged for whoever runs the machine.
    */
   readonly output: (text: string, options?: Options, agent?: Agent.Info) => Effect.Effect<Result>
   /**
@@ -65,11 +70,15 @@ const layer = Layer.effect(
       }
     })
 
-    const write = Effect.fn("Truncate.write")(function* (text: string) {
+    const retain = Effect.fn("Truncate.retain")(function* (text: string) {
       const file = path.join(TRUNCATION_DIR, ToolID.ascending())
-      yield* fs.ensureDir(TRUNCATION_DIR).pipe(Effect.orDie)
-      yield* fs.writeFileString(file, text).pipe(Effect.orDie)
+      yield* fs.ensureDir(TRUNCATION_DIR)
+      yield* fs.writeFileString(file, text)
       return file
+    })
+
+    const write = Effect.fn("Truncate.write")(function* (text: string) {
+      return yield* retain(text).pipe(Effect.orDie)
     })
 
     const limits = Effect.fn("Truncate.limits")(function* () {
@@ -124,11 +133,21 @@ const layer = Layer.effect(
       const removed = hitBytes ? totalBytes - bytes : lines.length - out.length
       const unit = hitBytes ? "bytes" : "lines"
       const preview = out.join("\n")
-      const file = yield* write(text)
+      const file = yield* retain(text).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("truncated tool output could not be retained", {
+            dir: TRUNCATION_DIR,
+            error: String(error),
+          }).pipe(Effect.as(undefined)),
+        ),
+      )
 
-      const hint = hasTaskTool(agent)
-        ? `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
-        : `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
+      const hint =
+        file === undefined
+          ? "The tool call succeeded but the output was truncated, and the full output could not be saved to a file. Only the portion shown here is available; narrow the request or filter its output to see more."
+          : hasTaskTool(agent)
+            ? `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
+            : `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
 
       return {
         content:
@@ -136,7 +155,7 @@ const layer = Layer.effect(
             ? `${preview}\n\n...${removed} ${unit} truncated...\n\n${hint}`
             : `...${removed} ${unit} truncated...\n\n${hint}\n\n${preview}`,
         truncated: true,
-        outputPath: file,
+        ...(file === undefined ? {} : { outputPath: file }),
       } as const
     })
 
