@@ -378,6 +378,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     for (const field of component?.fields ?? []) {
       const control = input(`param-field-${field.id}`)
       if (!control) continue
+      // A field being edited keeps the typed value; the prototype's state message must not clobber
+      // it before `change` fires, or the edit is silently lost.
+      if (control.matches(":focus")) continue
       const value = state.params[state.component]?.[field.id] ?? field.default
       if (field.type === "boolean") control.checked = value === true
       else control.value = String(value)
