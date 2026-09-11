@@ -1,5 +1,16 @@
 # opencode
 
+## 0.26.1
+
+### Patch Changes
+
+- 887d171: Reject stale plan-exit question dialogs instead of freezing on them
+
+  When the tool asking a question is interrupted, the pending request is now
+  published as `question.rejected` so clients drop the dialog. The TUI question
+  prompt surfaces reply/reject failures with a toast and removes the stale
+  request instead of silently swallowing them and leaving a dead dialog.
+
 ## 0.26.0
 
 ### Minor Changes
