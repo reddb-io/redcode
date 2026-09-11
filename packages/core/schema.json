@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "db67a51e-ebd4-44c4-8a46-cdf5ee52b29e",
+  "id": "5a669587-317a-4684-93b9-67c1f42ab43e",
   "prevIds": [
-    "29645902-3159-4e70-9f31-548def0cccf9"
+    "db67a51e-ebd4-44c4-8a46-cdf5ee52b29e"
   ],
   "ddl": [
     {
@@ -1279,6 +1279,16 @@
       "default": null,
       "generated": null,
       "name": "baseline_seq",
+      "entityType": "columns",
+      "table": "session_context_epoch"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "replacement_seq",
       "entityType": "columns",
       "table": "session_context_epoch"
     },

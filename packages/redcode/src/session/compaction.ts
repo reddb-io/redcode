@@ -597,10 +597,13 @@ const layer = Layer.effect(
             }
           : yield* build(input)
       const ctx = yield* InstanceState.context
-      // The Context Epoch ends before the summary exists. A crash between here and the commit
-      // below leaves a pending compaction that runs again; the other order could leave a summary
-      // the model reads under a baseline, and system updates, from before it.
-      yield* SessionContextEpoch.reset(database.db, input.sessionID)
+      // The replacement of the Context Epoch is requested before the summary exists. A crash
+      // between here and the commit below leaves a pending compaction that runs again; the other
+      // order could leave a summary the model reads under a baseline, and system updates, from
+      // before it. The next step renders the fresh baseline, or keeps the current one while a
+      // previously admitted source is unavailable, rather than starting an epoch from a partial
+      // context or ending the turn.
+      yield* SessionContextEpoch.requestReplacement(database.db, input.sessionID)
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
         role: "assistant",

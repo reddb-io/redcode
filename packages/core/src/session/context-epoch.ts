@@ -56,7 +56,12 @@ const prepareOnce = Effect.fnUntraced(function* (
   const snapshot = yield* Schema.decodeUnknownEffect(SystemContext.Snapshot)(stored.snapshot).pipe(
     Effect.mapError((error) => new ContextSnapshotDecodeError({ sessionID, details: String(error) })),
   )
-  const replacementSeq = compaction !== undefined && compaction.seq > stored.baseline_seq ? compaction.seq : undefined
+  // A replacement is pending while a boundary lies after the baseline: the latest compaction
+  // message, or a replacement requested by a runtime whose compaction leaves no such message.
+  // It stays pending, and blocks admission of ordinary updates, until every previously admitted
+  // source is observable again and the generation is rendered whole.
+  const boundary = Math.max(compaction?.seq ?? stored.baseline_seq, stored.replacement_seq ?? stored.baseline_seq)
+  const replacementSeq = boundary > stored.baseline_seq ? boundary : undefined
   const result = replacementSeq
     ? yield* SystemContext.replace(value, snapshot)
     : yield* SystemContext.reconcile(value, snapshot)
@@ -108,6 +113,26 @@ const find = Effect.fn("SessionContextEpoch.find")(function* (db: DatabaseServic
     .pipe(Effect.orDie)
 })
 
+/**
+ * Marks the current durable sequence as a replacement boundary for the active epoch, so the next
+ * preparation renders a fresh generation instead of admitting updates. Made before a compaction
+ * summary is written: a crash after the summary still leaves the request durable, and a summary
+ * never runs under the previous baseline unless the replacement is legitimately blocked. Without
+ * an active epoch there is nothing to replace, and the next preparation initializes one.
+ */
+export const requestReplacement = Effect.fn("SessionContextEpoch.requestReplacement")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const replacementSeq = yield* EventV2.latestSequence(db, sessionID)
+  yield* db
+    .update(SessionContextEpochTable)
+    .set({ replacement_seq: replacementSeq })
+    .where(eq(SessionContextEpochTable.session_id, sessionID))
+    .run()
+    .pipe(Effect.orDie)
+})
+
 export const reset = Effect.fn("SessionContextEpoch.reset")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
@@ -150,6 +175,7 @@ const replace = Effect.fnUntraced(function* (
       baseline: generation.baseline,
       snapshot: generation.snapshot,
       baseline_seq: baselineSeq,
+      replacement_seq: null,
     })
     .where(eq(SessionContextEpochTable.session_id, sessionID))
     .returning({ sessionID: SessionContextEpochTable.session_id })

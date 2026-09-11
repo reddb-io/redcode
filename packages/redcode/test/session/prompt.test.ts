@@ -10,7 +10,7 @@ import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { and, eq } from "drizzle-orm"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { expect } from "bun:test"
-import { Cause, Context, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
+import { Cause, Context, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect"
 import path from "path"
 import { fileURLToPath } from "url"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
@@ -36,6 +36,7 @@ import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { SessionCompaction } from "../../src/session/compaction"
+import { SessionContext } from "../../src/session/context"
 import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
@@ -52,6 +53,7 @@ import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
 import { Skill } from "../../src/skill"
 import { SystemPrompt } from "../../src/session/system"
+import { SystemContext } from "@reddb-io/redcode-core/system-context"
 import { Shell } from "@reddb-io/redcode-core/shell"
 import { Snapshot } from "../../src/snapshot"
 import { ToolRegistry } from "@/tool/registry"
@@ -181,6 +183,41 @@ const blockingProcessor = Layer.succeed(
 
 const runtimeFlags = RuntimeFlags.layer({ experimentalEventSystem: true, experimentalBackgroundSubagents: true })
 
+// No production Context Source returns unavailable, so a test-only source is appended to the
+// legacy Baseline System Context here, outside the service: a test flips it between a value and
+// `SystemContext.unavailable` to observe the epoch's replacement semantics at a boundary.
+const flakySource = { value: "FLAKY SOURCE TEXT" as string | SystemContext.Unavailable }
+const flakyContext = LayerNode.make({
+  service: SessionContext.Service,
+  layer: Layer.effect(
+    SessionContext.Service,
+    Effect.map(SessionContext.Service, (real) =>
+      SessionContext.Service.of({
+        load: (agent, session) =>
+          real.load(agent, session).pipe(
+            Effect.map((value) =>
+              SystemContext.combine([
+                value,
+                SystemContext.make({
+                  key: SystemContext.Key.make("test/flaky"),
+                  codec: Schema.toCodecJson(Schema.String),
+                  load: Effect.sync(() => flakySource.value),
+                  baseline: (text) => text,
+                  update: (_previous, text) => `The flaky source is now: ${text}`,
+                }),
+              ]),
+            ),
+          ),
+      }),
+    ),
+  ).pipe(Layer.provide(SessionContext.layer)),
+  deps: [
+    Instruction.node,
+    SystemPrompt.node,
+    LayerNode.make({ service: LocationServiceMap.Service, layer: locationServiceMapLayer, deps: [] }),
+  ],
+})
+
 const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
 
 const promptRoot = LayerNode.group([
@@ -241,7 +278,12 @@ function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; proces
   return AppNodeBuilder.build(promptRoot, replacements)
 }
 
-function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; mcpFailure?: string; processor?: "blocking" }) {
+function makeHttp(input?: {
+  mcpInstructions?: MCP.ServerInstructions[]
+  mcpFailure?: string
+  processor?: "blocking"
+  context?: typeof flakyContext
+}) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
     [SessionSummary.node, summary],
@@ -249,6 +291,9 @@ function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; mcpFailu
     [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure)],
     [RuntimeFlags.node, runtimeFlags],
   ] as const
+  if (input?.context) {
+    return AppNodeBuilder.build(root, [...replacements, [SessionContext.node, input.context]])
+  }
   if (input?.processor === "blocking") {
     return AppNodeBuilder.build(root, [...replacements, [SessionProcessor.node, blockingProcessor]])
   }
@@ -274,6 +319,7 @@ const withMcpInstructions = testEffect(
   }),
 )
 const brokenMcp = testEffect(makeHttp({ mcpFailure: "mcp exploded" }))
+const flaky = testEffect(makeHttp({ context: flakyContext }))
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
 
@@ -4514,5 +4560,189 @@ it.instance("a revert ends the epoch with the history it removes", () =>
     const after = yield* epochRows(chat.id)
     expect(after).toHaveLength(1)
     expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+  }),
+)
+
+flaky.instance("a source unavailable after compaction blocks the replacement until it is observable again", () =>
+  Effect.gen(function* () {
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const agents = path.join(dir, "AGENTS.md")
+    yield* writeText(agents, "Be terse.")
+    yield* rewriteOnRead(agents, "Always answer in haiku.")
+    flakySource.value = "FLAKY SOURCE TEXT"
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "read the instructions and then tell me at length what they say" }],
+    })
+    yield* llm.tool("read", { filePath: agents })
+    yield* llm.text("The instructions say to be terse, which I will honour from now on in every reply.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    expect(before[0]!.baseline).toContain("FLAKY SOURCE TEXT")
+    expect(before[0]!.replacement_seq).toBeNull()
+    expect(yield* systemRows(chat.id)).toHaveLength(1)
+
+    // The source admitted into the baseline cannot be observed when the compaction ends the epoch.
+    flakySource.value = SystemContext.unavailable
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    yield* llm.text("Summary.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const requested = yield* epochRows(chat.id)
+    expect(requested[0]!.replacement_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    expect(requested[0]!.baseline).toBe(before[0]!.baseline)
+
+    // Blocked: the turn runs under the stored baseline and snapshot, with its earlier update
+    // still replayed, nothing new is admitted, and the request stays pending.
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+    yield* llm.text("ok")
+    const blocked = yield* prompt.loop({ sessionID: chat.id })
+    expect(blocked.info.role === "assistant" ? blocked.info.error : undefined).toBeUndefined()
+    expect(blocked.parts).toContainEqual(expect.objectContaining({ type: "text", text: "ok" }))
+    const during = yield* epochRows(chat.id)
+    expect(during).toEqual(requested)
+    expect(yield* systemRows(chat.id)).toHaveLength(1)
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(4)
+    expect(JSON.stringify(bodySystem(hits[3]!))).toContain(JSON.stringify(before[0]!.baseline).slice(1, -1))
+    expect(JSON.stringify(bodyMessages(hits[3]!))).toContain("<system_update>")
+
+    // Observable again: the next boundary renders the fresh baseline at the requested sequence.
+    flakySource.value = "FLAKY SOURCE TEXT"
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "again" }],
+    })
+    yield* llm.text("fine")
+    yield* prompt.loop({ sessionID: chat.id })
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBe(requested[0]!.replacement_seq!)
+    expect(after[0]!.replacement_seq).toBeNull()
+    expect(after[0]!.baseline).toContain("Always answer in haiku.")
+    expect(after[0]!.baseline).toContain("FLAKY SOURCE TEXT")
+    const last = (yield* llm.hits)[4]!
+    expect(JSON.stringify(bodySystem(last))).toContain(JSON.stringify(after[0]!.baseline).slice(1, -1))
+    expect(JSON.stringify(bodyMessages(last))).not.toContain("<system_update>")
+  }),
+)
+
+it.instance("a restart between a compaction and the next turn still replaces the epoch", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const database = yield* Database.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "one" }] })
+    yield* llm.text("first")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    yield* llm.text("Summary.")
+    yield* prompt.loop({ sessionID: chat.id })
+    // The request is durable on the epoch row, not in the memory of the process that made it.
+    const requested = yield* epochRows(chat.id)
+    expect(requested[0]!.replacement_seq).toBeGreaterThan(before[0]!.baseline_seq)
+
+    const restarted = yield* Layer.build(
+      AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [SessionSummary.node, summary],
+        [LSP.node, lsp],
+        [MCP.node, makeMcp()],
+        [RuntimeFlags.node, runtimeFlags],
+        [Database.node, Layer.succeed(Database.Service, database)],
+        [testLLMServerNode, Layer.succeed(TestLLMServer, llm)],
+      ]),
+    )
+    const again = Context.get(restarted, SessionPrompt.Service)
+    yield* again.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "two" }] })
+    yield* llm.text("second")
+    yield* again.loop({ sessionID: chat.id })
+
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBe(requested[0]!.replacement_seq!)
+    expect(after[0]!.replacement_seq).toBeNull()
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(3)
+    expect(JSON.stringify(bodySystem(hits[2]!))).toContain(JSON.stringify(after[0]!.baseline).slice(1, -1))
+  }),
+)
+
+it.instance("a summary prepared in the background is still reused when the epoch is replaced", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const providers = yield* ProviderSvc.Service
+    const database = yield* Database.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    // A summary is only accepted when it is smaller than the history it replaces plus the
+    // latest request it preserves, so the earlier turn is long and the latest one short.
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "Earlier findings. ".repeat(400) }],
+    })
+    yield* llm.text("first")
+    yield* prompt.loop({ sessionID: chat.id })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "go on" }],
+    })
+    yield* llm.text("second")
+    yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    expect(before).toHaveLength(1)
+
+    // A candidate summary prepared while the turn was still short of overflow, over the history
+    // exactly as the loop reads it: the candidate is reused only for a byte-identical prefix.
+    const messages = yield* MessageV2.filterCompactedEffect(chat.id).pipe(
+      Effect.provideService(Database.Service, database),
+    )
+    const parent = messages.findLast((message) => message.info.role === "user")!
+    yield* llm.text("Background summary.")
+    yield* compaction.prepare({
+      messages,
+      parentID: parent.info.id,
+      sessionID: chat.id,
+      auto: true,
+      model: yield* providers.getModel(ref.providerID, ref.modelID),
+      tokens: { input: 85_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    yield* llm.wait(3)
+
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: true })
+    yield* llm.text("continued")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    // One background summary request, no fresh one, and the continuation under the new baseline.
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(4)
+    const summary = (yield* sessions.messages({ sessionID: chat.id })).filter(
+      (message) => message.info.role === "assistant" && message.info.summary === true,
+    )
+    expect(summary).toHaveLength(1)
+    expect(summary[0]!.parts).toContainEqual(expect.objectContaining({ type: "text", text: "Background summary." }))
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    expect(after[0]!.replacement_seq).toBeNull()
+    expect(JSON.stringify(bodySystem(hits[3]!))).toContain(JSON.stringify(after[0]!.baseline).slice(1, -1))
   }),
 )
