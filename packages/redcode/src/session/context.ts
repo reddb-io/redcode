@@ -101,7 +101,7 @@ const ReferenceList = Schema.Array(
   Schema.Struct({ name: Schema.String, path: Schema.String, description: Schema.String }),
 )
 
-const layer = Layer.effect(
+export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const instruction = yield* Instruction.Service

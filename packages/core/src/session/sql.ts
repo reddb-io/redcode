@@ -224,4 +224,6 @@ export const SessionContextEpochTable = sqliteTable("session_context_epoch", {
   baseline: text().notNull(),
   snapshot: text({ mode: "json" }).notNull().$type<SystemContext.Snapshot>(),
   baseline_seq: integer().notNull(),
+  /** Durable sequence of a requested replacement, pending until the next successful preparation. */
+  replacement_seq: integer(),
 })
