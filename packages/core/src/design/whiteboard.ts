@@ -8,6 +8,29 @@ import { Design } from "@reddb-io/redcode-schema/design"
 
 let cached: Promise<string> | undefined
 
+/** Where a release's whiteboard bundle comes from and where it lands once verified. */
+export interface Source {
+  fetch: (url: string, init: { signal: AbortSignal }) => Promise<Response>
+  version: string
+  data: string
+  checkout: string
+  timeout: number
+}
+
+let source: Source = {
+  fetch: globalThis.fetch,
+  version: InstallationVersion,
+  data: Global.Path.data,
+  checkout: path.resolve(import.meta.dir, "../../../redcode/dist/whiteboard"),
+  timeout: 60_000,
+}
+
+/** Repoints the loader and forgets the cached frame, so a suite can serve a release from memory. */
+export function configure(input: Partial<Source>) {
+  source = { ...source, ...input }
+  cached = undefined
+}
+
 /** The existing pinned Excalidraw distribution is an asset, independent of Session execution. */
 export function frame() {
   return (cached ??= load().catch((error) => {
@@ -16,39 +39,89 @@ export function frame() {
   }))
 }
 
+async function download(asset: string) {
+  const url = `https://github.com/reddb-io/redcode/releases/download/v${source.version}/${asset}`
+  return source
+    .fetch(url, { signal: AbortSignal.timeout(source.timeout) })
+    .then((response) => {
+      if (response.ok) return response.bytes()
+      throw new Design.Error({
+        code: "unavailable",
+        message: `Whiteboard bundle is unavailable for this release: ${asset} returned HTTP ${response.status}`,
+      })
+    })
+    .catch((error: unknown) => {
+      if (error instanceof Design.Error) throw error
+      const reason = error instanceof Error ? error.message : String(error)
+      throw new Design.Error({
+        code: "unavailable",
+        message: `Whiteboard bundle is unavailable: downloading ${asset} failed (${reason})`,
+      })
+    })
+}
+
+async function install(release: string) {
+  const asset = `redcode-whiteboard-${source.version}.tar.gz`
+  // The release publishes `<sha256>  <file>` lines for every archive it uploads; the bundle is
+  // unpacked only once its bytes match the line written for it.
+  const sums = new TextDecoder().decode(await download("SHA256SUMS"))
+  const expected = sums
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .find(([, file]) => file === asset)?.[0]
+    ?.toLowerCase()
+  if (!expected)
+    throw new Design.Error({
+      code: "unavailable",
+      message: `Whiteboard bundle is unavailable: SHA256SUMS for v${source.version} has no entry for ${asset}`,
+    })
+  const archive = await download(asset)
+  const actual = new Bun.CryptoHasher("sha256").update(archive).digest("hex")
+  if (actual !== expected)
+    throw new Design.Error({
+      code: "unavailable",
+      message: `Whiteboard bundle is corrupt: ${asset} has SHA-256 ${actual}, release lists ${expected}; refusing to unpack`,
+    })
+  const temporary = `${release}-${crypto.randomUUID()}`
+  await mkdir(temporary, { recursive: true })
+  try {
+    await Bun.write(`${temporary}.tar.gz`, archive)
+    const child = Bun.spawn(["tar", "-xzf", `${temporary}.tar.gz`, "-C", temporary], {
+      stdout: "ignore",
+      stderr: "pipe",
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    if (code !== 0)
+      throw new Design.Error({
+        code: "unavailable",
+        message: `Whiteboard bundle is corrupt: tar exited with ${code} unpacking ${asset}: ${stderr.trim()}`,
+      })
+    if (!(await Bun.file(path.join(temporary, "whiteboard.js")).exists()))
+      throw new Design.Error({
+        code: "unavailable",
+        message: `Whiteboard bundle is corrupt: ${asset} does not contain whiteboard.js`,
+      })
+    await mkdir(path.dirname(release), { recursive: true })
+    await rename(temporary, release)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+    await rm(`${temporary}.tar.gz`, { force: true })
+  }
+}
+
 async function load() {
-  const release = path.join(Global.Path.data, "design", "whiteboard", InstallationVersion)
-  const checkout = path.resolve(import.meta.dir, "../../../redcode/dist/whiteboard")
+  const release = path.join(source.data, "design", "whiteboard", source.version)
   const directory =
     process.env.REDCODE_WHITEBOARD_DIR ??
-    ((await Bun.file(path.join(checkout, "whiteboard.js")).exists()) ? checkout : release)
+    ((await Bun.file(path.join(source.checkout, "whiteboard.js")).exists()) ? source.checkout : release)
   if (!(await Bun.file(path.join(directory, "whiteboard.js")).exists())) {
-    if (process.env.REDCODE_WHITEBOARD_DIR || !/^\d+\.\d+\.\d+/.test(InstallationVersion))
+    if (process.env.REDCODE_WHITEBOARD_DIR || !/^\d+\.\d+\.\d+/.test(source.version))
       throw new Design.Error({
         code: "unavailable",
         message:
           "Build the whiteboard bundle with bun run build:whiteboard in packages/redcode, or set REDCODE_WHITEBOARD_DIR",
       })
-    const response = await fetch(
-      `https://github.com/reddb-io/redcode/releases/download/v${InstallationVersion}/redcode-whiteboard-${InstallationVersion}.tar.gz`,
-    )
-    if (!response.ok)
-      throw new Design.Error({ code: "unavailable", message: "Whiteboard bundle is unavailable for this release" })
-    const temporary = `${release}-${crypto.randomUUID()}`
-    await mkdir(temporary, { recursive: true })
-    try {
-      await Bun.write(`${temporary}.tar.gz`, response)
-      const child = Bun.spawn(["tar", "-xzf", `${temporary}.tar.gz`, "-C", temporary], {
-        stdout: "ignore",
-        stderr: "pipe",
-      })
-      if ((await child.exited) !== 0) throw new Error("Unable to unpack whiteboard bundle")
-      await mkdir(path.dirname(release), { recursive: true })
-      await rename(temporary, release)
-    } finally {
-      await rm(temporary, { recursive: true, force: true })
-      await rm(`${temporary}.tar.gz`, { force: true })
-    }
+    await install(release)
   }
   const fonts = Object.fromEntries(
     await Promise.all(
