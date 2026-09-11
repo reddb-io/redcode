@@ -46,8 +46,9 @@ export interface Interface {
   /** Active → paused with a reason; anything else untouched. */
   readonly pause: (sessionID: SessionID, reason: string) => Effect.Effect<SessionGoal.Goal | undefined>
   readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<void>
-  /** The end of a turn: gates, judge, decision, record. */
+  /** Before a provider attempt: false when the budget has no turn left; spends nothing. */
   readonly beginTurn: (sessionID: SessionID) => Effect.Effect<boolean>
+  /** The end of a turn: gates, judge, decision, record. The one place a turn is spent. */
   readonly afterTurn: (input: AfterTurnInput) => Effect.Effect<AfterTurnResult | undefined>
 }
 
@@ -87,15 +88,15 @@ const layer = Layer.effect(
       yield* sessions.setMetadata({ sessionID, metadata: SessionGoal.toMetadata(session.metadata, stamped) })
     })
 
+    // Admission only: the budget is spent in `afterTurn`, once per judged turn. This runs before
+    // every provider attempt — each tool round-trip, each retry — and used to charge each one, so
+    // a turn that read fifteen files spent fifteen turns of a budget that said twenty.
     const beginTurn = Effect.fn("GoalRuntime.beginTurn")(function* (sessionID: SessionID) {
       const goal = yield* get(sessionID)
       if (!goal || goal.status !== "active") return true
-      if (goal.turns.used >= goal.turns.max) {
-        yield* set(sessionID, SessionGoal.paused(goal, SessionGoal.budgetReason(goal), Date.now()))
-        return false
-      }
-      yield* set(sessionID, { ...goal, turns: { ...goal.turns, used: goal.turns.used + 1 }, updated: Date.now() })
-      return true
+      if (goal.turns.used < goal.turns.max) return true
+      yield* set(sessionID, SessionGoal.paused(goal, SessionGoal.budgetReason(goal), Date.now()))
+      return false
     })
 
     const claim = Effect.fn("GoalRuntime.claim")(function* (sessionID: SessionID, evidence: string) {
@@ -168,7 +169,7 @@ const layer = Layer.effect(
         ...(goal.contract.boundaries ? [`Boundaries: ${goal.contract.boundaries}`] : []),
         ...(goal.contract.stop_when ? [`Stop when: ${goal.contract.stop_when}`] : []),
         ...(goal.gates.length ? [`Gates (all passed this turn): ${goal.gates.join(" && ")}`] : []),
-        `Turn ${goal.turns.used} of ${goal.turns.max}.`,
+        `Turn ${goal.turns.used + 1} of ${goal.turns.max}.`,
         "</goal>",
         "",
         goal.claimed
@@ -240,8 +241,13 @@ const layer = Layer.effect(
         const gateResults = yield* gates(goal)
         const failed = gateResults.find((g) => !g.ok)
         const messages = yield* sessions.messages({ sessionID }).pipe(Effect.orDie)
+        // Only this turn's tool results count: anything since the goal was set would let one
+        // `read` on the first turn stand as evidence for every later claim. The turn starts where
+        // the last one was spent, not at the last user message: a turn parked on background work
+        // spends nothing, and the report that re-enters it is the same turn.
+        const since = goal.judged ?? goal.created
         const observed = messages
-          .filter((message) => message.info.time.created >= goal.created)
+          .filter((message) => message.info.time.created >= since)
           .flatMap((message) =>
             message.parts.flatMap((part) =>
               part.type === "tool" && part.tool !== "goal_complete" && part.state.status === "completed"
@@ -249,12 +255,7 @@ const layer = Layer.effect(
                 : [],
             ),
           )
-        const evidence = [
-          ...gateResults.map((check) => `${check.command}: ${check.ok ? "PASS" : "FAIL"}\n${check.output}`),
-          ...observed,
-        ]
-          .join("\n\n")
-          .slice(-24000)
+        const evidence = SessionGoal.evidence(gateResults, observed)
         const verdict = failed
           ? undefined
           : yield* judge({
@@ -271,36 +272,59 @@ const layer = Layer.effect(
                 ),
               ),
             )
-        const decision = SessionGoal.decide({
-          goal,
-          ...(verdict ? { verdict } : {}),
-          gates: gateResults,
-          waiting: running.length > 0,
-          evidence: evidence.length > 0,
+        // The decision is taken on a record and written back only if that record is still the
+        // one stored: `/goal-budget` and `/goal-resume` write the same record from another fiber.
+        const record = Effect.fn("GoalRuntime.record")(function* (base: SessionGoal.Goal) {
+          const decision = SessionGoal.decide({
+            goal: base,
+            ...(verdict ? { verdict } : {}),
+            gates: gateResults,
+            waiting: running.length > 0,
+            evidence: evidence.length > 0,
+          })
+          // A failed gate is not a judge failure: the judge was never asked.
+          const next = SessionGoal.apply(
+            base,
+            decision,
+            failed ? { verdict: "continue", reason: decision.reason } : verdict,
+            now,
+          )
+          const current = yield* get(sessionID)
+          if (!current || current.id !== base.id || current.updated !== base.updated || current.status !== "active")
+            return undefined
+          yield* set(sessionID, next)
+          yield* guards.record({
+            sessionID,
+            guard: "goal",
+            action: decision.action === "continue" ? "correct" : decision.action === "wait" ? "warn" : "stop",
+            subject: failed ? "gate" : (verdict?.verdict ?? "unreadable"),
+            detail: `${decision.action}: ${decision.reason}`.slice(0, 500),
+          })
+          const text =
+            decision.action === "continue"
+              ? SessionGoal.continuation(next, failed ? { gate: failed } : { reason: decision.reason })
+              : undefined
+          return { action: decision.action, ...(text ? { text } : {}), goal: next }
         })
-        // A failed gate is not a judge failure: the judge was never asked.
-        const next = SessionGoal.apply(
-          goal,
-          decision,
-          failed ? { verdict: "continue", reason: decision.reason } : verdict,
-          now,
-        )
-        const current = yield* get(sessionID)
-        if (!current || current.id !== goal.id || current.updated !== goal.updated || current.status !== "active")
-          return undefined
-        yield* set(sessionID, next)
-        yield* guards.record({
-          sessionID,
-          guard: "goal",
-          action: decision.action === "continue" ? "correct" : decision.action === "wait" ? "warn" : "stop",
-          subject: failed ? "gate" : (verdict?.verdict ?? "unreadable"),
-          detail: `${decision.action}: ${decision.reason}`.slice(0, 500),
+        const first = yield* record(goal)
+        if (first) return first
+        // Lost the race. A goal that is no longer active moved on without us; an active one gets
+        // the decision again on the fresh record, where a raised budget may turn a stop back into
+        // a continue. Losing twice used to end the turn with nothing written and the goal still
+        // active on an idle session; now it is paused with a reason that says so.
+        const fresh = yield* get(sessionID)
+        if (!fresh || fresh.id !== goal.id || fresh.status !== "active") return undefined
+        yield* Effect.logWarning("goal record changed during judgement; deciding again on the fresh record", {
+          "session.id": sessionID,
         })
-        const text =
-          decision.action === "continue"
-            ? SessionGoal.continuation(goal, failed ? { gate: failed } : { reason: decision.reason })
-            : undefined
-        return { action: decision.action, ...(text ? { text } : {}), goal: next }
+        const second = yield* record(fresh)
+        if (second) return second
+        yield* Effect.logWarning("goal record changed twice during judgement; pausing the goal", {
+          "session.id": sessionID,
+        })
+        const paused = yield* pause(sessionID, "the goal record changed while the turn was being judged; nothing was recorded")
+        if (!paused) return undefined
+        return { action: "pause" as const, goal: paused }
       }).pipe(Effect.withSpan("GoalRuntime.afterTurn"))
 
     return Service.of({ get, set, claim, pause, block, beginTurn, afterTurn })

@@ -11,8 +11,8 @@ export function DialogGoalBudget(props: { sessionID: string }) {
   const [busy, setBusy] = createSignal(false)
   return (
     <DialogPrompt
-      title="Total provider attempt budget"
-      placeholder="Positive whole number, including attempts already used"
+      title="Total turn budget"
+      placeholder="Positive whole number, including turns already used"
       busy={busy()}
       onCancel={() => dialog.clear()}
       onConfirm={async (text) => {
@@ -30,7 +30,7 @@ export function DialogGoalBudget(props: { sessionID: string }) {
         toast.show({
           variant: goal ? "success" : "warning",
           message: goal
-            ? `Goal budget: ${goal.turns.used}/${goal.turns.max} attempts used. ${Number(goal.turns.used) >= Number(goal.turns.max) ? "Increase the total above attempts used to continue." : goal.status === "active" ? "Goal is active." : "Use /goal-resume to continue."}`
+            ? `Goal budget: ${goal.turns.used}/${goal.turns.max} turns used. ${Number(goal.turns.used) >= Number(goal.turns.max) ? "Increase the total above turns used to continue." : goal.status === "active" ? "Goal is active." : "Use /goal-resume to continue."}`
             : "Could not update the goal budget.",
           duration: 5000,
         })
