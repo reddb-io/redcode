@@ -115,7 +115,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             // Most tools carry no bound of their own, so one that never returns holds the whole
             // turn with no output and no error — and the turn's watchdog cannot help, because a
             // tool in flight is deliberately counted as work. A timeout here lands in the same
-            // failure branch as any other tool error, so the model reads it and can react.
+            // failure branch as any other tool error, so the model reads it and can react. The
+            // signal the tool sees as `ctx.abort` is the guard's, so expiry also stops the tool
+            // itself rather than only the report of it.
             const deadline = ToolDeadline.deadlineMs({ tool: toolID, configured: toolTimeout })
             // Asked before the call is made: a call whose answer is already known cannot become
             // useful by being made again, and the correction reaches the model as this tool's
@@ -125,21 +127,24 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               yield* publishPost({ error: loop.message }, true).pipe(Effect.ignoreCause)
               return yield* Effect.fail(new Error(loop.message))
             }
-            const call = Effect.promise(() => Promise.resolve(execute(decided.args, options)))
-            const executed = yield* (deadline === undefined
-              ? call
-              : ToolDeadline.guard(call, {
-                  tool: toolID,
-                  ms: deadline,
-                  waitedMs: () => permissionWaitMs(options.toolCallId),
-                  onExpire: input.recordGuard({
-                    sessionID: input.session.id,
-                    guard: "tool_timeout",
-                    action: "stop",
-                    subject: toolID,
-                    detail: ToolDeadline.message({ tool: toolID, ms: deadline }),
-                  }),
-                })
+            const call = (opts: ToolExecutionOptions) =>
+              Effect.promise(() => Promise.resolve(execute(decided.args, opts)))
+            const executed = yield* (
+              deadline === undefined
+                ? call(options)
+                : ToolDeadline.guard((abort) => call({ ...options, abortSignal: abort }), {
+                    tool: toolID,
+                    ms: deadline,
+                    abort: options.abortSignal,
+                    waitedMs: () => permissionWaitMs(options.toolCallId),
+                    onExpire: input.recordGuard({
+                      sessionID: input.session.id,
+                      guard: "tool_timeout",
+                      action: "stop",
+                      subject: toolID,
+                      detail: ToolDeadline.message({ tool: toolID, ms: deadline }),
+                    }),
+                  })
             ).pipe(Effect.exit)
             if (Exit.isFailure(executed)) {
               yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
@@ -304,7 +309,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 servers: resourceServers,
                 ...(parsed.server ? { server: parsed.server } : {}),
                 truncated: truncated.truncated,
-                ...(truncated.truncated && { outputPath: truncated.outputPath }),
+                ...(truncated.truncated && truncated.outputPath ? { outputPath: truncated.outputPath } : {}),
               },
               output: truncated.content,
             }
@@ -382,7 +387,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 servers: resourceServers,
                 ...(parsed.server ? { server: parsed.server } : {}),
                 truncated: truncated.truncated,
-                ...(truncated.truncated && { outputPath: truncated.outputPath }),
+                ...(truncated.truncated && truncated.outputPath ? { outputPath: truncated.outputPath } : {}),
               },
               output: truncated.content,
             }
@@ -453,7 +458,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 contents: formatted.contents,
                 attachments: formatted.attachments.length,
                 truncated: truncated.truncated,
-                ...(truncated.truncated && { outputPath: truncated.outputPath }),
+                ...(truncated.truncated && truncated.outputPath ? { outputPath: truncated.outputPath } : {}),
               },
               output: truncated.content,
               attachments: formatted.attachments.map((attachment) => ({
@@ -554,7 +559,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           const metadata = {
             ...result.metadata,
             truncated: truncated.truncated,
-            ...(truncated.truncated && { outputPath: truncated.outputPath }),
+            ...(truncated.truncated && truncated.outputPath ? { outputPath: truncated.outputPath } : {}),
           }
 
           const output = {

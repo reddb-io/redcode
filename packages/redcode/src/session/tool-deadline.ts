@@ -47,20 +47,31 @@ export const POLL_MS = 250
  * A permission dialog left open all afternoon is not a hung tool, so the clock is checked against
  * elapsed time minus whatever `waitedMs` reports as human deliberation. Written as a race rather
  * than a plain timeout precisely so that subtraction can happen while the call is in flight.
+ *
+ * Losing the race does not reach the tool by itself. It runs as a promise in a root fiber of its
+ * own, and interrupting an `Effect.promise` leaves the promise running: the model would be told
+ * the edit or fetch failed while it carried on and landed later. So the call is handed a signal
+ * of its own, joined to the turn's so a stopped turn still stops it, and the expiry path aborts
+ * that signal. A tool that honours `ctx.abort` then actually ends.
  */
 export const guard = <A, E, R>(
-  self: Effect.Effect<A, E, R>,
-  input: { tool: string; ms: number; waitedMs: () => number; onExpire?: Effect.Effect<void> },
-): Effect.Effect<A, E, R> =>
-  Effect.raceFirst(
-    self,
+  self: (abort: AbortSignal) => Effect.Effect<A, E, R>,
+  input: { tool: string; ms: number; waitedMs: () => number; abort?: AbortSignal; onExpire?: Effect.Effect<void> },
+): Effect.Effect<A, E, R> => {
+  const own = new AbortController()
+  const abort = input.abort ? AbortSignal.any([input.abort, own.signal]) : own.signal
+  return Effect.raceFirst(
+    self(abort),
     Effect.gen(function* () {
       const start = Date.now()
       const step = Duration.millis(Math.max(1, Math.min(input.ms, POLL_MS)))
       while (Date.now() - start - input.waitedMs() < input.ms) yield* Effect.sleep(step)
+      const reason = new Error(message(input))
+      own.abort(reason)
       if (input.onExpire) yield* input.onExpire
-      return yield* Effect.die(new Error(message(input)))
+      return yield* Effect.die(reason)
     }),
   )
+}
 
 export * as ToolDeadline from "./tool-deadline"
