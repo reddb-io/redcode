@@ -29,6 +29,7 @@ import { Image } from "../../src/image/image"
 
 import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
+import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { Session } from "@/session/session"
 import { SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
 import { LLM } from "../../src/session/llm"
@@ -576,6 +577,58 @@ it.instance("loop continues a natural stop while persisted todos are unfinished"
     expect(JSON.stringify((yield* llm.hits)[0]?.body)).toContain("Complete only verified work")
     expect(JSON.stringify((yield* llm.hits)[1]?.body)).toContain("unfinished todo items")
     expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "final" }))
+  }),
+)
+
+it.instance("todo state rides the last user message so a todowrite leaves the system prompt untouched", () =>
+  Effect.gen(function* () {
+    // The task list used to be rendered into the system prompt on every step. A todowrite then
+    // rewrote the prompt's tail and the provider's cached prefix was lost for the request after it.
+    // Three steps: the write, the request after it, and one todo continuation before the cap.
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      agent: { build: { steps: 3 } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "track the work" }],
+    })
+    yield* llm.tool("todowrite", { todos: [{ content: "verify the result", status: "in_progress", priority: "high" }] })
+    yield* llm.text("working")
+    yield* llm.text("final")
+
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(3)
+    const messagesOf = (hit: { body: Record<string, unknown> }) => {
+      const list = hit.body.messages
+      return Array.isArray(list) ? (list as Array<{ role: string; content: unknown }>) : []
+    }
+    const systemOf = (hit: { body: Record<string, unknown> }) =>
+      messagesOf(hit)
+        .filter((message) => message.role === "system")
+        .map((message) => message.content)
+    const before = systemOf(hits[0]!)
+    expect(before.length).toBeGreaterThan(0)
+    // The request after the todowrite sends the same system prompt, byte for byte.
+    expect(systemOf(hits[1]!)).toEqual(before)
+    expect(systemOf(hits[2]!)).toEqual(before)
+    // The static guidance stays in the system prompt; the live state does not.
+    expect(JSON.stringify(before)).toContain("Complete only verified work")
+    expect(JSON.stringify(before)).not.toContain("No tracked tasks yet")
+    // The list itself now travels with the last user message of that request.
+    const lastUser = messagesOf(hits[1]!).findLast((message) => message.role === "user")
+    expect(JSON.stringify(lastUser)).toContain("Current task state from storage: 0/1 completed")
+    expect(JSON.stringify(lastUser)).toContain("verify the result")
+    expect(JSON.stringify(messagesOf(hits[0]!).findLast((message) => message.role === "user"))).toContain(
+      "No tracked tasks yet",
+    )
   }),
 )
 
@@ -2160,7 +2213,14 @@ it.instance("prompt submitted during an active run is included in the next LLM i
     expect(inputs).toHaveLength(2)
     const messages = inputs.at(-1)?.messages
     if (!Array.isArray(messages)) throw new Error("expected LLM messages")
-    expect(messages.at(-1)).toEqual({ role: "user", content: "second" })
+    // The prompt text leads; the task-state reminder rides behind it instead of in the system prompt.
+    expect(messages.at(-1)).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "second" },
+        { type: "text", text: SessionTodo.context([]) },
+      ],
+    })
   }),
 )
 

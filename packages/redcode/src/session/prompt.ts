@@ -1178,6 +1178,9 @@ const layer = Layer.effect(
         let structured: unknown
         let step = 0
         let todoContinuations = 0
+        // The task list as reviewed since the last provider turn. A continuation reads it to decide
+        // whether to keep going; the step it starts reuses that read instead of reviewing again.
+        let reviewed: ReadonlyArray<Todo.Info> | undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // A goal never restarts itself: if the process that drove it is not this one, it is
         // paused here, and only /goal resume brings it back.
@@ -1382,7 +1385,8 @@ const layer = Layer.effect(
               break
             }
             if (!lastAssistant.error && todoContinuations < 7) {
-              const reminder = SessionTodo.reminder(yield* todos.review(sessionID).pipe(Effect.orDie))
+              const tracked = yield* todos.review(sessionID).pipe(Effect.orDie)
+              const reminder = SessionTodo.reminder(tracked)
               const agent = reminder ? yield* agents.get(lastUser.agent) : undefined
               const disabled = agent
                 ? Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
@@ -1407,6 +1411,7 @@ const layer = Layer.effect(
                   text: reminder,
                   synthetic: true,
                 })
+                reviewed = tracked
                 todoContinuations++
                 continue
               }
@@ -1540,7 +1545,16 @@ const layer = Layer.effect(
           // The agent's own bound and the turn's wall ask for the same thing at the end: stop
           // using tools and say what happened.
           const isLastStep = step >= maxSteps || budget.type === "wrap-up"
-          msgs = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
+          const todowrite = !Permission.disabled(
+            ["todowrite"],
+            Permission.merge(agent.permission, session.permission ?? []),
+          ).has("todowrite")
+          // One review per step. The list rides the last user message rather than the system
+          // prompt: state that changes on every todowrite would otherwise invalidate the
+          // provider's cached prefix for the whole request that follows.
+          const tracked = todowrite ? (reviewed ?? (yield* todos.review(sessionID).pipe(Effect.orDie))) : undefined
+          reviewed = undefined
+          msgs = yield* SessionReminders.apply({ messages: msgs, agent, session, todos: tracked }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
@@ -1652,11 +1666,7 @@ const layer = Layer.effect(
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
-              ...(!Permission.disabled(["todowrite"], Permission.merge(agent.permission, session.permission ?? [])).has(
-                "todowrite",
-              )
-                ? [SessionTodo.guidance, SessionTodo.context(yield* todos.review(sessionID).pipe(Effect.orDie))]
-                : []),
+              ...(todowrite ? [SessionTodo.guidance] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
