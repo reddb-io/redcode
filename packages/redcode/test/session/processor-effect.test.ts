@@ -516,6 +516,127 @@ it.live("session.processor effect tests reset reasoning state across retries", (
   ),
 )
 
+it.live("session.processor effect tests discard the failed attempt's parts before retrying", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        // The first attempt gets a text chunk out before the provider fails midstream with a
+        // retryable error, so the message already holds a step-start and a text part.
+        yield* llm.push(
+          raw({
+            chunks: [
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { content: "one" } }] },
+              { error: { type: "server_error", code: "server_error", message: "xxx" } },
+            ],
+          }),
+          reply().text("two").stop(),
+        )
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "retry text")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "retry text" }],
+          tools: {},
+        })
+
+        const parts = yield* MessageV2.parts(msg.id)
+        const text = parts.filter((part): part is SessionV1.TextPart => part.type === "text")
+        const starts = parts.filter((part) => part.type === "step-start")
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(2)
+        expect(text.map((part) => part.text)).toStrictEqual(["two"])
+        expect(starts).toHaveLength(1)
+        expect(handle.message.error).toBeUndefined()
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests do not retry after a tool call already ran", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        let executed = 0
+
+        // A gateway that drops its upstream after the tool call: the edit happened, then the
+        // stream ends with a retryable finish reason instead of a result.
+        yield* llm.push(reply().tool("lookup", { query: "weather" }).finish("network_error"))
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "tool then drop")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "tool then drop" }],
+          tools: {
+            lookup: tool({
+              description: "Look up information",
+              inputSchema: z.object({ query: z.string() }),
+              execute: async (input) => {
+                executed += 1
+                return { title: "Weather lookup", output: `result:${input.query}`, metadata: {} }
+              },
+            }),
+          },
+        })
+
+        const parts = yield* MessageV2.parts(msg.id)
+        const calls = parts.filter((part): part is SessionV1.ToolPart => part.type === "tool")
+
+        expect(value).toBe("stop")
+        expect(yield* llm.calls).toBe(1)
+        expect(executed).toBe(1)
+        expect(calls).toHaveLength(1)
+        expect(calls[0]?.state.status).toBe("completed")
+        expect(handle.message.error).toBeDefined()
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
 it.live("session.processor effect tests do not retry unknown json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
