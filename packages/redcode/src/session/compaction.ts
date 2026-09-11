@@ -28,6 +28,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { buildPrompt, forkPreparation, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionCompactionEvent } from "@reddb-io/redcode-schema/session-compaction-event"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { SessionContextEpoch } from "@reddb-io/redcode-core/session/context-epoch"
@@ -395,9 +396,16 @@ const layer = Layer.effect(
       const previousSummary = prior.at(-1)?.summary
       const retained = history.filter((_, index) => !hidden.has(index))
       const selected = yield* select({ messages: retained, cfg, model })
+      // The latest real request may sit before an earlier checkpoint, outside `history`, so it is
+      // read from the whole session — minus admitted prompts still pending, which the loop keeps
+      // model-invisible and which must not reach the summary or the retained request either.
+      const pending = new Set<string>(
+        (yield* SessionInput.listPending(database.db, input.sessionID)).map((row) => row.id),
+      )
       const latestRequest = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).findLast(
         (message) =>
           message.info.role === "user" &&
+          !pending.has(message.info.id) &&
           message.info.id <= input.messages.at(-1)!.info.id &&
           !message.parts.some((part) => part.type === "compaction") &&
           !isReplay(message.parts),

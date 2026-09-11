@@ -14,6 +14,7 @@ export type Event =
   | EventSessionDeleted
   | EventMessageUpdated
   | EventMessageRemoved
+  | EventMessagePromoted
   | EventMessagePartUpdated
   | EventMessagePartRemoved
   | EventSessionNextGuardTripped
@@ -813,6 +814,14 @@ export type GlobalEvent = {
     | {
         id: string
         type: "message.removed"
+        properties: {
+          sessionID: string
+          messageID: string
+        }
+      }
+    | {
+        id: string
+        type: "message.promoted"
         properties: {
           sessionID: string
           messageID: string
@@ -1636,6 +1645,7 @@ export type GlobalEvent = {
     | SyncEventSessionDeleted
     | SyncEventMessageUpdated
     | SyncEventMessageRemoved
+    | SyncEventMessagePromoted
     | SyncEventMessagePartUpdated
     | SyncEventMessagePartRemoved
     | SyncEventSessionNextAgentSwitched
@@ -2687,6 +2697,7 @@ export type SessionGoal = {
     used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     max: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
+  judged?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   last?: {
     verdict: "done" | "continue" | "blocked" | "wait"
     reason: string
@@ -3033,6 +3044,7 @@ export type V2Event =
   | SessionDeleted
   | MessageUpdated
   | MessageRemoved
+  | MessagePromoted
   | MessagePartUpdated
   | MessagePartRemoved
   | SessionNextGuardTripped
@@ -3445,6 +3457,21 @@ export type SyncEventMessageRemoved = {
   id: string
   syncEvent: {
     type: "message.removed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      messageID: string
+    }
+  }
+}
+
+export type SyncEventMessagePromoted = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "message.promoted.1"
     id: string
     seq: number
     aggregateID: string
@@ -5715,6 +5742,24 @@ export type MessageRemoved = {
   }
 }
 
+export type MessagePromoted = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "message.promoted"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    messageID: string
+  }
+}
+
 export type MessagePartUpdated = {
   id: string
   metadata?: {
@@ -6780,6 +6825,15 @@ export type EventMessageUpdated = {
 export type EventMessageRemoved = {
   id: string
   type: "message.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
+export type EventMessagePromoted = {
+  id: string
+  type: "message.promoted"
   properties: {
     sessionID: string
     messageID: string
@@ -10407,6 +10461,7 @@ export type SessionPromptData = {
     }
     agent?: string
     noReply?: boolean
+    delivery?: "steer" | "queue"
     tools?: {
       [key: string]: boolean
     }
@@ -10970,6 +11025,7 @@ export type SessionPromptAsyncData = {
     }
     agent?: string
     noReply?: boolean
+    delivery?: "steer" | "queue"
     tools?: {
       [key: string]: boolean
     }

@@ -266,9 +266,10 @@ const layer = Layer.effectDiscard(
         const id = event.data.info.id
         const sessionID = event.data.info.sessionID
         const data = messageData(event.data.info)
-        // `time_created` only moves forward: a V1 Prompt Promotion re-stamps the stored user
-        // message so it takes its place in history at promotion time, not at admission, while a
-        // stale or reordered publication can never move a message earlier than it already is.
+        // `data` is overwritten by every publication, but `time_created` only moves forward: a V1
+        // Prompt Promotion re-stamps the stored user message so it takes its place in history at
+        // promotion time, not at admission, while a stale or reordered publication can never move
+        // a message earlier than it already is.
         yield* db
           .insert(MessageTable)
           .values({ id, session_id: sessionID, time_created, data })

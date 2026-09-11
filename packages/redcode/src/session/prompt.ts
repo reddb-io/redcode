@@ -31,13 +31,6 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
 
-/**
- * How long an admitted prompt may exist without its V1 message rows before the loop treats it as
- * abandoned by a process that died. Admission and the rows are published back to back by the same
- * fiber, so anything older than this never got its rows.
- */
-const ORPHAN_GRACE_MILLIS = 10_000
-
 /** Surfaces where a person is present to read a warning and stop the turn themselves. */
 function attendedClient(client: string) {
   return client === "tui" || client === "app" || client === "desktop"
@@ -1182,11 +1175,15 @@ const layer = Layer.effect(
     // to now (history is ordered by creation time, and an admitted prompt is older than everything
     // the drain wrote since), and then `message.promoted` records the promotion as a durable event
     // the projector stamps on the inbox row — explicit, so a retried `message.updated` promotes
-    // nothing, and replayed, so a synced or stolen session comes back with its rows stamped. A row
-    // whose message never made it to the database (the process died between admission and the
-    // message rows) can never be promoted and would otherwise head the queue forever; once it is
-    // older than the grace window it is discarded through `message.removed`, which drops pending
-    // rows. Up to `limit` rows promote.
+    // nothing, and replayed, so a synced or stolen session comes back with its rows stamped.
+    //
+    // A row without a stored user message is skipped, never removed: admission and the message
+    // rows are separate publications a boundary can fall between, and on a replica rebuilding its
+    // projection every row is "old" while its `message.updated` may still be on its way, so any
+    // removal here would be a durable mistake. Skipping is enough — the queue takes the first
+    // promotable row past it — and nothing has to re-wake the drain for a skipped row: the request
+    // that admitted it calls `loop` once its rows are written, and that call is the wake. Only
+    // `message.removed` (revert) drops a pending row. Up to `limit` rows promote.
     const promote = Effect.fnUntraced(function* (
       sessionID: SessionID,
       rows: ReadonlyArray<SessionInput.Admitted>,
@@ -1202,14 +1199,10 @@ const layer = Layer.effect(
         )
         const now = yield* DateTime.now
         if (Option.isNone(message)) {
-          // Admission and the message rows are separate publications a boundary can fall between;
-          // a row younger than the grace window is still on its way, not abandoned.
-          if (DateTime.toEpochMillis(now) - DateTime.toEpochMillis(row.timeCreated) < ORPHAN_GRACE_MILLIS) continue
-          yield* Effect.logWarning("discarding an admitted prompt with no stored user message", {
+          yield* Effect.logDebug("admitted prompt has no stored user message yet; skipped", {
             "session.id": sessionID,
             messageID,
           })
-          yield* sessions.removeMessage({ sessionID, messageID })
           continue
         }
         if (message.value.info.role !== "user") {
