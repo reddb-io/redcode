@@ -138,11 +138,18 @@ describe("DatabaseMigration", () => {
         expect(
           yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_context_epoch'`),
         ).toEqual({ name: "session_context_epoch" })
+        // The simplified epoch row keeps no agent or revision; the replacement request re-added
+        // later for the V1 runtime (20260911200056_context_epoch_replacement) is present.
         expect(
           yield* db.get(
-            sql`SELECT name FROM pragma_table_info('session_context_epoch') WHERE name IN ('agent', 'replacement_seq', 'revision')`,
+            sql`SELECT name FROM pragma_table_info('session_context_epoch') WHERE name IN ('agent', 'revision')`,
           ),
         ).toBeUndefined()
+        expect(
+          yield* db.get(
+            sql`SELECT name, "notnull" FROM pragma_table_info('session_context_epoch') WHERE name = 'replacement_seq'`,
+          ),
+        ).toEqual({ name: "replacement_seq", notnull: 0 })
         expect(yield* db.get(sql`SELECT count(*) as count FROM migration`)).toEqual({ count: migrations.length })
         expect(
           yield* db.all(
