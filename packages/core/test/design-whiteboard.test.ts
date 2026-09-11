@@ -66,8 +66,10 @@ async function release(input: {
   await Bun.write(path.join(bundle, "whiteboard.js"), input.script)
   await Bun.write(path.join(bundle, "whiteboard.css"), "body{margin:0}")
   await Bun.write(path.join(bundle, "fonts", "Probe.woff2"), new Uint8Array([0x77, 0x4f, 0x46, 0x32]))
-  const tar = Bun.spawn(["tar", "-czf", path.join(root, "bundle.tar.gz"), "-C", bundle, "."], { stderr: "pipe" })
-  expect(await tar.exited).toBe(0)
+  // Relative names only: GNU tar on Windows treats `C:\...` as a remote archive and exits with 2.
+  const tar = Bun.spawn(["tar", "-czf", "bundle.tar.gz", "-C", "bundle", "."], { cwd: root, stderr: "pipe" })
+  const [code, stderr] = await Promise.all([tar.exited, new Response(tar.stderr).text()])
+  if (code !== 0) throw new Error(`tar exited with ${code}: ${stderr}`)
   const archive = input.archive ?? new Uint8Array(await Bun.file(path.join(root, "bundle.tar.gz")).arrayBuffer())
   const digest = new Bun.CryptoHasher("sha256").update(archive).digest("hex")
   const asset = `redcode-whiteboard-${version}.tar.gz`

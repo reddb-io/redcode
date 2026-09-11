@@ -86,7 +86,10 @@ async function install(release: string) {
   await mkdir(temporary, { recursive: true })
   try {
     await Bun.write(`${temporary}.tar.gz`, archive)
-    const child = Bun.spawn(["tar", "-xzf", `${temporary}.tar.gz`, "-C", temporary], {
+    // GNU tar (first on PATH under Git for Windows) reads a drive letter such as `C:` as a remote
+    // host, so tar only ever sees names relative to the release directory.
+    const child = Bun.spawn(["tar", "-xzf", `${path.basename(temporary)}.tar.gz`, "-C", path.basename(temporary)], {
+      cwd: path.dirname(temporary),
       stdout: "ignore",
       stderr: "pipe",
     })
