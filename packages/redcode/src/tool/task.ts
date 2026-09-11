@@ -103,13 +103,26 @@ export const TaskTool = Tool.define(
       }
 
       const parent = yield* sessions.get(ctx.sessionID)
-      let current = parent
-      let depth = 0
+      const resumed = params.task_id
+        ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+        : undefined
+      // The chain that gets prompted is the one that is checked: a resumed task_id must descend from
+      // the caller (a sibling or a session from another project never has it as an ancestor), and
+      // the depth cap applies to the session the prompt lands in, not to the caller.
+      let current = resumed ?? parent
+      let depth = resumed ? 0 : 1
+      let descendant = resumed === undefined
       while (current.parentID) {
         depth++
+        if (current.parentID === ctx.sessionID) descendant = true
         current = yield* sessions.get(current.parentID)
       }
-      if (depth >= (cfg.subagent_depth ?? 1)) {
+      if (!descendant) {
+        return yield* Effect.fail(
+          new Error(`task_id ${params.task_id} must reference a subagent session started from this session`),
+        )
+      }
+      if (depth > (cfg.subagent_depth ?? 1)) {
         return yield* Effect.fail(
           new Error(
             `Subagent depth limit reached (${cfg.subagent_depth ?? 1}). Increase "subagent_depth" to allow nested subagents.`,
@@ -134,9 +147,6 @@ export const TaskTool = Tool.define(
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
 
-      const session = params.task_id
-        ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
-        : undefined
       const childPermission = deriveSubagentSessionPermission({
         parentSessionPermission: parent.permission ?? [],
         subagent: next,
@@ -155,7 +165,7 @@ export const TaskTool = Tool.define(
         })) ?? []),
       ]
       const nextSession =
-        session ??
+        resumed ??
         (yield* sessions.create({
           parentID: ctx.sessionID,
           title: params.description + ` (@${next.name} subagent)`,
@@ -298,7 +308,11 @@ export const TaskTool = Tool.define(
       if (runInBackground) {
         const max = cfg.experimental?.background_subagents_max ?? 4
         const running = (yield* background.list()).filter(
-          (job) => job.type === id && job.status === "running" && job.metadata?.["parentSessionId"] === ctx.sessionID,
+          (job) =>
+            job.type === id &&
+            job.status === "running" &&
+            job.metadata?.["background"] === true &&
+            job.metadata?.["parentSessionId"] === ctx.sessionID,
         )
         if (running.length >= max) {
           return yield* Effect.fail(

@@ -390,6 +390,90 @@ describe("tool.task", () => {
     }),
   )
 
+  it.instance("execute refuses a task_id that did not descend from the calling session", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const { chat: other } = yield* seed("Other project")
+      const cousin = yield* sessions.create({ parentID: other.id, title: "Other child" })
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      let prompted = 0
+      const promptOps = stubOps({ onPrompt: () => prompted++ })
+
+      const exec = (task_id: string) =>
+        def
+          .execute(
+            {
+              description: "inspect bug",
+              prompt: "look into the cache key path",
+              subagent_type: "general",
+              task_id,
+            },
+            {
+              sessionID: chat.id,
+              messageID: assistant.id,
+              agent: "build",
+              abort: new AbortController().signal,
+              extra: { promptOps },
+              messages: [],
+              metadata: () => Effect.void,
+              ask: () => Effect.void,
+            },
+          )
+          .pipe(Effect.exit)
+
+      for (const foreign of [other.id, cousin.id, chat.id]) {
+        const exit = yield* exec(foreign)
+        expect(Exit.isFailure(exit)).toBe(true)
+        const message = Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : ""
+        expect(message).toContain("must reference a subagent session started from this session")
+      }
+      expect(prompted).toBe(0)
+      expect(yield* sessions.children(chat.id)).toHaveLength(0)
+      expect(yield* sessions.children(other.id)).toHaveLength(1)
+    }),
+  )
+
+  it.instance("execute caps depth on the resumed chain, not on the caller", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const child = yield* sessions.create({ parentID: chat.id, title: "child" })
+      const grandchild = yield* sessions.create({ parentID: child.id, title: "grandchild" })
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      let prompted = 0
+      const promptOps = stubOps({ onPrompt: () => prompted++ })
+
+      const exit = yield* def
+        .execute(
+          {
+            description: "inspect bug",
+            prompt: "look into the cache key path",
+            subagent_type: "general",
+            task_id: grandchild.id,
+          },
+          {
+            sessionID: chat.id,
+            messageID: assistant.id,
+            agent: "build",
+            abort: new AbortController().signal,
+            extra: { promptOps },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      const message = Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : ""
+      expect(message).toContain("Subagent depth limit reached (1)")
+      expect(prompted).toBe(0)
+    }),
+  )
+
   it.instance("prevents subagents from launching subagents by default", () =>
     Effect.gen(function* () {
       const sessions = yield* Session.Service
@@ -1070,6 +1154,53 @@ describe("tool.task", () => {
           .pipe(Effect.forkChild)
         yield* Deferred.succeed(done, undefined)
         expect((yield* Fiber.join(inline)).output).toContain("background done")
+      }),
+    { config: { experimental: { background_subagents_max: 1 } } },
+  )
+
+  it.instance(
+    "a running foreground task does not count against the background cap",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const tool = yield* TaskTool
+        const def = yield* tool.init()
+        const ready = yield* Deferred.make<void>()
+        const done = yield* Deferred.make<void>()
+        const promptOps: TaskPromptOps = {
+          cancel: () => Effect.void,
+          resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
+          prompt: (input) =>
+            input.sessionID === chat.id
+              ? Effect.succeed(reply(input, "injected"))
+              : Deferred.succeed(ready, undefined).pipe(
+                  Effect.andThen(Deferred.await(done)),
+                  Effect.as(reply(input, "subagent done")),
+                ),
+        }
+        const ctx = {
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        }
+        const inline = yield* def
+          .execute({ description: "one", prompt: "first job", subagent_type: "general" }, ctx)
+          .pipe(Effect.forkChild)
+        yield* Deferred.await(ready)
+
+        const launched = yield* def.execute(
+          { description: "two", prompt: "second job", subagent_type: "general", background: true },
+          ctx,
+        )
+        expect(launched.metadata.background).toBe(true)
+
+        yield* Deferred.succeed(done, undefined)
+        expect((yield* Fiber.join(inline)).output).toContain("subagent done")
       }),
     { config: { experimental: { background_subagents_max: 1 } } },
   )
