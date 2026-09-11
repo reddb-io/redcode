@@ -1,5 +1,92 @@
 # opencode
 
+## 0.26.2
+
+### Patch Changes
+
+- 15a6d1f: Answer prompts that land while the previous turn is finishing
+
+  A prompt that arrived after the running turn's last look at history but before
+  the session went idle was persisted and never answered. The session runner now
+  records work that arrives during a run and starts one more run before going
+  idle, so the trailing user message gets its reply. A cancel still drops that
+  pending work instead of restarting it.
+
+- ea93d05: Count goal turns as judged turns and never leave a goal active on an idle session
+
+  A goal turn is now one full agent turn ending in a judge cycle. Tool round-trips
+  inside a turn and provider retries under it no longer spend the budget, so the
+  default of 20 turns is no longer exhausted by a turn that reads fifteen files; a
+  turn parked on background work spends nothing until its report is judged. The
+  goal block, the continuation, the judge prompt, the budget dialog and the toasts
+  all say "turns".
+
+  A `/goal-budget` or `/goal-resume` landing while the judge decides is no longer
+  lost: the decision is taken again on the fresh record, and a second loss pauses
+  the goal with a reason. The step ceiling and the stall watchdog now pause the
+  goal with their reason instead of leaving it active with nothing recorded.
+  Evidence for the judge is scoped to the current turn, and gate results survive
+  the cut ahead of tool output.
+
+- bfff62d: Keep a Design param field you are editing from being overwritten by the prototype
+
+  The Params panel re-synchronises its fields whenever the prototype reports its
+  state. That report arrives asynchronously, so a value typed right after a click
+  in the preview could be replaced before it was applied and the edit was lost.
+  A focused field now keeps the typed value until its change event fires.
+
+- 0bc8b09: Discard a failed provider attempt's parts before retrying and never retry past an executed tool
+
+  When a stream failed with a retryable error, the parts it had already persisted (text,
+  reasoning, step-start, tool parts) stayed in the assistant message and the retried stream
+  appended duplicates next to them. The processor now removes what the failed attempt wrote
+  as soon as a retry is decided, so the message holds one copy of the answer. A failure after a
+  tool call already ran is no longer retried at all: replaying the request would execute the
+  tool a second time, so the error is surfaced as a normal terminal failure instead.
+
+- 3c3ee73: Refuse task_id values that do not descend from the calling session
+
+  The task tool now walks the resumed session's parent chain and requires the
+  calling session to appear in it, so a model can no longer prompt into a sibling
+  or another project's session by passing its id. The subagent depth cap is
+  computed on the chain that is actually prompted, and the background cap counts
+  only background jobs instead of every running task.
+
+- b300c3a: Keep todo state out of the system prompt so todowrite preserves the provider cache
+
+  The session loop rendered the live task list into the system prompt on every
+  step, so each `todowrite` rewrote the prompt and invalidated the provider's
+  cached prefix for the request that followed. The task state now rides the last
+  user message as a reminder, the way the goal already does, with the same text;
+  the system prompt keeps only the static todo guidance. The list is reviewed
+  once per step instead of twice.
+
+- 657200b: Stop the tool a deadline fires on, and keep truncated output when its file cannot be written
+
+  A tool that outlives its deadline is now handed an aborted `ctx.abort`, joined
+  to the turn's own signal, so tools that honour it actually end instead of
+  running on after the model was told they failed. Truncated tool output whose
+  full text cannot be retained (unwritable directory, full disk) is now returned
+  as a bounded, explicitly lossy result without an output path, and the storage
+  failure is logged, instead of failing a tool call that had already succeeded.
+
+- 10c6faa: Verify the whiteboard bundle against the release SHA256SUMS before unpacking it
+
+  The Design whiteboard tarball fetched from GitHub Releases is now checked
+  against the `SHA256SUMS` published with the same release: a missing entry or
+  a mismatched digest refuses to unpack and surfaces as a clear `unavailable`
+  error instead of installing whatever came down the wire. Both downloads carry
+  a 60 s timeout, a failing `tar` reports its exit code and stderr, and an
+  archive without `whiteboard.js` is rejected before it can be renamed into the
+  cached release directory.
+
+- 5778f0f: Unpack the whiteboard bundle on Windows when GNU tar is first on PATH
+
+  GNU tar reads a drive letter such as `C:` as a remote host, so extracting the
+  bundle by absolute path failed with exit code 2 on machines where Git's tar
+  shadows the system one. The installer now runs tar inside the release
+  directory with relative names only.
+
 ## 0.26.1
 
 ### Patch Changes
