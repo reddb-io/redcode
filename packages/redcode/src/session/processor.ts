@@ -105,6 +105,16 @@ interface ProcessorContext extends Input {
   reasoningMap: Record<string, SessionV1.ReasoningPart>
   /** When the provider last sent anything. A stalled turn is one where this stops moving. */
   lastEventAt: number
+  /**
+   * Parts written by the provider attempt in flight. A retried stream replays from the start, so
+   * whatever the failed attempt persisted has to go before the next attempt appends its own.
+   */
+  attemptParts: PartID[]
+  /**
+   * Whether a tool in this attempt reached running. A retry replays the same request, so the model
+   * would ask for that tool again and its side effect would happen twice.
+   */
+  attemptExecuted: boolean
 }
 
 type StreamEvent = LLMEvent
@@ -147,8 +157,17 @@ const layer = Layer.effect(
         currentText: undefined,
         reasoningMap: {},
         lastEventAt: Date.now(),
+        attemptParts: [],
+        attemptExecuted: false,
       }
       let aborted = false
+
+      /** A fresh part id, remembered so the attempt's output can be discarded if it is retried. */
+      const nextPartID = () => {
+        const id = PartID.ascending()
+        ctx.attemptParts.push(id)
+        return id
+      }
 
       const parse = (e: unknown) =>
         MessageV2.fromError(e, {
@@ -185,6 +204,7 @@ const layer = Layer.effect(
         const match = yield* readToolCall(toolCallID)
         if (!match) return undefined
         const part = yield* session.updatePart(update(match.part))
+        if (part.state.status !== "pending") ctx.attemptExecuted = true
         ctx.toolcalls[toolCallID] = {
           ...match.call,
           partID: part.id,
@@ -271,7 +291,7 @@ const layer = Layer.effect(
           return { call: ctx.toolcalls[input.id], part }
         }
         const part = yield* session.updatePart({
-          id: PartID.ascending(),
+          id: nextPartID(),
           messageID: ctx.assistantMessage.id,
           sessionID: ctx.assistantMessage.sessionID,
           type: "tool",
@@ -322,7 +342,7 @@ const layer = Layer.effect(
           case "reasoning-start":
             if (value.id in ctx.reasoningMap) return
             ctx.reasoningMap[value.id] = {
-              id: PartID.ascending(),
+              id: nextPartID(),
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
               type: "reasoning",
@@ -443,7 +463,7 @@ const layer = Layer.effect(
           case "step-start":
             if (!ctx.snapshot) ctx.snapshot = yield* snapshot.track()
             yield* session.updatePart({
-              id: PartID.ascending(),
+              id: nextPartID(),
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.sessionID,
               snapshot: ctx.snapshot,
@@ -477,7 +497,7 @@ const layer = Layer.effect(
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
             yield* session.updatePart({
-              id: PartID.ascending(),
+              id: nextPartID(),
               reason: value.reason,
               snapshot: completedSnapshot,
               messageID: ctx.assistantMessage.id,
@@ -491,7 +511,7 @@ const layer = Layer.effect(
               const patch = yield* snapshot.patch(ctx.snapshot)
               if (patch.files.length) {
                 yield* session.updatePart({
-                  id: PartID.ascending(),
+                  id: nextPartID(),
                   messageID: ctx.assistantMessage.id,
                   sessionID: ctx.sessionID,
                   type: "patch",
@@ -518,7 +538,7 @@ const layer = Layer.effect(
 
           case "text-start":
             ctx.currentText = {
-              id: PartID.ascending(),
+              id: nextPartID(),
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
               type: "text",
@@ -643,6 +663,21 @@ const layer = Layer.effect(
         })
       })
 
+      const discardAttempt = Effect.fn("SessionProcessor.discardAttempt")(function* () {
+        // Only pending tool calls can be here: one that started running makes the failure terminal.
+        yield* Effect.forEach(Object.keys(ctx.toolcalls), settleToolCall)
+        yield* Effect.forEach(ctx.attemptParts, (partID) =>
+          session.removePart({
+            sessionID: ctx.assistantMessage.sessionID,
+            messageID: ctx.assistantMessage.id,
+            partID,
+          }),
+        )
+        ctx.attemptParts = []
+        ctx.currentText = undefined
+        ctx.reasoningMap = {}
+      })
+
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
         yield* Effect.logError("process", {
           "session.id": input.sessionID,
@@ -693,6 +728,8 @@ const layer = Layer.effect(
             }
             ctx.currentText = undefined
             ctx.reasoningMap = {}
+            ctx.attemptParts = []
+            ctx.attemptExecuted = false
             ctx.phase = undefined
             ctx.phaseTool = undefined
             yield* phase("preparing")
@@ -718,21 +755,32 @@ const layer = Layer.effect(
             ),
             Effect.catchCauseIf(
               (cause) => !Cause.hasInterruptsOnly(cause),
-              (cause) => Effect.fail(Cause.squash(cause)),
+              (cause) => {
+                const error = Cause.squash(cause)
+                // A tool already ran in this attempt: retrying would replay the request and run it
+                // again, so the failure ends the turn instead and the model sees what happened.
+                if (ctx.attemptExecuted) return halt(error)
+                return Effect.fail(error)
+              },
             ),
             Effect.retry(
               SessionRetry.policy({
                 provider: input.model.providerID,
                 parse,
-                set: (info) => {
-                  return status.set(ctx.sessionID, {
-                    type: "retry",
-                    attempt: info.attempt,
-                    message: info.message,
-                    action: info.action,
-                    next: info.next,
-                  })
-                },
+                // Decided to retry: the failed attempt's output goes now, before the wait, so the
+                // message never shows it twice.
+                set: (info) =>
+                  discardAttempt().pipe(
+                    Effect.andThen(
+                      status.set(ctx.sessionID, {
+                        type: "retry",
+                        attempt: info.attempt,
+                        message: info.message,
+                        action: info.action,
+                        next: info.next,
+                      }),
+                    ),
+                  ),
               }),
             ),
             Effect.catch(halt),
