@@ -25,23 +25,18 @@ runs:
         path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
         key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
 
-    # Browser archives do not contain Linux system libraries, even on a cache hit.
+    # Browser archives do not contain Linux system libraries, even on a cache hit. The runner image
+    # already ships what Chromium needs, so this is one bounded, best-effort attempt: when the apt
+    # mirrors are unreachable it costs three minutes and a warning, not a failed job or a retry
+    # loop that ate a quarter of an hour. A browser that truly cannot launch fails its own tests.
     - name: Install Playwright system dependencies
       if: runner.os == 'Linux'
       shell: bash
       working-directory: packages/app
-      # A stalled download must fail the attempt so the retry runs instead of hanging the job. The
-      # runner image already ships the libraries Chromium needs, so an apt mirror outage degrades to
-      # a warning here; a browser that truly cannot launch still fails its own tests loudly.
       run: |
-        for attempt in 1 2 3; do
-          if timeout 300 bunx playwright install-deps chromium; then exit 0; fi
-          echo "playwright install-deps failed (attempt $attempt)"
-          # A killed attempt can leave apt-get holding the dpkg lock; clear it before retrying.
-          sudo pkill -x apt-get || true
-          sudo pkill -x dpkg || true
-          sleep $((attempt * 15))
-        done
+        if timeout 180 bunx playwright install-deps chromium; then exit 0; fi
+        sudo pkill -x apt-get || true
+        sudo pkill -x dpkg || true
         echo "::warning::playwright install-deps failed; relying on the runner image's preinstalled libraries"
 
     - name: Install Playwright browsers
