@@ -1145,23 +1145,24 @@ const layer = Layer.effect(
       }
 
       // Admitted before the message rows exist, so the message is never model-visible ahead of
-      // its Prompt Promotion: the loop republishes it at the next safe boundary, and the projector
-      // stamps the inbox row with that durable sequence. The row is a sidecar next to the V1
-      // message rather than a V2 user row (which the `Prompted` projector would create).
+      // its Prompt Promotion: the loop republishes it at the next safe boundary with a commit
+      // hook that stamps the inbox row. The row is a sidecar next to the V1 message rather than
+      // a V2 user row (which the `Prompted` projector would create).
       const files = parts.flatMap((part) =>
         part.type === "file"
           ? [{ uri: part.url, mime: part.mime, ...(part.filename ? { name: part.filename } : {}) }]
           : [],
       )
       const mentions = parts.flatMap((part) => (part.type === "agent" ? [{ name: part.name }] : []))
+      const prompt = Prompt.fromUserMessage({
+        text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+        ...(files.length > 0 ? { files } : {}),
+        ...(mentions.length > 0 ? { agents: mentions } : {}),
+      })
       yield* SessionInput.admit(db, events, {
         id: SessionMessage.ID.make(info.id),
         sessionID: input.sessionID,
-        prompt: Prompt.fromUserMessage({
-          text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
-          ...(files.length > 0 ? { files } : {}),
-          ...(mentions.length > 0 ? { agents: mentions } : {}),
-        }),
+        prompt,
         delivery: input.delivery ?? "steer",
       })
       yield* sessions.updateMessage(info)
@@ -1171,25 +1172,51 @@ const layer = Layer.effect(
     }, Effect.scoped)
 
     // Prompt Promotion for a V1 session: publishing the stored user message again is the durable
-    // event that makes it model-visible. A row whose message is gone stays pending and is skipped.
-    const promote = Effect.fn("SessionPrompt.promote")(function* (
+    // event that makes it model-visible, and the commit hook stamps the inbox row atomically with
+    // it — an explicit act, so a retried publication of the same message promotes nothing. A row
+    // whose message never made it to the database (the process died between admission and the
+    // message rows) can never be promoted and would otherwise head the queue forever; it is
+    // discarded through `message.removed`, which drops pending rows. Up to `limit` rows promote.
+    const promote = Effect.fnUntraced(function* (
       sessionID: SessionID,
       rows: ReadonlyArray<SessionInput.Admitted>,
+      limit = rows.length,
     ) {
       let promoted = 0
       for (const row of rows) {
-        const message = yield* MessageV2.get({ sessionID, messageID: MessageID.make(row.id) }).pipe(
+        if (promoted >= limit) break
+        const messageID = MessageID.make(row.id)
+        const message = yield* MessageV2.get({ sessionID, messageID }).pipe(
           Effect.provideService(Database.Service, database),
           Effect.option,
         )
         if (Option.isNone(message) || message.value.info.role !== "user") {
-          yield* Effect.logWarning("admitted prompt has no stored user message", {
+          yield* Effect.logWarning("discarding an admitted prompt with no stored user message", {
             "session.id": sessionID,
-            messageID: row.id,
+            messageID,
           })
+          yield* sessions.removeMessage({ sessionID, messageID })
           continue
         }
-        yield* sessions.updateMessage(message.value.info)
+        // History is ordered by creation time, so the message takes its place now: an admitted
+        // prompt is older than everything the drain wrote since, and would otherwise sit behind
+        // the assistant that is supposed to answer it.
+        const info: SessionV1.User = {
+          ...message.value.info,
+          time: { ...message.value.info.time, created: DateTime.toEpochMillis(yield* DateTime.now) },
+        }
+        yield* events.publish(
+          SessionV1.Event.MessageUpdated,
+          { sessionID, info },
+          {
+            commit: (seq) =>
+              SessionInput.projectLegacyPromotion(db, {
+                id: row.id,
+                sessionID,
+                promotedSeq: seq,
+              }).pipe(Effect.asVoid),
+          },
+        )
         promoted++
       }
       return promoted
@@ -1201,7 +1228,7 @@ const layer = Layer.effect(
       const steers = yield* SessionInput.listPending(db, sessionID, { delivery: "steer" })
       if ((yield* promote(sessionID, steers)) > 0) return true
       const queued = yield* SessionInput.listPending(db, sessionID, { delivery: "queue" })
-      return (yield* promote(sessionID, queued.slice(0, 1))) > 0
+      return (yield* promote(sessionID, queued, 1)) > 0
     })
 
     const prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
@@ -1242,6 +1269,17 @@ const layer = Layer.effect(
         // The task list as reviewed since the last provider turn. A continuation reads it to decide
         // whether to keep going; the step it starts reuses that read instead of reviewing again.
         let reviewed: ReadonlyArray<Todo.Info> | undefined
+        // Whether this drain has sent anything to the provider. A drain that finds the previous
+        // turn already finished (a wake, or a queued prompt on an idle session) has no turn of its
+        // own to review or judge; it only promotes what is waiting.
+        let ran = false
+        // A promoted prompt starts a fresh turn: the provider-turn allowance is reset once for the
+        // batch, and with it the continuation budget that rides on it.
+        const restart = () => {
+          step = 0
+          todoContinuations = 0
+          reviewed = undefined
+        }
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // A goal never restarts itself: if the process that drove it is not this one, it is
         // paused here, and only /goal resume brings it back.
@@ -1377,7 +1415,7 @@ const layer = Layer.effect(
           // waits for the next boundary rather than landing in the middle of a provider turn.
           const cutoff = yield* EventV2.latestSequence(db, sessionID)
           const steers = yield* SessionInput.listPending(db, sessionID, { delivery: "steer", cutoffSeq: cutoff })
-          if ((yield* promote(sessionID, steers)) > 0) step = 0
+          if ((yield* promote(sessionID, steers)) > 0) restart()
 
           yield* status.set(sessionID, { type: "busy", phase: "preparing", step: step + 1, since: Date.now() })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
@@ -1407,6 +1445,11 @@ const layer = Layer.effect(
               sessionID,
               error: new NamedError.Unknown({ message: budget.message }).toObject(),
             })
+            // The stopped turn is over; a prompt waiting for idle starts its own turn here.
+            if (yield* promoteAtIdle(sessionID)) {
+              restart()
+              continue
+            }
             break
           }
           if (budget.type === "wrap-up") {
@@ -1435,7 +1478,7 @@ const layer = Layer.effect(
 
           if (!lastUser) {
             if (yield* promoteAtIdle(sessionID)) {
-              step = 0
+              restart()
               continue
             }
             yield* Effect.logWarning("no visible user message and nothing admitted", { "session.id": sessionID })
@@ -1469,6 +1512,20 @@ const layer = Layer.effect(
                 tool: orphan.tool,
                 callID: orphan.callID,
               })
+              if (yield* promoteAtIdle(sessionID)) {
+                restart()
+                continue
+              }
+              break
+            }
+            // Nothing was sent to the provider by this drain: the finished turn it found was
+            // reviewed and judged by the drain that ran it. Only promotion is left to do.
+            if (!ran) {
+              if (yield* promoteAtIdle(sessionID)) {
+                restart()
+                continue
+              }
+              yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
               break
             }
             if (!lastAssistant.error && todoContinuations < 7) {
@@ -1521,6 +1578,10 @@ const layer = Layer.effect(
               const blocked = SessionTodo.blocker(yield* todos.get(sessionID))
               if (blocked) {
                 yield* goals.block(sessionID, blocked)
+                if (yield* promoteAtIdle(sessionID)) {
+                  restart()
+                  continue
+                }
                 break
               }
               const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
@@ -1559,7 +1620,7 @@ const layer = Layer.effect(
               }
             }
             if (yield* promoteAtIdle(sessionID)) {
-              step = 0
+              restart()
               continue
             }
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
@@ -1682,6 +1743,7 @@ const layer = Layer.effect(
             yield* sessions.updateMessage(msg)
           })
 
+          ran = true
           const handle = yield* processor
             .create({
               assistantMessage: msg,

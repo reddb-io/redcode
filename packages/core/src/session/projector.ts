@@ -266,29 +266,14 @@ const layer = Layer.effectDiscard(
         const id = event.data.info.id
         const sessionID = event.data.info.sessionID
         const data = messageData(event.data.info)
-        // A user message published again after it was stored is a V1 Prompt Promotion: the
-        // first publication only creates the (still model-invisible) row next to its inbox entry.
-        const stored =
-          event.data.info.role === "user"
-            ? yield* db
-                .select({ id: MessageTable.id })
-                .from(MessageTable)
-                .where(eq(MessageTable.id, id))
-                .get()
-                .pipe(Effect.orDie)
-            : undefined
+        // `time_created` follows the message: a V1 Prompt Promotion re-stamps the stored user
+        // message so it takes its place in history at promotion time, not at admission.
         yield* db
           .insert(MessageTable)
           .values({ id, session_id: sessionID, time_created, data })
-          .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
+          .onConflictDoUpdate({ target: MessageTable.id, set: { data, time_created } })
           .run()
           .pipe(Effect.orDie)
-        if (stored !== undefined && event.durable !== undefined)
-          yield* SessionInput.projectLegacyPromotion(db, {
-            id: SessionMessage.ID.make(id),
-            sessionID,
-            promotedSeq: event.durable.seq,
-          })
         // The usage sidecar mirrors the same row, minus the content: it is the file usage reporters read, and it
         // outlives whatever stores the session itself (Usage.record swallows its own failures).
         const mirrored = Usage.recordMessage({ id, sessionID, timeCreated: time_created, info: event.data.info })
