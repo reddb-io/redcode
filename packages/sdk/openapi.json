@@ -2965,6 +2965,96 @@
         ]
       }
     },
+    "/mcp/reload": {
+      "post": {
+        "tags": ["mcp"],
+        "operationId": "mcp.reload",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP server status after reload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/MCPStatus"
+                  },
+                  "description": "MCP server status after reload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "McpReloadError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/McpReloadError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reread MCP configuration and reconnect one server, or all configured servers when name is omitted, without disposing the session. Manual enable/disable choices are preserved.",
+        "summary": "Reload MCP servers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.mcp.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp": {
       "get": {
         "tags": ["mcp"],
@@ -6311,6 +6401,10 @@
                   "noReply": {
                     "type": "boolean"
                   },
+                  "delivery": {
+                    "type": "string",
+                    "enum": ["steer", "queue"]
+                  },
                   "tools": {
                     "type": "object",
                     "additionalProperties": {
@@ -7247,6 +7341,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
                   "text": {
                     "type": "string",
                     "description": "The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable)."
@@ -7715,6 +7812,10 @@
                   },
                   "noReply": {
                     "type": "boolean"
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": ["steer", "queue"]
                   },
                   "tools": {
                     "type": "object",
@@ -16660,6 +16761,391 @@
         ]
       }
     },
+    "/api/session/{sessionID}/goal": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "server.session.session.goal",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SessionGoalInfo"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.session.session.goal({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["sessions"],
+        "operationId": "server.session.session.goalSet",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SessionGoalInfo"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionGoalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.session.session.goalSet({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/goal/control": {
+      "post": {
+        "tags": ["sessions"],
+        "operationId": "server.session.session.goalControl",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SessionGoalInfo"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionGoalControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.session.session.goalControl({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/plan": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "server.session.session.plans",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SessionPlanInfo"
+                      }
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.session.session.plans({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/session/{sessionID}/agent": {
       "post": {
         "tags": ["sessions"],
@@ -17874,6 +18360,1991 @@
           {
             "lang": "js",
             "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.v2.session.message({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/review": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.review",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.review({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/whiteboard": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.whiteboard",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.whiteboard({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.list",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesignInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.create",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.get",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.get({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.update",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/revision": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.revisions",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesignRevision"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.revisions({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.publish",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignRevision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.publish({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/revision/{revisionID}/preview": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.preview",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "revisionID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.preview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/restore": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.restore",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignRevision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  }
+                },
+                "required": ["revision"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.restore({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/reopen": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.reopen",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.reopen({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/refresh": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.refresh",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/feedback": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.feedback",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignFeedback"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.feedback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/approve": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.approve",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["plan", "revision"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignApprove"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.approve({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/approval/{revisionID}": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.approval",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "revisionID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignApproval"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.approval({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/asset": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.assets",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesignAsset"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.assets({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.importAsset",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Asset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignAsset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignImportAsset"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.importAsset({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/job": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.jobs",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesignJob"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.jobs({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.render",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignRender"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.render({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/job/{jobID}/cancel": {
+      "post": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.cancel",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "jobID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/job/{jobID}/file": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.download",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "jobID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.download({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/design/{designID}/asset/{assetID}/file": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.assetFile",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "assetID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.assetFile({\n  ...\n})"
           }
         ]
       }
@@ -22273,6 +24744,9 @@
             "$ref": "#/components/schemas/EventMessageRemoved"
           },
           {
+            "$ref": "#/components/schemas/EventMessagePromoted"
+          },
+          {
             "$ref": "#/components/schemas/EventMessagePartUpdated"
           },
           {
@@ -24240,13 +26714,51 @@
       "Todo": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "reason": {
+            "type": "string"
+          },
+          "legacyStatus": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TodoSource"
+          },
+          "criterion": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/TodoEvidence"
+          },
+          "scopeChange": {
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              },
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["messageID", "quote"],
+            "additionalProperties": false
+          },
           "content": {
             "type": "string",
             "description": "Brief description of the task"
           },
           "status": {
             "type": "string",
-            "description": "Current status of the task: pending, in_progress, completed, cancelled"
+            "description": "pending, in_progress, blocked, completed, cancelled; historical snapshots may contain other values"
           },
           "priority": {
             "type": "string",
@@ -24629,6 +27141,36 @@
                   "type": {
                     "type": "string",
                     "enum": ["message.removed"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^msg"
+                      }
+                    },
+                    "required": ["sessionID", "messageID"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["message.promoted"]
                   },
                   "properties": {
                     "type": "object",
@@ -27483,6 +30025,9 @@
                 "$ref": "#/components/schemas/SyncEventMessageRemoved"
               },
               {
+                "$ref": "#/components/schemas/SyncEventMessagePromoted"
+              },
+              {
                 "$ref": "#/components/schemas/SyncEventMessagePartUpdated"
               },
               {
@@ -28032,6 +30577,32 @@
       "McpLocalConfig": {
         "type": "object",
         "properties": {
+          "media": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "operations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["generate", "edit", "reference"]
+                  }
+                },
+                "formats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "transparency": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["operations", "formats", "transparency"],
+              "additionalProperties": false
+            }
+          },
           "type": {
             "type": "string",
             "enum": ["local"],
@@ -28090,6 +30661,32 @@
       "McpRemoteConfig": {
         "type": "object",
         "properties": {
+          "media": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "operations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["generate", "edit", "reference"]
+                  }
+                },
+                "formats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "transparency": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["operations", "formats", "transparency"],
+              "additionalProperties": false
+            }
+          },
           "type": {
             "type": "string",
             "enum": ["remote"],
@@ -28558,6 +31155,9 @@
               "auto": {
                 "type": "boolean"
               },
+              "background": {
+                "type": "boolean"
+              },
               "prune": {
                 "type": "boolean"
               },
@@ -28687,6 +31287,90 @@
                   "gate_timeout": {
                     "type": "integer",
                     "exclusiveMinimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "design": {
+                "type": "object",
+                "properties": {
+                  "attachments": {
+                    "type": "object",
+                    "properties": {
+                      "max_bytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "max_per_prompt": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "max_prompt_bytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "ttl_ms": {
+                        "anyOf": [
+                          {
+                            "type": "boolean",
+                            "enum": [false]
+                          },
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        ],
+                        "description": "How long an unreferenced image is kept (default: 7 days; false keeps them)"
+                      },
+                      "max_disk_mb": {
+                        "anyOf": [
+                          {
+                            "type": "boolean",
+                            "enum": [false]
+                          },
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        ],
+                        "description": "Disk the attachment store may use, in MiB (default: 512; false removes the cap)"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "viewports": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["mobile", "compact", "desktop"]
+                    }
+                  },
+                  "gate": {
+                    "type": "boolean"
+                  },
+                  "gate_timeout": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "export": {
+                    "type": "object",
+                    "properties": {
+                      "max_asset_bytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "max_bundle_bytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -29881,14 +32565,14 @@
           }
         ]
       },
-      "McpUnsupportedOAuthError": {
+      "McpReloadError": {
         "type": "object",
         "properties": {
-          "error": {
+          "message": {
             "type": "string"
           }
         },
-        "required": ["error"],
+        "required": ["message"],
         "additionalProperties": false
       },
       "McpServerNotFoundError": {
@@ -29906,6 +32590,16 @@
           }
         },
         "required": ["_tag", "name", "message"],
+        "additionalProperties": false
+      },
+      "McpUnsupportedOAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"],
         "additionalProperties": false
       },
       "Project": {
@@ -30307,6 +33001,10 @@
             },
             "additionalProperties": false
           },
+          "stopAfter": {
+            "type": "string",
+            "enum": ["design", "plan", "build"]
+          },
           "gates": {
             "type": "array",
             "items": {
@@ -30372,6 +33070,29 @@
             },
             "required": ["used", "max"],
             "additionalProperties": false
+          },
+          "judged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
           },
           "last": {
             "type": "object",
@@ -31022,6 +33743,23 @@
         "required": ["_tag", "sessionID", "message"],
         "additionalProperties": false
       },
+      "ConflictError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["ConflictError"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
       "PromptInput": {
         "type": "object",
         "properties": {
@@ -31042,23 +33780,6 @@
           }
         },
         "required": ["text"],
-        "additionalProperties": false
-      },
-      "ConflictError": {
-        "type": "object",
-        "properties": {
-          "_tag": {
-            "type": "string",
-            "enum": ["ConflictError"]
-          },
-          "message": {
-            "type": "string"
-          },
-          "resource": {
-            "type": "string"
-          }
-        },
-        "required": ["_tag", "message"],
         "additionalProperties": false
       },
       "ServiceUnavailableError": {
@@ -31225,6 +33946,24 @@
           "$ref": "#/components/schemas/SessionDurableEvent"
         },
         "contentMediaType": "application/json"
+      },
+      "DesignError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["Design.Error"]
+          },
+          "code": {
+            "type": "string",
+            "enum": ["not-found", "conflict", "invalid", "unavailable"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "code", "message"],
+        "additionalProperties": false
       },
       "SessionMessagesResponse": {
         "type": "object",
@@ -31490,6 +34229,9 @@
           },
           {
             "$ref": "#/components/schemas/MessageRemoved"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePromoted"
           },
           {
             "$ref": "#/components/schemas/MessagePartUpdated"
@@ -32302,6 +35044,55 @@
           "type": "string"
         }
       },
+      "TodoSource": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["request", "plan"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "created": {
+            "type": "number"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "id", "quote", "created"],
+        "additionalProperties": false
+      },
+      "TodoEvidence": {
+        "type": "object",
+        "properties": {
+          "callID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tool": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "observed": {
+            "type": "number"
+          }
+        },
+        "required": ["callID", "messageID", "explanation", "tool", "hash", "observed"],
+        "additionalProperties": false
+      },
       "ProjectVcs": {
         "type": "string",
         "enum": ["git"]
@@ -32591,6 +35382,57 @@
               "type": {
                 "type": "string",
                 "enum": ["message.removed.1"]
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^evt_"
+              },
+              "seq": {
+                "type": "number"
+              },
+              "aggregateID": {
+                "type": "string"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg"
+                  }
+                },
+                "required": ["sessionID", "messageID"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "id", "seq", "aggregateID", "data"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "id", "syncEvent"],
+        "additionalProperties": false
+      },
+      "SyncEventMessagePromoted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["sync"]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "syncEvent": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["message.promoted.1"]
               },
               "id": {
                 "type": "string",
@@ -34781,6 +37623,279 @@
           }
         },
         "required": ["id", "projectID", "cost", "tokens", "time", "title", "location"],
+        "additionalProperties": false
+      },
+      "SessionGoalEvidence": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["path", "hash", "bytes"],
+        "additionalProperties": false
+      },
+      "SessionGoalInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "objective": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stopAfter": {
+            "type": "string",
+            "enum": ["design", "plan", "build"]
+          },
+          "executePlan": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "waiting", "paused", "blocked", "done"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "turns": {
+            "type": "object",
+            "properties": {
+              "used": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": ["used", "max"],
+            "additionalProperties": false
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reviews": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionGoalEvidence"
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["NaN"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["Infinity"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-Infinity"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["Infinity", "-Infinity", "NaN"]
+                    }
+                  ]
+                },
+                "output": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                }
+              },
+              "required": ["command", "exitCode", "output", "at"],
+              "additionalProperties": false
+            }
+          },
+          "created": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "revision",
+          "objective",
+          "criteria",
+          "gates",
+          "stopAfter",
+          "executePlan",
+          "status",
+          "reason",
+          "turns",
+          "tokens",
+          "reviews",
+          "evidence",
+          "checks",
+          "created",
+          "updated"
+        ],
+        "additionalProperties": false
+      },
+      "SessionGoalInput": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxTurns": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 1000
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "stopAfter": {
+            "type": "string",
+            "enum": ["design", "plan", "build"]
+          },
+          "executePlan": {
+            "type": "boolean"
+          }
+        },
+        "required": ["objective"],
+        "additionalProperties": false
+      },
+      "SessionGoalControl": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["pause", "resume", "drop", "budget"]
+          },
+          "maxTurns": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 1000
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "TodoPlanTask": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["key", "content", "criterion", "quote"],
+        "additionalProperties": false
+      },
+      "SessionPlanInfo": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoPlanTask"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "approved"]
+          },
+          "created": {
+            "type": "number"
+          }
+        },
+        "required": ["sessionID", "revision", "path", "content", "status", "created"],
         "additionalProperties": false
       },
       "PromptInputFileAttachment": {
@@ -37204,6 +40319,1248 @@
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
+      "DesignParamField": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": ["text"]
+              },
+              "default": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name", "type", "default"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": ["boolean"]
+              },
+              "default": {
+                "type": "boolean"
+              }
+            },
+            "required": ["id", "name", "type", "default"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": ["number"]
+              },
+              "default": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "required": ["id", "name", "type", "default"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": ["select"]
+              },
+              "default": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id", "name", "type", "default", "options"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DesignParamComponent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selector": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignParamField"
+            },
+            "maxItems": 32
+          }
+        },
+        "required": ["id", "name", "selector", "fields"],
+        "additionalProperties": false
+      },
+      "DesignParamValues": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        }
+      },
+      "DesignParamPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/DesignParamValues"
+          }
+        },
+        "required": ["id", "name", "values"],
+        "additionalProperties": false
+      },
+      "DesignBrief": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string"
+          },
+          "audience": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "string"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["objective", "audience", "content", "constraints", "references"],
+        "additionalProperties": false
+      },
+      "DesignDecision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "feedback": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "text"],
+        "additionalProperties": false
+      },
+      "DesignScenario": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "$ref": "#/components/schemas/DesignParamValues"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["loading", "empty", "error", "populated", "edge"]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "selector": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["click", "fill", "press"]
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["selector", "action"],
+              "additionalProperties": false
+            }
+          },
+          "notApplicable": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name", "selector", "state", "actions"],
+        "additionalProperties": false
+      },
+      "DesignInfo": {
+        "type": "object",
+        "properties": {
+          "controls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignParamComponent"
+            },
+            "maxItems": 32
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignParamPreset"
+            },
+            "maxItems": 100
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "name": {
+            "type": "string"
+          },
+          "journey": {
+            "type": "string",
+            "enum": ["new", "existing"]
+          },
+          "engine": {
+            "type": "string",
+            "enum": ["html", "react", "solid"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["screen", "flow", "comparison", "deck"]
+          },
+          "root": {
+            "type": "string"
+          },
+          "application": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/DesignBrief"
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignDecision"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignScenario"
+            }
+          },
+          "designSystem": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                },
+                "observed": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["NaN"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["Infinity"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-Infinity"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["Infinity", "-Infinity", "NaN"]
+                    }
+                  ]
+                },
+                "authoritative": {
+                  "type": "boolean"
+                },
+                "excerpt": {
+                  "type": "string"
+                }
+              },
+              "required": ["file", "hash", "observed", "authoritative", "excerpt"],
+              "additionalProperties": false
+            }
+          },
+          "tweaks": {
+            "type": "object",
+            "patternProperties": {
+              "^--[a-zA-Z][a-zA-Z0-9-]*$": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "pattern": "^[^;{}<>]*$"
+                  }
+                ]
+              }
+            }
+          },
+          "revision": {
+            "type": "string"
+          },
+          "approvedRevision": {
+            "type": "string"
+          },
+          "ended": {
+            "type": "boolean"
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "name",
+          "journey",
+          "engine",
+          "kind",
+          "root",
+          "application",
+          "entry",
+          "brief",
+          "decisions",
+          "questions",
+          "scenarios",
+          "designSystem",
+          "sources",
+          "tweaks",
+          "revision",
+          "approvedRevision",
+          "ended",
+          "updated"
+        ],
+        "additionalProperties": false
+      },
+      "DesignCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "journey": {
+            "type": "string",
+            "enum": ["new", "existing"]
+          },
+          "engine": {
+            "type": "string",
+            "enum": ["html", "react", "solid"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["screen", "flow", "comparison", "deck"]
+          },
+          "application": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "journey", "engine", "kind"],
+        "additionalProperties": false
+      },
+      "DesignUpdate": {
+        "type": "object",
+        "properties": {
+          "controls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignParamComponent"
+            },
+            "maxItems": 32
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignParamPreset"
+            },
+            "maxItems": 100
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "brief": {
+            "$ref": "#/components/schemas/DesignBrief"
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignDecision"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignScenario"
+            }
+          },
+          "designSystem": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "tweaks": {
+            "type": "object",
+            "patternProperties": {
+              "^--[a-zA-Z][a-zA-Z0-9-]*$": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "pattern": "^[^;{}<>]*$"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DesignRevision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "designID": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "parent": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "document": {
+            "$ref": "#/components/schemas/DesignInfo"
+          }
+        },
+        "required": ["id", "designID", "parent", "name", "created", "files", "document"],
+        "additionalProperties": false
+      },
+      "DesignParamContext": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "$ref": "#/components/schemas/DesignParamValues"
+          },
+          "preset": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          }
+        },
+        "required": ["values"],
+        "additionalProperties": false
+      },
+      "DesignFeedback": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "$ref": "#/components/schemas/DesignParamContext"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^msg_"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/components/schemas/DesignParamContext"
+                }
+              },
+              "required": ["target", "text"],
+              "additionalProperties": false
+            }
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "snapshot": {
+            "type": "string"
+          },
+          "whiteboards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "type": "string"
+                },
+                "scene": {}
+              },
+              "required": ["target", "scene"],
+              "additionalProperties": false
+            }
+          },
+          "delivery": {
+            "type": "string",
+            "enum": ["steer", "queue"]
+          },
+          "end": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "revision", "text", "items", "assets", "snapshot", "delivery", "end"],
+        "additionalProperties": false
+      },
+      "DesignReceipt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^msg_"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "admitted"]
+          }
+        },
+        "required": ["id", "status"],
+        "additionalProperties": false
+      },
+      "DesignVariant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "DesignApprove": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "$ref": "#/components/schemas/DesignVariant"
+          }
+        },
+        "required": ["revision"],
+        "additionalProperties": false
+      },
+      "DesignAsset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "designID": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "hash": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["id", "designID", "name", "mime", "bytes", "hash", "source", "parent", "created"],
+        "additionalProperties": false
+      },
+      "DesignAuditCheck": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "review"]
+          },
+          "selector": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "variant": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          }
+        },
+        "required": ["rule", "severity", "selector", "evidence", "fix", "width"],
+        "additionalProperties": false
+      },
+      "DesignAuditCapture": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "variant": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "fullPage": {
+            "type": "boolean"
+          }
+        },
+        "required": ["file", "width", "fullPage"],
+        "additionalProperties": false
+      },
+      "DesignAudit": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "widths": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "enum": ["NaN"]
+                },
+                {
+                  "type": "string",
+                  "enum": ["Infinity"]
+                },
+                {
+                  "type": "string",
+                  "enum": ["-Infinity"]
+                },
+                {
+                  "type": "string",
+                  "enum": ["Infinity", "-Infinity", "NaN"]
+                }
+              ]
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignAuditCheck"
+            }
+          },
+          "captures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignAuditCapture"
+            }
+          }
+        },
+        "required": ["revision", "findings", "scenarios", "widths"],
+        "additionalProperties": false
+      },
+      "DesignApproval": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [0, 1]
+          },
+          "approvedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "variant": {
+            "$ref": "#/components/schemas/DesignVariant"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/DesignRevision"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignAsset"
+            }
+          },
+          "feedback": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignFeedback"
+            }
+          },
+          "audits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                },
+                "audit": {
+                  "$ref": "#/components/schemas/DesignAudit"
+                }
+              },
+              "required": ["id", "result", "audit"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["version", "approvedAt", "variant", "revision", "assets", "feedback", "audits"],
+        "additionalProperties": false
+      },
+      "DesignImportAsset": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mime": {
+            "type": "string",
+            "enum": ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/gif"]
+          },
+          "data": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "mime", "data", "source"],
+        "additionalProperties": false
+      },
+      "DesignRender": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["html", "gif", "audit", "compare"]
+          },
+          "implementation": {
+            "type": "string"
+          },
+          "candidate": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "fps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 1024
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": -1
+          },
+          "background": {
+            "type": "string"
+          },
+          "transparent": {
+            "type": "boolean"
+          }
+        },
+        "required": ["revision", "format"],
+        "additionalProperties": false
+      },
+      "DesignJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "designID": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "input": {
+            "$ref": "#/components/schemas/DesignRender"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "started": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "finished": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "audit": {
+            "$ref": "#/components/schemas/DesignAudit"
+          }
+        },
+        "required": ["id", "designID", "input", "status", "progress", "result", "error", "created"],
+        "additionalProperties": false
+      },
       "ModelApi": {
         "anyOf": [
           {
@@ -38548,6 +42905,58 @@
           "type": {
             "type": "string",
             "enum": ["message.removed"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg"
+              }
+            },
+            "required": ["sessionID", "messageID"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "MessagePromoted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["message.promoted"]
           },
           "durable": {
             "type": "object",
@@ -41580,6 +45989,36 @@
         "required": ["id", "type", "properties"],
         "additionalProperties": false
       },
+      "EventMessagePromoted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["message.promoted"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg"
+              }
+            },
+            "required": ["sessionID", "messageID"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
       "EventMessagePartUpdated": {
         "type": "object",
         "properties": {
@@ -44457,6 +48896,10 @@
     {
       "name": "sessions",
       "description": "Experimental session routes."
+    },
+    {
+      "name": "Design",
+      "description": "Design documents, immutable revisions, review, assets and local exports."
     },
     {
       "name": "messages",

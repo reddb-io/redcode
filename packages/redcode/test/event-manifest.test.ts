@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
+import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { EventManifest as SchemaEventManifest } from "@reddb-io/redcode-schema/event-manifest"
 import { Todo } from "@/session/todo"
 import { EventManifest } from "@/event-manifest"
@@ -9,7 +10,8 @@ describe("public event manifest", () => {
     expect(EventManifest.Definitions).toBe(SchemaEventManifest.Definitions)
     expect(EventManifest.Latest).toBe(SchemaEventManifest.Latest)
     expect(EventManifest.Durable).toBe(SchemaEventManifest.Durable)
-    expect(EventManifest.Latest.size).toBe(90)
+    expect(EventManifest.Latest.size).toBe(SchemaEventManifest.Definitions.length)
+    expect(EventManifest.Latest.get("message.promoted")).toBe(SessionV1.Event.MessagePromoted)
     expect(EventManifest.Latest.get("session.next.step.ended")).toBe(SessionEvent.Step.Ended)
     expect(EventManifest.Latest.get("todo.updated")).toBe(Todo.Event.Updated)
     expect(EventManifest.Latest.has("ide.installed")).toBe(false)

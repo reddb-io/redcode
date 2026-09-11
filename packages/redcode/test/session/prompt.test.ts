@@ -1703,7 +1703,7 @@ it.instance("a retried publication of a pending message promotes nothing and sta
   }),
 )
 
-it.instance("an orphan queue head is discarded and the next queued prompt is promoted", () =>
+it.instance("an orphan queue head is skipped and the next queued prompt is promoted", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
     const { db } = yield* Database.Service
@@ -1713,7 +1713,8 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
     const chat = yield* sessions.create({ title: "Orphan" })
 
     // Admission committed, then the process died before the message rows were written — long
-    // enough ago that this is not a row whose rows are still on their way.
+    // ago: age is no reason to remove it either, since a replica rebuilding its projection sees
+    // every row as old before the matching message lands.
     const orphan = MessageID.ascending()
     yield* SessionInput.admit(db, events, {
       id: SessionMessage.ID.make(orphan),
@@ -1723,7 +1724,7 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
     })
     yield* db
       .update(SessionInputTable)
-      .set({ time_created: Date.now() - 60_000 })
+      .set({ time_created: Date.now() - 60 * 60_000 })
       .where(eq(SessionInputTable.id, SessionMessage.ID.make(orphan)))
       .run()
       .pipe(Effect.orDie)
@@ -1748,7 +1749,11 @@ it.instance("an orphan queue head is discarded and the next queued prompt is pro
     })
     expect(last.info.role === "assistant" && last.info.parentID).toBe(real)
     expect(JSON.stringify(messagesOf((yield* llm.hits)[1]!))).toContain("real-queued-prompt")
-    expect(yield* admittedRow(orphan)).toBeUndefined()
+    // Skipped, never removed: a replica rebuilding its projection sees every row before its
+    // message lands, so a removal here would be a durable mistake.
+    const stale = yield* admittedRow(orphan)
+    expect(stale).toBeDefined()
+    expect(stale?.promotedSeq).toBeUndefined()
     expect((yield* admittedRow(real))?.promotedSeq).toBeDefined()
   }),
 )
@@ -1771,7 +1776,7 @@ it.instance("a boundary between admission and the message rows leaves the prompt
       prompt: Prompt.fromUserMessage({ text: "rows on their way" }),
       delivery: "steer",
     })
-    // A boundary in between: the row is young, so it is neither promoted nor discarded.
+    // A boundary in between: the row is skipped, neither promoted nor removed.
     const idle = yield* awaitWithTimeout(
       prompt.loop({ sessionID: chat.id }),
       "the idle loop never finished",
@@ -1834,6 +1839,60 @@ it.instance("promotion is recorded as a durable message.promoted event", () =>
     ])
     expect(seen[0]?.seq).toBe(row?.admittedSeq)
     expect(seen[1]?.seq).toBe(row?.promotedSeq)
+  }),
+)
+
+it.instance("compaction neither summarises nor retains a prompt that is still pending", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), compaction: { tail_turns: 0 } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const chat = yield* sessions.create({ title: "Compact with pending" })
+    // A history worth checkpointing: a long first turn and a short latest request, so the summary
+    // plus the retained request is smaller than what it replaces.
+    yield* llm.text("first answer")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text", text: "Earlier findings about the parser. ".repeat(300) }],
+    })
+    yield* llm.text("second answer")
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "hello" }] })
+
+    // Admitted and waiting for idle when a compaction is requested (`/compact`).
+    const queued = MessageID.ascending()
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      messageID: queued,
+      agent: "build",
+      model: ref,
+      noReply: true,
+      delivery: "queue",
+      parts: [{ type: "text", text: "queued-secret-request" }],
+    })
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    yield* llm.text("Summary of hello.")
+    yield* llm.text("queued answered")
+    const last = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "20 seconds")
+
+    // The two turns, the summary request, the queued prompt's turn.
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(4)
+    // The summary request sees only model-visible history …
+    expect(JSON.stringify(hits[2]!.body)).toContain("Earlier findings")
+    expect(JSON.stringify(hits[2]!.body)).not.toContain("queued-secret-request")
+    // … and the checkpoint retains nothing of the pending prompt.
+    const summary = (yield* sessions.messages({ sessionID: chat.id })).find(
+      (message) => message.info.role === "assistant" && message.info.summary,
+    )
+    expect(summary).toBeDefined()
+    expect(JSON.stringify(summary?.parts)).not.toContain("queued-secret-request")
+    // Promoted normally once the compaction-only drain would otherwise go idle.
+    expect(JSON.stringify(messagesOf(hits[3]!))).toContain("queued-secret-request")
+    expect(last.info.role === "assistant" && last.info.parentID).toBe(queued)
+    expect((yield* admittedRow(queued))?.promotedSeq).toBeDefined()
   }),
 )
 

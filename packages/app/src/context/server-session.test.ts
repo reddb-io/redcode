@@ -309,6 +309,21 @@ describe("server session", () => {
     expect(assistants.map((item) => store.data.part[item.id]?.[0]?.type)).toEqual(["text", "text", "text"])
   })
 
+  test("moves a re-stamped message instead of inserting it twice", () => {
+    const store = createServerSession({} as RedcodeClient, {} as SessionApi, {} as MessageApi)
+    store.remember(session("root"))
+    const first = userMessage("message-a", { sessionID: "root", time: { created: 1 } })
+    const second = userMessage("message-b", { sessionID: "root", time: { created: 3 } })
+    store.apply({ type: "message.updated", properties: { info: first } })
+    store.apply({ type: "message.updated", properties: { info: second } })
+
+    // A promoted prompt keeps its id and gets a later time: the time+id key misses.
+    store.apply({ type: "message.updated", properties: { info: { ...first, time: { created: 5 } } } })
+
+    expect(store.data.message.root.map((message) => message.id)).toEqual([second.id, first.id])
+    expect(store.data.message.root.at(-1)?.time.created).toBe(5)
+  })
+
   test("indexes V1 messages for the current timeline projection", async () => {
     const user = userMessage("message-1", { sessionID: "root" })
     const assistant = assistantMessage("message-2", user.id, { sessionID: "root" })
