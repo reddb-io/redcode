@@ -4680,6 +4680,43 @@ it.instance("a restart between a compaction and the next turn still replaces the
   }),
 )
 
+it.instance("a revert during a pending replacement ends the epoch and the next turn starts a fresh one", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const compaction = yield* SessionCompaction.Service
+    const chat = yield* sessions.create({ title: "Epoch" })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "one" }] })
+    yield* llm.text("first")
+    const first = yield* prompt.loop({ sessionID: chat.id })
+    const before = yield* epochRows(chat.id)
+    yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+    yield* llm.text("Summary.")
+    yield* prompt.loop({ sessionID: chat.id })
+    expect((yield* epochRows(chat.id))[0]!.replacement_seq).toBeGreaterThan(before[0]!.baseline_seq)
+
+    yield* sessions.setRevert({
+      sessionID: chat.id,
+      revert: { messageID: first.info.id },
+      summary: { additions: 0, deletions: 0, files: 0 },
+    })
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "two" }] })
+    expect(yield* epochRows(chat.id)).toHaveLength(0)
+    yield* llm.text("second")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const after = yield* epochRows(chat.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]!.replacement_seq).toBeNull()
+    expect(after[0]!.baseline_seq).toBeGreaterThan(before[0]!.baseline_seq)
+    const hits = yield* llm.hits
+    expect(JSON.stringify(bodySystem(hits[hits.length - 1]!))).toContain(
+      JSON.stringify(after[0]!.baseline).slice(1, -1),
+    )
+  }),
+)
+
 it.instance("a summary prepared in the background is still reused when the epoch is replaced", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
