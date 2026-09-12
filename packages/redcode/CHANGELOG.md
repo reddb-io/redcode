@@ -1,5 +1,21 @@
 # opencode
 
+## 0.26.3
+
+### Patch Changes
+
+- 8f12547: Keep the system prompt stable across the steps of a turn
+
+  The legacy session loop rebuilt the whole system prompt before every provider
+  call, so an edited AGENTS.md, a changed skill list or a new day rewrote the
+  cached prefix mid-turn. The loop now stores one Baseline System Context per
+  Context Epoch and reuses it verbatim; changes are admitted once as a
+  `<system_update>` message at the next safe boundary, and compaction or a revert
+  starts a new epoch.
+
+- a9d5d07: After a legacy compaction the context epoch is replaced with `SystemContext.replace` semantics instead of being reset: the request is durable on the epoch row, a source that is temporarily unavailable at the boundary keeps the previous baseline and snapshot in force while the turn proceeds, and the replacement is retried at every later boundary until it succeeds.
+- a3d588f: Legacy sessions admit prompts into the durable inbox before they become model-visible: a prompt sent while a turn is running is promoted at the next safe step boundary (`delivery: "steer"`, the default) or only once the session would otherwise go idle (`delivery: "queue"`), one at a time in admission order.
+
 ## 0.26.2
 
 ### Patch Changes
