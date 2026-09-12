@@ -18,8 +18,10 @@ export const MANAGED_DIRECTORY = "tool-output"
 
 export interface BoundInput {
   readonly sessionID: SessionSchema.ID
-  readonly toolCallID: string
+  readonly toolCallID?: string
   readonly output: ToolOutput
+  /** Replaces the default notice placed between the head and the tail of a bounded preview. */
+  readonly notice?: (outputPath: string) => string
 }
 
 export interface BoundResult {
@@ -117,18 +119,17 @@ const lineCount = (text: string) => {
   return count
 }
 
-const configuredLimits = (config: Option.Option<Config.Interface>) =>
-  Effect.fn("ToolOutputStore.limits")(function* () {
-    if (Option.isNone(config)) return { maxLines: MAX_LINES, maxBytes: MAX_BYTES }
-    const entries = yield* config.value.entries().pipe(Effect.catch(() => Effect.succeed([] as Config.Entry[])))
-    const configured = Object.assign(
-      {},
-      ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info.tool_output ?? {}] : [])),
-    )
-    return { maxLines: configured.max_lines ?? MAX_LINES, maxBytes: configured.max_bytes ?? MAX_BYTES }
-  })
+const configuredLimits = Effect.fn("ToolOutputStore.limits")(function* (config: Option.Option<Config.Interface>) {
+  if (Option.isNone(config)) return { maxLines: MAX_LINES, maxBytes: MAX_BYTES }
+  const entries = yield* config.value.entries().pipe(Effect.catch(() => Effect.succeed([] as Config.Entry[])))
+  const configured = Object.assign(
+    {},
+    ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info.tool_output ?? {}] : [])),
+  )
+  return { maxLines: configured.max_lines ?? MAX_LINES, maxBytes: configured.max_bytes ?? MAX_BYTES }
+})
 
-const make = (limits: () => Effect.Effect<Limits>) =>
+const make = (limits: Effect.Effect<Limits>) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const global = yield* Global.Service
@@ -144,7 +145,7 @@ const make = (limits: () => Effect.Effect<Limits>) =>
     })
 
     const bound = Effect.fn("ToolOutputStore.bound")(function* (input: BoundInput) {
-      const outputLimits = yield* limits()
+      const outputLimits = yield* limits
       const media = input.output.content.filter((item) => item.type === "file")
       const text = input.output.content.filter((item) => item.type === "text")
       const contextual =
@@ -164,7 +165,7 @@ const make = (limits: () => Effect.Effect<Limits>) =>
         }
 
       const outputPath = yield* write(contextual)
-      const marker = `... output truncated; full content saved to ${outputPath} ...`
+      const marker = input.notice?.(outputPath) ?? `... output truncated; full content saved to ${outputPath} ...`
 
       return {
         output: {
@@ -196,7 +197,7 @@ const make = (limits: () => Effect.Effect<Limits>) =>
       }
     })
 
-    return Service.of({ limits, retain: write, bound, cleanup })
+    return Service.of({ limits: () => limits, retain: write, bound, cleanup })
   })
 
 const layer = Layer.effect(
@@ -208,11 +209,7 @@ const layer = Layer.effect(
 )
 
 /** The same store with limits the host resolves itself, for a runtime whose configuration is not `Config.Service`. */
-export const layerWith = (limits: Effect.Effect<Limits>) =>
-  Layer.effect(
-    Service,
-    make(() => limits),
-  )
+export const layerWith = (limits: Effect.Effect<Limits>) => Layer.effect(Service, make(limits))
 
 export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Global.node, Config.node] })
 

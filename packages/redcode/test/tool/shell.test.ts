@@ -16,6 +16,7 @@ import { ToolOutputBridge } from "@/tool/output-bridge"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { rm, writeFile } from "fs/promises"
 import { Plugin } from "../../src/plugin"
 import { testEffect } from "../lib/effect"
 import { Tool } from "@/tool/tool"
@@ -1205,6 +1206,59 @@ describe("tool.shell truncation", () => {
         expect(result.output).toMatch(/Full output saved to:\s+\S+/)
       }),
     ),
+  )
+
+  it.live("keeps a lossy preview instead of dying when the managed file cannot be written", () =>
+    runIsolated(
+      Effect.gen(function* () {
+        // A file where the directory should be refuses the write the way a full disk does; the
+        // command itself still ran, so its bounded tail is the result, with no file to point at.
+        yield* Effect.promise(() => rm(ToolOutputBridge.DIR, { recursive: true, force: true }))
+        yield* Effect.promise(() => writeFile(ToolOutputBridge.DIR, "not a directory"))
+        const result = yield* run({ command: fill("bytes", ToolOutputBridge.MAX_BYTES + 10000) }).pipe(
+          Effect.ensuring(Effect.promise(() => rm(ToolOutputBridge.DIR, { force: true }))),
+        )
+        mustTruncate(result)
+        expect(result.metadata.exit).toBe(0)
+        expect((result.metadata as { outputPath?: string }).outputPath).toBeUndefined()
+        expect(result.output).toContain("could not be saved")
+        expect(result.output).not.toContain("Full output saved to")
+        expect(result.output).toMatch(/a{100}/)
+      }),
+    ),
+  )
+
+  it.live(
+    "flushes the managed file when aborted mid-stream",
+    () =>
+      runIsolated(
+        Effect.gen(function* () {
+          const controller = new AbortController()
+          const size = ToolOutputBridge.MAX_BYTES * 2
+          const code =
+            "process.stdout.write(String.fromCharCode(98).repeat(Number(Bun.argv[1]))+String.fromCharCode(10)+Bun.argv[2]+String.fromCharCode(10));setTimeout(()=>{},30000)"
+          const res = yield* run(
+            { command: invoke(`${bin} -e ${evalarg(code)} ${size} before`) },
+            {
+              ...ctx,
+              abort: controller.signal,
+              metadata: (input) =>
+                Effect.sync(() => {
+                  const output = (input.metadata as { output?: string })?.output
+                  if (output && output.includes("before") && !controller.signal.aborted) controller.abort()
+                }),
+            },
+          )
+          mustTruncate(res)
+          expect(res.output).toContain("User aborted the command")
+          const file = (res.metadata as { outputPath?: string }).outputPath
+          expect(file).toBeTruthy()
+          const saved = yield* (yield* FSUtil.Service).readFileString(file!)
+          expect(saved.length).toBeGreaterThanOrEqual(size)
+          expect(saved).toContain("before")
+        }),
+      ),
+    15_000,
   )
 
   it.live("does not truncate small output", () =>

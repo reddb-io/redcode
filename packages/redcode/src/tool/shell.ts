@@ -445,6 +445,7 @@ export const ShellTool = Tool.define(
       const list: Chunk[] = []
       let used = 0
       let file = ""
+      let lossy = false
       let sink: ReturnType<typeof createWriteStream> | undefined
       let cut = false
       let expired = false
@@ -512,16 +513,22 @@ export const ShellTool = Tool.define(
 
               if (file) {
                 sink?.write(chunk)
-              } else {
+              } else if (!lossy) {
                 full += chunk
                 if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
+                  // A store that refuses the file does not end the command: the ring buffer keeps
+                  // the bounded tail, and nothing more is buffered for a file that will not come.
                   return outputs.retain(full).pipe(
                     Effect.andThen((next) =>
                       Effect.sync(() => {
-                        file = next
                         cut = true
-                        sink = createWriteStream(next, { flags: "a" })
                         full = ""
+                        if (next === undefined) {
+                          lossy = true
+                          return
+                        }
+                        file = next
+                        sink = createWriteStream(next, { flags: "a" })
                       }),
                     ),
                     Effect.andThen(publishProgress()),
@@ -576,8 +583,8 @@ export const ShellTool = Tool.define(
       const raw = list.map((item) => item.text).join("")
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
-      if (!file && end.cut) {
-        file = yield* outputs.retain(raw)
+      if (!file && !lossy && end.cut) {
+        file = (yield* outputs.retain(raw)) ?? ""
       }
 
       let output = end.text
@@ -585,6 +592,9 @@ export const ShellTool = Tool.define(
 
       if (cut && file) {
         output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
+      }
+      if (cut && !file) {
+        output = `...output truncated...\n\n${ToolOutputBridge.LOSSY_NOTICE}\n\n` + output
       }
 
       if (meta.length > 0) {
