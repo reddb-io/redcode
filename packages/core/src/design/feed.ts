@@ -19,20 +19,11 @@ export function bound(text: string, limit: number) {
   return `${value.slice(0, limit)}…`
 }
 
-/** What the feed shows for a prompt: a browser review collapses to its message and note count. */
+/** What the feed shows for a prompt: a browser review collapses to its message and its note count. */
 export function describe(text: string) {
   const notice = DesignFeedback.summarize(text)
-  if (!notice) return bound(text, LIMITS.text)
-  return describeNotice(notice)
-}
-
-export function describeNotice(notice: Pick<Design.FeedbackNotice, "text" | "notes">) {
-  const count = notice.notes.length
-  return (
-    [bound(notice.text, LIMITS.text), count ? `${count} ${count === 1 ? "note" : "notes"}` : ""]
-      .filter(Boolean)
-      .join(" · ") || "Review"
-  )
+  if (!notice) return { text: bound(text, LIMITS.text), notes: 0 }
+  return { text: bound(notice.text, LIMITS.text), notes: notice.notes.length }
 }
 
 /** One line about a tool call, taken from its most descriptive input field. */
@@ -63,7 +54,7 @@ export function reduce(
 ): readonly [state: State, events: ReadonlyArray<Design.FeedEvent>] {
   const base = { seq: event.durable?.seq ?? 0, at: DateTime.toEpochMillis(event.data.timestamp) }
   if (event.type === "session.next.prompt.admitted" || event.type === "session.next.prompted")
-    return [state, [{ ...base, type: "user", id: event.data.messageID, text: describe(event.data.prompt.text) }]]
+    return [state, [{ ...base, type: "user", id: event.data.messageID, ...describe(event.data.prompt.text) }]]
   if (event.type === "session.next.text.ended") {
     const text = bound(event.data.text, LIMITS.text)
     return [state, text ? [{ ...base, type: "reply", id: event.data.textID, text }] : []]
@@ -94,10 +85,7 @@ export function reduce(
           id: event.data.callID,
           tool,
           status: "done",
-          summary: bound(
-            typeof event.data.structured.title === "string" ? event.data.structured.title : "",
-            LIMITS.summary,
-          ),
+          summary: summarize(event.data.structured),
         },
         ...(published ? [{ ...base, type: "published" as const, ...published }] : []),
       ],

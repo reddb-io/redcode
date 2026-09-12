@@ -5067,6 +5067,7 @@ export type DesignFeedEvent =
       type: "user"
       id: string
       text: string
+      notes: number | "NaN" | "Infinity" | "-Infinity"
     }
   | {
       seq: number | "NaN" | "Infinity" | "-Infinity"
@@ -5264,6 +5265,7 @@ export type DesignFeedbackItem = {
   elementText?: string
   selectedText?: string
   label?: string
+  revision?: string
 }
 
 export type DesignFeedback = {

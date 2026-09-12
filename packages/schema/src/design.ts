@@ -213,6 +213,8 @@ export const FeedbackItem = Schema.Struct({
   elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
   selectedText: Schema.String.check(Schema.isMaxLength(12000)).pipe(optional),
   label: Schema.String.check(Schema.isMaxLength(120)).pipe(optional),
+  /** The revision the note was captured on; a draft can outlive a live reload to a newer revision. */
+  revision: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.FeedbackItem" })
 export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
 
@@ -252,7 +254,14 @@ export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice
 const FeedBase = { seq: Schema.Number, at: Schema.Number }
 export const FeedEvent = Schema.Union([
   Schema.Struct({ ...FeedBase, type: Schema.Literal("state"), state: Schema.Literals(["working", "idle"]) }),
-  Schema.Struct({ ...FeedBase, type: Schema.Literal("user"), id: Schema.String, text: Schema.String }),
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("user"),
+    id: Schema.String,
+    text: Schema.String,
+    /** Review notes attached to the message; the client renders the count in its own language. */
+    notes: Schema.Number,
+  }),
   Schema.Struct({ ...FeedBase, type: Schema.Literal("reply"), id: Schema.String, text: Schema.String }),
   Schema.Struct({
     ...FeedBase,

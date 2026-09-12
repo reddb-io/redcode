@@ -35,14 +35,10 @@ export function part(
   const base = { seq: 0, at }
   if (item.type === "text" && role === "user" && !item.synthetic && !item.ignored) {
     const notice = item.metadata?.designFeedback
-    return [
-      {
-        ...base,
-        type: "user",
-        id: item.messageID,
-        text: isNotice(notice) ? DesignFeed.describeNotice(notice) : DesignFeed.describe(item.text),
-      },
-    ]
+    const described = isNotice(notice)
+      ? { text: DesignFeed.bound(notice.text, DesignFeed.LIMITS.text), notes: notice.notes.length }
+      : DesignFeed.describe(item.text)
+    return [{ ...base, type: "user", id: item.messageID, ...described }]
   }
   if (item.type === "text" && role === "assistant" && item.time?.end !== undefined) {
     const text = DesignFeed.bound(item.text, DesignFeed.LIMITS.text)
@@ -86,7 +82,7 @@ export function replay(messages: ReadonlyArray<typeof SessionV1.WithParts.Type>)
   }
 }
 
-/** Reduce one live bus event. `seq` is left at 0; the stream stamps its per-session sequence. */
+/** Reduce one live bus event. Legacy entries carry no durable cursor, so `seq` stays 0. */
 export function reduce(state: State, event: EventV2.Payload): readonly [state: State, events: Design.FeedEvent[]] {
   const at = Date.now()
   if (event.type === SessionV1.Event.MessageUpdated.type && isMessage(event.data))
@@ -101,8 +97,12 @@ export function reduce(state: State, event: EventV2.Payload): readonly [state: S
 }
 
 export interface Interface {
-  /** Replayed transcript entries (seq 0) followed by live entries for one session of this instance. */
-  readonly stream: (sessionID: SessionID, after: number) => Effect.Effect<Stream.Stream<Design.FeedEvent>>
+  /**
+   * The replayed transcript followed by live entries for one session of this instance. There is
+   * no cursor: the V1 bus is not durable, so every connection replays the whole transcript and
+   * the client merges repeats by id.
+   */
+  readonly stream: (sessionID: SessionID) => Effect.Effect<Stream.Stream<Design.FeedEvent>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/DesignFeedV1") {}
@@ -113,12 +113,10 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const sessions = yield* Session.Service
     const status = yield* SessionStatus.Service
-    // Live entries carry a per-session sequence so a client can tell a reconnect's replay from news.
-    const counters = yield* InstanceState.make(() => Effect.succeed(new Map<SessionID, number>()))
-    const stream = Effect.fn("DesignFeed.stream")(function* (sessionID: SessionID, after: number) {
+    const stream = Effect.fn("DesignFeed.stream")(function* (sessionID: SessionID) {
       const instance = yield* InstanceState.context
-      const sequence = yield* InstanceState.get(counters)
-      const queue = yield* Queue.unbounded<EventV2.Payload>()
+      // A client that cannot keep up loses the oldest live entries; its next connection replays anyway.
+      const queue = yield* Queue.sliding<EventV2.Payload>(256)
       // Listen before reading the transcript so nothing published in between is lost.
       const off = yield* events.listen((event) =>
         Effect.sync(() => {
@@ -138,23 +136,7 @@ const layer = Layer.effect(
         { type: "state", seq: 0, at, state: current.type === "idle" ? "idle" : "working" },
         ...replayed.events,
       ]
-      const live = Stream.fromQueue(queue).pipe(
-        Stream.mapAccum(
-          () => replayed.state,
-          (state, event) => {
-            const [next, items] = reduce(state, event)
-            return [
-              next,
-              items.map((item) => {
-                const seq = (sequence.get(sessionID) ?? 0) + 1
-                sequence.set(sessionID, seq)
-                return { ...item, seq }
-              }),
-            ]
-          },
-        ),
-        Stream.filter((event) => event.seq > after),
-      )
+      const live = Stream.fromQueue(queue).pipe(Stream.mapAccum(() => replayed.state, reduce))
       return Stream.fromIterable(head).pipe(Stream.concat(live), Stream.ensuring(off))
     })
     return Service.of({ stream })

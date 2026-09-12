@@ -111,11 +111,13 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           })
         }
         if (request.method === "GET" && parts[3] === "feed" && parts.length === 4) {
-          const after = yield* Schema.decodeUnknownEffect(
-            Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt)),
-          )(url.searchParams.get("after") ?? "0")
+          // `after` is accepted for parity with the V2 route but not applied: the V1 bus has no durable
+          // sequence, so every connection replays the whole transcript and the page merges repeats by id.
+          yield* Schema.decodeUnknownEffect(Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt)))(
+            url.searchParams.get("after") ?? "0",
+          )
           const feed = yield* DesignFeed.Service
-          const encoded = (yield* feed.stream(sessionID, after)).pipe(
+          const encoded = (yield* feed.stream(sessionID)).pipe(
             Stream.map(
               (event): Sse.Event => ({
                 _tag: "Event",

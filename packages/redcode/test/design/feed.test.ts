@@ -82,7 +82,7 @@ describe("DesignFeed (legacy)", () => {
       ]),
     ])
     expect(replayed.events).toEqual([
-      { type: "user", seq: 0, at: 1_700_000_000_000, id: "msg_review", text: "Overall fine · 1 note" },
+      { type: "user", seq: 0, at: 1_700_000_000_000, id: "msg_review", text: "Overall fine", notes: 1 },
       {
         type: "tool",
         seq: 0,
@@ -201,6 +201,7 @@ describe("designFeed page module", () => {
       'data: {"type":"state","seq":0,"at":2,"state":"idle"}\n\n',
     ]
     const done = Promise.withResolvers<void>()
+    const unavailable: number[] = []
     follow(
       "http://feed.test/api/session/ses_1/design/feed",
       async (url) => {
@@ -214,6 +215,7 @@ describe("designFeed page module", () => {
       },
       controller.signal,
       (event) => events.push(event),
+      () => unavailable.push(Date.now()),
     )
     await done.promise
     controller.abort()
@@ -221,5 +223,30 @@ describe("designFeed page module", () => {
     expect(urls[0]).toEndWith("/feed?after=0")
     expect(urls[1]).toEndWith("/feed?after=7")
     expect(urls[2]).toEndWith("/feed?after=7")
+    expect(unavailable).toEqual([])
+  }, 10000)
+
+  test("retries server and network failures but gives up on a client-side rejection", async () => {
+    const follow = new Function(`return (${designFeed.toString()})`)() as typeof designFeed
+    const controller = new AbortController()
+    const statuses = [500, 429, 404, 200]
+    const seen: number[] = []
+    const unavailable = Promise.withResolvers<void>()
+    follow(
+      "http://feed.test/feed",
+      async () => {
+        const status = statuses.shift() ?? 200
+        seen.push(status)
+        return new Response(status === 200 ? "" : "nope", { status })
+      },
+      controller.signal,
+      () => undefined,
+      () => unavailable.resolve(),
+    )
+    await unavailable.promise
+    await Bun.sleep(1500)
+    controller.abort()
+    // 500 and 429 are retried (1 s, then 2 s); 404 stops the loop before the 200 is ever requested.
+    expect(seen).toEqual([500, 429, 404])
   }, 10000)
 })

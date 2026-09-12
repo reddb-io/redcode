@@ -21,6 +21,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.stateIdle": "Ocioso",
   "session.design.studio.statePublished": "Nova revisão publicada",
   "session.design.studio.feedEmpty": "As respostas do agente aparecem aqui.",
+  "session.design.studio.feedUnavailable": "Conversa indisponível",
   "session.design.studio.you": "Você",
   "session.design.studio.feedNote": "anotação",
   "session.design.studio.feedNotes": "anotações",

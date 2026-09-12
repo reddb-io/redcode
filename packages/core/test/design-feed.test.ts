@@ -72,7 +72,7 @@ describe("DesignFeed.reduce", () => {
           sessionID,
           assistantMessageID,
           callID: "call_1",
-          structured: { id: "rev_2", designID: "design_checkout", name: "Second direction", title: "Design" },
+          structured: { id: "rev_2", designID: "design_checkout", name: "Second direction" },
           content: [],
           provider: { executed: false },
         }),
@@ -86,7 +86,7 @@ describe("DesignFeed.reduce", () => {
       event(SessionEvent.AgentSwitched, 8, encoded({ sessionID, messageID: "msg_switch", agent: "plan" })),
     ])
     expect(items).toEqual([
-      { type: "user", seq: 3, at: 1_700_000_000_000, id: "msg_review", text: "Overall the flow works · 2 notes" },
+      { type: "user", seq: 3, at: 1_700_000_000_000, id: "msg_review", text: "Overall the flow works", notes: 2 },
       {
         type: "tool",
         seq: 4,
@@ -103,7 +103,7 @@ describe("DesignFeed.reduce", () => {
         id: "call_1",
         tool: "design_preview",
         status: "done",
-        summary: "Design",
+        summary: "Second direction",
       },
       {
         type: "published",
@@ -174,7 +174,7 @@ describe("DesignFeed.reduce", () => {
       ),
       event(SessionEvent.Text.Ended, 2, encoded({ sessionID, assistantMessageID, textID: "txt_long", text: long })),
     ])
-    expect(items[0]).toMatchObject({ type: "user", text: "Make it pop" })
+    expect(items[0]).toMatchObject({ type: "user", text: "Make it pop", notes: 0 })
     expect(items[1]).toMatchObject({ type: "reply", text: `${"x".repeat(DesignFeed.LIMITS.text)}…` })
   })
 })

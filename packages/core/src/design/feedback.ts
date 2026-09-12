@@ -94,6 +94,8 @@ export function render(input: Design.Feedback, context: Context) {
             const element = item.elementText ? clean(item.elementText) : ""
             const scenario =
               item.params && !(input.params && sameParams(item.params, input.params)) ? flatten(item.params) : ""
+            // A note drafted before a live reload still describes the revision it was captured on.
+            const revision = item.revision && item.revision !== input.revision ? attribute(item.revision) : ""
             const attached = boards.flatMap((board, position) => {
               if (claimed.has(position) || board.target !== item.target) return []
               claimed.add(position)
@@ -105,6 +107,7 @@ export function render(input: Design.Feedback, context: Context) {
               selected ? `Selected text: ${quote(selected, LIMITS.selectedText)}` : "",
               element && element !== selected ? `Element text: ${quote(element, LIMITS.elementText)}` : "",
               scenario ? `Scenario: ${scenario}` : "",
+              revision ? `Revision: ${revision}` : "",
               ...attached,
             ]
               .filter(Boolean)

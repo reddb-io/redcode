@@ -14,6 +14,7 @@ export interface ReviewOptions {
     request: (url: string, init?: RequestInit) => Promise<Response>,
     signal: AbortSignal,
     onEvent: (event: Design.FeedEvent) => void,
+    onUnavailable: () => void,
   ) => void
 }
 
@@ -550,51 +551,61 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       ? `${copy.evidence}: ${state.audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
       : copy.noAudit
   }
-  const pill = (key: "stateWorking" | "stateIdle" | "statePublished") => {
+  const pill = (key: "stateWorking" | "stateIdle" | "statePublished" | "feedUnavailable") => {
     const node = element("agent-state")
-    node.dataset.state = key === "stateWorking" ? "working" : key === "stateIdle" ? "idle" : "published"
+    node.dataset.state =
+      key === "stateWorking" ? "working" : key === "stateIdle" ? "idle" : key === "statePublished" ? "published" : "off"
     node.dataset.copy = key
     node.textContent = copy[key]
   }
   const entryKey = (event: Design.FeedEvent) =>
     event.type === "published" ? `published:${event.revision}` : "id" in event ? `${event.type}:${event.id}` : ""
-  const drawFeed = () => {
-    const list = element("feed")
-    list.querySelectorAll(".entry").forEach((node) => node.remove())
-    list.append(
-      ...state.feed.map((event) => {
-        const row = document.createElement("div")
-        row.className = "entry"
-        row.dataset.kind = event.type
-        row.dataset.key = entryKey(event)
-        if (event.type === "user") {
-          const who = document.createElement("strong")
-          who.dataset.copy = "you"
-          who.dataset.copySuffix = ": "
-          who.textContent = `${copy.you}: `
-          row.append(who, event.text)
-        }
-        if (event.type === "reply") row.textContent = event.text
-        if (event.type === "tool")
-          row.textContent = `${event.tool} · ${event.status}${event.summary ? ` · ${event.summary}` : ""}`
-        if (event.type === "published") {
-          row.dataset.copy = "published"
-          row.dataset.copySuffix = `: ${event.name}`
-          row.textContent = `${copy.published}: ${event.name}`
-        }
-        return row
-      }),
-    )
-    list.scrollTop = list.scrollHeight
+  const entry = (event: Design.FeedEvent) => {
+    const row = document.createElement("div")
+    row.className = "entry"
+    row.dataset.kind = event.type
+    row.dataset.key = entryKey(event)
+    if (event.type === "user") {
+      const who = document.createElement("strong")
+      who.dataset.copy = "you"
+      who.dataset.copySuffix = ": "
+      who.textContent = `${copy.you}: `
+      const notes = document.createElement("span")
+      notes.dataset.copy = event.notes === 1 ? "feedNote" : "feedNotes"
+      notes.dataset.copyPrefix = `${event.text ? " · " : ""}${event.notes} `
+      notes.textContent = `${notes.dataset.copyPrefix}${event.notes === 1 ? copy.feedNote : copy.feedNotes}`
+      row.append(who, event.text, ...(event.notes ? [notes] : []))
+    }
+    if (event.type === "reply") row.textContent = event.text
+    if (event.type === "tool")
+      row.textContent = `${event.tool} · ${event.status}${event.summary ? ` · ${event.summary}` : ""}`
+    if (event.type === "published") {
+      row.dataset.copy = "published"
+      row.dataset.copySuffix = `: ${event.name}`
+      row.textContent = `${copy.published}: ${event.name}`
+    }
+    return row
   }
-  // The same entry can arrive twice (a reconnect replays history): the newest copy replaces it.
+  // The same entry can arrive twice (a reconnect replays history): the newest copy replaces its row
+  // in place. The list follows new rows only while the reader is already at the bottom.
   const upsert = (event: Design.FeedEvent) => {
+    const list = element("feed")
     const key = entryKey(event)
     const index = state.feed.findIndex((item) => entryKey(item) === key)
+    const existing = list.querySelector<HTMLElement>(`.entry[data-key="${CSS.escape(key)}"]`)
     if (index >= 0) state.feed[index] = event
     if (index < 0) state.feed.push(event)
-    state.feed.splice(0, Math.max(0, state.feed.length - 200))
-    drawFeed()
+    if (existing) {
+      existing.replaceWith(entry(event))
+      return
+    }
+    const bottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 4
+    list.append(entry(event))
+    if (state.feed.length > 200) {
+      state.feed.shift()
+      list.querySelector(".entry")?.remove()
+    }
+    if (bottom) list.scrollTop = list.scrollHeight
   }
   const poll = () => {
     if (!state.loading && !state.working && !state.creating && !document.hidden && !root.querySelector("dialog[open]"))
@@ -926,6 +937,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.notes.push({
       target: element("target").textContent || "page",
       params: paramContext(),
+      revision: state.revision,
       text: input("note").value.trim(),
       ...(picked.tag
         ? {
@@ -959,17 +971,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawNotes()
     await api(`/${state.design!.id}/feedback`, "POST", state.pending)
     const sent = state.pending
-    const count = sent.items.length
     if (options.feed)
-      upsert({
-        type: "user",
-        id: sent.id,
-        seq: 0,
-        at: Date.now(),
-        text: [sent.text, count ? `${count} ${count === 1 ? copy.feedNote : copy.feedNotes}` : ""]
-          .filter(Boolean)
-          .join(" · "),
-      })
+      upsert({ type: "user", id: sent.id, seq: 0, at: Date.now(), text: sent.text, notes: sent.items.length })
     state.pending = undefined
     state.notes = []
     state.assets = []
@@ -1268,6 +1271,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
             state.boards.push({ target, scene: { type: "excalidraw", version: 2, source: "redcode", ...data.scene } })
             state.notes.push({
               target,
+              revision: state.revision,
               text:
                 [String(data.note || ""), ...(Array.isArray(data.summaryLines) ? data.summaryLines.map(String) : [])]
                   .filter(Boolean)
@@ -1337,7 +1341,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   document.addEventListener("visibilitychange", poll)
   element("feed").hidden = !options.feed
   element("agent-state").hidden = !options.feed
-  if (options.feed) options.feed(`${endpoint}/feed`, transport, controller.signal, onFeed)
+  if (options.feed)
+    options.feed(`${endpoint}/feed`, transport, controller.signal, onFeed, () => {
+      if (!state.stopped) pill("feedUnavailable")
+    })
   void run(refresh)
   const dispose = () => {
     save()
@@ -1357,7 +1364,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (state.stopped) return
       Object.assign(copy, next)
       root.querySelectorAll<HTMLElement>("[data-copy]").forEach((node) => {
-        node.textContent = copy[node.dataset.copy as keyof ReviewCopy] + (node.dataset.copySuffix ?? "")
+        node.textContent =
+          (node.dataset.copyPrefix ?? "") +
+          copy[node.dataset.copy as keyof ReviewCopy] +
+          (node.dataset.copySuffix ?? "")
       })
       for (const attribute of ["aria-label", "title"]) {
         root.querySelectorAll<HTMLElement>(`[data-copy-${attribute}]`).forEach((node) => {
