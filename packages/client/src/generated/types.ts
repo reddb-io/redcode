@@ -1964,6 +1964,34 @@ export type DesignsWhiteboardInput = { readonly sessionID: { readonly sessionID:
 
 export type DesignsWhiteboardOutput = Uint8Array
 
+export type DesignsFeedInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly after?: { readonly after?: number | undefined }["after"]
+}
+
+export type DesignsFeedOutput =
+  | { readonly seq: number; readonly at: number; readonly type: "state"; readonly state: "working" | "idle" }
+  | { readonly seq: number; readonly at: number; readonly type: "user"; readonly id: string; readonly text: string }
+  | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "tool"
+      readonly id: string
+      readonly tool: string
+      readonly status: "running" | "done" | "failed"
+      readonly summary: string
+    }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "published"
+      readonly design: string
+      readonly revision: string
+      readonly name: string
+    }
+  | { readonly seq: number; readonly at: number; readonly type: "agent"; readonly agent: string }
+
 export type DesignsListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type DesignsListOutput = ReadonlyArray<{

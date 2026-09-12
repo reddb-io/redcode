@@ -1,5 +1,6 @@
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignFeedback } from "@/design/feedback"
+import { DesignFeed } from "@/design/feed"
 import { serveDesignEffect } from "@/server/shared/design"
 import { DesignStudio } from "@/design/studio"
 import { Config as EffectConfig, Context, Effect, Layer } from "effect"
@@ -235,6 +236,7 @@ const app = LayerNode.group([
   DesignStudio.node,
   DesignReviewServer.node,
   DesignFeedback.node,
+  DesignFeed.node,
   Npm.node,
   FSUtil.node,
   Database.node,

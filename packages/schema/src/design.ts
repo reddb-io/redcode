@@ -244,6 +244,35 @@ export const FeedbackNotice = Schema.Struct({
 }).annotate({ identifier: "Design.FeedbackNotice" })
 export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice> {}
 
+/**
+ * One entry of the review page's conversation feed, reduced on the server from the session's
+ * events so both runtimes serve the same shape. `seq` is the durable cursor a client resumes from
+ * (0 for replayed or live-only entries); `id` lets a client merge repeats of the same entry.
+ */
+const FeedBase = { seq: Schema.Number, at: Schema.Number }
+export const FeedEvent = Schema.Union([
+  Schema.Struct({ ...FeedBase, type: Schema.Literal("state"), state: Schema.Literals(["working", "idle"]) }),
+  Schema.Struct({ ...FeedBase, type: Schema.Literal("user"), id: Schema.String, text: Schema.String }),
+  Schema.Struct({ ...FeedBase, type: Schema.Literal("reply"), id: Schema.String, text: Schema.String }),
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("tool"),
+    id: Schema.String,
+    tool: Schema.String,
+    status: Schema.Literals(["running", "done", "failed"]),
+    summary: Schema.String,
+  }),
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("published"),
+    design: ID,
+    revision: Schema.String,
+    name: Schema.String,
+  }),
+  Schema.Struct({ ...FeedBase, type: Schema.Literal("agent"), agent: Schema.String }),
+]).annotate({ identifier: "Design.FeedEvent" })
+export type FeedEvent = typeof FeedEvent.Type
+
 export const Receipt = Schema.Struct({
   id: SessionMessage.ID,
   status: Schema.Literals(["pending", "admitted"]),

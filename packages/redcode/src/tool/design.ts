@@ -245,11 +245,14 @@ export const DesignTools = Effect.gen(function* () {
                 const { default: open } = await import("open")
                 await open(url)
               }).pipe(Effect.ignore)
-            return result(`Published ${revision.id}. Review: ${url}\nFeedback returns here. Continue using this TUI.`, {
-              id: document.id,
-              revision: revision.id,
-              url,
-            })
+            return result(
+              `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.`,
+              {
+                id: document.id,
+                revision: revision.id,
+                url,
+              },
+            )
           }),
         ),
     }),

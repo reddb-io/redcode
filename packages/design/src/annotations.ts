@@ -1,6 +1,11 @@
 /** Untrusted frame sends descriptive data only. It never receives host credentials. */
 export function annotations() {
-  const state = { enabled: false, variant: "", manifest: "" }
+  const state = {
+    enabled: false,
+    variant: "",
+    manifest: "",
+    scroll: undefined as ReturnType<typeof setTimeout> | undefined,
+  }
   const style = document.createElement("style")
   document.head.append(style)
   const variants = () =>
@@ -38,6 +43,15 @@ export function annotations() {
     if (event.data?.type === "design:annotate") state.enabled = event.data.enabled === true
     if (event.data?.type === "design:variant" && typeof event.data.id === "string") selectVariant(event.data.id)
     if (
+      event.data?.type === "design:scroll-set" &&
+      typeof event.data.x === "number" &&
+      typeof event.data.y === "number"
+    ) {
+      // A reloaded revision restores the reader's place once its layout has settled.
+      scrollTo(event.data.x, event.data.y)
+      requestAnimationFrame(() => scrollTo(event.data.x, event.data.y))
+    }
+    if (
       event.data?.type === "design:tweak" &&
       /^--[a-zA-Z][a-zA-Z0-9-]*$/.test(event.data.key) &&
       typeof event.data.value === "string" &&
@@ -45,6 +59,17 @@ export function annotations() {
     )
       document.documentElement.style.setProperty(event.data.key, event.data.value)
   })
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (state.scroll) return
+      state.scroll = setTimeout(() => {
+        state.scroll = undefined
+        parent.postMessage({ type: "design:scroll", x: scrollX, y: scrollY }, "*")
+      }, 100)
+    },
+    { passive: true },
+  )
   document.addEventListener(
     "click",
     (event) => {

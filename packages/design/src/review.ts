@@ -8,6 +8,13 @@ export interface ReviewOptions {
   copy: ReviewCopy
   appearance?: { css: string; favicon: string }
   request?: (url: string, init?: RequestInit) => Promise<Response>
+  /** Follows the server's conversation feed; absent when the host renders the conversation itself. */
+  feed?: (
+    url: string,
+    request: (url: string, init?: RequestInit) => Promise<Response>,
+    signal: AbortSignal,
+    onEvent: (event: Design.FeedEvent) => void,
+  ) => void
 }
 
 /** Shared native review surface. The standalone host serializes this self-contained function. */
@@ -64,6 +71,10 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     variantPending: undefined as Design.Feedback | undefined,
     approving: undefined as Design.Approve | undefined,
     approval: undefined as Design.Approval | undefined,
+    feed: [] as Design.FeedEvent[],
+    scroll: { x: 0, y: 0 },
+    peerScroll: { x: 0, y: 0 },
+    restoreScroll: false,
   }
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
   const thumbnails = new Map<string, string>()
@@ -137,9 +148,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 @container(max-width:640px){:host{min-height:0}header{flex-wrap:wrap}header h1{font-size:13px}header #designs{flex:1;max-width:none}header #new{margin-left:0}#studio>header{flex-wrap:wrap}#studio>header #revisions{flex:1;max-width:none}#width{max-width:100px}#approve,#reopen{font-size:12px}main{display:grid;grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) minmax(220px,.85fr)}.canvas{padding:12px}aside{border-left:0;border-top:1px solid var(--edge)}.tabs{gap:24px}.tabs button{padding:10px 0}.panel{padding:16px}form.intake{margin:0;padding:20px}}
 .variant-bar{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--edge);min-width:0;flex-wrap:wrap}.variant-bar .tabs{border:0;padding:0;flex:1;overflow:auto;gap:16px}.variant-bar .tabs button{white-space:nowrap}.variant-bar>button{margin:6px 0;white-space:nowrap}.variant-bar>button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}.variant-bar #add-variant{margin-right:auto}.canvas{display:flex;gap:20px;padding:16px}.preview-pane{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%}.viewport{flex:1;min-height:0;overflow:auto;padding:1px}.viewport iframe{height:100%;min-height:150px}.pane-label{height:38px;flex:none;font-size:12px;display:flex;align-items:center;gap:8px;margin:0;padding-bottom:6px}.pane-label select{width:auto;flex:1;padding:4px 8px}.canvas[data-comparing=true] .preview-pane{min-width:280px}.action-dialog{width:min(520px,calc(100vw - 32px));max-height:90vh;overflow:auto;padding:24px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}.action-dialog::backdrop{background:#0008}.action-dialog p{overflow-wrap:anywhere}.action-dialog .row{justify-content:flex-end}.action-dialog .row>*{flex:0 1 auto}#status{font-size:13px;min-height:38px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-top:0;color:var(--ink)}#status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}button[aria-busy=true]{opacity:1;cursor:progress}button[aria-busy=true]::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.preview-pane[aria-busy=true] .viewport{opacity:.5}#width{max-width:180px}@container(max-width:640px){.variant-bar{padding:0 12px;gap:6px}.variant-bar .tabs{flex-basis:100%}.canvas{padding:12px;gap:12px}.variant-bar>button{font-size:12px}#width{max-width:165px}}
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
+#agent-state{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}#agent-state[data-state=working]{color:var(--accent);border-color:var(--accent)}#agent-state[data-state=working]::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}#agent-state[data-state=published]{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}#feed{display:grid;gap:8px;margin-bottom:16px;max-height:40vh;overflow:auto}#feed:not(:has(.entry)) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry) #feed-empty{display:none}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}
     </style><header><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><button id="new"><span data-copy="create">${copy.create}</span></button><button id="refresh"><span data-copy="refresh">${copy.refresh}</span></button></header>
     <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="review">${copy.review}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="review">${copy.review}</span></h2><p id="review-state" class="muted"></p><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
+    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
     <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="findings">${copy.findings}</span></summary><div id="findings"></div></details><details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
@@ -538,7 +550,69 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       ? `${copy.evidence}: ${state.audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
       : copy.noAudit
   }
-  const chooseRevision = async (revisionID: string) => {
+  const pill = (key: "stateWorking" | "stateIdle" | "statePublished") => {
+    const node = element("agent-state")
+    node.dataset.state = key === "stateWorking" ? "working" : key === "stateIdle" ? "idle" : "published"
+    node.dataset.copy = key
+    node.textContent = copy[key]
+  }
+  const entryKey = (event: Design.FeedEvent) =>
+    event.type === "published" ? `published:${event.revision}` : "id" in event ? `${event.type}:${event.id}` : ""
+  const drawFeed = () => {
+    const list = element("feed")
+    list.querySelectorAll(".entry").forEach((node) => node.remove())
+    list.append(
+      ...state.feed.map((event) => {
+        const row = document.createElement("div")
+        row.className = "entry"
+        row.dataset.kind = event.type
+        row.dataset.key = entryKey(event)
+        if (event.type === "user") {
+          const who = document.createElement("strong")
+          who.dataset.copy = "you"
+          who.dataset.copySuffix = ": "
+          who.textContent = `${copy.you}: `
+          row.append(who, event.text)
+        }
+        if (event.type === "reply") row.textContent = event.text
+        if (event.type === "tool")
+          row.textContent = `${event.tool} · ${event.status}${event.summary ? ` · ${event.summary}` : ""}`
+        if (event.type === "published") {
+          row.dataset.copy = "published"
+          row.dataset.copySuffix = `: ${event.name}`
+          row.textContent = `${copy.published}: ${event.name}`
+        }
+        return row
+      }),
+    )
+    list.scrollTop = list.scrollHeight
+  }
+  // The same entry can arrive twice (a reconnect replays history): the newest copy replaces it.
+  const upsert = (event: Design.FeedEvent) => {
+    const key = entryKey(event)
+    const index = state.feed.findIndex((item) => entryKey(item) === key)
+    if (index >= 0) state.feed[index] = event
+    if (index < 0) state.feed.push(event)
+    state.feed.splice(0, Math.max(0, state.feed.length - 200))
+    drawFeed()
+  }
+  const poll = () => {
+    if (!state.loading && !state.working && !state.creating && !document.hidden && !root.querySelector("dialog[open]"))
+      void run(refresh, undefined, true)
+  }
+  const onFeed = (event: Design.FeedEvent) => {
+    if (state.stopped) return
+    if (event.type === "state") {
+      pill(event.state === "working" ? "stateWorking" : "stateIdle")
+      return
+    }
+    if (event.type === "agent") return
+    upsert(event)
+    if (event.type !== "published") return
+    pill("statePublished")
+    if (event.revision !== state.revision && event.revision !== state.design?.revision) poll()
+  }
+  const chooseRevision = async (revisionID: string, keep = false) => {
     const revision = await api<Design.Revision[]>(`/${state.design!.id}/revision`).then((items) =>
       items.find((item) => item.id === revisionID),
     )
@@ -562,16 +636,20 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("preview-error").hidden = true
     element("primary-pane").hidden = false
     if (state.revision) save()
-    if (state.revision !== revisionID) {
+    if (state.revision !== revisionID && !keep) {
       state.variant = ""
       state.peer = ""
     }
     state.revision = revisionID
-    restoreDraft()
+    // A live reload keeps the draft, the selected variants and the reader's scroll position.
+    if (keep) save()
+    if (!keep) restoreDraft()
     state.html = html
-    state.variants = []
+    if (!keep) state.variants = []
+    state.restoreScroll = keep
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
     element<HTMLIFrameElement>("preview").srcdoc = html
+    if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
     input("revisions").value = revisionID
     element("newer").hidden = state.design?.revision === revisionID
     text("decisions", revision.document.decisions.map((item) => item.text).join("\n"))
@@ -593,6 +671,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const current = documents.find((item) => item.id === designID) ?? documents.at(-1)
     if (!current) return
     const changed = state.design?.id !== current.id
+    const onLatest = !changed && !!state.revision && state.revision === state.design?.revision
     if (changed) {
       state.failedPreview = ""
       element("preview-error").hidden = true
@@ -640,8 +719,20 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           `<option value="${escape(revision.id)}">${escape(revision.name)} · ${escape(revision.id.slice(-8))}</option>`,
       )
       .join("")
-    if (current.revision && (changed || !state.revision) && state.failedPreview !== current.revision)
-      await chooseRevision(current.revision)
+    const initial = changed || !state.revision
+    // A new revision replaces the one on screen only while the reader is on the latest one and
+    // nothing is in flight; while browsing history the button offers it instead.
+    const live =
+      !initial &&
+      onLatest &&
+      current.revision !== state.revision &&
+      !state.pending &&
+      !document.hidden &&
+      !root.querySelector("dialog[open]")
+    if (current.revision && (initial || live) && state.failedPreview !== current.revision) {
+      await chooseRevision(current.revision, live)
+      if (live) status(copy.published, "published", "success")
+    }
     input("revisions").value = state.failedPreview || state.revision
     element("newer").hidden = current.revision === state.revision
     drawSources(revisions.find((revision) => revision.id === state.revision))
@@ -867,6 +958,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     save()
     drawNotes()
     await api(`/${state.design!.id}/feedback`, "POST", state.pending)
+    const sent = state.pending
+    const count = sent.items.length
+    if (options.feed)
+      upsert({
+        type: "user",
+        id: sent.id,
+        seq: 0,
+        at: Date.now(),
+        text: [sent.text, count ? `${count} ${count === 1 ? copy.feedNote : copy.feedNotes}` : ""]
+          .filter(Boolean)
+          .join(" · "),
+      })
     state.pending = undefined
     state.notes = []
     state.assets = []
@@ -1077,6 +1180,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       }
       if (event.source !== element<HTMLIFrameElement>("preview").contentWindow || !Array.isArray(event.data.variants))
         return
+      if (state.restoreScroll) {
+        state.restoreScroll = false
+        element<HTMLIFrameElement>("preview").contentWindow?.postMessage(
+          { type: "design:scroll-set", ...state.scroll },
+          "*",
+        )
+        element<HTMLIFrameElement>("peer-preview").contentWindow?.postMessage(
+          { type: "design:scroll-set", ...state.peerScroll },
+          "*",
+        )
+      }
       state.variants = event.data.variants
         .slice(0, 20)
         .filter(
@@ -1096,6 +1210,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (!state.variants.some((item) => item.id === state.variant)) state.variant = state.variants[0]?.id ?? ""
       drawVariants()
       drawParams()
+      return
+    }
+    if (event.data?.type === "design:scroll" && typeof event.data.x === "number" && typeof event.data.y === "number") {
+      if (event.source === element<HTMLIFrameElement>("preview").contentWindow)
+        state.scroll = { x: event.data.x, y: event.data.y }
+      if (event.source === element<HTMLIFrameElement>("peer-preview").contentWindow)
+        state.peerScroll = { x: event.data.x, y: event.data.y }
       return
     }
     if (event.source === element<HTMLIFrameElement>("board-frame").contentWindow) {
@@ -1211,10 +1332,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     save()
   }
   window.addEventListener("message", message)
-  const timer = setInterval(() => {
-    if (!state.loading && !state.working && !state.creating && !document.hidden && !root.querySelector("dialog[open]"))
-      void run(refresh, undefined, true)
-  }, 5000)
+  const timer = setInterval(poll, 5000)
+  // A reload deferred while the tab was hidden happens as soon as it is visible again.
+  document.addEventListener("visibilitychange", poll)
+  element("feed").hidden = !options.feed
+  element("agent-state").hidden = !options.feed
+  if (options.feed) options.feed(`${endpoint}/feed`, transport, controller.signal, onFeed)
   void run(refresh)
   const dispose = () => {
     save()
@@ -1225,6 +1348,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     thumbnails.forEach((url) => URL.revokeObjectURL(url))
     thumbnails.clear()
     clearInterval(timer)
+    document.removeEventListener("visibilitychange", poll)
     window.removeEventListener("message", message)
     root.replaceChildren()
   }

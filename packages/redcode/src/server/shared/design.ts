@@ -5,7 +5,9 @@ import { DesignHost } from "@/design/host"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignRead } from "@/design/read"
 import { DesignHandoff } from "@/design/handoff"
-import { Effect, Schema, FileSystem } from "effect"
+import { DesignFeed } from "@/design/feed"
+import { Effect, Schema, FileSystem, Stream } from "effect"
+import { Sse } from "effect/unstable/encoding"
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
@@ -21,9 +23,11 @@ import { DesignStudio } from "@/design/studio"
 import { InstanceStore } from "@/project/instance-store"
 import { WorkspaceRef } from "@/effect/instance-ref"
 import { SessionID } from "@/session/schema"
+import { NonNegativeInt } from "@reddb-io/redcode-schema/schema"
 import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
+import { designFeed } from "@reddb-io/redcode-design/feed"
 
 /** Browser JSON API shared with the review UI. Session admission remains owned by the TUI runtime. */
 export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) {
@@ -106,6 +110,35 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             url: new URL(`/design/session/${sessionID}/review`, yield* review.url).toString(),
           })
         }
+        if (request.method === "GET" && parts[3] === "feed" && parts.length === 4) {
+          const after = yield* Schema.decodeUnknownEffect(
+            Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt)),
+          )(url.searchParams.get("after") ?? "0")
+          const feed = yield* DesignFeed.Service
+          const encoded = (yield* feed.stream(sessionID, after)).pipe(
+            Stream.map(
+              (event): Sse.Event => ({
+                _tag: "Event",
+                event: "message",
+                id: undefined,
+                data: JSON.stringify(Schema.encodeSync(Design.FeedEvent)(event)),
+              }),
+            ),
+            Stream.pipeThroughChannel(Sse.encode()),
+          )
+          const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
+          return HttpServerResponse.stream(
+            encoded.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText),
+            {
+              contentType: "text/event-stream",
+              headers: {
+                "cache-control": "no-cache, no-transform",
+                "x-accel-buffering": "no",
+                "x-content-type-options": "nosniff",
+              },
+            },
+          )
+        }
         return yield* studio.use(
           Effect.gen(function* () {
             const store = yield* DesignStore.Service
@@ -124,7 +157,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               })
             if (request.method === "GET" && parts[3] === "review")
               return html(
-                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")})</script></body></html>`,
+                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()} }))</script></body></html>`,
               )
             if (request.method === "GET" && parts[3] === "whiteboard")
               return html(yield* Effect.promise(DesignWhiteboard.frame))

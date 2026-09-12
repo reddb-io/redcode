@@ -1,12 +1,13 @@
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
-import { Effect } from "effect"
+import { DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
+import { DesignFeed } from "@reddb-io/redcode-core/design/feed"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
@@ -17,6 +18,7 @@ import { Api } from "../api"
 import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
+import { designFeed } from "@reddb-io/redcode-design/feed"
 
 export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handlers) => {
   const owned = Effect.fn(function* (params: { designID: Design.ID; sessionID: SessionV2.ID }) {
@@ -71,7 +73,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
     .handleRaw("design.review", (ctx) =>
       Effect.succeed(
         HttpServerResponse.text(
-          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), ${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")})</script></body></html>`,
+          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()} }))</script></body></html>`,
           {
             contentType: "text/html",
             headers: {
@@ -82,6 +84,32 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           },
         ),
       ),
+    )
+    .handle(
+      "design.feed",
+      Effect.fn(function* (ctx) {
+        const sessions = yield* SessionV2.Service
+        const session = yield* sessions
+          .get(ctx.params.sessionID)
+          .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
+        const now = DateTime.now.pipe(Effect.map(DateTime.toEpochMillis))
+        const agent: Design.FeedEvent = { type: "agent", seq: 0, at: yield* now, agent: session.agent ?? "" }
+        // Working state is the process-local execution set sampled twice a second; only changes are sent.
+        const state = Stream.make(undefined).pipe(
+          Stream.concat(Stream.tick("500 millis")),
+          Stream.mapEffect(() => sessions.active),
+          Stream.map((active) => (active.has(ctx.params.sessionID) ? ("working" as const) : ("idle" as const))),
+          Stream.changes,
+          Stream.mapEffect((state) =>
+            Effect.map(now, (at): Design.FeedEvent => ({ type: "state", seq: 0, at, state })),
+          ),
+        )
+        const durable = sessions.events({ sessionID: ctx.params.sessionID, after: ctx.query.after }).pipe(
+          Stream.orDie,
+          Stream.mapAccum(() => DesignFeed.initial, DesignFeed.reduce),
+        )
+        return Stream.make(agent).pipe(Stream.concat(Stream.merge(durable, state)))
+      }),
     )
     .handle(
       "design.list",

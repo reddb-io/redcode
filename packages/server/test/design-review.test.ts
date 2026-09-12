@@ -307,7 +307,6 @@ test("variants switch independently, compare at device widths and request anothe
     if (feedback.length === 1) return route.abort("failed")
     await route.fulfill({ response })
   })
-  const assets = Promise.withResolvers<void>()
   try {
     await page.goto(`${base}${current.root}/review`)
     const preview = page.frameLocator("#preview")
@@ -353,29 +352,40 @@ test("variants switch independently, compare at device widths and request anothe
     const updated = await api<Design.Info>(`${current.root}/${current.document.id}`)
     expect(updated.ended).toBe(false)
     expect(await page.locator("#preview").getAttribute("sandbox")).not.toContain("allow-same-origin")
-    await page.route("**/asset", async (route) => {
-      await assets.promise
-      await route.continue()
-    })
+    // On the latest revision a publication reloads the preview in place and keeps the unsent notes.
     await Bun.write(
       path.join(current.document.root, current.document.entry),
       `<!doctype html><html><body><section data-design-variant="warm" data-design-label="Warm"><h1>Warm checkout</h1></section></body></html>`,
     )
     await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Warmer direction" })
-    await page.getByRole("button", { name: "New revision available", exact: true }).waitFor()
-    expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
-    assets.resolve()
-    await page.getByRole("button", { name: "New revision available", exact: true }).click()
-    await page.getByRole("tab", { name: "Warm", exact: true }).waitFor()
+    await page.getByRole("tab", { name: "Warm", exact: true }).waitFor({ timeout: 10000 })
     await preview.getByRole("heading", { name: "Warm checkout" }).waitFor()
+    await page.locator("#status").filter({ hasText: "Revision published" }).waitFor()
+    expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(false)
+    expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
+    await page.getByLabel("Revision", { exact: true }).selectOption(revision.id)
+    await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
+    expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
+    // While browsing history a publication only offers the button; nothing reloads underneath the reader.
+    await Bun.write(
+      path.join(current.document.root, current.document.entry),
+      `<!doctype html><html><body><section data-design-variant="cool" data-design-label="Cool"><h1>Cool checkout</h1></section></body></html>`,
+    )
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Cooler direction" })
+    await page.getByRole("button", { name: "New revision available", exact: true }).waitFor({ timeout: 10000 })
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
+    await page.waitForTimeout(5500)
+    await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
+    await page.getByRole("button", { name: "New revision available", exact: true }).click()
+    await page.getByRole("tab", { name: "Cool", exact: true }).waitFor()
+    await preview.getByRole("heading", { name: "Cool checkout" }).waitFor()
     await page.getByLabel("Revision", { exact: true }).selectOption(revision.id)
     await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
     expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Keep my unsent notes")
   } finally {
-    assets.resolve()
     await page.close()
   }
-}, 60000)
+}, 90000)
 
 test("SVG asset: browser import, local GIF progress and downloadable animation", async () => {
   const current = await published("html")
@@ -563,7 +573,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   expect(preview!.y).toBeLessThan(190)
   expect(preview!.height).toBeGreaterThan(600)
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
-  await page.getByRole("tab", { name: "Review", exact: true }).focus()
+  await page.getByRole("tab", { name: "Conversation", exact: true }).focus()
   await page.keyboard.press("ArrowRight")
   expect(await page.getByRole("tab", { name: "Assets", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.getByLabel("Seconds", { exact: true }).waitFor()
@@ -588,6 +598,8 @@ test("preview failures show the resource, stop repeated requests and recover var
   page.on("request", (request) => {
     if (request.url().endsWith(`/revision/${broken.id}/preview`)) requests.push(request.url())
   })
+  // Without the conversation feed the page still refreshes and recovers by itself.
+  await page.route(/\/design\/feed(\?.*)?$/, (route) => route.abort())
   try {
     await page.goto(`${base}${current.root}/review`)
     await page.locator("#preview-error:not([hidden])").waitFor()
@@ -614,6 +626,86 @@ test("preview failures show the resource, stop repeated requests and recover var
     await page.close()
   }
 }, 60000)
+
+test("conversation shows reply, state and auto-reloads on publish", async () => {
+  const current = await published("html")
+  const tall = (heading: string) =>
+    `<!doctype html><html lang="en"><body><main style="height:3000px"><h1 id="title">${heading}</h1><p id="bottom" style="margin-top:2400px">Footer</p></main></body></html>`
+  await Bun.write(path.join(current.document.root, current.document.entry), tall("Checkout"))
+  await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Tall direction" })
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  const canned = [
+    { type: "state", seq: 0, at: 1, state: "working" },
+    { type: "tool", seq: 4, at: 1, id: "call_1", tool: "design_preview", status: "done", summary: "Design" },
+    { type: "reply", seq: 5, at: 1, id: "txt_1", text: "Made the title larger.\n\nAnything else?" },
+    { type: "state", seq: 0, at: 2, state: "idle" },
+  ]
+  await page.route(/\/design\/feed(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: canned.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  )
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    expect(await page.getByRole("tab", { name: "Conversation", exact: true }).getAttribute("aria-selected")).toBe(
+      "true",
+    )
+    await page.getByText("Made the title larger.", { exact: false }).waitFor()
+    await page.getByText("design_preview · done · Design", { exact: true }).waitFor()
+    await page.locator("#agent-state").filter({ hasText: "Idle" }).waitFor()
+    await frame.getByRole("heading", { name: "Checkout" }).waitFor()
+    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await page.getByLabel("Review notes", { exact: true }).fill("Make this bigger")
+    await page.getByRole("button", { name: "Add note", exact: true }).click()
+    await page.getByLabel("Review notes", { exact: true }).fill("Draft in progress")
+    await frame.locator("body").evaluate(() => scrollTo(0, 400))
+    await page.waitForTimeout(300)
+    await Bun.write(path.join(current.document.root, current.document.entry), tall("Checkout v2"))
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Second direction" })
+    await frame.getByRole("heading", { name: "Checkout v2" }).waitFor({ timeout: 10000 })
+    await page.locator("#status").filter({ hasText: "Revision published" }).waitFor()
+    expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(false)
+    await page.getByText('h1 "Checkout" — Make this bigger', { exact: false }).waitFor()
+    expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Draft in progress")
+    const deadline = Date.now() + 5000
+    while ((await frame.locator("body").evaluate(() => scrollY)) < 390 && Date.now() < deadline) await Bun.sleep(50)
+    expect(await frame.locator("body").evaluate(() => scrollY)).toBeGreaterThanOrEqual(390)
+    await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    await page.getByText("You: Draft in progress · 1 note", { exact: true }).waitFor()
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+  // The real feed replays the sent review and reports the session's state.
+  const response = await fetch(`${base}${current.root}/feed?after=0`)
+  expect(response.headers.get("content-type")).toContain("text/event-stream")
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  while (!chunks.join("").includes('"type":"user"')) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    chunks.push(decoder.decode(chunk.value, { stream: true }))
+  }
+  await reader.cancel()
+  const entries = chunks
+    .join("")
+    .split("\n\n")
+    .flatMap((block) => block.split("\n").filter((line) => line.startsWith("data:")))
+    .map((line) => JSON.parse(line.slice(5)) as Design.FeedEvent)
+  expect(entries[0]).toMatchObject({ type: "agent", agent: "design" })
+  expect(entries.some((entry) => entry.type === "state")).toBe(true)
+  const review = entries.find((entry) => entry.type === "user")
+  expect(review).toMatchObject({ type: "user", text: "Draft in progress · 1 note" })
+  expect(review!.seq).toBeGreaterThan(0)
+}, 90000)
 
 test("Params synchronizes wizard and modal, persists scenarios and captures note-time context", async () => {
   const current = await published("html")
@@ -703,7 +795,7 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     await page.getByLabel("Simulated outcome", { exact: true }).selectOption("error")
     await frame.getByRole("button", { name: "Submit", exact: true }).click()
     await frame.getByText("Something went wrong", { exact: true }).waitFor()
-    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click()
     await page.getByLabel("Review notes", { exact: true }).fill("Make the retry action clearer")
     await page.getByRole("button", { name: "Add note", exact: true }).click()
     await page.getByRole("tab", { name: "Params", exact: true }).click()
@@ -719,7 +811,7 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     await frame.getByRole("button", { name: "Cancel", exact: true }).waitFor({ state: "hidden" })
     await frame.getByRole("button", { name: "OK", exact: true }).click()
     await frame.getByRole("heading", { name: "Acknowledged", exact: true }).waitFor()
-    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click()
     const feedback = page.waitForRequest(
       (request) => request.url().endsWith("/feedback") && request.method() === "POST",
     )
@@ -828,7 +920,7 @@ test("Params component picking respects variant scope and rejects invalid runtim
     expect(await page.getByLabel("Quantity", { exact: true }).inputValue()).toBe("1")
     await page.getByLabel("Quantity", { exact: true }).fill("3")
     await page.getByLabel("Quantity", { exact: true }).press("Tab")
-    await page.getByRole("tab", { name: "Review", exact: true }).click()
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click()
     await page.reload()
     await page.getByRole("tab", { name: "Option B", exact: true }).click()
     await page.getByRole("tab", { name: "Params", exact: true }).click()
