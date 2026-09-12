@@ -8,7 +8,7 @@ import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { Session } from "@/session/session"
 import { Tool } from "@/tool/tool"
-import * as Truncate from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { MessageID, SessionID } from "@/session/schema"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
 
@@ -47,8 +47,8 @@ function harness(input: {
     Layer.mock(Plugin.Service, {
       trigger: input.trigger ?? (((_name, _input, output) => Effect.succeed(output)) as Plugin.Interface["trigger"]),
     }),
-    Layer.mock(Truncate.Service, {
-      output: (text: string) => Effect.succeed({ content: text, truncated: false as const }),
+    Layer.mock(ToolOutputBridge.Service, {
+      bound: (text: string) => Effect.succeed({ content: text, truncated: false as const }),
     }),
     Layer.mock(Agent.Service, {
       get: () => Effect.succeed({ name: "build", permission: input.permission ?? [] } as any),

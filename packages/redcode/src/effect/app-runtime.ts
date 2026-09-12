@@ -36,7 +36,7 @@ import { LSP } from "@/lsp/lsp"
 import { MCP } from "@/mcp"
 import { McpAuth } from "@/mcp/auth"
 import { Command } from "@/command"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { ToolRegistry } from "@/tool/registry"
 import { Format } from "@/format"
 import { InstanceStore } from "@/project/instance-store"
@@ -96,7 +96,7 @@ export const AppLayer = AppNodeBuilderV1.build(
     MCP.node,
     McpAuth.node,
     Command.node,
-    Truncate.node,
+    ToolOutputBridge.node,
     ToolRegistry.node,
     Format.node,
     InstanceStore.node,

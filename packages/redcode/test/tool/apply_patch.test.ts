@@ -10,7 +10,7 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { TestInstance, provideInstance } from "../fixture/fixture"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 import { tmpdir } from "../../../core/test/fixture/tmpdir"
@@ -19,7 +19,7 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(
-    LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, Truncate.node, Agent.node]),
+    LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, ToolOutputBridge.node, Agent.node]),
   ),
 )
 

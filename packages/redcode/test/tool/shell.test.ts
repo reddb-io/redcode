@@ -12,7 +12,7 @@ import { Filesystem } from "@/util/filesystem"
 import { provideInstance, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
 import type { Permission } from "../../src/permission"
 import { Agent } from "../../src/agent/agent"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -29,7 +29,7 @@ const shellLayer = Layer.mergeAll(
       CrossSpawnSpawner.node,
       FSUtil.node,
       Plugin.node,
-      Truncate.node,
+      ToolOutputBridge.node,
       Config.node,
       Agent.node,
       RuntimeFlags.node,
@@ -1182,7 +1182,7 @@ describe("tool.shell truncation", () => {
   it.live("truncates output exceeding line limit", () =>
     runIsolated(
       Effect.gen(function* () {
-        const lineCount = Truncate.MAX_LINES + 500
+        const lineCount = ToolOutputBridge.MAX_LINES + 500
         const result = yield* run({
           command: fill("lines", lineCount),
         })
@@ -1196,7 +1196,7 @@ describe("tool.shell truncation", () => {
   it.live("truncates output exceeding byte limit", () =>
     runIsolated(
       Effect.gen(function* () {
-        const byteCount = Truncate.MAX_BYTES + 10000
+        const byteCount = ToolOutputBridge.MAX_BYTES + 10000
         const result = yield* run({
           command: fill("bytes", byteCount),
         })
@@ -1222,7 +1222,7 @@ describe("tool.shell truncation", () => {
   it.live("full output is saved to file when truncated", () =>
     runIsolated(
       Effect.gen(function* () {
-        const lineCount = Truncate.MAX_LINES + 100
+        const lineCount = ToolOutputBridge.MAX_LINES + 100
         const result = yield* run({
           command: fill("lines", lineCount),
         })

@@ -10,7 +10,7 @@ import { provideInstance, testInstanceStoreLayer, TestInstance, tmpdirScoped } f
 import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Global } from "@reddb-io/redcode-core/global"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { Agent } from "../../src/agent/agent"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -24,7 +24,7 @@ import { Filesystem } from "@/util/filesystem"
 
 const toolLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   LayerNode.compile(
-    LayerNode.group([CrossSpawnSpawner.node, FSUtil.node, Ripgrep.node, Truncate.node, Agent.node, Git.node]),
+    LayerNode.group([CrossSpawnSpawner.node, FSUtil.node, Ripgrep.node, ToolOutputBridge.node, Agent.node, Git.node]),
   )
 
 const it = testEffect(toolLayer())

@@ -27,6 +27,11 @@ export interface BoundResult {
   readonly outputPaths: ReadonlyArray<string>
 }
 
+export interface Limits {
+  readonly maxLines: number
+  readonly maxBytes: number
+}
+
 export class StorageError extends Schema.TaggedErrorClass<StorageError>()("ToolOutputStore.StorageError", {
   operation: Schema.Literals(["encode", "write"]),
   cause: Schema.Defect(),
@@ -40,7 +45,9 @@ export class StorageError extends Schema.TaggedErrorClass<StorageError>()("ToolO
 export type Error = StorageError
 
 export interface Interface {
-  readonly limits: () => Effect.Effect<{ readonly maxLines: number; readonly maxBytes: number }>
+  readonly limits: () => Effect.Effect<Limits>
+  /** Writes one Managed Tool Output File and returns its path, for callers that stream into it. */
+  readonly retain: (content: string) => Effect.Effect<string, Error>
   readonly bound: (input: BoundInput) => Effect.Effect<BoundResult, Error>
   readonly cleanup: () => Effect.Effect<void>
 }
@@ -95,7 +102,8 @@ const preview = (text: string, maxLines: number, maxBytes: number) => {
   return { head: takePrefix(sampled, headBytes), tail: takeSuffix(sampled, tailBytes) }
 }
 
-const boundedPreview = (text: string, marker: string, maxLines: number, maxBytes: number) => {
+/** Head and tail of `text` around `marker`, within the given limits; the lossy notice when nothing else fits. */
+export const boundedPreview = (text: string, marker: string, maxLines: number, maxBytes: number) => {
   const markerOnly = takePrefix(marker, maxBytes).split("\n").slice(0, maxLines).join("\n")
   const markerBytes = Buffer.byteLength(marker, "utf-8")
   if (maxLines <= 4 || maxBytes <= markerBytes + 4) return markerOnly
@@ -109,22 +117,22 @@ const lineCount = (text: string) => {
   return count
 }
 
-const layer = Layer.effect(
-  Service,
+const configuredLimits = (config: Option.Option<Config.Interface>) =>
+  Effect.fn("ToolOutputStore.limits")(function* () {
+    if (Option.isNone(config)) return { maxLines: MAX_LINES, maxBytes: MAX_BYTES }
+    const entries = yield* config.value.entries().pipe(Effect.catch(() => Effect.succeed([] as Config.Entry[])))
+    const configured = Object.assign(
+      {},
+      ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info.tool_output ?? {}] : [])),
+    )
+    return { maxLines: configured.max_lines ?? MAX_LINES, maxBytes: configured.max_bytes ?? MAX_BYTES }
+  })
+
+const make = (limits: () => Effect.Effect<Limits>) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const global = yield* Global.Service
-    const config = yield* Effect.serviceOption(Config.Service)
     const directory = path.join(global.data, MANAGED_DIRECTORY)
-    const limits = Effect.fn("ToolOutputStore.limits")(function* () {
-      if (Option.isNone(config)) return { maxLines: MAX_LINES, maxBytes: MAX_BYTES }
-      const entries = yield* config.value.entries().pipe(Effect.catch(() => Effect.succeed([] as Config.Entry[])))
-      const configured = Object.assign(
-        {},
-        ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info.tool_output ?? {}] : [])),
-      )
-      return { maxLines: configured.max_lines ?? MAX_LINES, maxBytes: configured.max_bytes ?? MAX_BYTES }
-    })
 
     const write = Effect.fn("ToolOutputStore.write")(function* (content: string) {
       const file = path.join(directory, `tool_${Identifier.ascending()}`)
@@ -188,9 +196,23 @@ const layer = Layer.effect(
       }
     })
 
-    return Service.of({ limits, bound, cleanup })
+    return Service.of({ limits, retain: write, bound, cleanup })
+  })
+
+const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const config = yield* Effect.serviceOption(Config.Service)
+    return yield* make(configuredLimits(config))
   }),
 )
+
+/** The same store with limits the host resolves itself, for a runtime whose configuration is not `Config.Service`. */
+export const layerWith = (limits: Effect.Effect<Limits>) =>
+  Layer.effect(
+    Service,
+    make(() => limits),
+  )
 
 export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Global.node, Config.node] })
 
