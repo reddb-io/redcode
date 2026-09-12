@@ -295,7 +295,16 @@ export const designGoalScenarios: Scenario[] = [
             id: `msg_${crypto.randomUUID()}`,
             revision: current.revision.id,
             text: "Make checkout clearer",
-            items: [{ target: "h1", text: "Use a clearer heading" }],
+            items: [
+              {
+                target: "h1",
+                text: "Use a clearer heading",
+                tag: "h1",
+                elementText: "Checkout",
+                selectedText: "Checkout",
+                label: 'h1 "Checkout"',
+              },
+            ],
             assets: [],
             snapshot: "",
             delivery: "queue",

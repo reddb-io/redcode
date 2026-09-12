@@ -46,6 +46,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     preset: "",
     assets: [] as string[],
     snapshot: "",
+    selection: { tag: "", elementText: "", selectedText: "" },
     pending: undefined as Design.Feedback | undefined,
     boards: [] as { target: string; scene: unknown }[],
     board: undefined as
@@ -214,6 +215,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("target").textContent = ""
     input("selection").value = ""
     state.snapshot = ""
+    state.selection = { tag: "", elementText: "", selectedText: "" }
     drawVariants()
     state.preset = ""
     drawParams()
@@ -465,7 +467,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       ...state.notes.map((note, index) => {
         const row = document.createElement("div")
         row.className = "note"
-        row.textContent = `${note.target}: ${note.text}`
+        row.textContent = `${note.label || note.target} — ${note.text}`
         const button = document.createElement("button")
         button.dataset.copy = "remove"
         button.textContent = copy.remove
@@ -829,10 +831,19 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   input("note").oninput = save
   click("add", async () => {
     if (state.pending || !input("note").value.trim()) return
+    const picked = state.selection
     state.notes.push({
       target: element("target").textContent || "page",
       params: paramContext(),
-      text: [input("note").value, input("selection").value].filter(Boolean).join("\n"),
+      text: input("note").value.trim(),
+      ...(picked.tag
+        ? {
+            tag: picked.tag,
+            elementText: picked.elementText,
+            label: picked.elementText ? `${picked.tag} "${picked.elementText.slice(0, 40)}"` : picked.tag,
+          }
+        : {}),
+      ...(picked.selectedText ? { selectedText: picked.selectedText } : {}),
     })
     input("note").value = ""
     save()
@@ -845,13 +856,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
       revision: state.revision,
       params: paramContext(),
-      text: input("note").value.trim() || state.notes.map((note) => note.text).join("\n"),
-      items: [
-        ...state.notes,
-        ...(state.variant && input("note").value.trim()
-          ? [{ target: `variant:${state.variant}`, text: input("note").value.trim() }]
-          : []),
-      ],
+      text: input("note").value.trim(),
+      items: [...state.notes],
       assets: [...state.assets],
       snapshot: state.snapshot,
       whiteboards: [...state.boards],
@@ -1195,6 +1201,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("target").textContent = event.data.target.slice(0, 1000)
     input("selection").value = event.data.text.slice(0, 12000)
     state.snapshot = typeof event.data.snapshot === "string" ? event.data.snapshot.slice(0, 30000) : ""
+    const field = (name: string, limit: number) =>
+      typeof event.data[name] === "string" ? String(event.data[name]).slice(0, limit) : ""
+    state.selection = {
+      tag: field("tag", 64),
+      elementText: field("elementText", 240),
+      selectedText: field("selectedText", 1000),
+    }
     save()
   }
   window.addEventListener("message", message)

@@ -40934,6 +40934,37 @@
         "required": ["values"],
         "additionalProperties": false
       },
+      "DesignFeedbackItem": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/DesignParamContext"
+          },
+          "tag": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "elementText": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "selectedText": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": ["target", "text"],
+        "additionalProperties": false
+      },
       "DesignFeedback": {
         "type": "object",
         "properties": {
@@ -40948,26 +40979,12 @@
             "type": "string"
           },
           "text": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "target": {
-                  "type": "string"
-                },
-                "text": {
-                  "type": "string"
-                },
-                "params": {
-                  "$ref": "#/components/schemas/DesignParamContext"
-                }
-              },
-              "required": ["target", "text"],
-              "additionalProperties": false
+              "$ref": "#/components/schemas/DesignFeedbackItem"
             }
           },
           "assets": {

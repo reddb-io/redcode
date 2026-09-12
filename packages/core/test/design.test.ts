@@ -15,6 +15,7 @@ import { DesignAssets } from "../src/design/assets"
 import { DesignQuality } from "../src/design/quality"
 import { DesignRenderer } from "../src/design/renderer"
 import { DesignExport } from "../src/design/export"
+import { DesignFeedback } from "../src/design/feedback"
 import { Location } from "../src/location"
 import { Project } from "../src/project"
 import { ProjectTable } from "../src/project/sql"
@@ -511,6 +512,45 @@ describe("Design revisions and review", () => {
       ).toBe("conflict")
       expect((yield* store.get(document.id, SessionV2.ID.make("ses_other")).pipe(Effect.flip)).code).toBe("not-found")
       expect((yield* store.publish(document.id, "Unexpected").pipe(Effect.flip)).code).toBe("conflict")
+    }),
+  )
+
+  it.effect("serves the captured page text on demand instead of inside the review message", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      const revision = yield* store.publish(document.id, "Review")
+      expect((yield* store.readApproval({ id: document.id, section: "snapshot" }).pipe(Effect.flip)).code).toBe(
+        "not-found",
+      )
+      const first = {
+        id: SessionMessage.ID.create(),
+        revision: revision.id,
+        text: "",
+        items: [{ target: "#title", text: "Bigger", tag: "h1", elementText: "Checkout", label: 'h1 "Checkout"' }],
+        assets: [],
+        snapshot: "FIRST PAGE TEXT",
+        delivery: "steer" as const,
+        end: false,
+      }
+      const second = { ...first, id: SessionMessage.ID.create(), snapshot: "SECOND PAGE TEXT" }
+      const third = { ...first, id: SessionMessage.ID.create(), snapshot: "" }
+      for (const feedback of [first, second, third]) {
+        yield* store.prepareFeedback(document.id, feedback)
+        yield* store.acknowledge(document.id, feedback)
+      }
+      const message = DesignFeedback.render(first, { id: document.id, storage: store.storage, attachments: [] })
+      expect(message).not.toContain("FIRST PAGE TEXT")
+      expect(message).toContain(`"section":"snapshot","feedback":"${first.id}"`)
+      const latest = yield* store.readApproval({ id: document.id, section: "snapshot" })
+      expect(latest).toContain(`captured with feedback ${second.id}`)
+      expect(latest).toEndWith("\nSECOND PAGE TEXT")
+      expect(yield* store.readApproval({ id: document.id, section: "snapshot", feedback: first.id })).toEndWith(
+        "\nFIRST PAGE TEXT",
+      )
+      expect(
+        (yield* store.readApproval({ id: document.id, section: "snapshot", feedback: third.id }).pipe(Effect.flip))
+          .code,
+      ).toBe("not-found")
     }),
   )
 

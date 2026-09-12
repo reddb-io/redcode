@@ -208,7 +208,7 @@ const layer = Layer.effectDiscard(
         }),
         design_read: Tool.make({
           description:
-            "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval; use file for exact snapshot source. Available during Plan and Build without reopening Design.",
+            "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval; use file for exact snapshot source. Section snapshot returns the page text captured with a browser review note (optionally a specific feedback id) and needs no approval. Available during Plan and Build without reopening Design.",
           input: DesignApproval.Read,
           output: Schema.String,
           execute: (input, context) =>

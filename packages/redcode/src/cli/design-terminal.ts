@@ -1,5 +1,6 @@
 import type { Redcode, SessionsEventsOutput, QuestionsListOutput } from "@reddb-io/redcode-client"
 import timers from "node:timers/promises"
+import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
 import { errorMessage } from "@/util/error"
 import { withTimeout } from "@/util/timeout"
 
@@ -54,9 +55,24 @@ export async function create(input: {
         input.mode(state.agent)
         input.write(`Mode: ${state.agent}`)
         return
-      case "session.next.prompted":
-        input.write(`You: ${event.data.prompt.text}`)
+      case "session.next.prompted": {
+        const review = DesignFeedback.summarize(event.data.prompt.text)
+        if (!review) {
+          input.write(`You: ${event.data.prompt.text}`)
+          return
+        }
+        input.write(
+          [
+            `Design review ${review.id} · ${review.revision}${review.variant ? ` · ${review.variant}` : ""}${review.ended ? " · ended" : ""}`,
+            review.text,
+            ...review.notes.map((note, index) => `${index + 1}. ${note.label} — ${note.text}`),
+            review.attachments.length ? `Attachments: ${review.attachments.join(", ")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        )
         return
+      }
       case "session.next.text.ended":
         input.write(event.data.text.slice(-24000))
         return

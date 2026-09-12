@@ -637,6 +637,94 @@ it.instance("the TUI model receives and executes the new Design toolset", () =>
 )
 
 it.instance(
+  "browser feedback reaches the TUI session as one labelled review message with a compact notice",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const studio = yield* DesignStudio.Service
+      const feedback = yield* DesignFeedback.Service
+      const session = yield* sessions.create({ agent: "design" })
+      const document = yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          const document = yield* store.create(session.id, {
+            name: "Review",
+            journey: "new",
+            engine: "html",
+            kind: "screen",
+          })
+          const revision = yield* store.publish(document.id, "Review")
+          const asset = yield* store.importAsset(document.id, {
+            name: "reference.png",
+            mime: "image/png",
+            source: "user",
+            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          })
+          return { id: document.id, revision: revision.id, asset: asset.id }
+        }),
+      )
+      const receipt = yield* feedback.admit(session.id, document.id, {
+        id: SessionMessage.ID.make("msg_labelled_review"),
+        revision: document.revision,
+        text: "",
+        params: { values: {}, variant: "stone" },
+        items: [
+          {
+            target: "variant:stone #title",
+            text: "Make this title more prominent",
+            tag: "h1",
+            elementText: "Checkout",
+            label: 'h1 "Checkout"',
+          },
+        ],
+        assets: [document.asset],
+        snapshot: "PAGE TEXT THAT STAYS OUT OF THE TRANSCRIPT",
+        end: false,
+        delivery: "steer",
+      })
+      expect(receipt.status).toBe("admitted")
+      const message = (yield* sessions.messages({ sessionID: session.id })).find(
+        (item) => item.info.id === "msg_labelled_review",
+      )
+      const text = message?.parts.find((part) => part.type === "text")
+      expect(text?.type === "text" && text.text).toStartWith(
+        `<design-review id="${document.id}" revision="${document.revision}" variant="stone" ended="false">`,
+      )
+      expect(text?.type === "text" && text.text).toContain(
+        '### 1. h1 "Checkout" — variant:stone #title\nNote: Make this title more prominent\nElement text: "Checkout"',
+      )
+      expect(text?.type === "text" && text.text).toContain("- image 1: reference.png (attached as a file)")
+      expect(text?.type === "text" && text.text).not.toContain("PAGE TEXT THAT STAYS OUT")
+      expect(text?.type === "text" && text.metadata?.designFeedback).toEqual({
+        id: document.id,
+        feedback: "msg_labelled_review",
+        revision: document.revision,
+        variant: "stone",
+        ended: false,
+        text: "",
+        notes: [{ label: 'h1 "Checkout"', text: "Make this title more prominent" }],
+        attachments: ["reference.png"],
+        snapshot: true,
+      })
+      expect(message?.parts.filter((part) => part.type === "file").map((part) => part.filename)).toEqual([
+        "reference.png",
+      ])
+    }),
+  {
+    config: {
+      model: "fixture/fixture",
+      provider: {
+        fixture: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { fixture: { name: "Fixture", limit: { context: 100000, output: 4096 } } },
+          options: { apiKey: "fixture", baseURL: "http://127.0.0.1:1/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "queued browser feedback does not restart an interrupted TUI session",
   () =>
     Effect.gen(function* () {
