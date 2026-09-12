@@ -71,7 +71,11 @@ export function annotations() {
     if (typeof target !== "string") return undefined
     const query = target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, "")
     if (!query || query === "page" || query === "diagram") return undefined
-    return document.querySelector(query) ?? undefined
+    try {
+      return document.querySelector(query) ?? undefined
+    } catch {
+      return undefined
+    }
   }
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return
@@ -97,11 +101,17 @@ export function annotations() {
     }
     if (event.data?.type === "design:reveal") {
       const target = locate(event.data.target)
-      if (!target) return
+      // A missing element is reported so the host can drop a card that was anchored to it.
+      if (!target) {
+        parent.postMessage({ type: "design:rect", target: event.data.target, rect: null }, "*")
+        return
+      }
       document.querySelectorAll("[data-design-reveal]").forEach((node) => node.removeAttribute("data-design-reveal"))
-      target.setAttribute("data-design-reveal", "")
       clearTimeout(state.reveal)
-      state.reveal = setTimeout(() => target.removeAttribute("data-design-reveal"), 2400)
+      if (event.data.pulse !== false) {
+        target.setAttribute("data-design-reveal", "")
+        state.reveal = setTimeout(() => target.removeAttribute("data-design-reveal"), 2400)
+      }
       state.selected = target
       // Two frames later so the scroll wins over a scroll restore that arrived just before it.
       requestAnimationFrame(() =>
