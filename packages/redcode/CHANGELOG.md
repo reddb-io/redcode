@@ -1,5 +1,17 @@
 # opencode
 
+## 0.27.0
+
+### Minor Changes
+
+- 7524b87: The design review page annotates elements in place: with "Annotate elements" on, clicking an element in the preview opens a note card over it, in the review page rather than inside the sandboxed prototype, headed by the element's tag and text. Enter queues the note, Shift+Enter breaks the line, Ctrl/Cmd+Enter queues it and sends the review, and Escape closes an empty card or hands focus back; an unfinished card survives a reload. The notes list shows each note's element label with Reveal (scrolls the prototype to the element and pulses it) and Remove, and hovering a note highlights its element. Feedback goes out with two buttons, "Send to agent" and "Send & end", replacing the delivery and end checkboxes; Ctrl/Cmd+Enter in the composer sends. Layout observations from the prototype's audit move out of Details into a collapsible inbox under the notes, with a severity tag, Reveal and Dismiss per finding and a count badge; ticked findings become notes in one "Queue selected fixes" step, findings a newer revision no longer reports resolve themselves while ones it still reports reopen, and dismissals are remembered per design on the device.
+- 69d35a3: The design review page now carries the conversation: agent replies, tool activity and the working state stream into a Conversation panel next to your notes (in both `redcode design` and the TUI's review page), your sent feedback is echoed as "You: N notes", and a newly published revision reloads the preview in place while you are on the latest one, keeping your scroll position, selected variants and unsent notes; while browsing history the "New revision available" button stays.
+
+### Patch Changes
+
+- 51b1b33: Design review feedback now reaches the agent as one bounded `<design-review>` message: the user's note, the selected element's label and selector, selected or element text, and the scenario parameters are separate labelled fields instead of one fused blob, the page-text snapshot stays out of the message and is readable on demand with `design_read` section `snapshot`, and the TUI and `redcode design` terminal show the review as a compact list of notes with attachment chips instead of the raw text.
+- e5a5e67: Legacy sessions now bound oversized tool output through core's `ToolOutputStore` instead of the runtime's own `Truncate` service, so both runtimes share one Managed Tool Output directory, one file naming scheme, one head-and-tail bounding policy and one retention scan. The model-visible notice is the store's `... output truncated; full content saved to <path> ...` between the head and the tail of the output, followed by the instruction to Grep or Read the saved file with offset/limit rather than whole; the previous Task-tool delegation hint is gone. Limits still come from `tool_output` in Redcode config, the managed directory stays readable for every agent, and a storage failure still yields a lossy bounded output without a path (warning logged) rather than a failed tool call, now for streamed shell output too. Managed files are still deleted by age after seven days.
+
 ## 0.26.3
 
 ### Patch Changes
