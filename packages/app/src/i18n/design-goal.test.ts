@@ -14,7 +14,7 @@ import { DESKTOP_NATIVE_LOCALES, DESKTOP_NATIVE_LOCALE_TAGS } from "./desktop-na
 describe("Design and Goal localization coverage", () => {
   test("declares English fallback separately from completed translations", () => {
     expect(designGoalLocales).toEqual(["en", "br"])
-    expect(designGoalKeys).toHaveLength(141)
+    expect(designGoalKeys).toHaveLength(152)
     expect(designGoalCoverage("en")).toEqual({ sourceLocale: "en", translated: [], fallback: [] })
     expect(designGoalCoverage("br")).toEqual({ sourceLocale: "br", translated: designGoalKeys, fallback: [] })
     for (const locale of DESKTOP_NATIVE_LOCALES.filter((locale) => locale !== "en" && locale !== "br")) {

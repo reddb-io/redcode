@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
-import { chromium, type Browser } from "playwright-core"
+import { chromium, type Browser, type Page } from "playwright-core"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
@@ -51,6 +51,14 @@ const published = async (engine: "html" | "solid") => {
   const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "First direction" })
   return { document, revision, root, sessionID: current.data.id }
 }
+/** One row of the review's notes list: the element label with the note written for it. */
+const note = (page: Page, label: string, text: string) =>
+  page
+    .locator("#notes .note")
+    .filter({ has: page.locator(".note-label", { hasText: label }) })
+    .filter({ has: page.locator(".note-text", { hasText: text }) })
+const activeID = (page: Page) =>
+  page.evaluate(() => document.querySelector("#review")!.shadowRoot!.activeElement?.id ?? "")
 
 beforeAll(async () => {
   await Bun.write(path.join(directory, "redcode.json"), JSON.stringify({ permission: { external_directory: "allow" } }))
@@ -93,21 +101,24 @@ test("new interface: native review, annotation draft, lost response retry and ap
   await frame.getByRole("button", { name: "Add item" }).click()
   expect(await frame.getByRole("button", { name: "Added" }).textContent()).toBe("Added")
   await page.getByLabel("Annotate elements", { exact: true }).check()
+  const card = page.getByLabel("Note for this element", { exact: true })
   await frame.getByRole("heading", { name: "Checkout" }).click()
-  await page.getByLabel("Review notes", { exact: true }).fill("Make this title more prominent")
-  await page.getByRole("button", { name: "Add note", exact: true }).click()
+  await card.fill("Make this title more prominent")
+  await card.press("Enter")
   // A drag selection inside one element survives the click that follows it.
   await frame.getByRole("heading", { name: "Checkout" }).selectText()
   await frame.getByRole("heading", { name: "Checkout" }).dispatchEvent("click")
-  await page.getByLabel("Review notes", { exact: true }).fill("Use a verb here")
-  await page.getByRole("button", { name: "Add note", exact: true }).click()
+  await card.fill("Use a verb here")
+  await card.press("Enter")
   await frame.locator("#diagram").click()
-  await page.getByLabel("Review notes", { exact: true }).fill("Swap the arrow")
-  await page.getByRole("button", { name: "Add note", exact: true }).click()
+  await page.locator("#card-label", { hasText: 'pre "diagram"' }).waitFor()
+  await card.fill("Swap the arrow")
+  await card.press("Enter")
   await page.reload()
-  await page.getByText('h1 "Checkout" — Make this title more prominent', { exact: false }).waitFor()
-  await page.getByText('h1 "Checkout" — Use a verb here', { exact: false }).waitFor()
+  await note(page, 'h1 "Checkout"', "Make this title more prominent").waitFor()
+  await note(page, 'h1 "Checkout"', "Use a verb here").waitFor()
   expect(await page.locator("#notes").textContent()).not.toContain("#title")
+  expect(await page.locator("#card").isHidden()).toBe(true)
   const feedback: Design.Feedback[] = []
   await page.route("**/feedback", async (route) => {
     feedback.push(route.request().postDataJSON())
@@ -118,12 +129,16 @@ test("new interface: native review, annotation draft, lost response retry and ap
     }
     await route.fulfill({ response })
   })
-  await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+  await page.getByRole("button", { name: "Send to agent", exact: true }).click()
+  await page.getByRole("button", { name: "Retry sending saved feedback" }).waitFor()
+  expect(await page.getByRole("button", { name: "Send & end", exact: true }).isVisible()).toBe(false)
   await page.getByRole("button", { name: "Retry sending saved feedback" }).click()
   await page.getByText("Feedback received", { exact: true }).waitFor()
   expect(feedback).toHaveLength(2)
   expect(feedback[1]).toEqual(feedback[0])
   expect(feedback[0].text).toBe("")
+  expect(feedback[0].delivery).toBe("steer")
+  expect(feedback[0].end).toBe(false)
   expect(feedback[0].items).toHaveLength(3)
   expect(feedback[0].items[0]).toMatchObject({
     target: "#title",
@@ -476,8 +491,8 @@ test("diagram review retains the Excalidraw whiteboard and queues an image plus 
   expect(await page.locator("#notes").textContent()).toBe("")
   await page.unroute(upload)
   await frame.getByRole("button", { name: "Queue feedback", exact: true }).click()
-  await page.getByText("diagram — Keep these steps clear", { exact: false }).waitFor({ timeout: 60000 })
-  await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+  await note(page, "diagram", "Keep these steps clear").waitFor({ timeout: 60000 })
+  await page.getByRole("button", { name: "Send to agent", exact: true }).click()
   await page.getByText("Feedback received", { exact: true }).waitFor()
   const scenes = await Array.fromAsync(
     new Bun.Glob("*.excalidraw").scan({ cwd: path.join(current.document.root, "../reviews") }),
@@ -581,6 +596,15 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect((await page.locator("#preview").boundingBox())!.height).toBeGreaterThan(150)
+  // The annotation card stays inside a phone-width viewport and never widens the page.
+  await page.getByRole("tab", { name: "Conversation", exact: true }).click()
+  await page.getByLabel("Annotate elements", { exact: true }).check()
+  await prototype.getByRole("heading", { name: "Checkout" }).click()
+  await page.locator("#card:not([hidden])").waitFor()
+  const card = await page.locator("#card").boundingBox()
+  expect(card!.x).toBeGreaterThanOrEqual(0)
+  expect(card!.x + card!.width).toBeLessThanOrEqual(390)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.close()
 }, 60000)
 
@@ -663,8 +687,8 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     await frame.getByRole("heading", { name: "Checkout" }).waitFor()
     await page.getByLabel("Annotate elements", { exact: true }).check()
     await frame.getByRole("heading", { name: "Checkout" }).click()
-    await page.getByLabel("Review notes", { exact: true }).fill("Make this bigger")
-    await page.getByRole("button", { name: "Add note", exact: true }).click()
+    await page.getByLabel("Note for this element", { exact: true }).fill("Make this bigger")
+    await page.getByLabel("Note for this element", { exact: true }).press("Enter")
     await page.getByLabel("Review notes", { exact: true }).fill("Draft in progress")
     await frame.locator("body").evaluate(() => scrollTo(0, 400))
     await page.waitForTimeout(300)
@@ -675,13 +699,13 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     await frame.getByRole("heading", { name: "Checkout v2" }).waitFor({ timeout: 10000 })
     await page.locator("#status").filter({ hasText: "Revision published" }).waitFor()
     expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(false)
-    await page.getByText('h1 "Checkout" — Make this bigger', { exact: false }).waitFor()
+    await note(page, 'h1 "Checkout"', "Make this bigger").waitFor()
     expect(await page.getByLabel("Review notes", { exact: true }).inputValue()).toBe("Draft in progress")
     const deadline = Date.now() + 5000
     while ((await frame.locator("body").evaluate(() => scrollY)) < 390 && Date.now() < deadline) await Bun.sleep(50)
     expect(await frame.locator("body").evaluate(() => scrollY)).toBeGreaterThanOrEqual(390)
     const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
-    await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+    await page.getByRole("button", { name: "Send to agent", exact: true }).click()
     await page.getByText("Feedback received", { exact: true }).waitFor()
     await page.getByText("You: Draft in progress · 1 note", { exact: true }).waitFor()
     // The note keeps the revision it was drafted on; the message names the revision on screen.
@@ -805,8 +829,11 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     await frame.getByRole("button", { name: "Submit", exact: true }).click()
     await frame.getByText("Something went wrong", { exact: true }).waitFor()
     await page.getByRole("tab", { name: "Conversation", exact: true }).click()
-    await page.getByLabel("Review notes", { exact: true }).fill("Make the retry action clearer")
-    await page.getByRole("button", { name: "Add note", exact: true }).click()
+    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await frame.getByRole("button", { name: "Try again", exact: true }).click()
+    await page.getByLabel("Note for this element", { exact: true }).fill("Make the retry action clearer")
+    await page.getByLabel("Note for this element", { exact: true }).press("Enter")
+    await page.getByLabel("Annotate elements", { exact: true }).uncheck()
     await page.getByRole("tab", { name: "Params", exact: true }).click()
     await frame.getByRole("button", { name: "Try again", exact: true }).click()
     await page.getByLabel("Simulated outcome", { exact: true }).selectOption("success")
@@ -824,8 +851,14 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     const feedback = page.waitForRequest(
       (request) => request.url().endsWith("/feedback") && request.method() === "POST",
     )
-    await page.getByRole("button", { name: "Send feedback", exact: true }).click()
+    await page.getByRole("button", { name: "Send to agent", exact: true }).click()
     const body = (await feedback).postDataJSON() as Design.Feedback
+    expect(body.items[0]).toMatchObject({
+      target: "#retry",
+      tag: "button",
+      label: 'button "Try again"',
+      text: "Make the retry action clearer",
+    })
     expect(body.items[0].params?.values.wizard).toMatchObject({ step: 2, outcome: "error", result: "error" })
     expect(body.params?.values.wizard.result).toBe("populated")
     await page.getByText("Feedback received", { exact: true }).waitFor()
@@ -942,3 +975,164 @@ test("Params component picking respects variant scope and rejects invalid runtim
     await page.close()
   }
 }, 30000)
+
+test("annotation card keyboard map and reveal", async () => {
+  const current = await published("html")
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    '<!doctype html><html lang="en"><body><main style="height:3000px"><h1 id="title">Checkout</h1><p id="bottom" tabindex="0" style="margin-top:2400px">Footer</p></main></body></html>',
+  )
+  await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Tall direction" })
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    const card = page.getByLabel("Note for this element", { exact: true })
+    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await page.locator("#card:not([hidden])").waitFor()
+    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
+    expect(await activeID(page)).toBe("card-text")
+    // The card opens over the element it describes, inside the parent document.
+    const heading = await frame.getByRole("heading", { name: "Checkout" }).boundingBox()
+    const box = await page.locator("#card").boundingBox()
+    expect(box!.y).toBeGreaterThan(heading!.y)
+    expect(Math.abs(box!.x - heading!.x)).toBeLessThan(40)
+    expect(await frame.locator("#card").count()).toBe(0)
+    await card.pressSequentially("Line one")
+    await card.press("Shift+Enter")
+    await card.pressSequentially("line two")
+    expect(await card.inputValue()).toBe("Line one\nline two")
+    // The unfinished card survives a reload and re-anchors to its element.
+    await page.reload()
+    await page.locator("#card:not([hidden])").waitFor()
+    expect(await card.inputValue()).toBe("Line one\nline two")
+    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
+    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await card.press("Enter")
+    await note(page, 'h1 "Checkout"', "Line one").waitFor()
+    await page.locator("#card").waitFor({ state: "hidden" })
+    // Escape closes an empty card, also when pressed inside the prototype.
+    await frame.locator("#bottom").click()
+    await page.locator("#card:not([hidden])").waitFor()
+    expect(await page.locator("#card-label").textContent()).toBe('p "Footer"')
+    await card.press("Escape")
+    await page.locator("#card").waitFor({ state: "hidden" })
+    await frame.locator("#bottom").click()
+    await page.locator("#card:not([hidden])").waitFor()
+    await frame.locator("#bottom").press("Escape")
+    await page.locator("#card").waitFor({ state: "hidden" })
+    // With text in it Escape only leaves the card; Ctrl+Enter queues the note and sends everything.
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await card.fill("Send me now")
+    await card.press("Escape")
+    expect(await page.locator("#card").isHidden()).toBe(false)
+    expect(await activeID(page)).not.toBe("card-text")
+    await card.focus()
+    const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
+    await card.press("Control+Enter")
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    const payload = (await sent).postDataJSON() as Design.Feedback
+    expect(payload.delivery).toBe("steer")
+    expect(payload.end).toBe(false)
+    expect(payload.items).toHaveLength(2)
+    expect(payload.items[0]).toMatchObject({
+      target: "#title",
+      text: "Line one\nline two",
+      tag: "h1",
+      elementText: "Checkout",
+      label: 'h1 "Checkout"',
+    })
+    expect(payload.items[1]).toMatchObject({ target: "#title", text: "Send me now", label: 'h1 "Checkout"' })
+    expect(await page.locator("#notes .note").count()).toBe(0)
+    // Reveal scrolls the prototype to the note's element and pulses it; hovering highlights it.
+    await frame.locator("#bottom").click()
+    await card.fill("Footer note")
+    await card.press("Enter")
+    await frame.locator("body").evaluate(() => scrollTo(0, 0))
+    const row = note(page, 'p "Footer"', "Footer note")
+    await row.hover()
+    await frame.locator("#bottom[data-design-highlight]").waitFor()
+    await row.getByRole("button", { name: "Reveal", exact: true }).click()
+    await frame.locator("#bottom[data-design-reveal]").waitFor()
+    const scrolled = Date.now() + 5000
+    while ((await frame.locator("body").evaluate(() => scrollY)) < 1000 && Date.now() < scrolled) await Bun.sleep(50)
+    expect(await frame.locator("body").evaluate(() => scrollY)).toBeGreaterThan(1000)
+    await row.getByRole("button", { name: "Remove", exact: true }).click()
+    expect(await page.locator("#notes .note").count()).toBe(0)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("layout inbox queue/dismiss/resolve", async () => {
+  const current = await published("html")
+  const wide = (banner: number, promo: number) =>
+    `<!doctype html><html lang="en"><body><main><h1 id="title">Checkout</h1><p id="banner" style="width:${banner}px">Banner</p><p id="promo" style="width:${promo}px">Promo</p><button id="cta" style="margin-left:2600px">Buy</button></main></body></html>`
+  await Bun.write(path.join(current.document.root, current.document.entry), wide(3000, 3000))
+  await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Wide direction" })
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  const finding = (label: string) => page.locator("#inbox .finding").filter({ hasText: label })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    await page.locator("#inbox-count").filter({ hasText: "3" }).waitFor()
+    expect(await page.locator("#panel-details").textContent()).not.toContain("Layout observations")
+    await page.locator("#inbox summary").click()
+    expect(await finding('p "Banner"').getAttribute("data-severity")).toBe("warn")
+    expect(await finding('p "Banner"').getAttribute("data-status")).toBe("open")
+    // Queuing turns the ticked observations into notes in one step.
+    await finding('p "Banner"').getByRole("checkbox").check()
+    await page.getByRole("button", { name: "Queue selected fixes", exact: true }).click()
+    await note(page, 'p "Banner"', "Element extends beyond the viewport").waitFor()
+    expect(await finding('p "Banner"').getAttribute("data-status")).toBe("queued")
+    expect(await page.locator("#notes .note").count()).toBe(1)
+    await finding('button "Buy"').getByRole("button", { name: "Dismiss", exact: true }).click()
+    expect(await finding('button "Buy"').count()).toBe(0)
+    expect(await page.locator("#inbox-count").textContent()).toBe("1")
+    // The lifecycle and the dismissal survive a reload of the page.
+    await page.reload()
+    await note(page, 'p "Banner"', "Element extends beyond the viewport").waitFor()
+    await page.locator("#inbox summary").click()
+    await finding('p "Promo"').waitFor()
+    await page.waitForTimeout(500)
+    expect(await page.locator("#inbox-count").textContent()).toBe("1")
+    expect(await finding('p "Banner"').getAttribute("data-status")).toBe("queued")
+    expect(await finding('button "Buy"').count()).toBe(0)
+    await finding('p "Promo"').getByRole("button", { name: "Reveal", exact: true }).click()
+    await frame.locator("#promo[data-design-reveal]").waitFor()
+    // A newer revision fixes Promo and still overflows Banner: one resolves, the other reopens.
+    await Bun.write(path.join(current.document.root, current.document.entry), wide(3000, 100))
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Narrower" })
+    await page.locator("#status").filter({ hasText: "Revision published" }).waitFor({ timeout: 10000 })
+    await page.locator('#inbox .finding[data-status="resolved"]').filter({ hasText: 'p "Promo"' }).waitFor()
+    await page.locator('#inbox .finding[data-status="open"]').filter({ hasText: 'p "Banner"' }).waitFor()
+    expect(await page.locator("#inbox-count").textContent()).toBe("1")
+    expect(await finding('button "Buy"').count()).toBe(0)
+    expect(await page.locator("#notes .note").count()).toBe(1)
+    // Send & end delivers the queued note with its element context and closes the review.
+    const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
+    await page.getByRole("button", { name: "Send & end", exact: true }).click()
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    const payload = (await sent).postDataJSON() as Design.Feedback
+    expect(payload.delivery).toBe("steer")
+    expect(payload.end).toBe(true)
+    expect(payload.items).toHaveLength(1)
+    expect(payload.items[0]).toMatchObject({
+      target: "#banner",
+      tag: "p",
+      label: 'p "Banner"',
+      text: "Element extends beyond the viewport",
+    })
+    expect(payload.items[0].params?.values).toEqual({})
+    await page.getByRole("button", { name: "Reopen review" }).waitFor()
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)

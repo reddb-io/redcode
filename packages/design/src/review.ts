@@ -54,7 +54,29 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     preset: "",
     assets: [] as string[],
     snapshot: "",
-    selection: { tag: "", elementText: "", selectedText: "" },
+    /** One element picked in a preview frame and the note being written for it. */
+    card: undefined as
+      | {
+          frame: "preview" | "peer-preview"
+          target: string
+          tag: string
+          elementText: string
+          selectedText: string
+          label: string
+          rect: { x: number; y: number; width: number; height: number }
+          text: string
+        }
+      | undefined,
+    inbox: [] as {
+      id: string
+      target: string
+      tag: string
+      label: string
+      severity: "warn" | "info"
+      text: string
+      status: "open" | "queued" | "resolved" | "dismissed"
+      revision: string
+    }[],
     pending: undefined as Design.Feedback | undefined,
     boards: [] as { target: string; scene: unknown }[],
     board: undefined as
@@ -96,6 +118,9 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const element = <T extends HTMLElement>(id: string) => root.getElementById(id) as T
   const input = (id: string) => element<HTMLInputElement>(id)
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
+  const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`
+  const hash = (value: string) =>
+    [...value].reduce((sum, char) => Math.imul(sum ^ char.codePointAt(0)!, 16777619) >>> 0, 2166136261).toString(16)
   const status = (text: string, key?: keyof ReviewCopy, tone = "info") => {
     element("status").textContent = text
     element("status").dataset.tone = tone
@@ -150,12 +175,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 .variant-bar{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--edge);min-width:0;flex-wrap:wrap}.variant-bar .tabs{border:0;padding:0;flex:1;overflow:auto;gap:16px}.variant-bar .tabs button{white-space:nowrap}.variant-bar>button{margin:6px 0;white-space:nowrap}.variant-bar>button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}.variant-bar #add-variant{margin-right:auto}.canvas{display:flex;gap:20px;padding:16px}.preview-pane{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%}.viewport{flex:1;min-height:0;overflow:auto;padding:1px}.viewport iframe{height:100%;min-height:150px}.pane-label{height:38px;flex:none;font-size:12px;display:flex;align-items:center;gap:8px;margin:0;padding-bottom:6px}.pane-label select{width:auto;flex:1;padding:4px 8px}.canvas[data-comparing=true] .preview-pane{min-width:280px}.action-dialog{width:min(520px,calc(100vw - 32px));max-height:90vh;overflow:auto;padding:24px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}.action-dialog::backdrop{background:#0008}.action-dialog p{overflow-wrap:anywhere}.action-dialog .row{justify-content:flex-end}.action-dialog .row>*{flex:0 1 auto}#status{font-size:13px;min-height:38px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-top:0;color:var(--ink)}#status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}button[aria-busy=true]{opacity:1;cursor:progress}button[aria-busy=true]::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.preview-pane[aria-busy=true] .viewport{opacity:.5}#width{max-width:180px}@container(max-width:640px){.variant-bar{padding:0 12px;gap:6px}.variant-bar .tabs{flex-basis:100%}.canvas{padding:12px;gap:12px}.variant-bar>button{font-size:12px}#width{max-width:165px}}
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
 #agent-state{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}#agent-state[data-state=working]{color:var(--accent);border-color:var(--accent)}#agent-state[data-state=working]::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}#agent-state[data-state=published]{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}#feed{display:grid;gap:8px;margin-bottom:16px;max-height:40vh;overflow:auto}#feed:not(:has(.entry)) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry) #feed-empty{display:none}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}
+.viewport{position:relative}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}
+.note{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.note .note-label{font-weight:600;font-size:12px}.note .note-text{flex:1 1 100%;white-space:pre-wrap}.note button{float:none;margin-left:auto;padding:2px 7px;font-size:11px}.note button+button{margin-left:0}.note:hover{background:color-mix(in oklch,var(--panel) 60%,transparent)}
+.sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
+#inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
     </style><header><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><button id="new"><span data-copy="create">${copy.create}</span></button><button id="refresh"><span data-copy="refresh">${copy.refresh}</span></button></header>
     <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target"></small><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><button id="add"><span data-copy="add">${copy.add}</span></button><div id="notes"></div><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><label class="check"><input type="checkbox" id="queue"><span data-copy="queue">${copy.queue}</span></label><label class="check"><input type="checkbox" id="end"><span data-copy="end">${copy.end}</span></label><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button>
+    <section id="studio" hidden><header><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></header><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><button id="organize-variants" data-copy="organizeVariants">${copy.organizeVariants}</button><button id="add-variant" data-copy="addVariant">${copy.addVariant}</button><button id="view-single" aria-pressed="true" data-copy="single">${copy.single}</button><button id="view-compare" aria-pressed="false" data-copy="sideBySide">${copy.sideBySide}</button></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><label class="check"><input id="annotate" type="checkbox"><span data-copy="annotate">${copy.annotate}</span></label><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
     <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
-    <details><summary><span data-copy="findings">${copy.findings}</span></summary><div id="findings"></div></details><details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
+    <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
     <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
     </section><section class="panel" role="tabpanel" id="panel-params" aria-labelledby="tab-params" hidden>
     <p id="params-empty" class="muted" data-copy="paramEmpty">${copy.paramEmpty}</p>
@@ -182,7 +211,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
       >("button, input, select, textarea")
       .forEach((control) => {
-        if (control.id.startsWith("tab-") || control.id.startsWith("cancel-") || control.id === "board-close") return
+        if (
+          control.id.startsWith("tab-") ||
+          control.id.startsWith("cancel-") ||
+          control.id === "board-close" ||
+          control.id === "card-close"
+        )
+          return
         control.disabled = state.working
       })
     for (const id of [
@@ -210,9 +245,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
     element<HTMLButtonElement>("send").disabled =
       state.working || !state.revision || !!state.failedPreview || (!!state.design?.ended && !state.pending)
+    element<HTMLButtonElement>("send-end").disabled =
+      state.working || !state.revision || !!state.failedPreview || !!state.design?.ended || !!state.pending
     input("note").disabled ||= !!state.pending
     input("variant-prompt").disabled ||= !!state.variantPending
-    for (const id of ["add", "attachment", "queue", "end"])
+    for (const id of ["attachment", "card-text", "card-add", "queue-fixes"])
       input(id).disabled ||= !!state.pending || !!state.design?.ended
     for (const id of ["view-single", "view-compare", "peer-variant"])
       input(id).disabled ||= !!state.failedPreview || state.variants.length < 2
@@ -228,7 +265,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("target").textContent = ""
     input("selection").value = ""
     state.snapshot = ""
-    state.selection = { tag: "", elementText: "", selectedText: "" }
     drawVariants()
     state.preset = ""
     drawParams()
@@ -464,6 +500,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           assets: state.assets,
           snapshot: state.snapshot,
           text: input("note").value,
+          card: state.card,
+          inbox: state.inbox,
           pending: state.pending,
           boards: state.boards,
           board: state.board,
@@ -475,28 +513,205 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       status(copy.failure, "failure")
     }
   }
+  const frameOf = (target: string) => {
+    const variant = /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(target)?.[1]
+    if (variant && state.comparing && variant === state.peer) return "peer-preview"
+    // A note taken on another variant shows that variant first; the frame only scrolls.
+    if (variant && variant !== state.variant && state.variants.some((item) => item.id === variant))
+      selectVariant(variant)
+    return "preview"
+  }
+  const reveal = (target: string) =>
+    element<HTMLIFrameElement>(frameOf(target)).contentWindow?.postMessage({ type: "design:reveal", target }, "*")
+  const highlight = (target: string) => {
+    for (const id of ["preview", "peer-preview"])
+      element<HTMLIFrameElement>(id).contentWindow?.postMessage({ type: "design:highlight", target }, "*")
+  }
+  const action = (name: "reveal" | "remove" | "dismiss", onclick: () => void) => {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.dataset.copy = name
+    button.textContent = copy[name]
+    button.onclick = onclick
+    return button
+  }
   const drawNotes = () => {
     element("notes").replaceChildren(
       ...state.notes.map((note, index) => {
         const row = document.createElement("div")
         row.className = "note"
-        row.textContent = `${note.label || note.target} — ${note.text}`
-        const button = document.createElement("button")
-        button.dataset.copy = "remove"
-        button.textContent = copy.remove
-        button.onclick = () => {
-          if (state.pending) return
-          state.notes.splice(index, 1)
-          save()
-          drawNotes()
-        }
-        row.append(button)
+        const label = document.createElement("span")
+        label.className = "note-label"
+        label.textContent = note.label || note.target
+        const text = document.createElement("span")
+        text.className = "note-text"
+        text.textContent = note.text
+        row.append(
+          label,
+          action("reveal", () => reveal(note.target)),
+          action("remove", () => {
+            if (state.pending) return
+            state.notes.splice(index, 1)
+            save()
+            drawNotes()
+          }),
+          text,
+        )
+        row.onmouseenter = () => highlight(note.target)
+        row.onmouseleave = () => highlight("")
         return row
       }),
     )
     element<HTMLButtonElement>("send").textContent = state.pending ? copy.retry : copy.send
     element("send").dataset.copy = state.pending ? "retry" : "send"
+    element("send-end").hidden = !!state.pending
     input("note").disabled = !!state.pending
+  }
+  const dismissed = (): string[] => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(dismissedKey()) ?? "[]")
+      return Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : []
+    } catch {
+      return []
+    }
+  }
+  const drawInbox = () => {
+    const open = state.inbox.filter((item) => item.status === "open")
+    const shown = state.inbox.filter((item) => item.status !== "dismissed")
+    element("inbox-count").textContent = String(open.length)
+    element("inbox-count").dataset.open = String(open.length > 0)
+    element("inbox-empty").hidden = shown.length > 0
+    element("queue-fixes").hidden = open.length === 0
+    element("inbox-list").replaceChildren(
+      ...shown.map((item) => {
+        const row = document.createElement("div")
+        row.className = "finding"
+        row.dataset.severity = item.severity
+        row.dataset.status = item.status
+        row.dataset.id = item.id
+        const pick = document.createElement("input")
+        pick.type = "checkbox"
+        pick.setAttribute("aria-label", `${item.label}: ${item.text}`)
+        pick.hidden = item.status !== "open"
+        const mark = document.createElement("span")
+        mark.className = "finding-status"
+        mark.dataset.copy = item.status === "queued" ? "inboxQueued" : "inboxResolved"
+        mark.textContent = item.status === "queued" ? copy.inboxQueued : copy.inboxResolved
+        mark.hidden = item.status === "open"
+        const body = document.createElement("div")
+        body.className = "finding-body"
+        const head = document.createElement("div")
+        const tag = document.createElement("span")
+        tag.className = "finding-tag"
+        tag.dataset.copy = item.severity === "warn" ? "severityWarn" : "severityInfo"
+        tag.textContent = item.severity === "warn" ? copy.severityWarn : copy.severityInfo
+        const label = document.createElement("strong")
+        label.textContent = ` ${item.label}`
+        head.append(tag, label)
+        const text = document.createElement("span")
+        text.textContent = item.text
+        const actions = document.createElement("div")
+        actions.className = "finding-actions"
+        actions.append(
+          action("reveal", () => reveal(item.target)),
+          ...(item.status === "resolved"
+            ? []
+            : [
+                action("dismiss", () => {
+                  item.status = "dismissed"
+                  try {
+                    localStorage.setItem(dismissedKey(), JSON.stringify([...new Set([...dismissed(), item.id])]))
+                  } catch {
+                    status(copy.failure, "failure")
+                  }
+                  save()
+                  drawInbox()
+                }),
+              ]),
+        )
+        body.append(head, text, actions)
+        row.append(pick, mark, body)
+        row.onmouseenter = () => highlight(item.target)
+        row.onmouseleave = () => highlight("")
+        return row
+      }),
+    )
+  }
+  // The frame audits every layout pass; a finding keeps its lifecycle across those passes and is
+  // resolved only when a newer revision's audit no longer reports it.
+  const mergeFindings = (
+    findings: { target: string; tag: string; label: string; severity: "warn" | "info"; text: string }[],
+  ) => {
+    const hidden = new Set(dismissed())
+    const seen = new Set<string>()
+    state.inbox = state.inbox.filter((item) => item.status !== "resolved" || item.revision === state.revision)
+    for (const finding of findings) {
+      const id = hash(finding.target + finding.text)
+      seen.add(id)
+      const existing = state.inbox.find((item) => item.id === id)
+      if (!existing) {
+        state.inbox.push({ id, ...finding, status: hidden.has(id) ? "dismissed" : "open", revision: state.revision })
+        continue
+      }
+      if (existing.status === "resolved" || (existing.status === "queued" && existing.revision !== state.revision))
+        existing.status = "open"
+      existing.revision = state.revision
+    }
+    for (const item of state.inbox) {
+      if (seen.has(item.id) || item.revision === state.revision || item.status === "dismissed") continue
+      item.status = "resolved"
+      item.revision = state.revision
+    }
+    save()
+    drawInbox()
+  }
+  const placeCard = () => {
+    const card = element("card")
+    if (!state.card) {
+      card.hidden = true
+      return
+    }
+    const frame = element<HTMLIFrameElement>(state.card.frame)
+    const viewport = frame.parentElement!
+    if (card.parentElement !== viewport) viewport.append(card)
+    card.hidden = false
+    const rect = state.card.rect
+    const left = Math.max(0, Math.min(frame.offsetLeft + rect.x, viewport.scrollWidth - card.offsetWidth))
+    const below = frame.offsetTop + rect.y + rect.height + 8
+    const above = frame.offsetTop + rect.y - card.offsetHeight - 8
+    const top = below + card.offsetHeight <= viewport.scrollHeight || above < 0 ? below : above
+    card.style.left = `${Math.round(left)}px`
+    card.style.top = `${Math.round(Math.max(0, Math.min(top, viewport.scrollHeight - card.offsetHeight)))}px`
+  }
+  const drawCard = () => {
+    if (state.card) {
+      element("card-label").textContent = state.card.label
+      if (input("card-text").value !== state.card.text) input("card-text").value = state.card.text
+    }
+    placeCard()
+  }
+  const closeCard = () => {
+    state.card = undefined
+    highlight("")
+    save()
+    drawCard()
+  }
+  const queueCard = () => {
+    const card = state.card
+    if (!card || state.pending || !card.text.trim()) return false
+    state.notes.push({
+      target: card.target,
+      params: paramContext(),
+      revision: state.revision,
+      text: card.text.trim(),
+      tag: card.tag,
+      elementText: card.elementText,
+      label: card.label,
+      ...(card.selectedText ? { selectedText: card.selectedText } : {}),
+    })
+    closeCard()
+    drawNotes()
+    return true
   }
   const restoreDraft = () => {
     state.notes = []
@@ -505,6 +720,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.preset = ""
     state.assets = []
     state.snapshot = ""
+    state.card = undefined
+    state.inbox = []
     state.pending = undefined
     state.boards = []
     state.board = undefined
@@ -520,6 +737,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.preset = stored.preset ?? ""
         state.assets = stored.assets ?? []
         state.snapshot = stored.snapshot ?? ""
+        state.card = stored.card
+        state.inbox = stored.inbox ?? []
         state.pending = stored.pending
         state.boards = stored.boards ?? []
         state.board = stored.board
@@ -531,6 +750,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       status(copy.failure, "failure")
     }
     drawNotes()
+    drawInbox()
+    drawCard()
   }
   const drawSources = (revision?: Design.Revision) => {
     state.revisionInfo = revision
@@ -931,28 +1152,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     await refresh()
   })
   input("note").oninput = save
-  click("add", async () => {
-    if (state.pending || !input("note").value.trim()) return
-    const picked = state.selection
-    state.notes.push({
-      target: element("target").textContent || "page",
-      params: paramContext(),
-      revision: state.revision,
-      text: input("note").value.trim(),
-      ...(picked.tag
-        ? {
-            tag: picked.tag,
-            elementText: picked.elementText,
-            label: picked.elementText ? `${picked.tag} "${picked.elementText.slice(0, 40)}"` : picked.tag,
-          }
-        : {}),
-      ...(picked.selectedText ? { selectedText: picked.selectedText } : {}),
-    })
-    input("note").value = ""
-    save()
-    drawNotes()
-  })
-  click("send", async () => {
+  const send = async (end: boolean) => {
     if (!state.revision) return
     if (!state.pending && !state.notes.length && !input("note").value.trim()) throw new Error(copy.feedbackRequired)
     state.pending ??= {
@@ -964,11 +1164,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       assets: [...state.assets],
       snapshot: state.snapshot,
       whiteboards: [...state.boards],
-      delivery: input("queue").checked ? "queue" : "steer",
-      end: input("end").checked,
+      delivery: "steer",
+      end,
     }
     save()
     drawNotes()
+    controls()
     await api(`/${state.design!.id}/feedback`, "POST", state.pending)
     const sent = state.pending
     if (options.feed)
@@ -982,7 +1183,60 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     save()
     drawNotes()
     status(copy.received, "received")
-  })
+  }
+  click("send", () => send(false))
+  click("send-end", () => send(true))
+  input("note").onkeydown = (event) => {
+    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return
+    event.preventDefault()
+    void run(() => send(false), element("send"))
+  }
+  input("card-text").oninput = () => {
+    if (!state.card) return
+    state.card.text = input("card-text").value
+    save()
+  }
+  // Enter queues the note, Shift+Enter breaks the line, Ctrl/Cmd+Enter queues and sends it right
+  // away; Escape closes an empty card and otherwise hands focus back to the page.
+  input("card-text").onkeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      if (!input("card-text").value.trim()) closeCard()
+      else input("card-text").blur()
+      return
+    }
+    if (event.key !== "Enter" || event.shiftKey) return
+    event.preventDefault()
+    if (!queueCard()) return
+    if (event.ctrlKey || event.metaKey) void run(() => send(false), element("send"))
+  }
+  element("card-close").onclick = closeCard
+  element("card-add").onclick = () => void queueCard()
+  // One click turns every ticked observation into a note; the observations stay listed as queued
+  // until a newer revision either drops them (resolved) or still reports them (reopened).
+  element("queue-fixes").onclick = () => {
+    if (state.pending) return
+    const picked = [...element("inbox-list").querySelectorAll<HTMLInputElement>(".finding input:checked")].map(
+      (node) => node.closest<HTMLElement>(".finding")!.dataset.id,
+    )
+    const items = state.inbox.filter((item) => item.status === "open" && picked.includes(item.id))
+    if (!items.length) return
+    const params = paramContext()
+    state.notes.push(
+      ...items.map((item) => ({
+        target: item.target,
+        params,
+        revision: state.revision,
+        text: item.text,
+        tag: item.tag,
+        label: item.label,
+      })),
+    )
+    for (const item of items) item.status = "queued"
+    save()
+    drawNotes()
+    drawInbox()
+  }
   element("add-variant").onclick = () => {
     element<HTMLDialogElement>("variant-dialog").showModal()
     input("variant-prompt").focus()
@@ -999,7 +1253,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       items: [],
       assets: [],
       snapshot: "",
-      delivery: input("queue").checked ? "queue" : "steer",
+      delivery: "steer",
       end: false,
     }
     save()
@@ -1119,6 +1373,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       { type: "design:tweak", key: input("token").value, value: input("value").value },
       "*",
     )
+  const box = (value: unknown) =>
+    !!value &&
+    typeof value === "object" &&
+    ["x", "y", "width", "height"].every((name) => typeof (value as Record<string, unknown>)[name] === "number")
+      ? {
+          x: (value as { x: number }).x,
+          y: (value as { y: number }).y,
+          width: (value as { width: number }).width,
+          height: (value as { height: number }).height,
+        }
+      : undefined
   const message = (event: MessageEvent) => {
     if (
       event.source === element<HTMLIFrameElement>("preview").contentWindow &&
@@ -1213,6 +1478,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (!state.variants.some((item) => item.id === state.variant)) state.variant = state.variants[0]?.id ?? ""
       drawVariants()
       drawParams()
+      // A restored card re-anchors to its element once the frame has rendered it.
+      if (state.card?.frame === "preview") reveal(state.card.target)
       return
     }
     if (event.data?.type === "design:scroll" && typeof event.data.x === "number" && typeof event.data.y === "number") {
@@ -1220,6 +1487,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.scroll = { x: event.data.x, y: event.data.y }
       if (event.source === element<HTMLIFrameElement>("peer-preview").contentWindow)
         state.peerScroll = { x: event.data.x, y: event.data.y }
+      // The frame reports where the card's element went so the card follows it.
+      const rect = box(event.data.rect)
+      if (state.card && rect && event.source === element<HTMLIFrameElement>(state.card.frame).contentWindow) {
+        state.card.rect = rect
+        placeCard()
+      }
       return
     }
     if (event.source === element<HTMLIFrameElement>("board-frame").contentWindow) {
@@ -1298,12 +1571,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       event.data?.type === "design:layout" &&
       Array.isArray(event.data.findings)
     ) {
-      text(
-        "findings",
+      const field = (item: Record<string, unknown>, name: string, limit: number) =>
+        typeof item[name] === "string" ? String(item[name]).slice(0, limit) : ""
+      mergeFindings(
         event.data.findings
           .slice(0, 30)
           .filter(
-            (item: unknown): item is { target: string; text: string } =>
+            (item: unknown): item is Record<string, unknown> =>
               !!item &&
               typeof item === "object" &&
               "text" in item &&
@@ -1311,29 +1585,57 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
               "target" in item &&
               typeof item.target === "string",
           )
-          .map((item: { target: string; text: string }) => `${item.target}: ${item.text}`)
-          .join("\n"),
+          .map((item: Record<string, unknown>) => ({
+            target: field(item, "target", 1000),
+            tag: field(item, "tag", 64),
+            label: field(item, "label", 120) || field(item, "tag", 64) || field(item, "target", 120),
+            severity: item.severity === "info" ? ("info" as const) : ("warn" as const),
+            text: field(item, "text", 500),
+          })),
       )
       return
     }
-    if (
-      (event.source !== element<HTMLIFrameElement>("preview").contentWindow &&
-        (!state.comparing || event.source !== element<HTMLIFrameElement>("peer-preview").contentWindow)) ||
-      event.data?.type !== "design:selection"
-    )
+    if (event.data?.type === "design:key" && event.data.key === "Escape" && state.card) {
+      if (!state.card.text.trim()) closeCard()
+      else input("card-text").blur()
       return
+    }
+    const frame =
+      event.source === element<HTMLIFrameElement>("preview").contentWindow
+        ? "preview"
+        : state.comparing && event.source === element<HTMLIFrameElement>("peer-preview").contentWindow
+          ? "peer-preview"
+          : undefined
+    if (!frame) return
+    if (event.data?.type === "design:rect") {
+      const rect = box(event.data.rect)
+      if (!state.card || state.card.frame !== frame || state.card.target !== event.data.target || !rect) return
+      state.card.rect = rect
+      placeCard()
+      return
+    }
+    if (event.data?.type !== "design:selection") return
     if (typeof event.data.target !== "string" || typeof event.data.text !== "string") return
     element("target").textContent = event.data.target.slice(0, 1000)
     input("selection").value = event.data.text.slice(0, 12000)
     state.snapshot = typeof event.data.snapshot === "string" ? event.data.snapshot.slice(0, 30000) : ""
     const field = (name: string, limit: number) =>
       typeof event.data[name] === "string" ? String(event.data[name]).slice(0, limit) : ""
-    state.selection = {
+    // Picking another element moves the card and keeps whatever was typed; nothing is lost by a
+    // stray click and the header shows the new target.
+    state.card = {
+      frame,
+      target: event.data.target.slice(0, 1000),
       tag: field("tag", 64),
       elementText: field("elementText", 240),
       selectedText: field("selectedText", 12000),
+      label: field("label", 120) || field("tag", 64) || "page",
+      rect: box(event.data.rect) ?? { x: 0, y: 0, width: 0, height: 0 },
+      text: state.card?.text ?? "",
     }
     save()
+    drawCard()
+    input("card-text").focus()
   }
   window.addEventListener("message", message)
   const timer = setInterval(poll, 5000)
