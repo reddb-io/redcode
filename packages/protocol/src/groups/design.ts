@@ -2,6 +2,7 @@ import { Context, Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
+import { NonNegativeInt } from "@reddb-io/redcode-schema/schema"
 
 const root = "/api/session/:sessionID/design"
 const item = `${root}/:designID`
@@ -23,6 +24,20 @@ export const makeDesignGroup = <Id extends HttpApiMiddleware.AnyId, Service>(mid
         success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
         error,
       }),
+    )
+    .add(
+      HttpApiEndpoint.get("design.feed", `${root}/feed`, {
+        params: { sessionID: Session.ID },
+        query: { after: Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt), Schema.optional) },
+        success: HttpApiSchema.StreamSse({ data: Design.FeedEvent }),
+        error,
+      }).annotateMerge(
+        OpenApi.annotations({
+          summary: "Subscribe to the design conversation feed",
+          description:
+            "Replay the session's conversation as reduced feed entries after an exclusive sequence, then continue live: agent replies, tool calls, published revisions, agent switches and working state.",
+        }),
+      ),
     )
     .add(
       HttpApiEndpoint.get("design.list", root, {

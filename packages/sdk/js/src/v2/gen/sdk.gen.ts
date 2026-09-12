@@ -215,6 +215,8 @@ import type {
   ServerDesignDesignDownloadResponses,
   ServerDesignDesignFeedbackErrors,
   ServerDesignDesignFeedbackResponses,
+  ServerDesignDesignFeedErrors,
+  ServerDesignDesignFeedResponses,
   ServerDesignDesignGetErrors,
   ServerDesignDesignGetResponses,
   ServerDesignDesignImportAssetErrors,
@@ -7957,6 +7959,40 @@ export class Design extends HeyApiClient {
       ThrowOnError
     >({
       url: "/api/session/{sessionID}/design/whiteboard",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Subscribe to the design conversation feed
+   *
+   * Replay the session's conversation as reduced feed entries after an exclusive sequence, then continue live: agent replies, tool calls, published revisions, agent switches and working state.
+   */
+  public feed<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      after?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "after" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.get<
+      ServerDesignDesignFeedResponses,
+      ServerDesignDesignFeedErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/feed",
       ...options,
       ...params,
     })

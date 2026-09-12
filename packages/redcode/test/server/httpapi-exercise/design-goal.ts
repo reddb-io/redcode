@@ -63,6 +63,29 @@ export const designGoalScenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .get(`${root}/feed`, "v2.design.feed")
+    .seeded(session)
+    .stream()
+    .at((ctx) => ({ path: `${ctx.state.root}/feed?after=0`, headers: ctx.headers() }))
+    .status(200, (ctx, result) =>
+      Effect.sync(() => {
+        check(result.contentType.includes("text/event-stream"), "feed should stream Server-Sent Events")
+        const entries = result.text
+          .split("\n\n")
+          .flatMap((block) => block.split("\n").filter((line) => line.startsWith("data:")))
+          .map((line) => Schema.decodeUnknownSync(Design.FeedEvent)(JSON.parse(line.slice(5))))
+        check(entries.length > 0, `feed should open with entries: ${result.text}`)
+        check(
+          entries.some((entry) => entry.type === "agent" && entry.agent === "plan"),
+          "feed should announce the session's agent",
+        )
+        check(
+          entries.every((entry) => entry.type !== "state" || entry.state === "idle"),
+          `${ctx.state.sessionID} should be idle before any prompt`,
+        )
+      }),
+    ),
+  http.protected
     .get(`${root}/whiteboard`, "v2.design.whiteboard")
     .seeded(session)
     .at((ctx) => ({ path: `${ctx.state.root}/whiteboard`, headers: ctx.headers() }))

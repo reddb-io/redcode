@@ -49,6 +49,8 @@ import type {
   DesignsReviewOutput,
   DesignsWhiteboardInput,
   DesignsWhiteboardOutput,
+  DesignsFeedInput,
+  DesignsFeedOutput,
   DesignsListInput,
   DesignsListOutput,
   DesignsCreateInput,
@@ -638,6 +640,18 @@ export function make(options: ClientOptions) {
             declaredStatuses: [409, 400, 404, 401],
             empty: false,
             binary: true,
+          },
+          requestOptions,
+        ),
+      feed: (input: DesignsFeedInput, requestOptions?: RequestOptions): AsyncIterable<DesignsFeedOutput> =>
+        sse<DesignsFeedOutput>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/design/feed`,
+            query: { after: input["after"] },
+            successStatus: 200,
+            declaredStatuses: [409, 400, 404, 401],
+            empty: false,
           },
           requestOptions,
         ),

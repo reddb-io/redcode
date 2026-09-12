@@ -101,6 +101,35 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     ).toBe(409)
     const transcript = await (await request(`/session/${session.id}/message`)).json()
     expect(transcript.filter((message: { info: { id: string } }) => message.info.id === feedback.id)).toHaveLength(1)
+    // The conversation feed replays the transcript: the review as a notice, the agent's reply after it.
+    const feed = await request(`${root}/feed?after=0`)
+    expect(feed.status).toBe(200)
+    expect(feed.headers.get("content-type")).toContain("text/event-stream")
+    const reader = feed.body!.getReader()
+    const decoder = new TextDecoder()
+    const chunks: string[] = []
+    while (!chunks.join("").includes('"type":"reply"')) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      chunks.push(decoder.decode(chunk.value, { stream: true }))
+    }
+    await reader.cancel()
+    const entries = chunks
+      .join("")
+      .split("\n\n")
+      .flatMap((block) => block.split("\n").filter((line) => line.startsWith("data:")))
+      .map((line) => JSON.parse(line.slice(5)))
+    expect(entries[0]).toMatchObject({ type: "agent", agent: "design" })
+    expect(entries[1]).toMatchObject({ type: "state", state: "idle" })
+    expect(entries).toContainEqual(
+      expect.objectContaining({ type: "user", id: feedback.id, text: "Increase the Save button contrast" }),
+    )
+    expect(entries).toContainEqual(expect.objectContaining({ type: "reply", text: "Feedback received." }))
+    expect(entries.indexOf(entries.find((entry) => entry.type === "user")!)).toBeLessThan(
+      entries.indexOf(entries.find((entry) => entry.type === "reply")!),
+    )
+    expect((await request(`${root}/feed?after=-1`)).status).toBe(400)
+    expect((await request(`${root}/feed`, "POST", {})).status).toBe(400)
     const collision = await request(`/session/${session.id}/message`, "POST", {
       messageID: "msg_existing_message",
       agent: "design",

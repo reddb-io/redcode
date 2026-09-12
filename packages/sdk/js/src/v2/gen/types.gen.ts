@@ -5054,6 +5054,53 @@ export type SessionNextRevertCommitted = {
   }
 }
 
+export type DesignFeedEvent =
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "state"
+      state: "working" | "idle"
+    }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "user"
+      id: string
+      text: string
+    }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "reply"
+      id: string
+      text: string
+    }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "tool"
+      id: string
+      tool: string
+      status: "running" | "done" | "failed"
+      summary: string
+    }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "published"
+      design: string
+      revision: string
+      name: string
+    }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "agent"
+      agent: string
+    }
+
+export type DesignFeedEventStream = string
+
 export type DesignParamField =
   | {
       id: string
@@ -14021,6 +14068,51 @@ export type ServerDesignDesignWhiteboardResponses = {
 
 export type ServerDesignDesignWhiteboardResponse =
   ServerDesignDesignWhiteboardResponses[keyof ServerDesignDesignWhiteboardResponses]
+
+export type ServerDesignDesignFeedData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    after?: string
+  }
+  url: "/api/session/{sessionID}/design/feed"
+}
+
+export type ServerDesignDesignFeedErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignFeedError = ServerDesignDesignFeedErrors[keyof ServerDesignDesignFeedErrors]
+
+export type ServerDesignDesignFeedResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    event: string
+    data: DesignFeedEventStream
+  }
+}
+
+export type ServerDesignDesignFeedResponse = ServerDesignDesignFeedResponses[keyof ServerDesignDesignFeedResponses]
 
 export type ServerDesignDesignListData = {
   body?: never

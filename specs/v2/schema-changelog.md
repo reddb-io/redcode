@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-12: Add The Design Conversation Feed
+
+- Add `GET /api/session/:sessionID/design/feed?after=` (`design.feed`), a Server-Sent Events stream of `Design.FeedEvent` entries reduced on the server from the session's durable events: `user` (a browser review collapses to its message and note count), `reply` (finished assistant text), `tool` (running, done or failed, with a one-line summary), `published` (a `design_preview` success naming the design, revision and name), `agent` and `state` (`working` | `idle`, sampled from the process-local execution set). `seq` is the durable aggregate sequence to resume from (0 for live-only entries); `id` lets a client merge repeats. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`packages/sdk/openapi.json`, `js/src/v2/gen`).
+- The legacy TUI host serves the same shape at `GET /design/session/:sessionID/feed?after=` (GET only, same-host rule) from the V1 transcript and bus; replayed entries carry `seq: 0` and live entries a per-session in-process sequence.
+- Add no migration or durable-event version; the feed is a read projection over existing events.
+
 ## 2026-09-12: Label Design Review Notes
 
 - Add optional `tag`, `elementText` (at most 240 characters), `selectedText` (at most 12 000 characters; a clicked diagram's source is sent here) and `label` to each `Design.Feedback.items[]` entry (`POST /api/session/:sessionID/design/:designID/feedback`) so the browser sends the user's note separately from the clicked element's context; the top-level `text` may now be empty when every note lives in `items`. Admission rejects a review with no text, notes, whiteboards or assets, and a page snapshot above 30 000 characters (enforced on admission so frozen rows and approval packages stay readable). Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`packages/sdk/openapi.json`, `js/src/v2/gen`).
