@@ -204,14 +204,24 @@ export const ApprovalNotice = Schema.Struct({
 }).annotate({ identifier: "Design.ApprovalNotice" })
 export interface ApprovalNotice extends Schema.Schema.Type<typeof ApprovalNotice> {}
 
+/** One browser review note. The user's words stay in text; the captured element context is separate. */
+export const FeedbackItem = Schema.Struct({
+  target: Schema.String,
+  text: Schema.String,
+  params: ParamContext.pipe(optional),
+  tag: Schema.String.check(Schema.isMaxLength(64)).pipe(optional),
+  elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+  selectedText: Schema.String.pipe(optional),
+  label: Schema.String.check(Schema.isMaxLength(120)).pipe(optional),
+}).annotate({ identifier: "Design.FeedbackItem" })
+export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
+
 export const Feedback = Schema.Struct({
   params: ParamContext.pipe(optional),
   id: SessionMessage.ID,
   revision: Schema.String,
-  text: Schema.NonEmptyString,
-  items: Schema.Array(
-    Schema.Struct({ target: Schema.String, text: Schema.String, params: ParamContext.pipe(optional) }),
-  ),
+  text: Schema.String,
+  items: Schema.Array(FeedbackItem),
   assets: Schema.Array(Schema.String),
   snapshot: Schema.String,
   whiteboards: Schema.Array(Schema.Struct({ target: Schema.String, scene: Schema.Unknown })).pipe(optional),
@@ -219,6 +229,20 @@ export const Feedback = Schema.Struct({
   end: Schema.Boolean,
 }).annotate({ identifier: "Design.Feedback" })
 export interface Feedback extends Schema.Schema.Type<typeof Feedback> {}
+
+/** Compact transcript summary of admitted browser feedback; the rendered message carries the detail. */
+export const FeedbackNotice = Schema.Struct({
+  id: ID,
+  feedback: SessionMessage.ID,
+  revision: Schema.String,
+  variant: Schema.NullOr(Schema.String),
+  ended: Schema.Boolean,
+  text: Schema.String,
+  notes: Schema.Array(Schema.Struct({ label: Schema.String, text: Schema.String })),
+  attachments: Schema.Array(Schema.String),
+  snapshot: Schema.Boolean,
+}).annotate({ identifier: "Design.FeedbackNotice" })
+export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice> {}
 
 export const Receipt = Schema.Struct({
   id: SessionMessage.ID,

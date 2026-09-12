@@ -99,12 +99,15 @@ export const Read = Schema.Struct({
   id: Design.ID,
   revision: Schema.optional(Schema.String),
   section: Schema.optional(
-    Schema.Literals(["summary", "decisions", "scenarios", "feedback", "assets", "evidence", "prototype"]),
+    Schema.Literals(["summary", "decisions", "scenarios", "feedback", "assets", "evidence", "prototype", "snapshot"]),
   ),
   file: Schema.optional(Schema.String),
+  feedback: Schema.optional(Schema.String).annotate({
+    description: "With section snapshot: the feedback message whose page-text snapshot to read; omit for the latest.",
+  }),
 })
 
-export function detail(record: Design.Approval, section: (typeof Read.Type)["section"]) {
+export function detail(record: Design.Approval, section: Exclude<(typeof Read.Type)["section"], "snapshot">) {
   if (!section || section === "summary") return guidance(summary(record))
   const document = record.revision.document
   const sections = {

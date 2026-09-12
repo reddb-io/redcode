@@ -65,12 +65,16 @@ export function annotations() {
         : target.hasAttribute("data-design-id")
           ? `[data-design-id="${CSS.escape(target.getAttribute("data-design-id")!)}"]`
           : ancestry(target)
+      const selectedText = window.getSelection()?.toString() ?? ""
+      const elementText = (target instanceof HTMLElement ? target.innerText : target.textContent) ?? ""
       parent.postMessage(
         {
           type: "design:selection",
           target: state.variant ? `variant:${state.variant} ${selector}` : selector,
-          text:
-            target.getAttribute("data-mermaid-source") || window.getSelection()?.toString() || target.textContent || "",
+          text: target.getAttribute("data-mermaid-source") || selectedText || target.textContent || "",
+          tag: target.tagName.toLowerCase(),
+          elementText: elementText.replace(/\s+/g, " ").trim().slice(0, 240),
+          selectedText: selectedText.trim().slice(0, 1000),
           snapshot: document.body.innerText,
         },
         "*",

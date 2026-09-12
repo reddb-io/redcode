@@ -1,5 +1,12 @@
 # V2 Schema Changelog
 
+## 2026-09-12: Label Design Review Notes
+
+- Add optional `tag`, `elementText` (at most 240 characters), `selectedText` and `label` to each `Design.Feedback.items[]` entry (`POST /api/session/:sessionID/design/:designID/feedback`) so the browser sends the user's note separately from the clicked element's context; the top-level `text` may now be empty when every note lives in `items`. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`packages/sdk/openapi.json`, `js/src/v2/gen`).
+- Add `Design.FeedbackNotice`, the compact summary the legacy bridge stores as `metadata.designFeedback` on the review's text part for transcript rendering.
+- Extend the `design_read` tool input with section `snapshot` and an optional `feedback` id; it reads the page text captured with a browser review note and needs no approval record. The review message itself no longer embeds the snapshot.
+- Add no migration or durable-event version; frozen feedback rows without the new fields render as before.
+
 ## 2026-09-11: Add Delivery To Legacy Prompt Payloads
 
 - Add optional `delivery` (`steer` | `queue`) to the V1 `POST /session/:sessionID/message` and `POST /session/:sessionID/prompt_async` payloads; omitted means `steer`. The V2 client (`bun run generate` in `packages/client`) does not cover these V1 routes and is unchanged; the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `packages/sdk/openapi.json`, `js/src/gen`, `js/src/v2/gen`) is regenerated for the payload and for `EventMessagePromoted` / `SyncEventMessagePromoted`.

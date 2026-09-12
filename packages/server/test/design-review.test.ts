@@ -96,9 +96,16 @@ test("new interface: native review, annotation draft, lost response retry and ap
   await frame.getByRole("heading", { name: "Checkout" }).click()
   await page.getByLabel("Review notes", { exact: true }).fill("Make this title more prominent")
   await page.getByRole("button", { name: "Add note", exact: true }).click()
+  // A drag selection inside one element survives the click that follows it.
+  await frame.getByRole("heading", { name: "Checkout" }).selectText()
+  await frame.getByRole("heading", { name: "Checkout" }).dispatchEvent("click")
+  await page.getByLabel("Review notes", { exact: true }).fill("Use a verb here")
+  await page.getByRole("button", { name: "Add note", exact: true }).click()
   await page.reload()
-  await page.getByText("#title: Make this title more prominent", { exact: false }).waitFor()
-  const feedback: unknown[] = []
+  await page.getByText('h1 "Checkout" — Make this title more prominent', { exact: false }).waitFor()
+  await page.getByText('h1 "Checkout" — Use a verb here', { exact: false }).waitFor()
+  expect(await page.locator("#notes").textContent()).not.toContain("#title")
+  const feedback: Design.Feedback[] = []
   await page.route("**/feedback", async (route) => {
     feedback.push(route.request().postDataJSON())
     const response = await route.fetch()
@@ -113,6 +120,42 @@ test("new interface: native review, annotation draft, lost response retry and ap
   await page.getByText("Feedback received", { exact: true }).waitFor()
   expect(feedback).toHaveLength(2)
   expect(feedback[1]).toEqual(feedback[0])
+  expect(feedback[0].text).toBe("")
+  expect(feedback[0].items).toHaveLength(2)
+  expect(feedback[0].items[0]).toMatchObject({
+    target: "#title",
+    text: "Make this title more prominent",
+    tag: "h1",
+    elementText: "Checkout",
+    label: 'h1 "Checkout"',
+  })
+  expect(feedback[0].items[0].selectedText).toBeUndefined()
+  expect(feedback[0].items[1]).toMatchObject({
+    target: "#title",
+    text: "Use a verb here",
+    tag: "h1",
+    elementText: "Checkout",
+    selectedText: "Checkout",
+    label: 'h1 "Checkout"',
+  })
+  expect(feedback[0].snapshot).toContain("Checkout")
+  const history = await api<{ data: { type: string; data: { prompt?: { text: string; files?: unknown[] } } }[] }>(
+    `/api/session/${current.sessionID}/history?limit=100`,
+  )
+  const prompted = history.data.filter((event) => event.type === "session.next.prompted")
+  expect(prompted).toHaveLength(1)
+  const message = prompted[0].data.prompt!.text
+  expect(message).toStartWith(
+    `<design-review id="${current.document.id}" revision="${current.revision.id}" ended="false">`,
+  )
+  expect(message).toContain(
+    '### 1. h1 "Checkout" — #title\nNote: Make this title more prominent\nElement text: "Checkout"',
+  )
+  expect(message).toContain('### 2. h1 "Checkout" — #title\nNote: Use a verb here\nSelected text: "Checkout"')
+  expect(message.split("Element text:")).toHaveLength(2)
+  expect(message).not.toContain("## Message")
+  expect(message).not.toContain("Add item")
+  expect(message).toContain('"section":"snapshot"')
   await page.getByRole("button", { name: "Approve this revision" }).click()
   await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
   await page.getByRole("button", { name: "Reopen review" }).waitFor()
@@ -411,7 +454,7 @@ test("diagram review retains the Excalidraw whiteboard and queues an image plus 
   expect(await page.locator("#notes").textContent()).toBe("")
   await page.unroute(upload)
   await frame.getByRole("button", { name: "Queue feedback", exact: true }).click()
-  await page.getByText("diagram: Keep these steps clear", { exact: false }).waitFor({ timeout: 60000 })
+  await page.getByText("diagram — Keep these steps clear", { exact: false }).waitFor({ timeout: 60000 })
   await page.getByRole("button", { name: "Send feedback", exact: true }).click()
   await page.getByText("Feedback received", { exact: true }).waitFor()
   const scenes = await Array.fromAsync(

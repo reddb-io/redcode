@@ -5209,16 +5209,22 @@ export type DesignParamContext = {
   component?: string
 }
 
+export type DesignFeedbackItem = {
+  target: string
+  text: string
+  params?: DesignParamContext
+  tag?: string
+  elementText?: string
+  selectedText?: string
+  label?: string
+}
+
 export type DesignFeedback = {
   params?: DesignParamContext
   id: string
   revision: string
   text: string
-  items: Array<{
-    target: string
-    text: string
-    params?: DesignParamContext
-  }>
+  items: Array<DesignFeedbackItem>
   assets: Array<string>
   snapshot: string
   whiteboards?: Array<{

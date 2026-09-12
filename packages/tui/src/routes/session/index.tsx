@@ -1,6 +1,7 @@
 import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
 import { DesignApprovalNotice } from "../../component/design-approval"
+import { DesignFeedbackNotice } from "../../component/design-feedback"
 import { modeTransition } from "../../util/mode-transition"
 import {
   batch,
@@ -1615,7 +1616,7 @@ function UserMessage(props: {
   const text = createMemo(() => {
     const texts = props.parts
       .map((x) => {
-        if (x.type === "text" && !x.synthetic) {
+        if (x.type === "text" && !x.synthetic && !x.metadata?.designFeedback) {
           return x.text
         }
         return null
@@ -1637,10 +1638,16 @@ function UserMessage(props: {
       part.type === "text" && part.synthetic && part.metadata?.designApproval ? [part.metadata.designApproval] : [],
     ),
   )
+  const reviews = createMemo(() =>
+    props.parts.flatMap((part) =>
+      part.type === "text" && part.metadata?.designFeedback ? [part.metadata.designFeedback] : [],
+    ),
+  )
 
   return (
     <>
       <For each={approvals()}>{(value) => <DesignApprovalNotice value={value} />}</For>
+      <For each={reviews()}>{(value) => <DesignFeedbackNotice value={value} />}</For>
       <Show when={text()}>
         <box
           id={props.message.id}
