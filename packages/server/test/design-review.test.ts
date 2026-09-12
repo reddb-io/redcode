@@ -199,7 +199,13 @@ test("existing Solid component: isolated interactive preview and history restora
   const frame = page.frameLocator("#preview")
   await frame.getByRole("button", { name: "Add item" }).click()
   expect(await frame.getByRole("button", { name: "Added" }).textContent()).toBe("Added")
+  // Switching variants closes a card anchored in the variant that leaves the screen.
+  await page.getByLabel("Annotate elements", { exact: true }).check()
+  await frame.getByRole("heading", { name: "Checkout", exact: true }).click()
+  await page.locator("#card:not([hidden])").waitFor()
   await page.getByRole("tab", { name: "Spacious", exact: true }).click()
+  await page.locator("#card").waitFor({ state: "hidden" })
+  await page.getByLabel("Annotate elements", { exact: true }).uncheck()
   await frame.getByRole("heading", { name: "Spacious checkout" }).waitFor()
   expect(await frame.getByRole("heading", { name: "Checkout", exact: true }).isVisible()).toBe(false)
   await page.getByRole("button", { name: "Restore as new revision" }).click()
@@ -995,6 +1001,10 @@ test("annotation card keyboard map and reveal", async () => {
     await page.locator("#card:not([hidden])").waitFor()
     expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
     expect(await activeID(page)).toBe("card-text")
+    // A design:key that does not come from the preview frame is ignored.
+    await page.evaluate(() => window.postMessage({ type: "design:key", key: "Escape" }, "*"))
+    await page.waitForTimeout(200)
+    expect(await page.locator("#card").isHidden()).toBe(false)
     // The card opens over the element it describes, inside the parent document.
     const heading = await frame.getByRole("heading", { name: "Checkout" }).boundingBox()
     const box = await page.locator("#card").boundingBox()
@@ -1030,6 +1040,13 @@ test("annotation card keyboard map and reveal", async () => {
     await card.press("Escape")
     expect(await page.locator("#card").isHidden()).toBe(false)
     expect(await activeID(page)).not.toBe("card-text")
+    // Picking another element carries the typed note along and says so.
+    await frame.locator("#bottom").click()
+    await page.locator("#card-label", { hasText: 'p "Footer"' }).waitFor()
+    expect(await card.inputValue()).toBe("Send me now")
+    await page.locator("#status").filter({ hasText: 'Note moved to p "Footer"' }).waitFor()
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await page.locator("#card-label", { hasText: 'h1 "Checkout"' }).waitFor()
     await card.focus()
     const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
     await card.press("Control+Enter")
@@ -1060,8 +1077,33 @@ test("annotation card keyboard map and reveal", async () => {
     const scrolled = Date.now() + 5000
     while ((await frame.locator("body").evaluate(() => scrollY)) < 1000 && Date.now() < scrolled) await Bun.sleep(50)
     expect(await frame.locator("body").evaluate(() => scrollY)).toBeGreaterThan(1000)
-    await row.getByRole("button", { name: "Remove", exact: true }).click()
+    // Ctrl+Enter in an empty card still sends the notes already queued.
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await page.locator("#card:not([hidden])").waitFor()
+    expect(await card.inputValue()).toBe("")
+    const again = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
+    const answered = page.waitForResponse((response) => response.url().endsWith("/feedback"))
+    await card.press("Control+Enter")
+    expect((await again).postDataJSON().items).toMatchObject([{ target: "#bottom", text: "Footer note" }])
+    await answered
+    await page.locator("#card").waitFor({ state: "hidden" })
+    await page.locator("#notes .note").first().waitFor({ state: "detached" })
+    // Remove drops a queued note.
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await card.fill("Remove me")
+    await card.press("Enter")
+    await note(page, 'h1 "Checkout"', "Remove me").getByRole("button", { name: "Remove", exact: true }).click()
     expect(await page.locator("#notes .note").count()).toBe(0)
+    // A newer revision without the element closes the card anchored to it.
+    await frame.locator("#bottom").click()
+    await card.fill("Gone soon")
+    await Bun.write(
+      path.join(current.document.root, current.document.entry),
+      '<!doctype html><html lang="en"><body><main><h1 id="title">Checkout v2</h1></main></body></html>',
+    )
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Without footer" })
+    await frame.getByRole("heading", { name: "Checkout v2" }).waitFor({ timeout: 10000 })
+    await page.locator("#card").waitFor({ state: "hidden" })
     expect(errors).toEqual([])
   } finally {
     await page.close()
@@ -1071,7 +1113,7 @@ test("annotation card keyboard map and reveal", async () => {
 test("layout inbox queue/dismiss/resolve", async () => {
   const current = await published("html")
   const wide = (banner: number, promo: number) =>
-    `<!doctype html><html lang="en"><body><main><h1 id="title">Checkout</h1><p id="banner" style="width:${banner}px">Banner</p><p id="promo" style="width:${promo}px">Promo</p><button id="cta" style="margin-left:2600px">Buy</button></main></body></html>`
+    `<!doctype html><html lang="en"><body><main><h1 id="title">Checkout</h1><p id="banner" style="width:${banner}px">Banner</p><p id="promo" style="width:${promo}px">Promo</p><p id="tight" style="width:600px">Tight</p><button id="cta" style="margin-left:2600px">Buy</button></main></body></html>`
   await Bun.write(path.join(current.document.root, current.document.entry), wide(3000, 3000))
   await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Wide direction" })
   const page = await browser.newPage()
@@ -1086,23 +1128,30 @@ test("layout inbox queue/dismiss/resolve", async () => {
     await page.locator("#inbox summary").click()
     expect(await finding('p "Banner"').getAttribute("data-severity")).toBe("warn")
     expect(await finding('p "Banner"').getAttribute("data-status")).toBe("open")
-    // Queuing turns the ticked observations into notes in one step.
+    // A tick survives the re-audit a resize triggers, whether or not it lists something new.
     await finding('p "Banner"').getByRole("checkbox").check()
+    await page.getByLabel("Preview width", { exact: true }).selectOption("768")
+    expect(await frame.locator("body").evaluate(() => innerWidth)).toBe(768)
+    await page.getByLabel("Preview width", { exact: true }).selectOption("390")
+    await finding('p "Tight"').waitFor()
+    expect(await finding('p "Banner"').getByRole("checkbox").isChecked()).toBe(true)
+    await page.getByLabel("Preview width", { exact: true }).selectOption("100%")
+    expect(await finding('p "Banner"').getByRole("checkbox").isChecked()).toBe(true)
+    // Queuing turns the ticked observations into notes in one step.
     await page.getByRole("button", { name: "Queue selected fixes", exact: true }).click()
     await note(page, 'p "Banner"', "Element extends beyond the viewport").waitFor()
     expect(await finding('p "Banner"').getAttribute("data-status")).toBe("queued")
     expect(await page.locator("#notes .note").count()).toBe(1)
     await finding('button "Buy"').getByRole("button", { name: "Dismiss", exact: true }).click()
     expect(await finding('button "Buy"').count()).toBe(0)
-    expect(await page.locator("#inbox-count").textContent()).toBe("1")
+    expect(await page.locator("#inbox-count").textContent()).toBe("2")
     // The lifecycle and the dismissal survive a reload of the page.
     await page.reload()
     await note(page, 'p "Banner"', "Element extends beyond the viewport").waitFor()
     await page.locator("#inbox summary").click()
     await finding('p "Promo"').waitFor()
-    await page.waitForTimeout(500)
-    expect(await page.locator("#inbox-count").textContent()).toBe("1")
-    expect(await finding('p "Banner"').getAttribute("data-status")).toBe("queued")
+    await page.locator('#inbox .finding[data-status="queued"]').filter({ hasText: 'p "Banner"' }).waitFor()
+    await page.locator("#inbox-count", { hasText: /^2$/ }).waitFor()
     expect(await finding('button "Buy"').count()).toBe(0)
     await finding('p "Promo"').getByRole("button", { name: "Reveal", exact: true }).click()
     await frame.locator("#promo[data-design-reveal]").waitFor()
@@ -1111,9 +1160,15 @@ test("layout inbox queue/dismiss/resolve", async () => {
     await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Narrower" })
     await page.locator("#status").filter({ hasText: "Revision published" }).waitFor({ timeout: 10000 })
     await page.locator('#inbox .finding[data-status="resolved"]').filter({ hasText: 'p "Promo"' }).waitFor()
+    await page.locator('#inbox .finding[data-status="resolved"]').filter({ hasText: 'p "Tight"' }).waitFor()
     await page.locator('#inbox .finding[data-status="open"]').filter({ hasText: 'p "Banner"' }).waitFor()
     expect(await page.locator("#inbox-count").textContent()).toBe("1")
     expect(await finding('button "Buy"').count()).toBe(0)
+    expect(await page.locator("#notes .note").count()).toBe(1)
+    // Queuing a reopened finding whose note is still waiting does not duplicate the note.
+    await finding('p "Banner"').getByRole("checkbox").check()
+    await page.getByRole("button", { name: "Queue selected fixes", exact: true }).click()
+    await page.locator('#inbox .finding[data-status="queued"]').filter({ hasText: 'p "Banner"' }).waitFor()
     expect(await page.locator("#notes .note").count()).toBe(1)
     // Send & end delivers the queued note with its element context and closes the review.
     const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")

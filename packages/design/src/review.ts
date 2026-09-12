@@ -21,6 +21,13 @@ export interface ReviewOptions {
 /** Shared native review surface. The standalone host serializes this self-contained function. */
 export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const copy = { ...options.copy }
+  // The hints name the modifier the reader actually presses.
+  const platformize = () => {
+    if (!/Mac|iPhone|iPad/.test(navigator.platform)) return
+    copy.cardHint = copy.cardHint.replaceAll("Ctrl", "⌘")
+    copy.sendHint = copy.sendHint.replaceAll("Ctrl", "⌘")
+  }
+  platformize()
   const transport = options.request ?? fetch
   const request = (url: string, init?: RequestInit) =>
     transport(url, { ...init, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]) })
@@ -67,6 +74,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           text: string
         }
       | undefined,
+    /** Ticked observations; a re-audit redraw must not lose them. */
+    picked: [] as string[],
     inbox: [] as {
       id: string
       target: string
@@ -119,6 +128,17 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const input = (id: string) => element<HTMLInputElement>(id)
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
   const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`
+  const box = (value: unknown) =>
+    !!value &&
+    typeof value === "object" &&
+    ["x", "y", "width", "height"].every((name) => Number.isFinite((value as Record<string, unknown>)[name]))
+      ? {
+          x: (value as { x: number }).x,
+          y: (value as { y: number }).y,
+          width: (value as { width: number }).width,
+          height: (value as { height: number }).height,
+        }
+      : undefined
   const hash = (value: string) =>
     [...value].reduce((sum, char) => Math.imul(sum ^ char.codePointAt(0)!, 16777619) >>> 0, 2166136261).toString(16)
   const status = (text: string, key?: keyof ReviewCopy, tone = "info") => {
@@ -175,7 +195,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 .variant-bar{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--edge);min-width:0;flex-wrap:wrap}.variant-bar .tabs{border:0;padding:0;flex:1;overflow:auto;gap:16px}.variant-bar .tabs button{white-space:nowrap}.variant-bar>button{margin:6px 0;white-space:nowrap}.variant-bar>button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}.variant-bar #add-variant{margin-right:auto}.canvas{display:flex;gap:20px;padding:16px}.preview-pane{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%}.viewport{flex:1;min-height:0;overflow:auto;padding:1px}.viewport iframe{height:100%;min-height:150px}.pane-label{height:38px;flex:none;font-size:12px;display:flex;align-items:center;gap:8px;margin:0;padding-bottom:6px}.pane-label select{width:auto;flex:1;padding:4px 8px}.canvas[data-comparing=true] .preview-pane{min-width:280px}.action-dialog{width:min(520px,calc(100vw - 32px));max-height:90vh;overflow:auto;padding:24px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}.action-dialog::backdrop{background:#0008}.action-dialog p{overflow-wrap:anywhere}.action-dialog .row{justify-content:flex-end}.action-dialog .row>*{flex:0 1 auto}#status{font-size:13px;min-height:38px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-top:0;color:var(--ink)}#status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}button[aria-busy=true]{opacity:1;cursor:progress}button[aria-busy=true]::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.preview-pane[aria-busy=true] .viewport{opacity:.5}#width{max-width:180px}@container(max-width:640px){.variant-bar{padding:0 12px;gap:6px}.variant-bar .tabs{flex-basis:100%}.canvas{padding:12px;gap:12px}.variant-bar>button{font-size:12px}#width{max-width:165px}}
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
 #agent-state{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}#agent-state[data-state=working]{color:var(--accent);border-color:var(--accent)}#agent-state[data-state=working]::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}#agent-state[data-state=published]{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}#feed{display:grid;gap:8px;margin-bottom:16px;max-height:40vh;overflow:auto}#feed:not(:has(.entry)) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry) #feed-empty{display:none}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}
-.viewport{position:relative}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}
+.viewport{position:relative}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}#card.moved header{animation:card-moved .6s ease-out 2}@keyframes card-moved{50%{color:var(--accent)}}
 .note{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.note .note-label{font-weight:600;font-size:12px}.note .note-text{flex:1 1 100%;white-space:pre-wrap}.note button{float:none;margin-left:auto;padding:2px 7px;font-size:11px}.note button+button{margin-left:0}.note:hover{background:color-mix(in oklch,var(--panel) 60%,transparent)}
 .sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
 #inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
@@ -265,6 +285,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("target").textContent = ""
     input("selection").value = ""
     state.snapshot = ""
+    if (state.card && state.card.frame === "preview" && (variantOf(state.card.target) ?? "") !== id) closeCard()
     drawVariants()
     state.preset = ""
     drawParams()
@@ -513,16 +534,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       status(copy.failure, "failure")
     }
   }
-  const frameOf = (target: string) => {
-    const variant = /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(target)?.[1]
-    if (variant && state.comparing && variant === state.peer) return "peer-preview"
+  const variantOf = (target: string) => /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(target)?.[1]
+  const reveal = (target: string, pulse = true) => {
+    const variant = variantOf(target)
+    const peer = !!variant && state.comparing && variant === state.peer
     // A note taken on another variant shows that variant first; the frame only scrolls.
-    if (variant && variant !== state.variant && state.variants.some((item) => item.id === variant))
+    if (!peer && variant && variant !== state.variant && state.variants.some((item) => item.id === variant))
       selectVariant(variant)
-    return "preview"
+    element<HTMLIFrameElement>(peer ? "peer-preview" : "preview").contentWindow?.postMessage(
+      { type: "design:reveal", target, pulse },
+      "*",
+    )
   }
-  const reveal = (target: string) =>
-    element<HTMLIFrameElement>(frameOf(target)).contentWindow?.postMessage({ type: "design:reveal", target }, "*")
   const highlight = (target: string) => {
     for (const id of ["preview", "peer-preview"])
       element<HTMLIFrameElement>(id).contentWindow?.postMessage({ type: "design:highlight", target }, "*")
@@ -593,6 +616,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         pick.type = "checkbox"
         pick.setAttribute("aria-label", `${item.label}: ${item.text}`)
         pick.hidden = item.status !== "open"
+        pick.checked = state.picked.includes(item.id)
+        pick.onchange = () => {
+          state.picked = pick.checked
+            ? [...new Set([...state.picked, item.id])]
+            : state.picked.filter((id) => id !== item.id)
+        }
         const mark = document.createElement("span")
         mark.className = "finding-status"
         mark.dataset.copy = item.status === "queued" ? "inboxQueued" : "inboxResolved"
@@ -644,9 +673,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   ) => {
     const hidden = new Set(dismissed())
     const seen = new Set<string>()
+    const before = JSON.stringify(state.inbox)
     state.inbox = state.inbox.filter((item) => item.status !== "resolved" || item.revision === state.revision)
     for (const finding of findings) {
-      const id = hash(finding.target + finding.text)
+      const id = hash(`${finding.target}\n${finding.text}`)
       seen.add(id)
       const existing = state.inbox.find((item) => item.id === id)
       if (!existing) {
@@ -662,6 +692,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       item.status = "resolved"
       item.revision = state.revision
     }
+    // The frame re-audits on every layout pass; an unchanged inbox keeps its ticks and skips the write.
+    if (JSON.stringify(state.inbox) === before) return
+    state.picked = state.picked.filter((id) => state.inbox.some((item) => item.id === id && item.status === "open"))
     save()
     drawInbox()
   }
@@ -713,6 +746,25 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawNotes()
     return true
   }
+  // A stored card needs a usable rect and the primary frame (comparing is not persisted); anything
+  // else is dropped rather than breaking the revision load.
+  const restoreCard = (value: unknown): typeof state.card => {
+    if (!value || typeof value !== "object") return undefined
+    const card = value as Record<string, unknown>
+    const rect = box(card.rect)
+    const text = (name: string) => (typeof card[name] === "string" ? (card[name] as string) : "")
+    if (!rect || !text("target")) return undefined
+    return {
+      frame: "preview",
+      target: text("target"),
+      tag: text("tag"),
+      elementText: text("elementText"),
+      selectedText: text("selectedText"),
+      label: text("label") || text("tag") || "page",
+      rect,
+      text: text("text"),
+    }
+  }
   const restoreDraft = () => {
     state.notes = []
     state.params = {}
@@ -737,7 +789,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.preset = stored.preset ?? ""
         state.assets = stored.assets ?? []
         state.snapshot = stored.snapshot ?? ""
-        state.card = stored.card
+        state.card = restoreCard(stored.card)
         state.inbox = stored.inbox ?? []
         state.pending = stored.pending
         state.boards = stored.boards ?? []
@@ -1186,10 +1238,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   click("send", () => send(false))
   click("send-end", () => send(true))
+  const sendNow = () => {
+    if (state.working) {
+      status(copy.busy, "busy")
+      return
+    }
+    void run(() => send(false), element("send"))
+  }
   input("note").onkeydown = (event) => {
+    if (event.isComposing || event.keyCode === 229) return
     if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return
     event.preventDefault()
-    void run(() => send(false), element("send"))
+    sendNow()
   }
   input("card-text").oninput = () => {
     if (!state.card) return
@@ -1199,6 +1259,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // Enter queues the note, Shift+Enter breaks the line, Ctrl/Cmd+Enter queues and sends it right
   // away; Escape closes an empty card and otherwise hands focus back to the page.
   input("card-text").onkeydown = (event) => {
+    if (event.isComposing || event.keyCode === 229) return
     if (event.key === "Escape") {
       event.preventDefault()
       if (!input("card-text").value.trim()) closeCard()
@@ -1207,8 +1268,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (event.key !== "Enter" || event.shiftKey) return
     event.preventDefault()
-    if (!queueCard()) return
-    if (event.ctrlKey || event.metaKey) void run(() => send(false), element("send"))
+    const queued = queueCard()
+    if (!(event.ctrlKey || event.metaKey)) return
+    // An empty card with notes already queued still sends them.
+    if (!queued && !input("card-text").value.trim()) closeCard()
+    sendNow()
   }
   element("card-close").onclick = closeCard
   element("card-add").onclick = () => void queueCard()
@@ -1216,23 +1280,24 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // until a newer revision either drops them (resolved) or still reports them (reopened).
   element("queue-fixes").onclick = () => {
     if (state.pending) return
-    const picked = [...element("inbox-list").querySelectorAll<HTMLInputElement>(".finding input:checked")].map(
-      (node) => node.closest<HTMLElement>(".finding")!.dataset.id,
-    )
-    const items = state.inbox.filter((item) => item.status === "open" && picked.includes(item.id))
+    const items = state.inbox.filter((item) => item.status === "open" && state.picked.includes(item.id))
     if (!items.length) return
     const params = paramContext()
+    // A reopened finding whose note is still queued is not queued twice.
     state.notes.push(
-      ...items.map((item) => ({
-        target: item.target,
-        params,
-        revision: state.revision,
-        text: item.text,
-        tag: item.tag,
-        label: item.label,
-      })),
+      ...items
+        .filter((item) => !state.notes.some((note) => note.target === item.target && note.text === item.text))
+        .map((item) => ({
+          target: item.target,
+          params,
+          revision: state.revision,
+          text: item.text,
+          tag: item.tag,
+          label: item.label,
+        })),
     )
     for (const item of items) item.status = "queued"
+    state.picked = []
     save()
     drawNotes()
     drawInbox()
@@ -1373,17 +1438,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       { type: "design:tweak", key: input("token").value, value: input("value").value },
       "*",
     )
-  const box = (value: unknown) =>
-    !!value &&
-    typeof value === "object" &&
-    ["x", "y", "width", "height"].every((name) => typeof (value as Record<string, unknown>)[name] === "number")
-      ? {
-          x: (value as { x: number }).x,
-          y: (value as { y: number }).y,
-          width: (value as { width: number }).width,
-          height: (value as { height: number }).height,
-        }
-      : undefined
   const message = (event: MessageEvent) => {
     if (
       event.source === element<HTMLIFrameElement>("preview").contentWindow &&
@@ -1479,7 +1533,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawVariants()
       drawParams()
       // A restored card re-anchors to its element once the frame has rendered it.
-      if (state.card?.frame === "preview") reveal(state.card.target)
+      if (state.card?.frame === "preview") reveal(state.card.target, false)
       return
     }
     if (event.data?.type === "design:scroll" && typeof event.data.x === "number" && typeof event.data.y === "number") {
@@ -1595,11 +1649,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       )
       return
     }
-    if (event.data?.type === "design:key" && event.data.key === "Escape" && state.card) {
-      if (!state.card.text.trim()) closeCard()
-      else input("card-text").blur()
-      return
-    }
     const frame =
       event.source === element<HTMLIFrameElement>("preview").contentWindow
         ? "preview"
@@ -1607,9 +1656,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           ? "peer-preview"
           : undefined
     if (!frame) return
+    if (event.data?.type === "design:key" && event.data.key === "Escape" && state.card) {
+      if (!state.card.text.trim()) closeCard()
+      else input("card-text").blur()
+      return
+    }
     if (event.data?.type === "design:rect") {
+      if (!state.card || state.card.frame !== frame || state.card.target !== event.data.target) return
       const rect = box(event.data.rect)
-      if (!state.card || state.card.frame !== frame || state.card.target !== event.data.target || !rect) return
+      // The element is gone from this revision: the card has nothing to sit on.
+      if (event.data.rect === null) closeCard()
+      if (!rect) return
       state.card.rect = rect
       placeCard()
       return
@@ -1623,6 +1680,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       typeof event.data[name] === "string" ? String(event.data[name]).slice(0, limit) : ""
     // Picking another element moves the card and keeps whatever was typed; nothing is lost by a
     // stray click and the header shows the new target.
+    const moved = !!state.card?.text.trim() && state.card.target !== event.data.target
     state.card = {
       frame,
       target: event.data.target.slice(0, 1000),
@@ -1635,6 +1693,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     save()
     drawCard()
+    if (moved) {
+      status(`${copy.cardMoved} ${state.card.label}`)
+      element("card").classList.remove("moved")
+      void element("card").offsetWidth
+      element("card").classList.add("moved")
+    }
     input("card-text").focus()
   }
   window.addEventListener("message", message)
@@ -1665,6 +1729,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     updateCopy(next: ReviewCopy) {
       if (state.stopped) return
       Object.assign(copy, next)
+      platformize()
       root.querySelectorAll<HTMLElement>("[data-copy]").forEach((node) => {
         node.textContent =
           (node.dataset.copyPrefix ?? "") +

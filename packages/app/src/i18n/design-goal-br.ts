@@ -52,6 +52,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.cardNote": "Anotação para este elemento",
   "session.design.studio.cardHint": "Enter adiciona a anotação · Shift+Enter quebra a linha · Ctrl+Enter envia",
   "session.design.studio.closeCard": "Fechar anotação",
+  "session.design.studio.cardMoved": "Anotação movida para",
   "session.design.studio.reveal": "Mostrar",
   "session.design.studio.dismiss": "Descartar",
   "session.design.studio.queueFixes": "Enfileirar correções selecionadas",

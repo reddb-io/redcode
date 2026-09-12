@@ -51,6 +51,7 @@ export const reviewCopy = {
   cardNote: "Note for this element",
   cardHint: "Enter adds the note · Shift+Enter for a new line · Ctrl+Enter sends",
   closeCard: "Close note",
+  cardMoved: "Note moved to",
   reveal: "Reveal",
   dismiss: "Dismiss",
   queueFixes: "Queue selected fixes",
