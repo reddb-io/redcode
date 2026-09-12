@@ -17,7 +17,7 @@ import { Shell } from "@reddb-io/redcode-core/shell"
 import { ShellWorkdir } from "@reddb-io/redcode-core/shell-workdir"
 import { ShellID } from "./shell/id"
 
-import * as Truncate from "./truncate"
+import { ToolOutputBridge } from "./output-bridge"
 import { Plugin } from "@/plugin"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
@@ -344,7 +344,7 @@ export const ShellTool = Tool.define(
     const config = yield* Config.Service
     const spawner = yield* ChildProcessSpawner
     const fs = yield* FSUtil.Service
-    const trunc = yield* Truncate.Service
+    const outputs = yield* ToolOutputBridge.Service
     const plugin = yield* Plugin.Service
     const flags = yield* RuntimeFlags.Service
     const defaultTimeoutMs = flags.bashDefaultTimeoutMs ?? 2 * 60 * 1000
@@ -438,7 +438,7 @@ export const ShellTool = Tool.define(
       },
       ctx: Tool.Context,
     ) {
-      const limits = yield* trunc.limits()
+      const limits = yield* outputs.limits()
       const keep = limits.maxBytes * 2
       let full = ""
       let last = ""
@@ -515,7 +515,7 @@ export const ShellTool = Tool.define(
               } else {
                 full += chunk
                 if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
-                  return trunc.write(full).pipe(
+                  return outputs.retain(full).pipe(
                     Effect.andThen((next) =>
                       Effect.sync(() => {
                         file = next
@@ -577,7 +577,7 @@ export const ShellTool = Tool.define(
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
       if (!file && end.cut) {
-        file = yield* trunc.write(raw)
+        file = yield* outputs.retain(raw)
       }
 
       let output = end.text
@@ -607,7 +607,7 @@ export const ShellTool = Tool.define(
         const cfg = yield* config.get()
         const shell = Shell.acceptable(cfg.shell)
         const name = Shell.name(shell)
-        const limits = yield* trunc.limits()
+        const limits = yield* outputs.limits()
         const prompt = ShellPrompt.render(name, process.platform, limits, defaultTimeoutMs)
         yield* Effect.logInfo("shell tool using shell", { shell })
 

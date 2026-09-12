@@ -6,7 +6,7 @@ import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
 import { Session } from "@/session/session"
 import { Tool } from "@/tool/tool"
-import * as Truncate from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { MessageID, SessionID } from "@/session/schema"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
@@ -143,8 +143,8 @@ async function buildTool() {
       trigger: ((_name: unknown, _input: unknown, output: unknown) =>
         Effect.succeed(output)) as Plugin.Interface["trigger"],
     }),
-    Layer.mock(Truncate.Service, {
-      output: (text: string) => Effect.succeed({ content: text, truncated: false as const }),
+    Layer.mock(ToolOutputBridge.Service, {
+      bound: (text: string) => Effect.succeed({ content: text, truncated: false as const }),
     }),
     Layer.mock(Agent.Service, { get: () => Effect.succeed({ name: "build", permission: [] } as any) }),
     Layer.mock(Session.Service, { get: () => Effect.succeed({ permission: [] } as any) }),

@@ -60,7 +60,7 @@ import { SystemContext } from "@reddb-io/redcode-core/system-context"
 import { Shell } from "@reddb-io/redcode-core/shell"
 import { Snapshot } from "../../src/snapshot"
 import { ToolRegistry } from "@/tool/registry"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { Format } from "../../src/format"
@@ -256,7 +256,7 @@ const promptRoot = LayerNode.group([
   Git.node,
   Ripgrep.node,
   Format.node,
-  Truncate.node,
+  ToolOutputBridge.node,
   SessionProcessor.node,
   Image.node,
   SessionCompaction.node,

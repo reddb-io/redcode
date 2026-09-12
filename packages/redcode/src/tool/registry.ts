@@ -34,7 +34,7 @@ import { Provider } from "@/provider/provider"
 
 import { WebSearchTool } from "./websearch"
 import { LspTool } from "./lsp"
-import * as Truncate from "./truncate"
+import { ToolOutputBridge } from "./output-bridge"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "@reddb-io/redcode-core/util/glob"
 import path from "path"
@@ -101,7 +101,7 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const plugin = yield* Plugin.Service
     const agents = yield* Agent.Service
-    const truncate = yield* Truncate.Service
+    const outputs = yield* ToolOutputBridge.Service
     const flags = yield* RuntimeFlags.Service
     const mcp = yield* MCP.Service
 
@@ -124,7 +124,6 @@ const layer = Layer.effect(
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
-    const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
 
@@ -165,8 +164,7 @@ const layer = Layer.effect(
                 const output = typeof result === "string" ? result : result.output
                 const metadata = typeof result === "string" ? {} : (result.metadata ?? {})
                 const attachments = typeof result === "string" ? undefined : result.attachments
-                const info = yield* agent.get(toolCtx.agent)
-                const out = yield* truncate.output(output, {}, info)
+                const out = yield* outputs.bound(output, toolCtx)
                 return {
                   title: typeof result === "string" ? "" : (result.title ?? ""),
                   output: out.truncated ? out.content : output,
@@ -465,7 +463,7 @@ export const node = LayerNode.make({
     httpClient,
     CrossSpawnSpawner.node,
     Format.node,
-    Truncate.node,
+    ToolOutputBridge.node,
     RuntimeFlags.node,
     MCP.node,
     Database.node,

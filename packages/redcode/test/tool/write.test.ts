@@ -8,7 +8,7 @@ import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { Format } from "../../src/format"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { Tool } from "@/tool/tool"
 import { Agent } from "../../src/agent/agent"
 import { SessionID, MessageID } from "../../src/session/schema"
@@ -40,7 +40,7 @@ const it = testEffect(
       EventV2Bridge.node,
       Format.node,
       CrossSpawnSpawner.node,
-      Truncate.node,
+      ToolOutputBridge.node,
       Agent.node,
     ]),
   ),

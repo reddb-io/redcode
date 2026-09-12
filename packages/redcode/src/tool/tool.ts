@@ -5,8 +5,8 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { MessageV2 } from "../session/message-v2"
 import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
-import * as Truncate from "./truncate"
-import { Agent } from "@/agent/agent"
+import { ToolOutputBridge } from "./output-bridge"
+import type { Agent } from "@/agent/agent"
 
 interface Metadata {
   [key: string]: any
@@ -99,8 +99,7 @@ export type InferDef<T> =
 function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadata>(
   id: string,
   init: Init<Parameters, Result>,
-  truncate: Truncate.Interface,
-  agents: Agent.Interface,
+  outputs: ToolOutputBridge.Interface,
 ) {
   return () =>
     Effect.gen(function* () {
@@ -131,8 +130,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           if (result.metadata.truncated !== undefined) {
             return result
           }
-          const agent = yield* agents.get(ctx.agent)
-          const truncated = yield* truncate.output(result.output, {}, agent)
+          const truncated = yield* outputs.bound(result.output, ctx)
           return {
             ...result,
             output: truncated.content,
@@ -156,13 +154,12 @@ export function define<
 >(
   id: ID,
   init: Effect.Effect<Init<Parameters, Result>, never, R>,
-): Effect.Effect<Info<Parameters, Result>, never, R | Truncate.Service | Agent.Service> & { id: ID } {
+): Effect.Effect<Info<Parameters, Result>, never, R | ToolOutputBridge.Service> & { id: ID } {
   return Object.assign(
     Effect.gen(function* () {
       const resolved = yield* init
-      const truncate = yield* Truncate.Service
-      const agents = yield* Agent.Service
-      return { id, init: wrap(id, resolved, truncate, agents) }
+      const outputs = yield* ToolOutputBridge.Service
+      return { id, init: wrap(id, resolved, outputs) }
     }),
     { id },
   )

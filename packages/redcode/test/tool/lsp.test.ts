@@ -10,7 +10,7 @@ import { LSP } from "@/lsp/lsp"
 import { Permission } from "../../src/permission"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { Tool } from "@/tool/tool"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { LspTool } from "../../src/tool/lsp"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -57,9 +57,10 @@ const lsp = Layer.succeed(
 )
 
 const it = testEffect(
-  LayerNode.compile(LayerNode.group([Agent.node, FSUtil.node, CrossSpawnSpawner.node, Truncate.node, LSP.node]), [
-    [LSP.node, lsp],
-  ]),
+  LayerNode.compile(
+    LayerNode.group([Agent.node, FSUtil.node, CrossSpawnSpawner.node, ToolOutputBridge.node, LSP.node]),
+    [[LSP.node, lsp]],
+  ),
 )
 
 const init = Effect.fn("LspToolTest.init")(function* () {

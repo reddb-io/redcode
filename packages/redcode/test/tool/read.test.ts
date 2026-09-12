@@ -1,7 +1,7 @@
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { afterEach, describe, expect } from "bun:test"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
-import { Cause, Effect, Exit, Layer, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect"
 import path from "path"
 import { Agent } from "../../src/agent/agent"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
@@ -15,7 +15,7 @@ import { Permission } from "../../src/permission"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { Instruction } from "../../src/session/instruction"
 import { ReadTool } from "../../src/tool/read"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { Tool } from "@/tool/tool"
 import { Filesystem } from "@/util/filesystem"
 import {
@@ -53,7 +53,7 @@ const readLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
       Instruction.node,
       LSP.node,
       Ripgrep.node,
-      Truncate.node,
+      ToolOutputBridge.node,
     ]),
   )
 
@@ -166,6 +166,35 @@ describe("tool.read external_directory permission", () => {
 
       const result = yield* exec(dir, { filePath: path.join(dir, "subdir", "test.txt") })
       expect(result.output).toContain("nested content")
+    }),
+  )
+
+  it.live("reads a Managed Tool Output File written for a legacy tool's oversized output", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const lines = Array.from({ length: ToolOutputBridge.MAX_LINES + 100 }, (_, i) => `line${i}`).join("\n")
+      const metadata: { truncated?: boolean; outputPath?: string } = {}
+      const big = yield* Tool.define(
+        "big-output",
+        Effect.succeed({
+          description: "returns more than the model may see",
+          parameters: Schema.Struct({}),
+          execute: () => Effect.succeed({ title: "big", output: lines, metadata }),
+        }),
+      )
+      const produced = yield* (yield* big.init()).execute({}, ctx)
+      expect(produced.metadata.truncated).toBe(true)
+      const outputPath = produced.metadata.outputPath
+      if (typeof outputPath !== "string") throw new Error("expected a managed output path")
+      expect(produced.output).toContain(`full content saved to ${outputPath}`)
+
+      // The file lives outside the project, under the glob every agent is allowed to read.
+      const { items, next } = asks()
+      const result = yield* exec(dir, { filePath: outputPath, offset: ToolOutputBridge.MAX_LINES + 50 }, next)
+      const ext = items.find((item) => item.permission === "external_directory")
+      expect(ext).toBeDefined()
+      expect(ext!.patterns).toContain(glob(ToolOutputBridge.GLOB))
+      expect(result.output).toContain(`line${ToolOutputBridge.MAX_LINES + 99}`)
     }),
   )
 

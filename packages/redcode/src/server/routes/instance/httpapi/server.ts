@@ -50,7 +50,7 @@ import { Discovery } from "@/skill/discovery"
 import { Snapshot } from "@/snapshot"
 import { Storage } from "@/storage/storage"
 import { ToolRegistry } from "@/tool/registry"
-import { Truncate } from "@/tool/truncate"
+import { ToolOutputBridge } from "@/tool/output-bridge"
 import { Worktree } from "@/worktree"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { MoveSession } from "@reddb-io/redcode-core/control-plane/move-session"
@@ -275,7 +275,7 @@ const app = LayerNode.group([
   MCP.node,
   McpAuth.node,
   Command.node,
-  Truncate.node,
+  ToolOutputBridge.node,
   ToolRegistry.node,
   Format.node,
   Project.node,
