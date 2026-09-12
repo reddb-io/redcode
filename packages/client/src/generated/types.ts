@@ -1971,7 +1971,14 @@ export type DesignsFeedInput = {
 
 export type DesignsFeedOutput =
   | { readonly seq: number; readonly at: number; readonly type: "state"; readonly state: "working" | "idle" }
-  | { readonly seq: number; readonly at: number; readonly type: "user"; readonly id: string; readonly text: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "user"
+      readonly id: string
+      readonly text: string
+      readonly notes: number
+    }
   | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
   | {
       readonly seq: number
@@ -3542,6 +3549,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3572,6 +3580,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3602,6 +3611,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3632,6 +3642,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3662,6 +3673,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3692,6 +3704,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3722,6 +3735,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3752,6 +3766,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3782,6 +3797,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3812,6 +3828,7 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -3981,6 +3998,7 @@ export type DesignsApprovalOutput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string

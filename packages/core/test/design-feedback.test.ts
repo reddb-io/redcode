@@ -40,6 +40,7 @@ describe("DesignFeedback.render", () => {
             selectedText: "Add item",
             elementText: "Add item",
             params: { values: { wizard: { step: 1 } }, preset: "happy", variant: "stone" },
+            revision: "rev_0",
           },
         ],
         snapshot: "SECRET PAGE TEXT ".repeat(100),
@@ -63,7 +64,10 @@ describe("DesignFeedback.render", () => {
     expect(text).toContain(
       `Whiteboard: ${path.join("/store", "design_checkout", "reviews", "msg_review_1-0.excalidraw")} (read it with the read tool)`,
     )
-    expect(text).toContain('### 2. variant:stone button:nth-child(2)\nNote: Wrong colour\nSelected text: "Add item"')
+    expect(text).toContain(
+      '### 2. variant:stone button:nth-child(2)\nNote: Wrong colour\nSelected text: "Add item"\nRevision: rev_0',
+    )
+    expect(text.split("Revision:")).toHaveLength(2)
     expect(text.split("Element text:")).toHaveLength(2)
     expect(text.split("Scenario:")).toHaveLength(2)
     expect(text).toContain(

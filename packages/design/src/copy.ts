@@ -20,6 +20,7 @@ export const reviewCopy = {
   stateIdle: "Idle",
   statePublished: "New revision published",
   feedEmpty: "Replies from the agent appear here.",
+  feedUnavailable: "Conversation unavailable",
   you: "You",
   feedNote: "note",
   feedNotes: "notes",

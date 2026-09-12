@@ -632,7 +632,9 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
   const tall = (heading: string) =>
     `<!doctype html><html lang="en"><body><main style="height:3000px"><h1 id="title">${heading}</h1><p id="bottom" style="margin-top:2400px">Footer</p></main></body></html>`
   await Bun.write(path.join(current.document.root, current.document.entry), tall("Checkout"))
-  await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Tall direction" })
+  const first = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Tall direction",
+  })
   const page = await browser.newPage()
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
@@ -667,7 +669,9 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     await frame.locator("body").evaluate(() => scrollTo(0, 400))
     await page.waitForTimeout(300)
     await Bun.write(path.join(current.document.root, current.document.entry), tall("Checkout v2"))
-    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Second direction" })
+    const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+      name: "Second direction",
+    })
     await frame.getByRole("heading", { name: "Checkout v2" }).waitFor({ timeout: 10000 })
     await page.locator("#status").filter({ hasText: "Revision published" }).waitFor()
     expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(false)
@@ -676,9 +680,14 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     const deadline = Date.now() + 5000
     while ((await frame.locator("body").evaluate(() => scrollY)) < 390 && Date.now() < deadline) await Bun.sleep(50)
     expect(await frame.locator("body").evaluate(() => scrollY)).toBeGreaterThanOrEqual(390)
+    const sent = page.waitForRequest((request) => request.url().endsWith("/feedback") && request.method() === "POST")
     await page.getByRole("button", { name: "Send feedback", exact: true }).click()
     await page.getByText("Feedback received", { exact: true }).waitFor()
     await page.getByText("You: Draft in progress · 1 note", { exact: true }).waitFor()
+    // The note keeps the revision it was drafted on; the message names the revision on screen.
+    const payload = (await sent).postDataJSON() as Design.Feedback
+    expect(payload.revision).toBe(second.id)
+    expect(payload.items[0].revision).toBe(first.id)
     expect(errors).toEqual([])
   } finally {
     await page.close()
@@ -703,7 +712,7 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
   expect(entries[0]).toMatchObject({ type: "agent", agent: "design" })
   expect(entries.some((entry) => entry.type === "state")).toBe(true)
   const review = entries.find((entry) => entry.type === "user")
-  expect(review).toMatchObject({ type: "user", text: "Draft in progress · 1 note" })
+  expect(review).toMatchObject({ type: "user", text: "Draft in progress", notes: 1 })
   expect(review!.seq).toBeGreaterThan(0)
 }, 90000)
 

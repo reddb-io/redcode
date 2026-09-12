@@ -122,7 +122,7 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     expect(entries[0]).toMatchObject({ type: "agent", agent: "design" })
     expect(entries[1]).toMatchObject({ type: "state", state: "idle" })
     expect(entries).toContainEqual(
-      expect.objectContaining({ type: "user", id: feedback.id, text: "Increase the Save button contrast" }),
+      expect.objectContaining({ type: "user", id: feedback.id, text: "Increase the Save button contrast", notes: 0 }),
     )
     expect(entries).toContainEqual(expect.objectContaining({ type: "reply", text: "Feedback received." }))
     expect(entries.indexOf(entries.find((entry) => entry.type === "user")!)).toBeLessThan(
@@ -130,6 +130,42 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     )
     expect((await request(`${root}/feed?after=-1`)).status).toBe(400)
     expect((await request(`${root}/feed`, "POST", {})).status).toBe(400)
+    // A page that reconnects with a cursor from before a TUI restart still gets the transcript and live news:
+    // the legacy route replays everything and ignores `after`, so no in-memory counter can strand it.
+    const resumed = await request(`${root}/feed?after=57`)
+    expect(resumed.status).toBe(200)
+    const resumedReader = resumed.body!.getReader()
+    const resumedChunks: string[] = []
+    const read = async (until: string, times = 1) => {
+      while (resumedChunks.join("").split(until).length <= times) {
+        const chunk = await resumedReader.read()
+        if (chunk.done) break
+        resumedChunks.push(decoder.decode(chunk.value, { stream: true }))
+      }
+    }
+    await read('"type":"reply"')
+    const replayed = resumedChunks.join("")
+    expect(replayed).toContain(`"id":"${feedback.id}"`)
+    const live = await request(`${root}/${document.id}/feedback`, "POST", {
+      ...feedback,
+      id: "msg_tui_feedback_live",
+      text: "Now align the totals",
+    })
+    expect(live.status).toBe(200)
+    // The fixture model answers the new review; its reply closes the live turn on the open stream.
+    await read('"type":"reply"', 2)
+    await resumedReader.cancel()
+    const liveEntries = resumedChunks
+      .join("")
+      .slice(replayed.length)
+      .split("\n\n")
+      .flatMap((block) => block.split("\n").filter((line) => line.startsWith("data:")))
+      .map((line) => JSON.parse(line.slice(5)))
+    expect(liveEntries).toContainEqual(
+      expect.objectContaining({ type: "user", id: "msg_tui_feedback_live", text: "Now align the totals", seq: 0 }),
+    )
+    expect(liveEntries).toContainEqual(expect.objectContaining({ type: "state", state: "working" }))
+    expect(liveEntries).toContainEqual(expect.objectContaining({ type: "reply", text: "Feedback received." }))
     const collision = await request(`/session/${session.id}/message`, "POST", {
       messageID: "msg_existing_message",
       agent: "design",
