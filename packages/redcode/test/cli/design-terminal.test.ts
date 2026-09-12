@@ -194,7 +194,7 @@ test("Design terminal lists browser review notes instead of echoing the review m
         delivery: "steer",
         prompt: {
           text: [
-            '<design-review id="design_checkout" revision="rev_1" variant="stone" ended="false">',
+            '<design-review id="design_checkout" revision="rev_1" feedback="msg_review" variant="stone" ended="false">',
             "## Message\nLooks close",
             '## Notes (2)\n\n### 1. h1 "Checkout" — #title\nNote: Bigger\nElement text: "Checkout"\n\n### 2. page\nNote: Add a footer',
             "## Attachments\n- image 1: reference.png (attached as a file)",

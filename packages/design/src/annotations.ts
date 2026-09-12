@@ -65,7 +65,8 @@ export function annotations() {
         : target.hasAttribute("data-design-id")
           ? `[data-design-id="${CSS.escape(target.getAttribute("data-design-id")!)}"]`
           : ancestry(target)
-      const selectedText = window.getSelection()?.toString() ?? ""
+      // A diagram's source is what the note is about; a text selection is next in line.
+      const selectedText = target.getAttribute("data-mermaid-source") || (window.getSelection()?.toString() ?? "")
       const elementText = (target instanceof HTMLElement ? target.innerText : target.textContent) ?? ""
       parent.postMessage(
         {
@@ -74,7 +75,7 @@ export function annotations() {
           text: target.getAttribute("data-mermaid-source") || selectedText || target.textContent || "",
           tag: target.tagName.toLowerCase(),
           elementText: elementText.replace(/\s+/g, " ").trim().slice(0, 240),
-          selectedText: selectedText.trim().slice(0, 1000),
+          selectedText: selectedText.trim().slice(0, 12000),
           snapshot: document.body.innerText,
         },
         "*",

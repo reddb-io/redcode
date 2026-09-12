@@ -211,7 +211,7 @@ export const FeedbackItem = Schema.Struct({
   params: ParamContext.pipe(optional),
   tag: Schema.String.check(Schema.isMaxLength(64)).pipe(optional),
   elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
-  selectedText: Schema.String.pipe(optional),
+  selectedText: Schema.String.check(Schema.isMaxLength(12000)).pipe(optional),
   label: Schema.String.check(Schema.isMaxLength(120)).pipe(optional),
 }).annotate({ identifier: "Design.FeedbackItem" })
 export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}

@@ -40955,7 +40955,8 @@
             "maxLength": 240
           },
           "selectedText": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 12000
           },
           "label": {
             "type": "string",
