@@ -45,7 +45,7 @@ const published = async (engine: "html" | "solid") => {
   await Bun.write(
     path.join(document.root, document.entry),
     engine === "html"
-      ? '<!doctype html><html lang="en"><head><title>Checkout</title></head><body><main><h1 id="title">Checkout</h1><button id="submit" onclick="this.textContent=\'Added\';this.dataset.state=\'populated\'" data-state="empty">Add item</button></main></body></html>'
+      ? '<!doctype html><html lang="en"><head><title>Checkout</title></head><body><main><h1 id="title">Checkout</h1><button id="submit" onclick="this.textContent=\'Added\';this.dataset.state=\'populated\'" data-state="empty">Add item</button><pre id="diagram" data-mermaid-source="graph TD\nA --> B">diagram</pre></main></body></html>'
       : 'import { render } from "solid-js/web"; import { createSignal } from "solid-js"; const App=()=>{const [added,setAdded]=createSignal(false);return <main><section data-design-variant="compact" data-design-label="Compact"><h1>Checkout</h1><button onClick={()=>setAdded(true)}>{added()?"Added":"Add item"}</button></section><section data-design-variant="spacious" data-design-label="Spacious"><h1>Spacious checkout</h1></section></main>};render(()=><App />,document.getElementById("root")!)',
   )
   const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "First direction" })
@@ -101,6 +101,9 @@ test("new interface: native review, annotation draft, lost response retry and ap
   await frame.getByRole("heading", { name: "Checkout" }).dispatchEvent("click")
   await page.getByLabel("Review notes", { exact: true }).fill("Use a verb here")
   await page.getByRole("button", { name: "Add note", exact: true }).click()
+  await frame.locator("#diagram").click()
+  await page.getByLabel("Review notes", { exact: true }).fill("Swap the arrow")
+  await page.getByRole("button", { name: "Add note", exact: true }).click()
   await page.reload()
   await page.getByText('h1 "Checkout" — Make this title more prominent', { exact: false }).waitFor()
   await page.getByText('h1 "Checkout" — Use a verb here', { exact: false }).waitFor()
@@ -121,7 +124,7 @@ test("new interface: native review, annotation draft, lost response retry and ap
   expect(feedback).toHaveLength(2)
   expect(feedback[1]).toEqual(feedback[0])
   expect(feedback[0].text).toBe("")
-  expect(feedback[0].items).toHaveLength(2)
+  expect(feedback[0].items).toHaveLength(3)
   expect(feedback[0].items[0]).toMatchObject({
     target: "#title",
     text: "Make this title more prominent",
@@ -138,6 +141,14 @@ test("new interface: native review, annotation draft, lost response retry and ap
     selectedText: "Checkout",
     label: 'h1 "Checkout"',
   })
+  expect(feedback[0].items[2]).toMatchObject({
+    target: "#diagram",
+    text: "Swap the arrow",
+    tag: "pre",
+    elementText: "diagram",
+    selectedText: "graph TD\nA --> B",
+    label: 'pre "diagram"',
+  })
   expect(feedback[0].snapshot).toContain("Checkout")
   const history = await api<{ data: { type: string; data: { prompt?: { text: string; files?: unknown[] } } }[] }>(
     `/api/session/${current.sessionID}/history?limit=100`,
@@ -146,13 +157,14 @@ test("new interface: native review, annotation draft, lost response retry and ap
   expect(prompted).toHaveLength(1)
   const message = prompted[0].data.prompt!.text
   expect(message).toStartWith(
-    `<design-review id="${current.document.id}" revision="${current.revision.id}" ended="false">`,
+    `<design-review id="${current.document.id}" revision="${current.revision.id}" feedback="${feedback[0].id}" ended="false">`,
   )
   expect(message).toContain(
     '### 1. h1 "Checkout" — #title\nNote: Make this title more prominent\nElement text: "Checkout"',
   )
   expect(message).toContain('### 2. h1 "Checkout" — #title\nNote: Use a verb here\nSelected text: "Checkout"')
-  expect(message.split("Element text:")).toHaveLength(2)
+  expect(message).toContain('### 3. pre "diagram" — #diagram\nNote: Swap the arrow\nSelected text: "graph TD A --> B"')
+  expect(message.split("Element text:")).toHaveLength(3)
   expect(message).not.toContain("## Message")
   expect(message).not.toContain("Add item")
   expect(message).toContain('"section":"snapshot"')

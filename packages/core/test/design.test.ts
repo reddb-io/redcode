@@ -101,7 +101,7 @@ describe("Design revisions and review", () => {
         text: "Choose Stone",
         items: [],
         assets: [],
-        snapshot: "OBSOLETE SCREEN CONTENT ".repeat(4000),
+        snapshot: "OBSOLETE SCREEN CONTENT ".repeat(1200),
         delivery: "queue" as const,
         end: false,
       }
@@ -551,6 +551,25 @@ describe("Design revisions and review", () => {
         (yield* store.readApproval({ id: document.id, section: "snapshot", feedback: third.id }).pipe(Effect.flip))
           .code,
       ).toBe("not-found")
+      const other = yield* store.create(document.sessionID, {
+        name: "Other",
+        journey: "new",
+        engine: "html",
+        kind: "screen",
+      })
+      expect(
+        (yield* store.readApproval({ id: other.id, section: "snapshot", feedback: first.id }).pipe(Effect.flip)).code,
+      ).toBe("not-found")
+      expect(
+        (yield* store
+          .prepareFeedback(document.id, { ...third, id: SessionMessage.ID.create(), items: [] })
+          .pipe(Effect.flip)).code,
+      ).toBe("invalid")
+      expect(
+        (yield* store
+          .prepareFeedback(document.id, { ...first, id: SessionMessage.ID.create(), snapshot: "p".repeat(30001) })
+          .pipe(Effect.flip)).code,
+      ).toBe("invalid")
     }),
   )
 

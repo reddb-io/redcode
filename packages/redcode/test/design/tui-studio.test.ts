@@ -688,7 +688,7 @@ it.instance(
       )
       const text = message?.parts.find((part) => part.type === "text")
       expect(text?.type === "text" && text.text).toStartWith(
-        `<design-review id="${document.id}" revision="${document.revision}" variant="stone" ended="false">`,
+        `<design-review id="${document.id}" revision="${document.revision}" feedback="msg_labelled_review" variant="stone" ended="false">`,
       )
       expect(text?.type === "text" && text.text).toContain(
         '### 1. h1 "Checkout" — variant:stone #title\nNote: Make this title more prominent\nElement text: "Checkout"',

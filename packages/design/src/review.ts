@@ -1206,7 +1206,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.selection = {
       tag: field("tag", 64),
       elementText: field("elementText", 240),
-      selectedText: field("selectedText", 1000),
+      selectedText: field("selectedText", 12000),
     }
     save()
   }

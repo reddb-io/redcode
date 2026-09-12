@@ -2,6 +2,8 @@ import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
+import { Schema } from "effect"
+import { Design } from "@reddb-io/redcode-schema/design"
 import { modeTransition } from "../../util/mode-transition"
 import {
   batch,
@@ -1616,7 +1618,7 @@ function UserMessage(props: {
   const text = createMemo(() => {
     const texts = props.parts
       .map((x) => {
-        if (x.type === "text" && !x.synthetic && !x.metadata?.designFeedback) {
+        if (x.type === "text" && !x.synthetic && !Schema.is(Design.FeedbackNotice)(x.metadata?.designFeedback)) {
           return x.text
         }
         return null
