@@ -2,7 +2,8 @@ import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
+import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { modeTransition } from "../../util/mode-transition"
 import {
@@ -107,6 +108,11 @@ const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
 const GO_UPSELL_WINDOW = 86_400_000 // 24 hrs
 const GO_UPSELL_PROVIDERS = new Set(["opencode", "opencode-go"])
+
+const loadOpen = async () => {
+  const { default: open, apps } = await import("open")
+  return { open, apps }
+}
 
 export const alwaysSeparate = new WeakSet<BoxRenderable>()
 
@@ -529,7 +535,6 @@ export function Session() {
       category: "Session",
       slash: { name: "design-review" },
       run: async () => {
-        const { default: open } = await import("open")
         const response = await sdk.fetch(new URL(`/design/session/${route.sessionID}/open`, sdk.url), {
           headers: sdk.headers,
         })
@@ -538,7 +543,8 @@ export function Session() {
           return
         }
         const value: { url: string } = await response.json()
-        await open(value.url).catch((error) => toast.show({ variant: "error", message: errorMessage(error) }))
+        if (!(await Effect.runPromise(DesignBrowserLauncher.open(value.url, { load: loadOpen }))))
+          toast.show({ variant: "error", message: "Could not open a browser for the Design review" })
         dialog.clear()
       },
     },

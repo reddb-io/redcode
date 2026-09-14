@@ -3,6 +3,7 @@ import { DesignQuality } from "@reddb-io/redcode-core/design/quality"
 import { DesignApproval } from "@reddb-io/redcode-core/design/approval"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignLegacy } from "@/design/legacy"
+import { DesignBrowser } from "@/design/browser"
 import { DesignRead } from "@/design/read"
 import { Provider } from "@/provider/provider"
 import { DesignHandoff } from "@/design/handoff"
@@ -248,11 +249,7 @@ export const DesignTools = Effect.gen(function* () {
               yield* DesignRead.make(ctx.ask),
             )
             const url = new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
-            if (!process.env.REDCODE_DESIGN_NO_OPEN)
-              yield* Effect.promise(async () => {
-                const { default: open } = await import("open")
-                await open(url)
-              }).pipe(Effect.ignore)
+            if (!process.env.REDCODE_DESIGN_NO_OPEN) yield* DesignBrowser.open(url)
             return result(
               `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.`,
               {
