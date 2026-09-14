@@ -244,15 +244,21 @@ export const DesignTools = Effect.gen(function* () {
             if (document.ended)
               return result(`The user ended this review. Reopen only on an explicit request. Design: ${document.id}`)
             yield* DesignRead.grant(document, ctx.ask)
+            const tooling = yield* DesignRead.tooling(document, ctx.ask)
             const revision = yield* store.publish(
               document.id,
               input.name ?? document.name,
               yield* DesignRead.make(ctx.ask),
+              tooling,
             )
             const url = new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
             if (!process.env.REDCODE_DESIGN_NO_OPEN) yield* Effect.forkDetach(DesignBrowser.open(url))
             return result(
-              `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.`,
+              `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.${
+                document.system?.tailwind && !tooling
+                  ? "\nProject tooling permission was not granted; this revision was built without the PostCSS pipeline (Tailwind utility classes are absent)."
+                  : ""
+              }`,
               {
                 id: document.id,
                 revision: revision.id,

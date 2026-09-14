@@ -108,6 +108,15 @@ export function permissionInfo(request: PermissionRequest): PermissionInfo {
     }
   }
 
+  if (request.permission === "project_tooling") {
+    const reason = text(dict(request.metadata).reason)
+    return {
+      icon: "⚙",
+      title: "Execute project tooling for design builds",
+      lines: [...(reason ? [reason] : []), ...pats.map((item) => `- ${toolPath(item, { home: true })}`)],
+    }
+  }
+
   if (request.permission === "doom_loop") {
     return {
       icon: "⟳",

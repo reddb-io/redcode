@@ -1,10 +1,12 @@
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
+import path from "node:path"
 import { DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignBuild } from "@reddb-io/redcode-core/design/build"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
 import { DesignFeed } from "@reddb-io/redcode-core/design/feed"
@@ -55,6 +57,35 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
         }),
         { signal },
       )
+  })
+  // Running the project's PostCSS pipeline executes its configuration in this process, which a
+  // read grant does not cover: a distinct permission names the files; a refusal builds without it.
+  const tooling = Effect.fn(function* (sessionID: SessionV2.ID, designID: Design.ID) {
+    const sessions = yield* SessionV2.Service
+    const permissions = yield* PermissionV2.Service
+    const mutation = yield* LocationMutation.Service
+    const store = yield* DesignStore.Service
+    const document = yield* store.get(designID)
+    const files = yield* Effect.promise(() => DesignBuild.tooling(document))
+    if (!files.length) return false
+    return yield* Effect.gen(function* () {
+      const session = yield* sessions.get(sessionID)
+      const resources = yield* Effect.forEach(files, (file) =>
+        mutation.resolve({ path: file, kind: "file" }).pipe(Effect.map((target) => target.resource)),
+      )
+      yield* permissions.assert({
+        action: "project_tooling",
+        resources,
+        save: resources,
+        sessionID,
+        agent: session.agent,
+        metadata: {
+          origin: "design.publish",
+          reason: `execute project tooling: ${files.map((file) => path.basename(file)).join(", ")} (runs in the redcode process)`,
+        },
+      })
+      return true
+    }).pipe(Effect.catch(() => Effect.succeed(false)))
   })
   return handlers
     .handleRaw(
@@ -173,14 +204,24 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
       "design.publish",
       Effect.fn(function* (ctx) {
         const store = yield* owned(ctx.params)
-        return yield* store.publish(ctx.params.designID, ctx.payload.name, yield* read(ctx.params.sessionID))
+        return yield* store.publish(
+          ctx.params.designID,
+          ctx.payload.name,
+          yield* read(ctx.params.sessionID),
+          yield* tooling(ctx.params.sessionID, ctx.params.designID),
+        )
       }),
     )
     .handle(
       "design.restore",
       Effect.fn(function* (ctx) {
         const store = yield* owned(ctx.params)
-        return yield* store.restore(ctx.params.designID, ctx.payload.revision, yield* read(ctx.params.sessionID))
+        return yield* store.restore(
+          ctx.params.designID,
+          ctx.payload.revision,
+          yield* read(ctx.params.sessionID),
+          yield* tooling(ctx.params.sessionID, ctx.params.designID),
+        )
       }),
     )
     .handle(

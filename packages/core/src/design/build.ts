@@ -2,8 +2,7 @@ export * as DesignBuild from "./build"
 
 import path from "node:path"
 import { createRequire } from "node:module"
-import { mkdir, readdir, realpath, stat } from "node:fs/promises"
-import { pathToFileURL } from "node:url"
+import { mkdir, realpath, stat } from "node:fs/promises"
 import { parse } from "jsonc-parser"
 import { Option, Schema } from "effect"
 import type { Design } from "@reddb-io/redcode-schema/design"
@@ -40,13 +39,23 @@ const PostcssConfig = Schema.Struct({
   plugins: Schema.optional(Schema.Union([Schema.Array(Schema.Unknown), Schema.Record(Schema.String, Schema.Unknown)])),
 })
 const Jsx = Schema.Literals(["preserve", "react-native", "react", "react-jsx", "react-jsxdev"])
-const tooling = ["package.json", "tsconfig.json", "postcss.config.*", "tailwind.config.*"]
+const toolingFiles = ["package.json", "tsconfig.json", "postcss.config.*", "tailwind.config.*"]
+// Tailwind's own config lookup order, then postcss-load-config's for postcss.config.*.
+const tailwindExtensions = ["js", "cjs", "mjs", "ts", "cts", "mts"]
+const postcssExtensions = ["ts", "mts", "cts", "js", "mjs", "cjs"]
 const exists = (file: string) =>
   stat(file).then(
     () => true,
     () => false,
   )
 const posix = (file: string) => file.split(path.sep).join("/")
+const locate = async (directory: string, name: string, extensions: string[]) => {
+  const files = await Array.fromAsync(
+    new Bun.Glob(`${name}.{${extensions.join(",")}}`).scan({ cwd: directory, onlyFiles: true, followSymlinks: false }),
+  )
+  const first = extensions.map((extension) => `${name}.${extension}`).find((file) => files.includes(file))
+  return first ? path.join(directory, first) : undefined
+}
 
 export async function materialize(revision: Design.Revision, blobs: string, directory: string) {
   await mkdir(directory, { recursive: true })
@@ -76,18 +85,19 @@ export async function system(
   configured?: ConfigDesign.System,
 ): Promise<Design.System | undefined> {
   if (!configured) return
+  // Tooling is detected where it executes: the checkout holding node_modules, since its
+  // configuration requires plugins from there (see pipeline).
+  const base = await home(application)
   const manifest = Option.getOrElse(
     Schema.decodeUnknownOption(Manifest)(
-      await Bun.file(path.join(application, "package.json"))
+      await Bun.file(path.join(base, "package.json"))
         .json()
         .catch(() => ({})),
     ),
     () => ({}) as typeof Manifest.Type,
   )
   const dependencies = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
-  const configs = await Array.fromAsync(
-    new Bun.Glob("tailwind.config.*").scan({ cwd: application, onlyFiles: true, followSymlinks: false }),
-  )
+  const configs = await locate(base, "tailwind.config", tailwindExtensions)
   const normalize = (file: string) => path.posix.normalize(file.split("\\").join("/")).replace(/^\.\/|\/$/g, "")
   const framework =
     configured.framework ??
@@ -95,16 +105,34 @@ export async function system(
   return {
     paths: configured.paths.map(normalize),
     css: (configured.css ?? []).map(normalize),
-    tailwind: configured.tailwind ?? (configs.length > 0 && dependencies.includes("tailwindcss")),
+    tailwind: configured.tailwind ?? (configs !== undefined && dependencies.includes("tailwindcss")),
     ...(framework ? { framework } : {}),
     ...(configured.aliases ? { aliases: configured.aliases } : {}),
   }
 }
 
+/** The project files a preview build executes in this process when its Tailwind pipeline is on. */
+export async function tooling(document: Design.Info) {
+  if (!document.system?.tailwind) return []
+  const base = await home(document.application)
+  const configuration = await Promise.all([
+    locate(base, "tailwind.config", tailwindExtensions),
+    locate(base, "postcss.config", postcssExtensions),
+  ])
+  const files = configuration.filter((file): file is string => file !== undefined)
+  if (files.length) return files
+  const require = createRequire(path.join(base, "package.json"))
+  const plugin = path.dirname(require.resolve("tailwindcss/package.json"))
+  return (await exists(plugin)) ? [plugin] : []
+}
+
 /**
  * Canonical paths a preview build reads under the standing design-system grant: the declared
- * roots and stylesheets, the tooling configuration and the node_modules they resolve through.
- * Entries that do not exist or leave the application are left out.
+ * roots and stylesheets, the tooling configuration and the node_modules directories bare
+ * specifiers resolve through (the application's, and the checkout's up to its repository root).
+ * The build trusts exactly this list, so a package linked to a source tree outside these
+ * directories must be declared in `paths` to be readable. Entries that do not exist or leave
+ * the application are left out.
  */
 export async function grant(document: Design.Info) {
   if (!document.system) return []
@@ -120,62 +148,29 @@ export async function grant(document: Design.Info) {
       Promise.all(
         (
           await Array.fromAsync(
-            new Bun.Glob(`{${tooling.join(",")}}`).scan({ cwd: directory, onlyFiles: true, followSymlinks: false }),
+            new Bun.Glob(`{${toolingFiles.join(",")}}`).scan({
+              cwd: directory,
+              onlyFiles: true,
+              followSymlinks: false,
+            }),
           )
         ).map((file) => realpath(path.join(directory, file))),
       ),
     ),
   )
+  const repository = await RepositoryGuard.inspect(base).catch(() => undefined)
+  const root = repository?.root ?? base
+  const ancestors = (directory: string): string[] =>
+    directory === root || !directory.startsWith(root) ? [] : [directory, ...ancestors(path.dirname(directory))]
+  const chain = [application, base, ...ancestors(path.dirname(base)), ...(base.startsWith(root) ? [root] : [])]
   const modules = await Promise.all(
-    [...new Set([application, base])].map((directory) =>
-      realpath(path.join(directory, "node_modules")).catch(() => undefined),
-    ),
+    [...new Set(chain)].map((directory) => realpath(path.join(directory, "node_modules")).catch(() => undefined)),
   )
   return [
     ...new Set(
       [...declared, ...configuration.flat(), ...modules].filter((entry): entry is string => entry !== undefined),
     ),
   ].sort()
-}
-
-/**
- * The stores installed packages resolve through: the outermost node_modules holding each
- * package's canonical files, so transitive dependencies in an isolated layout count too.
- */
-async function installed(directories: string[]) {
-  const packages = await Promise.all(
-    directories.map(async (directory) => {
-      const modules = path.join(directory, "node_modules")
-      const entries = await readdir(modules, { withFileTypes: true }).catch(() => [])
-      const scoped = await Promise.all(
-        entries
-          .filter((entry) => entry.name.startsWith("@"))
-          .map((entry) =>
-            readdir(path.join(modules, entry.name))
-              .catch(() => [])
-              .then((items) => items.map((item) => path.join(modules, entry.name, item))),
-          ),
-      )
-      return [
-        ...entries
-          .filter((entry) => !entry.name.startsWith("@") && !entry.name.startsWith("."))
-          .map((entry) => path.join(modules, entry.name)),
-        ...scoped.flat(),
-      ]
-    }),
-  )
-  const canonical = await Promise.all(packages.flat().map((file) => realpath(file).catch(() => undefined)))
-  return [
-    ...new Set(
-      canonical
-        .filter((entry): entry is string => entry !== undefined)
-        .map((entry) => {
-          const parts = entry.split(path.sep)
-          const index = parts.indexOf("node_modules")
-          return index === -1 ? entry : parts.slice(0, index + 1).join(path.sep)
-        }),
-    ),
-  ]
 }
 
 export async function build(
@@ -202,11 +197,7 @@ export async function build(
   const { build } = await DesignRuntime.load("vite", signal)
   const base = await home(application)
   const require = createRequire(path.join(base, "package.json"))
-  // Installed packages are usually symlinks into a store; their canonical files count as node_modules.
-  const trusted = [
-    ...(await grant(document)),
-    ...(document.system ? await installed([...new Set([application, base])]) : []),
-  ]
+  const trusted = await grant(document)
   const plugins = await (async () => {
     if (document.engine === "html") return []
     if (document.engine === "solid") {
@@ -263,7 +254,13 @@ export async function build(
   const options = (await configuration.exists())
     ? Schema.decodeUnknownSync(Tsconfig)(parse(await configuration.text())).compilerOptions
     : undefined
+  // Configured aliases come first: an explicit alias beats one implied by tsconfig paths.
   const projectAliases = [
+    ...Object.entries(document.system?.aliases ?? {}).map(([find, target]) => ({
+      find,
+      replacement: path.resolve(application, target),
+      fallbacks: [] as string[],
+    })),
     ...Object.entries(options?.paths ?? {}).flatMap(([name, targets]) => {
       const resolved = targets.map((target) =>
         path.resolve(application, options?.baseUrl ?? ".", target.replace(/\/\*$/, "")),
@@ -272,11 +269,6 @@ export async function build(
         ? [{ find: name.replace(/\/\*$/, ""), replacement: resolved[0], fallbacks: resolved.slice(1) }]
         : []
     }),
-    ...Object.entries(document.system?.aliases ?? {}).map(([find, target]) => ({
-      find,
-      replacement: path.resolve(application, target),
-      fallbacks: [] as string[],
-    })),
   ]
   if (document.engine !== "html")
     await DesignFiles.atomic(
@@ -390,7 +382,13 @@ export async function build(
       cssCodeSplit: document.engine === "html",
       rollupOptions:
         document.engine === "html"
-          ? { input: importer, output: { assetFileNames: "design-system.css" } }
+          ? {
+              input: importer,
+              output: {
+                assetFileNames: (asset) =>
+                  asset.names.some((name) => name.endsWith(".css")) ? "design-system.css" : "[name]-[hash][extname]",
+              },
+            }
           : { output: { inlineDynamicImports: true } },
     },
   })
@@ -416,19 +414,15 @@ async function pipeline(
   require: NodeJS.Require,
   authorize: (file: string) => Promise<void>,
 ) {
-  const find = async (name: string) => {
-    const files = await Array.fromAsync(
-      new Bun.Glob(`${name}.{js,cjs,mjs,ts,mts,cts}`).scan({ cwd: base, onlyFiles: true, followSymlinks: false }),
-    )
-    const [first] = files.sort()
-    return first ? path.join(base, first) : undefined
-  }
   const load = async (file: string): Promise<unknown> => {
     await authorize(file)
-    const module: unknown = await import(pathToFileURL(file).href)
+    // Evicting the require cache lets an edited config apply without a restart; Bun's ESM
+    // loader ignores URL queries, so a dynamic import would keep returning the first evaluation.
+    delete require.cache[file]
+    const module: unknown = require(file)
     return typeof module === "object" && module && "default" in module ? module.default : module
   }
-  const tailwindFile = await find("tailwind.config")
+  const tailwindFile = await locate(base, "tailwind.config", tailwindExtensions)
   const tailwind = tailwindFile ? await load(tailwindFile) : {}
   const content: unknown = typeof tailwind === "object" && tailwind && "content" in tailwind ? tailwind.content : []
   const declared: readonly unknown[] = Array.isArray(content)
@@ -472,7 +466,7 @@ async function pipeline(
       return factory({ base: application, ...(typeof options === "object" && options ? options : {}) })
     return factory(options)
   }
-  const postcssFile = await find("postcss.config")
+  const postcssFile = await locate(base, "postcss.config", postcssExtensions)
   const loaded = postcssFile ? await load(postcssFile) : undefined
   const configured = Option.getOrUndefined(
     Schema.decodeUnknownOption(PostcssConfig)(

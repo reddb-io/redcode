@@ -1,7 +1,7 @@
 export * as DesignRead from "./read"
 
 import path from "node:path"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { realpath, stat } from "node:fs/promises"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { DesignBuild } from "@reddb-io/redcode-core/design/build"
@@ -56,4 +56,23 @@ export const grant = Effect.fn("DesignRead.grant")(function* (document: Design.I
   ]
   if (external.length) yield* ask({ permission: "external_directory", patterns: external, always: external, metadata })
   yield* ask({ permission: "read", patterns, always: patterns, metadata })
+})
+
+/**
+ * Running the project's PostCSS pipeline executes its configuration in this process, which a read
+ * grant does not cover: a distinct permission names the files. A refusal means building without it.
+ */
+export const tooling = Effect.fn("DesignRead.tooling")(function* (document: Design.Info, ask: Tool.Context["ask"]) {
+  const files = yield* Effect.promise(() => DesignBuild.tooling(document))
+  if (!files.length) return false
+  const exit = yield* ask({
+    permission: "project_tooling",
+    patterns: files,
+    always: files,
+    metadata: {
+      origin: "design.system",
+      reason: `execute project tooling: ${files.map((file) => path.basename(file)).join(", ")} (runs in the redcode process)`,
+    },
+  }).pipe(Effect.exit)
+  return Exit.isSuccess(exit)
 })

@@ -1,5 +1,6 @@
 export * as DesignTools from "./design"
 
+import path from "node:path"
 import { stat } from "node:fs/promises"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
@@ -115,6 +116,33 @@ const layer = Layer.effectDiscard(
           source,
           metadata,
         })
+      }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))
+    // Running the project's PostCSS pipeline executes its configuration in this process, which a
+    // read grant does not cover: a distinct permission names the files; a refusal builds without it.
+    const execution = (document: Design.Info, context: Tool.Context) =>
+      Effect.gen(function* () {
+        const files = yield* Effect.promise(() => DesignBuild.tooling(document))
+        if (!files.length) return false
+        const resources = yield* Effect.forEach(files, (file) =>
+          mutation.resolve({ path: file, kind: "file" }).pipe(Effect.map((target) => target.resource)),
+        )
+        return yield* permissions
+          .assert({
+            action: "project_tooling",
+            resources,
+            save: resources,
+            sessionID: context.sessionID,
+            agent: context.agent,
+            source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+            metadata: {
+              origin: "design.system",
+              reason: `execute project tooling: ${files.map((file) => path.basename(file)).join(", ")} (runs in the redcode process)`,
+            },
+          })
+          .pipe(
+            Effect.as(true),
+            Effect.catch(() => Effect.succeed(false)),
+          )
       }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))
 
     yield* tools
@@ -273,14 +301,15 @@ const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [
             {
               type: "text",
-              text: `Published ${output.id} for ${output.designID}. The user can annotate this revision. Root: ${output.document.root}`,
+              text: `Published ${output.id} for ${output.designID}. The user can annotate this revision. Root: ${output.document.root}${pipeline(output.document)}`,
             },
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_preview", context)
-              yield* standing(yield* owned(input.id, context), context)
-              return yield* store.publish(input.id, input.name, read(context))
+              const document = yield* owned(input.id, context)
+              yield* standing(document, context)
+              return yield* store.publish(input.id, input.name, read(context), yield* execution(document, context))
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_history: Tool.make({
@@ -299,9 +328,10 @@ const layer = Layer.effectDiscard(
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_history", context)
-              yield* owned(input.id, context)
-              if (input.restore) return [yield* store.restore(input.id, input.restore, read(context))]
-              return yield* store.revisions(input.id)
+              const document = yield* owned(input.id, context)
+              if (!input.restore) return yield* store.revisions(input.id)
+              yield* standing(document, context)
+              return [yield* store.restore(input.id, input.restore, read(context), yield* execution(document, context))]
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_asset: Tool.make({
@@ -447,3 +477,11 @@ export const node = makeLocationNode({
     LocationMutation.node,
   ],
 })
+
+/** Whether the project's PostCSS pipeline ran for a revision; without it Tailwind utility classes are absent. */
+function pipeline(document: { readonly system?: Design.System }) {
+  if (!document.system) return ""
+  return document.system.tailwind
+    ? "\nProject PostCSS/Tailwind pipeline: ran."
+    : "\nProject PostCSS/Tailwind pipeline: did not run for this revision (project tooling permission not granted, or tailwind off); Tailwind utility classes are absent."
+}

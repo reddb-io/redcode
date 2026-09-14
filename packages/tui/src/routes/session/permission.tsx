@@ -357,6 +357,26 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
+            if (permission === "project_tooling") {
+              const meta = props.request.metadata ?? {}
+              const reason = typeof meta["reason"] === "string" ? meta["reason"] : ""
+              const patterns = (props.request.patterns ?? []).filter((p): p is string => typeof p === "string")
+              return {
+                icon: "⚙",
+                title: "Execute project tooling for design builds",
+                body: (
+                  <box paddingLeft={1} gap={1}>
+                    <Show when={reason}>
+                      <text fg={theme.textMuted}>{reason}</text>
+                    </Show>
+                    <box>
+                      <For each={patterns}>{(p) => <text fg={theme.text}>{"- " + pathFormatter.format(p)}</text>}</For>
+                    </box>
+                  </box>
+                ),
+              }
+            }
+
             if (permission === "doom_loop") {
               return {
                 icon: "⟳",
