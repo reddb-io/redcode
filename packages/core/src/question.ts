@@ -78,16 +78,19 @@ const layer = Layer.effect(
     const events = yield* EventV2.Service
     const pending = new Map<ID, Pending>()
 
+    // Clients render a dialog for every Asked event. A request that ends without a reply must
+    // publish Rejected, or the dialog stays up answering a request the server no longer has.
+    const settle = (item: Pending) =>
+      events
+        .publish(Event.Rejected, { sessionID: item.request.sessionID, requestID: item.request.id })
+        .pipe(Effect.ensuring(Deferred.fail(item.deferred, new RejectedError())), Effect.asVoid)
+
     yield* Effect.addFinalizer(() =>
-      Effect.forEach(pending.values(), (item) => Deferred.fail(item.deferred, new RejectedError()), {
-        discard: true,
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            pending.clear()
-          }),
-        ),
-      ),
+      Effect.suspend(() => {
+        const items = Array.from(pending.values())
+        pending.clear()
+        return Effect.forEach(items, settle, { discard: true })
+      }),
     )
 
     const ask = Effect.fn("QuestionV2.ask")((input: AskInput) =>
@@ -100,8 +103,11 @@ const layer = Layer.effect(
           return yield* events.publish(Event.Asked, request).pipe(
             Effect.andThen(restore(Deferred.await(deferred))),
             Effect.ensuring(
-              Effect.sync(() => {
+              Effect.suspend(() => {
+                const item = pending.get(id)
+                if (!item) return Effect.void
                 pending.delete(id)
+                return settle(item)
               }),
             ),
           )
@@ -119,8 +125,8 @@ const layer = Layer.effect(
             requestID: existing.request.id,
             answers: input.answers.map((answer) => [...answer]),
           })
-          yield* Deferred.succeed(existing.deferred, input.answers)
           pending.delete(input.requestID)
+          yield* Deferred.succeed(existing.deferred, input.answers)
         }),
       ),
     )
@@ -134,8 +140,8 @@ const layer = Layer.effect(
             sessionID: existing.request.sessionID,
             requestID: existing.request.id,
           })
-          yield* Deferred.fail(existing.deferred, new RejectedError())
           pending.delete(requestID)
+          yield* Deferred.fail(existing.deferred, new RejectedError())
         }),
       ),
     )

@@ -89,6 +89,34 @@ describe("QuestionV2", () => {
     }),
   )
 
+  it.effect("publishes rejection when a pending ask is interrupted or its location closes", () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make()
+      const context = yield* Layer.buildWithScope(Layer.fresh(questions), scope)
+      const service = Context.get(context, QuestionV2.Service)
+      const events = Context.get(context, EventV2.Service)
+      const rejected: unknown[] = []
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === QuestionV2.Event.Rejected.type) rejected.push(event.data)
+        }),
+      )
+      const interrupted = yield* service.ask({ sessionID, questions: [question] }).pipe(Effect.forkScoped)
+      const closed = yield* service.ask({ sessionID, questions: [question] }).pipe(Effect.forkScoped)
+      yield* Effect.yieldNow
+      const [first, second] = yield* service.list()
+
+      yield* Fiber.interrupt(interrupted)
+      expect(rejected).toEqual([{ sessionID, requestID: first!.id }])
+      yield* Scope.close(scope, Exit.void)
+      expect(Exit.isFailure(yield* Fiber.await(closed))).toBe(true)
+      expect(rejected).toEqual([
+        { sessionID, requestID: first!.id },
+        { sessionID, requestID: second!.id },
+      ])
+    }),
+  )
+
   it.effect("isolates pending requests by location-layer instance and rejects them on finalization", () =>
     Effect.gen(function* () {
       const firstScope = yield* Scope.make()

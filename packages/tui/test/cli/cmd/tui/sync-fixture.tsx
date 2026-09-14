@@ -26,7 +26,7 @@ export async function mount(
   override?: FetchHandler,
   state?: string,
   children?: () => JSX.Element,
-  input: { continue?: boolean; ready?: "partial" | "complete" } = {},
+  input: { continue?: boolean; ready?: "partial" | "complete"; width?: number; height?: number } = {},
 ) {
   const calls = createFetch(override)
   const events = createEventSource({ buffer: false })
@@ -49,25 +49,28 @@ export async function mount(
     return <box>{children?.()}</box>
   }
 
-  const app = await testRender(() => (
-    <TestTuiContexts paths={state ? { state } : undefined}>
-      <ArgsProvider continue={input.continue}>
-        <KVProvider>
-          <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
-            <PermissionProvider>
-              <ProjectProvider>
-                <ExitProvider exit={() => {}}>
-                  <SyncProvider>
-                    <Probe />
-                  </SyncProvider>
-                </ExitProvider>
-              </ProjectProvider>
-            </PermissionProvider>
-          </SDKProvider>
-        </KVProvider>
-      </ArgsProvider>
-    </TestTuiContexts>
-  ))
+  const app = await testRender(
+    () => (
+      <TestTuiContexts paths={state ? { state } : undefined}>
+        <ArgsProvider continue={input.continue}>
+          <KVProvider>
+            <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
+              <PermissionProvider>
+                <ProjectProvider>
+                  <ExitProvider exit={() => {}}>
+                    <SyncProvider>
+                      <Probe />
+                    </SyncProvider>
+                  </ExitProvider>
+                </ProjectProvider>
+              </PermissionProvider>
+            </SDKProvider>
+          </KVProvider>
+        </ArgsProvider>
+      </TestTuiContexts>
+    ),
+    input.width || input.height ? { width: input.width ?? 80, height: input.height ?? 24 } : undefined,
+  )
 
   await ready
   await wait(() => (input.ready === "partial" ? sync.ready : sync.status === "complete"))
