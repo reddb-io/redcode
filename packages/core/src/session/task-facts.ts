@@ -60,39 +60,55 @@ const designs = new Set(["design_edit", "design_generate", "design_asset", "desi
 const scoped = (entries: ReadonlyArray<string>) =>
   entries.length > 0 && entries.every((entry) => entry.startsWith(DESIGN))
 
+const DRIVE = /^[A-Za-z]:/
+/** A raw path spelled the Windows way: a drive letter, a backslash, or `/C:/`. */
+const windowsish = (entry: string) => DRIVE.test(entry) || entry.includes("\\") || /^\/[A-Za-z]:(\/|$)/.test(entry)
+
 /**
- * One spelling for a path on every platform: forward slashes, no drive letter, `.` and `..` resolved,
- * relative forms joined to the session directory. Dropping the drive can only make two paths overlap
- * that would not, which reopens more rather than less.
+ * Forward slashes and a lower-case drive. Win32 device prefixes (`\\?\C:\`, `\\.\C:\`, `\\?\UNC\`) and
+ * `/C:/` are unwrapped. When Windows is in play, git-bash's `/c/` names drive C and the whole path is
+ * lower-cased, because Windows paths are case-insensitive; on POSIX, `/c` is an ordinary directory.
  */
-const windowsish = (entry: string) => /^[A-Za-z]:|\\/.test(entry)
-const posix = (entry: string) => {
-  const slashed = entry.replaceAll("\\", "/")
-  return /^[A-Za-z]:/.test(slashed) ? slashed[0]!.toLowerCase() + slashed.slice(1) : slashed
+const posix = (entry: string, windows: boolean) => {
+  let value = entry
+    .replaceAll("\\", "/")
+    .replace(/^\/\/[?.]\/UNC\//i, "//")
+    .replace(/^\/\/[?.]\/(?=[A-Za-z]:)/, "")
+    .replace(/^\/(?=[A-Za-z]:(\/|$))/, "")
+  if (windows) value = value.replace(/^\/([A-Za-z])(?=\/|$)/, "$1:").toLowerCase()
+  return DRIVE.test(value) ? value[0]!.toLowerCase() + value.slice(1) : value
 }
-/** `c:/a` → `c:` and `/a`; a UNC path (`//server/share/a`) keeps its double slash as part of its root. */
+/** `c:/a` → `c:` and `/a`; `c:a` (drive-relative) → `c:` and `a`; no drive → `` and the path. */
 const drive = (entry: string) => {
   const match = /^[a-z]:/.exec(entry)
-  return match ? ([match[0], entry.slice(2) || "/"] as const) : (["", entry] as const)
+  return match ? ([match[0], entry.slice(2)] as const) : (["", entry] as const)
 }
-const normal = (entry: string, directory?: string) => {
+/** A relative path with no base: `./` and leading `../` only say the root is unknown. */
+const unrooted = (rest: string) =>
+  path.posix
+    .normalize(rest || ".")
+    .replace(/^(\.\.?\/)+/, "")
+    .replace(/^\.\.?$/, "")
+const trim = (entry: string) => (entry.length > 1 ? entry.replace(/\/+$/, "") : entry)
+
+/**
+ * One spelling for a path on every platform: forward slashes, `.` and `..` resolved, relative forms
+ * joined to the session directory, a lower-case drive kept and a UNC root's double slash kept. A
+ * drive-relative `C:foo` never borrows another drive's directory: its root on C is unknown.
+ */
+const normal = (entry: string, directory?: string, windows = false) => {
   if (entry.startsWith(DESIGN)) return entry
-  // Windows paths are case-insensitive; so is the comparison of any path that came from one.
-  const fold = windowsish(entry) || (!!directory && windowsish(directory) && !entry.startsWith("/"))
-  const value = posix(fold ? entry.toLowerCase() : entry)
-  const base = directory ? posix(fold ? directory.toLowerCase() : directory) : ""
+  const win = windows || windowsish(entry) || (!!directory && windowsish(directory))
+  const value = posix(entry, win)
   const [root, rest] = drive(value)
-  const absolute = rest.startsWith("/")
-  const joined =
-    !absolute && base
-      ? (([r, b]) => r + path.posix.join(b || "/", rest))(drive(base))
-      : root + path.posix.normalize(rest)
-  const unc = (absolute ? value : base).replace(/^[a-z]:/, "").startsWith("//") ? "/" : ""
-  const [head, tail] = drive(joined)
-  // With no directory to resolve against, a leading `../` only says the root is unknown.
-  const relative = !tail.startsWith("/") ? tail.replace(/^(\.\.?\/)+/, "").replace(/^\.\.?$/, "") : tail
-  const trimmed = relative.length > 1 ? relative.replace(/\/+$/, "") : relative
-  return head + (trimmed.startsWith("/") && !trimmed.startsWith("//") ? unc : "") + trimmed
+  if (rest.startsWith("/")) {
+    const unc = rest.startsWith("//") ? "/" : ""
+    return root + unc + trim(path.posix.normalize(rest))
+  }
+  if (root || !directory) return root + trim(unrooted(rest))
+  const [base, within] = drive(posix(directory, win))
+  const unc = within.startsWith("//") ? "/" : ""
+  return base + unc + trim(path.posix.join(within || "/", rest))
 }
 
 /**
@@ -125,8 +141,10 @@ const related = (left: string, right: string) => {
  * file edit still overlaps a design proof, whose files are not known.
  */
 export const overlaps = (edit: ReadonlyArray<string>, proof: ReadonlyArray<string>) => {
-  const a = edit.map((entry) => normal(entry))
-  const b = proof.map((entry) => normal(entry))
+  // A Windows path on either side makes the comparison a Windows one for both.
+  const windows = [...edit, ...proof].some(windowsish)
+  const a = edit.map((entry) => normal(entry, undefined, windows))
+  const b = proof.map((entry) => normal(entry, undefined, windows))
   if (scoped(a)) return b.some((entry) => a.includes(entry))
   if (scoped(b)) return true
   return !a.length || !b.length || a.some((x) => b.some((y) => related(x, y)))
@@ -251,6 +269,40 @@ function steps(command: string): Word[][] | undefined {
   return out.filter((step) => step.length)
 }
 
+/** One sed command that only prints: an optional address or range, then `p`, `=`, `q`, `n` or nothing. */
+const SED_ADDRESS = String.raw`(?:\d+|\$|\/(?:[^\/\\]|\\.)*\/)(?:~\d+)?`
+const SED_PRINT = new RegExp(
+  String.raw`^\s*(?:${SED_ADDRESS}(?:\s*,\s*(?:${SED_ADDRESS}|[+~]\d+))?)?\s*!?\s*[p=qn]?\s*$`,
+)
+
+/**
+ * `sed -n` with scripts made only of addresses and print commands. Anything else can write: `w`, `W`,
+ * `e`, an `s` with a `w` or `e` flag, a script file, or editing in place.
+ */
+function sedPrints(args: string[]) {
+  if (!args.some((arg) => /^-[A-Za-z]*n[A-Za-z]*$/.test(arg) || arg === "--quiet" || arg === "--silent")) return false
+  if (args.some((arg) => /^-[A-Za-z]*[if]/.test(arg) || arg.startsWith("--in-place") || arg.startsWith("--file")))
+    return false
+  const scripts: string[] = []
+  let explicit = false
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!
+    if (arg === "-e" || arg === "--expression") {
+      explicit = true
+      scripts.push(args[++index] ?? "")
+    } else if (arg.startsWith("--expression=")) {
+      explicit = true
+      scripts.push(arg.slice("--expression=".length))
+    }
+  }
+  if (!explicit) {
+    const script = args.find((arg) => !arg.startsWith("-"))
+    if (script === undefined) return false
+    scripts.push(script)
+  }
+  return scripts.every((script) => script.split(/[;\n]/).every((command) => SED_PRINT.test(command)))
+}
+
 function inspects(words: Word[]): boolean {
   const args = words.map((entry) => entry.text)
   while (args.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0]!)) args.shift()
@@ -272,16 +324,18 @@ function inspects(words: Word[]): boolean {
     // `git branch x`, `git branch -D x` and `git remote add` change things; bare listings do not.
     if (sub === "branch")
       return options.every((arg) => ["-a", "-r", "-v", "-vv", "--all", "--list", "--show-current"].includes(arg))
+    if (["log", "diff", "show"].includes(sub) && options.some((arg) => arg.startsWith("--output"))) return false
     if (sub === "remote")
       return options.every((arg) => ["-v", "--verbose"].includes(arg)) || ["show", "get-url"].includes(options[0] ?? "")
     return true
   }
-  if (program === "sed")
-    return (
-      rest.some((arg) => /^-[A-Za-z]*n[A-Za-z]*$/.test(arg) || arg === "--quiet") &&
-      !rest.some((arg) => /^-[A-Za-z]*i/.test(arg) || arg.startsWith("--in-place"))
+  if (program === "sed") return sedPrints(rest)
+  if (program === "find")
+    return !rest.some((arg) =>
+      ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"].includes(arg),
     )
-  if (program === "find") return !rest.some((arg) => ["-delete", "-exec", "-execdir", "-fprint", "-ok"].includes(arg))
+  if (program === "tree") return !rest.some((arg) => arg === "-o" || arg.startsWith("-o"))
+  if (program === "rg") return !rest.some((arg) => arg === "--pre" || arg.startsWith("--pre="))
   return inspecting.has(program)
 }
 

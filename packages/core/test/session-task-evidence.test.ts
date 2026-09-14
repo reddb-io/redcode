@@ -1026,7 +1026,7 @@ it.effect("compares Windows paths without regard to case, across drives and UNC 
     expect(overlaps(["/Project/a.ts"], ["/project/a.ts"])).toBe(false)
     // The same path on two drives is two files; a path without a drive matches either.
     expect(overlaps(["C:\\a\\b.ts"], ["D:\\a\\b.ts"])).toBe(false)
-    expect(overlaps(["C:\\a\\b.ts"], ["/a"])).toBe(true)
+    expect(overlaps(["C:\\project\\b.ts"], ["/project"])).toBe(true)
     expect(overlaps(["\\\\server\\share\\src\\a.ts"], ["\\\\SERVER\\Share\\src"])).toBe(true)
     expect(overlaps(["\\\\server\\share\\src\\a.ts"], ["\\\\other\\share\\src"])).toBe(false)
     expect(paths("read", { filePath: "\\\\server\\share\\x.ts" })).toEqual(["//server/share/x.ts"])
@@ -1034,5 +1034,69 @@ it.effect("compares Windows paths without regard to case, across drives and UNC 
     expect(overlaps(["../src/a.ts"], ["/project/src/a.ts"])).toBe(true)
     expect(overlaps(["../lib/a.ts"], ["/project/src/a.ts"])).toBe(false)
     expect(overlaps([".."], ["/project/src/a.ts"])).toBe(true)
+  }),
+)
+
+it.effect("allows only printing sed scripts and refuses tool flags that write files", () =>
+  Effect.sync(() => {
+    for (const command of [
+      "sed -n 1p f",
+      "sed -n '1,20p' f",
+      "sed -n -e '/start/,/end/p' f",
+      "sed -n '$p' f",
+      "sed -n '/a/!p' f",
+      "git log --oneline",
+      "git diff --stat",
+      "find . -name '*.ts'",
+      "tree -L 2",
+      "rg retry src",
+    ])
+      expect([command, SessionTaskFacts.readOnly({ command })]).toEqual([command, true])
+    for (const command of [
+      "sed -n 'w out' f",
+      "sed -n 'W out' f",
+      "sed -n '1e rm x' f",
+      "sed -n 's/a/b/w out' f",
+      "sed -n 's/a/b/e' f",
+      "sed -n s/a/b/p f",
+      "sed -n -f script.sed f",
+      "git log --output=log.txt",
+      "git diff --output diff.txt",
+      "git show --output=x HEAD",
+      "find . -fprint out",
+      "find . -fprint0 out",
+      "find . -fprintf out %p",
+      "find . -fls out",
+      "tree -o out.txt",
+      "rg --pre ./decode.sh retry",
+      "rg --pre=./decode.sh retry",
+    ])
+      expect([command, SessionTaskFacts.readOnly({ command })]).toEqual([command, false])
+  }),
+)
+
+it.effect("sees Windows device, git-bash, mixed-case and drive-relative spellings of one path", () =>
+  Effect.sync(() => {
+    const { overlaps, paths } = SessionTaskFacts
+    // Win32 device and long-path prefixes name the ordinary path.
+    expect(overlaps(["\\\\?\\C:\\project\\a.ts"], ["c:/project/a.ts"])).toBe(true)
+    expect(overlaps(["\\\\.\\C:\\project\\a.ts"], ["C:\\Project"])).toBe(true)
+    expect(overlaps(["\\\\?\\UNC\\server\\share\\a.ts"], ["\\\\server\\share"])).toBe(true)
+    // git-bash /c/… and URL-style /C:/… name drive C, and only drive C.
+    expect(overlaps(["/c/project/src/a.ts"], ["C:\\Project\\src"])).toBe(true)
+    expect(overlaps(["/C:/project/a.ts"], ["c:\\project\\a.ts"])).toBe(true)
+    expect(overlaps(["/c/project/a.ts"], ["D:\\project\\a.ts"])).toBe(false)
+    // Without Windows in play, /c is an ordinary directory and POSIX case is kept.
+    expect(paths("read", { filePath: "/c/foo" })).toEqual(["/c/foo"])
+    expect(overlaps(["/Project/a.ts"], ["/project/a.ts"])).toBe(false)
+    // A POSIX spelling against a Windows side, or under a Windows session directory, folds case too.
+    expect(overlaps(["/Project/Src/a.ts"], ["C:\\project\\src"])).toBe(true)
+    expect(paths("read", { filePath: "/Project/A.ts" }, "C:\\work")).toEqual(["/project/a.ts"])
+    // A drive-relative path keeps its own drive and an unknown root; it never borrows D's directory.
+    expect(paths("read", { filePath: "C:foo\\a.ts" }, "D:\\project")).toEqual(["c:foo/a.ts"])
+    expect(overlaps(["C:foo\\a.ts"], ["c:/project/foo/a.ts"])).toBe(true)
+    expect(overlaps(["C:foo\\a.ts"], ["d:/project/foo/a.ts"])).toBe(false)
+    expect(overlaps(["C:"], ["c:/anything"])).toBe(true)
+    expect(overlaps(["C:"], ["d:/anything"])).toBe(false)
   }),
 )

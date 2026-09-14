@@ -55,7 +55,7 @@ describe("loop guard", () => {
     expect(assess({ parts: repeat(2), next, limits: LIMITS }).type).toBe("correct")
     expect(assess({ parts: repeat(4), next, limits: LIMITS })).toMatchObject({
       type: "stop",
-      summary: "Paused: the same `read` call repeated 5 times",
+      summary: "loop guard: the same `read` call repeated 5 times",
     })
   })
 
@@ -190,7 +190,7 @@ describe("loop guard", () => {
     expect(stop).toMatchObject({
       type: "stop",
       streak: LIMITS.failureStopAt,
-      summary: `Paused: task updates kept failing (${LIMITS.failureStopAt} in a row)`,
+      summary: `loop guard: task updates kept failing (${LIMITS.failureStopAt} in a row)`,
     })
     expect(stop.type === "stop" && stop.message).toContain(
       `${LIMITS.failureStopAt} todowrite calls in a row have failed`,

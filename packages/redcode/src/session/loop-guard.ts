@@ -12,7 +12,7 @@
  * polling looks, and are left alone. Nothing about this needs a person.
  */
 
-import { LOOP_GUARD_REFUSAL } from "@reddb-io/redcode-core/session/loop-marker"
+import { LOOP_GUARD_PAUSE, LOOP_GUARD_REFUSAL } from "@reddb-io/redcode-core/session/loop-marker"
 
 export interface Limits {
   /** Calls in a row before the model is told, in its own transcript, that it is repeating itself. */
@@ -230,7 +230,7 @@ export function assess(input: {
       type: "stop",
       streak: same,
       message: stopped(input.next, same),
-      summary: `Paused: the same \`${input.next.tool}\` call repeated ${same} times`,
+      summary: `${LOOP_GUARD_PAUSE}the same \`${input.next.tool}\` call repeated ${same} times`,
     }
   if (FAILURE_STREAK_TOOLS.has(input.next.tool)) {
     const run = todoFailures(input.parts)
@@ -239,7 +239,7 @@ export function assess(input: {
         type: "stop",
         streak: run,
         message: failureStopped(run),
-        summary: `Paused: task updates kept failing (${run} in a row)`,
+        summary: `${LOOP_GUARD_PAUSE}task updates kept failing (${run} in a row)`,
       }
   }
   const count = Math.max(same, failed)

@@ -1931,11 +1931,29 @@ export function foldTodoFailures<P extends TodoFoldPart>(
  * The fold runs again on every streamed token; walking every part of every finished message each
  * time made a long session's streaming cost grow with its history. A finished message's segment is
  * cached against what can still change after it finishes: its part count, its error, its last part,
- * and the id and status of every todowrite part, so a part removed or any tool settling late
- * re-reduces it. Only the live message is re-reduced on every call.
+ * and where its todowrite parts are with their statuses. A later call reads only those parts, so a
+ * message with no todowrite part costs its length and last part, and a part removed or a todowrite
+ * settling late re-reduces it. Only the live message is walked on every call.
  */
 export function createTodoFold<P extends TodoFoldPart>() {
-  const cache = new Map<string, { key: string; segment: TodoFoldSegment<P> }>()
+  type Entry = {
+    length: number
+    error: boolean
+    last?: string
+    lastStatus?: string
+    todos: ReadonlyArray<readonly [index: number, id: string, status: string | undefined]>
+    segment: TodoFoldSegment<P>
+  }
+  const cache = new Map<string, Entry>()
+  const fresh = (entry: Entry | undefined, message: TodoFoldMessage, parts: ReadonlyArray<P>) => {
+    if (!entry || entry.length !== parts.length || entry.error !== !!message.error) return false
+    const last = parts.at(-1)
+    if (entry.last !== last?.id || entry.lastStatus !== last?.state?.status) return false
+    return entry.todos.every(([index, id, status]) => {
+      const part = parts[index]
+      return part?.id === id && part.state?.status === status
+    })
+  }
   return (
     messages: ReadonlyArray<TodoFoldMessage>,
     partsOf: (messageID: string) => ReadonlyArray<P>,
@@ -1946,17 +1964,22 @@ export function createTodoFold<P extends TodoFoldPart>() {
         if (message.role === "assistant" && message.time?.completed === undefined)
           return todoFoldSegment(message, partsOf)
         const parts = message.role === "assistant" ? partsOf(message.id) : []
-        const last = parts.at(-1)
-        let todos = ""
-        for (let index = 0; index < parts.length; index++) {
-          const part = parts[index]!
-          if (part.tool === "todowrite") todos += `${part.id}:${part.state?.status ?? ""},`
-        }
-        const key = `${parts.length}|${message.error ? 1 : 0}|${last?.id ?? ""}|${last?.type ?? ""}|${last?.state?.status ?? ""}|${todos}`
         const cached = cache.get(message.id)
-        if (cached?.key === key) return cached.segment
+        if (fresh(cached, message, parts)) return cached!.segment
         const segment = todoFoldSegment(message, () => parts)
-        cache.set(message.id, { key, segment })
+        const todos: Array<readonly [number, string, string | undefined]> = []
+        parts.forEach((part, index) => {
+          if (part.tool === "todowrite") todos.push([index, part.id, part.state?.status])
+        })
+        const last = parts.at(-1)
+        cache.set(message.id, {
+          length: parts.length,
+          error: !!message.error,
+          last: last?.id,
+          lastStatus: last?.state?.status,
+          todos,
+          segment,
+        })
         return segment
       }),
     )
