@@ -293,8 +293,13 @@ describe("DesignFeedback variant operations", () => {
       { kind: "delete", variants: ["a"], order: ["a"] },
       { kind: "delete", variants: ["a"], text: "why" },
       { kind: "delete", variants: ["a"], labels: ["A", "B"] },
+      { kind: "rename", variants: ["a"], labels: ["Compact"], name: "Compact" },
+      { kind: "rename", variants: ["a"], labels: [" Compact"], name: "Compact  " },
     ]
     for (const action of invalid) expect(problem(action), JSON.stringify(action)).toBeString()
+    expect(problem({ kind: "rename", variants: ["a"], labels: ["Compact"], name: "Compact" })).toBe(
+      "A rename operation must change the variant's label",
+    )
     for (const action of [
       { kind: "delete", variants: ["a"], labels: ["A"] },
       { kind: "rename", variants: ["a"], name: "B" },

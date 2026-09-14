@@ -339,6 +339,13 @@ const make = Effect.gen(function* () {
       return { document, feedback: existing.data, admitted: existing.admitted }
     }
     if (document.ended) return yield* new Design.Error({ code: "conflict", message: "This review has ended" })
+    // An operation names the variants of the latest revision; against an older one it no longer matches.
+    // Its ids are not checked here: variants exist only once rendered, so the agent verifies them.
+    if (input.action && document.revision !== input.revision)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: "Variant operations apply to the latest revision; reload the review and try again",
+      })
     yield* revision(id, input.revision)
     yield* Effect.forEach(input.assets, (assetID) => asset(id, assetID))
     if ((input.whiteboards?.length ?? 0) > 20)

@@ -120,9 +120,10 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           variants: { id: string; name: string }[]
           variant: string
           phase: "sending" | "applying"
+          /** When the server admitted it, in the feed's clock; earlier agent states say nothing about it. */
+          admitted?: number
           working?: boolean
           published?: string
-          failure?: string
         }
       | undefined,
     /** An operation whose newer revision arrived; it fails if that revision left it undone once the agent is idle. */
@@ -131,10 +132,16 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           action: Design.VariantOperation
           revision: string
           variants: { id: string; name: string }[]
+          admitted: number
           working: boolean
           unchanged: boolean
         }
       | undefined,
+    /** The operation last reported as failed; a later revision that carries it out settles it after all. */
+    lastFailure: undefined as
+      | { action: Design.VariantOperation; revision: string; variants: { id: string; name: string }[] }
+      | undefined,
+    agentAt: 0,
     /** The operation last requested, kept for a retry until the agent's revision carries it. */
     operationDraft: undefined as Design.VariantOperation | undefined,
     /** The operation the dialog is composing. */
@@ -336,10 +343,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const index = state.variants.findIndex((item) => item.id === state.variant)
     for (const id of ["rename-variant", "split-variant", "delete-variant", "select-merge"])
       element<HTMLButtonElement>(id).disabled = blocked || index < 0
+    // The last remaining variant cannot be deleted.
+    element<HTMLButtonElement>("delete-variant").disabled ||= state.variants.length < 2
     element<HTMLButtonElement>("move-left").disabled = blocked || index <= 0
     element<HTMLButtonElement>("move-right").disabled = blocked || index < 0 || index >= state.variants.length - 1
     element<HTMLButtonElement>("merge-variants").disabled = blocked || state.mergePick.length < 2
-    element<HTMLButtonElement>("confirm-operation").disabled = blocked
+    element<HTMLButtonElement>("confirm-operation").disabled = blocked || !!renameProblem()
     element<HTMLButtonElement>("retry-operation").disabled = blocked
     element<HTMLButtonElement>("variant-actions").disabled = state.working || !!state.failedPreview
     element("merge-options")
@@ -732,7 +741,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         text.textContent = note.text
         // A note on a variant that is gone from the revision on screen says so and offers a new home.
         const from = variantOf(note.target)
-        const orphaned = !!from && state.variants.length > 0 && !state.variants.some((item) => item.id === from)
+        // Only once an operation has settled: a note moved during a provisional change could not be moved back.
+        const orphaned =
+          !state.pendingOperation &&
+          !!from &&
+          state.variants.length > 0 &&
+          !state.variants.some((item) => item.id === from)
         const destination = orphaned
           ? (state.variants.find((item) => item.id === state.retarget[from!]) ??
             state.variants.find((item) => item.id === state.variant) ??
@@ -1002,11 +1016,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.board = stored.board
         state.variantPending = stored.variantPending
         // A provisional change survives a reload only while its revision is still the latest one.
-        state.pendingOperation =
+        const current =
           stored.pendingOperation?.feedback?.revision === state.revision && state.revision === state.design?.revision
-            ? stored.pendingOperation
-            : undefined
-        state.operationDraft = stored.operationDraft
+        state.pendingOperation = current ? stored.pendingOperation : undefined
+        // A stored operation a newer revision has replaced has settled; nothing is left to retry.
+        state.operationDraft = stored.pendingOperation && !current ? undefined : stored.operationDraft
         state.retarget = stored.retarget ?? {}
         input("variant-prompt").value = stored.variantPrompt ?? ""
         input("note").value = stored.text ?? ""
@@ -1100,24 +1114,27 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const onFeed = (event: Design.FeedEvent) => {
     if (state.stopped) return
     const operation = state.pendingOperation
+    const check = state.operationCheck
+    // A state stamped before the operation was admitted (a reconnect replays them) says nothing about
+    // it. The feed and this page share the serving host's clock; a second of slack absorbs rounding.
+    const since = (admitted: number | undefined) => admitted !== undefined && event.at >= admitted - 1000
     if (event.type === "state") {
       pill(event.state === "working" ? "stateWorking" : "stateIdle")
       state.agent = event.state
+      state.agentAt = event.at
       if (event.state === "working") {
-        if (operation) operation.working = true
-        if (state.operationCheck) state.operationCheck.working = true
+        if (operation?.phase === "applying" && since(operation.admitted)) operation.working = true
+        if (check && since(check.admitted)) check.working = true
         return
       }
       // The agent went idle after taking up the operation without publishing anything newer.
-      if (operation?.phase === "applying" && operation.working && !operation.published)
-        failOperation(operation.failure ? `${copy.operationStopped} ${operation.failure}` : copy.operationStopped)
-      else if (state.operationCheck?.unchanged && state.operationCheck.working) failOperation(copy.operationUnchanged)
+      if (operation?.phase === "applying" && operation.working && !operation.published && since(operation.admitted))
+        failOperation(copy.operationStopped)
+      else if (check?.unchanged && check.working && since(check.admitted)) failOperation(copy.operationUnchanged)
       return
     }
     if (event.type === "agent") return
     upsert(event)
-    if (event.type === "tool" && event.status === "failed" && operation)
-      operation.failure = `${event.tool}${event.summary ? `: ${event.summary}` : ""}`
     if (event.type !== "published") return
     if (operation && event.design === state.design?.id && event.revision !== operation.feedback.revision)
       operation.published = event.revision
@@ -1155,6 +1172,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         action: operation.feedback.action,
         revision: operation.feedback.revision,
         variants: operation.variants,
+        admitted: operation.admitted ?? Date.now(),
         working: !!operation.working,
         unchanged: false,
       }
@@ -1658,13 +1676,28 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       frame.srcdoc = state.html
     }
   }
+  /** An operation carried out by a revision: nothing is left to retry, and notes follow a merge's kept variant. */
+  const settleOperation = (action: Design.VariantOperation) => {
+    state.operationCheck = undefined
+    state.lastFailure = undefined
+    state.operationDraft = undefined
+    state.retarget =
+      action.kind === "merge" ? Object.fromEntries(action.variants.slice(1).map((id) => [id, action.variants[0]])) : {}
+    element("operation-state").hidden = true
+    save()
+  }
   /** Reverts a provisional change still on screen and reports why, keeping the request for a retry. */
   const failOperation = (message: string) => {
     const operation = state.pendingOperation
-    const action = operation?.feedback.action ?? state.operationCheck?.action
+    const check = state.operationCheck
+    const action = operation?.feedback.action ?? check?.action
     state.pendingOperation = undefined
     state.operationCheck = undefined
     if (action) state.operationDraft = action
+    const failed = operation
+      ? { revision: operation.feedback.revision, variants: operation.variants }
+      : check && { revision: check.revision, variants: check.variants }
+    state.lastFailure = action && failed ? { action, ...failed } : undefined
     if (operation && operation.feedback.revision === state.revision) {
       state.variants = operation.variants
       if (operation.variants.some((item) => item.id === operation.variant)) state.variant = operation.variant
@@ -1709,7 +1742,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     state.operationDraft = action
     state.operationCheck = undefined
-    if (action.kind === "merge") for (const id of action.variants.slice(1)) state.retarget[id] = action.variants[0]
+    state.lastFailure = undefined
+    state.retarget = {}
     state.merging = false
     state.mergePick = []
     element("operation-state").hidden = true
@@ -1727,7 +1761,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         failOperation(error instanceof Error ? error.message : copy.failure)
       return
     }
-    if (state.pendingOperation?.feedback.id === feedback.id) state.pendingOperation.phase = "applying"
+    if (state.pendingOperation?.feedback.id === feedback.id) {
+      state.pendingOperation.phase = "applying"
+      state.pendingOperation.admitted = Date.now()
+    }
     save()
     status(copy.operationRequested, "operationRequested", "success")
   }
@@ -1740,6 +1777,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       status(copy.mergeNeedsTwo, "mergeNeedsTwo", "error")
       return
     }
+    if (kind === "delete" && state.variants.length < 2) return
     const draft =
       state.operationDraft?.kind === kind && state.operationDraft.variants.join("\n") === variants.join("\n")
         ? state.operationDraft
@@ -1764,6 +1802,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     input("operation-text").value = draft?.text ?? ""
     operationDialog.showModal()
     controls()
+    syncRename()
     if (kind === "rename") input("operation-name").select()
     else if (kind === "delete") element("cancel-operation").focus()
     else input("operation-text").focus()
@@ -1780,18 +1819,34 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       ...((current.kind === "merge" || current.kind === "split") && text ? { text } : {}),
     }
   }
+  /** A rename must name something other than the label the variant already has. */
+  function renameProblem() {
+    const current = state.composing
+    if (current?.kind !== "rename") return undefined
+    const name = input("operation-name").value.trim()
+    return !name || name === variantLabels(current.variants)[0].trim() ? copy.renameSame : undefined
+  }
+  const syncRename = () => {
+    if (state.composing?.kind !== "rename") return
+    const problem = renameProblem()
+    element("operation-hint").hidden = !problem
+    element("operation-hint").dataset.copy = "renameSame"
+    element("operation-hint").textContent = copy.renameSame
+    element<HTMLButtonElement>("confirm-operation").disabled = operationBlocked() || !!problem
+  }
   // Typed guidance and names stay with the request until it is sent, including across a reload.
   for (const id of ["operation-name", "operation-text"])
     input(id).addEventListener("input", () => {
+      syncRename()
       const action = composed()
-      if (!action || (action.kind === "rename" && !action.name)) return
+      if (!action || renameProblem()) return
       state.operationDraft = action
       save()
     })
   element("operation-form").addEventListener("submit", (event) => {
     event.preventDefault()
     const action = composed()
-    if (!action || (action.kind === "rename" && !action.name)) return
+    if (!action || renameProblem()) return
     if (state.working) {
       status(copy.busy, "busy")
       return
@@ -1825,8 +1880,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   element("retry-operation").addEventListener("click", () => {
     const draft = state.operationDraft
     if (!draft) return
-    if (draft.kind === "reorder") void run(() => startOperation({ ...draft, labels: variantLabels(draft.variants) }))
-    else openOperation(draft.kind, [...draft.variants])
+    if (draft.kind !== "reorder") return openOperation(draft.kind, [...draft.variants])
+    // The variants may have changed since: keep the requested order for the ids still present.
+    const ids = state.variants.map((item) => item.id)
+    const requested = (draft.order ?? []).filter((id) => ids.includes(id))
+    const order = [...requested, ...ids.filter((id) => !requested.includes(id))]
+    if (ids.length < 2 || order.join("\n") === ids.join("\n")) return
+    void run(() => startOperation({ kind: "reorder", variants: ids, labels: variantLabels(ids), order }))
   })
   for (const id of ["view-single", "view-compare"])
     element(id).onclick = () => {
@@ -2074,16 +2134,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (operation?.feedback.revision === state.revision) showOperation("preview")
       state.variants = operation?.feedback.revision === state.revision ? provisional(announced) : announced
       if (!state.variants.some((item) => item.id === state.variant)) state.variant = state.variants[0]?.id ?? ""
+      const latest = state.revision === state.design?.revision
       const check = state.operationCheck
-      if (check && state.revision !== check.revision && state.revision === state.design?.revision) {
+      if (check && latest && state.revision !== check.revision) {
         check.unchanged = unchanged(check, state.variants)
-        if (!check.unchanged) {
-          state.operationCheck = undefined
-          state.operationDraft = undefined
-          element("operation-state").hidden = true
-          save()
-        } else if (check.working && state.agent === "idle") failOperation(copy.operationUnchanged)
+        if (!check.unchanged) settleOperation(check.action)
+        else if (check.working && state.agent === "idle" && state.agentAt >= check.admitted - 1000)
+          failOperation(copy.operationUnchanged)
       }
+      // The feed can report the agent idle before the revision it published reaches the page.
+      const failure = state.lastFailure
+      if (failure && latest && state.revision !== failure.revision && !unchanged(failure, state.variants))
+        settleOperation(failure.action)
       drawVariants()
       drawParams()
       // A restored card re-anchors to its element once the frame has rendered it.

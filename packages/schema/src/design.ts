@@ -274,6 +274,9 @@ export function variantOperationProblem(operation: VariantOperation): string | u
   if (operation.kind === "merge" && ids.length < 2) return "A merge operation names at least two variants"
   if (operation.kind === "rename" ? !operation.name?.trim() : operation.name !== undefined)
     return "Only a rename operation carries a name, and it must not be empty"
+  // Only the labels the page sent can be compared; the server cannot read rendered variants.
+  if (operation.kind === "rename" && operation.labels?.[0]?.trim() === operation.name?.trim())
+    return "A rename operation must change the variant's label"
   if (operation.kind !== "reorder" && operation.order !== undefined) return "Only a reorder operation carries an order"
   if (operation.kind === "reorder") {
     const order = operation.order ?? []

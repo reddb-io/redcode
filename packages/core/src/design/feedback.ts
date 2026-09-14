@@ -93,7 +93,7 @@ function operationSection(action: Design.VariantOperation) {
   const { label, ids } = operationNames(action)
   const first = ids[0] ?? ""
   const rule = {
-    delete: `Delete: remove the data-design-variant="${first}" root entirely. Prune every scenario, control and preset whose variant is ${first} with design_document update. Leave the other variants unchanged.`,
+    delete: `Delete: remove the data-design-variant="${first}" root entirely. Prune every scenario, control and preset whose variant is ${first} with design_document update. Leave the other variants unchanged. Never delete the only variant; say so instead.`,
     rename: `Rename: change only the data-design-label of the "${first}" root to the new label. Its id, content and every reference to it stay unchanged.`,
     reorder:
       "Reorder: move the variant roots into the requested order. Change only their DOM order; ids, labels and content stay unchanged.",

@@ -133,6 +133,7 @@ export const reviewCopy = {
   renameHeading: "Rename variant",
   renameLabel: "New name",
   renameAction: "Rename",
+  renameSame: "Type a different name to rename this variant.",
   splitHeading: "Split variant",
   splitHint: "The agent keeps this variant's id on one half and adds a new variant for the other.",
   splitAction: "Split",

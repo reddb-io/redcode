@@ -1983,14 +1983,19 @@ test("an agent turn that ends without carrying out the operation reports it", as
   page.on("pageerror", (error) => errors.push(error.message))
   // The feed reconnects about once a second; each connection replays the events set here.
   const quiet = [{ type: "agent", seq: 0, at: 1, agent: "design" }]
-  let feed: object[] = quiet
-  await page.route(/\/design\/feed(\?.*)?$/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body: feed.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
-    }),
-  )
+  const feed = { events: quiet as object[], served: 0 }
+  await page.route(/\/design\/feed(\?.*)?$/, (route) => {
+    const body = feed.events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")
+    feed.served++
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body })
+  })
+  /** Swaps the replayed events and waits until two connections opened after the swap were answered with them. */
+  const replay = async (events: object[]) => {
+    feed.events = events
+    const served = feed.served
+    await until(() => feed.served > served + 1, "the feed replaying new events")
+  }
+  const state = (value: "working" | "idle", at: number) => ({ type: "state", seq: 0, at, state: value })
   const sent = await captureFeedback(page)
   try {
     await page.goto(`${base}${current.root}/review`)
@@ -2000,33 +2005,46 @@ test("an agent turn that ends without carrying out the operation reports it", as
     await page.getByRole("button", { name: "Delete", exact: true }).click()
     await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
     await until(async () => (await tabNames(page)).join() === "Spacious", "provisional delete")
-    feed = [
+    // States stamped before the operation was admitted, as a reconnect replays them, do not end it.
+    await replay([...quiet, state("working", Date.now() - 60000), state("idle", Date.now() - 59000)])
+    expect(await page.locator("#operation-state").isHidden()).toBe(true)
+    expect(await tabNames(page)).toEqual(["Spacious"])
+    // A failed tool call is not attributed to the operation; only the idle agent is reported.
+    feed.events = [
       ...quiet,
-      { type: "state", seq: 0, at: 2, state: "working" },
-      {
-        type: "tool",
-        seq: 0,
-        at: 3,
-        id: "call_fail",
-        tool: "design_preview",
-        status: "failed",
-        summary: "Build failed",
-      },
-      { type: "state", seq: 0, at: 4, state: "idle" },
+      state("working", Date.now()),
+      { type: "tool", seq: 0, at: Date.now(), id: "call_fail", tool: "bash", status: "failed", summary: "npm test" },
+      state("idle", Date.now() + 1),
     ]
-    await page
-      .locator("#operation-state", {
-        hasText: "The agent stopped without publishing this variant change. design_preview: Build failed",
-      })
-      .waitFor()
+    await page.locator("#operation-state:not([hidden])").waitFor()
+    expect(await page.locator("#operation-error").textContent()).toBe(
+      "The variant change was not applied: The agent stopped without publishing this variant change.",
+    )
     await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "reverted after the agent stopped")
     await preview.getByRole("heading", { name: "Compact checkout" }).waitFor()
-    feed = quiet
-    await page.waitForTimeout(1500)
+    await replay(quiet)
+    // The revision the agent published can still reach the page after the idle: it settles the operation.
+    const late = await republish(current, [["spacious", "Spacious"]])
+    await showsRevision(page, late.id)
+    await page.locator("#operation-state").waitFor({ state: "hidden" })
+    const draft = await page.evaluate(
+      (revision) =>
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith("redcode:design:") && key.endsWith(`:${revision}`))
+          .map((key) => JSON.parse(localStorage.getItem(key)!).operationDraft ?? null),
+      late.id,
+    )
+    expect(draft).toEqual([null])
     // A revision that leaves the variant in place does not count as carrying out the delete.
-    await page.getByRole("button", { name: "Retry variant change", exact: true }).click()
+    const restored = await republish(current, [
+      ["compact", "Compact"],
+      ["spacious", "Spacious"],
+    ])
+    await showsRevision(page, restored.id)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await variantAction(page, "Delete…")
     await page.getByRole("button", { name: "Delete", exact: true }).click()
-    await until(() => sent.length === 2, "retried request")
+    await until(() => sent.length === 2, "second request")
     await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
     const unchanged = await republish(current, [
       ["compact", "Compact", "<p>Still here</p>"],
@@ -2035,11 +2053,7 @@ test("an agent turn that ends without carrying out the operation reports it", as
     await showsRevision(page, unchanged.id)
     await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "the revision's real variants")
     expect(await page.locator("#operation-state").isHidden()).toBe(true)
-    feed = [
-      ...quiet,
-      { type: "state", seq: 0, at: 5, state: "working" },
-      { type: "state", seq: 0, at: 6, state: "idle" },
-    ]
+    feed.events = [...quiet, state("working", Date.now()), state("idle", Date.now() + 1)]
     await page
       .locator("#operation-state", { hasText: "The agent published a revision without this variant change." })
       .waitFor()
@@ -2049,6 +2063,149 @@ test("an agent turn that ends without carrying out the operation reports it", as
     await page.close()
   }
 }, 90000)
+
+test("a rename must change the label and the only variant cannot be deleted", async () => {
+  const current = await withVariants([["solo", "Solo"]])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Solo", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    expect(await page.getByRole("menuitem", { name: "Delete…", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("menuitem", { name: "Rename…", exact: true }).click()
+    const name = page.getByLabel("New name", { exact: true })
+    const confirm = page.getByRole("button", { name: "Rename", exact: true })
+    const hint = page.locator("#operation-hint", { hasText: "Type a different name to rename this variant." })
+    // The dialog opens on the current label, which is not a rename yet.
+    expect(await name.inputValue()).toBe("Solo")
+    await hint.waitFor()
+    expect(await confirm.isDisabled()).toBe(true)
+    await name.fill("  Solo ")
+    expect(await confirm.isDisabled()).toBe(true)
+    await name.press("Enter")
+    expect(await page.locator("#operation-dialog").getAttribute("open")).not.toBeNull()
+    await name.fill("Solo two")
+    await hint.waitFor({ state: "hidden" })
+    expect(await confirm.isEnabled()).toBe(true)
+    await name.fill("")
+    expect(await confirm.isDisabled()).toBe(true)
+    await page.keyboard.press("Escape")
+    await page.locator("#operation-dialog").waitFor({ state: "hidden" })
+    expect(sent).toHaveLength(0)
+    const refused = await fetch(`${base}${current.root}/${current.document.id}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: `msg_${crypto.randomUUID()}`,
+        revision: current.revision.id,
+        text: "",
+        items: [],
+        assets: [],
+        snapshot: "",
+        delivery: "steer",
+        end: false,
+        action: { kind: "rename", variants: ["solo"], labels: ["Solo"], name: " Solo" },
+      }),
+    })
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain("A rename operation must change the variant's label")
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("a failed rename or reorder restores the preview's labels and order exactly and a reorder retry uses the current variants", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+    ["dense", "Dense"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page, async (route, index) => {
+    if (index < 2) return route.fulfill({ status: 500, json: { message: "Agent unavailable" } })
+    await route.continue()
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    const original = JSON.stringify(await frameRoots(page))
+    expect(JSON.parse(original).map((root: { id: string }) => root.id)).toEqual(["compact", "spacious", "dense"])
+    await variantAction(page, "Rename…")
+    await page.getByLabel("New name", { exact: true }).fill("Tight")
+    await page.getByRole("button", { name: "Rename", exact: true }).click()
+    await page.locator("#operation-state:not([hidden])").waitFor()
+    await until(async () => JSON.stringify(await frameRoots(page)) === original, "labels restored in the frame")
+    expect(await tabNames(page)).toEqual(["Compact", "Spacious", "Dense"])
+    await variantAction(page, "Move right")
+    await until(() => sent.length === 2, "reorder request")
+    await page.locator("#operation-state:not([hidden])").waitFor()
+    await until(async () => JSON.stringify(await frameRoots(page)) === original, "order restored in the frame")
+    expect(await tabNames(page)).toEqual(["Compact", "Spacious", "Dense"])
+    expect(sent[1].action).toEqual({
+      kind: "reorder",
+      variants: ["compact", "spacious", "dense"],
+      labels: ["Compact", "Spacious", "Dense"],
+      order: ["spacious", "compact", "dense"],
+    })
+    // Retry rebuilds the request from the variants on screen now.
+    await page.getByRole("button", { name: "Retry variant change", exact: true }).click()
+    await until(() => sent.length === 3, "retried reorder")
+    expect(sent[2].action).toEqual(sent[1].action)
+    expect(sent[2].revision).toBe(current.revision.id)
+    await until(
+      async () => (await tabNames(page)).join() === "SpaciousApplying…,CompactApplying…,Dense",
+      "retry applied",
+    )
+    await until(
+      async () => (await frameRoots(page)).map((root) => root.id).join() === "spacious,compact,dense",
+      "retried order in the frame",
+    )
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("the server's refusal of an operation on a replaced revision shows in the page", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await withoutFeed(page)
+  const responses: number[] = []
+  page.on("response", (response) => {
+    if (response.url().endsWith("/feedback")) responses.push(response.status())
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    // An open dialog holds back polling, so the page still shows the revision the agent has replaced.
+    await variantAction(page, "Delete…")
+    await republish(current, [
+      ["compact", "Compact"],
+      ["spacious", "Spacious"],
+    ])
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    await page
+      .locator("#operation-state", {
+        hasText:
+          "The variant change was not applied: Variant operations apply to the latest revision; reload the review and try again",
+      })
+      .waitFor()
+    await page.locator("#status").filter({ hasText: "Variant operations apply to the latest revision" }).waitFor()
+    expect(responses).toEqual([409])
+    await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "reverted after the refusal")
+    expect((await frameRoots(page)).find((root) => root.id === "compact")?.shown).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 60000)
 
 test("notes on a merged-away variant show as orphaned and retarget to the kept variant", async () => {
   const current = await withVariants([
