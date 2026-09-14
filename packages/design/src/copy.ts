@@ -137,5 +137,7 @@ export const reviewCopy = {
   sourceChanged: "Source changed or removed; publish an updated revision",
   whiteboard: "Open diagram whiteboard",
   close: "Close whiteboard",
+  annotateShort: "Annotate",
+  annotateShortcut: "Annotate elements (A)",
 } as const
 export type ReviewCopy = { [Key in keyof typeof reviewCopy]: string }
