@@ -76,3 +76,26 @@ test("a compiled CLI loads cached Vite, plugins and browser resources outside th
     await rm(directory, { recursive: true, force: true })
   }
 }, 60000)
+
+test("Design tools load in a process where Babel installed Error.prepareStackTrace", async () => {
+  // Vite's chunk is cached once loaded, so only a fresh process shows the module evaluation itself.
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      // Babel's rewriter keeps the native default and delegates to it; Bun's default rejects non-Error targets.
+      `const native = Error.prepareStackTrace; Error.prepareStackTrace = (error, trace) => native(error, trace);
+      const { DesignRuntime } = await import(${JSON.stringify(path.resolve(import.meta.dir, "../src/design/runtime.ts"))});
+      const vite = await DesignRuntime.load("vite");
+      console.log(JSON.stringify({ build: typeof vite.build, hook: typeof Error.prepareStackTrace }));`,
+    ],
+    { cwd: import.meta.dir, stdout: "pipe", stderr: "pipe" },
+  )
+  const [output, error, exit] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect(exit, error).toBe(0)
+  expect(JSON.parse(output.trim())).toEqual({ build: "function", hook: "function" })
+}, 30000)

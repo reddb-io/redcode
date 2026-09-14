@@ -1,4 +1,4 @@
-import { expect } from "bun:test"
+import { expect, test } from "bun:test"
 import path from "node:path"
 import { cp, mkdir, rm, stat, symlink, utimes } from "node:fs/promises"
 import { Effect, Layer, Schema } from "effect"
@@ -489,3 +489,11 @@ it.live(
     }),
   60000,
 )
+
+test("a build failure keeps its message whatever was thrown", () => {
+  expect(DesignBuild.reason(new Error("vite failed"))).toBe("vite failed")
+  expect(DesignBuild.reason("plain string")).toBe("plain string")
+  expect(DesignBuild.reason({ message: "error-like" })).toBe("error-like")
+  expect(DesignBuild.reason(Object.assign(Object.create(null), { code: 1 }))).toContain("code: 1")
+  expect(DesignBuild.reason(undefined)).toBe("undefined")
+})

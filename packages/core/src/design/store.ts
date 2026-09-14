@@ -24,9 +24,7 @@ const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
     try: run,
     catch: (error) =>
-      error instanceof Design.Error
-        ? error
-        : new Design.Error({ code: "invalid", message: error instanceof Error ? error.message : String(error) }),
+      error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: DesignBuild.reason(error) }),
   })
 
 const make = Effect.gen(function* () {

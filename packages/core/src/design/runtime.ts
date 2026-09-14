@@ -59,5 +59,15 @@ export async function resolve(name: keyof Modules, signal?: AbortSignal) {
 
 export async function load<K extends keyof Modules>(name: K, signal?: AbortSignal): Promise<Modules[K]> {
   // A variable file URL keeps Bun from bundling path-sensitive dependencies.
-  return import(pathToFileURL(await resolve(name, signal)).href)
+  const file = pathToFileURL(await resolve(name, signal)).href
+  // Babel installs an Error.prepareStackTrace that delegates to Bun's native default for the life
+  // of the process (vite-plugin-solid and the TUI's solid transform run it), and that default
+  // rejects the pseudo-Error instances Vite's bundled follow-redirects constructs while its chunk
+  // evaluates; so does Bun when the property is absent. A plain formatter stands in for the import
+  // and the original descriptor is restored afterwards.
+  const hook = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace")
+  Error.prepareStackTrace = (error, trace) => [String(error), ...trace.map((frame) => `    at ${frame}`)].join("\n")
+  return import(file).finally(() => {
+    if (hook) Object.defineProperty(Error, "prepareStackTrace", hook)
+  })
 }
