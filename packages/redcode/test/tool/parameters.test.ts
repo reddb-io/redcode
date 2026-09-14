@@ -21,7 +21,7 @@ import { Parameters as Read } from "../../src/tool/read"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as Task } from "../../src/tool/task"
-import { Parameters as Todo } from "../../src/tool/todo"
+import { ModelParameters as TodoModel, Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
 import { Parameters as Write } from "../../src/tool/write"
@@ -49,6 +49,15 @@ describe("tool parameters", () => {
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())
+    test("todo aliases are decoded but never advertised", () => {
+      expect(toJsonSchema(TodoModel)).toHaveProperty("properties.todos.items.properties.text")
+      expect(toJsonSchema(Todo)).not.toHaveProperty("properties.todos.items.properties.text")
+      expect(
+        Schema.decodeUnknownSync(TodoModel)({ todos: [{ title: "x", status: "pending", priority: "low" }] }),
+      ).toEqual({
+        todos: [{ content: "x", status: "pending", priority: "low" }],
+      })
+    })
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())

@@ -784,7 +784,7 @@ it.instance("todowrite rejects invented evidence and completes from a real tool 
           part.type === "tool" &&
           part.tool === "todowrite" &&
           part.state.status === "error" &&
-          part.state.error.includes("Completion requires evidence"),
+          part.state.error.includes(`Evidence callID "invented" does not match`),
       ),
     ).toBe(true)
     const proof = parts.find(

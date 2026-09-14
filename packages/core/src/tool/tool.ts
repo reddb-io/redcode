@@ -44,6 +44,8 @@ type Config<
 > = {
   readonly description: string
   readonly inputSchema?: JsonSchema.JsonSchema
+  /** Turns a rejected input into the prose the model reads back; the default quotes the schema issue. */
+  readonly formatInputError?: (detail: string) => string
   readonly media?: {
     readonly operations: readonly ("generate" | "edit" | "reference")[]
     readonly formats: readonly string[]
@@ -98,7 +100,12 @@ export function make<
     },
     settle: (call, context) =>
       Schema.decodeUnknownEffect(config.input)(call.input).pipe(
-        Effect.mapError((error) => new ToolFailure({ message: `Invalid tool input: ${error.message}` })),
+        Effect.mapError(
+          (error) =>
+            new ToolFailure({
+              message: `Invalid tool input: ${config.formatInputError ? config.formatInputError(error.message) : error.message}`,
+            }),
+        ),
         Effect.flatMap((input) =>
           config.execute(input, context).pipe(
             Effect.flatMap((output) =>

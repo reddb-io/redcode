@@ -2,6 +2,11 @@ Track multi-step work as concrete tasks. Enumerate EVERY item in a multi-part us
 
 Each call creates or updates the supplied tasks. Omitted tasks are preserved. Send {"todos": []} to read the current list, the five latest user request IDs and up to twenty recent tool results with callID, messageID and success status. Use the id and current revision returned by the tool for subsequent updates; an exact content match supports older callers. Do not invent IDs or rename a task by dropping it and creating another.
 
+Shapes:
+- Create: {"content":"<task>","status":"pending","priority":"high","requirement":"<exact quote from the user request>","criterion":"<observable result>"}. Content and priority are required only here.
+- Update: {"id":"<id>","revision":<current revision>,"status":"in_progress"} plus only the fields that change; content and priority stay as stored.
+- Complete: {"id":"<id>","revision":<current revision>,"status":"completed","evidence":{"callID":"<successful result>","messageID":"<its message>","explanation":"<how it meets criterion>"}}. Evidence may be omitted: the newest successful non-bookkeeping result after the request is recorded automatically and the output says which.
+
 States:
 - pending: actionable work not yet started.
 - in_progress: the task being executed. Keep one active task; the next pending task is promoted automatically.
@@ -11,8 +16,6 @@ States:
 
 Update progress when it changes. Partial updates and empty lists never clear unfinished work. Conflicting stale revisions are rejected; read the current list before retrying. A blocked task is not complete: state what remains, why it cannot proceed and the next action.
 
-For a new task, supply criterion (an observable result) and requirement (an exact quote from the user request). The runtime records that request as its source. Existing approved Plan tasks already have their source and criterion; update them by ID.
-
-To complete a tracked task, supply evidence: {"callID":"<actual successful result ID>","messageID":"<message holding that result>","explanation":"<how the result satisfies criterion>"}. Run the relevant check first, then read the available IDs if needed. Unknown, failed, bookkeeping and stale results are rejected. Later edit or shell actions conservatively require fresh verification; finish implementation and checks before marking the final task set complete. Tool provenance is checked by the runtime; you must still judge relevance and coverage honestly.
+Verification protocol: after the last edit run the check that proves the task (tests, build, a command that exercises the change); that result is the evidence. Cite its callID, or omit evidence and let the tool select it. Verification commands never invalidate evidence. Only a later edit to the verified files does; then run the check again before completing. Unknown, failed and bookkeeping results are refused, and the refusal lists the recent callIDs, tools and messageIDs inline, so act on it instead of resending the same completion: run the check, then complete. After two refused completion attempts in a turn the task is blocked with that reason. Tool provenance is checked by the runtime; you must still judge relevance and coverage honestly.
 
 To cancel tracked work, include scopeChange: {"messageID":"<later user request ID>","quote":"<exact instruction removing the requirement>"} and reason. Technical obstacles belong in blocked with their concrete cause. A continuation budget pause preserves actionable tasks; resume them when the user requests continuation.

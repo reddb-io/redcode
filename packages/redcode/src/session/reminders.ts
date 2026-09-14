@@ -100,6 +100,9 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text:
         DESIGN_INSTRUCTIONS +
         "\n\nThis is the current TUI conversation. Browser feedback and approval return here.\n" +
+        (input.todos
+          ? "Task tracking is on: update tasks by id and revision with only the changed fields, cite the callID of the design_preview, design_export or check that verified a task as evidence (or omit it to record the newest successful result automatically), and read a refusal's inline candidate list instead of resending the completion.\n"
+          : "") +
         documents
           .map(
             (document) =>

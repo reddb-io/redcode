@@ -14,6 +14,7 @@ import {
   parseQuestions,
   parseTodos,
   alwaysSeparate,
+  collapseTodoFailures,
   toolDisplay,
 } from "../../../src/routes/session"
 
@@ -201,6 +202,22 @@ function FailedPendingToolFixture() {
   )
 }
 
+function CollapsedTodoFailuresFixture(props: { errorExpanded?: boolean }) {
+  return (
+    <InlineToolRow
+      icon="⚙"
+      complete={false}
+      pending="Updating todos…"
+      failed={true}
+      failure="Todo update failed ×3"
+      error="Completing needs a successful tool result after the request, and none exists yet."
+      errorExpanded={props.errorExpanded}
+    >
+      Updating todos…
+    </InlineToolRow>
+  )
+}
+
 function FailedCompleteToolFixture() {
   return (
     <InlineToolRow icon="→" complete={true} pending="Reading file…" failed={true} failure="Read failed">
@@ -232,6 +249,28 @@ describe("TUI inline tool wrapping", () => {
     const frame = await renderFrame(() => <FailedPendingToolFixture />, { width: 72, height: 3 })
     expect(frame).toContain("Patch failed")
     expect(frame).not.toContain("Preparing patch")
+  })
+
+  test("folds consecutive failed todowrite parts into one counted row that expands to the last error", async () => {
+    const todo = (status: string) => ({ type: "tool", tool: "todowrite", state: { status } })
+    const read = { type: "tool", tool: "read", state: { status: "completed" } }
+    const text = { type: "text" }
+    expect(collapseTodoFailures([text, todo("error"), todo("error"), todo("error"), read, todo("error")])).toEqual([
+      { type: "part", part: text },
+      { type: "todo-failures", parts: [todo("error"), todo("error"), todo("error")] },
+      { type: "part", part: read },
+      { type: "part", part: todo("error") },
+    ])
+    expect(collapseTodoFailures([todo("completed"), todo("error")])).toEqual([
+      { type: "part", part: todo("completed") },
+      { type: "part", part: todo("error") },
+    ])
+    const collapsed = await renderFrame(() => <CollapsedTodoFailuresFixture />, { width: 72, height: 3 })
+    expect(collapsed).toContain("Todo update failed ×3")
+    expect(collapsed).not.toContain("none exists yet")
+    const expanded = await renderFrame(() => <CollapsedTodoFailuresFixture errorExpanded />, { width: 72, height: 4 })
+    expect(expanded).toContain("Todo update failed ×3")
+    expect(expanded).toContain("none exists yet")
   })
 
   test("preserves useful completed copy when a tool fails", async () => {

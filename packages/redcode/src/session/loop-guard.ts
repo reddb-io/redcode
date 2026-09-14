@@ -45,7 +45,29 @@ export function limits(
 export interface Part {
   readonly type: string
   readonly tool?: string
-  readonly state?: { readonly status: string; readonly input?: unknown; readonly output?: string; readonly error?: string }
+  readonly synthetic?: boolean
+  readonly state?: {
+    readonly status: string
+    readonly input?: unknown
+    readonly output?: string
+    readonly error?: string
+  }
+}
+
+/**
+ * The parts of the current turn, cut at the last thing the user actually said.
+ *
+ * A todo continuation or a goal CONTINUE is a synthetic user message the runtime writes for itself;
+ * cutting there would forget the failed calls that made the runtime nudge the model, which is
+ * exactly the streak this guard exists to see.
+ */
+export function turn<M extends { readonly info: { readonly role: string }; readonly parts: readonly Part[] }>(
+  messages: readonly M[],
+): Part[] {
+  const last = messages.findLastIndex(
+    (item) => item.info.role === "user" && !item.parts.every((part) => part.type === "text" && part.synthetic),
+  )
+  return messages.slice(last + 1).flatMap((item) => item.parts)
 }
 
 export type Decision =
@@ -64,7 +86,8 @@ const refused = (text: string) => text.startsWith(REFUSAL)
 
 const REFUSAL = "This is call "
 
-const settled = (part: Part) => part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")
+const settled = (part: Part) =>
+  part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")
 const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
 
 /**
@@ -115,6 +138,33 @@ export function repeats(parts: readonly Part[], next: { tool: string; input: unk
   return count
 }
 
+/**
+ * How many times in a row this tool has just failed the same way, whatever the arguments were.
+ *
+ * A model that keeps being refused for the same reason usually reshuffles its arguments between
+ * attempts, so byte-identical input never lines up; the refusal text does. Only settled error
+ * results count, and the guard's own refusals are part of the run it is measuring.
+ */
+export function failures(parts: readonly Part[], next: { tool: string }): number {
+  let count = 0
+  let last: string | undefined
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i]!
+    if (!settled(part)) continue
+    if (part.tool !== next.tool) break
+    const out = result(part)
+    if (refused(out)) {
+      count++
+      continue
+    }
+    if (part.state?.status !== "error" || !out) break
+    if (last !== undefined && out !== last) break
+    last = out
+    count++
+  }
+  return count
+}
+
 export function assess(input: {
   parts: readonly Part[]
   next: { tool: string; input: unknown }
@@ -122,10 +172,16 @@ export function assess(input: {
 }): Decision {
   if (!input.limits) return { type: "ok" }
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
-  const count = streak(input.parts, input.next) + 1
+  const same = streak(input.parts, input.next) + 1
+  const failed = failures(input.parts, input.next) + 1
+  const count = Math.max(same, failed)
   if (count >= input.limits.stopAt) return { type: "stop", streak: count, message: stopped(input.next, count) }
   if (count >= input.limits.correctAt)
-    return { type: "correct", streak: count, message: correction(input.parts, input.next, count) }
+    return {
+      type: "correct",
+      streak: count,
+      message: correction(input.parts, input.next, count, failed > same),
+    }
   // Said once, at the threshold rather than after it: a call whose answer keeps changing is
   // allowed to be made again, and being told about it every time from then on would be noise.
   const made = repeats(input.parts, input.next) + 1
@@ -157,13 +213,22 @@ const lastResult = (parts: readonly Part[], next: { tool: string }) => {
  * answer it keeps getting, and saying plainly what the ways out are, is what turns the notice into
  * something it can act on.
  */
-export function correction(parts: readonly Part[], next: { tool: string; input: unknown }, count: number) {
+export function correction(
+  parts: readonly Part[],
+  next: { tool: string; input: unknown },
+  count: number,
+  sameFailure = false,
+) {
   const answer = lastResult(parts, next)
   return [
-    `${REFUSAL}${count} of \`${next.tool}\` with identical arguments, and every one of them returned the same thing.`,
+    sameFailure
+      ? `${REFUSAL}${count} of \`${next.tool}\`, and every one of them failed with the same error even though the arguments changed.`
+      : `${REFUSAL}${count} of \`${next.tool}\` with identical arguments, and every one of them returned the same thing.`,
     `arguments: ${args(next.input)}`,
     answer ? `result: ${answer}` : undefined,
-    `The call was not run this time, because running it again cannot produce anything new. Change the arguments, use a different tool, or tell the user what is blocking you and stop.`,
+    sameFailure
+      ? `The call was not run this time, because reshuffling the arguments has not changed the answer. Read the error, do what it asks with other tools first, or tell the user what is blocking you and stop.`
+      : `The call was not run this time, because running it again cannot produce anything new. Change the arguments, use a different tool, or tell the user what is blocking you and stop.`,
   ]
     .filter(Boolean)
     .join("\n")
@@ -185,7 +250,7 @@ export function nudge(next: { tool: string; input: unknown }, count: number) {
 }
 
 export function stopped(next: { tool: string }, count: number) {
-  return `Stopped: \`${next.tool}\` was called ${count} times in a row with the same arguments and the same result, and the earlier warning did not change anything.`
+  return `Stopped: \`${next.tool}\` was called ${count} times in a row with the same result, and the earlier warning did not change anything.`
 }
 
 export * as LoopGuard from "./loop-guard"

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { assess, LIMITS, limits, repeats, streak, type Part } from "@/session/loop-guard"
+import { assess, failures, LIMITS, limits, repeats, streak, turn, type Part } from "@/session/loop-guard"
 
 const call = (tool: string, input: unknown, output: string, status = "completed"): Part => ({
   type: "tool",
@@ -57,7 +57,10 @@ describe("loop guard", () => {
   })
 
   test("the correction quotes the model's own arguments and the answer it keeps ignoring", () => {
-    const parts = [call("read", { path: "/gone" }, "ENOENT: no such file"), call("read", { path: "/gone" }, "ENOENT: no such file")]
+    const parts = [
+      call("read", { path: "/gone" }, "ENOENT: no such file"),
+      call("read", { path: "/gone" }, "ENOENT: no such file"),
+    ]
     const decision = assess({ parts, next: { tool: "read", input: { path: "/gone" } }, limits: LIMITS })
     expect(decision.type).toBe("correct")
     if (decision.type !== "correct") return
@@ -125,5 +128,43 @@ describe("loop guard", () => {
     ]
     expect(repeats(parts, next)).toBe(2)
     expect(assess({ parts, next, limits: LIMITS }).type).toBe("ok")
+  })
+
+  test("counts the same failure across drifting arguments", () => {
+    // A refused todowrite gets reshuffled every time — a new explanation, another callID — so the
+    // arguments never repeat, but the gate says the same thing to each of them.
+    const refusal = "Completing needs a successful tool result after the request, and none exists yet."
+    const parts = [
+      call("todowrite", { todos: [{ id: "t", status: "completed", evidence: { callID: "a" } }] }, refusal, "error"),
+      text("let me cite the other call"),
+      call("todowrite", { todos: [{ id: "t", status: "completed", evidence: { callID: "b" } }] }, refusal, "error"),
+    ]
+    const next = { tool: "todowrite", input: { todos: [{ id: "t", status: "completed" }] } }
+    expect(streak(parts, next)).toBe(0)
+    expect(failures(parts, next)).toBe(2)
+    expect(assess({ parts, next, limits: LIMITS }).type).toBe("correct")
+    expect(assess({ parts, next, limits: LIMITS })).toMatchObject({
+      message: expect.stringContaining("failed with the same error even though the arguments changed"),
+    })
+    // A different error, or a success, ends the run; drifting arguments alone never start one.
+    expect(failures([...parts, call("todowrite", { todos: [] }, "ok")], next)).toBe(0)
+    expect(failures([...parts, call("todowrite", { todos: [] }, "Unknown task t", "error")], next)).toBe(1)
+    expect(failures([call("edit", { file: "a" }, "ok"), call("edit", { file: "b" }, "ok")], { tool: "edit" })).toBe(0)
+  })
+
+  test("cuts the turn at the last real user message, not at a synthetic continuation", () => {
+    const user = (parts: Part[]) => ({ info: { role: "user" }, parts })
+    const assistant = (parts: Part[]) => ({ info: { role: "assistant" }, parts })
+    const refusal = call("todowrite", { todos: [] }, "no evidence", "error")
+    const messages = [
+      user([{ type: "text" }]),
+      assistant([refusal]),
+      user([{ type: "text", synthetic: true }]),
+      assistant([refusal]),
+    ]
+    const tools = (parts: Part[]) => parts.filter((part) => part.type === "tool")
+    expect(tools(turn(messages))).toHaveLength(2)
+    expect(tools(turn([...messages, user([{ type: "text" }, { type: "file" }]), assistant([refusal])]))).toHaveLength(1)
+    expect(tools(turn([user([{ type: "text", synthetic: true }])]))).toHaveLength(0)
   })
 })

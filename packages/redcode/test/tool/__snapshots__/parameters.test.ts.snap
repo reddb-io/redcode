@@ -375,6 +375,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
       "items": {
         "properties": {
           "content": {
+            "description": "Brief description of the task; required when creating, optional when updating by id",
             "minLength": 1,
             "type": "string",
           },
@@ -383,6 +384,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "type": "string",
           },
           "evidence": {
+            "description": "Successful tool result proving completion; omitted on completion selects the newest successful result after the request",
             "properties": {
               "callID": {
                 "type": "string",
@@ -408,6 +410,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "type": "string",
           },
           "priority": {
+            "description": "Required when creating, optional when updating by id",
             "enum": [
               "high",
               "medium",
@@ -455,9 +458,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
           },
         },
         "required": [
-          "content",
           "status",
-          "priority",
         ],
         "type": "object",
       },

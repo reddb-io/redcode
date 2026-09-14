@@ -30,6 +30,8 @@ const make = Effect.gen(function* () {
     sessionID: SessionSchema.ID
     todos: ReadonlyArray<SessionTodo.Input>
     origin?: SessionTodo.Source
+    /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
+    messageID?: string
   }) {
     const incoming = yield* Schema.decodeUnknownEffect(Schema.Array(SessionTodo.Input))(input.todos).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
@@ -50,18 +52,19 @@ const make = Effect.gen(function* () {
           const seen = new Set<string>()
           const changes = yield* Effect.forEach(incoming, (item) =>
             Effect.gen(function* () {
-              const content = item.content.trim()
-              if (!content) return yield* new SessionTodo.Error({ message: "Task content must not be empty" })
+              const supplied = item.content?.trim()
+              if (item.content !== undefined && !supplied)
+                return yield* new SessionTodo.Error({ message: "Task content must not be empty" })
               const matches = previous.filter((task) =>
                 item.id
                   ? task.id === item.id
                   : input.origin
                     ? task.source?.id === input.origin.id && task.source?.key === item.planKey
-                    : task.content === content,
+                    : task.content === supplied,
               )
               if (matches.length > 1)
                 return yield* new SessionTodo.Error({
-                  message: `Multiple tasks match ${content}; use the task id and revision`,
+                  message: `Multiple tasks match ${supplied}; use the task id and revision`,
                 })
               const before = matches[0]
               if (item.id && !before)
@@ -70,6 +73,15 @@ const make = Effect.gen(function* () {
                 })
               if (item.id && item.revision === undefined)
                 return yield* new SessionTodo.Error({ message: `Supply the current revision for task ${item.id}` })
+              if (!before && !supplied)
+                return yield* new SessionTodo.Error({
+                  message:
+                    "Task content is required to create a task; supply id and revision to update an existing one",
+                })
+              const content = supplied ?? before!.content
+              const priority =
+                item.priority ??
+                (before && Schema.is(SessionTodo.Priority)(before.priority) ? before.priority : "medium")
               const key = before?.id ?? (input.origin?.type === "plan" ? (item.planKey ?? content) : content)
               if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
               seen.add(key)
@@ -107,35 +119,37 @@ const make = Effect.gen(function* () {
                   message: "Task requirement must quote a real user message in this session",
                 })
               const criterion = item.criterion?.trim() || before?.criterion || (source ? content : undefined)
-              const unchangedClaim =
-                before?.status === "completed" && before.content === content && before.criterion === criterion
-              const claim = item.evidence ?? (unchangedClaim ? before?.evidence : undefined)
-              const proofs = claim
-                ? observed.results.filter(
-                    (entry) =>
-                      entry.callID === claim.callID && (!claim.messageID || entry.messageID === claim.messageID),
-                  )
-                : []
-              const proof = proofs.length === 1 ? proofs[0] : undefined
-              if (item.status === "completed" && source) {
-                if (!claim?.explanation.trim() || !proof?.successful || proof.completed < source.created)
-                  return yield* new SessionTodo.Error({
-                    message:
-                      "Completion requires evidence from a successful tool result in this session, after the request, with an explanation of the acceptance criterion. Use todowrite with an empty list to inspect available results and supply messageID to disambiguate reused callIDs.",
-                  })
-                if (
-                  observed.results.some(
-                    (entry) =>
-                      entry.mutation &&
-                      (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
-                      (!entry.settled || entry.completed >= proof.completed),
-                  )
-                )
-                  return yield* new SessionTodo.Error({
-                    message:
-                      "Evidence predates a later edit or shell action. Verify the current result before completing this task.",
-                  })
-              }
+              // A task that is already complete keeps its stored evidence when re-sent without new
+              // evidence; review() is what reopens it when later edits made that evidence stale.
+              const kept = before?.status === "completed" && !item.evidence ? before.evidence : undefined
+              const resolved =
+                item.status === "completed" && source && !kept
+                  ? resolve({
+                      observed,
+                      claim: item.evidence,
+                      source,
+                      content,
+                      messageID: input.messageID,
+                      fallback: item.reason?.trim() || item.criterion?.trim(),
+                    })
+                  : undefined
+              // Two failed completion attempts in a row for one task inside a turn is a loop, not a
+              // request for a third message; the task blocks with the last error instead.
+              const attempts =
+                resolved && "error" in resolved && before
+                  ? failedAttempts(
+                      observed.results,
+                      before,
+                      observed.requests.reduce((max, entry) => Math.max(max, entry.created), 0),
+                    )
+                  : 0
+              if (resolved && "error" in resolved && !attempts)
+                return yield* new SessionTodo.Error({ message: resolved.error })
+              const capped =
+                resolved && "error" in resolved
+                  ? `completion evidence could not be verified after ${attempts + 1} attempts: ${resolved.error}`
+                  : undefined
+              const proof = resolved && "proof" in resolved ? resolved : undefined
               const scopeChange = item.scopeChange
                 ? observed.requests.find(
                     (entry) =>
@@ -165,19 +179,20 @@ const make = Effect.gen(function* () {
                     : `todo_${crypto.randomUUID()}`),
                 revision: before?.revision ?? 1,
                 content,
-                status: item.status,
-                priority: item.priority,
+                status: capped ? ("blocked" as const) : item.status,
+                priority,
                 ...(source ? { source } : {}),
                 ...(criterion ? { criterion } : {}),
-                ...(item.status === "completed" && proof && claim
+                ...(item.status === "completed" && kept ? { evidence: kept } : {}),
+                ...(item.status === "completed" && proof
                   ? {
                       evidence: {
-                        callID: proof.callID,
-                        messageID: proof.messageID,
-                        tool: proof.tool,
-                        hash: proof.hash,
-                        observed: proof.completed,
-                        explanation: claim.explanation.trim(),
+                        callID: proof.proof.callID,
+                        messageID: proof.proof.messageID,
+                        tool: proof.proof.tool,
+                        hash: proof.proof.hash,
+                        observed: proof.proof.completed,
+                        explanation: proof.explanation,
                       },
                     }
                   : {}),
@@ -192,7 +207,7 @@ const make = Effect.gen(function* () {
                   : before?.scopeChange
                     ? { scopeChange: before.scopeChange }
                     : {}),
-                ...(reason ? { reason } : {}),
+                ...(capped ? { reason: capped } : reason ? { reason } : {}),
                 ...(before?.legacyStatus ? { legacyStatus: before.legacyStatus } : {}),
               }
             }),
@@ -226,7 +241,7 @@ const make = Effect.gen(function* () {
             Effect.gen(function* () {
               if (item.revision === undefined) return
               const before = previous.find((task) =>
-                item.id ? task.id === item.id : task.content === item.content.trim(),
+                item.id ? task.id === item.id : task.content === item.content?.trim(),
               )
               if (!before) return
               const after = result.find((task) => task.id === before.id)!
@@ -324,15 +339,15 @@ const make = Effect.gen(function* () {
       const proof = observed.results.find(
         (entry) => entry.callID === task.evidence?.callID && entry.messageID === task.evidence.messageID,
       )
-      return (
-        !proof?.successful ||
-        proof.hash !== task.evidence.hash ||
-        observed.results.some(
-          (entry) =>
-            entry.mutation &&
-            (entry.callID !== task.evidence!.callID || entry.messageID !== task.evidence!.messageID) &&
-            (!entry.settled || entry.completed >= task.evidence!.observed),
-        )
+      if (!proof?.successful || proof.hash !== task.evidence.hash) return true
+      // Only a file edit after the proof, touching the proof's files when both are known, makes it
+      // stale; verification commands and edits elsewhere leave the completion standing.
+      return observed.results.some(
+        (entry) =>
+          entry.kind === "edit" &&
+          (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
+          (!entry.settled || entry.completed > proof.completed) &&
+          SessionTaskFacts.overlaps(entry.paths, proof.paths),
       )
     })
     if (!stale.length) return current
@@ -348,6 +363,127 @@ const make = Effect.gen(function* () {
   })
   return { get, update, block, review, withMutation: lock.withPermits(1) }
 })
+
+type Observed = {
+  requests: ReadonlyArray<{ id: string; text: string; created: number }>
+  results: ReadonlyArray<SessionTaskFacts.Result>
+}
+
+/**
+ * Pick the tool result that proves a completion.
+ *
+ * An explicit callID that names one successful result after the request wins. Otherwise the newest
+ * successful result after the request stands in, preferring an edit or a verification command over
+ * a read, and the explanation falls back to the task's own reason or criterion. Only when nothing
+ * qualifies is the refusal spelled out, with the candidates inline so no extra read is needed.
+ */
+function resolve(input: {
+  observed: Observed
+  claim: SessionTodo.Input["evidence"]
+  source: SessionTodo.Source
+  content: string
+  messageID?: string
+  fallback?: string
+}): { proof: SessionTaskFacts.Result; explanation: string } | { error: string } {
+  const results = input.observed.results
+  const claim = input.claim
+  const matching = claim
+    ? results.filter(
+        (entry) => entry.callID === claim.callID && (!claim.messageID || entry.messageID === claim.messageID),
+      )
+    : []
+  const explicit = matching.length === 1 ? matching[0] : undefined
+  const valid = (entry: SessionTaskFacts.Result) =>
+    entry.settled && entry.successful && entry.kind !== "bookkeeping" && entry.completed >= input.source.created
+  const later = (proof: SessionTaskFacts.Result) =>
+    results.filter(
+      (entry) =>
+        entry.kind === "edit" &&
+        (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
+        // A sibling still running in the message that issued this update is not a later edit yet.
+        (entry.settled ? entry.completed > proof.completed : entry.messageID !== input.messageID) &&
+        SessionTaskFacts.overlaps(entry.paths, proof.paths),
+    )
+  const accept = (proof: SessionTaskFacts.Result) => {
+    const edit = later(proof).toSorted((a, b) => b.completed - a.completed)[0]
+    if (edit) return { error: predates(proof, edit) }
+    return {
+      proof,
+      explanation:
+        claim?.explanation?.trim() || input.fallback || `auto-selected latest successful result ${proof.tool}`,
+    }
+  }
+  if (explicit && valid(explicit)) return accept(explicit)
+  const candidates = results.filter(valid).toSorted((a, b) => b.completed - a.completed)
+  const auto = candidates.find((entry) => entry.kind === "edit" || entry.kind === "verification") ?? candidates[0]
+  if (auto) return accept(auto)
+  const when = `the request ${input.source.id} at ${iso(input.source.created)}`
+  if (!claim)
+    return {
+      error: `Completing "${input.content}" needs a successful tool result after ${when}, and none exists yet. Run the verification (tests, build or a check command) after the last edit, then complete the task; evidence may be omitted and the newest successful result is selected automatically. ${describe(results)}`,
+    }
+  if (!matching.length)
+    return {
+      error: `Evidence callID "${claim.callID}" does not match any tool result in this session, and no successful result exists after ${when}. Cite a callID from the recent results or run the verification first. ${describe(results)}`,
+    }
+  if (!explicit)
+    return {
+      error: `Evidence callID "${claim.callID}" matches ${matching.length} results (messages ${matching.map((entry) => entry.messageID).join(", ")}); supply evidence.messageID to disambiguate. None of them succeeded after ${when}. ${describe(results)}`,
+    }
+  if (explicit.completed < input.source.created)
+    return {
+      error: `Evidence callID "${claim.callID}" (${explicit.tool}) completed at ${iso(explicit.completed)}, before ${when}; no successful result exists since then. Run the verification again and complete the task. ${describe(results, 1)}`,
+    }
+  return {
+    error: `Evidence callID "${claim.callID}" (${explicit.tool}) did not succeed${explicit.settled ? "" : " yet"}, and no successful result exists after ${when}. ${describe(results)}`,
+  }
+}
+
+function predates(proof: SessionTaskFacts.Result, edit: SessionTaskFacts.Result) {
+  const files = edit.paths.length ? `, ${edit.paths.join(", ")}` : ""
+  const when = edit.settled ? iso(edit.completed) : "still running"
+  return `Evidence callID "${proof.callID}" (${proof.tool}, ${iso(proof.completed)}) predates a later edit ${edit.callID} (${edit.tool}${files}, ${when}). Re-run the verification after the last edit, then complete the task; omitted evidence selects the newest successful result.`
+}
+
+function describe(results: ReadonlyArray<SessionTaskFacts.Result>, limit = 3) {
+  const recent = results
+    .filter((entry) => entry.kind !== "bookkeeping")
+    .toSorted((a, b) => b.completed - a.completed)
+    .slice(0, limit)
+  if (!recent.length) return "Recent results: none."
+  const state = (entry: SessionTaskFacts.Result) =>
+    entry.successful ? "succeeded" : entry.settled ? "failed" : "unsettled"
+  return `Recent results (newest first): ${recent
+    .map(
+      (entry) =>
+        `${entry.callID} (${entry.tool}, message ${entry.messageID}, ${state(entry)} at ${iso(entry.completed)})`,
+    )
+    .join("; ")}.`
+}
+
+/** Consecutive todowrite failures in this turn that tried to complete the task, back to the last successful todowrite. */
+function failedAttempts(results: ReadonlyArray<SessionTaskFacts.Result>, task: SessionTodo.Info, since: number) {
+  const targets = (input: unknown) => {
+    const todos = typeof input === "object" && input !== null ? (input as { todos?: unknown }).todos : undefined
+    return (
+      Array.isArray(todos) &&
+      todos.some(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          (item as { status?: unknown }).status === "completed" &&
+          ((item as { id?: unknown }).id === task.id || (item as { content?: unknown }).content === task.content),
+      )
+    )
+  }
+  const attempts = results
+    .filter((entry) => entry.tool === "todowrite" && entry.settled && entry.completed >= since)
+    .toSorted((a, b) => b.completed - a.completed)
+  const success = attempts.findIndex((entry) => !entry.errored)
+  return attempts.slice(0, success === -1 ? attempts.length : success).filter((entry) => targets(entry.input)).length
+}
+
+const iso = (millis: number) => new Date(millis).toISOString()
 
 function read(row: typeof TodoTable.$inferSelect) {
   const known = Schema.is(SessionTodo.Status)(row.status)
