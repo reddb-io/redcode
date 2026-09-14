@@ -52,7 +52,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   })
 
   // A failed reply/reject (e.g. the asking tool was interrupted server-side) must never
-  // leave this dialog unresponsive: surface why and drop the stale request.
+  // leave this dialog unresponsive: surface why and drop the stale request. The SDK resolves
+  // HTTP errors as `{ error }` unless asked to throw, so every call below passes throwOnError.
   function fail(error: unknown) {
     sync.removeQuestion(props.request.sessionID, props.request.id)
     toast.show({
@@ -65,20 +66,26 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   function submit() {
     const answers = questions().map((_, i) => store.answers[i] ?? [])
     sdk.client.question
-      .reply({
-        requestID: props.request.id,
-        directory: props.directory,
-        answers,
-      })
+      .reply(
+        {
+          requestID: props.request.id,
+          directory: props.directory,
+          answers,
+        },
+        { throwOnError: true },
+      )
       .catch(fail)
   }
 
   function reject() {
     sdk.client.question
-      .reject({
-        requestID: props.request.id,
-        directory: props.directory,
-      })
+      .reject(
+        {
+          requestID: props.request.id,
+          directory: props.directory,
+        },
+        { throwOnError: true },
+      )
       .catch(fail)
   }
 
@@ -93,11 +100,14 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     }
     if (single()) {
       sdk.client.question
-        .reply({
-          requestID: props.request.id,
-          directory: props.directory,
-          answers: [[answer]],
-        })
+        .reply(
+          {
+            requestID: props.request.id,
+            directory: props.directory,
+            answers: [[answer]],
+          },
+          { throwOnError: true },
+        )
         .catch(fail)
       return
     }

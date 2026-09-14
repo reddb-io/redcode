@@ -435,6 +435,35 @@ lifecycle.live("pending question rejects on instance dispose", () =>
   }),
 )
 
+lifecycle.live("instance dispose tells clients the pending question is gone", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped({ git: true })
+    const events = yield* EventV2Bridge.Service
+    const rejected: string[] = []
+    const off = yield* events.listen((event) => {
+      if (event.type === Question.Event.Rejected.type)
+        rejected.push(String((event as { data: { requestID: string } }).data.requestID))
+      return Effect.void
+    })
+    yield* Effect.addFinalizer(() => off)
+    const fiber = yield* askEffect({
+      sessionID: SessionID.make("ses_dispose_event"),
+      questions: [{ question: "Still there?", header: "Dispose", options: [{ label: "Yes", description: "Yes" }] }],
+    }).pipe(provideInstance(dir), Effect.forkScoped)
+
+    const [pending] = yield* waitForPending(1).pipe(provideInstance(dir))
+    const ctx = yield* Effect.gen(function* () {
+      return yield* InstanceRef
+    }).pipe(provideInstance(dir))
+    if (!ctx) return yield* Effect.die(new Error("missing test instance"))
+    yield* InstanceStore.Service.use((store) => store.dispose(ctx))
+    yield* Fiber.await(fiber)
+
+    // Without this event the TUI keeps a dialog whose reply and reject can only fail.
+    expect(rejected).toEqual([String(pending!.id)])
+  }),
+)
+
 lifecycle.live("pending question rejects on instance reload", () =>
   Effect.gen(function* () {
     const dir = yield* tmpdirScoped({ git: true })
