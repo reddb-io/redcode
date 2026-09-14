@@ -8,6 +8,7 @@ import { errorMessage } from "@/util/error"
 import { DesignServer } from "./design-server"
 import { DesignBrowser } from "@/design/browser"
 import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
+import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
 import { Effect } from "effect"
 import { withTimeout } from "@/util/timeout"
 
@@ -37,23 +38,47 @@ export async function run(args: {
     process.stdout.write(safe + "\n")
     lines.prompt(true)
   }
-  // `--open` and `/review` open one tab per review: none while the server reports a connected review
-  // page for the session, and none twice inside the debounce while a launched page is still loading.
-  const presence = DesignReviewPresence.make()
+  // `--open` and `/review` claim the launch on the server, which counts connected review pages and sees
+  // the Design tool's and the TUI's launches: no tab while a page is connected or one was just requested.
+  // A server without the launch route (a V2-only server) cannot report pages opened elsewhere, so the
+  // claim falls back to this process and says so.
+  const local = DesignReviewPresence.make()
   const review = async (sessionID: string) => {
-    const url = new URL(`/api/session/${encodeURIComponent(sessionID)}/design/review`, baseUrl).toString()
-    const connected = await fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}/open`, baseUrl), {
-      headers: ServerAuth.headers(),
+    const id = encodeURIComponent(sessionID)
+    const url = new URL(`/api/session/${id}/design/review`, baseUrl).toString()
+    const post = (route: string, body: unknown) =>
+      fetch(new URL(route, baseUrl), {
+        method: "POST",
+        headers: { ...ServerAuth.headers(), "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(3000),
+      })
+    const disabled = DesignBrowserLauncher.disabledBy()
+    const result = await DesignReviewPresence.openExplicit({
+      sessionID,
+      disabled,
+      url,
+      local,
+      claim: async () => {
+        const response = await post(`/design/session/${id}/launch`, { explicit: true })
+        if (!response.ok) return undefined
+        const reply = DesignReviewPresence.parseClaim(await response.json())
+        return reply && { ...reply, url }
+      },
+      release: (token) => post(`/design/session/${id}/launch/release`, { token }),
+      launch: (target) => Effect.runPromise(DesignBrowser.open(target)),
     })
-      .then((response) => (response.ok ? response.json() : undefined))
-      .then((value: { connected?: unknown } | undefined) =>
-        typeof value?.connected === "number" ? value.connected : 0,
-      )
-      .catch(() => 0)
-    if (connected > 0) return write(`Review: ${url} (already open in the browser)`)
-    write(`Review: ${url}`)
-    if (process.env.REDCODE_DESIGN_NO_OPEN || !presence.claim(sessionID, { explicit: true, connected })) return
-    Effect.runFork(DesignBrowser.open(url))
+    const note = {
+      opened: "",
+      failed: " (could not open a browser)",
+      connected: " (already open in a browser tab; switch to it there)",
+      pending: " (a browser tab was just requested)",
+      disabled: ` (browser launch disabled by ${disabled})`,
+      unavailable: "",
+    }[result.status]
+    write(
+      `Review: ${url}${note}${result.local ? " · this server does not report open review pages, so one may already be open" : ""}`,
+    )
   }
   const terminal = await DesignTerminal.create({
     client: Redcode.make({ baseUrl, headers: ServerAuth.headers() }),

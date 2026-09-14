@@ -145,6 +145,21 @@ describe("Design review translations and lifetime", () => {
     })
   }
 
+  test("an open panel holds its review presence until it is disposed", async () => {
+    const held: { sessionID: string; signal: AbortSignal }[] = []
+    const fixture = createFixture(undefined, (options, signal) => held.push({ sessionID: options.sessionID, signal }))
+    try {
+      fixture.module.resolve({ mountReview: fixture.mount })
+      await fixture.mounted[0].promise
+      expect(held.map((item) => [item.sessionID, item.signal.aborted])).toEqual([["design_locale_fixture", false]])
+      fixture.locale("br")
+      expect(held.length).toBe(1)
+    } finally {
+      fixture.dispose()
+    }
+    expect(held[0]!.signal.aborted).toBe(true)
+  })
+
   test("does not mount after its owner is disposed during import", async () => {
     const fixture = createFixture()
     fixture.dispose()
@@ -190,7 +205,10 @@ function installSessionKeys() {
   }
 }
 
-function createFixture(request: ReviewOptions["request"] = async () => Response.json([])) {
+function createFixture(
+  request: ReviewOptions["request"] = async () => Response.json([]),
+  presence?: Parameters<typeof createSessionDesignMount>[0]["presence"],
+) {
   const root = document.createElement("div")
   const module = Promise.withResolvers<{ mountReview: typeof mountReview }>()
   const mounted = Array.from({ length: 3 }, () => Promise.withResolvers<void>())
@@ -220,6 +238,7 @@ function createFixture(request: ReviewOptions["request"] = async () => Response.
         request,
       }),
       translate: (key) => designGoalDictionary(state.locale)[key],
+      presence,
     })
     return {
       root,

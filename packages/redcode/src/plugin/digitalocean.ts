@@ -4,6 +4,7 @@ import { InstallationVersion } from "@reddb-io/redcode-core/installation/version
 import { OauthCallbackPage } from "@reddb-io/redcode-core/oauth/page"
 import { createServer } from "http"
 import open from "open"
+import { NoBrowser } from "@reddb-io/redcode-core/util/no-browser"
 
 const DO_OAUTH_CLIENT_ID = "b1a6c5158156caac821fd1b30253ca8acb52454a48fa744420e41889cb589f82"
 const DO_AUTHORIZE_URL = "https://cloud.digitalocean.com/v1/oauth/authorize"
@@ -279,7 +280,8 @@ export async function DigitalOceanAuthPlugin(input: PluginInput): Promise<Hooks>
             const state = generateState()
             const callbackPromise = waitForOAuthCallback(state)
             const url = buildAuthorizeUrl(state)
-            await open(url).catch(() => undefined)
+            // The returned instructions carry the URL, so a refused launch still completes by hand.
+            if (!NoBrowser.blockedBy()) await open(url).catch(() => undefined)
             return {
               url,
               instructions:

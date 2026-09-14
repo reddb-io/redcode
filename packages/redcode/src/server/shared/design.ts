@@ -114,6 +114,28 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             connected: DesignReviewPresence.shared.connected(sessionID),
           })
         }
+        // Clients (the TUI command, `redcode design`) claim a browser launch here, against the same presence
+        // the review feeds and the Design tool use, and give the claim back when their launch fails.
+        if (request.method === "POST" && parts[3] === "launch" && parts.length === 4) {
+          const review = yield* DesignReviewServer.Service
+          const body = yield* request.json.pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ explicit: Schema.optional(Schema.Boolean) }))),
+            Effect.orElseSucceed(() => ({ explicit: undefined })),
+          )
+          return HttpServerResponse.jsonUnsafe({
+            url: new URL(`/design/session/${sessionID}/review`, yield* review.url).toString(),
+            ...DesignReviewPresence.shared.claim(sessionID, { explicit: body.explicit === true }),
+          })
+        }
+        if (request.method === "POST" && parts[3] === "launch" && parts[4] === "release" && parts.length === 5) {
+          const body = yield* request.json.pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ token: Schema.Number }))),
+            Effect.option,
+          )
+          if (body._tag === "None") return HttpServerResponse.empty({ status: 400 })
+          DesignReviewPresence.shared.release(sessionID, body.value.token)
+          return HttpServerResponse.empty({ status: 204 })
+        }
         if (request.method === "GET" && parts[3] === "feed" && parts.length === 4) {
           // `after` is accepted for parity with the V2 route but not applied: the V1 bus has no durable
           // sequence, so every connection replays the whole transcript and the page merges repeats by id.

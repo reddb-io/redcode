@@ -6,8 +6,11 @@ import { AccountID, OrgID, PollExpired, type PollResult, type AccountError } fro
 import { effectCmd } from "../effect-cmd"
 import * as Prompt from "../effect/prompt"
 import open from "open"
+import { NoBrowser } from "@reddb-io/redcode-core/util/no-browser"
 
-const openBrowser = (url: string) => Effect.promise(() => open(url).catch(() => undefined))
+// The URL is always printed as well, so a refused launch leaves the user a way through.
+const openBrowser = (url: string) =>
+  NoBrowser.blockedBy() ? Effect.void : Effect.promise(() => open(url).catch(() => undefined))
 
 const println = (msg: string) => Effect.sync(() => UI.println(msg))
 

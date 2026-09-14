@@ -4,6 +4,7 @@ import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
 import { Effect, Schema } from "effect"
 import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { modeTransition } from "../../util/mode-transition"
 import {
@@ -535,17 +536,48 @@ export function Session() {
       category: "Session",
       slash: { name: "design-review" },
       run: async () => {
-        const response = await sdk.fetch(new URL(`/design/session/${route.sessionID}/open`, sdk.url), {
-          headers: sdk.headers,
+        dialog.clear()
+        // The launch is claimed on the server, which counts connected review pages and sees the Design
+        // tool's publishes: no duplicate tab, and a publish right after this opens no second one.
+        const root = `/design/session/${route.sessionID}`
+        const post = (path: string, body: unknown) => {
+          const headers = new Headers(sdk.headers)
+          headers.set("content-type", "application/json")
+          return sdk.fetch(new URL(path, sdk.url), { method: "POST", headers, body: JSON.stringify(body) })
+        }
+        const disabled = DesignBrowserLauncher.disabledBy()
+        const result = await DesignReviewPresence.openExplicit({
+          sessionID: route.sessionID,
+          disabled,
+          claim: async () => {
+            const response = await post(`${root}/launch`, { explicit: true })
+            return response.ok ? DesignReviewPresence.parseClaim(await response.json()) : undefined
+          },
+          release: (token) => post(`${root}/launch/release`, { token }),
+          launch: async (url) => (await Effect.runPromise(DesignBrowserLauncher.open(url, { load: loadOpen }))).opened,
         })
-        if (!response.ok) {
-          toast.show({ variant: "error", message: "Could not open the Design review" })
+        if (result.status === "opened") return
+        if (result.status === "disabled") {
+          const response = await sdk
+            .fetch(new URL(`${root}/open`, sdk.url), { headers: sdk.headers })
+            .catch(() => undefined)
+          const value: { url?: string } | undefined = response?.ok ? await response.json() : undefined
+          toast.show({
+            variant: "info",
+            message: `Browser launch is disabled by ${disabled}.${value?.url ? ` Design review: ${value.url}` : ""}`,
+          })
           return
         }
-        const value: { url: string } = await response.json()
-        dialog.clear()
-        if (!(await Effect.runPromise(DesignBrowserLauncher.open(value.url, { load: loadOpen }))).opened)
-          toast.show({ variant: "error", message: `Could not open a browser. Design review: ${value.url}` })
+        const message = {
+          connected: `The Design review is already open in a browser tab; switch to it there (the terminal cannot focus it). ${result.url}`,
+          pending: `A Design review tab was just requested: ${result.url}`,
+          failed: `Could not open a browser. Design review: ${result.url}`,
+          unavailable: "Could not open the Design review",
+        }[result.status]
+        toast.show({
+          variant: result.status === "failed" || result.status === "unavailable" ? "error" : "info",
+          message,
+        })
       },
     },
     {

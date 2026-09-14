@@ -937,6 +937,9 @@ for (const decision of ["deny", "allow"] as const)
           .find((tool) => tool.id === "design_preview")!
           .execute({ id, name: "First" }, context)
         expect(asked).toContain("project_tooling")
+        // The result reports what happened to the browser, never an opened tab it did not see.
+        expect(preview.output).toContain("Browser launch is disabled by REDCODE_NO_BROWSER; no tab was requested.")
+        expect(preview.output).not.toContain("Opening")
         const revisions = yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => store.revisions(id)))
         const first = revisions.find((revision) => revision.name === "First")!
         const css = yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => compiledCss(store, first)))

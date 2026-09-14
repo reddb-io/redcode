@@ -510,8 +510,8 @@ test("legacy feed reports a variant operation pending while an earlier turn work
   }
 }, 90000)
 
-// The Design tool and `redcode design` open no second tab while a review page follows the feed.
-test("the legacy review feed counts connected review pages for the open route", async () => {
+// The Design tool, the TUI command and `redcode design` claim launches against these counts.
+test("the legacy launch route claims once, gives a failed launch back and refuses while a page is connected", async () => {
   await using tmp = await tmpdir({ git: true })
   const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
   const request = (route: string, init: RequestInit = {}) =>
@@ -529,12 +529,29 @@ test("the legacy review feed counts connected review pages for the open route", 
       await request("/session", { method: "POST", body: JSON.stringify({ agent: "design" }) })
     ).json()
     expect(await connected(session.id)).toBe(0)
+    const launch = async (body: unknown) =>
+      (await request(`/design/session/${session.id}/launch`, { method: "POST", body: JSON.stringify(body) })).json()
+    // The TUI command opens explicitly; the agent publishes before the page connects: no second tab.
+    const first = await launch({ explicit: true })
+    expect(first).toMatchObject({
+      outcome: "claimed",
+      url: expect.stringContaining(`/design/session/${session.id}/review`),
+    })
+    expect(await launch({})).toMatchObject({ outcome: "pending" })
+    // A launch that opened no browser gives its claim back, so the next publish tries again.
+    const release = await request(`/design/session/${session.id}/launch/release`, {
+      method: "POST",
+      body: JSON.stringify({ token: first.token }),
+    })
+    expect(release.status).toBe(204)
+    expect((await launch({})).outcome).toBe("claimed")
     const abort = new AbortController()
     const feed = await request(`/design/session/${session.id}/feed`, { signal: abort.signal })
     expect(feed.status).toBe(200)
     const reader = feed.body!.getReader()
     expect((await reader.read()).done).toBe(false)
     expect(await connected(session.id)).toBe(1)
+    expect((await launch({ explicit: true })).outcome).toBe("connected")
     await reader.cancel()
     abort.abort()
     const deadline = Date.now() + 5000
