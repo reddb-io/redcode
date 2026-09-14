@@ -57,6 +57,29 @@ const note = (page: Page, label: string, text: string) =>
     .locator("#notes .note")
     .filter({ has: page.locator(".note-label", { hasText: label }) })
     .filter({ has: page.locator(".note-text", { hasText: text }) })
+/** Waits until the review shows a revision, for example once polling has live-reloaded a newly published one. */
+const showsRevision = (page: Page, id: string) =>
+  page.waitForFunction(
+    (revision) =>
+      document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!.value === revision,
+    id,
+    { timeout: 8000 },
+  )
+/** Browses an older revision, retrying while a poll that was already in flight puts the latest one back. */
+const browseRevision = async (page: Page, id: string) => {
+  const restore = page.getByRole("button", { name: "Restore as new revision", exact: true })
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await page.getByLabel("Revision", { exact: true }).selectOption(id)
+    if (
+      await restore.waitFor({ timeout: 1000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      return
+  }
+  throw new Error(`Revision ${id} never stayed on screen`)
+}
 const activeID = (page: Page) =>
   page.evaluate(() => document.querySelector("#review")!.shadowRoot!.activeElement?.id ?? "")
 
@@ -76,7 +99,8 @@ test("intake creates a new alternative without polling closing the brief", async
   const current = await published("html")
   const page = await browser.newPage()
   await page.goto(`${base}${current.root}/review`)
-  await page.getByRole("button", { name: "Create design", exact: true }).first().click()
+  await page.getByRole("button", { name: "More actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Create design", exact: true }).click()
   await page.getByLabel("Name", { exact: true }).fill("Alternative")
   await page.getByLabel("What should this interface accomplish?").fill("Help people finish checkout")
   await page.waitForTimeout(5200)
@@ -194,6 +218,9 @@ test("new interface: native review, annotation draft, lost response retry and ap
 
 test("existing Solid component: isolated interactive preview and history restoration", async () => {
   const current = await published("solid")
+  const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Second direction",
+  })
   const page = await browser.newPage()
   await page.goto(`${base}${current.root}/review`)
   const frame = page.frameLocator("#preview")
@@ -208,16 +235,22 @@ test("existing Solid component: isolated interactive preview and history restora
   await page.getByLabel("Annotate elements", { exact: true }).uncheck()
   await frame.getByRole("heading", { name: "Spacious checkout" }).waitFor()
   expect(await frame.getByRole("heading", { name: "Checkout", exact: true }).isVisible()).toBe(false)
+  // Restore is offered only once an older revision is on screen.
+  expect(await page.getByRole("button", { name: "Restore as new revision" }).isVisible()).toBe(false)
+  await browseRevision(page, current.revision.id)
   await page.getByRole("button", { name: "Restore as new revision" }).click()
   await page.getByRole("option", { name: /Restored: First direction/ }).waitFor({ state: "attached" })
   const revisions = await api<Design.Revision[]>(`${current.root}/${current.document.id}/revision`)
-  expect(revisions).toHaveLength(2)
-  expect(revisions[0].parent).toBe(current.revision.id)
+  expect(revisions).toHaveLength(3)
+  // The restored copy of the first revision lands on top of the latest one.
+  expect(revisions[0].name).toBe("Restored: First direction")
+  expect(revisions[0].parent).toBe(second.id)
   await page.close()
 }, 90000)
 
 test("refresh reloads the preview and keeps request errors visible across polling", async () => {
   const current = await published("html")
+  await api(`${current.root}/${current.document.id}/revision`, "POST", { name: "Second direction" })
   const page = await browser.newPage()
   try {
     await page.goto(`${base}${current.root}/review`)
@@ -225,6 +258,7 @@ test("refresh reloads the preview and keeps request errors visible across pollin
     await frame.getByRole("button", { name: "Add item" }).click()
     await page.getByRole("button", { name: "Refresh", exact: true }).click()
     await frame.getByRole("button", { name: "Add item" }).waitFor({ timeout: 3000 })
+    await browseRevision(page, current.revision.id)
     await page.route("**/restore", (route) =>
       route.fulfill({ status: 409, json: { message: "Reopen this design before restoring" } }),
     )
@@ -568,6 +602,7 @@ test("publishing a product dependency requests read permission and preserves den
 
 test("review controls stay compact, keyboard accessible and isolated from prototype styles", async () => {
   const current = await published("html")
+  await api(`${current.root}/${current.document.id}/revision`, "POST", { name: "Second direction" })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   await page.goto(`${base}${current.root}/review`)
   const prototype = page.frameLocator("#preview")
@@ -587,7 +622,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   ).toEqual(before)
   expect(
     await page
-      .getByRole("button", { name: "Create design", exact: true })
+      .getByRole("button", { name: "More actions", exact: true })
       .evaluate((button) => getComputedStyle(button).backgroundColor),
   ).not.toBe("rgb(255, 0, 255)")
   const preview = await page.locator("#preview").boundingBox()
@@ -598,6 +633,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   await page.keyboard.press("ArrowRight")
   expect(await page.getByRole("tab", { name: "Assets", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.getByLabel("Seconds", { exact: true }).waitFor()
+  await browseRevision(page, current.revision.id)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -689,7 +725,7 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     )
     await page.getByText("Made the title larger.", { exact: false }).waitFor()
     await page.getByText("design_preview · done · Design", { exact: true }).waitFor()
-    await page.locator("#agent-state").filter({ hasText: "Idle" }).waitFor()
+    await page.locator("#agent-state").filter({ hasText: "Idle" }).waitFor({ state: "attached" })
     await frame.getByRole("heading", { name: "Checkout" }).waitFor()
     await page.getByLabel("Annotate elements", { exact: true }).check()
     await frame.getByRole("heading", { name: "Checkout" }).click()
@@ -1191,3 +1227,82 @@ test("layout inbox queue/dismiss/resolve", async () => {
     await page.close()
   }
 }, 90000)
+
+test("compact toolbar keeps every action reachable", async () => {
+  const current = await published("solid")
+  const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Second direction",
+  })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Spacious", exact: true }).waitFor()
+    // Two rows: the toolbar and the variant strip, together under 80px.
+    const toolbar = (await page.locator("#toolbar").boundingBox())!
+    const strip = (await page.locator("#studio .variant-bar").boundingBox())!
+    expect(toolbar.height + strip.height).toBeLessThanOrEqual(80)
+    expect(strip.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - 1)
+    expect((await page.locator("#preview").boundingBox())!.y).toBeLessThan(100)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    // Every control keeps its accessible name in the compact layout.
+    for (const name of [
+      "Refresh",
+      "Add variant",
+      "Single view",
+      "Side by side",
+      "Approve this revision",
+      "More actions",
+    ])
+      expect(await page.getByRole("button", { name, exact: true }).isVisible()).toBe(true)
+    expect(await page.getByRole("button", { name: "Single view", exact: true }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    expect(await page.getByLabel("Preview width", { exact: true }).isVisible()).toBe(true)
+    expect(await page.getByLabel("Revision", { exact: true }).isVisible()).toBe(true)
+    expect(await page.locator("#agent-state").isVisible()).toBe(false)
+    expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(false)
+    // Browsing an older revision adds Restore and the newer-revision pill without a third row.
+    await showsRevision(page, second.id)
+    await browseRevision(page, current.revision.id)
+    await page.getByRole("button", { name: "New revision available", exact: true }).waitFor()
+    expect(
+      (await page.locator("#toolbar").boundingBox())!.height +
+        (await page.locator("#studio .variant-bar").boundingBox())!.height,
+    ).toBeLessThanOrEqual(80)
+    // The overflow menu opens from the keyboard, moves focus into it and returns focus on Escape.
+    const more = page.getByRole("button", { name: "More actions", exact: true })
+    await more.focus()
+    await page.keyboard.press("Enter")
+    await page.getByRole("menu").waitFor()
+    expect(await more.getAttribute("aria-expanded")).toBe("true")
+    expect(await activeID(page)).toBe("new")
+    await page.keyboard.press("ArrowDown")
+    expect(await activeID(page)).toBe("menu-refresh")
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    expect(await activeID(page)).toBe("more")
+    expect(await more.getAttribute("aria-expanded")).toBe("false")
+    // An outside pointer closes it too.
+    await more.click()
+    await page.getByRole("menu").waitFor()
+    await page.mouse.click(700, 500)
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    // Refresh, Add variant and Create design all work through the menu.
+    await more.click()
+    await page.getByRole("menuitem", { name: "Refresh", exact: true }).click()
+    await page.locator("#status").filter({ hasText: "Preview refreshed" }).waitFor()
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    await more.click()
+    await page.getByRole("menuitem", { name: "Add variant", exact: true }).click()
+    await page.getByLabel("What should the new variant explore?").waitFor()
+    await page.locator("#cancel-variant").click()
+    await more.click()
+    await page.getByRole("menuitem", { name: "Create design", exact: true }).click()
+    await page.getByLabel("Name", { exact: true }).waitFor()
+    expect(await page.getByLabel("Revision", { exact: true }).isVisible()).toBe(false)
+    expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isVisible()).toBe(false)
+    expect(await page.getByRole("button", { name: "Refresh", exact: true }).isVisible()).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 60000)
