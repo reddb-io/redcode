@@ -544,7 +544,7 @@ export function Session() {
         }
         const value: { url: string } = await response.json()
         if (!(await Effect.runPromise(DesignBrowserLauncher.open(value.url, { load: loadOpen }))))
-          toast.show({ variant: "error", message: "Could not open a browser for the Design review" })
+          toast.show({ variant: "error", message: `Could not open a browser. Design review: ${value.url}` })
         dialog.clear()
       },
     },
