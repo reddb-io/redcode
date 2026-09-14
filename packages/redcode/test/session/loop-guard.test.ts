@@ -152,6 +152,26 @@ describe("loop guard", () => {
     expect(failures([call("edit", { file: "a" }, "ok"), call("edit", { file: "b" }, "ok")], { tool: "edit" })).toBe(0)
   })
 
+  test("a failure streak is only a todowrite loop, and it corrects without ever stopping", () => {
+    // Three different edits that each miss their oldString are three attempts, not one repeated call.
+    const miss = "Could not find oldString in the file. It must match exactly, including whitespace."
+    const edits = [
+      call("edit", { filePath: "a.ts", oldString: "one" }, miss, "error"),
+      call("edit", { filePath: "a.ts", oldString: "two" }, miss, "error"),
+      call("edit", { filePath: "a.ts", oldString: "three" }, miss, "error"),
+    ]
+    const edit = { tool: "edit", input: { filePath: "a.ts", oldString: "four" } }
+    expect(failures(edits, edit)).toBe(0)
+    expect(assess({ parts: edits, next: edit, limits: LIMITS })).toEqual({ type: "ok" })
+    // However long the todowrite refusals run with drifting arguments, the guard only corrects.
+    const refusal = "Completion evidence refused: no verification result exists."
+    const todos = Array.from({ length: LIMITS.stopAt + 2 }, (_, i) =>
+      call("todowrite", { todos: [{ id: "t", status: "completed", evidence: { callID: `c${i}` } }] }, refusal, "error"),
+    )
+    const next = { tool: "todowrite", input: { todos: [{ id: "t", status: "completed" }] } }
+    expect(assess({ parts: todos, next, limits: LIMITS }).type).toBe("correct")
+  })
+
   test("cuts the turn at the last real user message, not at a synthetic continuation", () => {
     const user = (parts: Part[]) => ({ info: { role: "user" }, parts })
     const assistant = (parts: Part[]) => ({ info: { role: "assistant" }, parts })

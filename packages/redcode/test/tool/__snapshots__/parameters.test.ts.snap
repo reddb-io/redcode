@@ -384,7 +384,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "type": "string",
           },
           "evidence": {
-            "description": "Successful tool result proving completion; omitted on completion selects the newest successful result after the request",
+            "description": "Successful tool result proving completion, with an explanation. When omitted, only a verification result (successful bash or shell check, design_preview or design_export) newer than the last edit is selected",
             "properties": {
               "callID": {
                 "type": "string",

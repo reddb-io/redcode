@@ -17,7 +17,7 @@ export const Info = SessionTodo.Info
 export type Info = typeof Info.Type
 export const Event = SessionTodo.Event
 export const guidance =
-  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) as evidence, or omit evidence and the newest successful result after the request is recorded automatically. Verification commands never invalidate evidence; only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
+  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically; edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
 
 export function active(todos: ReadonlyArray<Info>) {
   return todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled")
@@ -109,7 +109,7 @@ export function notes(incoming: ReadonlyArray<Input>, todos: ReadonlyArray<Info>
 
 /** The minimal correct shapes, quoted when an update fails validation so the retry is not a guess. */
 export function validationHint(detail: string) {
-  return `${detail}\nEach todo needs status plus either content and priority (new task) or id and revision (update). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence optional: {"callID":"<successful result>","explanation":"<how it meets criterion>"}). Do not resend the failed shape.`
+  return `${detail}\nEach todo needs status plus either content and priority (new task) or id and revision (update). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence: {"callID":"<successful result>","explanation":"<how it meets criterion>"}; omit it only when a verification check ran after the last edit). Do not resend the failed shape.`
 }
 
 export function context(todos: ReadonlyArray<Info>) {
@@ -127,6 +127,6 @@ export function context(todos: ReadonlyArray<Info>) {
     ...(active(todos).length > 24
       ? [`${active(todos).length - 24} more unfinished tasks are stored; read the full list before finishing.`]
       : []),
-    "Update a task with its id, revision and the changed fields only. To complete one, run the verifying command after the last edit and cite that result's callID as evidence, or omit evidence to record the newest successful result automatically; refusals list the candidates inline. Cancellation must cite a later user scope change.",
+    "Update a task with its id, revision and the changed fields only. To complete one, run the verifying command after the last edit and cite that result's callID with an explanation, or omit evidence to record the newest verification result automatically; refusals list the candidates inline. Cancellation must cite a later user scope change.",
   ].join("\n")
 }

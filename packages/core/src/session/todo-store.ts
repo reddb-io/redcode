@@ -341,14 +341,9 @@ const make = Effect.gen(function* () {
       )
       if (!proof?.successful || proof.hash !== task.evidence.hash) return true
       // Only a file edit after the proof, touching the proof's files when both are known, makes it
-      // stale; verification commands and edits elsewhere leave the completion standing.
-      return observed.results.some(
-        (entry) =>
-          entry.kind === "edit" &&
-          (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
-          (!entry.settled || entry.completed > proof.completed) &&
-          SessionTaskFacts.overlaps(entry.paths, proof.paths),
-      )
+      // stale; verification commands, edits elsewhere and parts abandoned by a crashed turn leave the
+      // completion standing. The same rule the completion itself was judged by.
+      return invalidating(observed.results, proof) !== undefined
     })
     if (!stale.length) return current
     return yield* update({
@@ -369,13 +364,41 @@ type Observed = {
   results: ReadonlyArray<SessionTaskFacts.Result>
 }
 
+/** Prefix of every refusal the evidence engine issues; only these count toward blocking a task. */
+export const REFUSED = "Completion evidence refused:"
+
+/**
+ * An edit that makes `proof` stale: a different call, touching the proof's files when both name
+ * them, that either completed strictly after the proof or is still running in a message that has
+ * not closed. The issuing message's own still-running siblings are not later edits yet, and a part
+ * abandoned by a crashed turn is neither.
+ */
+function invalidating(
+  results: ReadonlyArray<SessionTaskFacts.Result>,
+  proof: SessionTaskFacts.Result,
+  messageID?: string,
+) {
+  return results
+    .filter(
+      (entry) =>
+        entry.kind === "edit" &&
+        !entry.abandoned &&
+        (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
+        (entry.settled ? entry.completed > proof.completed : entry.messageID !== messageID) &&
+        SessionTaskFacts.overlaps(entry.paths, proof.paths),
+    )
+    .toSorted((a, b) => b.completed - a.completed)[0]
+}
+
 /**
  * Pick the tool result that proves a completion.
  *
- * An explicit callID that names one successful result after the request wins. Otherwise the newest
- * successful result after the request stands in, preferring an edit or a verification command over
- * a read, and the explanation falls back to the task's own reason or criterion. Only when nothing
- * qualifies is the refusal spelled out, with the candidates inline so no extra read is needed.
+ * A cited callID is judged on its own: it must name one settled, successful, non-bookkeeping result
+ * after the request that is not an edit and that no later edit has made stale; otherwise the
+ * specific refusal comes back and no other result is substituted. A read, grep or other result may
+ * be cited for investigation work. Only when nothing is cited does the engine select on the model's
+ * behalf, and then only a verification result (a successful shell check, a design preview or
+ * export) that is newer than every edit overlapping it. Refusals list the candidates inline.
  */
 function resolve(input: {
   observed: Observed
@@ -387,81 +410,100 @@ function resolve(input: {
 }): { proof: SessionTaskFacts.Result; explanation: string } | { error: string } {
   const results = input.observed.results
   const claim = input.claim
-  const matching = claim
-    ? results.filter(
-        (entry) => entry.callID === claim.callID && (!claim.messageID || entry.messageID === claim.messageID),
-      )
-    : []
-  const explicit = matching.length === 1 ? matching[0] : undefined
-  const valid = (entry: SessionTaskFacts.Result) =>
-    entry.settled && entry.successful && entry.kind !== "bookkeeping" && entry.completed >= input.source.created
-  const later = (proof: SessionTaskFacts.Result) =>
-    results.filter(
-      (entry) =>
-        entry.kind === "edit" &&
-        (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
-        // A sibling still running in the message that issued this update is not a later edit yet.
-        (entry.settled ? entry.completed > proof.completed : entry.messageID !== input.messageID) &&
-        SessionTaskFacts.overlaps(entry.paths, proof.paths),
-    )
-  const accept = (proof: SessionTaskFacts.Result) => {
-    const edit = later(proof).toSorted((a, b) => b.completed - a.completed)[0]
-    if (edit) return { error: predates(proof, edit) }
-    return {
-      proof,
-      explanation:
-        claim?.explanation?.trim() || input.fallback || `auto-selected latest successful result ${proof.tool}`,
-    }
-  }
-  if (explicit && valid(explicit)) return accept(explicit)
-  const candidates = results.filter(valid).toSorted((a, b) => b.completed - a.completed)
-  const auto = candidates.find((entry) => entry.kind === "edit" || entry.kind === "verification") ?? candidates[0]
-  if (auto) return accept(auto)
   const when = `the request ${input.source.id} at ${iso(input.source.created)}`
-  if (!claim)
-    return {
-      error: `Completing "${input.content}" needs a successful tool result after ${when}, and none exists yet. Run the verification (tests, build or a check command) after the last edit, then complete the task; evidence may be omitted and the newest successful result is selected automatically. ${describe(results)}`,
-    }
-  if (!matching.length)
-    return {
-      error: `Evidence callID "${claim.callID}" does not match any tool result in this session, and no successful result exists after ${when}. Cite a callID from the recent results or run the verification first. ${describe(results)}`,
-    }
-  if (!explicit)
-    return {
-      error: `Evidence callID "${claim.callID}" matches ${matching.length} results (messages ${matching.map((entry) => entry.messageID).join(", ")}); supply evidence.messageID to disambiguate. None of them succeeded after ${when}. ${describe(results)}`,
-    }
-  if (explicit.completed < input.source.created)
-    return {
-      error: `Evidence callID "${claim.callID}" (${explicit.tool}) completed at ${iso(explicit.completed)}, before ${when}; no successful result exists since then. Run the verification again and complete the task. ${describe(results, 1)}`,
-    }
-  return {
-    error: `Evidence callID "${claim.callID}" (${explicit.tool}) did not succeed${explicit.settled ? "" : " yet"}, and no successful result exists after ${when}. ${describe(results)}`,
+  const refuse = (text: string) => ({ error: `${REFUSED} ${text}` })
+  const valid = (entry: SessionTaskFacts.Result) =>
+    entry.settled &&
+    entry.successful &&
+    !entry.abandoned &&
+    entry.kind !== "bookkeeping" &&
+    entry.completed >= input.source.created
+  const accept = (proof: SessionTaskFacts.Result, explanation: string) => {
+    const edit = invalidating(results, proof, input.messageID)
+    if (edit) return refuse(predates(proof, edit))
+    return { proof, explanation }
   }
+  if (!claim) {
+    const auto = results
+      .filter(
+        (entry) => valid(entry) && entry.kind === "verification" && !invalidating(results, entry, input.messageID),
+      )
+      .toSorted((a, b) => b.completed - a.completed)[0]
+    if (auto) return { proof: auto, explanation: input.fallback || `auto-selected latest verification ${auto.tool}` }
+    return refuse(
+      `Completing "${input.content}" needs evidence, and no verification result (a successful bash or shell check, design_preview or design_export) exists after ${when} and after the last edit. Run the check that proves the task, then complete it; or, for investigation work, cite the read, grep or other result that answers it as evidence with an explanation. ${describe(results)}`,
+    )
+  }
+  const matching = results.filter(
+    (entry) => entry.callID === claim.callID && (!claim.messageID || entry.messageID === claim.messageID),
+  )
+  // A reused provider callID is still the cited call when exactly one of its matches qualifies.
+  const explicit =
+    matching.length === 1 ? matching[0] : matching.filter(valid).length === 1 ? matching.find(valid) : undefined
+  // A cited result is the model's own claim, so the model must say how it meets the criterion.
+  const explanation = claim.explanation?.trim() ?? ""
+  if (!matching.length)
+    return refuse(
+      `Evidence callID "${claim.callID}" does not match any tool result in this session. Cite a callID from the recent results, or run the verification and cite it. ${describe(results)}`,
+    )
+  if (!explicit)
+    return refuse(
+      `Evidence callID "${claim.callID}" matches ${matching.length} results (messages ${matching.map((entry) => entry.messageID).join(", ")}); supply evidence.messageID to disambiguate. ${describe(results)}`,
+    )
+  if (explicit.abandoned || !explicit.settled)
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) ${explicit.abandoned ? "never finished; its turn ended first" : "has not finished yet"}. Wait for a settled result or run the check again. ${describe(results)}`,
+    )
+  if (!explicit.successful)
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) is a failed result${explicit.error ? ` (${explicit.error.slice(0, 200)})` : ""}. A failed check proves nothing: fix the cause, run the check again, and cite the passing result. ${describe(results)}`,
+    )
+  if (explicit.kind === "bookkeeping")
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) is task bookkeeping, not a result of the work. ${describe(results)}`,
+    )
+  if (explicit.completed < input.source.created)
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) completed at ${iso(explicit.completed)}, before ${when}. Run the verification again and cite the new result. ${describe(results, 1)}`,
+    )
+  if (explicit.kind === "edit")
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) is the edit itself, which shows a change was made but not that it works. Run a check after the last edit (tests, build, a command that exercises it, design_preview) and cite that result. ${describe(results)}`,
+    )
+  if (!explanation)
+    return refuse(
+      `Evidence callID "${claim.callID}" (${explicit.tool}) needs an explanation of how it meets the criterion. Resend the completion with evidence.explanation.`,
+    )
+  return accept(explicit, explanation)
 }
 
 function predates(proof: SessionTaskFacts.Result, edit: SessionTaskFacts.Result) {
   const files = edit.paths.length ? `, ${edit.paths.join(", ")}` : ""
   const when = edit.settled ? iso(edit.completed) : "still running"
-  return `Evidence callID "${proof.callID}" (${proof.tool}, ${iso(proof.completed)}) predates a later edit ${edit.callID} (${edit.tool}${files}, ${when}). Re-run the verification after the last edit, then complete the task; omitted evidence selects the newest successful result.`
+  return `Evidence callID "${proof.callID}" (${proof.tool}, ${iso(proof.completed)}) predates a later edit ${edit.callID} (${edit.tool}${files}, ${when}). Re-run the verification after the last edit, then complete the task citing the new result.`
 }
 
-function describe(results: ReadonlyArray<SessionTaskFacts.Result>, limit = 3) {
+function describe(results: ReadonlyArray<SessionTaskFacts.Result>, limit = 5) {
   const recent = results
     .filter((entry) => entry.kind !== "bookkeeping")
     .toSorted((a, b) => b.completed - a.completed)
     .slice(0, limit)
   if (!recent.length) return "Recent results: none."
   const state = (entry: SessionTaskFacts.Result) =>
-    entry.successful ? "succeeded" : entry.settled ? "failed" : "unsettled"
+    entry.abandoned ? "abandoned" : entry.successful ? "succeeded" : entry.settled ? "failed" : "unsettled"
   return `Recent results (newest first): ${recent
     .map(
       (entry) =>
-        `${entry.callID} (${entry.tool}, message ${entry.messageID}, ${state(entry)} at ${iso(entry.completed)})`,
+        `${entry.callID} (${entry.tool}, ${entry.kind}, message ${entry.messageID}, ${state(entry)} at ${iso(entry.completed)})`,
     )
     .join("; ")}.`
 }
 
-/** Consecutive todowrite failures in this turn that tried to complete the task, back to the last successful todowrite. */
+/**
+ * Evidence refusals already issued in this turn for completing this task, back to the last
+ * successful todowrite. Only the engine's own refusals count: a malformed call, a stale revision or
+ * a loop-guard correction is a different problem and neither counts nor resets the run.
+ */
 function failedAttempts(results: ReadonlyArray<SessionTaskFacts.Result>, task: SessionTodo.Info, since: number) {
   const targets = (input: unknown) => {
     const todos = typeof input === "object" && input !== null ? (input as { todos?: unknown }).todos : undefined
@@ -477,10 +519,18 @@ function failedAttempts(results: ReadonlyArray<SessionTaskFacts.Result>, task: S
     )
   }
   const attempts = results
-    .filter((entry) => entry.tool === "todowrite" && entry.settled && entry.completed >= since)
+    .filter((entry) => entry.tool === "todowrite" && entry.settled && !entry.abandoned && entry.completed >= since)
     .toSorted((a, b) => b.completed - a.completed)
   const success = attempts.findIndex((entry) => !entry.errored)
-  return attempts.slice(0, success === -1 ? attempts.length : success).filter((entry) => targets(entry.input)).length
+  return attempts
+    .slice(0, success === -1 ? attempts.length : success)
+    .filter((entry) => refusal(entry.error) && targets(entry.input)).length
+}
+
+/** An engine refusal, possibly wrapped by the runtime's error formatting, but never a guard's quote of one. */
+const refusal = (error: string) => {
+  const at = error.indexOf(REFUSED)
+  return at !== -1 && !error.slice(0, at).includes("This is call ")
 }
 
 const iso = (millis: number) => new Date(millis).toISOString()

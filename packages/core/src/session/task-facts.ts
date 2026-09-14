@@ -24,6 +24,14 @@ export type Result = {
   /** Files an edit touched, when the input names them; empty means unknown, which matches every proof. */
   paths: string[]
   settled: boolean
+  /**
+   * Left pending or running in an assistant message that has since closed — a crashed or aborted
+   * turn. Such a part is reported settled and errored: it neither proves nor invalidates anything,
+   * and it is not "still running".
+   */
+  abandoned: boolean
+  /** The failure text of an errored result; empty otherwise. */
+  error: string
   input: unknown
   summary: string
 }
@@ -31,19 +39,38 @@ export const hash = (value: unknown) =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "null")
     .digest("hex")
-const edits = new Set(["write", "edit", "apply_patch", "multiedit"])
-const verifications = new Set(["bash", "shell"])
+const edits = new Set(["write", "edit", "apply_patch", "multiedit", "design_edit", "design_generate", "design_asset"])
+/**
+ * Results that check work rather than change it: shell commands (successful only on exit 0) and the
+ * design tools that render or export the current revision. Only these are ever selected as evidence
+ * on the model's behalf, and they never invalidate earlier evidence.
+ */
+const verifications = new Set(["bash", "shell", "design_preview", "design_export"])
 const bookkeeping = new Set(["todowrite", "todoread", "plan_exit", "goal_status", "goal_complete"])
 export const kind = (tool: string): Kind =>
   edits.has(tool) ? "edit" : verifications.has(tool) ? "verification" : bookkeeping.has(tool) ? "bookkeeping" : "other"
 
-/** Whether an edit's files overlap a proof's files; a side without paths is treated as touching everything. */
+/**
+ * Whether an edit's files overlap a proof's files; a side without paths is treated as touching
+ * everything, and a directory (a grep or glob root) overlaps the files beneath it.
+ */
 export const overlaps = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
-  !a.length || !b.length || a.some((x) => b.some((y) => x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`)))
+  !a.length ||
+  !b.length ||
+  a.some((x) =>
+    b.some(
+      (y) =>
+        x === y ||
+        x.endsWith(`/${y}`) ||
+        y.endsWith(`/${x}`) ||
+        x.startsWith(`${y.replace(/\/+$/, "")}/`) ||
+        y.startsWith(`${x.replace(/\/+$/, "")}/`),
+    ),
+  )
 
-/** Files named by an edit tool's input: explicit path fields, or the file headers of a patch. */
+/** Files named by a tool's input: explicit path fields, or the file headers of a patch. */
 export function paths(tool: string, input: unknown): string[] {
-  if (!edits.has(tool) || typeof input !== "object" || input === null) return []
+  if (verifications.has(tool) || bookkeeping.has(tool) || typeof input !== "object" || input === null) return []
   const record = input as Record<string, unknown>
   const named = ["filePath", "path", "file_path"].flatMap((key) =>
     typeof record[key] === "string" && record[key] ? [record[key] as string] : [],
@@ -77,8 +104,12 @@ const make = Effect.gen(function* () {
     const results: Result[] = messages.flatMap((message) =>
       message.type === "assistant"
         ? message.content.flatMap((part) => {
+            const closed =
+              message.time.completed !== undefined || message.finish !== undefined || message.error !== undefined
             if (part.type !== "tool") return []
             const input = part.state.status === "pending" ? undefined : part.state.input
+            const settled = part.state.status === "completed" || part.state.status === "error"
+            const abandoned = !settled && closed
             return [
               {
                 callID: part.id,
@@ -87,10 +118,12 @@ const make = Effect.gen(function* () {
                 hash: hash(part.state),
                 completed: DateTime.toEpochMillis(part.time.completed ?? part.time.ran ?? part.time.created),
                 successful: part.state.status === "completed" && success(part.name, part.state.structured),
-                errored: part.state.status === "error",
+                errored: part.state.status === "error" || abandoned,
                 kind: kind(part.name),
                 paths: paths(part.name, input),
-                settled: part.state.status === "completed" || part.state.status === "error",
+                settled: settled || abandoned,
+                abandoned,
+                error: part.state.status === "error" ? text(part.state.error) : "",
                 input,
                 summary: JSON.stringify({
                   input: part.state.input,
@@ -120,7 +153,14 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)).map((row) =>
       Schema.decodeUnknownSync(SessionV1.Part)({ ...row.data, id: row.id, sessionID, messageID: row.message_id }),
     )
-    const assistants = new Set(legacy.filter((row) => row.data.role === "assistant").map((row) => row.id))
+    const assistants = new Map(
+      legacy.flatMap((row) => {
+        if (row.data.role !== "assistant") return []
+        const data = row.data as { time: { completed?: number }; error?: unknown }
+        // A closed assistant message is not running anything any more.
+        return [[row.id, data.time.completed !== undefined || data.error !== undefined] as const]
+      }),
+    )
     return {
       requests: legacy.flatMap((row) => {
         if (row.data.role !== "user") return []
@@ -133,6 +173,8 @@ const make = Effect.gen(function* () {
       }),
       results: parts.flatMap((part): Result[] => {
         if (part.type !== "tool" || !assistants.has(part.messageID)) return []
+        const settled = part.state.status === "completed" || part.state.status === "error"
+        const abandoned = !settled && assistants.get(part.messageID) === true
         return [
           {
             callID: part.callID,
@@ -155,10 +197,12 @@ const make = Effect.gen(function* () {
                   ? part.state.time.end
                   : part.state.time.start,
             successful: part.state.status === "completed" && success(part.tool, part.state.metadata),
-            errored: part.state.status === "error",
+            errored: part.state.status === "error" || abandoned,
             kind: kind(part.tool),
             paths: paths(part.tool, part.state.input),
-            settled: part.state.status === "completed" || part.state.status === "error",
+            settled: settled || abandoned,
+            abandoned,
+            error: part.state.status === "error" ? text(part.state.error) : "",
             input: part.state.input,
             summary: JSON.stringify({
               input: part.state.input,
@@ -192,6 +236,13 @@ const make = Effect.gen(function* () {
   })
   return { load, available }
 })
+
+function text(error: unknown) {
+  if (typeof error === "string") return error
+  if (typeof error === "object" && error !== null && typeof (error as { message?: unknown }).message === "string")
+    return (error as { message: string }).message
+  return ""
+}
 
 function success(tool: string, data: Record<string, unknown>) {
   if (bookkeeping.has(tool) || data.error || data.isError || data.timeout) return false
