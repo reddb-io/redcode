@@ -52,6 +52,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     creating: false,
     design: undefined as Design.Info | undefined,
     revision: "",
+    /** A revision the reader picked whose load is still queued behind another task, such as a poll. */
+    choice: "",
     failedPreview: "",
     revisionInfo: undefined as Design.Revision | undefined,
     audits: [] as Design.Job[],
@@ -295,13 +297,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       .forEach((button) => {
         button.disabled ||= !!state.failedPreview
       })
-    // Overflow entries stand in for the icon buttons they delegate to, so they follow the same state.
+    syncMenu()
+  }
+  // Overflow entries stand in for the icon buttons they delegate to, so they follow the same state.
+  const syncMenu = () =>
     root.querySelectorAll<HTMLButtonElement>("#menu [data-for]").forEach((item) => {
       const target = element<HTMLButtonElement>(item.dataset.for!)
       item.disabled = target.disabled
       item.hidden = target.hidden || (target.closest<HTMLElement>("#studio")?.hidden ?? false)
     })
-  }
   const selectVariant = (id: string) => {
     if (state.working || state.failedPreview) return
     state.variant = id
@@ -1032,6 +1036,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     // nothing is in flight; while browsing history the button offers it instead.
     const live =
       !initial &&
+      !state.choice &&
       onLatest &&
       current.revision !== state.revision &&
       !state.pending &&
@@ -1041,7 +1046,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       await chooseRevision(current.revision, live)
       if (live) status(copy.published, "published", "success")
     }
-    input("revisions").value = state.failedPreview || state.revision
+    // Rebuilding the options must not undo a pick that is still waiting for this refresh to finish.
+    input("revisions").value = state.choice || state.failedPreview || state.revision
     element("newer").hidden = current.revision === state.revision
     element("restore").hidden = element("newer").hidden
     drawSources(revisions.find((revision) => revision.id === state.revision))
@@ -1148,11 +1154,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (revision) await chooseRevision(revision)
     status(copy.refreshed, "refreshed", "success")
   })
-  click("new", async () => {
-    state.creating = true
-    save()
-    showStudio(false)
-  })
+  element("new").onclick = () =>
+    void run(async () => {
+      state.creating = true
+      save()
+      showStudio(false)
+    }, element("new")).then(() => {
+      // Controls stay disabled until the task settles, so focus moves into the brief afterwards.
+      if (state.creating && !element("intake").hidden) input("name").focus()
+    })
   element<HTMLFormElement>("create").onsubmit = (event) => {
     event.preventDefault()
     void run(async () => {
@@ -1187,8 +1197,23 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       await refresh(created.id)
     })
   }
-  element("designs").onchange = () => void run(() => refresh(input("designs").value as Design.ID))
-  element("revisions").onchange = () => void run(() => chooseRevision(input("revisions").value))
+  // Both pickers read their value when it changes: a queued task that read it later would see the
+  // value a refresh in flight restored instead of the reader's choice.
+  element("designs").onchange = () => {
+    const id = input("designs").value as Design.ID
+    void run(() => refresh(id))
+  }
+  element("revisions").onchange = () => {
+    const id = input("revisions").value
+    state.choice = id
+    void run(async () => {
+      try {
+        await chooseRevision(id)
+      } finally {
+        if (state.choice === id) state.choice = ""
+      }
+    })
+  }
   element("width").onchange = () => {
     for (const id of ["preview", "peer-preview"])
       element(id).style.width = input("width").value === "100%" ? "100%" : `${input("width").value}px`
@@ -1738,6 +1763,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (refocus) more.focus()
   }
   const openMenu = (last = false) => {
+    syncMenu()
     menu.hidden = false
     more.setAttribute("aria-expanded", "true")
     const items = menuItems()
@@ -1747,6 +1773,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   more.addEventListener("keydown", (event) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
     event.preventDefault()
+    // The menu host would otherwise treat the same key as a move within the menu it just opened.
+    event.stopPropagation()
     openMenu(event.key === "ArrowUp")
   })
   element("menu-host").addEventListener("keydown", (event) => {
@@ -1774,7 +1802,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   menu.addEventListener("click", (event) => {
     const item = (event.target as HTMLElement).closest("button")
     if (!item || item.disabled) return
-    closeMenu(true)
+    // Create design opens the brief and takes focus there; the other entries hand it back.
+    closeMenu(item.id !== "new")
     if (item.dataset.for) element(item.dataset.for).click()
   })
   const outside = (event: Event) => {
