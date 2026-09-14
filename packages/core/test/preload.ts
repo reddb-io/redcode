@@ -35,6 +35,7 @@ process.env.REDCODE_DISABLE_MODELS_FETCH = "true"
 process.env.NPM_CONFIG_AUDIT = "false"
 // No suite may launch the developer's browser for a Design review; launcher tests inject fakes.
 process.env.REDCODE_DESIGN_NO_OPEN = "1"
+process.env.REDCODE_NO_BROWSER = "1"
 
 // A key left in the runner's environment changes which providers exist, which is not something a
 // unit suite should be able to notice.

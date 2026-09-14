@@ -9,6 +9,8 @@ export function createSessionDesignMount(input: {
   load: () => Promise<{ mountReview: typeof mountReview }>
   options: () => Omit<ReviewOptions, "copy"> | undefined
   translate: (key: `session.design.studio.${keyof ReviewCopy}`) => string
+  /** Holds the open panel as a connected review page until the signal aborts (the panel unmounts). */
+  presence?: (options: Omit<ReviewOptions, "copy">, signal: AbortSignal) => void
 }) {
   const [studio] = createResource(input.load)
   const keys = Object.keys(reviewCopy) as (keyof ReviewCopy)[]
@@ -27,6 +29,9 @@ export function createSessionDesignMount(input: {
     // The session page sends typed letters to the prompt, so the review's shortcuts stay scoped to it.
     const mounted = module.mountReview(host, { ...options, shortcuts: "scoped", copy: untrack(copy), appearance })
     onCleanup(mounted)
+    const presence = new AbortController()
+    onCleanup(() => presence.abort())
+    input.presence?.(options, presence.signal)
     createEffect(() => mounted.updateCopy(copy()))
   })
 }

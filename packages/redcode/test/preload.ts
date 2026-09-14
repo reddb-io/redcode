@@ -55,6 +55,8 @@ process.env["REDCODE_EXPERIMENTAL_WORKSPACES"] = "true"
 // A published Design revision would launch the developer's browser (one tab per test). Suites that
 // exercise the launcher inject fake spawn and load functions instead.
 process.env["REDCODE_DESIGN_NO_OPEN"] = "1"
+// Nor may MCP OAuth, account login or a plugin's OAuth flow.
+process.env["REDCODE_NO_BROWSER"] = "1"
 
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills

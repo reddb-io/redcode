@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Effect } from "effect"
+import { NoBrowser } from "../util/no-browser"
 
 export type Opener = (target: string, options?: { app: { name: string } }) => Promise<ChildProcess>
 export type Spawner = (
@@ -94,22 +95,25 @@ const watch = (child: ChildProcess, grace: number, running: "opened" | "failed")
     })
   })
 
+/** Variables that forbid a Design review launch; every test preload sets them. */
+export const DISABLE = [NoBrowser.VARIABLE, "REDCODE_DESIGN_NO_OPEN"] as const
+
+/** The variable forbidding a Design review launch, or undefined when a browser may open. */
+export const disabledBy = (env: Record<string, string | undefined> = process.env) => NoBrowser.blockedBy(DISABLE, env)
+
 /**
- * True when a real launch must not happen: under a test runner (`bun test` sets NODE_ENV, every test
- * preload sets REDCODE_TEST_HOME) or with REDCODE_DESIGN_NO_OPEN. Only a test that injects its own
- * `spawn` gets past it, and that test's `load` supplies its own `open`.
+ * The variable that refuses this launch. A test that injects its own `spawn` (and a `load` supplying
+ * its own `open`) is exercising the launcher, so it is not refused.
  */
 export const refused = (options: Pick<Options, "spawn">, env: Record<string, string | undefined> = process.env) =>
-  options.spawn === undefined &&
-  (env.NODE_ENV === "test" || env.REDCODE_TEST_HOME !== undefined || !!env.REDCODE_DESIGN_NO_OPEN)
+  options.spawn === undefined ? disabledBy(env) : undefined
 
 /** Opens a Design review URL, preferring Chrome or Chromium. Never fails; reports whether and how it opened. */
 export const open = (url: string, options: Options) =>
   Effect.gen(function* () {
-    if (refused(options)) {
-      yield* Effect.logDebug(
-        "design review browser refused: no browser is launched under test or REDCODE_DESIGN_NO_OPEN",
-      )
+    const refusal = refused(options)
+    if (refusal) {
+      yield* Effect.logInfo(`design review browser not launched: ${refusal} is set`, { url, variable: refusal })
       return { opened: false, tried: [] } satisfies Result
     }
     const platform = options.platform ?? process.platform

@@ -14,6 +14,7 @@ import { Effect, Schema, Option } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
+import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
 import { DesignSystem } from "@reddb-io/redcode-core/design/system"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
@@ -253,17 +254,26 @@ export const DesignTools = Effect.gen(function* () {
               tooling,
             )
             const url = new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
-            // One tab per review: a connected page live-reloads the revision, and a burst of publishes
-            // or a page still loading cannot claim a second launch.
-            const launched =
-              !process.env.REDCODE_DESIGN_NO_OPEN &&
-              DesignReviewPresence.shared.claim(ctx.sessionID, { explicit: "path" in input && input.reopen === true })
-            if (launched) yield* Effect.forkDetach(DesignBrowser.open(url))
-            const page = launched
-              ? "Opening the review page in the browser."
-              : DesignReviewPresence.shared.connected(ctx.sessionID) > 0
-                ? "The open review page loads this revision automatically; no new tab was opened."
-                : "No browser tab was opened; give the user the review link if they need it."
+            // One tab per review, claimed through the presence the review feeds, the TUI command and
+            // `redcode design` share: a connected page live-reloads the revision, a burst of publishes or
+            // a page still loading cannot claim a second launch, and a failed launch gives its claim back.
+            const disabled = DesignBrowserLauncher.disabledBy()
+            const outcome = disabled
+              ? "disabled"
+              : yield* DesignReviewPresence.launch({
+                  sessionID: ctx.sessionID,
+                  explicit: "path" in input && input.reopen === true,
+                  open: DesignBrowser.open(url),
+                })
+            const page = {
+              claimed:
+                "A browser tab was requested for the review page (not yet confirmed open; a failed launch is retried on the next publish).",
+              connected:
+                "A review page is already connected and loads this revision automatically; no new tab was requested.",
+              pending:
+                "A review tab was already requested and no page has connected since; no new tab was requested. Give the user the review link if they cannot find it.",
+              disabled: `Browser launch is disabled by ${disabled}; no tab was requested. Give the user the review link.`,
+            }[outcome]
             return result(
               `Published ${revision.id}. Review: ${url}\n${page} Replies appear in the review page and in this TUI.${
                 document.system?.tailwind && !tooling

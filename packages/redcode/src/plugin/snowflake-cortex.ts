@@ -4,6 +4,7 @@ import { InstallationVersion } from "@reddb-io/redcode-core/installation/version
 import { OauthCallbackPage } from "@reddb-io/redcode-core/oauth/page"
 import { createServer } from "http"
 import open from "open"
+import { NoBrowser } from "@reddb-io/redcode-core/util/no-browser"
 
 const OAUTH_CLIENT_ID = "LOCAL_APPLICATION"
 const OAUTH_CALLBACK_HOST = "127.0.0.1"
@@ -470,7 +471,8 @@ export async function SnowflakeCortexAuthPlugin(_input: PluginInput): Promise<Ho
             const role = (inputs.role || "").trim() || undefined
             const url = buildAuthorizeUrl(account, role, state, pkce)
             const callbackPromise = waitForOAuthCallback(account, pkce, state)
-            await open(url).catch(() => undefined)
+            // The returned URL lets a refused launch still complete by hand.
+            if (!NoBrowser.blockedBy()) await open(url).catch(() => undefined)
 
             return {
               url,

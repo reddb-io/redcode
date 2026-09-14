@@ -66,11 +66,12 @@ function fixture(
 const run = (options: DesignBrowser.Options) => Effect.runPromise(DesignBrowser.open(url, options))
 
 describe("DesignBrowser.open", () => {
-  test("the test preload forbids real Design browser launches", () => {
+  test("the test preload forbids real browser launches", () => {
     expect(process.env.REDCODE_DESIGN_NO_OPEN).toBe("1")
+    expect(process.env.REDCODE_NO_BROWSER).toBe("1")
   })
 
-  test("refuses a launch without an injected spawn under test, before loading open", async () => {
+  test("refuses a launch without an injected spawn while a no-browser variable is set, before loading open", async () => {
     const loaded: string[] = []
     const load = async () => {
       loaded.push("open")
@@ -80,11 +81,13 @@ describe("DesignBrowser.open", () => {
     expect(await run({ platform: "win32", env: {}, load })).toBe(false)
     expect(await Effect.runPromise(DesignBrowser.open(url))).toBe(false)
     expect(loaded).toEqual([])
-    expect(DesignBrowserLauncher.refused({}, { NODE_ENV: "test" })).toBe(true)
-    expect(DesignBrowserLauncher.refused({}, { REDCODE_TEST_HOME: "/tmp/home" })).toBe(true)
-    expect(DesignBrowserLauncher.refused({}, { REDCODE_DESIGN_NO_OPEN: "1" })).toBe(true)
-    expect(DesignBrowserLauncher.refused({}, {})).toBe(false)
-    expect(DesignBrowserLauncher.refused({ spawn: () => child(0) }, { NODE_ENV: "test" })).toBe(false)
+    expect(DesignBrowserLauncher.refused({}, { REDCODE_DESIGN_NO_OPEN: "1" })).toBe("REDCODE_DESIGN_NO_OPEN")
+    expect(DesignBrowserLauncher.refused({}, { REDCODE_NO_BROWSER: "1", REDCODE_DESIGN_NO_OPEN: "1" })).toBe(
+      "REDCODE_NO_BROWSER",
+    )
+    // A shell's NODE_ENV=test is not a reason to refuse a user's launch.
+    expect(DesignBrowserLauncher.refused({}, { NODE_ENV: "test", REDCODE_TEST_HOME: "/tmp/home" })).toBeUndefined()
+    expect(DesignBrowserLauncher.refused({ spawn: () => child(0) }, { REDCODE_NO_BROWSER: "1" })).toBeUndefined()
   })
 
   test("REDCODE_DESIGN_BROWSER=default uses the system browser", async () => {

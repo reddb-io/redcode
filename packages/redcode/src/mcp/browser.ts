@@ -1,5 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
+import { NoBrowser } from "@reddb-io/redcode-core/util/no-browser"
 import open from "open"
 
 export interface Interface {
@@ -12,6 +13,12 @@ const layer = Layer.succeed(
   Service,
   Service.of({
     open: Effect.fn("McpBrowser.open")(function* (url: string) {
+      // A failure publishes BrowserOpenFailed, so the user still gets the authorization URL.
+      const blocked = NoBrowser.blockedBy()
+      if (blocked) {
+        yield* Effect.logInfo(`MCP OAuth browser not launched: ${blocked} is set`, { url, variable: blocked })
+        return yield* Effect.fail(new Error(`Browser launch disabled by ${blocked}`))
+      }
       const subprocess = yield* Effect.tryPromise({
         try: () => open(url),
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
