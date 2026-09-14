@@ -1713,6 +1713,7 @@ export type PermissionConfig =
       bash?: PermissionRuleConfig
       task?: PermissionRuleConfig
       external_directory?: PermissionRuleConfig
+      project_tooling?: PermissionRuleConfig
       todowrite?: PermissionActionConfig
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
@@ -2076,6 +2077,7 @@ export type Config = {
     preserve_recent_tokens?: number
     reserved?: number
   }
+  design?: ConfigV2Design
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -4052,6 +4054,23 @@ export type ConfigV2ReferenceLocal = {
   hidden?: boolean
 }
 
+export type ConfigV2DesignSystem = {
+  /**
+   * Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and stylesheets, the tooling configuration and the project's node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused, and a package linked to a source tree outside node_modules (a workspace package) must be declared here; "." grants the whole project.
+   */
+  paths: Array<string>
+  css?: Array<string>
+  tailwind?: boolean
+  framework?: "react" | "solid"
+  aliases?: {
+    [key: string]: string
+  }
+}
+
+export type ConfigV2Design = {
+  system?: ConfigV2DesignSystem
+}
+
 export type PolicyEffect = "allow" | "deny"
 
 export type ConfigV2ExperimentalPolicy = {
@@ -5182,6 +5201,16 @@ export type DesignScenario = {
   notApplicable?: string
 }
 
+export type DesignSystem = {
+  paths: Array<string>
+  css: Array<string>
+  tailwind: boolean
+  framework?: "react" | "solid"
+  aliases?: {
+    [key: string]: string
+  }
+}
+
 export type DesignComponent = {
   root: string
   file: string
@@ -5206,6 +5235,7 @@ export type DesignInfo = {
   questions: Array<string>
   scenarios: Array<DesignScenario>
   designSystem: string
+  system?: DesignSystem
   sources: Array<{
     file: string
     hash: string
