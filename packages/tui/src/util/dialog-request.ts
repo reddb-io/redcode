@@ -1,7 +1,13 @@
-/** How long a blocking dialog waits for the server before it gives up on a reply or reject. */
+import { isRecord } from "./record"
+
+/** How long a blocking dialog waits for the local server before it re-checks the request. */
 export const DIALOG_REQUEST_TIMEOUT = 10_000
+/** A remote server sits behind a network, so it gets longer before it is called slow. */
+export const REMOTE_DIALOG_REQUEST_TIMEOUT = 30_000
 /** Same window the prompt uses for a repeated interrupt press. */
 export const EXIT_PRESS_WINDOW = 5_000
+/** The in-process worker transport the TUI uses when no external server was requested. */
+const LOCAL_WORKER_URL = "http://opencode.internal"
 
 export class DialogTimeoutError extends Error {
   constructor() {
@@ -10,10 +16,14 @@ export class DialogTimeoutError extends Error {
   }
 }
 
+export function dialogTimeout(url: string) {
+  return url === LOCAL_WORKER_URL ? DIALOG_REQUEST_TIMEOUT : REMOTE_DIALOG_REQUEST_TIMEOUT
+}
+
 /**
  * Run a dialog's reply or reject with a deadline. The signal aborts the request, and the race settles
  * the promise even when a transport ignores the signal, so a busy or hung server cannot keep a
- * blocking dialog on screen.
+ * blocking dialog's keys waiting forever.
  */
 export function dialogRequest<T>(run: (signal: AbortSignal) => Promise<T>, timeout = DIALOG_REQUEST_TIMEOUT) {
   const controller = new AbortController()
@@ -27,15 +37,59 @@ export function dialogRequest<T>(run: (signal: AbortSignal) => Promise<T>, timeo
   return Promise.race([run(controller.signal), expired]).finally(() => clearTimeout(timer))
 }
 
-let lastExitPress = 0
+const NOT_FOUND = new Set(["QuestionNotFoundError", "PermissionNotFoundError"])
+
+function tagged(value: unknown) {
+  return isRecord(value) && (NOT_FOUND.has(String(value._tag)) || NOT_FOUND.has(String(value.name)))
+}
 
 /**
- * Blocking dialogs rebind the exit key to dismiss themselves. A second press inside the window must
- * still leave the app, whatever the first press is waiting on. Shared across dialogs so a press that
- * closed one stage counts toward the next.
+ * Only the server saying the request does not exist makes a dialog stale; other errors may be retried.
+ * With throwOnError the SDK wraps the body in an Error whose cause carries `{ body, status }`.
  */
-export function repeatedExitPress(now = Date.now()) {
-  const repeated = lastExitPress > 0 && now - lastExitPress <= EXIT_PRESS_WINDOW
-  lastExitPress = repeated ? 0 : now
-  return repeated
+export function isNotFound(error: unknown) {
+  const cause = error instanceof Error && isRecord(error.cause) ? error.cause : undefined
+  if (cause) return cause.status === 404 || tagged(cause.body)
+  return tagged(error)
+}
+
+/**
+ * - `gone`: the server no longer has the request, so the dialog is stale.
+ * - `slow-gone`: timed out, and the request is no longer pending. The answer may still have been applied.
+ * - `slow-pending`: timed out, and the request is still pending. Keep waiting.
+ * - `unreachable`: timed out, and the server did not answer the check either.
+ * - `failed`: any other error. The request is still there to retry.
+ */
+export type DialogFailure = "gone" | "slow-gone" | "slow-pending" | "unreachable" | "failed"
+
+export async function classifyDialogFailure(
+  error: unknown,
+  stillPending: () => Promise<boolean>,
+): Promise<DialogFailure> {
+  if (isNotFound(error)) return "gone"
+  if (!(error instanceof DialogTimeoutError)) return "failed"
+  const pending = await stillPending().catch(() => undefined)
+  if (pending === undefined) return "unreachable"
+  return pending ? "slow-pending" : "slow-gone"
+}
+
+/**
+ * Blocking dialogs rebind the exit key to dismiss themselves. A second press on the same dialog, for
+ * the same request and stage, inside the window still leaves the app, whatever the first press is
+ * waiting on. A press on a different request or stage starts over, so dismissing one dialog never
+ * arms an exit on the next.
+ */
+export function createExitPresses(window = EXIT_PRESS_WINDOW) {
+  let last: { key: string; at: number } | undefined
+  return {
+    press(key: string, now = Date.now()) {
+      const diff = last?.key === key ? now - last.at : -1
+      const repeated = 0 <= diff && diff <= window
+      last = repeated ? undefined : { key, at: now }
+      return repeated
+    },
+    reset() {
+      last = undefined
+    },
+  }
 }

@@ -11,9 +11,26 @@ import { SplitBorder } from "../../ui/border"
 import { useTuiConfig } from "../../config"
 import { useBindings, useOpencodeModeStack } from "../../keymap"
 import { useExit } from "../../context/exit"
-import { DialogTimeoutError, dialogRequest, repeatedExitPress } from "../../util/dialog-request"
+import {
+  classifyDialogFailure,
+  createExitPresses,
+  dialogRequest,
+  dialogTimeout,
+  type DialogFailure,
+} from "../../util/dialog-request"
 
 const QUESTION_MODE = "question"
+
+const FAILURE: Record<DialogFailure, string> = {
+  gone: "This question is no longer active — the request was interrupted. You can continue typing.",
+  "slow-gone":
+    "The server was slow and this question is no longer pending. Your answer may still be applied; check the session before asking again.",
+  "slow-pending":
+    "The server is slow and has not taken your answer yet. Still waiting: press Enter to retry or Esc to dismiss.",
+  unreachable:
+    "The server is not responding. Your answer may still be applied. Press Esc to dismiss, or Ctrl+C twice to exit.",
+  failed: "Sending your answer failed. Try again, or press Esc to dismiss.",
+}
 
 export function QuestionPrompt(props: { request: QuestionRequest; directory?: string; timeout?: number }) {
   const sdk = useSDK()
@@ -54,19 +71,23 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
-  // A failed reply/reject (e.g. the asking tool was interrupted server-side) must never
-  // leave this dialog unresponsive: surface why and drop the stale request. The SDK resolves
-  // HTTP errors as `{ error }` unless asked to throw, so every call below passes throwOnError.
-  function fail(error: unknown) {
-    sync.removeQuestion(props.request.sessionID, props.request.id)
-    toast.show({
-      variant: "error",
-      message:
-        error instanceof DialogTimeoutError
-          ? "The server did not respond; the question was dismissed. Ask the agent again to retry (for a plan, ask Plan to request approval again)."
-          : "This question is no longer active — the request was interrupted. You can continue typing.",
-    })
+  const presses = createExitPresses()
+  onCleanup(presses.reset)
+  const timeout = () => props.timeout ?? dialogTimeout(sdk.url)
+
+  // A failed or slow reply/reject must never leave this dialog unresponsive, and must not drop a request
+  // the server may still apply: only a request the server no longer has closes the dialog.
+  async function fail(error: unknown) {
+    const request = props.request
     console.error("question reply/reject failed", error)
+    const outcome = await classifyDialogFailure(error, () =>
+      dialogRequest(
+        (signal) => sdk.client.question.list({ directory: props.directory }, { throwOnError: true, signal }),
+        timeout(),
+      ).then((result) => (result.data ?? []).some((item) => item.id === request.id)),
+    )
+    if (outcome === "gone" || outcome === "slow-gone") sync.removeQuestion(request.sessionID, request.id)
+    toast.show({ variant: "error", message: FAILURE[outcome] })
   }
 
   function submit() {
@@ -81,7 +102,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           },
           { throwOnError: true, signal },
         ),
-      props.timeout,
+      timeout(),
     ).catch(fail)
   }
 
@@ -95,7 +116,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           },
           { throwOnError: true, signal },
         ),
-      props.timeout,
+      timeout(),
     ).catch(fail)
   }
 
@@ -119,7 +140,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
             },
             { throwOnError: true, signal },
           ),
-        props.timeout,
+        timeout(),
       ).catch(fail)
       return
     }
@@ -265,7 +286,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           title: "Reject question",
           category: "Question",
           run() {
-            if (repeatedExitPress()) return exit()
+            if (presses.press(props.request.id)) return exit()
             reject()
           },
         },

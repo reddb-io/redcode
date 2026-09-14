@@ -73,8 +73,6 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   // One global override rather than a knob per tool: the failure this guards against is a tool
   // that never returns, and that is not a per-tool judgement.
   const toolTimeout = input.toolTimeout
-  const permissionWaits = new Map<string, number>()
-  const permissionWaitMs = (callID?: string) => permissionWaits.get(callID ?? "") ?? 0
 
   const withOperationHooks = (toolID: string, item: AITool): AITool => {
     const execute = item.execute
@@ -130,6 +128,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             }
             const call = (opts: ToolExecutionOptions) =>
               Effect.promise(() => Promise.resolve(execute(decided.args, opts)))
+            HumanWait.claim(input.session.id, options.toolCallId ?? "")
             const executed = yield* (
               deadline === undefined
                 ? call(options)
@@ -137,7 +136,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     tool: toolID,
                     ms: deadline,
                     abort: options.abortSignal,
-                    waitedMs: () => permissionWaitMs(options.toolCallId) + HumanWait.waited(options.toolCallId ?? ""),
+                    waitedMs: () => HumanWait.waited(input.session.id, options.toolCallId ?? ""),
                     onExpire: input.recordGuard({
                       sessionID: input.session.id,
                       guard: "tool_timeout",
@@ -147,7 +146,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     }),
                   })
             ).pipe(Effect.exit)
-            HumanWait.forget(options.toolCallId ?? "")
+            HumanWait.forget(input.session.id, options.toolCallId ?? "")
             if (Exit.isFailure(executed)) {
               yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
               return yield* Effect.failCause(executed.cause)
@@ -189,7 +188,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
       // deadline rather than counted against it.
       Effect.suspend(() => {
-        const started = Date.now()
+        const waiting = HumanWait.start(input.session.id, options.toolCallId ?? "")
         return permission
           .ask({
             ...req,
@@ -197,15 +196,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             tool: { messageID: input.processor.message.id, callID: options.toolCallId },
             ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
           })
-          .pipe(
-            Effect.ensuring(
-              Effect.sync(() => {
-                const key = options.toolCallId ?? ""
-                permissionWaits.set(key, (permissionWaits.get(key) ?? 0) + (Date.now() - started))
-              }),
-            ),
-            Effect.orDie,
-          )
+          .pipe(Effect.ensuring(Effect.sync(() => waiting())), Effect.orDie)
       }),
   })
 
