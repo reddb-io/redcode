@@ -23,6 +23,9 @@ export function DesignFeedbackNotice(props: { value: unknown }) {
             {record().variant ? ` · ${record().variant}` : ""}
             {record().ended ? " · ended" : ""}
           </text>
+          <Show when={record().operation}>
+            {(operation) => <text fg={theme.theme.text}>Variant operation: {operation()}</text>}
+          </Show>
           <Show when={record().text}>
             <text fg={theme.theme.text}>{record().text}</text>
           </Show>

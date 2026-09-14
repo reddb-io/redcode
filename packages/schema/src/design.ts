@@ -239,7 +239,56 @@ export const FeedbackItem = Schema.Struct({
 }).annotate({ identifier: "Design.FeedbackItem" })
 export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
 
+const VariantID = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{1,64}$/))
+export const VariantOperationKind = Schema.Literals(["delete", "rename", "reorder", "merge", "split"])
+export type VariantOperationKind = typeof VariantOperationKind.Type
+/**
+ * A structural change the reviewer asks the agent to make to the variants of one revision. `variants`
+ * names the ids involved (for merge the first one is kept; for reorder every current id), `labels`
+ * their names as the page showed them, `name` the rename target, `order` the requested id order and
+ * `text` optional guidance for merge or split.
+ */
+export const VariantOperation = Schema.Struct({
+  kind: VariantOperationKind,
+  variants: Schema.Array(VariantID).check(Schema.isMinLength(1), Schema.isMaxLength(20)),
+  labels: Schema.Array(Schema.String.check(Schema.isMaxLength(100)))
+    .check(Schema.isMaxLength(20))
+    .pipe(optional),
+  name: Schema.String.check(Schema.isMaxLength(100)).pipe(optional),
+  order: Schema.Array(VariantID).check(Schema.isMaxLength(20)).pipe(optional),
+  text: Schema.String.check(Schema.isMaxLength(2000)).pipe(optional),
+}).annotate({ identifier: "Design.VariantOperation" })
+export type VariantOperation = typeof VariantOperation.Type
+
+/**
+ * The per-kind rules a decoded operation must also meet. They span several fields, which the
+ * generated clients cannot express, so admission enforces them instead of the schema.
+ */
+export function variantOperationProblem(operation: VariantOperation): string | undefined {
+  const ids = operation.variants
+  if (new Set(ids).size !== ids.length) return "Variant operation ids must be unique"
+  if (operation.labels && operation.labels.length !== ids.length)
+    return "Variant operation labels must match its variants"
+  if (["delete", "rename", "split"].includes(operation.kind) && ids.length !== 1)
+    return `A ${operation.kind} operation names exactly one variant`
+  if (operation.kind === "merge" && ids.length < 2) return "A merge operation names at least two variants"
+  if (operation.kind === "rename" ? !operation.name?.trim() : operation.name !== undefined)
+    return "Only a rename operation carries a name, and it must not be empty"
+  if (operation.kind !== "reorder" && operation.order !== undefined) return "Only a reorder operation carries an order"
+  if (operation.kind === "reorder") {
+    const order = operation.order ?? []
+    if (ids.length < 2 || order.length !== ids.length || new Set(order).size !== order.length)
+      return "A reorder operation lists every current variant once"
+    if (!order.every((id) => ids.includes(id))) return "A reorder operation's order is a permutation of its variants"
+  }
+  if (operation.text !== undefined && operation.kind !== "merge" && operation.kind !== "split")
+    return "Only merge and split operations carry guidance"
+  return undefined
+}
+
 export const Feedback = Schema.Struct({
+  /** A requested change to the variants themselves; the agent carries it out and publishes a revision. */
+  action: VariantOperation.pipe(optional),
   params: ParamContext.pipe(optional),
   id: SessionMessage.ID,
   revision: Schema.String,
@@ -264,6 +313,8 @@ export const FeedbackNotice = Schema.Struct({
   notes: Schema.Array(Schema.Struct({ label: Schema.String, text: Schema.String })),
   attachments: Schema.Array(Schema.String),
   snapshot: Schema.Boolean,
+  /** One line naming a requested variant operation, such as "delete Compact". */
+  operation: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.FeedbackNotice" })
 export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice> {}
 

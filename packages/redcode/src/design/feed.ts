@@ -36,7 +36,7 @@ export function part(
   if (item.type === "text" && role === "user" && !item.synthetic && !item.ignored) {
     const notice = item.metadata?.designFeedback
     const described = isNotice(notice)
-      ? { text: DesignFeed.bound(notice.text, DesignFeed.LIMITS.text), notes: notice.notes.length }
+      ? { text: DesignFeed.reviewText(notice), notes: notice.notes.length }
       : DesignFeed.describe(item.text)
     return [{ ...base, type: "user", id: item.messageID, ...described }]
   }

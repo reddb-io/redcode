@@ -1,5 +1,12 @@
 # V2 Schema Changelog
 
+## 2026-09-14: Request Variant Operations Through Design Feedback
+
+- Add `Design.VariantOperation` (`kind`: `delete` | `rename` | `reorder` | `merge` | `split`; `variants`: 1–20 variant ids; optional `labels`, `name` (rename), `order` (reorder, the full id list) and `text` (merge or split guidance, at most 2 000 characters)) and optional `action` on `Design.Feedback` (`POST /api/session/:sessionID/design/:designID/feedback`). The per-kind rules (one variant for delete, rename and split; two or more for merge; `order` a permutation of `variants` for reorder; `name` only on rename, `text` only on merge and split) span several fields, which the generated clients cannot express, so `Design.variantOperationProblem` enforces them on admission (rejected with the `invalid` design error, which the design routes answer with 409 like other refused feedback) instead of the schema. A review carrying an operation needs no text or notes.
+- Add optional `operation` (one line such as `delete Compact`) to `Design.FeedbackNotice`; the rendered review gains a `## Variant operation` section with the rules the agent follows, and the conversation feed shows `Variant operation: …` for a review without a message.
+- Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`; `packages/sdk/openapi.json` is unchanged because the V1 routes do not carry `Design.Feedback`).
+- Add no migration or durable-event version; frozen feedback rows without `action` render as before.
+
 ## 2026-09-14: Relax The Todo Input Contract For Updates
 
 - `Todo.Input` (the `todowrite` tool input in both runtimes, not carried by any HTTP route) now makes `content` and `priority` optional: they are required to create a task and default to the stored values when `id` and `revision` address an existing one. `evidence` documents that an omitted value on completion selects the newest successful result after the request. Add `Todo.ModelInput`, the decoder the tools use at the model boundary, which folds `text`, `title` and `task` into `content`; the advertised JSON schema stays `Todo.Input`. `Todo.Info`, `Todo.Evidence` and `todo.updated` are unchanged. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`); neither changed because `Todo.Input` is not part of the public HTTP surface.

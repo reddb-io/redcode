@@ -7,6 +7,8 @@ export function annotations() {
     scroll: undefined as ReturnType<typeof setTimeout> | undefined,
     selected: undefined as Element | undefined,
     reveal: undefined as ReturnType<typeof setTimeout> | undefined,
+    /** Variants the host has removed provisionally while the agent publishes the real change. */
+    hidden: new Set<string>(),
   }
   const style = document.createElement("style")
   const marks = document.createElement("style")
@@ -17,8 +19,9 @@ export function annotations() {
     [...document.querySelectorAll<HTMLElement>("[data-design-variant]")]
       .filter((node) => !node.parentElement?.closest("[data-design-variant]"))
       .filter((node) => /^[a-zA-Z0-9_-]{1,64}$/.test(node.dataset.designVariant ?? ""))
+  const visible = () => variants().filter((node) => !state.hidden.has(node.dataset.designVariant!))
   const selectVariant = (id: string) => {
-    if (!variants().some((node) => node.dataset.designVariant === id)) return
+    if (!visible().some((node) => node.dataset.designVariant === id)) return
     state.variant = id
     style.textContent = variants()
       .filter((node) => node.dataset.designVariant !== id)
@@ -26,7 +29,7 @@ export function annotations() {
       .join("\n")
   }
   const announce = () => {
-    const items = variants().map((node) => ({
+    const items = visible().map((node) => ({
       id: node.dataset.designVariant!,
       name: (node.dataset.designLabel || node.dataset.designVariant!).slice(0, 100),
     }))
@@ -83,6 +86,41 @@ export function annotations() {
     if (event.data?.type === "design:variant" && typeof event.data.id === "string") {
       selectVariant(event.data.id)
       requestAnimationFrame(audit)
+    }
+    // Provisional variant operations: the host shows the requested change at once and reloads the
+    // frame when the agent's revision arrives or the request fails.
+    if (event.data?.type === "design:variant-hide" && typeof event.data.id === "string") {
+      // Repeats are ignored so the host can resend the change whenever the frame announces.
+      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(event.data.id) || state.hidden.has(event.data.id)) return
+      state.hidden.add(event.data.id)
+      announce()
+      // The hidden root stays hidden even when it was not the selected one.
+      if (state.variant) selectVariant(state.variant)
+    }
+    if (
+      event.data?.type === "design:variant-label" &&
+      typeof event.data.id === "string" &&
+      typeof event.data.name === "string" &&
+      event.data.name.trim()
+    ) {
+      const node = variants().find((item) => item.dataset.designVariant === event.data.id)
+      const name = event.data.name.trim().slice(0, 100)
+      if (node && node.dataset.designLabel !== name) node.dataset.designLabel = name
+    }
+    if (event.data?.type === "design:variant-order" && Array.isArray(event.data.order)) {
+      const roots = variants()
+      const wanted = event.data.order.flatMap((id: unknown) =>
+        roots.filter((node) => typeof id === "string" && node.dataset.designVariant === id),
+      ) as HTMLElement[]
+      const sorted = [...new Set([...wanted, ...roots])]
+      if (sorted.every((node, index) => node === roots[index])) return
+      // A marker holds each root's slot, so roots under different parents trade places too.
+      const slots = roots.map((node) => {
+        const slot = document.createComment("")
+        node.before(slot)
+        return slot
+      })
+      sorted.forEach((node, index) => slots[index].replaceWith(node))
     }
     if (
       event.data?.type === "design:scroll-set" &&

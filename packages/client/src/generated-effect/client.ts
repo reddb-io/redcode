@@ -452,6 +452,7 @@ type Endpoint4_13Request = Parameters<RawClient["server.design"]["design.feedbac
 type Endpoint4_13Input = {
   readonly sessionID: Endpoint4_13Request["params"]["sessionID"]
   readonly designID: Endpoint4_13Request["params"]["designID"]
+  readonly action?: Endpoint4_13Request["payload"]["action"]
   readonly params?: Endpoint4_13Request["payload"]["params"]
   readonly id: Endpoint4_13Request["payload"]["id"]
   readonly revision: Endpoint4_13Request["payload"]["revision"]
@@ -467,6 +468,7 @@ const Endpoint4_13 = (raw: RawClient["server.design"]) => (input: Endpoint4_13In
   raw["design.feedback"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
+      action: input["action"],
       params: input["params"],
       id: input["id"],
       revision: input["revision"],

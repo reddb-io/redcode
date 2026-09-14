@@ -75,6 +75,65 @@ const annotate = async (page: Page, enabled: boolean) => {
   if ((await toggle.getAttribute("aria-pressed")) !== String(enabled)) await toggle.click()
   expect(await toggle.getAttribute("aria-pressed")).toBe(String(enabled))
 }
+const until = async (check: () => boolean | Promise<boolean>, message: string, timeout = 10000) => {
+  const deadline = Date.now() + timeout
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`Timed out: ${message}`)
+    await Bun.sleep(50)
+  }
+}
+/** A prototype whose top-level sections are variants: [id, label, extra markup]. */
+const sections = (items: [string, string, string?][]) =>
+  `<!doctype html><html lang="en"><body>${items
+    .map(
+      ([id, label, extra]) =>
+        `<section data-design-variant="${id}" data-design-label="${label}"><h1>${label} checkout</h1>${extra ?? ""}</section>`,
+    )
+    .join("")}</body></html>`
+const withVariants = async (items: [string, string, string?][]) => {
+  const current = await published("html")
+  await Bun.write(path.join(current.document.root, current.document.entry), sections(items))
+  const revision = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Variants",
+  })
+  return { ...current, revision }
+}
+/** Publishes what the agent would after carrying out an operation. */
+const republish = async (current: Awaited<ReturnType<typeof withVariants>>, items: [string, string, string?][]) => {
+  await Bun.write(path.join(current.document.root, current.document.entry), sections(items))
+  return api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Agent revision" })
+}
+const tabNames = (page: Page) => page.locator("#variants [role=tab]").allTextContents()
+const frameRoots = (page: Page) =>
+  page
+    .frameLocator("#preview")
+    .locator("[data-design-variant]")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        id: (node as HTMLElement).dataset.designVariant,
+        label: (node as HTMLElement).dataset.designLabel,
+        shown: getComputedStyle(node).display !== "none",
+      })),
+    )
+const variantAction = async (page: Page, name: string) => {
+  await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+  await page.getByRole("menuitem", { name, exact: true }).click()
+}
+/** Records every feedback POST; the optional hook decides how each one is answered. */
+const captureFeedback = async (
+  page: Page,
+  answer?: (route: import("playwright-core").Route, index: number) => Promise<void>,
+) => {
+  const sent: Design.Feedback[] = []
+  await page.route("**/feedback", async (route) => {
+    sent.push(route.request().postDataJSON())
+    if (answer) return answer(route, sent.length - 1)
+    await route.continue()
+  })
+  return sent
+}
+/** Without the conversation feed the page learns of new revisions by polling only. */
+const withoutFeed = (page: Page) => page.route(/\/design\/feed(\?.*)?$/, (route) => route.abort())
 
 beforeAll(async () => {
   await Bun.write(
@@ -1556,6 +1615,487 @@ test("annotate toggle stays in the toolbar and responds to A", async () => {
     await page.close()
   }
 }, 60000)
+test("deleting a variant shows at once, survives a reload and reconciles with the agent's revision", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+    ["dense", "Dense"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const preview = page.frameLocator("#preview")
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    // Approve Compact and reopen: deleting it leaves the approval naming a variant that is gone.
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
+    await page.getByRole("button", { name: "Reopen review" }).click()
+    await page.getByRole("button", { name: "Approve this revision" }).waitFor()
+    const gate = Promise.withResolvers<void>()
+    const sent = await captureFeedback(page, async (route) => {
+      await gate.promise
+      await route.continue()
+    })
+    await variantAction(page, "Delete…")
+    await page.getByRole("heading", { name: "Delete variant?" }).waitFor()
+    expect(await page.locator("#operation-subject").textContent()).toBe("Compact")
+    // A destructive confirmation starts on Cancel.
+    expect(await activeID(page)).toBe("cancel-operation")
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    // The change is on screen before the request settles.
+    await page.locator("#operation-badge", { hasText: "Applying…" }).waitFor()
+    await until(async () => (await tabNames(page)).join() === "Spacious,Dense", "provisional tabs")
+    await preview.getByRole("heading", { name: "Spacious checkout" }).waitFor()
+    await until(
+      async () => (await frameRoots(page)).find((root) => root.id === "compact")?.shown === false,
+      "compact hidden in the frame",
+    )
+    expect(await page.getByRole("tab", { name: "Spacious", exact: true }).getAttribute("aria-selected")).toBe("true")
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({
+      revision: current.revision.id,
+      text: "",
+      items: [],
+      assets: [],
+      delivery: "steer",
+      end: false,
+      action: { kind: "delete", variants: ["compact"], labels: ["Compact"] },
+    })
+    gate.resolve()
+    await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
+    // One operation at a time, and no approval while it is pending.
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    await page.getByRole("menu", { name: "Variant actions" }).waitFor()
+    for (const name of ["Rename…", "Split…", "Delete…", "Move left", "Move right", "Select variants to merge"])
+      expect(await page.getByRole("menuitem", { name, exact: true }).isDisabled()).toBe(true)
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu", { name: "Variant actions" }).waitFor({ state: "hidden" })
+    expect(await activeID(page)).toBe("variant-actions")
+    // The agent reads the operation in its own section.
+    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(
+      `/api/session/${current.sessionID}/history?limit=100`,
+    )
+    const message = history.data.filter((event) => event.type === "session.next.prompted").at(-1)!.data.prompt!.text
+    expect(message).toContain("## Variant operation\nOperation: delete Compact\nKind: delete")
+    // A reload keeps the provisional view while its revision is still the latest one.
+    await page.reload()
+    await page.locator("#operation-badge", { hasText: "Applying…" }).waitFor()
+    await until(async () => (await tabNames(page)).join() === "Spacious,Dense", "provisional tabs after reload")
+    await until(
+      async () => (await frameRoots(page)).find((root) => root.id === "compact")?.shown === false,
+      "compact hidden after reload",
+    )
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isDisabled()).toBe(true)
+    // The agent's revision replaces the provisional view.
+    const next = await republish(current, [
+      ["spacious", "Spacious"],
+      ["dense", "Dense"],
+    ])
+    await showsRevision(page, next.id)
+    await page.locator("#operation-badge").waitFor({ state: "hidden" })
+    expect(await tabNames(page)).toEqual(["Spacious", "Dense"])
+    expect(await page.getByRole("tab", { name: "Spacious", exact: true }).getAttribute("aria-selected")).toBe("true")
+    await page.getByText("The approved variant is not in this revision", { exact: false }).waitFor()
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isEnabled()).toBe(true)
+    expect(await page.locator("#operation-state").isHidden()).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("renaming and reordering variants apply in the frame at once and reconcile with the agent's revisions", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await variantAction(page, "Rename…")
+    const name = page.getByLabel("New name", { exact: true })
+    expect(await name.inputValue()).toBe("Compact")
+    // Escape closes the dialog and hands focus back to the trigger.
+    await page.keyboard.press("Escape")
+    await page.locator("#operation-dialog").waitFor({ state: "hidden" })
+    // The dialog's close event, which moves focus, runs as a task after the dialog is hidden.
+    await until(async () => (await activeID(page)) === "variant-actions", "focus back on the trigger")
+    await variantAction(page, "Rename…")
+    await name.fill("Dense")
+    await page.getByRole("button", { name: "Rename", exact: true }).click()
+    await until(async () => (await tabNames(page)).join() === "DenseApplying…,Spacious", "renamed tab")
+    await until(
+      async () => (await frameRoots(page)).some((root) => root.id === "compact" && root.label === "Dense"),
+      "label in the frame",
+    )
+    await until(() => sent.length === 1, "rename request")
+    expect(sent[0].action).toEqual({ kind: "rename", variants: ["compact"], labels: ["Compact"], name: "Dense" })
+    const renamed = await republish(current, [
+      ["compact", "Dense"],
+      ["spacious", "Spacious"],
+    ])
+    await showsRevision(page, renamed.id)
+    await until(async () => (await tabNames(page)).join() === "Dense,Spacious", "reconciled rename")
+    await page.locator("#operation-badge").waitFor({ state: "hidden" })
+    // Move right from the keyboard: the menu skips the disabled Move left.
+    await page.getByRole("button", { name: "Variant actions", exact: true }).focus()
+    await page.keyboard.press("ArrowDown")
+    expect(await activeID(page)).toBe("rename-variant")
+    for (let step = 0; step < 3; step++) await page.keyboard.press("ArrowDown")
+    expect(await activeID(page)).toBe("move-right")
+    await page.keyboard.press("Enter")
+    await until(
+      async () => (await frameRoots(page)).map((root) => root.id).join() === "spacious,compact",
+      "frame order",
+    )
+    await until(async () => (await tabNames(page)).join() === "SpaciousApplying…,DenseApplying…", "reordered tabs")
+    await until(() => sent.length === 2, "reorder request")
+    expect(sent[1].action).toEqual({
+      kind: "reorder",
+      variants: ["compact", "spacious"],
+      labels: ["Dense", "Spacious"],
+      order: ["spacious", "compact"],
+    })
+    expect(sent[1].revision).toBe(renamed.id)
+    const reordered = await republish(current, [
+      ["spacious", "Spacious"],
+      ["compact", "Dense"],
+    ])
+    await showsRevision(page, reordered.id)
+    await until(async () => (await tabNames(page)).join() === "Spacious,Dense", "reconciled order")
+    expect(await page.getByRole("tab", { name: "Dense", exact: true }).getAttribute("aria-selected")).toBe("true")
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    expect(await page.getByRole("menuitem", { name: "Move right", exact: true }).isDisabled()).toBe(true)
+    expect(await page.getByRole("menuitem", { name: "Move left", exact: true }).isEnabled()).toBe(true)
+    await page.keyboard.press("Escape")
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("merging and splitting variants mark the tabs until the agent's revision arrives", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+    ["dense", "Dense"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Spacious", exact: true }).click()
+    // Shift-click picks variants to merge, starting with the one on screen.
+    await page.getByRole("tab", { name: "Compact", exact: true }).click({ modifiers: ["Shift"] })
+    const group = page.getByRole("group", { name: "Variants to merge" })
+    await group.waitFor()
+    expect(await group.getByLabel("Spacious").isChecked()).toBe(true)
+    expect(await group.getByLabel("Compact").isChecked()).toBe(true)
+    expect(await group.getByLabel("Dense").isChecked()).toBe(false)
+    await page.getByRole("button", { name: "Merge…", exact: true }).click()
+    await page.getByRole("heading", { name: "Merge variants" }).waitFor()
+    expect(await page.locator("#operation-subject").textContent()).toBe("Spacious + Compact")
+    await page.getByLabel("Guidance for the agent (optional)").fill("Keep the spacious header\nwith the compact list")
+    await page.getByRole("button", { name: "Merge", exact: true }).click()
+    await until(async () => (await tabNames(page)).join() === "CompactMerging…,SpaciousMerging…,Dense", "merging tabs")
+    await page.locator("#operation-badge", { hasText: "Merging…" }).waitFor()
+    expect((await frameRoots(page)).map((root) => root.id)).toEqual(["compact", "spacious", "dense"])
+    await until(() => sent.length === 1, "merge request")
+    expect(sent[0].action).toEqual({
+      kind: "merge",
+      variants: ["spacious", "compact"],
+      labels: ["Spacious", "Compact"],
+      text: "Keep the spacious header\nwith the compact list",
+    })
+    const merged = await republish(current, [
+      ["spacious", "Spacious"],
+      ["dense", "Dense"],
+    ])
+    await showsRevision(page, merged.id)
+    await until(async () => (await tabNames(page)).join() === "Spacious,Dense", "reconciled merge")
+    await variantAction(page, "Split…")
+    await page.getByRole("heading", { name: "Split variant" }).waitFor()
+    await page.getByLabel("Guidance for the agent (optional)").fill("One for mobile, one for desktop")
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await until(async () => (await tabNames(page)).join() === "SpaciousSplitting…,Dense", "splitting tab")
+    await until(() => sent.length === 2, "split request")
+    expect(sent[1].action).toEqual({
+      kind: "split",
+      variants: ["spacious"],
+      labels: ["Spacious"],
+      text: "One for mobile, one for desktop",
+    })
+    const split = await republish(current, [
+      ["spacious", "Spacious"],
+      ["spacious-desktop", "Spacious desktop"],
+      ["dense", "Dense"],
+    ])
+    await showsRevision(page, split.id)
+    await until(async () => (await tabNames(page)).join() === "Spacious,Spacious desktop,Dense", "reconciled split")
+    // A merge needs two variants; Cancel returns to the tabs.
+    await variantAction(page, "Select variants to merge")
+    await group.waitFor()
+    expect(await page.getByRole("button", { name: "Merge…", exact: true }).isDisabled()).toBe(true)
+    await group.getByRole("button", { name: "Cancel", exact: true }).click()
+    await group.waitFor({ state: "hidden" })
+    await page.getByRole("tab", { name: "Dense", exact: true }).waitFor()
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("a variant operation whose request fails reverts the view and keeps its guidance for a retry", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page, async (route, index) => {
+    if (index < 2) return route.fulfill({ status: 500, json: { message: "Agent unavailable" } })
+    await route.continue()
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const preview = page.frameLocator("#preview")
+    await preview.getByRole("heading", { name: "Compact checkout" }).waitFor()
+    await variantAction(page, "Delete…")
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    const failure = page.locator("#operation-state", {
+      hasText: "The variant change was not applied: Agent unavailable",
+    })
+    await failure.waitFor()
+    await page.locator("#status").filter({ hasText: "Agent unavailable" }).waitFor()
+    await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "reverted tabs")
+    await preview.getByRole("heading", { name: "Compact checkout" }).waitFor()
+    expect((await frameRoots(page)).find((root) => root.id === "compact")?.shown).toBe(true)
+    expect(await page.locator("#operation-badge").isHidden()).toBe(true)
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isEnabled()).toBe(true)
+    await variantAction(page, "Split…")
+    await page.getByLabel("Guidance for the agent (optional)").fill("Try a denser table")
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await until(() => sent.length === 2, "second request")
+    await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "reverted split")
+    await failure.waitFor()
+    // Retry reopens the dialog with the guidance that was typed.
+    await page.getByRole("button", { name: "Retry variant change", exact: true }).click()
+    await page.getByRole("heading", { name: "Split variant" }).waitFor()
+    expect(await page.getByLabel("Guidance for the agent (optional)").inputValue()).toBe("Try a denser table")
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
+    expect(sent).toHaveLength(3)
+    expect(sent[2].action).toEqual(sent[1].action)
+    expect(sent[2].id).not.toBe(sent[1].id)
+    expect(await failure.isHidden()).toBe(true)
+    await until(async () => (await tabNames(page)).join() === "CompactSplitting…,Spacious", "pending split")
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("variant operations are unavailable on older revisions and ended reviews", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const second = await republish(current, [
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await withoutFeed(page)
+  const items = ["Rename…", "Split…", "Delete…", "Move right", "Select variants to merge"]
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await showsRevision(page, second.id)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+    await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor()
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    for (const name of items) expect(await page.getByRole("menuitem", { name, exact: true }).isDisabled()).toBe(true)
+    // The menu offers the way back to the latest revision instead.
+    await page.getByRole("menuitem", { name: "New revision available", exact: true }).click()
+    await showsRevision(page, second.id)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    for (const name of items) expect(await page.getByRole("menuitem", { name, exact: true }).isEnabled()).toBe(true)
+    expect(await page.getByRole("menuitem", { name: "New revision available", exact: true }).isHidden()).toBe(true)
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
+    await page.getByRole("button", { name: "Reopen review" }).waitFor()
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    for (const name of items) expect(await page.getByRole("menuitem", { name, exact: true }).isDisabled()).toBe(true)
+    // An ended review offers Reopen from the same menu.
+    await page.getByRole("menuitem", { name: "Reopen review", exact: true }).click()
+    await page.getByRole("button", { name: "Approve this revision" }).waitFor()
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    await until(
+      () => page.getByRole("menuitem", { name: "Rename…", exact: true }).isEnabled(),
+      "operations after reopening",
+    )
+    const refused = await fetch(`${base}${current.root}/${current.document.id}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: `msg_${crypto.randomUUID()}`,
+        revision: second.id,
+        text: "",
+        items: [],
+        assets: [],
+        snapshot: "",
+        delivery: "steer",
+        end: false,
+        action: { kind: "delete", variants: ["compact", "spacious"] },
+      }),
+    })
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain("A delete operation names exactly one variant")
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("an agent turn that ends without carrying out the operation reports it", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  // The feed reconnects about once a second; each connection replays the events set here.
+  const quiet = [{ type: "agent", seq: 0, at: 1, agent: "design" }]
+  let feed: object[] = quiet
+  await page.route(/\/design\/feed(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: feed.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  )
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const preview = page.frameLocator("#preview")
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await variantAction(page, "Delete…")
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
+    await until(async () => (await tabNames(page)).join() === "Spacious", "provisional delete")
+    feed = [
+      ...quiet,
+      { type: "state", seq: 0, at: 2, state: "working" },
+      {
+        type: "tool",
+        seq: 0,
+        at: 3,
+        id: "call_fail",
+        tool: "design_preview",
+        status: "failed",
+        summary: "Build failed",
+      },
+      { type: "state", seq: 0, at: 4, state: "idle" },
+    ]
+    await page
+      .locator("#operation-state", {
+        hasText: "The agent stopped without publishing this variant change. design_preview: Build failed",
+      })
+      .waitFor()
+    await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "reverted after the agent stopped")
+    await preview.getByRole("heading", { name: "Compact checkout" }).waitFor()
+    feed = quiet
+    await page.waitForTimeout(1500)
+    // A revision that leaves the variant in place does not count as carrying out the delete.
+    await page.getByRole("button", { name: "Retry variant change", exact: true }).click()
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    await until(() => sent.length === 2, "retried request")
+    await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
+    const unchanged = await republish(current, [
+      ["compact", "Compact", "<p>Still here</p>"],
+      ["spacious", "Spacious"],
+    ])
+    await showsRevision(page, unchanged.id)
+    await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "the revision's real variants")
+    expect(await page.locator("#operation-state").isHidden()).toBe(true)
+    feed = [
+      ...quiet,
+      { type: "state", seq: 0, at: 5, state: "working" },
+      { type: "state", seq: 0, at: 6, state: "idle" },
+    ]
+    await page
+      .locator("#operation-state", { hasText: "The agent published a revision without this variant change." })
+      .waitFor()
+    expect(await page.getByRole("button", { name: "Approve this revision" }).isEnabled()).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
+
+test("notes on a merged-away variant show as orphaned and retarget to the kept variant", async () => {
+  const current = await withVariants([
+    ["compact", "Compact", '<p id="wide" style="width:3000px">Wide row</p>'],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    // A layout observation in Compact becomes a note scoped to that variant.
+    await page.locator("#inbox-count").filter({ hasText: "1" }).waitFor()
+    await page.locator("#inbox summary").click()
+    await page.locator("#inbox .finding").filter({ hasText: 'p "Wide row"' }).getByRole("checkbox").check()
+    await page.getByRole("button", { name: "Queue selected fixes", exact: true }).click()
+    const row = page.locator("#notes .note").filter({ hasText: "Element extends beyond the viewport" })
+    await row.waitFor()
+    await page.getByRole("tab", { name: "Spacious", exact: true }).click()
+    await page.getByRole("tab", { name: "Compact", exact: true }).click({ modifiers: ["Shift"] })
+    await page.getByRole("button", { name: "Merge…", exact: true }).click()
+    await page.getByRole("button", { name: "Merge", exact: true }).click()
+    await until(() => sent.length === 1, "merge request")
+    expect(sent[0].action).toEqual({
+      kind: "merge",
+      variants: ["spacious", "compact"],
+      labels: ["Spacious", "Compact"],
+    })
+    expect(await row.getAttribute("data-orphaned")).toBeNull()
+    const merged = await republish(current, [["spacious", "Spacious", '<p id="wide">Wide row</p>']])
+    await showsRevision(page, merged.id)
+    await until(async () => (await row.getAttribute("data-orphaned")) === "true", "orphaned note")
+    expect(await row.locator(".note-orphaned").textContent()).toBe("Variant removed")
+    await row.getByRole("button", { name: "Retarget to Spacious", exact: true }).click()
+    await until(async () => (await row.getAttribute("data-orphaned")) === null, "retargeted note")
+    await page.getByRole("button", { name: "Send to agent", exact: true }).click()
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    expect(sent).toHaveLength(2)
+    expect(sent[1].items[0].target).toBe("variant:spacious #wide")
+    expect(sent[1].action).toBeUndefined()
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 90000)
 
 test("a revision picked while a refresh is in flight stays on screen", async () => {
   const current = await published("html")

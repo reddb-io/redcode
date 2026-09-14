@@ -351,6 +351,17 @@ export const designGoalScenarios: Scenario[] = [
           retry.id === receipt.id && retry.status === "admitted",
           "an exact feedback retry should reconcile its receipt",
         )
+        // A variant operation is admitted without a note; the agent carries it out.
+        const operation = Schema.decodeUnknownSync(Design.Receipt)(
+          yield* json(ctx, "POST", `${ctx.state.item}/feedback`, {
+            ...ctx.state.feedback,
+            id: `msg_${crypto.randomUUID()}`,
+            text: "",
+            items: [],
+            action: { kind: "rename", variants: ["checkout"], labels: ["Checkout"], name: "Express checkout" },
+          }),
+        )
+        check(operation.status === "admitted", "a variant operation should be admitted as review feedback")
       }),
     ),
   http.protected

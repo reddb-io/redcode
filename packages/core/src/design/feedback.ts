@@ -62,6 +62,61 @@ function notesOf(input: Design.Feedback) {
   return input.items.filter((item) => !VARIANT_MARKER.test(item.target))
 }
 
+/** One line of page- or user-provided text: indented like all user text, never spanning a line. */
+function inline(text: string, limit = 100) {
+  return clean(text).replace(/\n\s*/g, " ").slice(0, limit)
+}
+
+/** The operation's variants as the reader saw them: label when known, id otherwise. */
+function operationNames(action: Design.VariantOperation) {
+  const label = (id: string) => {
+    const index = action.variants.indexOf(id)
+    return (index >= 0 && action.labels?.[index] ? inline(action.labels[index]) : "") || id
+  }
+  return { label, ids: action.variants.filter((id) => VARIANT_ID.test(id)) }
+}
+
+/** The compact one-line description shared by the notice, the transcript and the rendered message. */
+export function describeOperation(action: Design.VariantOperation) {
+  const { label, ids } = operationNames(action)
+  if (action.kind === "rename") return `rename ${label(ids[0] ?? "")} → ${inline(action.name ?? "")}`
+  if (action.kind === "merge") return `merge ${ids.map(label).join(" + ")}`
+  if (action.kind === "reorder")
+    return `reorder ${(action.order ?? [])
+      .filter((id) => VARIANT_ID.test(id))
+      .map(label)
+      .join(", ")}`
+  return `${action.kind} ${label(ids[0] ?? "")}`
+}
+
+function operationSection(action: Design.VariantOperation) {
+  const { label, ids } = operationNames(action)
+  const first = ids[0] ?? ""
+  const rule = {
+    delete: `Delete: remove the data-design-variant="${first}" root entirely. Prune every scenario, control and preset whose variant is ${first} with design_document update. Leave the other variants unchanged.`,
+    rename: `Rename: change only the data-design-label of the "${first}" root to the new label. Its id, content and every reference to it stay unchanged.`,
+    reorder:
+      "Reorder: move the variant roots into the requested order. Change only their DOM order; ids, labels and content stay unchanged.",
+    merge: `Merge: combine the listed variants into one, following the guidance. Keep the id ${first} (the first listed) and remove the other roots; move or prune their scenarios, controls and presets with design_document update.`,
+    split: `Split: divide ${first} into two variants, following the guidance. Keep the id ${first} on one half and add exactly one new root with a new unique stable id and label for the other.`,
+  }[action.kind]
+  return [
+    "## Variant operation",
+    `Operation: ${describeOperation(action)}`,
+    `Kind: ${action.kind}`,
+    `Variants: ${ids.map((id) => `${id} ${quote(label(id), 100)}`).join(", ")}`,
+    action.kind === "rename" ? `New label: ${quote(action.name ?? "", 100)}` : "",
+    action.kind === "reorder" ? `Order: ${(action.order ?? []).filter((id) => VARIANT_ID.test(id)).join(", ")}` : "",
+    action.text?.trim() ? `Guidance: ${clean(action.text)}` : "",
+    "Rules:",
+    "- Carry this out and publish a new revision with design_preview on this same design.",
+    `- ${rule}`,
+    "- Variant ids stay stable except where this operation removes or adds one. If a listed variant is missing from the revision, say so instead of guessing.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export interface Context {
   id: Design.ID
   storage: string
@@ -82,6 +137,8 @@ export function render(input: Design.Feedback, context: Context) {
   const open = `<design-review id="${context.id}" revision="${attribute(input.revision)}" feedback="${input.id}"${variant ? ` variant="${variant}"` : ""} ended="${input.end}">`
   const close = "</design-review>"
   const body = [
+    // The operation leads so that bounding the message never cuts its rules.
+    input.action ? operationSection(input.action) : "",
     text ? `## Message\n${text}` : "",
     notes.length
       ? [
@@ -172,6 +229,7 @@ export function notice(input: Design.Feedback, context: Context): Design.Feedbac
     })),
     attachments: [...context.attachments],
     snapshot: input.snapshot.trim().length > 0,
+    ...(input.action ? { operation: describeOperation(input.action) } : {}),
   }
 }
 
@@ -191,7 +249,9 @@ export function summarize(text: string): Design.FeedbackNotice | undefined {
   const attachments = [...section("Attachments").matchAll(/^- image \d+: (.*) \(attached as a file\)$/gm)].map(
     (match) => match[1],
   )
+  const operation = /^Operation: (.+)$/m.exec(section("Variant operation"))?.[1]
   return {
+    ...(operation ? { operation } : {}),
     id: head[1],
     feedback: head[3],
     revision: head[2],

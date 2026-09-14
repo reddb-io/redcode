@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test"
 import { Redcode, type SessionsEventsOutput } from "@reddb-io/redcode-client"
 import { DesignTerminal } from "../../src/cli/design-terminal"
+import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
+import { Design } from "@reddb-io/redcode-schema/design"
+import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 
 async function fixture() {
   const requests: { path: string; method: string; body: Record<string, unknown> }[] = []
@@ -215,11 +218,43 @@ test("Design terminal lists browser review notes instead of echoing the review m
     ])
     expect(test.output.some((text) => text.includes("<design-review"))).toBe(false)
     test.emit({
-      id: "evt_test_plain",
+      id: "evt_test_operation",
       durable: { aggregateID: "ses_design_test", seq: 3, version: 1 },
       type: "session.next.prompted",
       data: {
         timestamp: 3,
+        sessionID: "ses_design_test",
+        messageID: "msg_operation",
+        delivery: "steer",
+        prompt: {
+          text: DesignFeedback.render(
+            {
+              id: SessionMessage.ID.make("msg_operation"),
+              revision: "rev_2",
+              text: "",
+              items: [],
+              assets: [],
+              snapshot: "",
+              delivery: "steer",
+              end: false,
+              action: { kind: "delete", variants: ["compact"], labels: ["Compact"] },
+            },
+            { id: Design.ID.make("design_checkout"), storage: "/store", attachments: [] },
+          ),
+        },
+      },
+    })
+    await test.until(() => test.output.some((text) => text.startsWith("Design review design_checkout · rev_2")))
+    expect(test.output.find((text) => text.startsWith("Design review design_checkout · rev_2"))!.split("\n")).toEqual([
+      "Design review design_checkout · rev_2",
+      "Variant operation: delete Compact",
+    ])
+    test.emit({
+      id: "evt_test_plain",
+      durable: { aggregateID: "ses_design_test", seq: 4, version: 1 },
+      type: "session.next.prompted",
+      data: {
+        timestamp: 4,
         sessionID: "ses_design_test",
         messageID: "msg_plain",
         delivery: "steer",

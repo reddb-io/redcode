@@ -19,11 +19,16 @@ export function bound(text: string, limit: number) {
   return `${value.slice(0, limit)}…`
 }
 
+/** A review's feed text: its message, or the variant operation it requests when it has no message. */
+export function reviewText(notice: { text: string; operation?: string }) {
+  return bound(notice.text.trim() || (notice.operation ? `Variant operation: ${notice.operation}` : ""), LIMITS.text)
+}
+
 /** What the feed shows for a prompt: a browser review collapses to its message and its note count. */
 export function describe(text: string) {
   const notice = DesignFeedback.summarize(text)
   if (!notice) return { text: bound(text, LIMITS.text), notes: 0 }
-  return { text: bound(notice.text, LIMITS.text), notes: notice.notes.length }
+  return { text: reviewText(notice), notes: notice.notes.length }
 }
 
 /** One line about a tool call, taken from its most descriptive input field. */

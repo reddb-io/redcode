@@ -73,7 +73,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
       "Do not claim a state works from a screenshot alone.",
     ],
     review_notes: [
-      'Wrap each alternative in its own data-design-variant="stable-id" root with data-design-label="Name". The review shell provides variant tabs, comparison and device widths; do not stack unmarked alternatives. Publish snapshots with design_preview. Run an audit and use its exercised scenarios and screenshots to check the selected direction.',
+      'Wrap each alternative in its own data-design-variant="stable-id" root with data-design-label="Name". The review shell provides variant tabs, comparison and device widths; do not stack unmarked alternatives. A ## Variant operation from the review (delete, rename, reorder, merge, split) is carried out in a new revision on the same design; surviving ids stay stable. Publish snapshots with design_preview. Run an audit and use its exercised scenarios and screenshots to check the selected direction.',
     ],
   },
   {

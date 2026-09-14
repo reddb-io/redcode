@@ -793,6 +793,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/feedback`,
             body: {
+              action: input["action"],
               params: input["params"],
               id: input["id"],
               revision: input["revision"],
