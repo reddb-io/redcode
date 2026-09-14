@@ -33,7 +33,7 @@ const api = async <T>(route: string, method = "GET", body?: unknown): Promise<T>
 }
 const session = () =>
   api<{ data: { id: string } }>("/api/session", "POST", { location: { directory }, agent: "design" })
-const published = async (engine: "html" | "solid") => {
+const published = async (engine: "html" | "solid" | "react") => {
   const current = await session()
   const root = `/api/session/${current.data.id}/design`
   const document = await api<Design.Info>(root, "POST", {
@@ -46,7 +46,9 @@ const published = async (engine: "html" | "solid") => {
     path.join(document.root, document.entry),
     engine === "html"
       ? '<!doctype html><html lang="en"><head><title>Checkout</title></head><body><main><h1 id="title">Checkout</h1><button id="submit" onclick="this.textContent=\'Added\';this.dataset.state=\'populated\'" data-state="empty">Add item</button><pre id="diagram" data-mermaid-source="graph TD\nA --> B">diagram</pre></main></body></html>'
-      : 'import { render } from "solid-js/web"; import { createSignal } from "solid-js"; const App=()=>{const [added,setAdded]=createSignal(false);return <main><section data-design-variant="compact" data-design-label="Compact"><h1>Checkout</h1><button onClick={()=>setAdded(true)}>{added()?"Added":"Add item"}</button></section><section data-design-variant="spacious" data-design-label="Spacious"><h1>Spacious checkout</h1></section></main>};render(()=><App />,document.getElementById("root")!)',
+      : engine === "react"
+        ? `import { createRoot } from "react-dom/client"; import { Button } from ${JSON.stringify(path.join(directory, "src/components/Button"))}; createRoot(document.getElementById("root")!).render(<main><h1>Checkout</h1><Button>Add item</Button></main>)`
+        : 'import { render } from "solid-js/web"; import { createSignal } from "solid-js"; const App=()=>{const [added,setAdded]=createSignal(false);return <main><section data-design-variant="compact" data-design-label="Compact"><h1>Checkout</h1><button onClick={()=>setAdded(true)}>{added()?"Added":"Add item"}</button></section><section data-design-variant="spacious" data-design-label="Spacious"><h1>Spacious checkout</h1></section></main>};render(()=><App />,document.getElementById("root")!)',
   )
   const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "First direction" })
   return { document, revision, root, sessionID: current.data.id }
@@ -75,7 +77,18 @@ const annotate = async (page: Page, enabled: boolean) => {
 }
 
 beforeAll(async () => {
-  await Bun.write(path.join(directory, "redcode.json"), JSON.stringify({ permission: { external_directory: "allow" } }))
+  await Bun.write(
+    path.join(directory, "redcode.json"),
+    JSON.stringify({
+      permission: { external_directory: "allow" },
+      design: { system: { paths: ["src/components"], css: ["src/styles/globals.css"] } },
+    }),
+  )
+  await Bun.write(
+    path.join(directory, "src/components/Button.tsx"),
+    'export function Button(props: { children?: string }) {\n  return <button type="button" className="design-system-button" onClick={(event) => { event.currentTarget.dataset.state = "populated" }} data-state="empty">{props.children ?? "Design-system button"}</button>\n}\n',
+  )
+  await Bun.write(path.join(directory, "src/styles/globals.css"), ".design-system-button{color:rgb(1, 2, 3)}\n")
   await designDependencies(directory)
   browser = await chromium.launch()
 }, 30000)
@@ -592,6 +605,30 @@ test("publishing a product dependency requests read permission and preserves den
   expect(revisions).toHaveLength(1)
   expect(revisions[0].id).toBe(current.revision.id)
 }, 60000)
+
+test("existing interface: a react prototype reuses a declared design-system component without a permission prompt", async () => {
+  const current = await published("react")
+  expect(current.document.system).toEqual({
+    paths: ["src/components"],
+    css: ["src/styles/globals.css"],
+    tailwind: false,
+  })
+  const pending = await api<{ data: { action: string }[] }>(`/api/session/${current.sessionID}/permission`)
+  expect(pending.data.filter((item) => item.action === "read")).toEqual([])
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(`${base}${current.root}/review`)
+  const frame = page.frameLocator("#preview")
+  const button = frame.locator("button.design-system-button")
+  await button.waitFor({ state: "visible", timeout: 20000 })
+  expect(await button.textContent()).toBe("Add item")
+  expect(await button.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(1, 2, 3)")
+  await button.click()
+  expect(await button.getAttribute("data-state")).toBe("populated")
+  expect(errors).toEqual([])
+  await page.close()
+}, 90000)
 
 test("review controls stay compact, keyboard accessible and isolated from prototype styles", async () => {
   const current = await published("html")

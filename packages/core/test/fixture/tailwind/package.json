@@ -1,0 +1,12 @@
+{
+  "name": "tailwind-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "autoprefixer": "*",
+    "tailwindcss": "*"
+  }
+}

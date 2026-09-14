@@ -7,6 +7,7 @@ import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
+import { Config } from "../config"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { Location } from "../location"
@@ -32,6 +33,7 @@ const make = Effect.gen(function* () {
   const database = yield* Database.Service
   const location = yield* Location.Service
   const sessions = yield* SessionStore.Service
+  const config = yield* Config.Service
   const lock = yield* Semaphore.make(1)
   const storage = path.join(location.directory, ".red", "code", "design")
   const blobs = path.join(storage, "blobs")
@@ -80,6 +82,8 @@ const make = Effect.gen(function* () {
     )
     const workspace = yield* io(() => RepositoryGuard.prepare(location.directory, sessionID))
     const application = path.resolve(workspace, path.relative(location.directory, source))
+    const configured = Config.latest(yield* config.entries(), "design")?.system
+    const system = yield* io(() => DesignBuild.system(application, configured))
     const data: Design.Info = {
       ...input,
       id,
@@ -92,11 +96,12 @@ const make = Effect.gen(function* () {
       questions: [],
       scenarios: [],
       designSystem: "",
+      system,
       ...(yield* io(() =>
         DesignSystem.load(application, {
           refresh: false,
           manifest: input.journey === "existing",
-          declared: DesignSystem.declared(input),
+          declared: DesignSystem.declared({ system }),
         }),
       )),
       tweaks: {},
@@ -476,13 +481,16 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
   const refresh = Effect.fn("Design.refresh")(function* (id: Design.ID) {
     const document = yield* get(id)
+    const configured = Config.latest(yield* config.entries(), "design")?.system
+    const system = yield* io(() => DesignBuild.system(document.application, configured))
     return yield* save({
       ...document,
+      system,
       ...(yield* io(() =>
         DesignSystem.load(document.application, {
           refresh: true,
           manifest: document.journey === "existing",
-          declared: DesignSystem.declared(document),
+          declared: DesignSystem.declared({ system }),
         }),
       )),
     })
@@ -570,5 +578,5 @@ export const layer = Layer.effect(Service, make)
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Database.node, Location.node, SessionStore.node],
+  deps: [Database.node, Location.node, SessionStore.node, Config.node],
 })

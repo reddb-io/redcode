@@ -1,5 +1,6 @@
 export * as DesignTools from "./design"
 
+import { stat } from "node:fs/promises"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { ToolFailure } from "@reddb-io/redcode-llm"
@@ -15,6 +16,7 @@ import { SessionGoal } from "../session/goal"
 import { makeLocationNode } from "../effect/app-node"
 import { DesignStore } from "../design/store"
 import { DesignSystem } from "../design/system"
+import { DesignBuild } from "../design/build"
 import { DesignDocumentTool } from "../design/document-tool"
 import { DesignQuality } from "../design/quality"
 import { DesignApproval } from "../design/approval"
@@ -70,6 +72,50 @@ const layer = Layer.effectDiscard(
         }),
         { signal },
       )
+
+    // Declared design-system roots are one standing read grant per design instead of a prompt per imported file.
+    const standing = (document: Design.Info, context: Tool.Context) =>
+      Effect.gen(function* () {
+        const paths = yield* Effect.promise(() => DesignBuild.grant(document))
+        if (!paths.length) return
+        const targets = yield* Effect.forEach(paths, (file) =>
+          Effect.all({
+            target: mutation.resolve({ path: file, kind: "directory" }),
+            directory: Effect.promise(() => stat(file).then((info) => info.isDirectory())),
+          }),
+        )
+        const source = { type: "tool" as const, messageID: context.assistantMessageID, callID: context.toolCallID }
+        const metadata = {
+          origin: "design.system",
+          reason:
+            "Standing read grant for design builds: every preview of this design imports the declared design-system roots, stylesheets, tooling configuration and node_modules without further prompts.",
+        }
+        const external = [
+          ...new Set(
+            targets.flatMap(({ target }) => (target.externalDirectory ? [target.externalDirectory.resource] : [])),
+          ),
+        ]
+        if (external.length)
+          yield* permissions.assert({
+            action: "external_directory",
+            resources: external,
+            save: external,
+            sessionID: context.sessionID,
+            agent: context.agent,
+            source,
+            metadata,
+          })
+        const resources = targets.map(({ target, directory }) => (directory ? `${target.resource}/*` : target.resource))
+        yield* permissions.assert({
+          action: "read",
+          resources,
+          save: resources,
+          sessionID: context.sessionID,
+          agent: context.agent,
+          source,
+          metadata,
+        })
+      }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))
 
     yield* tools
       .register({
@@ -233,7 +279,7 @@ const layer = Layer.effectDiscard(
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_preview", context)
-              yield* owned(input.id, context)
+              yield* standing(yield* owned(input.id, context), context)
               return yield* store.publish(input.id, input.name, read(context))
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),

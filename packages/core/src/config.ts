@@ -13,6 +13,7 @@ import { AbsolutePath } from "./schema"
 import { ConfigAgent } from "./config/agent"
 import { ConfigAttachments } from "./config/attachments"
 import { ConfigCompaction } from "./config/compaction"
+import { ConfigDesign } from "./config/design"
 import { ConfigCommand } from "./config/command"
 import { ConfigExperimental } from "./config/experimental"
 import { ConfigFormatter } from "./config/formatter"
@@ -89,6 +90,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   compaction: ConfigCompaction.Info.pipe(Schema.optional).annotate({
     description: "Conversation compaction behavior",
   }),
+  design: ConfigDesign.Info.pipe(Schema.optional).annotate({
+    description: "Design mode: the project's design system reused by previews",
+  }),
   skills: Schema.String.pipe(Schema.Array, Schema.optional).annotate({
     description: "Additional paths or URLs to discover skills from",
   }),
@@ -148,14 +152,7 @@ const layer = Layer.effect(
     // loaded and merged, so a primary `config.json[c]` overrides the legacy `opencode.*`
     // and `redcode.*` ones field by field rather than replacing them. A
     // directory holding only the OpenCode-named file keeps behaving exactly as before.
-    const names = [
-      "opencode.json",
-      "opencode.jsonc",
-      "redcode.json",
-      "redcode.jsonc",
-      "config.json",
-      "config.jsonc",
-    ]
+    const names = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
     const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
     const decodeInfo = Schema.decodeUnknownOption(Info, decodeOptions)
     const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
@@ -208,9 +205,7 @@ const layer = Layer.effect(
     ]
     // A config closer to the opened directory should win over one higher up.
     // Search starts nearby, so reverse the results before applying them.
-    const directPaths = discovered
-      .filter((item) => !ProjectDir.isProjectDir(item))
-      .toReversed()
+    const directPaths = discovered.filter((item) => !ProjectDir.isProjectDir(item)).toReversed()
     const direct = yield* Effect.forEach(directPaths, loadFile).pipe(
       Effect.orDie,
       Effect.map((configs) => configs.filter((config): config is Document => config !== undefined)),

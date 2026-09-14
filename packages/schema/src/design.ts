@@ -110,6 +110,16 @@ export const Component = Schema.Struct({
   props: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.Component" })
 export interface Component extends Schema.Schema.Type<typeof Component> {}
+
+/** The project's design system a preview build reuses; paths are project-relative and already resolved from config and defaults. */
+export const System = Schema.Struct({
+  paths: Schema.Array(Schema.String),
+  css: Schema.Array(Schema.String),
+  tailwind: Schema.Boolean,
+  framework: Schema.Literals(["react", "solid"]).pipe(optional),
+  aliases: Schema.Record(Schema.String, Schema.String).pipe(optional),
+}).annotate({ identifier: "Design.System" })
+export interface System extends Schema.Schema.Type<typeof System> {}
 export const Tweaks = Schema.Record(
   Schema.String.check(Schema.isPattern(/^--[a-zA-Z][a-zA-Z0-9-]*$/)),
   Schema.String.check(Schema.isPattern(/^[^;{}<>]*$/)),
@@ -155,6 +165,7 @@ export const Info = Schema.Struct({
   questions: Schema.Array(Schema.String),
   scenarios: Schema.Array(Scenario),
   designSystem: Schema.String,
+  system: System.pipe(optional),
   sources: Schema.Array(Source),
   inventory: Schema.Array(Component).pipe(optional),
   manifest: Schema.String.pipe(optional),

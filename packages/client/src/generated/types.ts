@@ -2071,6 +2071,13 @@ export type DesignsListOutput = ReadonlyArray<{
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -2201,6 +2208,13 @@ export type DesignsCreateOutput = {
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -2297,6 +2311,13 @@ export type DesignsGetOutput = {
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -3043,6 +3064,13 @@ export type DesignsUpdateOutput = {
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -3146,6 +3174,13 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
       readonly notApplicable?: string
     }>
     readonly designSystem: string
+    readonly system?: {
+      readonly paths: ReadonlyArray<string>
+      readonly css: ReadonlyArray<string>
+      readonly tailwind: boolean
+      readonly framework?: "react" | "solid"
+      readonly aliases?: { readonly [x: string]: string }
+    }
     readonly sources: ReadonlyArray<{
       readonly file: string
       readonly hash: string
@@ -3267,6 +3302,13 @@ export type DesignsPublishOutput = {
       readonly notApplicable?: string
     }>
     readonly designSystem: string
+    readonly system?: {
+      readonly paths: ReadonlyArray<string>
+      readonly css: ReadonlyArray<string>
+      readonly tailwind: boolean
+      readonly framework?: "react" | "solid"
+      readonly aliases?: { readonly [x: string]: string }
+    }
     readonly sources: ReadonlyArray<{
       readonly file: string
       readonly hash: string
@@ -3372,6 +3414,13 @@ export type DesignsRestoreOutput = {
       readonly notApplicable?: string
     }>
     readonly designSystem: string
+    readonly system?: {
+      readonly paths: ReadonlyArray<string>
+      readonly css: ReadonlyArray<string>
+      readonly tailwind: boolean
+      readonly framework?: "react" | "solid"
+      readonly aliases?: { readonly [x: string]: string }
+    }
     readonly sources: ReadonlyArray<{
       readonly file: string
       readonly hash: string
@@ -3469,6 +3518,13 @@ export type DesignsReopenOutput = {
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -3565,6 +3621,13 @@ export type DesignsRefreshOutput = {
     readonly notApplicable?: string
   }>
   readonly designSystem: string
+  readonly system?: {
+    readonly paths: ReadonlyArray<string>
+    readonly css: ReadonlyArray<string>
+    readonly tailwind: boolean
+    readonly framework?: "react" | "solid"
+    readonly aliases?: { readonly [x: string]: string }
+  }
   readonly sources: ReadonlyArray<{
     readonly file: string
     readonly hash: string
@@ -4013,6 +4076,13 @@ export type DesignsApprovalOutput = {
         readonly notApplicable?: string
       }>
       readonly designSystem: string
+      readonly system?: {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid"
+        readonly aliases?: { readonly [x: string]: string }
+      }
       readonly sources: ReadonlyArray<{
         readonly file: string
         readonly hash: string

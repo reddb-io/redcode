@@ -2,7 +2,9 @@ export * as DesignRead from "./read"
 
 import path from "node:path"
 import { Effect } from "effect"
-import { realpath } from "node:fs/promises"
+import { realpath, stat } from "node:fs/promises"
+import type { Design } from "@reddb-io/redcode-schema/design"
+import { DesignBuild } from "@reddb-io/redcode-core/design/build"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -28,4 +30,30 @@ export const make = Effect.fn("DesignRead.make")(function* (ask: Tool.Context["a
       ),
       { signal },
     )
+})
+
+/** Declared design-system roots are one standing read grant per design instead of a prompt per imported file. */
+export const grant = Effect.fn("DesignRead.grant")(function* (document: Design.Info, ask: Tool.Context["ask"]) {
+  const instance = yield* InstanceState.context
+  const paths = yield* Effect.promise(() => DesignBuild.grant(document))
+  if (!paths.length) return
+  const patterns = yield* Effect.promise(() =>
+    Promise.all(paths.map(async (file) => ((await stat(file)).isDirectory() ? path.join(file, "*") : file))),
+  )
+  const metadata = {
+    origin: "design.system",
+    reason:
+      "Standing read grant for design builds: every preview of this design imports the declared design-system roots, stylesheets, tooling configuration and node_modules without further prompts.",
+  }
+  const external = [
+    ...new Set(
+      paths.flatMap((file, index) =>
+        FSUtil.contains(instance.directory, file)
+          ? []
+          : [patterns[index].endsWith("*") ? patterns[index] : path.join(path.dirname(file), "*")],
+      ),
+    ),
+  ]
+  if (external.length) yield* ask({ permission: "external_directory", patterns: external, always: external, metadata })
+  yield* ask({ permission: "read", patterns, always: patterns, metadata })
 })
