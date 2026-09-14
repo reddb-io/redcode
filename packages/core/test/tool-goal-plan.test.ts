@@ -491,6 +491,63 @@ it.live("Plan can inspect Design documents but cannot create a prototype through
   }),
 )
 
+it.live("design_document renders the project's design system for the model and refreshes its manifest", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const location = yield* Location.Service
+    yield* Effect.promise(() =>
+      Promise.all(
+        Object.entries({
+          "package.json": JSON.stringify({
+            dependencies: { react: "^18.3.1" },
+            devDependencies: { tailwindcss: "^3.4.1" },
+          }),
+          "tailwind.config.ts": "export default { content: ['./src/**/*.tsx'] }",
+          "src/styles/globals.css": ":root { --accent: #0af; }",
+          "src/components/index.ts": 'export { Button } from "./Button"\nexport { Card } from "./Card"',
+          "src/components/Button.tsx":
+            "export interface ButtonProps { label: string }\nexport const Button = () => null",
+          "src/components/Card.tsx": "export const Card = () => null",
+        }).map(([file, content]) => Bun.write(path.join(location.directory, file), content)),
+      ),
+    )
+    const text = (result: Effect.Success<ReturnType<typeof test.run>>) => {
+      if (result.type === "error") return `ERROR ${result.value}`
+      if (result.type === "text") return result.value
+      if (result.type !== "content") return ""
+      return result.value.map((part) => (part.type === "text" ? part.text : "")).join("")
+    }
+    const created = text(
+      yield* test.run("design_document", {
+        action: "create",
+        input: { name: "Settings", journey: "existing", engine: "react", kind: "screen", application: "." },
+      }),
+    )
+    expect(created).toContain("Design system (read .red/DESIGN.md first; import from the component roots")
+    expect(created).toContain("Doc .red/DESIGN.md (generated, edit the Notes section):\n# Design system")
+    expect(created).toContain("Tokens: src/styles/globals.css")
+    expect(created).toContain("Pipeline: Tailwind (tailwind.config.ts); CSS custom properties (src/styles/globals.css)")
+    expect(created).toContain("Framework: react ^18.3.1")
+    expect(created).toContain("Components src/components: Button, Card")
+    const store = yield* DesignStore.Service
+    const document = (yield* store.list(test.sessionID))[0]
+    expect(document.inventory).toEqual([
+      { root: "src/components", file: "src/components/Button.tsx", name: "Button", props: "ButtonProps" },
+      { root: "src/components", file: "src/components/Card.tsx", name: "Card" },
+    ])
+    const manifest = path.join(document.application, ".red", "DESIGN.md")
+    yield* Effect.promise(async () => {
+      await Bun.write(path.join(location.directory, "src/components/Badge.tsx"), "export const Badge = () => null")
+      await Bun.write(manifest, (await Bun.file(manifest).text()) + "Keep the 4px rhythm.\n")
+    })
+    const refreshed = text(yield* test.run("design_document", { action: "refresh", id: document.id }))
+    expect(refreshed).toContain("Components src/components: Badge, Button, Card")
+    expect(refreshed).toContain("- Badge (src/components/Badge.tsx)")
+    expect(refreshed).toContain("Keep the 4px rhythm.")
+    expect(yield* Effect.promise(() => Bun.file(manifest).text())).toContain("Keep the 4px rhythm.\n")
+  }),
+)
+
 it.live("Design-only approval presents current findings and preserves its scope", () =>
   Effect.gen(function* () {
     const test = yield* setup

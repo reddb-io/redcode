@@ -102,6 +102,14 @@ export const Source = Schema.Struct({
   authoritative: Schema.Boolean,
   excerpt: Schema.String,
 })
+/** One exported component found by a static scan of a component root; props names the matching `XProps` type when declared. */
+export const Component = Schema.Struct({
+  root: Schema.String,
+  file: Schema.String,
+  name: Schema.String,
+  props: Schema.String.pipe(optional),
+}).annotate({ identifier: "Design.Component" })
+export interface Component extends Schema.Schema.Type<typeof Component> {}
 export const Tweaks = Schema.Record(
   Schema.String.check(Schema.isPattern(/^--[a-zA-Z][a-zA-Z0-9-]*$/)),
   Schema.String.check(Schema.isPattern(/^[^;{}<>]*$/)),
@@ -148,6 +156,7 @@ export const Info = Schema.Struct({
   scenarios: Schema.Array(Scenario),
   designSystem: Schema.String,
   sources: Schema.Array(Source),
+  inventory: Schema.Array(Component).pipe(optional),
   tweaks: Tweaks,
   revision: Schema.NullOr(Schema.String),
   approvedRevision: Schema.NullOr(Schema.String),

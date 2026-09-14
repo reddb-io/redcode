@@ -92,7 +92,7 @@ const make = Effect.gen(function* () {
       questions: [],
       scenarios: [],
       designSystem: "",
-      sources: yield* io(() => DesignSystem.discover(application)),
+      ...(yield* io(() => DesignSystem.load(application, { refresh: false }))),
       tweaks: {},
       revision: null,
       approvedRevision: null,
@@ -470,7 +470,12 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
   const refresh = Effect.fn("Design.refresh")(function* (id: Design.ID) {
     const document = yield* get(id)
-    return yield* save({ ...document, sources: yield* io(() => DesignSystem.discover(document.application)) })
+    return yield* save({
+      ...document,
+      ...(yield* io(() =>
+        DesignSystem.load(document.application, { refresh: true, declared: DesignSystem.declared(document) }),
+      )),
+    })
   }, lock.withPermits(1))
   const readBlob = (hash: string) =>
     /^[a-f0-9]{64}$/.test(hash)
