@@ -10,13 +10,14 @@ import { SessionTodoStore } from "./todo-store"
 export const PlanTask = SessionTodo.PlanTask
 export const Input = SessionTodo.Input
 export type Input = SessionTodo.Input
+export const ModelInput = SessionTodo.ModelInput
 export const Error = SessionTodo.Error
 export type Error = SessionTodo.Error
 export const Info = SessionTodo.Info
 export type Info = typeof Info.Type
 export const Event = SessionTodo.Event
 export const guidance =
-  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using their id and revision; omitted tasks are preserved. Complete only verified work: supply evidence.callID and evidence.messageID from a successful tool result and explain how it meets criterion. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
+  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) as evidence, or omit evidence and the newest successful result after the request is recorded automatically. Verification commands never invalidate evidence; only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
 
 export function active(todos: ReadonlyArray<Info>) {
   return todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled")
@@ -48,6 +49,8 @@ export interface Interface {
     readonly sessionID: SessionSchema.ID
     readonly todos: ReadonlyArray<Input>
     readonly origin?: SessionTodo.Source
+    /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+    readonly messageID?: string
   }) => Effect.Effect<ReadonlyArray<Info>, Error>
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>>
   readonly review: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>, Error>
@@ -85,6 +88,30 @@ const layer = Layer.effect(
 
 export const node = makeLocationNode({ service: Service, layer, deps: [EventV2.node, SessionTodoStore.node] })
 
+/**
+ * What the engine decided on the model's behalf: evidence it selected for a completion the model
+ * did not cite, or a task it blocked after repeated failed completion attempts. Both go into the
+ * tool output so the model reads the decision instead of inferring it from the task list.
+ */
+export function notes(incoming: ReadonlyArray<Input>, todos: ReadonlyArray<Info>) {
+  return incoming.flatMap((item) => {
+    if (item.status !== "completed") return []
+    const task = todos.find((entry) => (item.id ? entry.id === item.id : entry.content === item.content?.trim()))
+    if (!task) return []
+    if (task.status === "blocked") return [`Task ${task.id} was blocked instead of completed: ${task.reason}`]
+    if (task.status === "completed" && task.evidence && task.evidence.callID !== item.evidence?.callID)
+      return [
+        `Evidence for ${task.id} was selected automatically: ${task.evidence.callID} (${task.evidence.tool}, message ${task.evidence.messageID}).`,
+      ]
+    return []
+  })
+}
+
+/** The minimal correct shapes, quoted when an update fails validation so the retry is not a guess. */
+export function validationHint(detail: string) {
+  return `${detail}\nEach todo needs status plus either content and priority (new task) or id and revision (update). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence optional: {"callID":"<successful result>","explanation":"<how it meets criterion>"}). Do not resend the failed shape.`
+}
+
 export function context(todos: ReadonlyArray<Info>) {
   if (!todos.length)
     return "No tracked tasks yet. For multi-step work, capture each requested result and begin the first action in this turn."
@@ -100,6 +127,6 @@ export function context(todos: ReadonlyArray<Info>) {
     ...(active(todos).length > 24
       ? [`${active(todos).length - 24} more unfinished tasks are stored; read the full list before finishing.`]
       : []),
-    "Use todowrite with an empty list for full task state and recent evidence IDs. Finish with evidence from actual tools; cancellation must cite a later user scope change.",
+    "Update a task with its id, revision and the changed fields only. To complete one, run the verifying command after the last edit and cite that result's callID as evidence, or omit evidence to record the newest successful result automatically; refusals list the candidates inline. Cancellation must cite a later user scope change.",
   ].join("\n")
 }

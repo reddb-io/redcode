@@ -1746,20 +1746,41 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
 
+  const groups = createMemo(() => collapseTodoFailures(props.parts))
+
   return (
     <>
-      <For each={props.parts}>
-        {(part, index) => {
-          const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
+      <For each={groups()}>
+        {(group, index) => {
+          const component = createMemo(() =>
+            group.type === "part" ? PART_MAPPING[group.part.type as keyof typeof PART_MAPPING] : undefined,
+          )
           return (
-            <Show when={component()}>
-              <Dynamic
-                last={index() === props.parts.length - 1}
-                component={component()}
-                part={part as any}
-                message={props.message}
-              />
-            </Show>
+            <Switch>
+              <Match when={group.type === "todo-failures" && group}>
+                {(failures) => (
+                  <InlineTool
+                    icon="⚙"
+                    pending="Updating todos…"
+                    failure={`Todo update failed ×${failures().parts.length}`}
+                    complete={false}
+                    part={failures().parts[failures().parts.length - 1] as ToolPart}
+                  >
+                    Updating todos…
+                  </InlineTool>
+                )}
+              </Match>
+              <Match when={group.type === "part" && component() && group}>
+                {(single) => (
+                  <Dynamic
+                    last={index() === groups().length - 1}
+                    component={component()!}
+                    part={single().part as any}
+                    message={props.message}
+                  />
+                )}
+              </Match>
+            </Switch>
           )
         }}
       </For>
@@ -1841,6 +1862,28 @@ const PART_MAPPING = {
   text: TextPart,
   tool: ToolPart,
   reasoning: ReasoningPart,
+}
+
+/**
+ * Consecutive failed todowrite calls fold into one row.
+ *
+ * A model that trips the evidence gate retries it several times in a row; each refusal used to be
+ * its own red line. One row that counts them, and expands to the last refusal, says the same thing
+ * with less alarm. A single failure stays an ordinary tool part.
+ */
+export function collapseTodoFailures<P extends { type: string; tool?: string; state?: { status: string } }>(
+  parts: readonly P[],
+): Array<{ type: "part"; part: P } | { type: "todo-failures"; parts: P[] }> {
+  const failed = (part: P) => part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error"
+  return parts.reduce<Array<{ type: "part"; part: P } | { type: "todo-failures"; parts: P[] }>>((groups, part) => {
+    const last = groups[groups.length - 1]
+    if (!failed(part)) return [...groups, { type: "part", part }]
+    if (last?.type === "todo-failures")
+      return [...groups.slice(0, -1), { type: "todo-failures", parts: [...last.parts, part] }]
+    if (last?.type === "part" && failed(last.part))
+      return [...groups.slice(0, -1), { type: "todo-failures", parts: [last.part, part] }]
+    return [...groups, { type: "part", part }]
+  }, [])
 }
 
 const INLINE_TOOL_ICON_WIDTH = 2

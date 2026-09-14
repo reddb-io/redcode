@@ -118,6 +118,39 @@ describe("TodoWriteTool", () => {
     }),
   )
 
+  it.effect("folds content aliases, quotes the correct shape on invalid input and updates by id alone", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const registry = yield* ToolRegistry.Service
+      const service = yield* SessionTodo.Service
+      const created = yield* settleTool(
+        registry,
+        call([{ text: "Implement slice", status: "in_progress", priority: "high" }] as never),
+      )
+      expect(created.output?.structured).toMatchObject({
+        todos: [{ content: "Implement slice", status: "in_progress" }],
+      })
+      const invalid = yield* executeTool(registry, call([{ content: "Missing status" }] as never, "call-invalid"))
+      expect(invalid.type).toBe("error")
+      expect(invalid.value).toContain('["todos"][0]["status"]')
+      expect(invalid.value).toContain("Each todo needs status plus either content and priority")
+      const stored = (yield* service.get(sessionID))[0]
+      const updated = yield* settleTool(
+        registry,
+        call(
+          [{ id: stored.id, revision: stored.revision, status: "pending", reason: "Waiting" }] as never,
+          "call-id-only",
+        ),
+      )
+      expect(updated.output?.structured).toMatchObject({
+        todos: [{ id: stored.id, content: "Implement slice", priority: "high", status: "in_progress" }],
+      })
+      expect((yield* toolDefinitions(registry))[0].inputSchema).not.toHaveProperty(
+        "properties.todos.items.properties.text",
+      )
+    }),
+  )
+
   it.effect("does not update persisted todos when permission is denied", () =>
     Effect.gen(function* () {
       yield* setup

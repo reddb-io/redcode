@@ -58,6 +58,38 @@ describe("SessionTodo", () => {
     }),
   )
 
+  it.live("reports auto-selected evidence and blocked completions as notes for the model", () =>
+    Effect.sync(() => {
+      const evidence = { callID: "verify", messageID: "msg_1", tool: "bash", hash: "h", observed: 1, explanation: "ok" }
+      const todos = [
+        { id: "todo_a", content: "A", status: "completed", priority: "high", evidence },
+        {
+          id: "todo_b",
+          content: "B",
+          status: "blocked",
+          priority: "high",
+          reason: "completion evidence could not be verified after 2 attempts: none",
+        },
+        { id: "todo_c", content: "C", status: "completed", priority: "high", evidence },
+      ]
+      expect(
+        SessionTodo.notes(
+          [
+            { id: "todo_a", revision: 1, status: "completed" },
+            { id: "todo_b", revision: 1, status: "completed" },
+            { content: "C", status: "completed", priority: "high", evidence: { callID: "verify", explanation: "ok" } },
+            { id: "todo_a", revision: 1, status: "in_progress" },
+          ],
+          todos,
+        ),
+      ).toEqual([
+        "Evidence for todo_a was selected automatically: verify (bash, message msg_1).",
+        "Task todo_b was blocked instead of completed: completion evidence could not be verified after 2 attempts: none",
+      ])
+      expect(SessionTodo.validationHint("Missing key")).toContain('{"id":"todo_…","revision":3,"status":"completed"}')
+    }),
+  )
+
   it.effect("preserves omitted tasks, advances work and records revisions", () =>
     Effect.gen(function* () {
       yield* setup

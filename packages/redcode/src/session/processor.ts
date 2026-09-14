@@ -824,13 +824,12 @@ const layer = Layer.effect(
         }
         // Every step of a turn is its own assistant message, so looking at the current message
         // alone can never see a loop that spans steps — which is what a loop actually looks like.
-        // Read back a bounded window and cut it at the last thing the user said.
+        // Read back a bounded window and cut it at the last thing the user said; the synthetic
+        // continuations the runtime writes for itself do not count as the user saying something.
         const recent = yield* session
           .messages({ sessionID: ctx.sessionID, limit: LOOP_WINDOW })
           .pipe(Effect.orElseSucceed(() => []))
-        const turn = recent.slice(recent.findLastIndex((item) => item.info.role === "user") + 1)
-        const parts = turn.flatMap((item) => item.parts)
-        const decision = LoopGuard.assess({ parts, next: input, limits: bounds })
+        const decision = LoopGuard.assess({ parts: LoopGuard.turn(recent), next: input, limits: bounds })
         if (decision.type === "ok") return decision
         yield* guards.record({
           sessionID: ctx.sessionID,

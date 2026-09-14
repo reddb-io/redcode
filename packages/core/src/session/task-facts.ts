@@ -10,6 +10,7 @@ import { SessionSchema } from "./schema"
 import { MessageTable, PartTable, SessionMessageTable } from "./sql"
 import { SessionV1 } from "../v1/session"
 
+export type Kind = "edit" | "verification" | "bookkeeping" | "other"
 export type Result = {
   callID: string
   messageID: string
@@ -17,16 +18,44 @@ export type Result = {
   hash: string
   completed: number
   successful: boolean
-  mutation: boolean
+  errored: boolean
+  /** File edits invalidate earlier evidence; verification commands are evidence but never invalidate. */
+  kind: Kind
+  /** Files an edit touched, when the input names them; empty means unknown, which matches every proof. */
+  paths: string[]
   settled: boolean
+  input: unknown
   summary: string
 }
 export const hash = (value: unknown) =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "null")
     .digest("hex")
-const mutations = new Set(["write", "edit", "apply_patch", "multiedit", "bash", "shell"])
+const edits = new Set(["write", "edit", "apply_patch", "multiedit"])
+const verifications = new Set(["bash", "shell"])
 const bookkeeping = new Set(["todowrite", "todoread", "plan_exit", "goal_status", "goal_complete"])
+export const kind = (tool: string): Kind =>
+  edits.has(tool) ? "edit" : verifications.has(tool) ? "verification" : bookkeeping.has(tool) ? "bookkeeping" : "other"
+
+/** Whether an edit's files overlap a proof's files; a side without paths is treated as touching everything. */
+export const overlaps = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
+  !a.length || !b.length || a.some((x) => b.some((y) => x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`)))
+
+/** Files named by an edit tool's input: explicit path fields, or the file headers of a patch. */
+export function paths(tool: string, input: unknown): string[] {
+  if (!edits.has(tool) || typeof input !== "object" || input === null) return []
+  const record = input as Record<string, unknown>
+  const named = ["filePath", "path", "file_path"].flatMap((key) =>
+    typeof record[key] === "string" && record[key] ? [record[key] as string] : [],
+  )
+  const patch =
+    typeof record.patchText === "string"
+      ? [...record.patchText.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)].map((match) =>
+          match[1]!.trim(),
+        )
+      : []
+  return [...new Set([...named, ...patch])]
+}
 
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
@@ -49,6 +78,7 @@ const make = Effect.gen(function* () {
       message.type === "assistant"
         ? message.content.flatMap((part) => {
             if (part.type !== "tool") return []
+            const input = part.state.status === "pending" ? undefined : part.state.input
             return [
               {
                 callID: part.id,
@@ -57,8 +87,11 @@ const make = Effect.gen(function* () {
                 hash: hash(part.state),
                 completed: DateTime.toEpochMillis(part.time.completed ?? part.time.ran ?? part.time.created),
                 successful: part.state.status === "completed" && success(part.name, part.state.structured),
-                mutation: mutations.has(part.name),
+                errored: part.state.status === "error",
+                kind: kind(part.name),
+                paths: paths(part.name, input),
                 settled: part.state.status === "completed" || part.state.status === "error",
+                input,
                 summary: JSON.stringify({
                   input: part.state.input,
                   status: part.state.status,
@@ -122,8 +155,11 @@ const make = Effect.gen(function* () {
                   ? part.state.time.end
                   : part.state.time.start,
             successful: part.state.status === "completed" && success(part.tool, part.state.metadata),
-            mutation: mutations.has(part.tool),
+            errored: part.state.status === "error",
+            kind: kind(part.tool),
+            paths: paths(part.tool, part.state.input),
             settled: part.state.status === "completed" || part.state.status === "error",
+            input: part.state.input,
             summary: JSON.stringify({
               input: part.state.input,
               status: part.state.status,
@@ -142,7 +178,7 @@ const make = Effect.gen(function* () {
         .slice(0, 5)
         .map((request) => ({ ...request, text: request.text.slice(0, 1200) })),
       results: facts.results
-        .filter((result) => !bookkeeping.has(result.tool))
+        .filter((result) => result.kind !== "bookkeeping")
         .toSorted((a, b) => b.completed - a.completed)
         .slice(0, 20)
         .map((result) => ({

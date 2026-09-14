@@ -9,6 +9,7 @@ export const Info = SessionTodo.Info
 export type Info = SessionTodo.Info
 export const Input = SessionTodo.Input
 export type Input = SessionTodo.Input
+export const ModelInput = SessionTodo.ModelInput
 export const Event = SessionTodo.Event
 
 export interface Interface {
@@ -16,6 +17,8 @@ export interface Interface {
     sessionID: SessionID
     todos: ReadonlyArray<Input>
     origin?: SessionTodo.Source
+    /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+    messageID?: string
   }) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly get: (sessionID: SessionID) => Effect.Effect<Info[]>
   readonly review: (sessionID: SessionID) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>

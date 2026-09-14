@@ -1,7 +1,7 @@
 export * as TodoWriteTool from "./todowrite"
 
 import { ToolFailure } from "@reddb-io/redcode-llm"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, JsonSchema, Layer, Schema } from "effect"
 import { makeLocationNode } from "../effect/app-node"
 import { PermissionV2 } from "../permission"
 import { SessionTaskFacts } from "../session/task-facts"
@@ -17,9 +17,13 @@ export const Input = Schema.Struct({
     description: "Tasks to create or update; omitted tasks are preserved. Empty array reads the current list.",
   }),
 })
+// Decoded from the model's spelling (text, title or task fold into content) while the advertised
+// JSON schema stays the canonical Input.
+const ModelInput = Schema.Struct({ todos: Schema.Array(SessionTodo.ModelInput) })
 
 export const Output = Schema.Struct({
   todos: Schema.Array(SessionTodo.Info),
+  notes: Schema.optional(Schema.Array(Schema.String)),
   availableEvidence: Schema.optional(
     Schema.Struct({
       requests: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String, created: Schema.Number })),
@@ -38,7 +42,14 @@ export const Output = Schema.Struct({
 export type Output = typeof Output.Type
 
 export const toModelOutput = (output: Output) =>
-  JSON.stringify(output.availableEvidence ? output : output.todos, null, 2)
+  [
+    ...(output.notes ?? []),
+    JSON.stringify(
+      output.availableEvidence ? { todos: output.todos, availableEvidence: output.availableEvidence } : output.todos,
+      null,
+      2,
+    ),
+  ].join("\n")
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -53,7 +64,9 @@ const layer = Layer.effectDiscard(
           description:
             SessionTodo.guidance +
             " Supply id and revision from the last result when updating. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
-          input: Input,
+          input: ModelInput,
+          inputSchema: inputSchema(),
+          formatInputError: SessionTodo.validationHint,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
@@ -66,8 +79,15 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
+              const updated = yield* todos.update({
+                sessionID: context.sessionID,
+                todos: input.todos,
+                messageID: context.assistantMessageID,
+              })
+              const notes = SessionTodo.notes(input.todos, updated)
               return {
-                todos: yield* todos.update({ sessionID: context.sessionID, todos: input.todos }),
+                todos: updated,
+                ...(notes.length ? { notes } : {}),
                 ...(input.todos.length ? {} : { availableEvidence: yield* facts.available(context.sessionID) }),
               }
             }).pipe(
@@ -83,6 +103,12 @@ const layer = Layer.effectDiscard(
       .pipe(Effect.orDie)
   }),
 )
+
+function inputSchema(): JsonSchema.JsonSchema {
+  const document = Schema.toJsonSchemaDocument(Input)
+  if (Object.keys(document.definitions).length === 0) return document.schema
+  return { ...document.schema, $defs: document.definitions }
+}
 
 export const node = makeLocationNode({
   name: "tool/todowrite",

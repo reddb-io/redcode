@@ -1,5 +1,10 @@
 # V2 Schema Changelog
 
+## 2026-09-14: Relax The Todo Input Contract For Updates
+
+- `Todo.Input` (the `todowrite` tool input in both runtimes, not carried by any HTTP route) now makes `content` and `priority` optional: they are required to create a task and default to the stored values when `id` and `revision` address an existing one. `evidence` documents that an omitted value on completion selects the newest successful result after the request. Add `Todo.ModelInput`, the decoder the tools use at the model boundary, which folds `text`, `title` and `task` into `content`; the advertised JSON schema stays `Todo.Input`. `Todo.Info`, `Todo.Evidence` and `todo.updated` are unchanged. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`); neither changed because `Todo.Input` is not part of the public HTTP surface.
+- Add no migration or durable-event version; stored tasks decode as before.
+
 ## 2026-09-14: Record The Project's Design System On Design Documents
 
 - Add `Design.Component` (`root`, `file`, `name`, optional `props`) and optional `inventory` (bounded static scan of exported components per component root) and `manifest` (a one-line status of the generated `.red/DESIGN.md`: generated, refreshed, kept and why, or empty) to `Design.Info`, returned by every design document route (`GET/POST/PATCH /api/session/:sessionID/design...`). Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`; `packages/sdk/openapi.json` is unchanged because the V1 routes do not carry `Design.Info`).

@@ -1,6 +1,6 @@
 export * as SessionTodo from "./session-todo"
 
-import { Schema } from "effect"
+import { Schema, SchemaGetter } from "effect"
 import { define, inventory } from "./event"
 import { SessionID } from "./session-id"
 import { optional, PositiveInt } from "./schema"
@@ -52,13 +52,41 @@ export const Input = Schema.Struct({
     Schema.String.annotate({ description: "Exact quote from the user request covered by this task" }),
   ),
   criterion: optional(Schema.String.annotate({ description: "Observable acceptance condition for this task" })),
-  evidence: optional(EvidenceInput),
+  evidence: optional(
+    EvidenceInput.annotate({
+      description:
+        "Successful tool result proving completion; omitted on completion selects the newest successful result after the request",
+    }),
+  ),
   scopeChange: optional(Schema.Struct({ messageID: Schema.String, quote: Schema.String })),
-  content: Schema.String.check(Schema.isMinLength(1)),
+  // Content and priority are required to create a task; an update addressed by id keeps the stored values.
+  content: optional(
+    Schema.String.check(Schema.isMinLength(1)).annotate({
+      description: "Brief description of the task; required when creating, optional when updating by id",
+    }),
+  ),
   status: Status,
-  priority: Priority,
+  priority: optional(Priority.annotate({ description: "Required when creating, optional when updating by id" })),
 }).annotate({ identifier: "Todo.Input" })
 export interface Input extends Schema.Schema.Type<typeof Input> {}
+
+// Models routinely name the description text, title or task. Accept those spellings at the tool
+// boundary and fold them into content before the canonical Input is validated, so the JSON schema
+// the model sees still only advertises content.
+export const ModelInput = Schema.Struct({
+  ...Input.fields,
+  text: optional(Schema.String),
+  title: optional(Schema.String),
+  task: optional(Schema.String),
+}).pipe(
+  Schema.decodeTo(Input, {
+    decode: SchemaGetter.transform(({ text, title, task, ...item }) => {
+      const content = item.content ?? text ?? title ?? task
+      return content === undefined ? item : { ...item, content }
+    }),
+    encode: SchemaGetter.passthrough({ strict: false }),
+  }),
+)
 
 export const Info = Schema.Struct({
   // Old tool results and event snapshots predate task identity and closed states.
