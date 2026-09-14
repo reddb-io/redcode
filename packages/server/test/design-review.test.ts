@@ -65,21 +65,6 @@ const showsRevision = (page: Page, id: string) =>
     id,
     { timeout: 8000 },
   )
-/** Browses an older revision, retrying while a poll that was already in flight puts the latest one back. */
-const browseRevision = async (page: Page, id: string) => {
-  const restore = page.getByRole("button", { name: "Restore as new revision", exact: true })
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await page.getByLabel("Revision", { exact: true }).selectOption(id)
-    if (
-      await restore.waitFor({ timeout: 1000 }).then(
-        () => true,
-        () => false,
-      )
-    )
-      return
-  }
-  throw new Error(`Revision ${id} never stayed on screen`)
-}
 const activeID = (page: Page) =>
   page.evaluate(() => document.querySelector("#review")!.shadowRoot!.activeElement?.id ?? "")
 
@@ -237,7 +222,8 @@ test("existing Solid component: isolated interactive preview and history restora
   expect(await frame.getByRole("heading", { name: "Checkout", exact: true }).isVisible()).toBe(false)
   // Restore is offered only once an older revision is on screen.
   expect(await page.getByRole("button", { name: "Restore as new revision" }).isVisible()).toBe(false)
-  await browseRevision(page, current.revision.id)
+  await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+  await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor()
   await page.getByRole("button", { name: "Restore as new revision" }).click()
   await page.getByRole("option", { name: /Restored: First direction/ }).waitFor({ state: "attached" })
   const revisions = await api<Design.Revision[]>(`${current.root}/${current.document.id}/revision`)
@@ -258,7 +244,8 @@ test("refresh reloads the preview and keeps request errors visible across pollin
     await frame.getByRole("button", { name: "Add item" }).click()
     await page.getByRole("button", { name: "Refresh", exact: true }).click()
     await frame.getByRole("button", { name: "Add item" }).waitFor({ timeout: 3000 })
-    await browseRevision(page, current.revision.id)
+    await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+    await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor()
     await page.route("**/restore", (route) =>
       route.fulfill({ status: 409, json: { message: "Reopen this design before restoring" } }),
     )
@@ -633,7 +620,8 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   await page.keyboard.press("ArrowRight")
   expect(await page.getByRole("tab", { name: "Assets", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.getByLabel("Seconds", { exact: true }).waitFor()
-  await browseRevision(page, current.revision.id)
+  await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+  await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor()
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -726,6 +714,7 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     await page.getByText("Made the title larger.", { exact: false }).waitFor()
     await page.getByText("design_preview · done · Design", { exact: true }).waitFor()
     await page.locator("#agent-state").filter({ hasText: "Idle" }).waitFor({ state: "attached" })
+    expect(await page.locator("#agent-state").getAttribute("data-state")).toBe("idle")
     await frame.getByRole("heading", { name: "Checkout" }).waitFor()
     await page.getByLabel("Annotate elements", { exact: true }).check()
     await frame.getByRole("heading", { name: "Checkout" }).click()
@@ -1263,7 +1252,8 @@ test("compact toolbar keeps every action reachable", async () => {
     expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(false)
     // Browsing an older revision adds Restore and the newer-revision pill without a third row.
     await showsRevision(page, second.id)
-    await browseRevision(page, current.revision.id)
+    await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+    await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor()
     await page.getByRole("button", { name: "New revision available", exact: true }).waitFor()
     expect(
       (await page.locator("#toolbar").boundingBox())!.height +
@@ -1296,12 +1286,76 @@ test("compact toolbar keeps every action reachable", async () => {
     await page.getByRole("menuitem", { name: "Add variant", exact: true }).click()
     await page.getByLabel("What should the new variant explore?").waitFor()
     await page.locator("#cancel-variant").click()
+    // At phone width the open menu stays inside the viewport and never widens the page.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await more.click()
+    await page.getByRole("menu").waitFor()
+    const box = (await page.getByRole("menu").boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(390)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    // Home and End jump to the first and last entries, and Tab leaves the menu closed.
+    await page.keyboard.press("End")
+    expect(await activeID(page)).toBe("menu-add-variant")
+    await page.keyboard.press("Home")
+    expect(await activeID(page)).toBe("new")
+    await page.keyboard.press("Tab")
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    expect(await more.getAttribute("aria-expanded")).toBe("false")
+    // ArrowUp on the trigger opens the menu on its last entry.
+    await more.focus()
+    await page.keyboard.press("ArrowUp")
+    await page.getByRole("menu").waitFor()
+    expect(await activeID(page)).toBe("menu-add-variant")
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    // Create design opens the brief and focus moves into it rather than back to the trigger.
     await more.click()
     await page.getByRole("menuitem", { name: "Create design", exact: true }).click()
     await page.getByLabel("Name", { exact: true }).waitFor()
+    await page.waitForFunction(() => document.querySelector("#review")!.shadowRoot!.activeElement?.id === "name")
     expect(await page.getByLabel("Revision", { exact: true }).isVisible()).toBe(false)
     expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isVisible()).toBe(false)
     expect(await page.getByRole("button", { name: "Refresh", exact: true }).isVisible()).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("a revision picked while a refresh is in flight stays on screen", async () => {
+  const current = await published("html")
+  const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Second direction",
+  })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.frameLocator("#preview").getByRole("heading", { name: "Checkout" }).waitFor()
+    await showsRevision(page, second.id)
+    // Hold the revision list of the next background poll so the pick lands while it is in flight.
+    const stalled = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    await page.route(
+      (url) => url.pathname.endsWith("/revision"),
+      async (route) => {
+        if (route.request().method() === "GET") {
+          stalled.resolve()
+          await release.promise
+        }
+        await route.continue()
+      },
+    )
+    await stalled.promise
+    await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
+    release.resolve()
+    await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor({ timeout: 5000 })
+    await showsRevision(page, current.revision.id)
+    // Later polls keep the older revision: the newer one is only offered.
+    await page.waitForTimeout(5500)
+    expect(await page.getByLabel("Revision", { exact: true }).inputValue()).toBe(current.revision.id)
+    expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
+    expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(true)
   } finally {
     await page.close()
   }
