@@ -47,6 +47,11 @@ export interface Handle {
    * silence with a tool in flight is work, and only silence with none is a stall.
    */
   readonly activeToolCount: number
+  /**
+   * The loop guard's message when it ended this turn. The turn then breaks before goal handling, so
+   * the turn loop has to park an active goal with this reason itself.
+   */
+  readonly guardStop?: string
   readonly updateToolCall: (
     toolCallID: string,
     update: (part: SessionV1.ToolPart) => SessionV1.ToolPart,
@@ -100,6 +105,8 @@ interface ProcessorContext extends Input {
   shouldBreak: boolean
   snapshot: string | undefined
   blocked: boolean
+  /** Set when the loop guard decided to stop the turn. */
+  guardStop?: string
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
@@ -847,7 +854,10 @@ const layer = Layer.effect(
         // A loop that survived its own correction ends the turn: continuing only spends money to
         // reach the same place. Unlike a denied permission this is not the user's call, so it does
         // not go through `shouldBreak`.
-        if (decision.type === "stop") ctx.blocked = true
+        if (decision.type === "stop") {
+          ctx.blocked = true
+          ctx.guardStop = decision.message
+        }
         return decision
       })
 
@@ -858,6 +868,9 @@ const layer = Layer.effect(
         },
         get activeToolCount() {
           return Object.keys(ctx.toolcalls).length
+        },
+        get guardStop() {
+          return ctx.guardStop
         },
         get message() {
           return ctx.assistantMessage

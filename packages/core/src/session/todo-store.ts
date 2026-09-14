@@ -131,15 +131,21 @@ const make = Effect.gen(function* () {
                       source,
                       content,
                       messageID: input.messageID,
+                      task: before ? { id: before.id, revision: before.revision } : undefined,
+                      reason: item.reason?.trim() || undefined,
                       // A criterion that only restates the task explains nothing about a check.
                       fallback:
                         item.reason?.trim() ||
-                        item.criterion?.trim() ||
-                        (before?.criterion && before.criterion !== before.content ? before.criterion : undefined),
+                        explains(item.criterion, content) ||
+                        explains(before?.criterion, content),
                     })
                   : undefined
               // Two failed completion attempts in a row for one task inside a turn is a loop, not a
               // request for a third message; the task blocks with the last error instead.
+              // A missing explanation is a format problem with a genuine proof: it is refused every
+              // time until the model supplies one, and never counts toward blocking the task.
+              if (resolved && "error" in resolved && resolved.error.startsWith(NEEDS_EXPLANATION))
+                return yield* new SessionTodo.Error({ message: resolved.error })
               const attempts =
                 resolved && "error" in resolved && before
                   ? failedAttempts(
@@ -371,6 +377,24 @@ type Observed = {
 
 /** Prefix of every refusal the evidence engine issues; only these count toward blocking a task. */
 export const REFUSED = "Completion evidence refused:"
+/**
+ * Prefix of a completion whose proof is acceptable but unexplained. Like a schema error, it is a
+ * matter of resending the right shape, so it never counts toward blocking a task.
+ */
+export const NEEDS_EXPLANATION = "Completion evidence needs an explanation:"
+
+/** Text compared loosely: case, whitespace and punctuation do not make two sentences different. */
+const loose = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+
+/** A criterion that says something the task title does not, usable as the explanation of a check. */
+function explains(criterion: string | undefined, content: string) {
+  const text = criterion?.trim()
+  return text && loose(text) && loose(text) !== loose(content) ? text : undefined
+}
 
 /**
  * An edit that makes `proof` stale: a different call, touching the proof's files when both name
@@ -411,12 +435,37 @@ function resolve(input: {
   source: SessionTodo.Source
   content: string
   messageID?: string
+  /** The task being completed, so an explanation request can quote the exact update to send. */
+  task?: { id: string; revision: number }
+  /** The reason sent with the completion; the only stand-in for a cited result's explanation. */
+  reason?: string
+  /** The reason or a criterion that says more than the title; explains a check picked automatically. */
   fallback?: string
 }): { proof: SessionTaskFacts.Result; explanation: string } | { error: string } {
   const results = input.observed.results
   const claim = input.claim
   const when = `the request ${input.source.id} at ${iso(input.source.created)}`
   const refuse = (text: string) => ({ error: `${REFUSED} ${text}` })
+  const unexplained = (proof: SessionTaskFacts.Result) => {
+    const shell = proof.tool === "bash" || proof.tool === "shell" ? SessionTaskFacts.command(proof.input) : undefined
+    const update = {
+      todos: [
+        {
+          id: input.task?.id ?? "<task id>",
+          revision: input.task?.revision ?? "<current revision>",
+          status: "completed",
+          evidence: {
+            callID: proof.callID,
+            messageID: proof.messageID,
+            explanation: "<how this result meets the task>",
+          },
+        },
+      ],
+    }
+    return {
+      error: `${NEEDS_EXPLANATION} ${proof.callID} (${proof.tool}${shell ? `: ${shell}` : ""}) can prove "${input.content}", but the completion needs an explanation of how it meets the task. Resend exactly: ${JSON.stringify(update)}. A reason on the task (\"reason\":\"<how it verifies the task>\") works as the explanation too. This does not count as a failed attempt.`,
+    }
+  }
   const valid = (entry: SessionTaskFacts.Result) =>
     entry.settled &&
     entry.successful &&
@@ -429,17 +478,23 @@ function resolve(input: {
     return { proof, explanation }
   }
   if (!claim) {
-    const auto = results
+    const shell = (entry: SessionTaskFacts.Result) => entry.tool === "bash" || entry.tool === "shell"
+    const candidates = results
       .filter(
         (entry) => valid(entry) && entry.kind === "verification" && !invalidating(results, entry, input.messageID),
       )
-      .toSorted((a, b) => b.completed - a.completed)[0]
-    // Any shell command that exits 0 after the last edit qualifies, `ls` included, so a shell pick is
-    // recorded only when the task says what it had to show; a render or export is its own explanation.
-    if (auto && (auto.tool === "bash" || auto.tool === "shell") && !input.fallback)
+      .toSorted((a, b) => b.completed - a.completed)
+    // A command that only looks at things (`ls`, `cat`, `git status`) exits 0 without proving anything,
+    // so it is never picked; a real check among the candidates still is.
+    const auto = candidates.find((entry) => !shell(entry) || !SessionTaskFacts.readOnly(entry.input))
+    const inspection = candidates.find((entry) => shell(entry) && SessionTaskFacts.readOnly(entry.input))
+    if (!auto && inspection)
       return refuse(
-        `Completing "${input.content}" would record ${auto.callID} (${auto.tool}${SessionTaskFacts.command(auto.input) ? `: ${SessionTaskFacts.command(auto.input)}` : ""}) as its proof, but the task has no criterion or reason that says how a command verifies it. Run the check that proves the task if this was not it, then cite the verifying command as evidence with an explanation: {"callID":"<its callID>","explanation":"<how its output meets the task>"}. ${describe(results)}`,
+        `Completing "${input.content}" has no verification to record: the only command after the last edit, ${inspection.callID} (${inspection.tool}: ${SessionTaskFacts.command(inspection.input)}), only inspects and proves nothing by exiting 0. Run the check that proves the task, then cite the verifying command as evidence with an explanation: {"callID":"<its callID>","explanation":"<how its output meets the task>"}; for investigation work, cite the result that answers it. ${describe(results)}`,
       )
+    // A shell pick is recorded only when the task says what it had to show; a render or export is its
+    // own explanation.
+    if (auto && shell(auto) && !input.fallback) return unexplained(auto)
     if (auto) return { proof: auto, explanation: input.fallback || `auto-selected latest verification ${auto.tool}` }
     return refuse(
       `Completing "${input.content}" needs evidence, and no verification result (a successful bash or shell check, design_preview or design_export) exists after ${when} and after the last edit. Run the check that proves the task, then complete it; or, for investigation work, cite the read, grep or other result that answers it as evidence with an explanation. ${describe(results)}`,
@@ -452,7 +507,7 @@ function resolve(input: {
   const explicit =
     matching.length === 1 ? matching[0] : matching.filter(valid).length === 1 ? matching.find(valid) : undefined
   // A cited result is the model's own claim, so the model must say how it meets the criterion.
-  const explanation = claim.explanation?.trim() ?? ""
+  const explanation = claim.explanation?.trim() || input.reason || ""
   if (!matching.length)
     return refuse(
       `Evidence callID "${claim.callID}" does not match any tool result in this session. Cite a callID from the recent results, or run the verification and cite it. ${describe(results)}`,
@@ -481,10 +536,7 @@ function resolve(input: {
     return refuse(
       `Evidence callID "${claim.callID}" (${explicit.tool}) is the edit itself, which shows a change was made but not that it works. Run a check after the last edit (tests, build, a command that exercises it, design_preview) and cite that result. ${describe(results)}`,
     )
-  if (!explanation)
-    return refuse(
-      `Evidence callID "${claim.callID}" (${explicit.tool}) needs an explanation of how it meets the criterion. Resend the completion with evidence.explanation.`,
-    )
+  if (!explanation) return unexplained(explicit)
   return accept(explicit, explanation)
 }
 

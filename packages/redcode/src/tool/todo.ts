@@ -50,7 +50,7 @@ export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.
           const notes = SessionTodo.notes(
             params.todos,
             todos,
-            params.todos.some((item) => item.status === "completed") ? (yield* facts.load(ctx.sessionID)).results : [],
+            SessionTodo.quotesCommand(params.todos, todos) ? (yield* facts.load(ctx.sessionID)).results : [],
           )
 
           return {

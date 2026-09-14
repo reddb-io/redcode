@@ -288,30 +288,55 @@ describe("TUI inline tool wrapping", () => {
       { id: "a2", role: "assistant", time: { completed: 2 } },
       { id: "a3", role: "assistant", time: {} },
     ]
-    const reads: string[] = []
-    const partsOf = (id: string) => {
-      reads.push(id)
-      return parts[id] ?? []
-    }
+    // Counts full walks of a message's parts; the cache key may still read its length and last part.
+    const walks: string[] = []
+    const partsOf = (id: string): Fixture[] =>
+      new Proxy(parts[id] ?? [], {
+        get(target, key, receiver) {
+          if (key === Symbol.iterator) walks.push(id)
+          return Reflect.get(target, key, receiver)
+        },
+      })
+    const full = (list: typeof messages) => [...foldTodoFailures(list, (id) => parts[id] ?? [])]
     const fold = createTodoFold<Fixture>()
     const first = fold(messages, partsOf)
-    expect([...first]).toEqual([...foldTodoFailures(messages, (id) => parts[id] ?? [])])
+    expect([...first]).toEqual(full(messages))
     expect(first.get("f3")).toMatchObject({ lead: "f1", count: 3 })
-    // A streamed token in the live message: finished messages are not read again.
-    reads.length = 0
+    // A streamed token in the live message: finished messages are not walked again.
+    walks.length = 0
     parts.a3 = [...parts.a3!, { id: "t3", type: "text", text: "" }]
-    expect([...fold(messages, partsOf)]).toEqual([...foldTodoFailures(messages, (id) => parts[id] ?? [])])
-    expect(reads).toEqual(["a3"])
+    expect([...fold(messages, partsOf)]).toEqual(full(messages))
+    expect(walks).toEqual(["a3"])
     // The live message finishing with a rendered part breaks the run, and is then cached too.
     parts.a3 = [...parts.a3!, { id: "t4", type: "text", text: "Done" }, todo("f4")]
     const finished = [...messages.slice(0, 2), { id: "a3", role: "assistant", time: { completed: 3 } }]
-    reads.length = 0
     const settled = fold(finished, partsOf)
-    expect([...settled]).toEqual([...foldTodoFailures(finished, (id) => parts[id] ?? [])])
+    expect([...settled]).toEqual(full(finished))
     expect(settled.get("f4")).toMatchObject({ lead: "f4", count: 1 })
-    reads.length = 0
+    walks.length = 0
     fold(finished, partsOf)
-    expect(reads).toEqual([])
+    expect(walks).toEqual([])
+    // A tool part that settles as an error after its message finished is folded in.
+    parts.a2 = [
+      parts.a2![0]!,
+      parts.a2![1]!,
+      { id: "late", type: "tool", tool: "todowrite", state: { status: "running" } },
+    ]
+    expect(fold(finished, partsOf).has("late")).toBe(false)
+    parts.a2 = [parts.a2[0]!, parts.a2[1]!, { ...parts.a2[2]!, state: { status: "error" } }]
+    const late = fold(finished, partsOf)
+    expect([...late]).toEqual(full(finished))
+    expect(late.get("late")).toMatchObject({ lead: "f1", count: 4 })
+    // A part removed from a finished message is noticed as well.
+    parts.a2 = parts.a2.slice(0, 2)
+    const removed = fold(finished, partsOf)
+    expect([...removed]).toEqual(full(finished))
+    expect(removed.has("late")).toBe(false)
+    expect(removed.get("f1")).toMatchObject({ lead: "f1", count: 3 })
+    // So is an error recorded on a finished message.
+    const errored = finished.map((message) => (message.id === "a1" ? { ...message, error: { name: "x" } } : message))
+    expect([...fold(errored, partsOf)]).toEqual(full(errored))
+    expect(fold(errored, partsOf).get("f1")).toMatchObject({ count: 1 })
   })
 
   test("does not fold failures across a revert boundary", () => {
