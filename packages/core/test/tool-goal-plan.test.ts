@@ -491,10 +491,26 @@ it.live("Plan can inspect Design documents but cannot create a prototype through
   }),
 )
 
-it.live("design_document renders the project's design system for the model and refreshes its manifest", () =>
+it.live("design_document renders the project's design system as paths and counts and refreshes its manifest", () =>
   Effect.gen(function* () {
     const test = yield* setup
     const location = yield* Location.Service
+    const text = (result: Effect.Success<ReturnType<typeof test.run>>) => {
+      if (result.type === "error") return `ERROR ${result.value}`
+      if (result.type === "text") return result.value
+      if (result.type !== "content") return ""
+      return result.value.map((part) => (part.type === "text" ? part.text : "")).join("")
+    }
+    const fresh = text(
+      yield* test.run("design_document", {
+        action: "create",
+        input: { name: "Sketch", journey: "new", engine: "html", kind: "screen" },
+      }),
+    )
+    expect(fresh).toContain("Design system: none detected. Say so in designSystem")
+    expect(yield* Effect.promise(() => Bun.file(path.join(location.directory, ".red", "DESIGN.md")).exists())).toBe(
+      false,
+    )
     yield* Effect.promise(() =>
       Promise.all(
         Object.entries({
@@ -503,6 +519,7 @@ it.live("design_document renders the project's design system for the model and r
             devDependencies: { tailwindcss: "^3.4.1" },
           }),
           "tailwind.config.ts": "export default { content: ['./src/**/*.tsx'] }",
+          "DESIGN.md": "# Guidance\nDO NOT LEAK INTO TOOL OUTPUT",
           "src/styles/globals.css": ":root { --accent: #0af; }",
           "src/components/index.ts": 'export { Button } from "./Button"\nexport { Card } from "./Card"',
           "src/components/Button.tsx":
@@ -511,40 +528,49 @@ it.live("design_document renders the project's design system for the model and r
         }).map(([file, content]) => Bun.write(path.join(location.directory, file), content)),
       ),
     )
-    const text = (result: Effect.Success<ReturnType<typeof test.run>>) => {
-      if (result.type === "error") return `ERROR ${result.value}`
-      if (result.type === "text") return result.value
-      if (result.type !== "content") return ""
-      return result.value.map((part) => (part.type === "text" ? part.text : "")).join("")
-    }
     const created = text(
       yield* test.run("design_document", {
         action: "create",
         input: { name: "Settings", journey: "existing", engine: "react", kind: "screen", application: "." },
       }),
     )
-    expect(created).toContain("Design system (read .red/DESIGN.md first; import from the component roots")
-    expect(created).toContain("Doc .red/DESIGN.md (generated, edit the Notes section):\n# Design system")
+    expect(created).toContain("Design system (import from the component roots instead of re-implementing")
+    expect(created).toContain(
+      "Manifest: .red/DESIGN.md (generated from the files below; read it first, edit only its Notes)",
+    )
+    expect(created).toContain("Manifest status: generated .red/DESIGN.md")
+    expect(created).toContain("Docs: DESIGN.md (authoritative; read with the read tool before designing)")
+    expect(created).not.toContain("DO NOT LEAK")
     expect(created).toContain("Tokens: src/styles/globals.css")
     expect(created).toContain("Pipeline: Tailwind (tailwind.config.ts); CSS custom properties (src/styles/globals.css)")
     expect(created).toContain("Framework: react ^18.3.1")
     expect(created).toContain("Components src/components: Button, Card")
     const store = yield* DesignStore.Service
-    const document = (yield* store.list(test.sessionID))[0]
+    const document = (yield* store.list(test.sessionID)).find((item) => item.name === "Settings")!
     expect(document.inventory).toEqual([
       { root: "src/components", file: "src/components/Button.tsx", name: "Button", props: "ButtonProps" },
       { root: "src/components", file: "src/components/Card.tsx", name: "Card" },
     ])
+    const listed = text(yield* test.run("design_document", { action: "list" }))
+    expect(listed).toContain("Design system: none detected")
+    expect(listed).toContain(
+      "Design system: manifest .red/DESIGN.md; docs DESIGN.md; 1 token file; 2 components in src/components",
+    )
+    expect(listed).not.toContain("Manifest status")
     const manifest = path.join(document.application, ".red", "DESIGN.md")
+    const unchanged = text(yield* test.run("design_document", { action: "refresh", id: document.id }))
+    expect(unchanged).not.toContain("Manifest status")
     yield* Effect.promise(async () => {
       await Bun.write(path.join(location.directory, "src/components/Badge.tsx"), "export const Badge = () => null")
       await Bun.write(manifest, (await Bun.file(manifest).text()) + "Keep the 4px rhythm.\n")
     })
     const refreshed = text(yield* test.run("design_document", { action: "refresh", id: document.id }))
+    expect(refreshed).toContain("Manifest status: refreshed the generated block in .red/DESIGN.md")
     expect(refreshed).toContain("Components src/components: Badge, Button, Card")
-    expect(refreshed).toContain("- Badge (src/components/Badge.tsx)")
-    expect(refreshed).toContain("Keep the 4px rhythm.")
-    expect(yield* Effect.promise(() => Bun.file(manifest).text())).toContain("Keep the 4px rhythm.\n")
+    expect(refreshed).not.toContain("- Badge (src/components/Badge.tsx)")
+    const written = yield* Effect.promise(() => Bun.file(manifest).text())
+    expect(written).toContain("- Badge (src/components/Badge.tsx)")
+    expect(written.endsWith("Keep the 4px rhythm.\n")).toBe(true)
   }),
 )
 

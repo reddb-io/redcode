@@ -573,12 +573,13 @@ describe("Design revisions and review", () => {
     }),
   )
 
-  it.effect("create records the generated manifest and the Context Source carries its compact summary", () =>
+  it.effect("new journeys record no manifest; existing ones do, and the Context Source carries the summary", () =>
     Effect.gen(function* () {
       const { store, document } = yield* setup
       const location = yield* Location.Service
-      expect(document.sources.map((source) => source.file)).toEqual([".red/DESIGN.md"])
+      expect(document.sources).toEqual([])
       expect(document.inventory).toEqual([])
+      expect(document.manifest).toBe("")
       yield* Effect.promise(() =>
         Promise.all([
           Bun.write(path.join(location.directory, "src/components/index.ts"), 'export { Button } from "./Button"'),
@@ -590,9 +591,23 @@ describe("Design revisions and review", () => {
       expect(refreshed.inventory).toEqual([
         { root: "src/components", file: "src/components/Button.tsx", name: "Button" },
       ])
+      expect(refreshed.sources.some((source) => source.file === ".red/DESIGN.md")).toBe(false)
+      const existing = yield* store.create(document.sessionID, {
+        name: "Settings",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      expect(existing.manifest).toBe("generated .red/DESIGN.md")
+      expect(existing.sources.map((source) => [source.file, source.authoritative])).toEqual([
+        [".red/DESIGN.md", false],
+        ["src/styles/globals.css", false],
+        ["src/components/index.ts", false],
+      ])
       const generation = yield* SystemContext.initialize(yield* DesignContext.load(document.sessionID))
+      expect(generation.baseline).toContain("Design system: 1 token file; 1 components in src/components.")
       expect(generation.baseline).toContain(
-        "Design system: docs .red/DESIGN.md; 1 token file; 1 components in src/components.",
+        "Design system: manifest .red/DESIGN.md; 1 token file; 1 components in src/components.",
       )
     }),
   )

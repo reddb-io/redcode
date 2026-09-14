@@ -433,7 +433,7 @@ it.instance("streamed OpenRouter preview arguments publish a revision in the sam
       { action: "create", input: { name: "Streamed preview", journey: "new", engine: "html", kind: "screen" } },
       context,
     )
-    expect(created.output).toContain("Doc .red/DESIGN.md (generated, edit the Notes section):\n# Design system")
+    expect(created.output).toContain("Design system: none detected. Say so in designSystem")
     const args = Schema.decodeUnknownSync(
       Schema.fromJsonString(Schema.Struct({ id: Schema.String, name: Schema.String })),
     )(

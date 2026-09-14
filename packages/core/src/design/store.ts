@@ -92,7 +92,13 @@ const make = Effect.gen(function* () {
       questions: [],
       scenarios: [],
       designSystem: "",
-      ...(yield* io(() => DesignSystem.load(application, { refresh: false }))),
+      ...(yield* io(() =>
+        DesignSystem.load(application, {
+          refresh: false,
+          manifest: input.journey === "existing",
+          declared: DesignSystem.declared(input),
+        }),
+      )),
       tweaks: {},
       revision: null,
       approvedRevision: null,
@@ -473,7 +479,11 @@ const make = Effect.gen(function* () {
     return yield* save({
       ...document,
       ...(yield* io(() =>
-        DesignSystem.load(document.application, { refresh: true, declared: DesignSystem.declared(document) }),
+        DesignSystem.load(document.application, {
+          refresh: true,
+          manifest: document.journey === "existing",
+          declared: DesignSystem.declared(document),
+        }),
       )),
     })
   }, lock.withPermits(1))

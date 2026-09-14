@@ -5182,6 +5182,13 @@ export type DesignScenario = {
   notApplicable?: string
 }
 
+export type DesignComponent = {
+  root: string
+  file: string
+  name: string
+  props?: string
+}
+
 export type DesignInfo = {
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
@@ -5206,6 +5213,8 @@ export type DesignInfo = {
     authoritative: boolean
     excerpt: string
   }>
+  inventory?: Array<DesignComponent>
+  manifest?: string
   tweaks: {
     [key: string]: unknown | unknown
   }

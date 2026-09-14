@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-14: Record The Project's Design System On Design Documents
+
+- Add `Design.Component` (`root`, `file`, `name`, optional `props`) and optional `inventory` (bounded static scan of exported components per component root) and `manifest` (a one-line status of the generated `.red/DESIGN.md`: generated, refreshed, kept and why, or empty) to `Design.Info`, returned by every design document route (`GET/POST/PATCH /api/session/:sessionID/design...`). Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`; `packages/sdk/openapi.json` is unchanged because the V1 routes do not carry `Design.Info`).
+- Design source discovery also records component barrels, Storybook and PostCSS configuration, a dependency-only slice of `package.json` and story files as names-only entries, ordered configuration, docs, tokens, barrels, stories with a 60-entry cap and excerpts for the first twenty; a generated `.red/DESIGN.md` is discovered but not `authoritative`.
+- Add no migration or durable-event version; stored documents without the new fields decode as before.
+
 ## 2026-09-12: Add The Design Conversation Feed
 
 - Add `GET /api/session/:sessionID/design/feed?after=` (`design.feed`), a Server-Sent Events stream of `Design.FeedEvent` entries reduced on the server from the session's durable events: `user` (`text` plus a `notes` count; a browser review collapses to its message and the number of notes), `reply` (finished assistant text), `tool` (running, done or failed, with a one-line summary), `published` (a `design_preview` success naming the design, revision and name), `agent` and `state` (`working` | `idle`, sampled from the process-local execution set). `seq` is the durable aggregate sequence to resume from (0 for live-only entries); `id` lets a client merge repeats. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`packages/sdk/openapi.json`, `js/src/v2/gen`).

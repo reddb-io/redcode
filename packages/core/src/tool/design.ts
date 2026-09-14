@@ -174,13 +174,13 @@ const layer = Layer.effectDiscard(
           description: DesignDocumentTool.description,
           input: DesignDocumentTool.Input,
           output: Schema.Array(Design.Info),
-          toModelOutput: ({ output }) => [
+          toModelOutput: ({ input, output }) => [
             {
               type: "text",
               text: output
                 .map(
                   (document) =>
-                    `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`,
+                    `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`,
                 )
                 .join("\n\n"),
             },
