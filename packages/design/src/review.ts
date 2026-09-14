@@ -1096,7 +1096,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (index >= 0) state.feed[index] = event
     if (index < 0) state.feed.push(event)
     if (existing) {
-      existing.replaceWith(entry(event))
+      // A reconnect replays history: an entry that did not change keeps its row, so a reader's text
+      // selection and scroll position survive the replay.
+      const next = entry(event)
+      if (!existing.isEqualNode(next)) existing.replaceWith(next)
       return
     }
     const bottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 4
