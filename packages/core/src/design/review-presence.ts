@@ -44,6 +44,8 @@ export interface Presence {
   readonly claim: (sessionID: string, input?: { readonly explicit?: boolean }) => Claim
   /** Gives back a claim whose launch failed, so the next publish or request tries again. */
   readonly release: (sessionID: string, token: number) => void
+  /** Marks a claim's launch as done, so a stray release of its token changes nothing. */
+  readonly settle: (sessionID: string, token: number) => void
   /** Sessions with state; entries indistinguishable from a fresh session are dropped. */
   readonly size: () => number
 }
@@ -74,6 +76,8 @@ export function make(options: { readonly now?: () => number; readonly debounce?:
       const item = entry(sessionID)
       item.connections++
       item.seen = true
+      // A page arrived, so the launch worked: a late release of its claim must not restore the old state.
+      item.claim = undefined
       let released = false
       return () => {
         if (released) return
@@ -107,6 +111,10 @@ export function make(options: { readonly now?: () => number; readonly debounce?:
       item.seen = item.claim.seen
       item.claim = undefined
       prune(now())
+    },
+    settle: (sessionID, token) => {
+      const item = entries.get(sessionID)
+      if (item?.claim?.token === token) item.claim = undefined
     },
     size: () => {
       prune(now())
@@ -143,7 +151,9 @@ export const launch = (input: {
       input.open.pipe(
         Effect.catchCause(() => Effect.succeed(false)),
         Effect.tap((opened) =>
-          opened ? Effect.void : Effect.sync(() => presence.release(input.sessionID, claim.token)),
+          Effect.sync(() =>
+            opened ? presence.settle(input.sessionID, claim.token) : presence.release(input.sessionID, claim.token),
+          ),
         ),
       ),
     )
@@ -198,7 +208,11 @@ export async function openExplicit(input: {
   if (reply.outcome !== "claimed") return { status: reply.outcome, url, local }
   const token = reply.token
   if (token === undefined) return { status: "unavailable", url, local }
-  if (await input.launch(url).catch(() => false)) return { status: "opened", url, local }
+  if (await input.launch(url).catch(() => false)) {
+    // A server claim is settled when its page connects; a local one has no page to wait for.
+    if (local) input.local!.settle(input.sessionID, token)
+    return { status: "opened", url, local }
+  }
   await (local ? Promise.resolve(input.local!.release(input.sessionID, token)) : input.release(token)).catch(
     () => undefined,
   )

@@ -90,6 +90,29 @@ describe("DesignReviewPresence", () => {
     expect(launches).toEqual(["ses_a", "ses_a"])
   })
 
+  test("a stale release after the launch settled or the page connected cannot open a second tab", async () => {
+    const { clock, presence, launches, publish } = fixture()
+    // The launch succeeds and settles; a stray release of its token arrives before the page connects.
+    expect(
+      await Effect.runPromise(
+        DesignReviewPresence.launch({ sessionID: "ses_a", presence, open: Effect.succeed(true) }),
+      ),
+    ).toBe("claimed")
+    await Bun.sleep(10)
+    presence.release("ses_a", 1)
+    clock.now += 2_000
+    expect(publish("ses_a").outcome).toBe("pending")
+    expect(publish("ses_a", { explicit: true }).outcome).toBe("pending")
+    // Claim, the page connects and closes, then a stale release: an explicit request inside the debounce opens nothing.
+    const claim = publish("ses_b")
+    if (claim.outcome !== "claimed") throw new Error("expected a claim")
+    presence.connect("ses_b")()
+    presence.release("ses_b", claim.token)
+    clock.now += 2_000
+    expect(publish("ses_b", { explicit: true }).outcome).toBe("pending")
+    expect(launches).toEqual(["ses_b"])
+  })
+
   test("settled sessions are dropped; a launched page that never connected is kept", () => {
     const { clock, presence, publish } = fixture()
     publish("ses_closed")

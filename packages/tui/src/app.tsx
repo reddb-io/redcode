@@ -1041,6 +1041,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     })
   })
 
+  // The browser did not open (or REDCODE_NO_BROWSER blocked it): the user still needs the authorization URL.
+  event.on("mcp.browser.open.failed", (evt, { workspace }) => {
+    if (workspace !== project.workspace.current()) return
+    toast.show({
+      title: `Authorize ${evt.properties.mcpName}`,
+      message: `Could not open a browser. Open this URL to authorize: ${evt.properties.url}`,
+      variant: "warning",
+    })
+  })
+
   event.on("tui.session.select", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
     route.navigate({
