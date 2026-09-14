@@ -65,6 +65,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.received": "Comentários recebidos",
   "session.design.studio.retry": "Tentar reenviar os comentários salvos",
   "session.design.studio.refresh": "Atualizar",
+  "session.design.studio.more": "Mais ações",
   "session.design.studio.latest": "Nova revisão disponível",
   "session.design.studio.annotate": "Anotar elementos",
   "session.design.studio.inspect": "Selecione um elemento ou texto na visualização para anexar uma anotação.",

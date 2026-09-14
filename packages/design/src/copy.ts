@@ -64,6 +64,7 @@ export const reviewCopy = {
   received: "Feedback received",
   retry: "Retry sending saved feedback",
   refresh: "Refresh",
+  more: "More actions",
   latest: "New revision available",
   annotate: "Annotate elements",
   inspect: "Select an element or text in the preview to attach a note.",
