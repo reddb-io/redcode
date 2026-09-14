@@ -18,6 +18,12 @@ existing session preserves the server's agent and model; startup flags apply to
 new sessions. Adoption and event reconnection never resume provider work.
 `/resume`, a new message, or `/goal-resume` is an explicit request to continue.
 
+Review pages (`/review`, `--open`, the TUI's `/design-review` and
+`design_preview`) open in Google Chrome or Chromium when one is installed, and
+otherwise in the system default browser. Set `REDCODE_DESIGN_BROWSER=default` to
+always use the system browser, or to an app name or absolute path to use that
+browser. `REDCODE_DESIGN_NO_OPEN` still skips opening from `design_preview`.
+
 Messages steer at provider boundaries. `/queue message` waits until current work
 would otherwise become idle. `/stop` or Ctrl+C interrupts execution without
 closing the terminal. `/quit` exits; a local server interrupts its session before

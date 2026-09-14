@@ -6,6 +6,8 @@ import { DesignTerminal } from "./design-terminal"
 import { ServerAuth } from "@/server/auth"
 import { errorMessage } from "@/util/error"
 import { DesignServer } from "./design-server"
+import { DesignBrowser } from "@/design/browser"
+import { Effect } from "effect"
 import { withTimeout } from "@/util/timeout"
 
 export async function run(args: {
@@ -37,8 +39,7 @@ export async function run(args: {
   const review = async (sessionID: string) => {
     const url = new URL(`/api/session/${encodeURIComponent(sessionID)}/design/review`, baseUrl).toString()
     write(`Review: ${url}`)
-    const open = await import("open")
-    await open.default(url)
+    await Effect.runPromise(DesignBrowser.open(url))
   }
   const terminal = await DesignTerminal.create({
     client: Redcode.make({ baseUrl, headers: ServerAuth.headers() }),
