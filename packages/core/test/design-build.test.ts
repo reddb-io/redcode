@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { cp, mkdir, rm, stat, symlink, utimes } from "node:fs/promises"
+import os from "node:os"
+import { cp, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes } from "node:fs/promises"
 import { pathToFileURL } from "node:url"
 import { Effect, Layer, Schema } from "effect"
 import type { Design } from "@reddb-io/redcode-schema/design"
@@ -554,13 +555,34 @@ test("application packages are located on disk, whatever this process's resolver
   expect(await DesignBuild.locatePackage(tmp.path, "react-dom/client")).toBe(
     path.join(tmp.path, "node_modules", "react-dom", "client.js"),
   )
-  expect(await DesignBuild.locatePackage(path.join(tmp.path, "src", "nested"), "react")).toBe(
+  expect(await DesignBuild.locatePackage(path.join(tmp.path, "src", "nested"), "react", undefined, tmp.path)).toBe(
     path.join(tmp.path, "node_modules", "react", "index.js"),
   )
   expect(await DesignBuild.locatePackage(tmp.path, "react-dom/package.json")).toBe(
     path.join(tmp.path, "node_modules", "react-dom", "package.json"),
   )
   expect(await DesignBuild.locatePackage(tmp.path, "missing-package")).toBeUndefined()
+  // Names and subpaths are single safe segments: none can climb out of node_modules or alias it.
+  for (const specifier of ["..", ".", "node_modules", "@x/..", "@/pkg", "react/../react-dom", "react/./index.js"])
+    expect(await DesignBuild.locatePackage(tmp.path, specifier)).toBeUndefined()
+})
+
+test("package lookup stops at the repository root", async () => {
+  await using tmp = await tmpdir()
+  // A package planted above the repository (a home directory's node_modules) is not the application's.
+  await Bun.write(path.join(tmp.path, "node_modules", "planted", "package.json"), JSON.stringify({ name: "planted" }))
+  await Bun.write(path.join(tmp.path, "node_modules", "planted", "index.js"), "module.exports = 1\n")
+  const repository = path.join(tmp.path, "repository")
+  await mkdir(path.join(repository, "packages", "app"), { recursive: true })
+  await Bun.$`git init -q`.cwd(repository).quiet()
+  await Bun.write(path.join(repository, "node_modules", "inside", "package.json"), JSON.stringify({ name: "inside" }))
+  await Bun.write(path.join(repository, "node_modules", "inside", "index.js"), "module.exports = 2\n")
+  const application = path.join(repository, "packages", "app")
+  expect(await DesignBuild.locatePackage(application, "planted")).toBeUndefined()
+  expect(await DesignBuild.locatePackage(application, "inside")).toBe(
+    path.join(await realpath(repository), "node_modules", "inside", "index.js"),
+  )
+  expect(await DesignBuild.packageBoundary(application)).toBe(await realpath(repository))
 })
 
 test("package entries follow exports conditions, subpaths and main", () => {
@@ -579,11 +601,16 @@ test("package entries follow exports conditions, subpaths and main", () => {
     "./esm.js",
   ])
   expect(DesignBuild.entries({ main: "lib/main" }, ".", browser)).toEqual([
-    "lib/main",
-    "lib/main.js",
-    path.join("lib/main", "index.js"),
+    "./lib/main",
+    "./lib/main.js",
+    "./lib/main/index.js",
   ])
   expect(DesignBuild.entries({}, "./jsx-runtime", browser)[0]).toBe("./jsx-runtime")
+  // Only "./" targets that stay inside the package are candidates.
+  for (const target of ["../outside.js", "./a/../../outside.js", "/etc/passwd", "C:/x.js", "index.js", ".\\x.js"])
+    expect(DesignBuild.entries({ exports: target }, ".", browser)).toEqual([])
+  for (const main of ["/etc/passwd", "../outside.js", "C:/x.js", "lib/../../x.js"])
+    expect(DesignBuild.entries({ main }, ".", browser)).toEqual([])
 })
 
 test("a node_modules file names its package and subpath in Windows and POSIX path or file URL shapes", () => {
@@ -616,6 +643,27 @@ test("a node_modules file names its package and subpath in Windows and POSIX pat
   expect(DesignBuild.packageFile("C:\\app\\node_modules\\react-dom")).toBeUndefined()
   expect(DesignBuild.packageFile("C:\\app\\node_modules\\@scope")).toBeUndefined()
   expect(DesignBuild.packageFile("react-dom/client")).toBeUndefined()
+  // Traversing or aliasing segments are refused, in the name and the subpath.
+  for (const file of [
+    "/app/node_modules/../etc/passwd",
+    "/app/node_modules/./pkg/index.js",
+    "/app/node_modules/@x/../secret.js",
+    "/app/node_modules/pkg/../../secret.js",
+    "/app/node_modules/pkg/./index.js",
+    "C:\\app\\node_modules\\..\\secret.js",
+    "file:///C:/app/node_modules/%2e%2e/secret.js",
+    "file:///app/node_modules/pkg/%2e%2e/%2e%2e/secret.js",
+    "file:///app/node_modules/pkg/a%5c..%5c..%5csecret.js",
+  ])
+    expect(DesignBuild.packageFile(file)).toBeUndefined()
+  // A host or UNC path names a network share: never redirected, so nothing resolves it before an ask.
+  for (const file of [
+    "file://server/share/node_modules/react-dom/client.js",
+    "file:////server/share/node_modules/react-dom/client.js",
+    "\\\\server\\share\\node_modules\\react-dom\\client.js",
+    "//server/share/node_modules/react-dom/client.js",
+  ])
+    expect(DesignBuild.packageFile(file)).toBeUndefined()
 })
 
 it.live(
@@ -648,6 +696,125 @@ it.live(
       )
       expect(built.reads).toEqual([])
       expect(built.js).toContain("Foreign import")
+    }),
+  60000,
+)
+
+/** A directory outside the application that stands for another checkout, removed with the test's scope. */
+const foreignCheckout = Effect.acquireRelease(
+  Effect.promise(async () => realpath(await mkdtemp(path.join(os.tmpdir(), "redcode-foreign-checkout-")))),
+  (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+)
+
+it.live(
+  "an import resolved into a package the application does not install is still read with permission",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      const foreign = yield* foreignCheckout
+      const file = path.join(foreign, "node_modules", "design-foreign", "index.js")
+      yield* Effect.promise(async () => {
+        await materializeDependencies(location.directory, ["react", "react-dom"])
+        await Bun.write(
+          path.join(foreign, "node_modules", "design-foreign", "package.json"),
+          '{"name":"design-foreign"}',
+        )
+        await Bun.write(file, 'export const foreign = "foreign-value"\n')
+      })
+      const document = yield* store.create(sessionID, {
+        name: "Control",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      // The control for the redirect: with no copy in the application the file stays where it was, and is asked for.
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react("<main>{foreign}</main>", `import { foreign } from ${JSON.stringify(pathToFileURL(file).href)}\n`),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: [], css: [], tailwind: false, framework: "react" },
+        "control",
+      )
+      expect(built.reads).toContain(file)
+      expect(built.js).toContain("foreign-value")
+    }),
+  60000,
+)
+
+it.live(
+  "a traversal through another checkout's node_modules is not redirected and is still read with permission",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      const foreign = yield* foreignCheckout
+      const outside = path.join(foreign, "outside.js")
+      yield* Effect.promise(async () => {
+        await materializeDependencies(location.directory, ["react", "react-dom"])
+        await Bun.write(outside, 'export const secret = "outside-value"\n')
+      })
+      const document = yield* store.create(sessionID, {
+        name: "Traversal",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      const traversal = `${pathToFileURL(foreign).href}/node_modules/react-dom/../../outside.js`
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react("<main>{secret}</main>", `import { secret } from ${JSON.stringify(traversal)}\n`),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: [], css: [], tailwind: false, framework: "react" },
+        "traversal",
+      )
+      expect(built.reads).toContain(outside)
+    }),
+  60000,
+)
+
+it.live(
+  "a redirect onto an application file symlinked outside the application is still read with permission",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      const foreign = yield* foreignCheckout
+      const escape = path.join(foreign, "client.js")
+      yield* Effect.promise(async () => {
+        await materializeDependencies(location.directory, ["react", "react-dom"])
+        await Bun.write(escape, "export function createRoot() { return { render() {} } }\n")
+        const client = path.join(location.directory, "node_modules", "react-dom", "client.js")
+        await rm(client)
+        await symlink(escape, client)
+      })
+      const document = yield* store.create(sessionID, {
+        name: "Symlink",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      const imported = pathToFileURL(path.join(foreign, "node_modules", "react-dom", "client.js")).href
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react("<main>Symlinked</main>").replace('"react-dom/client"', JSON.stringify(imported)),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: [], css: [], tailwind: false, framework: "react" },
+        "symlink",
+      )
+      expect(built.reads).toContain(escape)
     }),
   60000,
 )
