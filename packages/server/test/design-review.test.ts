@@ -1462,7 +1462,9 @@ test("annotate toggle stays in the toolbar and responds to A", async () => {
     await frame.getByRole("heading", { name: "Checkout" }).click()
     await card.fill("Still writing")
     await card.press("Escape")
-    expect(await activeID(page)).not.toBe("card-text")
+    // Escape leaves the text in the card and moves focus to the toggle rather than the page body.
+    expect(await activeID(page)).toBe("annotate")
+    expect(await card.inputValue()).toBe("Still writing")
     await page.keyboard.press("a")
     await page.waitForTimeout(200)
     expect(await toggle.getAttribute("aria-pressed")).toBe("true")
@@ -1478,6 +1480,31 @@ test("annotate toggle stays in the toolbar and responds to A", async () => {
     await peer.locator("body").press("Escape")
     await pressed(false)
     await page.getByRole("button", { name: "Single view", exact: true }).click()
+    // Clicking the panel's plain background puts focus in the review, and A still toggles.
+    const panel = (await page.locator("#panel-review").boundingBox())!
+    await page.mouse.click(panel.x + panel.width - 6, panel.y + 6)
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe("review")
+    await page.keyboard.press("a")
+    await pressed(true)
+    await page.keyboard.press("Escape")
+    await pressed(false)
+    // Selecting conversation text with the pointer still works.
+    const first = page.getByText("Reply number 0", { exact: false }).first()
+    await first.scrollIntoViewIfNeeded()
+    const reply = (await first.boundingBox())!
+    await page.mouse.move(reply.x + 12, reply.y + 14)
+    await page.mouse.down()
+    await page.mouse.move(reply.x + reply.width - 12, reply.y + 14, { steps: 5 })
+    await page.mouse.up()
+    expect(
+      await page.evaluate(() => {
+        // Chromium reports a selection made inside a shadow tree through the shadow root.
+        const shadow = document.querySelector("#review")!.shadowRoot as ShadowRoot & {
+          getSelection?: () => Selection | null
+        }
+        return shadow.getSelection?.()?.toString() || getSelection()?.toString() || ""
+      }),
+    ).toContain("Reply number")
     // At phone width the control collapses to its icon and neither the toolbar nor the page overflows.
     await page.setViewportSize({ width: 390, height: 844 })
     expect(await toggle.isVisible()).toBe(true)

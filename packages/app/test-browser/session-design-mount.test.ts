@@ -94,46 +94,56 @@ describe("Design review translations and lifetime", () => {
     expect(fixture.cleanups()).toBe(1)
   })
 
-  test("keeps the annotation shortcut scoped to the review so the prompt still gets typed letters", async () => {
-    const fixture = createFixture()
-    const outside = document.createElement("button")
-    document.body.append(outside, fixture.root)
-    try {
-      fixture.module.resolve({ mountReview: fixture.mount })
-      await fixture.mounted[0].promise
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      // Stand in for a loaded revision: the toggle only acts while the studio is on screen.
-      fixture.element("studio").hidden = false
-      fixture.element("review-tools").hidden = false
-      const toggle = fixture.element("annotate")
-      const press = () => {
-        const event = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true, composed: true })
-        document.body.dispatchEvent(event)
-        return event
+  for (const order of ["before", "after"] as const) {
+    test(`routes A between the session prompt and the review by focus (page handler registered ${order} mount)`, async () => {
+      const fixture = createFixture()
+      document.body.append(fixture.root)
+      const page = order === "before" ? installSessionKeys() : undefined
+      try {
+        fixture.module.resolve({ mountReview: fixture.mount })
+        await fixture.mounted[0].promise
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        const keys = page ?? installSessionKeys()
+        try {
+          // Stand in for a loaded revision: the toggle only acts while the studio is on screen.
+          fixture.element("studio").hidden = false
+          fixture.element("review-tools").hidden = false
+          const toggle = fixture.element("annotate")
+          const host = fixture.root.firstElementChild as HTMLElement
+
+          // (a) Nothing focused: the key goes to the prompt and annotation stays off.
+          expect(keys.press("a").defaultPrevented).toBe(false)
+          expect(document.activeElement).toBe(keys.prompt)
+          expect(keys.prompt.value).toBe("a")
+          expect(toggle.getAttribute("aria-pressed")).toBe("false")
+
+          // (b) Clicking the review's panel background puts focus in the review, so A toggles annotation.
+          keys.prompt.blur()
+          fixture.element("panel-review").dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }))
+          expect(document.activeElement).toBe(host)
+          expect(keys.press("a").defaultPrevented).toBe(true)
+          expect(toggle.getAttribute("aria-pressed")).toBe("true")
+          expect(document.activeElement).toBe(host)
+          expect(keys.prompt.value).toBe("a")
+          keys.press("a")
+          expect(toggle.getAttribute("aria-pressed")).toBe("false")
+          expect(keys.prompt.value).toBe("a")
+
+          // (c) Focus in the prompt: A is typed there.
+          keys.prompt.focus()
+          expect(keys.press("a").defaultPrevented).toBe(false)
+          expect(keys.prompt.value).toBe("aa")
+          expect(toggle.getAttribute("aria-pressed")).toBe("false")
+        } finally {
+          if (!page) keys.remove()
+        }
+      } finally {
+        page?.remove()
+        fixture.dispose()
+        fixture.root.remove()
       }
-      const pointer = (target: Element) =>
-        target.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }))
-
-      // Nothing has been touched yet: the key is left for the session page.
-      expect(press().defaultPrevented).toBe(false)
-      expect(toggle.getAttribute("aria-pressed")).toBe("false")
-      pointer(outside)
-      expect(press().defaultPrevented).toBe(false)
-      expect(toggle.getAttribute("aria-pressed")).toBe("false")
-
-      pointer(fixture.element("canvas"))
-      expect(press().defaultPrevented).toBe(true)
-      expect(toggle.getAttribute("aria-pressed")).toBe("true")
-
-      pointer(outside)
-      expect(press().defaultPrevented).toBe(false)
-      expect(toggle.getAttribute("aria-pressed")).toBe("true")
-    } finally {
-      fixture.dispose()
-      outside.remove()
-      fixture.root.remove()
-    }
-  })
+    })
+  }
 
   test("does not mount after its owner is disposed during import", async () => {
     const fixture = createFixture()
@@ -144,6 +154,41 @@ describe("Design review translations and lifetime", () => {
     expect(fixture.cleanups()).toBe(0)
   })
 })
+
+/** Mirrors the session page: a document keydown that sends typed letters to the prompt unless handled or typed into a field. */
+function installSessionKeys() {
+  const prompt = document.createElement("textarea")
+  document.body.append(prompt)
+  const editable = (item: EventTarget | null | undefined) =>
+    item instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(item.tagName) || item.isContentEditable)
+  const deepActive = () => {
+    let current: Element | null = document.activeElement
+    while (current instanceof HTMLElement && current.shadowRoot?.activeElement)
+      current = current.shadowRoot.activeElement
+    return current instanceof HTMLElement ? current : undefined
+  }
+  const handler = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
+    const target = event.composedPath().find((item): item is HTMLElement => item instanceof HTMLElement)
+    if (editable(target) || editable(deepActive())) return
+    if (event.key.length === 1 && !(event.ctrlKey || event.metaKey)) prompt.focus()
+  }
+  document.addEventListener("keydown", handler)
+  return {
+    prompt,
+    /** Dispatches a key where the browser would (the focused element) and applies typing as its default action. */
+    press(key: string) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, composed: true })
+      ;(deepActive() ?? document.body).dispatchEvent(event)
+      if (!event.defaultPrevented && key.length === 1 && deepActive() === prompt) prompt.value += key
+      return event
+    },
+    remove() {
+      document.removeEventListener("keydown", handler)
+      prompt.remove()
+    },
+  }
+}
 
 function createFixture(request: ReviewOptions["request"] = async () => Response.json([])) {
   const root = document.createElement("div")
