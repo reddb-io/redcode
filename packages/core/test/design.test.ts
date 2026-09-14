@@ -573,6 +573,30 @@ describe("Design revisions and review", () => {
     }),
   )
 
+  it.effect("create records the generated manifest and the Context Source carries its compact summary", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      const location = yield* Location.Service
+      expect(document.sources.map((source) => source.file)).toEqual([".red/DESIGN.md"])
+      expect(document.inventory).toEqual([])
+      yield* Effect.promise(() =>
+        Promise.all([
+          Bun.write(path.join(location.directory, "src/components/index.ts"), 'export { Button } from "./Button"'),
+          Bun.write(path.join(location.directory, "src/components/Button.tsx"), "export const Button = () => null"),
+          Bun.write(path.join(location.directory, "src/styles/globals.css"), ":root { --accent: #0af; }"),
+        ]),
+      )
+      const refreshed = yield* store.refresh(document.id)
+      expect(refreshed.inventory).toEqual([
+        { root: "src/components", file: "src/components/Button.tsx", name: "Button" },
+      ])
+      const generation = yield* SystemContext.initialize(yield* DesignContext.load(document.sessionID))
+      expect(generation.baseline).toContain(
+        "Design system: docs .red/DESIGN.md; 1 token file; 1 components in src/components.",
+      )
+    }),
+  )
+
   it.effect("rejects spoofed media, executable SVG and escaping paths; keeps editable SVG versions", () =>
     Effect.gen(function* () {
       const { store, document } = yield* setup

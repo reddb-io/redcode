@@ -12,6 +12,7 @@ import { Config } from "@/config/config"
 import { Effect, Schema, Option } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignSystem } from "@reddb-io/redcode-core/design/system"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
 import { DesignStudio } from "@/design/studio"
@@ -408,7 +409,7 @@ export const DesignTools = Effect.gen(function* () {
 })
 
 function describe(document: Design.Info) {
-  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`
+  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`
 }
 
 function define<S extends Schema.Decoder<unknown>>(

@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { DesignStore } from "./store"
 import { DesignApproval } from "./approval"
+import { DesignSystem } from "./system"
 import { SystemContext } from "../system-context/index"
 
 const Entry = Schema.Struct({
@@ -14,6 +15,7 @@ const Entry = Schema.Struct({
   ended: Schema.Boolean,
   objective: Schema.String,
   questions: Schema.Array(Schema.String),
+  system: Schema.String,
   approval: Schema.NullOr(DesignApproval.Summary),
 })
 
@@ -26,6 +28,7 @@ const render = (entries: readonly (typeof Entry.Type)[]) =>
             entry.approval
               ? DesignApproval.guidance(entry.approval)
               : `Work: ${entry.root}. Objective: ${entry.objective}. Open questions: ${entry.questions.join("; ")}. This design is not approved.`,
+            ...(entry.system ? [`Design system: ${entry.system}.`] : []),
           ].join("\n"),
         )
         .join("\n\n")
@@ -52,6 +55,7 @@ export const load = Effect.fn(function* (sessionID: Session.ID) {
               ended: document.ended,
               objective: record ? "" : document.brief.objective,
               questions: record ? [] : document.questions,
+              system: record ? "" : DesignSystem.summary(document),
               approval: record ? DesignApproval.summary(record) : null,
             }
           }),
