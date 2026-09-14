@@ -52,6 +52,9 @@ process.env["REDCODE_MODELS_PATH"] = path.join(import.meta.dir, "tool", "fixture
 process.env["REDCODE_DISABLE_MODELS_FETCH"] = "1"
 process.env["REDCODE_EXPERIMENTAL_EVENT_SYSTEM"] = "true"
 process.env["REDCODE_EXPERIMENTAL_WORKSPACES"] = "true"
+// A published Design revision would launch the developer's browser (one tab per test). Suites that
+// exercise the launcher inject fake spawn and load functions instead.
+process.env["REDCODE_DESIGN_NO_OPEN"] = "1"
 
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills

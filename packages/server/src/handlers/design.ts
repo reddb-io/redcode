@@ -11,6 +11,7 @@ import { DesignBuild } from "@reddb-io/redcode-core/design/build"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
 import { DesignFeed } from "@reddb-io/redcode-core/design/feed"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
@@ -157,7 +158,13 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           Stream.orDie,
           Stream.mapAccum(() => DesignFeed.initial, DesignFeed.reduce),
         )
-        return Stream.make(agent).pipe(Stream.concat(Stream.merge(durable, state)))
+        // A subscriber is a connected review page; publishing does not open another tab while it lasts.
+        return Stream.unwrap(
+          Effect.as(
+            DesignReviewPresence.hold(ctx.params.sessionID),
+            Stream.make(agent).pipe(Stream.concat(Stream.merge(durable, state))),
+          ),
+        )
       }),
     )
     .handle(

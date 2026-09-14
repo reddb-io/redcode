@@ -82,6 +82,8 @@ process.env.XDG_CACHE_HOME = path.join(exerciseGlobalRoot, "cache")
 process.env.HOME = exerciseGlobalRoot
 process.env.REDCODE_TEST_HOME = exerciseGlobalRoot
 process.env.REDCODE_DISABLE_SHARE = "true"
+// Scenarios publish Design revisions; none may launch the developer's browser.
+process.env.REDCODE_DESIGN_NO_OPEN = "1"
 export const exerciseConfigDirectory = path.join(exerciseGlobalRoot, "config", "opencode")
 export const exerciseDataDirectory = path.join(exerciseGlobalRoot, ".red", "code", "data")
 

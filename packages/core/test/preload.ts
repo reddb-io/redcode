@@ -33,6 +33,8 @@ process.env.REDCODE_MODELS_PATH = path.join(import.meta.dir, "plugin", "fixtures
 process.env.REDCODE_DISABLE_MODELS_FETCH = "true"
 // The installer under test must never reach npm's audit endpoint.
 process.env.NPM_CONFIG_AUDIT = "false"
+// No suite may launch the developer's browser for a Design review; launcher tests inject fakes.
+process.env.REDCODE_DESIGN_NO_OPEN = "1"
 
 // A key left in the runner's environment changes which providers exist, which is not something a
 // unit suite should be able to notice.

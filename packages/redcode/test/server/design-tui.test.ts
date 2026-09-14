@@ -509,3 +509,38 @@ test("legacy feed reports a variant operation pending while an earlier turn work
     await model.stop(true)
   }
 }, 90000)
+
+// The Design tool and `redcode design` open no second tab while a review page follows the feed.
+test("the legacy review feed counts connected review pages for the open route", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
+  const request = (route: string, init: RequestInit = {}) =>
+    server.handler(
+      new Request(`http://localhost${route}`, {
+        ...init,
+        headers: { "content-type": "application/json", "x-opencode-directory": tmp.path },
+      }),
+      HttpApiApp.context,
+    )
+  const connected = async (id: string) =>
+    (await (await request(`/design/session/${id}/open`)).json()).connected as number
+  try {
+    const session = await (
+      await request("/session", { method: "POST", body: JSON.stringify({ agent: "design" }) })
+    ).json()
+    expect(await connected(session.id)).toBe(0)
+    const abort = new AbortController()
+    const feed = await request(`/design/session/${session.id}/feed`, { signal: abort.signal })
+    expect(feed.status).toBe(200)
+    const reader = feed.body!.getReader()
+    expect((await reader.read()).done).toBe(false)
+    expect(await connected(session.id)).toBe(1)
+    await reader.cancel()
+    abort.abort()
+    const deadline = Date.now() + 5000
+    while ((await connected(session.id)) !== 0 && Date.now() < deadline) await Bun.sleep(50)
+    expect(await connected(session.id)).toBe(0)
+  } finally {
+    await server.dispose()
+  }
+}, 60000)

@@ -13,6 +13,7 @@ import { Config } from "@/config/config"
 import { Effect, Schema, Option } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { DesignSystem } from "@reddb-io/redcode-core/design/system"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
@@ -202,7 +203,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_preview", {
       description:
-        'Publish an immutable revision and open its browser review after coherent edits. Supply id (the actual Design ID returned by design_document) and name (a label for this revision). If the ID is unknown, call design_document with {"action":"list"}, or create a document first. For a pre-0.22 prototype, supply path to its directory instead of id; name and reopen are optional for that import. Never call with empty arguments. Feedback returns to this same TUI conversation.',
+        'Publish an immutable revision for browser review after coherent edits. A connected review page loads it live; a browser tab opens only when none is connected, so do not tell the user a new tab opened unless the result says so. Supply id (the actual Design ID returned by design_document) and name (a label for this revision). If the ID is unknown, call design_document with {"action":"list"}, or create a document first. For a pre-0.22 prototype, supply path to its directory instead of id; name and reopen are optional for that import. Never call with empty arguments. Feedback returns to this same TUI conversation.',
       // Keep the provider-facing root an object; validate the two supported forms after decoding.
       parameters: Schema.Struct({
         id: Schema.optional(Design.ID).annotate({
@@ -252,9 +253,19 @@ export const DesignTools = Effect.gen(function* () {
               tooling,
             )
             const url = new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
-            if (!process.env.REDCODE_DESIGN_NO_OPEN) yield* Effect.forkDetach(DesignBrowser.open(url))
+            // One tab per review: a connected page live-reloads the revision, and a burst of publishes
+            // or a page still loading cannot claim a second launch.
+            const launched =
+              !process.env.REDCODE_DESIGN_NO_OPEN &&
+              DesignReviewPresence.shared.claim(ctx.sessionID, { explicit: "path" in input && input.reopen === true })
+            if (launched) yield* Effect.forkDetach(DesignBrowser.open(url))
+            const page = launched
+              ? "Opening the review page in the browser."
+              : DesignReviewPresence.shared.connected(ctx.sessionID) > 0
+                ? "The open review page loads this revision automatically; no new tab was opened."
+                : "No browser tab was opened; give the user the review link if they need it."
             return result(
-              `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.${
+              `Published ${revision.id}. Review: ${url}\n${page} Replies appear in the review page and in this TUI.${
                 document.system?.tailwind && !tooling
                   ? "\nProject tooling permission was not granted; this revision was built without the PostCSS pipeline (Tailwind utility classes are absent)."
                   : ""
