@@ -34,7 +34,8 @@ function fixture(
   const options = (platform: NodeJS.Platform, env: Record<string, string | undefined> = {}) => ({
     platform,
     env,
-    grace: input.grace ?? 300,
+    // Short-lived children exit well inside the window; only "linger" cases wait it out.
+    grace: input.grace ?? 5000,
     home: "/Users/tester",
     wsl: () => input.wsl ?? false,
     exists: (file: string) => input.bundles?.includes(file) ?? false,
@@ -119,7 +120,7 @@ describe("DesignBrowser.open", () => {
   })
 
   test("a browser still running after the grace window counts as opened", async () => {
-    const browser = fixture({ found: ["google-chrome"], outcome: () => "linger" })
+    const browser = fixture({ found: ["google-chrome"], grace: 300, outcome: () => "linger" })
     expect(await run(browser.options("linux"))).toBe(true)
     expect(browser.calls).toEqual(["spawn:/usr/bin/google-chrome"])
     browser.cleanup()
@@ -156,7 +157,7 @@ describe("DesignBrowser.open", () => {
   })
 
   test("Windows needs an exit code: still running after the window is not success", async () => {
-    const browser = fixture({ outcome: (name) => (name === "default" ? 0 : "linger") })
+    const browser = fixture({ grace: 1500, outcome: (name) => (name === "default" ? 0 : "linger") })
     expect(await run(browser.options("win32"))).toBe(true)
     expect(browser.calls).toEqual(["open:chrome", "open:default"])
     browser.cleanup()
