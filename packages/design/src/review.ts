@@ -10,8 +10,8 @@ export interface ReviewOptions {
   request?: (url: string, init?: RequestInit) => Promise<Response>
   /**
    * Where the review's single-key shortcuts listen. "global" (the standalone page, where the review is
-   * the whole page) starts out owning keys pressed with nothing focused; "scoped" (a review embedded
-   * next to other inputs) only takes them after the last pointer or focus landed inside the review.
+   * the whole page) also takes keys pressed with nothing focused; "scoped" (a review embedded next to
+   * other inputs) only takes keys pressed while focus is inside the review.
    */
   shortcuts?: "global" | "scoped"
   /** Follows the server's conversation feed; absent when the host renders the conversation itself. */
@@ -205,7 +205,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     ),
   }
   root.innerHTML = `<style>${options.appearance?.css ?? ""}</style><style>
-:host{container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;color-scheme:light dark;--surface:var(--reddb-color-background);--panel:var(--reddb-color-elevation-raised-surface);--canvas:var(--reddb-color-elevation-sunken-surface);--ink:var(--reddb-color-foreground);--muted:var(--reddb-color-ink-muted);--edge:var(--reddb-color-elevation-base-border);--accent:var(--reddb-color-primary);--accent-ink:var(--reddb-color-on-primary);background:var(--surface);color:var(--ink);font:13px/1.5 var(--reddb-font-family-sans,system-ui)}
+:host(:focus){outline:none}:host{container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;color-scheme:light dark;--surface:var(--reddb-color-background);--panel:var(--reddb-color-elevation-raised-surface);--canvas:var(--reddb-color-elevation-sunken-surface);--ink:var(--reddb-color-foreground);--muted:var(--reddb-color-ink-muted);--edge:var(--reddb-color-elevation-base-border);--accent:var(--reddb-color-primary);--accent-ink:var(--reddb-color-on-primary);background:var(--surface);color:var(--ink);font:13px/1.5 var(--reddb-font-family-sans,system-ui)}
 *{box-sizing:border-box}[hidden]{display:none!important}button,input,select,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);padding:var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);min-height:var(--reddb-spatial-control-height-md);min-width:0}button{cursor:pointer;line-height:18px;transition:background-color var(--reddb-duration-fast) ease,border-color var(--reddb-duration-fast) ease}button:hover{background:var(--panel);border-color:var(--muted)}button:active{background:var(--canvas)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.45;cursor:default}.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}.primary:hover{background:color-mix(in oklch,var(--accent) 88%,var(--ink));border-color:var(--accent)}
 header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--edge);flex:none;min-width:0}#toolbar{flex-wrap:wrap;gap:6px;padding:5px 12px;background:var(--panel)}#toolbar :is(button,select):not(.icon){padding-top:3px;padding-bottom:3px;min-height:28px}h1{font-size:13px;letter-spacing:-.02em;margin:0 6px 0 0;display:flex;align-items:center;gap:6px;white-space:nowrap}h1 img{width:18px;height:18px;display:block}h2{font-size:15px;letter-spacing:-.015em;margin:0 0 12px}#toolbar select{width:auto;max-width:220px;flex:0 1 200px;min-width:0}.tools{display:contents}.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;flex:0 1 auto;min-width:0;margin-left:auto}.spacer{flex:1 1 0;min-width:8px}#toolbar #width{flex:0 0 auto;width:auto;max-width:130px}#restore{border-color:transparent;background:transparent;color:var(--muted)}#approve,#reopen,#newer,#restore{white-space:nowrap}#toolbar #annotate{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap;padding-inline:8px 10px;color:var(--muted)}#annotate svg{display:block;flex:none}#annotate:hover{color:var(--ink)}#annotate[aria-pressed=true]{background:color-mix(in oklch,var(--accent) 16%,var(--surface));border-color:var(--accent);color:var(--ink);font-weight:600}.icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;background:transparent;color:var(--muted)}.icon:hover{color:var(--ink)}.icon svg{display:block}.menu-host{position:relative;flex:none;display:flex}#menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#toolbar #menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap}#toolbar #menu button:hover,#toolbar #menu button:focus-visible{background:var(--panel);outline-offset:-2px}
 #studio{flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}main{min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 336px;overflow:hidden}.canvas{background:var(--canvas);overflow:auto;min-height:0;min-width:0;padding:24px}iframe{display:block;background:oklch(99% .002 220);border:0;height:100%;min-height:0;width:100%;margin:0 auto;box-shadow:0 0 0 1px var(--edge),0 6px 24px color-mix(in oklch,var(--ink) 7%,transparent)}aside{min-height:0;min-width:0;border-left:1px solid var(--edge);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.tabs{display:flex;padding:0 16px;border-bottom:1px solid var(--edge);gap:18px}.tabs button{border:0;border-radius:0;background:none;padding:13px 0;color:var(--muted);position:relative}.tabs button[aria-selected=true]{color:var(--ink);font-weight:600}.tabs button[aria-selected=true]::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}.panel{overflow:auto;min-height:0;padding:20px}.panel>p{margin:0 0 16px}.section{margin-top:24px;padding-top:18px;border-top:1px solid var(--edge)}label{display:grid;gap:6px;margin-bottom:14px;font-size:12px;font-weight:500}label input,label select,label textarea{font-size:13px;font-weight:400}textarea{min-height:96px;resize:vertical;width:100%;line-height:1.55}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{accent-color:var(--accent);margin:0}label.check{display:flex;align-items:center;gap:8px;font-weight:400}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}#note{min-height:116px}#send{width:100%;margin:14px 0 8px}#add{margin-bottom:14px}#attachment{font-size:11px;padding:6px;width:100%}#attachment::file-selector-button{font:inherit;border:0;border-radius:3px;padding:4px 7px;margin-right:8px;background:var(--panel);color:var(--ink);cursor:pointer}
@@ -756,13 +756,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     placeCard()
   }
+  // Hands focus from the note card to the annotation toggle, or to the host when the toggle cannot take it.
+  const focusToggle = () => {
+    input("card-text").blur()
+    element("annotate").focus({ preventScroll: true })
+    if (root.activeElement !== element("annotate")) host.focus({ preventScroll: true })
+  }
   const closeCard = () => {
     // Focus must not linger on the hidden field, or it keeps swallowing the review's keys; it goes to
     // the annotation toggle so A and Escape keep working without a click.
-    if (root.activeElement === input("card-text")) {
-      input("card-text").blur()
-      element("annotate").focus()
-    }
+    if (root.activeElement === input("card-text")) focusToggle()
     state.card = undefined
     highlight("")
     save()
@@ -1329,7 +1332,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (event.key === "Escape") {
       event.preventDefault()
       if (!input("card-text").value.trim()) closeCard()
-      else input("card-text").blur()
+      else focusToggle()
       return
     }
     if (event.key !== "Enter" || event.shiftKey) return
@@ -1505,26 +1508,38 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     setAnnotate(false)
     return true
   }
-  // With nothing focused, a key belongs to the review only if the reader was last working in it; an
-  // embedding page may route that same key to its own input.
-  const scope = { inside: options.shortcuts !== "scoped" }
-  const within = (event: Event) => {
-    scope.inside = event.composedPath().includes(host)
-  }
-  const shortcut = (event: KeyboardEvent) => {
+  // Scoped shortcuts only see keys pressed with focus inside the review, and they listen on the host so
+  // they run before any listener the embedding page registered on the document. Global shortcuts also
+  // take keys pressed with nothing focused.
+  const scoped = options.shortcuts === "scoped"
+  const keys: EventTarget = scoped ? host : document
+  const shortcut = (event: Event) => {
+    if (!(event instanceof KeyboardEvent)) return
     if (event.defaultPrevented || event.isComposing || event.repeat) return
     if (event.ctrlKey || event.metaKey || event.altKey) return
     if (event.key.toLowerCase() !== "a" && event.key !== "Escape") return
     const path = event.composedPath()
     const target = path[0]
     const idle = target === document.body || target === document.documentElement
-    if (!path.includes(host) && !(idle && scope.inside)) return
+    if (!path.includes(host) && (scoped || !idle)) return
     if (target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"))) return
     if (annotationKey(event.key) && event.key !== "Escape") event.preventDefault()
   }
-  document.addEventListener("pointerdown", within, true)
-  document.addEventListener("focusin", within, true)
-  document.addEventListener("keydown", shortcut)
+  keys.addEventListener("keydown", shortcut)
+  // Clicking the review's plain surfaces (panel or stage background) puts focus on the host, so the next
+  // key reaches the review instead of whatever the page does with keys pressed on its body.
+  const hostTabIndex = host.getAttribute("tabindex")
+  if (hostTabIndex === null) host.tabIndex = -1
+  const focusable =
+    "input, textarea, select, button, a[href], summary, label, iframe, [tabindex], [contenteditable]:not([contenteditable=false])"
+  const surface = (event: Event) => {
+    for (const item of event.composedPath()) {
+      if (item === host) break
+      if (item instanceof Element && item.matches(focusable)) return
+    }
+    host.focus({ preventScroll: true })
+  }
+  root.addEventListener("pointerdown", surface)
   click("whiteboard", async () => {
     const response = await request(`${endpoint}/whiteboard`, { signal: controller.signal })
     if (!response.ok) throw new Error(copy.failure)
@@ -1894,9 +1909,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     clearInterval(timer)
     document.removeEventListener("visibilitychange", poll)
     document.removeEventListener("pointerdown", outside)
-    document.removeEventListener("keydown", shortcut)
-    document.removeEventListener("pointerdown", within, true)
-    document.removeEventListener("focusin", within, true)
+    keys.removeEventListener("keydown", shortcut)
+    root.removeEventListener("pointerdown", surface)
+    if (hostTabIndex === null) host.removeAttribute("tabindex")
     window.removeEventListener("blur", blurred)
     window.removeEventListener("message", message)
     root.replaceChildren()
