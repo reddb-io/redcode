@@ -7,7 +7,7 @@ import { chromium, type Browser, type Page } from "playwright-core"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
-import { designDependencies } from "../../core/test/fixture/design-dependencies"
+import { materializeDependencies } from "../../core/test/fixture/design-dependencies"
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
 const directory = path.join(temporary, "alias")
@@ -89,7 +89,8 @@ beforeAll(async () => {
     'export function Button(props: { children?: string }) {\n  return <button type="button" className="design-system-button" onClick={(event) => { event.currentTarget.dataset.state = "populated" }} data-state="empty">{props.children ?? "Design-system button"}</button>\n}\n',
   )
   await Bun.write(path.join(directory, "src/styles/globals.css"), ".design-system-button{color:rgb(1, 2, 3)}\n")
-  await designDependencies(directory)
+  // Copies rather than links: a design build trusts only the node_modules it names.
+  await materializeDependencies(directory, ["react", "react-dom", "solid-js"])
   browser = await chromium.launch()
 }, 30000)
 afterAll(async () => {

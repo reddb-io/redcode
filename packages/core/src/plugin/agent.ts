@@ -121,6 +121,8 @@ export const Plugin = define({
       { action: "design_exit", resource: "*", effect: "deny" },
       { action: "goal_complete", resource: "*", effect: "deny" },
       { action: "read", resource: "*", effect: "allow" },
+      // Design builds execute the project's PostCSS and Tailwind configuration in this process.
+      { action: "project_tooling", resource: "*", effect: "ask" },
       { action: "read", resource: "*.env", effect: "ask" },
       { action: "read", resource: "*.env.*", effect: "ask" },
       { action: "read", resource: "*.env.example", effect: "allow" },

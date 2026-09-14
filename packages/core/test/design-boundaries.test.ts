@@ -16,7 +16,7 @@ import { SessionTable } from "../src/session/sql"
 import { SessionV2 } from "../src/session"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
-import { designDependencies } from "./fixture/design-dependencies"
+import { designDependencies, materializeDependencies } from "./fixture/design-dependencies"
 
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([DesignStore.node, Database.node, Location.node]), [
@@ -302,7 +302,7 @@ it.live("rejects review-directory symlinks escaping Design storage", () =>
 it.live("imports declared design-system roots without read prompts while undeclared files still prompt", () =>
   Effect.gen(function* () {
     const { location, store, sessionID } = yield* setup
-    yield* Effect.promise(() => designDependencies(location.directory))
+    yield* Effect.promise(() => materializeDependencies(location.directory, ["react", "react-dom"]))
     const document = yield* store.create(sessionID, {
       name: "Declared",
       journey: "existing",
@@ -373,7 +373,7 @@ it.live("imports declared design-system roots without read prompts while undecla
 it.live("refuses symlinks escaping a declared design-system root", () =>
   Effect.gen(function* () {
     const { location, store, sessionID } = yield* setup
-    yield* Effect.promise(() => designDependencies(location.directory))
+    yield* Effect.promise(() => materializeDependencies(location.directory, ["react", "react-dom"]))
     const document = yield* store.create(sessionID, {
       name: "Escape",
       journey: "existing",

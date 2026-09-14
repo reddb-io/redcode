@@ -8,7 +8,7 @@ export type Framework = typeof Framework.Type
 export class System extends Schema.Class<System>("ConfigV2.Design.System")({
   paths: Schema.Array(Schema.String).annotate({
     description:
-      "Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and stylesheets, the tooling configuration and the project's node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused.",
+      'Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and stylesheets, the tooling configuration and the project\'s node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused, and a package linked to a source tree outside node_modules (a workspace package) must be declared here; "." grants the whole project.',
   }),
   css: Schema.Array(Schema.String).pipe(Schema.optional).annotate({
     description:
@@ -16,7 +16,7 @@ export class System extends Schema.Class<System>("ConfigV2.Design.System")({
   }),
   tailwind: Schema.Boolean.pipe(Schema.optional).annotate({
     description:
-      "Run the project's PostCSS pipeline (postcss.config.*, or tailwindcss with autoprefixer synthesized from tailwind.config.*) in preview builds so Tailwind utilities used by the prototype are generated. Default: enabled when tailwind.config.* exists and tailwindcss is a dependency.",
+      "Run the project's PostCSS pipeline (postcss.config.*, or tailwindcss with autoprefixer synthesized from tailwind.config.*) in preview builds so Tailwind utilities used by the prototype are generated. This executes those configuration files in the redcode process, so design_preview asks a separate project_tooling permission naming them; when it is refused the preview builds without the pipeline. Default: enabled when tailwind.config.* exists and tailwindcss is a dependency. Tailwind v4 needs an explicit true.",
   }),
   framework: Framework.pipe(Schema.optional).annotate({
     description: "Component framework of the declared roots. Default: detected from package.json dependencies.",

@@ -1,8 +1,9 @@
 import { expect } from "bun:test"
 import path from "node:path"
-import { cp, mkdir, rm, stat } from "node:fs/promises"
-import { Effect } from "effect"
+import { cp, mkdir, rm, stat, symlink, utimes } from "node:fs/promises"
+import { Effect, Layer, Schema } from "effect"
 import type { Design } from "@reddb-io/redcode-schema/design"
+import { Config } from "../src/config"
 import { ConfigDesign } from "../src/config/design"
 import { Database } from "../src/database/database"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
@@ -17,11 +18,15 @@ import { SessionTable } from "../src/session/sql"
 import { SessionV2 } from "../src/session"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
-import { designDependencies, storeDependencies } from "./fixture/design-dependencies"
+import { materializeDependencies } from "./fixture/design-dependencies"
 
+// Configuration is read once per location; tests that need it set these entries before creating a design.
+let entries: Config.Entry[] = []
+const config = Layer.succeed(Config.Service, Config.Service.of({ entries: () => Effect.succeed(entries) }))
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([DesignStore.node, Database.node, Location.node]), [
     [Location.node, tempLocationLayer],
+    [Config.node, config],
   ]),
 )
 const setup = Effect.gen(function* () {
@@ -106,8 +111,7 @@ it.live(
       const { location, store, sessionID } = yield* setup
       yield* Effect.promise(async () => {
         await cp(path.join(import.meta.dir, "fixture/tailwind"), location.directory, { recursive: true })
-        await designDependencies(location.directory, ["react", "react-dom"])
-        await storeDependencies(location.directory, { tailwindcss: 3, autoprefixer: 10 })
+        await materializeDependencies(location.directory, ["react", "react-dom", "tailwindcss", "autoprefixer"])
       })
       const document = yield* store.create(sessionID, {
         name: "Tailwind",
@@ -148,12 +152,147 @@ it.live(
 )
 
 it.live(
+  "runs project tooling only once that permission is granted and reloads an edited config",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      yield* Effect.promise(async () => {
+        await cp(path.join(import.meta.dir, "fixture/tailwind"), location.directory, { recursive: true })
+        await materializeDependencies(location.directory, ["react", "react-dom", "tailwindcss", "autoprefixer"])
+      })
+      entries = [
+        new Config.Document({
+          type: "document",
+          path: "redcode.json",
+          info: Schema.decodeUnknownSync(Config.Info)({
+            design: { system: { paths: ["src/components"], css: ["src/styles/globals.css"] } },
+          }),
+        }),
+      ]
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          entries = []
+        }),
+      )
+      const document = yield* store.create(sessionID, {
+        name: "Tooling",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      expect(document.system?.tailwind).toBe(true)
+      expect(yield* Effect.promise(() => DesignBuild.tooling(document))).toEqual([
+        path.join(location.directory, "tailwind.config.ts"),
+        path.join(location.directory, "postcss.config.cjs"),
+      ])
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react('<main className="p-4"><Button>Buy</Button></main>', 'import { Button } from "@/components/Button"\n'),
+        ),
+      )
+      const css = (revision: Design.Revision) =>
+        Effect.promise(async () =>
+          (
+            await Promise.all(
+              Object.entries(revision.files)
+                .filter(([name]) => name.startsWith(".compiled/") && name.endsWith(".css"))
+                .map(([, hash]) => Bun.file(path.join(store.blobs, hash)).text()),
+            )
+          ).join("\n"),
+        )
+      // Not granted: the revision records that the pipeline did not run and the directives stay unexpanded.
+      const denied = yield* store.publish(document.id, "denied", async () => {}, false)
+      expect(denied.document.system?.tailwind).toBe(false)
+      expect(yield* css(denied)).toContain("@tailwind")
+      expect(yield* css(denied)).not.toContain(".p-4{")
+      const granted = yield* store.publish(document.id, "granted", async () => {}, true)
+      expect(granted.document.system?.tailwind).toBe(true)
+      expect(yield* css(granted)).toContain(".p-4{")
+      expect(yield* css(granted)).toContain("background-color:rgb(18 52 86")
+      // An edited configuration applies to the next build without restarting the process.
+      yield* Effect.promise(async () => {
+        const config = path.join(location.directory, "tailwind.config.ts")
+        await Bun.write(config, (await Bun.file(config).text()).replace("#123456", "#654321"))
+        const later = new Date(Date.now() + 5000)
+        await utimes(config, later, later)
+      })
+      const edited = yield* store.publish(document.id, "edited", async () => {}, true)
+      expect(yield* css(edited)).toContain("background-color:rgb(101 67 33")
+    }),
+  120000,
+)
+
+it.live(
+  "does not trust a package linked to a source tree outside the named node_modules unless it is declared",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      const linked = path.join(location.directory, "packages/ui")
+      yield* Effect.promise(async () => {
+        await materializeDependencies(location.directory, ["react", "react-dom"])
+        await Bun.write(
+          path.join(linked, "package.json"),
+          JSON.stringify({ name: "@acme/ui", type: "module", main: "index.js" }),
+        )
+        await Bun.write(path.join(linked, "index.js"), 'export const label = "Workspace design-system package"\n')
+        await mkdir(path.join(location.directory, "node_modules/@acme"), { recursive: true })
+        await symlink(linked, path.join(location.directory, "node_modules/@acme/ui"), "dir")
+      })
+      const document = yield* store.create(sessionID, {
+        name: "Linked",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react("<main>{label}</main>", 'import { label } from "@acme/ui"\n'),
+        ),
+      )
+      const files = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+      const reads: string[] = []
+      const undeclared = yield* Effect.tryPromise(() =>
+        DesignBuild.build(
+          {
+            id: "rev_linked",
+            designID: document.id,
+            parent: null,
+            name: "Linked",
+            created: Date.now(),
+            files,
+            document: { ...document, system: { paths: [], css: [], tailwind: false, framework: "react" } },
+          },
+          store.blobs,
+          path.join(store.storage, document.id, "builds", "linked"),
+          async (file) => {
+            reads.push(file)
+            if (file.startsWith(linked + path.sep)) throw new Error("Fixture permission denied")
+          },
+        ),
+      ).pipe(Effect.result)
+      expect(undeclared._tag).toBe("Failure")
+      expect(reads).toContain(path.join(linked, "index.js"))
+      const declared = yield* compile(
+        store,
+        document,
+        { paths: ["packages/ui"], css: [], tailwind: false, framework: "react" },
+        "declared",
+      )
+      expect(declared.reads).toEqual([])
+      expect(declared.js).toContain("Workspace design-system package")
+    }),
+  60000,
+)
+
+it.live(
   "forwards the project's JSX settings to prototypes that carry their own tsconfig",
   () =>
     Effect.gen(function* () {
       const { location, store, sessionID } = yield* setup
       yield* Effect.promise(async () => {
-        await designDependencies(location.directory, ["react", "react-dom"])
+        await materializeDependencies(location.directory, ["react", "react-dom"])
         await Bun.write(
           path.join(location.directory, "tsconfig.json"),
           JSON.stringify({ compilerOptions: { jsx: "react-jsx", jsxImportSource: "design-jsx" } }),
@@ -203,7 +342,7 @@ for (const engine of ["html", "react", "solid"] as const)
       Effect.gen(function* () {
         const { location, store, sessionID } = yield* setup
         yield* Effect.promise(async () => {
-          await designDependencies(location.directory)
+          await materializeDependencies(location.directory, ["react", "react-dom", "solid-js"])
           await Bun.write(
             path.join(location.directory, "src/styles/globals.css"),
             "@import './tokens.css';\n.design-system-marker{color:red}\n",
@@ -271,7 +410,7 @@ it.live(
           "-m",
           "fixture",
         )
-        await designDependencies(location.directory, ["react", "react-dom"])
+        await materializeDependencies(location.directory, ["react", "react-dom"])
         const tokens = path.join(location.directory, "node_modules/design-tokens")
         await mkdir(tokens, { recursive: true })
         await Bun.write(

@@ -180,10 +180,19 @@ const make = Effect.gen(function* () {
     return row.data
   })
 
-  const publish = Effect.fn("Design.publish")(function* (id: Design.ID, name: string, read?: DesignBuild.Read) {
-    const document = yield* get(id)
-    if (document.ended)
+  const publish = Effect.fn("Design.publish")(function* (
+    id: Design.ID,
+    name: string,
+    read?: DesignBuild.Read,
+    // Project tooling (PostCSS, Tailwind) executes only once the caller obtained that permission;
+    // the revision records what actually ran so re-renders repeat the same decision.
+    tooling = false,
+  ) {
+    const current = yield* get(id)
+    if (current.ended)
       return yield* new Design.Error({ code: "conflict", message: "Reopen this design before publishing" })
+    const document: Design.Info =
+      tooling || !current.system?.tailwind ? current : { ...current, system: { ...current.system, tailwind: false } }
     const files = yield* io(() => DesignFiles.snapshot(document.root, blobs))
     if (!files[document.entry])
       return yield* new Design.Error({ code: "invalid", message: `Write ${document.entry} before previewing` })
@@ -212,7 +221,7 @@ const make = Effect.gen(function* () {
           yield* tx.insert(RevisionTable).values({ id: data.id, design_id: id, created: data.created, data }).run()
           yield* tx
             .update(DesignTable)
-            .set({ data: { ...document, revision: data.id, updated: Date.now() } })
+            .set({ data: { ...current, revision: data.id, updated: Date.now() } })
             .where(eq(DesignTable.id, id))
             .run()
         }),
@@ -221,7 +230,12 @@ const make = Effect.gen(function* () {
     return data
   })
 
-  const restore = Effect.fn("Design.restore")(function* (id: Design.ID, revisionID: string, read?: DesignBuild.Read) {
+  const restore = Effect.fn("Design.restore")(function* (
+    id: Design.ID,
+    revisionID: string,
+    read?: DesignBuild.Read,
+    tooling = false,
+  ) {
     const document = yield* get(id)
     if (document.ended)
       return yield* new Design.Error({ code: "conflict", message: "Reopen this design before restoring" })
@@ -237,7 +251,7 @@ const make = Effect.gen(function* () {
       approvedRevision: document.approvedRevision,
       ended: false,
     })
-    return yield* publish(id, `Restored: ${previous.name}`, read)
+    return yield* publish(id, `Restored: ${previous.name}`, read, tooling)
   }, lock.withPermits(1))
 
   const asset = Effect.fn("Design.asset")(function* (id: Design.ID, assetID: string) {
@@ -552,8 +566,8 @@ const make = Effect.gen(function* () {
     implementation,
     revision,
     revisions,
-    publish: (id: Design.ID, name: string, read?: DesignBuild.Read) =>
-      publish(id, name, read).pipe(lock.withPermits(1)),
+    publish: (id: Design.ID, name: string, read?: DesignBuild.Read, tooling?: boolean) =>
+      publish(id, name, read, tooling).pipe(lock.withPermits(1)),
     restore,
     asset,
     assets,
