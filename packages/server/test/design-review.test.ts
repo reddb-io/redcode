@@ -2064,6 +2064,73 @@ test("an agent turn that ends without carrying out the operation reports it", as
   }
 }, 90000)
 
+test("the variant menu, operation dialogs and merge selection keep A and Escape from the annotate toggle", async () => {
+  const current = await withVariants([
+    ["compact", "Compact"],
+    ["spacious", "Spacious"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  const toggle = page.getByRole("button", { name: "Annotate elements", exact: true })
+  const pressed = () => toggle.getAttribute("aria-pressed")
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    await annotate(page, true)
+    // Inside the open variant menu.
+    await page.getByRole("button", { name: "Variant actions", exact: true }).click()
+    await page.getByRole("menu", { name: "Variant actions" }).waitFor()
+    await page.keyboard.press("a")
+    expect(await pressed()).toBe("true")
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu", { name: "Variant actions" }).waitFor({ state: "hidden" })
+    expect(await activeID(page)).toBe("variant-actions")
+    expect(await pressed()).toBe("true")
+    // Typing in the rename field and closing the dialog.
+    await variantAction(page, "Rename…")
+    const name = page.getByLabel("New name", { exact: true })
+    await name.fill("")
+    await name.press("a")
+    await name.press("A")
+    expect(await name.inputValue()).toBe("aA")
+    expect(await pressed()).toBe("true")
+    await name.press("Escape")
+    await page.locator("#operation-dialog").waitFor({ state: "hidden" })
+    expect(await pressed()).toBe("true")
+    // A focused button inside the delete confirmation.
+    await variantAction(page, "Delete…")
+    expect(await activeID(page)).toBe("cancel-operation")
+    await page.keyboard.press("a")
+    expect(await pressed()).toBe("true")
+    await page.keyboard.press("Escape")
+    await page.locator("#operation-dialog").waitFor({ state: "hidden" })
+    expect(await pressed()).toBe("true")
+    // The merge selection: A on its buttons does nothing, Escape leaves the selection only.
+    await variantAction(page, "Select variants to merge")
+    const group = page.getByRole("group", { name: "Variants to merge" })
+    await group.waitFor()
+    await group.getByRole("button", { name: "Cancel", exact: true }).focus()
+    await page.keyboard.press("a")
+    expect(await pressed()).toBe("true")
+    await page.keyboard.press("Escape")
+    await group.waitFor({ state: "hidden" })
+    expect(await pressed()).toBe("true")
+    // With none of them open the shortcuts work as before.
+    await page.getByRole("tab", { name: "Compact", exact: true }).focus()
+    await page.keyboard.press("Escape")
+    await until(async () => (await pressed()) === "false", "Escape ends annotation")
+    await page.keyboard.press("a")
+    await until(async () => (await pressed()) === "true", "A toggles annotation")
+    expect(sent).toHaveLength(0)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
 test("a rename must change the label and the only variant cannot be deleted", async () => {
   const current = await withVariants([["solo", "Solo"]])
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })

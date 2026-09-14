@@ -1871,6 +1871,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     void run(() => startOperation({ kind: "reorder", variants: ids, labels: variantLabels(ids), order }))
   }
   element("merge-variants").addEventListener("click", () => openOperation("merge", [...state.mergePick]))
+  // Escape leaves the merge selection; it is not a request to stop annotating.
+  element("merge-bar").addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return
+    event.preventDefault()
+    element("cancel-merge").click()
+  })
   element("cancel-merge").addEventListener("click", () => {
     state.merging = false
     state.mergePick = []
@@ -1980,7 +1986,14 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // in, an open dialog, menu or card.
   const annotationKey = (key: string) => {
     if (element("studio").hidden || element("review-tools").hidden) return false
-    if (root.querySelector("dialog[open]") || !element("menu").hidden || state.card) return false
+    if (
+      root.querySelector("dialog[open]") ||
+      !element("menu").hidden ||
+      !element("variant-menu").hidden ||
+      state.merging ||
+      state.card
+    )
+      return false
     if (key.toLowerCase() === "a") {
       setAnnotate(!annotating())
       return true
