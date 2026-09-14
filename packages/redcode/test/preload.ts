@@ -5,13 +5,22 @@ import path from "path"
 import fs from "fs/promises"
 import { setTimeout as sleep } from "node:timers/promises"
 import { afterAll } from "bun:test"
+import { releaseWorktrees, removeOnExit, sharePlaywrightBrowsers } from "../../core/test/fixture/temp-root"
+
+// Before the XDG variables are repointed below, or every run downloads its own Chromium.
+sharePlaywrightBrowsers()
 
 // Set XDG env vars FIRST, before any src/ imports
 const dir = path.join(os.tmpdir(), "opencode-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
+// The afterAll below only runs when the suite gets to the end; an interrupted run leaves this.
+removeOnExit(dir)
 afterAll(async () => {
   const { AppRuntime } = await import("../src/effect/app-runtime")
   await AppRuntime.dispose()
+  // A worktree made under the test home can belong to a repository outside it; unregister it there
+  // before its files go, or that repository keeps a prunable entry.
+  releaseWorktrees(dir)
 
   const busy = (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error && error.code === "EBUSY"

@@ -195,13 +195,39 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
 })
 
 test("keeps checking until stale reset-delay callbacks can no longer win", async () => {
+  // Driven frame by frame on a clock the test owns. The check's deadline is wall-clock arithmetic
+  // (`performance.now() + isScrollingResetDelay`) counted in frames after it, so a test that sleeps
+  // real milliseconds is racing it: on Windows, where timers land on a ~15.6 ms grid, the sleep and
+  // the frames before it outlived the deadline and both trailing frames before the stale offset was
+  // written, and nothing was left to correct it.
   const route = document.createElement("section")
   const viewport = document.createElement("div")
   route.append(viewport)
   document.body.append(route)
+  let now = 0
+  const pending = new Map<number, FrameRequestCallback>()
+  let nextHandle = 1
+  const targetWindow = {
+    MutationObserver: window.MutationObserver,
+    performance: { now: () => now },
+    requestAnimationFrame: (callback: FrameRequestCallback) => {
+      const handle = nextHandle++
+      pending.set(handle, callback)
+      return handle
+    },
+    cancelAnimationFrame: (handle: number) => void pending.delete(handle),
+    setTimeout: window.setTimeout.bind(window),
+    clearTimeout: window.clearTimeout.bind(window),
+  }
+  const frame = (time: number) => {
+    now = time
+    const due = [...pending.values()]
+    pending.clear()
+    for (const callback of due) callback(time)
+  }
   const instance = {
     scrollElement: viewport,
-    targetWindow: window,
+    targetWindow,
     scrollOffset: 79_400,
     options: {
       horizontal: false,
@@ -218,16 +244,29 @@ test("keeps checking until stale reset-delay callbacks can no longer win", async
 
   route.remove()
   document.body.append(route)
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await frames(1)
+  // The reconnect is seen by a MutationObserver, which happy-dom delivers asynchronously; the first
+  // requested frame is the signal that the check has started (at time 0, so its deadline is 20).
+  for (let turn = 0; pending.size === 0 && turn < 1000; turn++) await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(pending.size).toBe(1)
+
+  frame(5)
   expect(instance.scrollOffset).toBe(0)
 
+  // A reset-delay callback from before the reconnect lands inside the delay and is corrected.
   instance.scrollOffset = 79_400
-  await new Promise((resolve) => setTimeout(resolve, 25))
-  await frames(3)
-
+  frame(12)
   expect(instance.scrollOffset).toBe(0)
-  expect(calls).toEqual([0, 0])
+
+  // Past the deadline the check still runs two more frames, so a callback that fires late — the
+  // timer granularity case — is corrected too.
+  frame(20)
+  instance.scrollOffset = 79_400
+  frame(36)
+  expect(instance.scrollOffset).toBe(0)
+  expect(calls).toEqual([0, 0, 0])
+
+  // And then it stops: nothing is left scheduled to run forever.
+  expect(pending.size).toBe(0)
   cleanup?.()
   route.remove()
 })

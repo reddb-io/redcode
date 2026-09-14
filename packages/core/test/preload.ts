@@ -5,8 +5,16 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
+import { afterAll } from "bun:test"
+import { removeOnExit, removeTempPaths, sharePlaywrightBrowsers } from "./fixture/temp-root"
+
+// Before HOME and XDG_CACHE_HOME are repointed below, or every run downloads its own Chromium.
+sharePlaywrightBrowsers()
 
 const dir = path.join(os.tmpdir(), "redcode-core-test-" + process.pid)
+// Per process, so it goes when the process does: after the last file, or on an interrupt.
+removeOnExit(dir)
+afterAll(() => removeTempPaths([dir]))
 // The home is shared by every core test process rather than per-pid, deliberately: `Global.Path.bin`
 // hangs off it and is where ripgrep lands when the machine has none on PATH. Per-pid would isolate
 // correctly and make every suite download it again.
