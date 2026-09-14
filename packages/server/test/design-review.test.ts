@@ -1346,13 +1346,24 @@ test("a revision picked while a refresh is in flight stays on screen", async () 
         await route.continue()
       },
     )
-    await stalled.promise
+    await Promise.race([
+      stalled.promise,
+      Bun.sleep(8000).then(() => {
+        throw new Error("No background poll requested the revision list within 8 seconds")
+      }),
+    ])
     await page.getByLabel("Revision", { exact: true }).selectOption(current.revision.id)
     release.resolve()
     await page.getByRole("button", { name: "Restore as new revision", exact: true }).waitFor({ timeout: 5000 })
     await showsRevision(page, current.revision.id)
-    // Later polls keep the older revision: the newer one is only offered.
-    await page.waitForTimeout(5500)
+    // The next poll keeps the older revision: the newer one is only offered. Refresh asks for the
+    // assets only after it has settled the revision select.
+    await page.waitForRequest((request) => request.url().endsWith("/revision") && request.method() === "GET", {
+      timeout: 8000,
+    })
+    await page.waitForRequest((request) => request.url().endsWith("/asset") && request.method() === "GET", {
+      timeout: 8000,
+    })
     expect(await page.getByLabel("Revision", { exact: true }).inputValue()).toBe(current.revision.id)
     expect(await page.getByRole("button", { name: "Restore as new revision", exact: true }).isVisible()).toBe(true)
     expect(await page.getByRole("button", { name: "New revision available", exact: true }).isVisible()).toBe(true)

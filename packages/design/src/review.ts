@@ -986,6 +986,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const changed = state.design?.id !== current.id
     const onLatest = !changed && !!state.revision && state.revision === state.design?.revision
     if (changed) {
+      // A pick from the design that was on screen means nothing for the one replacing it.
+      state.choice = ""
       state.failedPreview = ""
       element("preview-error").hidden = true
       element("primary-pane").hidden = false
@@ -1162,6 +1164,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }, element("new")).then(() => {
       // Controls stay disabled until the task settles, so focus moves into the brief afterwards.
       if (state.creating && !element("intake").hidden) input("name").focus()
+      else more.focus()
     })
   element<HTMLFormElement>("create").onsubmit = (event) => {
     event.preventDefault()
@@ -1205,6 +1208,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   element("revisions").onchange = () => {
     const id = input("revisions").value
+    // run skips a task while another action is working; a pick it never loads must not stay pending.
+    if (state.working) return
     state.choice = id
     void run(async () => {
       try {
