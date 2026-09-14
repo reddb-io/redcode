@@ -62,24 +62,59 @@ const locate = async (directory: string, name: string, extensions: string[]) => 
 const browserConditions = ["browser", "import", "module", "default"]
 const nodeConditions = ["node", "require", "default"]
 
+/** A path segment that could leave, repeat or alias a package directory. */
+const unsafeSegment = (segment: string) =>
+  !segment || segment === "." || segment === ".." || segment === "node_modules" || /[\\:\0]/.test(segment)
+
+const outside = (parent: string, child: string) => {
+  const relative = path.relative(parent, child)
+  return relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)
+}
+
+/** A directory's real path, completed from its nearest existing ancestor when it does not exist yet. */
+async function canonical(directory: string): Promise<string> {
+  const resolved = path.resolve(directory)
+  const real = await realpath(resolved).catch(() => undefined)
+  if (real) return real
+  const parent = path.dirname(resolved)
+  return parent === resolved ? resolved : path.join(await canonical(parent), path.basename(resolved))
+}
+
+/** Where package lookups for an application stop: its repository root, as for the build's read grant, else the application. */
+export async function packageBoundary(directory: string) {
+  return (await RepositoryGuard.inspect(directory).catch(() => undefined))?.root ?? directory
+}
+
 /**
- * The file a bare specifier names in the node_modules directories from `directory` up, read from
- * disk. A design build runs inside the harness process, whose module resolution is shaped by its own
- * workspace layout and runtime plugins, so the application's packages are located on disk instead of
- * through that process's resolver. Only `exports` subpaths without patterns are supported.
+ * The file a bare specifier names in the node_modules directories from `directory` up to `boundary`,
+ * read from disk. A design build runs inside the harness process, whose module resolution is shaped by
+ * its own workspace layout and runtime plugins, so the application's packages are located on disk
+ * instead of through that process's resolver. The walk never leaves the repository (a package planted
+ * in a home directory's node_modules is not the application's), names are single safe segments, and a
+ * target must stay inside its package. Only `exports` subpaths without patterns are supported.
  */
-export async function locatePackage(directory: string, specifier: string, conditions = browserConditions) {
+export async function locatePackage(
+  directory: string,
+  specifier: string,
+  conditions = browserConditions,
+  boundary?: string,
+) {
   const segments = specifier.split("/")
-  const name = segments.slice(0, specifier.startsWith("@") ? 2 : 1).join("/")
-  const subpath = "." + specifier.slice(name.length)
-  for (let current = path.resolve(directory); ; current = path.dirname(current)) {
-    const root = path.join(current, "node_modules", ...name.split("/"))
+  const size = specifier.startsWith("@") ? 2 : 1
+  const names = segments.slice(0, size)
+  if (names.length !== size || names.some(unsafeSegment) || (size === 2 && names[0].length < 2)) return
+  if (segments.slice(size).some(unsafeSegment)) return
+  const subpath = segments.length > size ? `./${segments.slice(size).join("/")}` : "."
+  const limit = await canonical(boundary ?? (await packageBoundary(directory)))
+  for (let current = await canonical(directory); !outside(limit, current); current = path.dirname(current)) {
+    const root = path.join(current, "node_modules", ...names)
     const manifest: unknown = await Bun.file(path.join(root, "package.json"))
       .json()
       .catch(() => undefined)
     if (typeof manifest === "object" && manifest) {
       for (const file of entries(manifest, subpath, conditions)) {
         const target = path.join(root, file)
+        if (outside(root, target)) continue
         if (
           await stat(target).then(
             (info) => info.isFile(),
@@ -114,35 +149,57 @@ export function entries(manifest: object, subpath: string, conditions: string[])
       typeof exports === "object" && !Array.isArray(exports) && Object.keys(exports).some((key) => key.startsWith("."))
     const target = keyed ? (exports as Record<string, unknown>)[subpath] : subpath === "." ? exports : undefined
     const picked = pick(target)
-    return picked === undefined ? [] : [picked]
+    return picked !== undefined && packageTarget(picked) ? [picked] : []
   }
-  const base =
-    subpath === "." ? ("main" in manifest && typeof manifest.main === "string" ? manifest.main : "index.js") : subpath
-  return [base, `${base}.js`, path.join(base, "index.js")]
+  const main = "main" in manifest && typeof manifest.main === "string" ? manifest.main : "index.js"
+  // `main` may omit the leading "./"; an absolute or drive-qualified one is not a package-relative file.
+  if (subpath === "." && (main.startsWith("/") || /^[A-Za-z]:/.test(main))) return []
+  const base = (subpath === "." ? (main.startsWith("./") ? main : `./${main}`) : subpath).replace(/\/$/, "")
+  return [base, `${base}.js`, `${base}/index.js`].filter(packageTarget)
 }
 
-const required = async (directory: string, specifier: string, conditions?: string[]) => {
-  const file = await locatePackage(directory, specifier, conditions)
+/** A package-relative target: "./"-prefixed, forward slashes only and no ".." before or after normalizing. */
+function packageTarget(target: string) {
+  return (
+    target.startsWith("./") &&
+    !/[\\:\0]/.test(target) &&
+    !target.split("/").includes("..") &&
+    !path.posix.normalize(target).split("/").includes("..")
+  )
+}
+
+const required = async (directory: string, specifier: string, conditions: string[], boundary: string) => {
+  const file = await locatePackage(directory, specifier, conditions, boundary)
   if (!file) throw new Error(`Cannot find ${specifier} in the node_modules of ${directory}`)
   return file
 }
 
 /**
  * The package and subpath a file inside node_modules belongs to, for a POSIX or Windows path or a
- * `file:` URL; undefined for anything outside node_modules. The innermost node_modules wins.
+ * `file:` URL; undefined for anything outside node_modules. The innermost node_modules wins. URLs with
+ * a host and UNC paths name network shares (resolving one opens an SMB connection that can leak NTLM
+ * credentials), and a name or subpath segment that could traverse or alias a directory is refused.
  */
 export function packageFile(specifier: string) {
-  const file = specifier.startsWith("file:")
-    ? decodeURIComponent(new URL(specifier).pathname).replace(/^\/([A-Za-z]:)/, "$1")
-    : specifier
+  const file = (() => {
+    if (!specifier.startsWith("file:")) return specifier
+    const url = URL.canParse(specifier) ? new URL(specifier) : undefined
+    if (!url || url.host !== "") return
+    try {
+      return decodeURIComponent(url.pathname).replace(/^\/([A-Za-z]:)/, "$1")
+    } catch {
+      return
+    }
+  })()
+  if (file === undefined || /^[\\/]{2}/.test(file)) return
   const segments = file.split(/[\\/]/)
   const index = segments.lastIndexOf("node_modules")
   if (index === -1) return
   const size = segments[index + 1]?.startsWith("@") ? 2 : 1
   const name = segments.slice(index + 1, index + 1 + size)
   const subpath = segments.slice(index + 1 + size)
-  if (name.length !== size || name.some((segment) => !segment) || !subpath.length || subpath.some((part) => !part))
-    return
+  if (name.length !== size || name.some(unsafeSegment) || (size === 2 && name[0].length < 2)) return
+  if (!subpath.length || subpath.some(unsafeSegment)) return
   return { name: name.join("/"), subpath: subpath.join("/") }
 }
 
@@ -295,6 +352,7 @@ export async function build(
   const base = await home(application)
   const require = createRequire(path.join(base, "package.json"))
   const trusted = await grant(document)
+  const boundary = await packageBoundary(base)
   const plugins = await (async () => {
     if (document.engine === "html") return []
     if (document.engine === "solid") {
@@ -315,10 +373,10 @@ export async function build(
       find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
       replacement: name.startsWith("solid-js")
         ? path.join(
-            path.dirname(await required(base, "solid-js/package.json")),
+            path.dirname(await required(base, "solid-js/package.json", browserConditions, boundary)),
             name === "solid-js" ? "dist/solid.js" : name === "solid-js/web" ? "web/dist/web.js" : "store/dist/store.js",
           )
-        : await required(base, name),
+        : await required(base, name, browserConditions, boundary),
       fallbacks: [] as string[],
     })),
   )
@@ -329,6 +387,8 @@ export async function build(
           await required(
             base,
             `${name.startsWith("solid-js") ? "solid-js" : name.startsWith("react-dom") ? "react-dom" : "react"}/package.json`,
+            browserConditions,
+            boundary,
           ),
         ),
       ),
@@ -362,11 +422,12 @@ export async function build(
    */
   const localPackageFile = async (id: string) => {
     if (!id.startsWith("file:") && !path.isAbsolute(id)) return
+    // packageFile refuses hosts, UNC paths and unsafe segments before anything touches the filesystem.
     const target = packageFile(id)
     if (!target) return
     const current = id.startsWith("file:") ? fileURLToPath(id) : id
     if (within(await realpath(current).catch(() => path.resolve(current)))) return
-    const manifest = await locatePackage(base, `${target.name}/package.json`)
+    const manifest = await locatePackage(base, `${target.name}/package.json`, browserConditions, boundary)
     if (!manifest) return
     const file = path.join(path.dirname(manifest), ...target.subpath.split("/"))
     return (await exists(file)) ? file : undefined
@@ -466,7 +527,9 @@ export async function build(
       return null
     },
   })
-  const postcss = document.system?.tailwind ? await pipeline(base, application, source, require, authorize) : []
+  const postcss = document.system?.tailwind
+    ? await pipeline(base, application, source, require, authorize, boundary)
+    : []
   // The project's tsconfig governs JSX and class semantics; Vite fills the rest from the nearest tsconfig.
   const jsx = Option.getOrUndefined(Schema.decodeUnknownOption(Jsx)(options?.jsx))
   const compilerOptions = {
@@ -542,6 +605,7 @@ async function pipeline(
   source: string,
   require: NodeJS.Require,
   authorize: (file: string) => Promise<void>,
+  boundary: string,
 ) {
   const load = async (file: string): Promise<unknown> => {
     await authorize(file)
@@ -582,7 +646,7 @@ async function pipeline(
   }
   // Plugins load from the checkout's node_modules on disk, never from where Bun's resolver cache points.
   const instantiate = async (name: string, options: unknown) => {
-    const loaded: unknown = require(await required(base, name, nodeConditions))
+    const loaded: unknown = require(await required(base, name, nodeConditions, boundary))
     const factory = (
       typeof loaded === "function"
         ? loaded
@@ -609,7 +673,7 @@ async function pipeline(
     configured ??
     Object.fromEntries([
       ["tailwindcss", {}],
-      ...((await locatePackage(base, "autoprefixer", nodeConditions)) ? [["autoprefixer", {}]] : []),
+      ...((await locatePackage(base, "autoprefixer", nodeConditions, boundary)) ? [["autoprefixer", {}]] : []),
     ])
   const list: readonly unknown[] | undefined = Array.isArray(plugins) ? plugins : undefined
   if (list)
