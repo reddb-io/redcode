@@ -88,7 +88,12 @@ describe("loop guard", () => {
     expect(limits({ correct_at: 1 })).toBeUndefined()
     expect(limits()).toEqual(LIMITS)
     // A stop threshold below the warning would abort without ever correcting.
-    expect(limits({ correct_at: 4, stop_at: 2 })).toEqual({ correctAt: 4, stopAt: 4, nudgeAt: LIMITS.nudgeAt })
+    expect(limits({ correct_at: 4, stop_at: 2 })).toEqual({
+      correctAt: 4,
+      stopAt: 4,
+      nudgeAt: LIMITS.nudgeAt,
+      failureStopAt: LIMITS.failureStopAt,
+    })
   })
 
   test("notices a call that never stops being made, even when the answer keeps changing", () => {
@@ -170,6 +175,29 @@ describe("loop guard", () => {
     )
     const next = { tool: "todowrite", input: { todos: [{ id: "t", status: "completed" }] } }
     expect(assess({ parts: todos, next, limits: LIMITS }).type).toBe("correct")
+  })
+
+  test("stops a turn whose todowrite calls keep failing, even when every failure is different", () => {
+    // Varied malformed calls never repeat an error, so the same-failure streak cannot see them.
+    const failed = (i: number) => call("todowrite", { todos: [{ id: `t${i}` }] }, `Invalid task update ${i}`, "error")
+    const next = { tool: "todowrite", input: { todos: [{ id: "t" }] } }
+    const run = (n: number) => Array.from({ length: n }, (_, i) => failed(i))
+    expect(assess({ parts: run(LIMITS.failureStopAt - 1), next, limits: LIMITS }).type).not.toBe("stop")
+    const stop = assess({ parts: run(LIMITS.failureStopAt), next, limits: LIMITS })
+    expect(stop).toMatchObject({ type: "stop", streak: LIMITS.failureStopAt })
+    expect(stop.type === "stop" && stop.message).toContain(
+      `${LIMITS.failureStopAt} todowrite calls in a row have failed`,
+    )
+    // Other tools in between do not reset the count; a successful todowrite does.
+    const interleaved = run(LIMITS.failureStopAt).flatMap((part) => [call("read", { path: "/a" }, "x"), part])
+    expect(assess({ parts: interleaved, next, limits: LIMITS }).type).toBe("stop")
+    const recovered = [...run(LIMITS.failureStopAt), call("todowrite", { todos: [] }, "[]")]
+    expect(assess({ parts: recovered, next, limits: LIMITS }).type).toBe("ok")
+    // Only todowrite is counted this way.
+    const edits = Array.from({ length: LIMITS.failureStopAt + 2 }, (_, i) =>
+      call("edit", { filePath: "a.ts", oldString: `${i}` }, `miss ${i}`, "error"),
+    )
+    expect(assess({ parts: edits, next: { tool: "edit", input: {} }, limits: LIMITS }).type).toBe("ok")
   })
 
   test("cuts the turn at the last real user message, not at a synthetic continuation", () => {

@@ -12,6 +12,8 @@
  * polling looks, and are left alone. Nothing about this needs a person.
  */
 
+import { LOOP_GUARD_REFUSAL } from "@reddb-io/redcode-core/session/loop-marker"
+
 export interface Limits {
   /** Calls in a row before the model is told, in its own transcript, that it is repeating itself. */
   readonly correctAt: number
@@ -26,9 +28,16 @@ export interface Limits {
    * and it only ever says something — it never ends the turn.
    */
   readonly nudgeAt: number
+  /**
+   * Failed todowrite calls in a turn, with no successful one since, before the turn ends.
+   *
+   * The same-failure streak only corrects, and a model that varies a malformed call never repeats
+   * an error for it to see; without this bound such a turn could spin until the budget ran out.
+   */
+  readonly failureStopAt: number
 }
 
-export const LIMITS: Limits = { correctAt: 3, stopAt: 5, nudgeAt: 12 }
+export const LIMITS: Limits = { correctAt: 3, stopAt: 5, nudgeAt: 12, failureStopAt: 8 }
 
 export function limits(
   config?: false | { correct_at?: number; stop_at?: number; nudge_at?: number },
@@ -38,7 +47,12 @@ export function limits(
   const stopAt = config?.stop_at ?? LIMITS.stopAt
   const nudgeAt = config?.nudge_at ?? LIMITS.nudgeAt
   if (correctAt <= 1) return undefined
-  return { correctAt, stopAt: Math.max(stopAt, correctAt), nudgeAt: Math.max(nudgeAt, correctAt) }
+  return {
+    correctAt,
+    stopAt: Math.max(stopAt, correctAt),
+    nudgeAt: Math.max(nudgeAt, correctAt),
+    failureStopAt: Math.max(LIMITS.failureStopAt, correctAt),
+  }
 }
 
 /** The shape this needs from a message part. Anything that is not a settled tool call is skipped. */
@@ -84,7 +98,8 @@ export type Decision =
  */
 const refused = (text: string) => text.startsWith(REFUSAL)
 
-const REFUSAL = "This is call "
+/** Shared with the evidence gate, which must not count a correction quoting its refusal as one. */
+const REFUSAL = LOOP_GUARD_REFUSAL
 
 const settled = (part: Part) =>
   part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")
@@ -176,6 +191,21 @@ export function failures(parts: readonly Part[], next: { tool: string }): number
   return count
 }
 
+/**
+ * Failed todowrite calls in this turn since its last successful one, whatever the errors said and
+ * whatever other tools ran in between. The guard's own refusals are failures too.
+ */
+export function todoFailures(parts: readonly Part[]): number {
+  let count = 0
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i]!
+    if (!settled(part) || part.tool !== "todowrite") continue
+    if (part.state?.status !== "error") break
+    count++
+  }
+  return count
+}
+
 export function assess(input: {
   parts: readonly Part[]
   next: { tool: string; input: unknown }
@@ -184,10 +214,15 @@ export function assess(input: {
   if (!input.limits) return { type: "ok" }
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
   const same = streak(input.parts, input.next) + 1
-  // A failure streak only ever corrects: the task gate blocks the task on its own after two genuine
-  // refusals, so ending the turn over it would stop work the model could still do.
+  // A same-failure streak only corrects: the task gate blocks the task on its own after two genuine
+  // refusals, so ending the turn over it would stop work the model could still do. What does end the
+  // turn is a long run of todowrite failures of any kind, which no correction has broken.
   const failed = FAILURE_STREAK_TOOLS.has(input.next.tool) ? failures(input.parts, input.next) + 1 : 0
   if (same >= input.limits.stopAt) return { type: "stop", streak: same, message: stopped(input.next, same) }
+  if (FAILURE_STREAK_TOOLS.has(input.next.tool)) {
+    const run = todoFailures(input.parts)
+    if (run >= input.limits.failureStopAt) return { type: "stop", streak: run, message: failureStopped(run) }
+  }
   const count = Math.max(same, failed)
   if (count >= input.limits.correctAt)
     return {
@@ -264,6 +299,10 @@ export function nudge(next: { tool: string; input: unknown }, count: number) {
 
 export function stopped(next: { tool: string }, count: number) {
   return `Stopped: \`${next.tool}\` was called ${count} times in a row with the same result, and the earlier warning did not change anything.`
+}
+
+export function failureStopped(count: number) {
+  return `Stopped: ${count} todowrite calls in a row have failed in this turn, and the corrections did not change anything. The task list was left as it is. Tell the user which task could not be updated and why, instead of retrying it.`
 }
 
 export * as LoopGuard from "./loop-guard"

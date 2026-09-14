@@ -5,7 +5,7 @@ Each call creates or updates the supplied tasks. Omitted tasks are preserved. Se
 Shapes:
 - Create: {"content":"<task>","status":"pending","priority":"high","requirement":"<exact quote from the user request>","criterion":"<observable result>"}. Content and priority are required only here.
 - Update: {"id":"<id>","revision":<current revision>,"status":"in_progress"} plus only the fields that change; content and priority stay as stored.
-- Complete: {"id":"<id>","revision":<current revision>,"status":"completed","evidence":{"callID":"<successful result>","messageID":"<its message>","explanation":"<how it meets criterion>"}}. Evidence may be omitted only when a verification result exists: the newest successful bash/shell check, design_preview or design_export after the request and after the last edit is recorded automatically and the output says which. Edits and reads are never selected for you.
+- Complete: {"id":"<id>","revision":<current revision>,"status":"completed","evidence":{"callID":"<successful result>","messageID":"<its message>","explanation":"<how it meets criterion>"}}. Evidence may be omitted only when a verification result exists: the newest successful bash/shell check, design_preview or design_export after the request and after the last edit is recorded automatically and the output says which (quoting a shell check's command). A shell check is recorded for you only when the task has a criterion or reason; otherwise cite the verifying command with an explanation. Edits and reads are never selected for you.
 
 States:
 - pending: actionable work not yet started.

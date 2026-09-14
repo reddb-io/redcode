@@ -273,7 +273,7 @@ it.effect("selects the newest successful result when evidence is omitted and exp
         sessionID,
         todos: [{ id: bare[0].id, revision: bare[0].revision, status: "completed" }],
       }))[0].evidence,
-    ).toMatchObject({ callID: "verify-2", explanation: "auto-selected latest verification bash" })
+    ).toMatchObject({ callID: "verify-2", explanation: task.criterion })
     const facts = yield* SessionTaskFacts.Service
     expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "edit-1")).toMatchObject({
       kind: "edit",
@@ -313,8 +313,8 @@ it.effect("keeps evidence valid across later verification commands and edits to 
       patchText: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: src/new.ts\n+z\n*** End Patch",
     })
     expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "patch")?.paths).toEqual([
-      "src/a.ts",
-      "src/new.ts",
+      "/project/src/a.ts",
+      "/project/src/new.ts",
     ])
   }),
 )
@@ -740,5 +740,139 @@ it.effect("counts only genuine evidence refusals toward blocking a task", () =>
     const blocked = yield* todos.update({ sessionID, todos: [completion] })
     expect(blocked[0].status).toBe("blocked")
     expect(blocked[0].reason).toContain("after 2 attempts")
+  }),
+)
+
+it.effect("names the command of an auto-selected shell check and refuses one with nothing to explain it", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const facts = yield* SessionTaskFacts.Service
+    const { criterion: _criterion, ...bare } = task
+    const created = (yield* todos.update({ sessionID, todos: [bare] }))[0]
+    yield* result("bash", "trivial", 20, 0, "completed", { command: "ls" })
+    // An `ls` after the last edit is not a verification the engine may explain on the model's behalf.
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toStartWith(SessionTodoStore.REFUSED)
+    expect(refused.message).toContain("cite the verifying command")
+    expect(refused.message).toContain("trivial (bash")
+    // With a criterion to stand in for the explanation, the pick is recorded and its command quoted.
+    const command = `bun test --timeout 30000 test/retries.test.ts ${"x".repeat(200)}`
+    yield* result("bash", "verify", 30, 0, "completed", { command })
+    const incoming = [
+      { id: created.id, revision: created.revision, status: "completed" as const, criterion: task.criterion },
+    ]
+    const done = yield* todos.update({ sessionID, todos: incoming })
+    expect(done[0].evidence).toMatchObject({ callID: "verify", tool: "bash", explanation: task.criterion })
+    const notes = SessionTodo.notes(incoming, done, (yield* facts.load(sessionID)).results)
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toContain("selected automatically: verify (bash")
+    expect(notes[0]).toContain(`command: ${command.slice(0, 120)}…`)
+    expect(notes[0]).not.toContain(command.slice(0, 121))
+    // A design preview is still selected and explained automatically.
+    yield* result("design_preview", "preview", 40, 0, "completed", { id: "des_a", name: "r1" })
+    const design = (yield* todos.update({ sessionID, todos: [{ ...bare, content: "Design retries" }] })).find(
+      (entry) => entry.content === "Design retries",
+    )!
+    const previewed = yield* todos.update({
+      sessionID,
+      todos: [{ id: design.id, revision: design.revision, status: "completed" }],
+    })
+    expect(previewed.find((entry) => entry.id === design.id)?.evidence).toMatchObject({
+      callID: "preview",
+      explanation: "auto-selected latest verification design_preview",
+    })
+  }),
+)
+
+it.effect("normalises relative paths against the session directory before comparing them", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Explore the retry code in src")
+    yield* result("grep", "grep-src", 20, 0, "completed", { pattern: "retry", path: "src" })
+    const todos = yield* SessionTodo.Service
+    const done = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          content: "Explore retries",
+          requirement: "Explore the retry code",
+          status: "completed",
+          priority: "high",
+          evidence: { callID: "grep-src", explanation: "retry.ts holds the backoff loop" },
+        },
+      ],
+    })
+    const facts = yield* SessionTaskFacts.Service
+    expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "grep-src")?.paths).toEqual([
+      "/project/src",
+    ])
+    expect(SessionTaskFacts.paths("read", { filePath: "./src/a.ts" }, "/project")).toEqual(["/project/src/a.ts"])
+    expect(SessionTaskFacts.overlaps(["./src/a.ts"], ["src"])).toBe(true)
+    yield* result("edit", "edit-other", 30, 0, "completed", { filePath: "/project/lib/b.ts" })
+    expect(yield* todos.review(sessionID)).toEqual(done)
+    yield* result("edit", "edit-src", 40, 0, "completed", { filePath: "/project/src/a.ts" })
+    expect((yield* todos.review(sessionID))[0].status).toBe("in_progress")
+  }),
+)
+
+it.effect("scopes design edits to their own design", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Design the retry screen and verify duplicate requests")
+    yield* result("design_preview", "preview-a", 20, 0, "completed", { id: "des_a", name: "r1" })
+    yield* result("bash", "tests", 21)
+    const todos = yield* SessionTodo.Service
+    const screen = {
+      content: "Design the retry screen",
+      requirement: "Design the retry screen",
+      status: "completed" as const,
+      priority: "high" as const,
+      evidence: { callID: "preview-a", explanation: "The preview shows the retry screen" },
+    }
+    const tested = { ...task, status: "completed" as const, evidence: { callID: "tests", explanation: "Passed" } }
+    const done = yield* todos.update({ sessionID, todos: [screen, tested] })
+    expect(done.map((entry) => entry.status)).toEqual(["completed", "completed"])
+    const facts = yield* SessionTaskFacts.Service
+    expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "preview-a")?.paths).toEqual([
+      "design:des_a",
+    ])
+    // Editing another design leaves both the preview of design A and the shell check standing.
+    yield* result("design_edit", "edit-b", 30, 0, "completed", { id: "des_b", restore: "r0" })
+    yield* result("design_asset", "asset-b", 31, 0, "completed", { id: "des_b", input: {} })
+    expect(yield* todos.review(sessionID)).toEqual(done)
+    // Editing design A reopens only the task proven by its preview; a shell check is not about a design.
+    yield* result("design_generate", "generate-a", 40, 0, "completed", { id: "des_a", tool: "img" })
+    const reviewed = yield* todos.review(sessionID)
+    expect(reviewed.find((entry) => entry.content === screen.content)?.status).toBe("in_progress")
+    expect(reviewed.find((entry) => entry.content === task.content)?.status).toBe("completed")
+  }),
+)
+
+it.effect("refuses a stale read, an explanation of whitespace, and keeps a proof across a later sed -i", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* result("read", "read-a", 20, 0, "completed", { filePath: "/project/a.ts" })
+    const todos = yield* SessionTodo.Service
+    const cite = (content: string, callID: string, explanation: string) =>
+      todos.update({ sessionID, todos: [{ ...task, content, status: "completed", evidence: { callID, explanation } }] })
+    expect((yield* cite("First", "read-a", "a.ts retries")).at(-1)?.status).toBe("completed")
+    // After an edit to the same file, citing that read again is a stale proof.
+    yield* result("edit", "edit-a", 30, 0, "completed", { filePath: "/project/a.ts" })
+    const stale = yield* cite("Second", "read-a", "a.ts retries").pipe(Effect.flip)
+    expect(stale.message).toContain("predates a later edit edit-a (edit, /project/a.ts")
+    yield* result("bash", "tests", 40)
+    const blank = yield* cite("Third", "tests", " \n\t ").pipe(Effect.flip)
+    expect(blank.message).toContain("needs an explanation")
+    const proven = yield* cite("Fourth", "tests", "Passed")
+    expect(proven.at(-1)?.status).toBe("completed")
+    // A shell command after the proof never invalidates it, even one that rewrites a file.
+    yield* result("bash", "sed", 50, 0, "completed", { command: "sed -i 's/a/b/' a.ts" })
+    const reviewed = yield* todos.review(sessionID)
+    expect(reviewed.find((entry) => entry.content === "Fourth")?.status).toBe("completed")
   }),
 )

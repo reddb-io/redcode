@@ -1,5 +1,6 @@
 export * as SessionTodo from "./todo"
 
+import { SessionTaskFacts } from "./task-facts"
 import { Context, Effect, Layer } from "effect"
 import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
 import { makeLocationNode } from "../effect/app-node"
@@ -17,7 +18,7 @@ export const Info = SessionTodo.Info
 export type Info = typeof Info.Type
 export const Event = SessionTodo.Event
 export const guidance =
-  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically; edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
+  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically (a shell check only when the task has a criterion or reason to explain it); edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
 
 export function active(todos: ReadonlyArray<Info>) {
   return todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled")
@@ -93,16 +94,26 @@ export const node = makeLocationNode({ service: Service, layer, deps: [EventV2.n
  * did not cite, or a task it blocked after repeated failed completion attempts. Both go into the
  * tool output so the model reads the decision instead of inferring it from the task list.
  */
-export function notes(incoming: ReadonlyArray<Input>, todos: ReadonlyArray<Info>) {
+export function notes(
+  incoming: ReadonlyArray<Input>,
+  todos: ReadonlyArray<Info>,
+  /** The session's tool results, so a selected shell check can be quoted by its command. */
+  results: ReadonlyArray<Pick<SessionTaskFacts.Result, "callID" | "messageID" | "tool" | "input">> = [],
+) {
   return incoming.flatMap((item) => {
     if (item.status !== "completed") return []
     const task = todos.find((entry) => (item.id ? entry.id === item.id : entry.content === item.content?.trim()))
     if (!task) return []
     if (task.status === "blocked") return [`Task ${task.id} was blocked instead of completed: ${task.reason}`]
-    if (task.status === "completed" && task.evidence && task.evidence.callID !== item.evidence?.callID)
+    if (task.status === "completed" && task.evidence && task.evidence.callID !== item.evidence?.callID) {
+      const evidence = task.evidence
+      const proof = results.find((entry) => entry.callID === evidence.callID && entry.messageID === evidence.messageID)
+      const command =
+        proof && (proof.tool === "bash" || proof.tool === "shell") ? SessionTaskFacts.command(proof.input) : undefined
       return [
-        `Evidence for ${task.id} was selected automatically: ${task.evidence.callID} (${task.evidence.tool}, message ${task.evidence.messageID}).`,
+        `Evidence for ${task.id} was selected automatically: ${evidence.callID} (${evidence.tool}, message ${evidence.messageID}${command ? `, command: ${command}` : ""}).`,
       ]
+    }
     return []
   })
 }

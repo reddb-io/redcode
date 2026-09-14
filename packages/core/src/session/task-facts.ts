@@ -1,13 +1,14 @@
 export * as SessionTaskFacts from "./task-facts"
 
 import { createHash } from "node:crypto"
+import path from "node:path"
 import { eq } from "drizzle-orm"
 import { Context, DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
-import { MessageTable, PartTable, SessionMessageTable } from "./sql"
+import { MessageTable, PartTable, SessionMessageTable, SessionTable } from "./sql"
 import { SessionV1 } from "../v1/session"
 
 export type Kind = "edit" | "verification" | "bookkeeping" | "other"
@@ -21,7 +22,10 @@ export type Result = {
   errored: boolean
   /** File edits invalidate earlier evidence; verification commands are evidence but never invalidate. */
   kind: Kind
-  /** Files an edit touched, when the input names them; empty means unknown, which matches every proof. */
+  /**
+   * Files an edit touched, when the input names them, absolute against the session directory; a design
+   * tool's scope is its design (`design:<id>`). Empty means unknown, which matches every proof.
+   */
   paths: string[]
   settled: boolean
   /**
@@ -50,28 +54,50 @@ const bookkeeping = new Set(["todowrite", "todoread", "plan_exit", "goal_status"
 export const kind = (tool: string): Kind =>
   edits.has(tool) ? "edit" : verifications.has(tool) ? "verification" : bookkeeping.has(tool) ? "bookkeeping" : "other"
 
+/** Scope of a design tool's result: the design it edited, previewed or exported, not a file. */
+export const DESIGN = "design:"
+const designs = new Set(["design_edit", "design_generate", "design_asset", "design_preview", "design_export"])
+const scoped = (entries: ReadonlyArray<string>) =>
+  entries.length > 0 && entries.every((entry) => entry.startsWith(DESIGN))
+
+/** `./src/`, `src` and `/project/src` name one directory once a session directory resolves the relative forms. */
+const normal = (entry: string, directory?: string) => {
+  if (entry.startsWith(DESIGN)) return entry
+  const resolved = directory && !path.isAbsolute(entry) ? path.resolve(directory, entry) : path.normalize(entry)
+  return resolved.length > 1 ? resolved.replace(/[\\/]+$/, "") : resolved
+}
+
 /**
  * Whether an edit's files overlap a proof's files; a side without paths is treated as touching
- * everything, and a directory (a grep or glob root) overlaps the files beneath it.
+ * everything, and a directory (a grep or glob root) overlaps the files beneath it. A design edit is
+ * scoped to its design: it overlaps only proofs about that design, never a shell check or a read. A
+ * file edit still overlaps a design proof, whose files are not known.
  */
-export const overlaps = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
-  !a.length ||
-  !b.length ||
-  a.some((x) =>
-    b.some(
-      (y) =>
-        x === y ||
-        x.endsWith(`/${y}`) ||
-        y.endsWith(`/${x}`) ||
-        x.startsWith(`${y.replace(/\/+$/, "")}/`) ||
-        y.startsWith(`${x.replace(/\/+$/, "")}/`),
-    ),
+export const overlaps = (edit: ReadonlyArray<string>, proof: ReadonlyArray<string>) => {
+  const a = edit.map((entry) => normal(entry))
+  const b = proof.map((entry) => normal(entry))
+  if (scoped(a)) return b.some((entry) => a.includes(entry))
+  if (scoped(b)) return true
+  return (
+    !a.length ||
+    !b.length ||
+    a.some((x) =>
+      b.some(
+        (y) => x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`) || x.startsWith(`${y}/`) || y.startsWith(`${x}/`),
+      ),
+    )
   )
+}
 
-/** Files named by a tool's input: explicit path fields, or the file headers of a patch. */
-export function paths(tool: string, input: unknown): string[] {
-  if (verifications.has(tool) || bookkeeping.has(tool) || typeof input !== "object" || input === null) return []
+/**
+ * What a tool's input names: explicit path fields or the file headers of a patch, resolved against the
+ * session directory, or the design a design tool works on.
+ */
+export function paths(tool: string, input: unknown, directory?: string): string[] {
+  if (bookkeeping.has(tool) || typeof input !== "object" || input === null) return []
   const record = input as Record<string, unknown>
+  if (designs.has(tool)) return typeof record.id === "string" && record.id ? [`${DESIGN}${record.id}`] : []
+  if (verifications.has(tool)) return []
   const named = ["filePath", "path", "file_path"].flatMap((key) =>
     typeof record[key] === "string" && record[key] ? [record[key] as string] : [],
   )
@@ -81,12 +107,27 @@ export function paths(tool: string, input: unknown): string[] {
           match[1]!.trim(),
         )
       : []
-  return [...new Set([...named, ...patch])]
+  return [...new Set([...named, ...patch].map((entry) => normal(entry, directory)))]
+}
+
+/** The command a shell result ran, cut to `limit` characters, for quoting it back to the model. */
+export function command(input: unknown, limit = 120) {
+  const value = typeof input === "object" && input !== null ? (input as { command?: unknown }).command : undefined
+  if (typeof value !== "string" || !value.trim()) return undefined
+  const text = value.trim()
+  return text.length > limit ? `${text.slice(0, limit)}…` : text
 }
 
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
   const load = Effect.fn("SessionTaskFacts.load")(function* (sessionID: SessionSchema.ID) {
+    const directory =
+      (yield* db
+        .select({ directory: SessionTable.directory })
+        .from(SessionTable)
+        .where(eq(SessionTable.id, sessionID))
+        .all()
+        .pipe(Effect.orDie))[0]?.directory || undefined
     const rows = yield* db
       .select()
       .from(SessionMessageTable)
@@ -120,7 +161,7 @@ const make = Effect.gen(function* () {
                 successful: part.state.status === "completed" && success(part.name, part.state.structured),
                 errored: part.state.status === "error" || abandoned,
                 kind: kind(part.name),
-                paths: paths(part.name, input),
+                paths: paths(part.name, input, directory),
                 settled: settled || abandoned,
                 abandoned,
                 error: part.state.status === "error" ? text(part.state.error) : "",
@@ -199,7 +240,7 @@ const make = Effect.gen(function* () {
             successful: part.state.status === "completed" && success(part.tool, part.state.metadata),
             errored: part.state.status === "error" || abandoned,
             kind: kind(part.tool),
-            paths: paths(part.tool, part.state.input),
+            paths: paths(part.tool, part.state.input, directory),
             settled: settled || abandoned,
             abandoned,
             error: part.state.status === "error" ? text(part.state.error) : "",

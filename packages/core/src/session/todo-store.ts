@@ -6,6 +6,7 @@ import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
+import { LOOP_GUARD_REFUSAL } from "./loop-marker"
 import { SessionSchema } from "./schema"
 import { SessionTaskFacts } from "./task-facts"
 import { TodoHistoryTable, TodoTable } from "./sql"
@@ -130,7 +131,11 @@ const make = Effect.gen(function* () {
                       source,
                       content,
                       messageID: input.messageID,
-                      fallback: item.reason?.trim() || item.criterion?.trim(),
+                      // A criterion that only restates the task explains nothing about a check.
+                      fallback:
+                        item.reason?.trim() ||
+                        item.criterion?.trim() ||
+                        (before?.criterion && before.criterion !== before.content ? before.criterion : undefined),
                     })
                   : undefined
               // Two failed completion attempts in a row for one task inside a turn is a loop, not a
@@ -429,6 +434,12 @@ function resolve(input: {
         (entry) => valid(entry) && entry.kind === "verification" && !invalidating(results, entry, input.messageID),
       )
       .toSorted((a, b) => b.completed - a.completed)[0]
+    // Any shell command that exits 0 after the last edit qualifies, `ls` included, so a shell pick is
+    // recorded only when the task says what it had to show; a render or export is its own explanation.
+    if (auto && (auto.tool === "bash" || auto.tool === "shell") && !input.fallback)
+      return refuse(
+        `Completing "${input.content}" would record ${auto.callID} (${auto.tool}${SessionTaskFacts.command(auto.input) ? `: ${SessionTaskFacts.command(auto.input)}` : ""}) as its proof, but the task has no criterion or reason that says how a command verifies it. Run the check that proves the task if this was not it, then cite the verifying command as evidence with an explanation: {"callID":"<its callID>","explanation":"<how its output meets the task>"}. ${describe(results)}`,
+      )
     if (auto) return { proof: auto, explanation: input.fallback || `auto-selected latest verification ${auto.tool}` }
     return refuse(
       `Completing "${input.content}" needs evidence, and no verification result (a successful bash or shell check, design_preview or design_export) exists after ${when} and after the last edit. Run the check that proves the task, then complete it; or, for investigation work, cite the read, grep or other result that answers it as evidence with an explanation. ${describe(results)}`,
@@ -530,7 +541,7 @@ function failedAttempts(results: ReadonlyArray<SessionTaskFacts.Result>, task: S
 /** An engine refusal, possibly wrapped by the runtime's error formatting, but never a guard's quote of one. */
 const refusal = (error: string) => {
   const at = error.indexOf(REFUSED)
-  return at !== -1 && !error.slice(0, at).includes("This is call ")
+  return at !== -1 && !error.slice(0, at).includes(LOOP_GUARD_REFUSAL)
 }
 
 const iso = (millis: number) => new Date(millis).toISOString()
