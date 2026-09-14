@@ -94,9 +94,24 @@ const watch = (child: ChildProcess, grace: number, running: "opened" | "failed")
     })
   })
 
+/**
+ * True when a real launch must not happen: under a test runner (`bun test` sets NODE_ENV, every test
+ * preload sets REDCODE_TEST_HOME) or with REDCODE_DESIGN_NO_OPEN. Only a test that injects its own
+ * `spawn` gets past it, and that test's `load` supplies its own `open`.
+ */
+export const refused = (options: Pick<Options, "spawn">, env: Record<string, string | undefined> = process.env) =>
+  options.spawn === undefined &&
+  (env.NODE_ENV === "test" || env.REDCODE_TEST_HOME !== undefined || !!env.REDCODE_DESIGN_NO_OPEN)
+
 /** Opens a Design review URL, preferring Chrome or Chromium. Never fails; reports whether and how it opened. */
 export const open = (url: string, options: Options) =>
   Effect.gen(function* () {
+    if (refused(options)) {
+      yield* Effect.logDebug(
+        "design review browser refused: no browser is launched under test or REDCODE_DESIGN_NO_OPEN",
+      )
+      return { opened: false, tried: [] } satisfies Result
+    }
     const platform = options.platform ?? process.platform
     const env = options.env ?? process.env
     const which = options.which ?? Bun.which

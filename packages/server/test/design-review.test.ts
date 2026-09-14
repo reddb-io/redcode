@@ -8,6 +8,7 @@ import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { webHandler } from "../src/routes"
 import { materializeDependencies } from "../../core/test/fixture/design-dependencies"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), "design-browser-"))
 const directory = path.join(temporary, "alias")
@@ -2473,3 +2474,18 @@ test("a revision picked while a refresh is in flight stays on screen", async () 
     await page.close()
   }
 }, 60000)
+
+test("the V2 review feed counts a connected review page while it is subscribed", async () => {
+  const current = await session()
+  const id = current.data.id
+  expect(DesignReviewPresence.shared.connected(id)).toBe(0)
+  const abort = new AbortController()
+  const feed = await fetch(`${base}/api/session/${id}/design/feed`, { signal: abort.signal })
+  expect(feed.status).toBe(200)
+  const reader = feed.body!.getReader()
+  expect((await reader.read()).done).toBe(false)
+  expect(DesignReviewPresence.shared.connected(id)).toBe(1)
+  await reader.cancel().catch(() => undefined)
+  abort.abort()
+  await until(() => DesignReviewPresence.shared.connected(id) === 0, "the closed feed releases its connection")
+})

@@ -7,6 +7,7 @@ import { ServerAuth } from "@/server/auth"
 import { errorMessage } from "@/util/error"
 import { DesignServer } from "./design-server"
 import { DesignBrowser } from "@/design/browser"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { Effect } from "effect"
 import { withTimeout } from "@/util/timeout"
 
@@ -36,9 +37,22 @@ export async function run(args: {
     process.stdout.write(safe + "\n")
     lines.prompt(true)
   }
+  // `--open` and `/review` open one tab per review: none while the server reports a connected review
+  // page for the session, and none twice inside the debounce while a launched page is still loading.
+  const presence = DesignReviewPresence.make()
   const review = async (sessionID: string) => {
     const url = new URL(`/api/session/${encodeURIComponent(sessionID)}/design/review`, baseUrl).toString()
+    const connected = await fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}/open`, baseUrl), {
+      headers: ServerAuth.headers(),
+    })
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((value: { connected?: unknown } | undefined) =>
+        typeof value?.connected === "number" ? value.connected : 0,
+      )
+      .catch(() => 0)
+    if (connected > 0) return write(`Review: ${url} (already open in the browser)`)
     write(`Review: ${url}`)
+    if (process.env.REDCODE_DESIGN_NO_OPEN || !presence.claim(sessionID, { explicit: true, connected })) return
     Effect.runFork(DesignBrowser.open(url))
   }
   const terminal = await DesignTerminal.create({

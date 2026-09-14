@@ -14,6 +14,7 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { DesignTable } from "@reddb-io/redcode-core/design/sql"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
@@ -109,6 +110,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
           const review = yield* DesignReviewServer.Service
           return HttpServerResponse.jsonUnsafe({
             url: new URL(`/design/session/${sessionID}/review`, yield* review.url).toString(),
+            // Review pages following this session's feed in this server, so a client opens no second tab.
+            connected: DesignReviewPresence.shared.connected(sessionID),
           })
         }
         if (request.method === "GET" && parts[3] === "feed" && parts.length === 4) {
@@ -128,6 +131,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               }),
             ),
             Stream.pipeThroughChannel(Sse.encode()),
+            // A subscriber is a connected review page; publishing does not open another tab while it lasts.
+            (stream) => Stream.unwrap(Effect.as(DesignReviewPresence.hold(sessionID), stream)),
           )
           const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
           return HttpServerResponse.stream(

@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import path from "node:path"
 import { Effect, Logger } from "effect"
 import { DesignBrowser } from "../../src/design/browser"
+import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
 
 const url = "http://127.0.0.1:4096/design/session/ses_browser/review"
 
@@ -65,6 +66,27 @@ function fixture(
 const run = (options: DesignBrowser.Options) => Effect.runPromise(DesignBrowser.open(url, options))
 
 describe("DesignBrowser.open", () => {
+  test("the test preload forbids real Design browser launches", () => {
+    expect(process.env.REDCODE_DESIGN_NO_OPEN).toBe("1")
+  })
+
+  test("refuses a launch without an injected spawn under test, before loading open", async () => {
+    const loaded: string[] = []
+    const load = async () => {
+      loaded.push("open")
+      return { apps: { chrome: "chrome" }, open: () => Promise.reject(new Error("must not run")) }
+    }
+    expect(await run({ platform: "linux", env: {}, load })).toBe(false)
+    expect(await run({ platform: "win32", env: {}, load })).toBe(false)
+    expect(await Effect.runPromise(DesignBrowser.open(url))).toBe(false)
+    expect(loaded).toEqual([])
+    expect(DesignBrowserLauncher.refused({}, { NODE_ENV: "test" })).toBe(true)
+    expect(DesignBrowserLauncher.refused({}, { REDCODE_TEST_HOME: "/tmp/home" })).toBe(true)
+    expect(DesignBrowserLauncher.refused({}, { REDCODE_DESIGN_NO_OPEN: "1" })).toBe(true)
+    expect(DesignBrowserLauncher.refused({}, {})).toBe(false)
+    expect(DesignBrowserLauncher.refused({ spawn: () => child(0) }, { NODE_ENV: "test" })).toBe(false)
+  })
+
   test("REDCODE_DESIGN_BROWSER=default uses the system browser", async () => {
     const linux = fixture({ found: ["google-chrome"] })
     expect(await run(linux.options("linux", { REDCODE_DESIGN_BROWSER: "default" }))).toBe(true)
