@@ -288,7 +288,7 @@ describe("TUI inline tool wrapping", () => {
       { id: "a2", role: "assistant", time: { completed: 2 } },
       { id: "a3", role: "assistant", time: {} },
     ]
-    // Counts reductions of a message's parts; the cache key still reads each part's status by index.
+    // Counts full walks of a message's parts; a cached message is checked by index, never iterated.
     const walks: string[] = []
     const partsOf = (id: string): Fixture[] =>
       new Proxy(parts[id] ?? [], {
@@ -346,6 +346,40 @@ describe("TUI inline tool wrapping", () => {
     const errored = finished.map((message) => (message.id === "a1" ? { ...message, error: { name: "x" } } : message))
     expect([...fold(errored, partsOf)]).toEqual(full(errored))
     expect(fold(errored, partsOf).get("f1")).toMatchObject({ count: 1 })
+  })
+
+  test("reads only the last part and the todowrite parts of a finished message once it is cached", () => {
+    type Fixture = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
+    const reads = new Map<string, number>()
+    const parts: Record<string, Fixture[]> = {
+      history: Array.from({ length: 50 }, (_, i) => ({ id: `h${i}`, type: "text", text: `line ${i}` })),
+      work: [
+        ...Array.from({ length: 20 }, (_, i) => ({ id: `w${i}`, type: "text", text: `note ${i}` })),
+        { id: "f1", type: "tool", tool: "todowrite", state: { status: "running" } },
+        { id: "done", type: "text", text: "done" },
+      ],
+    }
+    const partsOf = (id: string): Fixture[] =>
+      new Proxy(parts[id] ?? [], {
+        get(target, key, receiver) {
+          if (typeof key === "string" && /^\d+$/.test(key)) reads.set(id, (reads.get(id) ?? 0) + 1)
+          return Reflect.get(target, key, receiver)
+        },
+      })
+    const messages = [
+      { id: "history", role: "assistant", time: { completed: 1 } },
+      { id: "work", role: "assistant", time: { completed: 2 } },
+    ]
+    const fold = createTodoFold<Fixture>()
+    expect(fold(messages, partsOf).size).toBe(0)
+    reads.clear()
+    expect(fold(messages, partsOf).size).toBe(0)
+    // History with no todowrite part: its last part only. Work: its last part and its one todowrite part.
+    expect(reads.get("history")).toBe(1)
+    expect(reads.get("work")).toBe(2)
+    // That todowrite part failing late is still seen.
+    parts.work = parts.work!.map((part) => (part.id === "f1" ? { ...part, state: { status: "error" } } : part))
+    expect(fold(messages, partsOf).get("f1")).toMatchObject({ lead: "f1", count: 1 })
   })
 
   test("does not fold failures across a revert boundary", () => {

@@ -5,3 +5,9 @@
  * itself without importing the runtime's guard.
  */
 export const LOOP_GUARD_REFUSAL = "This is call "
+
+/**
+ * How the reason of a goal the loop guard paused begins ("loop guard: task updates kept failing (8 in
+ * a row)"). Resuming such a goal answers the guard, not a judge, so the continuation looks for it.
+ */
+export const LOOP_GUARD_PAUSE = "loop guard: "

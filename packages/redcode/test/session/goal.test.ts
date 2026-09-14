@@ -225,3 +225,17 @@ test("Design-only scope survives TUI goal persistence", () => {
   expect(SessionGoal.fromMetadata({ goal })?.stopAfter).toBe("design")
   expect(SessionGoal.render(goal)).toContain("Scope ends in design")
 })
+
+test("resuming a goal the loop guard paused answers the guard, not a judge", () => {
+  const goal = SessionGoal.parse("Ship the retry fix")
+  const text = SessionGoal.continuation(goal, { reason: "loop guard: task updates kept failing (8 in a row)" })
+  expect(text).toContain("Goal: Ship the retry fix")
+  expect(text).toContain("The last turn was stopped by the loop guard: task updates kept failing (8 in a row).")
+  expect(text).toContain("cite a successful verification result with an explanation, or block the task")
+  expect(text).not.toContain("judge")
+  expect(text).not.toContain("Paused:")
+  // A judge's pause keeps the judge's wording.
+  expect(SessionGoal.continuation(goal, { reason: "the tests were not run" })).toContain(
+    "The judge's reason for not accepting the last turn: the tests were not run",
+  )
+})

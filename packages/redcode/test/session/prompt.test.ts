@@ -5591,7 +5591,7 @@ it.instance(
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
       const goal = yield* goals.get(chat.id)
       expect(goal?.status).toBe("paused")
-      expect(goal?.reason).toBe("Paused: task updates kept failing (8 in a row)")
+      expect(goal?.reason).toBe("loop guard: task updates kept failing (8 in a row)")
       const status = yield* SessionStatus.Service
       expect((yield* status.get(chat.id)).type).toBe("idle")
       expect((yield* llm.hits).some(judgeRequest)).toBe(false)
@@ -5611,7 +5611,7 @@ it.instance(
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
       const goal = yield* goals.get(chat.id)
       expect(goal?.status).toBe("paused")
-      expect(goal?.reason).toBe("Paused: the same `glob` call repeated 5 times")
+      expect(goal?.reason).toBe("loop guard: the same `glob` call repeated 5 times")
       const status = yield* SessionStatus.Service
       expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
