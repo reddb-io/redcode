@@ -57,6 +57,15 @@ const locate = async (directory: string, name: string, extensions: string[]) => 
   return first ? path.join(directory, first) : undefined
 }
 
+/** The message of whatever a build threw: resolve failures and plain values are not always Error instances. */
+export function reason(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === "string") return error
+  if (typeof error === "object" && error && "message" in error && typeof error.message === "string")
+    return error.message
+  return Bun.inspect(error)
+}
+
 export async function materialize(revision: Design.Revision, blobs: string, directory: string) {
   await mkdir(directory, { recursive: true })
   for (const [file, hash] of Object.entries(revision.files))

@@ -24,8 +24,7 @@ import { DesignQuality } from "./quality"
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
     try: run,
-    catch: (error) =>
-      new Design.Error({ code: "unavailable", message: error instanceof Error ? error.message : String(error) }),
+    catch: (error) => new Design.Error({ code: "unavailable", message: DesignBuild.reason(error) }),
   })
 
 const make = Effect.gen(function* () {
