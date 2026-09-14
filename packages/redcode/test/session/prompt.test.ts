@@ -4530,28 +4530,6 @@ it.instance(
 )
 
 it.instance(
-  "a loop-guard stop pauses the goal with the guard's message instead of leaving it active",
-  () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => providerCfg(url))
-      const { chat, goals, prompt } = yield* startGoal("track the work")
-      // Every call fails differently, so no same-failure correction fires; only the failure run ends it.
-      for (let i = 0; i < 9; i++)
-        yield* llm.tool("todowrite", { todos: [{ id: `todo_missing_${i}`, revision: 1, status: "completed" }] })
-      yield* llm.text("never reached")
-      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
-      const goal = yield* goals.get(chat.id)
-      expect(goal?.status).toBe("paused")
-      expect(goal?.reason).toContain("stopped by the loop guard")
-      expect(goal?.reason).toContain("todowrite calls in a row have failed")
-      const status = yield* SessionStatus.Service
-      expect((yield* status.get(chat.id)).type).toBe("idle")
-      expect((yield* llm.hits).some(judgeRequest)).toBe(false)
-    }),
-  60_000,
-)
-
-it.instance(
   "a stalled turn pauses the goal with the stall as its reason",
   () =>
     Effect.gen(function* () {
@@ -5572,4 +5550,26 @@ it.instance("a summary prepared in the background is still reused when the epoch
     expect(after[0]!.replacement_seq).toBeNull()
     expect(JSON.stringify(bodySystem(hits[3]!))).toContain(JSON.stringify(after[0]!.baseline).slice(1, -1))
   }),
+)
+
+it.instance(
+  "a loop-guard stop pauses the goal with the guard's message instead of leaving it active",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("track the work")
+      // Every call fails differently, so no same-failure correction fires; only the failure run ends it.
+      for (let i = 0; i < 9; i++)
+        yield* llm.tool("todowrite", { todos: [{ id: `todo_missing_${i}`, revision: 1, status: "completed" }] })
+      yield* llm.text("never reached")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toContain("stopped by the loop guard")
+      expect(goal?.reason).toContain("todowrite calls in a row have failed")
+      const status = yield* SessionStatus.Service
+      expect((yield* status.get(chat.id)).type).toBe("idle")
+      expect((yield* llm.hits).some(judgeRequest)).toBe(false)
+    }),
+  60_000,
 )
