@@ -198,11 +198,6 @@ describe("loop guard", () => {
       call("edit", { filePath: "a.ts", oldString: `${i}` }, `miss ${i}`, "error"),
     )
     expect(assess({ parts: edits, next: { tool: "edit", input: {} }, limits: LIMITS }).type).toBe("ok")
-    // The bound is configurable alongside the other thresholds.
-    const bounds = limits({ failure_stop_at: 4 })!
-    expect(bounds.failureStopAt).toBe(4)
-    expect(assess({ parts: run(4), next, limits: bounds }).type).toBe("stop")
-    expect(assess({ parts: run(3), next, limits: bounds }).type).not.toBe("stop")
   })
 
   test("cuts the turn at the last real user message, not at a synthetic continuation", () => {

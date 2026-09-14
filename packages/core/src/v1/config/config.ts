@@ -208,12 +208,11 @@ export const Info = Schema.Struct({
             correct_at: Schema.optional(PositiveInt),
             stop_at: Schema.optional(PositiveInt),
             nudge_at: Schema.optional(PositiveInt),
-            failure_stop_at: Schema.optional(PositiveInt),
           }),
         ]),
       ).annotate({
         description:
-          "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. failure_stop_at (default 8) ends a turn after that many failed todowrite calls in a row, whatever each error said. Set to false to disable.",
+          "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable.",
       }),
       goal: Schema.optional(
         Schema.Struct({
