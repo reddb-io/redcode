@@ -1332,6 +1332,14 @@ test("compact toolbar keeps every action reachable", async () => {
 
 test("annotate toggle stays in the toolbar and responds to A", async () => {
   const current = await published("html")
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    `<!doctype html><html lang="en"><body>
+    <section data-design-variant="graphite" data-design-label="Graphite"><h1 id="title">Checkout</h1><input id="field" aria-label="Coupon"><div id="editable" contenteditable="true">Editable</div></section>
+    <section data-design-variant="stone" data-design-label="Stone"><h1>Stone checkout</h1></section>
+    </body></html>`,
+  )
+  await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Two directions" })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
@@ -1369,6 +1377,12 @@ test("annotate toggle stays in the toolbar and responds to A", async () => {
     expect(await toggle.getAttribute("aria-pressed")).toBe("false")
     const box = (await toggle.boundingBox())!
     expect(box.y + box.height).toBeLessThanOrEqual(80)
+    // The toggle fits the two-row budget of the toolbar and the variant strip.
+    await page.getByRole("tab", { name: "Stone", exact: true }).waitFor()
+    expect(
+      (await page.locator("#toolbar").boundingBox())!.height +
+        (await page.locator("#studio .variant-bar").boundingBox())!.height,
+    ).toBeLessThanOrEqual(80)
     // It sits before Approve in the actions group and the panel no longer has a checkbox.
     expect(
       (await page.getByRole("button", { name: "Approve this revision", exact: true }).boundingBox())!.x,
@@ -1406,24 +1420,69 @@ test("annotate toggle stays in the toolbar and responds to A", async () => {
     await pressed(true)
     await page.keyboard.press("Escape")
     await pressed(false)
+    // Select-all and other modified keys are left alone.
+    await page.keyboard.press("Control+a")
+    await page.keyboard.press("Meta+a")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
     // Keys pressed inside the preview are forwarded: A turns it on, Escape turns it off.
     await frame.locator("body").press("a")
     await pressed(true)
     await frame.locator("body").press("Escape")
     await pressed(false)
-    // With a card open, Escape closes the card first and annotation stays on.
+    // Typing into the prototype's own fields never toggles, and Escape there is not forwarded.
+    await frame.locator("#field").press("a")
+    await frame.locator("#editable").press("a")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(await frame.locator("#field").inputValue()).toBe("a")
     await annotate(page, true)
+    await frame.locator("#field").focus()
+    await frame.locator("#field").press("Escape")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+    // With a card open, Escape closes the card first, annotation stays on and focus lands on the toggle.
     await frame.getByRole("heading", { name: "Checkout" }).click()
     await page.locator("#card:not([hidden])").waitFor()
     await page.getByLabel("Note for this element", { exact: true }).press("Escape")
     await page.locator("#card").waitFor({ state: "hidden" })
     expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(await activeID(page)).toBe("annotate")
     await page.keyboard.press("Escape")
     await pressed(false)
-    // At phone width the control collapses to its icon and the page never widens.
+    // Adding a note also hands focus back to the toggle.
+    await annotate(page, true)
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    const card = page.getByLabel("Note for this element", { exact: true })
+    await card.fill("Bigger title")
+    await card.press("Enter")
+    await page.locator("#card").waitFor({ state: "hidden" })
+    expect(await activeID(page)).toBe("annotate")
+    // A card left open with text keeps A from toggling even once focus has left it.
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await card.fill("Still writing")
+    await card.press("Escape")
+    expect(await activeID(page)).not.toBe("card-text")
+    await page.keyboard.press("a")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+    await page.getByRole("button", { name: "Close note", exact: true }).click()
+    await page.locator("#card").waitFor({ state: "hidden" })
+    await annotate(page, false)
+    // While comparing, the second frame forwards the keys too.
+    await page.getByRole("button", { name: "Side by side", exact: true }).click()
+    const peer = page.frameLocator("#peer-preview")
+    await peer.locator("section").first().waitFor({ state: "attached" })
+    await peer.locator("body").press("a")
+    await pressed(true)
+    await peer.locator("body").press("Escape")
+    await pressed(false)
+    await page.getByRole("button", { name: "Single view", exact: true }).click()
+    // At phone width the control collapses to its icon and neither the toolbar nor the page overflows.
     await page.setViewportSize({ width: 390, height: 844 })
     expect(await toggle.isVisible()).toBe(true)
     expect(await page.locator("#annotate .label").isVisible()).toBe(false)
+    expect(await page.locator("#toolbar").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await toggle.click()
     await pressed(true)
