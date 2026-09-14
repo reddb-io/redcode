@@ -288,7 +288,7 @@ describe("TUI inline tool wrapping", () => {
       { id: "a2", role: "assistant", time: { completed: 2 } },
       { id: "a3", role: "assistant", time: {} },
     ]
-    // Counts full walks of a message's parts; the cache key may still read its length and last part.
+    // Counts reductions of a message's parts; the cache key still reads each part's status by index.
     const walks: string[] = []
     const partsOf = (id: string): Fixture[] =>
       new Proxy(parts[id] ?? [], {
@@ -327,6 +327,15 @@ describe("TUI inline tool wrapping", () => {
     const late = fold(finished, partsOf)
     expect([...late]).toEqual(full(finished))
     expect(late.get("late")).toMatchObject({ lead: "f1", count: 4 })
+    // So does a todowrite part that is not the last one settling as an error later.
+    parts.a3 = parts.a3!.map((part) => (part.id === "f3" ? { ...part, state: { status: "running" } } : part))
+    const pending = fold(finished, partsOf)
+    expect([...pending]).toEqual(full(finished))
+    expect(pending.has("f3")).toBe(false)
+    parts.a3 = parts.a3.map((part) => (part.id === "f3" ? { ...part, state: { status: "error" } } : part))
+    const settledLate = fold(finished, partsOf)
+    expect([...settledLate]).toEqual(full(finished))
+    expect(settledLate.get("f3")).toMatchObject({ lead: "f1", count: 4 })
     // A part removed from a finished message is noticed as well.
     parts.a2 = parts.a2.slice(0, 2)
     const removed = fold(finished, partsOf)

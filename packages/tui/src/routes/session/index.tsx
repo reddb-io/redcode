@@ -1930,9 +1930,9 @@ export function foldTodoFailures<P extends TodoFoldPart>(
  *
  * The fold runs again on every streamed token; walking every part of every finished message each
  * time made a long session's streaming cost grow with its history. A finished message's segment is
- * cached against what can still change after it finishes, its part count, its error and its last
- * part's id and status, so a part removed or a tool settling late re-reduces it, and otherwise its
- * parts are not walked again. Only the live message is re-scanned on every call.
+ * cached against what can still change after it finishes: its part count, its error, its last part,
+ * and the id and status of every todowrite part, so a part removed or any tool settling late
+ * re-reduces it. Only the live message is re-reduced on every call.
  */
 export function createTodoFold<P extends TodoFoldPart>() {
   const cache = new Map<string, { key: string; segment: TodoFoldSegment<P> }>()
@@ -1947,7 +1947,12 @@ export function createTodoFold<P extends TodoFoldPart>() {
           return todoFoldSegment(message, partsOf)
         const parts = message.role === "assistant" ? partsOf(message.id) : []
         const last = parts.at(-1)
-        const key = `${parts.length}|${message.error ? 1 : 0}|${last?.id ?? ""}|${last?.type ?? ""}|${last?.state?.status ?? ""}`
+        let todos = ""
+        for (let index = 0; index < parts.length; index++) {
+          const part = parts[index]!
+          if (part.tool === "todowrite") todos += `${part.id}:${part.state?.status ?? ""},`
+        }
+        const key = `${parts.length}|${message.error ? 1 : 0}|${last?.id ?? ""}|${last?.type ?? ""}|${last?.state?.status ?? ""}|${todos}`
         const cached = cache.get(message.id)
         if (cached?.key === key) return cached.segment
         const segment = todoFoldSegment(message, () => parts)

@@ -5591,11 +5591,29 @@ it.instance(
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
       const goal = yield* goals.get(chat.id)
       expect(goal?.status).toBe("paused")
-      expect(goal?.reason).toContain("stopped by the loop guard")
-      expect(goal?.reason).toContain("todowrite calls in a row have failed")
+      expect(goal?.reason).toBe("Paused: task updates kept failing (8 in a row)")
       const status = yield* SessionStatus.Service
       expect((yield* status.get(chat.id)).type).toBe("idle")
       expect((yield* llm.hits).some(judgeRequest)).toBe(false)
+    }),
+  60_000,
+)
+
+it.instance(
+  "a repeated identical call stopped by the loop guard pauses the goal with a short reason",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const { chat, goals, prompt } = yield* startGoal("find the config")
+      // The same call and the same answer: corrected at the third, stopped at the fifth.
+      for (let i = 0; i < 5; i++) yield* llm.tool("glob", { pattern: "**/*.nothing-here" })
+      yield* llm.text("never reached")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+      const goal = yield* goals.get(chat.id)
+      expect(goal?.status).toBe("paused")
+      expect(goal?.reason).toBe("Paused: the same `glob` call repeated 5 times")
+      const status = yield* SessionStatus.Service
+      expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
   60_000,
 )

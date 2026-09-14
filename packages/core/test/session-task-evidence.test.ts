@@ -22,6 +22,9 @@ import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { testEffect } from "./lib/effect"
 
+/** Paths as stored, without the drive letter a Windows session directory adds. */
+const driveless = (entries: ReadonlyArray<string> | undefined) => entries?.map((entry) => entry.replace(/^[a-z]:/, ""))
+
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, SessionTodo.node, SessionTaskFacts.node])))
 const sessionID = SessionSchema.ID.make("ses_task_evidence")
 const setup = Effect.gen(function* () {
@@ -312,7 +315,7 @@ it.effect("keeps evidence valid across later verification commands and edits to 
     yield* result("apply_patch", "patch", 60, 0, "completed", {
       patchText: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: src/new.ts\n+z\n*** End Patch",
     })
-    expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "patch")?.paths).toEqual([
+    expect(driveless((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "patch")?.paths)).toEqual([
       "/project/src/a.ts",
       "/project/src/new.ts",
     ])
@@ -807,9 +810,9 @@ it.effect("normalises relative paths against the session directory before compar
       ],
     })
     const facts = yield* SessionTaskFacts.Service
-    expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "grep-src")?.paths).toEqual([
-      "/project/src",
-    ])
+    expect(
+      driveless((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "grep-src")?.paths),
+    ).toEqual(["/project/src"])
     expect(SessionTaskFacts.paths("read", { filePath: "./src/a.ts" }, "/project")).toEqual(["/project/src/a.ts"])
     expect(SessionTaskFacts.overlaps(["./src/a.ts"], ["src"])).toBe(true)
     // Windows spellings compare the same way: backslashes, drive letters and a relative root.
@@ -817,8 +820,8 @@ it.effect("normalises relative paths against the session directory before compar
     expect(SessionTaskFacts.overlaps(["C:\\project\\src\\a.ts"], ["/project/src/"])).toBe(true)
     expect(SessionTaskFacts.overlaps(["C:\\project\\lib\\a.ts"], ["src"])).toBe(false)
     expect(SessionTaskFacts.overlaps(["/project/srcs/a.ts"], ["src"])).toBe(false)
-    expect(SessionTaskFacts.paths("grep", { path: "src\\lib" }, "C:\\project")).toEqual(["/project/src/lib"])
-    expect(SessionTaskFacts.paths("edit", { filePath: "D:\\project\\src\\..\\a.ts" })).toEqual(["/project/a.ts"])
+    expect(SessionTaskFacts.paths("grep", { path: "src\\lib" }, "C:\\project")).toEqual(["c:/project/src/lib"])
+    expect(SessionTaskFacts.paths("edit", { filePath: "D:\\project\\src\\..\\a.ts" })).toEqual(["d:/project/a.ts"])
     yield* result("edit", "edit-other", 30, 0, "completed", { filePath: "/project/lib/b.ts" })
     expect(yield* todos.review(sessionID)).toEqual(done)
     yield* result("edit", "edit-src", 40, 0, "completed", { filePath: "/project/src/a.ts" })
@@ -971,5 +974,65 @@ it.effect("never records an inspecting command as verification and compares crit
       })
       .pipe(Effect.flip)
     expect(sent.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+  }),
+)
+
+it.effect("classifies wrapped, quoted and redirected shell commands by what they can change", () =>
+  Effect.sync(() => {
+    for (const command of [
+      'bash -c "ls"',
+      "sh -c 'git status && cat a.ts'",
+      "(ls)",
+      "(cd src && ls -la)",
+      "sed -n 1p f",
+      "git -C dir status",
+      "git -c color.ui=never -C dir diff",
+      "echo '>'",
+      'echo "a > b"',
+      "ls 2>/dev/null",
+      "ls >/dev/null 2>&1",
+      "git branch",
+      "git remote -v",
+    ])
+      expect([command, SessionTaskFacts.readOnly({ command })]).toEqual([command, true])
+    for (const command of [
+      "echo a 1>out",
+      "ls 2> err.log",
+      "ls > out",
+      "echo x >> a.ts",
+      "env rm -rf x",
+      "git branch -D x",
+      "git branch topic",
+      "git remote add origin url",
+      "bash -c 'rm x'",
+      "sed -i s/a/b/ f",
+      "sed -ni 1p f",
+      "sed s/a/b/ f",
+      "echo $(rm x)",
+      "echo `rm x`",
+      "echo 'unclosed",
+      "bun test 2>&1 | tail",
+    ])
+      expect([command, SessionTaskFacts.readOnly({ command })]).toEqual([command, false])
+  }),
+)
+
+it.effect("compares Windows paths without regard to case, across drives and UNC roots", () =>
+  Effect.sync(() => {
+    const { overlaps, paths } = SessionTaskFacts
+    expect(overlaps(["C:\\Project\\Src\\a.ts"], ["c:\\project\\src"])).toBe(true)
+    expect(overlaps(["C:\\Project\\Src\\a.ts"], ["/project/src"])).toBe(true)
+    // POSIX paths keep their case.
+    expect(overlaps(["/Project/a.ts"], ["/project/a.ts"])).toBe(false)
+    // The same path on two drives is two files; a path without a drive matches either.
+    expect(overlaps(["C:\\a\\b.ts"], ["D:\\a\\b.ts"])).toBe(false)
+    expect(overlaps(["C:\\a\\b.ts"], ["/a"])).toBe(true)
+    expect(overlaps(["\\\\server\\share\\src\\a.ts"], ["\\\\SERVER\\Share\\src"])).toBe(true)
+    expect(overlaps(["\\\\server\\share\\src\\a.ts"], ["\\\\other\\share\\src"])).toBe(false)
+    expect(paths("read", { filePath: "\\\\server\\share\\x.ts" })).toEqual(["//server/share/x.ts"])
+    // With no directory, a leading ../ leaves the root unknown; the rest still has to match.
+    expect(overlaps(["../src/a.ts"], ["/project/src/a.ts"])).toBe(true)
+    expect(overlaps(["../lib/a.ts"], ["/project/src/a.ts"])).toBe(false)
+    expect(overlaps([".."], ["/project/src/a.ts"])).toBe(true)
   }),
 )

@@ -53,7 +53,10 @@ describe("loop guard", () => {
     const next = { tool: "read", input: { path: "/gone" } }
     expect(assess({ parts: repeat(1), next, limits: LIMITS }).type).toBe("ok")
     expect(assess({ parts: repeat(2), next, limits: LIMITS }).type).toBe("correct")
-    expect(assess({ parts: repeat(4), next, limits: LIMITS }).type).toBe("stop")
+    expect(assess({ parts: repeat(4), next, limits: LIMITS })).toMatchObject({
+      type: "stop",
+      summary: "Paused: the same `read` call repeated 5 times",
+    })
   })
 
   test("the correction quotes the model's own arguments and the answer it keeps ignoring", () => {
@@ -184,7 +187,11 @@ describe("loop guard", () => {
     const run = (n: number) => Array.from({ length: n }, (_, i) => failed(i))
     expect(assess({ parts: run(LIMITS.failureStopAt - 1), next, limits: LIMITS }).type).not.toBe("stop")
     const stop = assess({ parts: run(LIMITS.failureStopAt), next, limits: LIMITS })
-    expect(stop).toMatchObject({ type: "stop", streak: LIMITS.failureStopAt })
+    expect(stop).toMatchObject({
+      type: "stop",
+      streak: LIMITS.failureStopAt,
+      summary: `Paused: task updates kept failing (${LIMITS.failureStopAt} in a row)`,
+    })
     expect(stop.type === "stop" && stop.message).toContain(
       `${LIMITS.failureStopAt} todowrite calls in a row have failed`,
     )
