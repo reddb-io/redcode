@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { cp, mkdir, rm, stat, symlink, utimes } from "node:fs/promises"
+import { pathToFileURL } from "node:url"
 import { Effect, Layer, Schema } from "effect"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { Config } from "../src/config"
@@ -19,6 +20,7 @@ import { SessionV2 } from "../src/session"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { materializeDependencies } from "./fixture/design-dependencies"
+import { tmpdir } from "./fixture/tmpdir"
 
 // Configuration is read once per location; tests that need it set these entries before creating a design.
 let entries: Config.Entry[] = []
@@ -540,3 +542,112 @@ test("a build failure keeps its message whatever was thrown", () => {
   expect(DesignBuild.reason(Object.assign(Object.create(null), { code: 1 }))).toContain("code: 1")
   expect(DesignBuild.reason(undefined)).toBe("undefined")
 })
+
+test("application packages are located on disk, whatever this process's resolver answers", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(path.join(tmp.path, "package.json"), "{}")
+  // A lookup made before node_modules exists must not decide where the build later takes packages from.
+  try {
+    Bun.resolveSync("react-dom/client", tmp.path)
+  } catch {}
+  await materializeDependencies(tmp.path, ["react", "react-dom"])
+  expect(await DesignBuild.locatePackage(tmp.path, "react-dom/client")).toBe(
+    path.join(tmp.path, "node_modules", "react-dom", "client.js"),
+  )
+  expect(await DesignBuild.locatePackage(path.join(tmp.path, "src", "nested"), "react")).toBe(
+    path.join(tmp.path, "node_modules", "react", "index.js"),
+  )
+  expect(await DesignBuild.locatePackage(tmp.path, "react-dom/package.json")).toBe(
+    path.join(tmp.path, "node_modules", "react-dom", "package.json"),
+  )
+  expect(await DesignBuild.locatePackage(tmp.path, "missing-package")).toBeUndefined()
+})
+
+test("package entries follow exports conditions, subpaths and main", () => {
+  const browser = ["browser", "import", "module", "default"]
+  const exports = {
+    ".": { "react-server": "./server.js", default: "./index.js" },
+    "./client": [{ node: "./client.node.js" }, { import: "./client.mjs", default: "./client.js" }],
+  }
+  expect(DesignBuild.entries({ exports }, ".", browser)).toEqual(["./index.js"])
+  expect(DesignBuild.entries({ exports }, "./client", browser)).toEqual(["./client.mjs"])
+  expect(DesignBuild.entries({ exports }, "./client", ["node", "require", "default"])).toEqual(["./client.node.js"])
+  expect(DesignBuild.entries({ exports }, "./hidden", browser)).toEqual([])
+  expect(DesignBuild.entries({ exports }, "./package.json", browser)).toEqual(["package.json"])
+  expect(DesignBuild.entries({ exports: "./only.js" }, ".", browser)).toEqual(["./only.js"])
+  expect(DesignBuild.entries({ exports: { import: "./esm.js", require: "./cjs.js" } }, ".", browser)).toEqual([
+    "./esm.js",
+  ])
+  expect(DesignBuild.entries({ main: "lib/main" }, ".", browser)).toEqual([
+    "lib/main",
+    "lib/main.js",
+    path.join("lib/main", "index.js"),
+  ])
+  expect(DesignBuild.entries({}, "./jsx-runtime", browser)[0]).toBe("./jsx-runtime")
+})
+
+test("a node_modules file names its package and subpath in Windows and POSIX path or file URL shapes", () => {
+  // The Windows CI shape: OpenTUI's runtime plugin rewrote `react-dom/client` in the prototype to this URL.
+  expect(DesignBuild.packageFile("file:///C:/runner/_work/redcode/redcode/node_modules/react-dom/client.js")).toEqual({
+    name: "react-dom",
+    subpath: "client.js",
+  })
+  expect(
+    DesignBuild.packageFile(
+      path.win32.join(
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\app",
+        "node_modules",
+        "@scope",
+        "pkg",
+        "dist",
+        "a.js",
+      ),
+    ),
+  ).toEqual({ name: "@scope/pkg", subpath: "dist/a.js" })
+  expect(DesignBuild.packageFile("C:\\app\\node_modules\\a\\node_modules\\b\\lib\\index.js")).toEqual({
+    name: "b",
+    subpath: "lib/index.js",
+  })
+  expect(
+    DesignBuild.packageFile("/repo/node_modules/.bun/react-dom@19.2.8/node_modules/react-dom/cjs/react-dom.js"),
+  ).toEqual({ name: "react-dom", subpath: "cjs/react-dom.js" })
+  expect(DesignBuild.packageFile("file:///C:/a%20b/node_modules/x/y%20z.js")).toEqual({ name: "x", subpath: "y z.js" })
+  expect(DesignBuild.packageFile("file:///C:/Users/runneradmin/app/src/main.tsx")).toBeUndefined()
+  expect(DesignBuild.packageFile("C:\\app\\node_modules\\react-dom")).toBeUndefined()
+  expect(DesignBuild.packageFile("C:\\app\\node_modules\\@scope")).toBeUndefined()
+  expect(DesignBuild.packageFile("react-dom/client")).toBeUndefined()
+})
+
+it.live(
+  "an import already resolved into another checkout's node_modules builds from the application's install",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      yield* Effect.promise(() => materializeDependencies(location.directory, ["react", "react-dom"]))
+      const document = yield* store.create(sessionID, {
+        name: "Foreign",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      // What the build received on Windows CI: a bare import rewritten by a runtime plugin in this process
+      // into a file URL resolved from the harness checkout, outside every directory the build trusts.
+      const foreign = pathToFileURL(Bun.resolveSync("react-dom/client", import.meta.dir)).href
+      expect(foreign.startsWith(pathToFileURL(location.directory).href)).toBe(false)
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react("<main>Foreign import</main>").replace('"react-dom/client"', JSON.stringify(foreign)),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: [], css: [], tailwind: false, framework: "react" },
+        "foreign",
+      )
+      expect(built.reads).toEqual([])
+      expect(built.js).toContain("Foreign import")
+    }),
+  60000,
+)

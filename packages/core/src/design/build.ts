@@ -2,7 +2,7 @@ export * as DesignBuild from "./build"
 
 import path from "node:path"
 import { createRequire } from "node:module"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { mkdir, realpath, stat } from "node:fs/promises"
 import { parse } from "jsonc-parser"
 import { Option, Schema } from "effect"
@@ -56,6 +56,94 @@ const locate = async (directory: string, name: string, extensions: string[]) => 
   )
   const first = extensions.map((extension) => `${name}.${extension}`).find((file) => files.includes(file))
   return first ? path.join(directory, first) : undefined
+}
+
+// Conditions a preview bundle imports framework packages under, and those this process requires tooling under.
+const browserConditions = ["browser", "import", "module", "default"]
+const nodeConditions = ["node", "require", "default"]
+
+/**
+ * The file a bare specifier names in the node_modules directories from `directory` up, read from
+ * disk. A design build runs inside the harness process, whose module resolution is shaped by its own
+ * workspace layout and runtime plugins, so the application's packages are located on disk instead of
+ * through that process's resolver. Only `exports` subpaths without patterns are supported.
+ */
+export async function locatePackage(directory: string, specifier: string, conditions = browserConditions) {
+  const segments = specifier.split("/")
+  const name = segments.slice(0, specifier.startsWith("@") ? 2 : 1).join("/")
+  const subpath = "." + specifier.slice(name.length)
+  for (let current = path.resolve(directory); ; current = path.dirname(current)) {
+    const root = path.join(current, "node_modules", ...name.split("/"))
+    const manifest: unknown = await Bun.file(path.join(root, "package.json"))
+      .json()
+      .catch(() => undefined)
+    if (typeof manifest === "object" && manifest) {
+      for (const file of entries(manifest, subpath, conditions)) {
+        const target = path.join(root, file)
+        if (
+          await stat(target).then(
+            (info) => info.isFile(),
+            () => false,
+          )
+        )
+          return target
+      }
+      return
+    }
+    if (path.dirname(current) === current) return
+  }
+}
+
+/** Candidate files, relative to the package root, for a subpath of a package manifest. */
+export function entries(manifest: object, subpath: string, conditions: string[]): string[] {
+  // The manifest itself is always readable, whether or not `exports` lists it.
+  if (subpath === "./package.json") return ["package.json"]
+  const pick = (value: unknown): string | undefined => {
+    if (typeof value === "string") return value
+    if (Array.isArray(value)) return value.map(pick).find((entry) => entry !== undefined)
+    if (typeof value !== "object" || !value) return
+    for (const [key, target] of Object.entries(value)) {
+      if (!conditions.includes(key)) continue
+      const picked = pick(target)
+      if (picked !== undefined) return picked
+    }
+  }
+  if ("exports" in manifest && manifest.exports !== undefined && manifest.exports !== null) {
+    const exports = manifest.exports
+    const keyed =
+      typeof exports === "object" && !Array.isArray(exports) && Object.keys(exports).some((key) => key.startsWith("."))
+    const target = keyed ? (exports as Record<string, unknown>)[subpath] : subpath === "." ? exports : undefined
+    const picked = pick(target)
+    return picked === undefined ? [] : [picked]
+  }
+  const base =
+    subpath === "." ? ("main" in manifest && typeof manifest.main === "string" ? manifest.main : "index.js") : subpath
+  return [base, `${base}.js`, path.join(base, "index.js")]
+}
+
+const required = async (directory: string, specifier: string, conditions?: string[]) => {
+  const file = await locatePackage(directory, specifier, conditions)
+  if (!file) throw new Error(`Cannot find ${specifier} in the node_modules of ${directory}`)
+  return file
+}
+
+/**
+ * The package and subpath a file inside node_modules belongs to, for a POSIX or Windows path or a
+ * `file:` URL; undefined for anything outside node_modules. The innermost node_modules wins.
+ */
+export function packageFile(specifier: string) {
+  const file = specifier.startsWith("file:")
+    ? decodeURIComponent(new URL(specifier).pathname).replace(/^\/([A-Za-z]:)/, "$1")
+    : specifier
+  const segments = file.split(/[\\/]/)
+  const index = segments.lastIndexOf("node_modules")
+  if (index === -1) return
+  const size = segments[index + 1]?.startsWith("@") ? 2 : 1
+  const name = segments.slice(index + 1, index + 1 + size)
+  const subpath = segments.slice(index + 1 + size)
+  if (name.length !== size || name.some((segment) => !segment) || !subpath.length || subpath.some((part) => !part))
+    return
+  return { name: name.join("/"), subpath: subpath.join("/") }
 }
 
 /** The message of whatever a build threw: resolve failures and plain values are not always Error instances. */
@@ -131,9 +219,8 @@ export async function tooling(document: Design.Info) {
   ])
   const files = configuration.filter((file): file is string => file !== undefined)
   if (files.length) return files
-  const require = createRequire(path.join(base, "package.json"))
-  const plugin = path.dirname(require.resolve("tailwindcss/package.json"))
-  return (await exists(plugin)) ? [plugin] : []
+  const plugin = await locatePackage(base, "tailwindcss/package.json", nodeConditions)
+  return plugin ? [path.dirname(plugin)] : []
 }
 
 /**
@@ -223,21 +310,24 @@ export async function build(
       : document.engine === "solid"
         ? ["solid-js", "solid-js/web", "solid-js/store"]
         : ["react", "react-dom/client", "react/jsx-runtime", "react/jsx-dev-runtime"]
-  const alias = packages.map((name) => ({
-    find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
-    replacement: name.startsWith("solid-js")
-      ? path.join(
-          path.dirname(require.resolve("solid-js/package.json")),
-          name === "solid-js" ? "dist/solid.js" : name === "solid-js/web" ? "web/dist/web.js" : "store/dist/store.js",
-        )
-      : require.resolve(name),
-    fallbacks: [] as string[],
-  }))
+  const alias = await Promise.all(
+    packages.map(async (name) => ({
+      find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
+      replacement: name.startsWith("solid-js")
+        ? path.join(
+            path.dirname(await required(base, "solid-js/package.json")),
+            name === "solid-js" ? "dist/solid.js" : name === "solid-js/web" ? "web/dist/web.js" : "store/dist/store.js",
+          )
+        : await required(base, name),
+      fallbacks: [] as string[],
+    })),
+  )
   const dependencies = await Promise.all(
     packages.map(async (name) =>
       realpath(
         path.dirname(
-          require.resolve(
+          await required(
+            base,
             `${name.startsWith("solid-js") ? "solid-js" : name.startsWith("react-dom") ? "react-dom" : "react"}/package.json`,
           ),
         ),
@@ -258,6 +348,28 @@ export async function build(
     approved.set(canonical, pending)
     await pending
     signal?.throwIfAborted()
+  }
+  const within = (canonical: string) =>
+    canonical.startsWith(source + path.sep) ||
+    trusted.some((entry) => canonical === entry || canonical.startsWith(entry + path.sep))
+  /**
+   * The application's own copy of a node_modules file an import was already resolved to elsewhere.
+   * A runtime plugin in the harness process can rewrite a prototype's bare imports into file URLs
+   * resolved from the harness's checkout (OpenTUI's runtime-module support does, through
+   * `import.meta.resolve`); on a hoisted install that is a package outside every trusted directory.
+   * The prototype named the package, so the build takes it from the application's node_modules.
+   * Files already inside a trusted directory (a nested dependency included) are left alone.
+   */
+  const localPackageFile = async (id: string) => {
+    if (!id.startsWith("file:") && !path.isAbsolute(id)) return
+    const target = packageFile(id)
+    if (!target) return
+    const current = id.startsWith("file:") ? fileURLToPath(id) : id
+    if (within(await realpath(current).catch(() => path.resolve(current)))) return
+    const manifest = await locatePackage(base, `${target.name}/package.json`)
+    if (!manifest) return
+    const file = path.join(path.dirname(manifest), ...target.subpath.split("/"))
+    return (await exists(file)) ? file : undefined
   }
   const configuration = Bun.file(path.join(application, "tsconfig.json"))
   if (await configuration.exists()) await authorize(configuration.name!)
@@ -302,7 +414,7 @@ export async function build(
   const resolver = (target: { replacement: string; fallbacks: string[] }): Alias["customResolver"] =>
     async function (id, importer, options) {
       const candidates: [string, string | undefined][] = [
-        [id, importer],
+        [(await localPackageFile(id)) ?? id, importer],
         ...target.fallbacks.map((fallback): [string, string | undefined] => [
           fallback + id.slice(target.replacement.length),
           importer,
@@ -314,7 +426,14 @@ export async function build(
       for (const [candidate, from] of candidates) {
         const resolved = await this.resolve(candidate, from, { ...options, skipSelf: true })
         if (!resolved) continue
-        await authorize(resolved.id)
+        // A refused dependency names what imported it: the canonical path alone does not say which
+        // specifier or importer led the build outside the directories it trusts.
+        await authorize(resolved.id).catch((error: unknown) => {
+          throw new Error(
+            `${reason(error)} (resolving ${JSON.stringify(candidate)} from ${from ?? "the entry"} to ${resolved.id})`,
+            { cause: error },
+          )
+        })
         return resolved
       }
       return null
@@ -461,16 +580,9 @@ async function pipeline(
     ...(typeof tailwind === "object" ? tailwind : {}),
     content: typeof content === "object" && content && !Array.isArray(content) ? { ...content, files } : files,
   }
-  const resolvable = (name: string) => {
-    try {
-      require.resolve(name)
-      return true
-    } catch {
-      return false
-    }
-  }
-  const instantiate = (name: string, options: unknown) => {
-    const loaded: unknown = require(name)
+  // Plugins load from the checkout's node_modules on disk, never from where Bun's resolver cache points.
+  const instantiate = async (name: string, options: unknown) => {
+    const loaded: unknown = require(await required(base, name, nodeConditions))
     const factory = (
       typeof loaded === "function"
         ? loaded
@@ -495,18 +607,23 @@ async function pipeline(
   )?.plugins
   const plugins =
     configured ??
-    Object.fromEntries([["tailwindcss", {}], ...(resolvable("autoprefixer") ? [["autoprefixer", {}]] : [])])
+    Object.fromEntries([
+      ["tailwindcss", {}],
+      ...((await locatePackage(base, "autoprefixer", nodeConditions)) ? [["autoprefixer", {}]] : []),
+    ])
   const list: readonly unknown[] | undefined = Array.isArray(plugins) ? plugins : undefined
   if (list)
-    return list.map((item) =>
-      typeof item === "string"
-        ? instantiate(item, {})
-        : typeof item === "object" && item && "postcssPlugin" in item && item.postcssPlugin === "tailwindcss"
-          ? instantiate("tailwindcss", {})
-          : (item as PostcssPlugin),
+    return Promise.all(
+      list.map((item) =>
+        typeof item === "string"
+          ? instantiate(item, {})
+          : typeof item === "object" && item && "postcssPlugin" in item && item.postcssPlugin === "tailwindcss"
+            ? instantiate("tailwindcss", {})
+            : (item as PostcssPlugin),
+      ),
     )
-  return Object.entries(plugins).flatMap(([name, options]) =>
-    options === false ? [] : [instantiate(name, options ?? {})],
+  return Promise.all(
+    Object.entries(plugins).flatMap(([name, options]) => (options === false ? [] : [instantiate(name, options ?? {})])),
   )
 }
 

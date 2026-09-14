@@ -850,6 +850,14 @@ for (const decision of ["deny", "allow"] as const)
           metadata: () => Effect.void,
           ask: (request) => {
             asked.push(request.permission)
+            // Everything this fixture builds lives in the instance directory: an external read would wait
+            // on a prompt nobody answers, so fail with the paths instead of hanging until the timeout.
+            if (request.permission === "external_directory")
+              return Effect.die(
+                new Error(
+                  `Unexpected external_directory ask: ${request.patterns.join(", ")} for ${JSON.stringify(request.metadata)}`,
+                ),
+              )
             return permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie)
           },
         }
