@@ -124,8 +124,12 @@ export function annotations() {
       // Roots that are not siblings keep their place; the host still shows the order in its tabs.
       const container = roots[0]?.parentElement
       if (!container || roots.some((node) => node.parentElement !== container)) return
-      // A flex or grid container reorders visually without touching the DOM a framework re-renders.
-      if (/flex|grid/.test(getComputedStyle(container).display)) {
+      // A flex or grid container whose children are all variant roots reorders visually without touching
+      // the DOM a framework re-renders. Any other child keeps order 0, so roots would jump past it.
+      if (
+        /flex|grid/.test(getComputedStyle(container).display) &&
+        [...container.children].every((node) => roots.includes(node as HTMLElement))
+      ) {
         sorted.forEach((node, index) => node.style.setProperty("order", String(index)))
         return
       }

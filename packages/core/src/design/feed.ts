@@ -58,7 +58,13 @@ export function reduce(
   event: SessionEvent.DurableEvent,
 ): readonly [state: State, events: ReadonlyArray<Design.FeedEvent>] {
   const base = { seq: event.durable?.seq ?? 0, at: DateTime.toEpochMillis(event.data.timestamp) }
-  if (event.type === "session.next.prompt.admitted" || event.type === "session.next.prompted")
+  // An admitted prompt waits for a turn to take it up; the same entry is repeated without `pending` when one does.
+  if (event.type === "session.next.prompt.admitted")
+    return [
+      state,
+      [{ ...base, type: "user", id: event.data.messageID, ...describe(event.data.prompt.text), pending: true }],
+    ]
+  if (event.type === "session.next.prompted")
     return [state, [{ ...base, type: "user", id: event.data.messageID, ...describe(event.data.prompt.text) }]]
   if (event.type === "session.next.text.ended") {
     const text = bound(event.data.text, LIMITS.text)

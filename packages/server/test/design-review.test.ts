@@ -1982,7 +1982,10 @@ test("an agent turn that ends without carrying out the operation reports it", as
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   // The feed reconnects about once a second; each connection replays the events set here.
-  const quiet = [{ type: "agent", seq: 0, at: 1, agent: "design" }]
+  const quiet = [
+    { type: "agent", seq: 0, at: 1, agent: "design" },
+    { type: "reply", seq: 1, at: 1, id: "txt_keep", text: "Keep this row across reconnects" },
+  ]
   const feed = { events: quiet as object[], served: 0 }
   await page.route(/\/design\/feed(\?.*)?$/, (route) => {
     const body = feed.events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")
@@ -1995,27 +1998,65 @@ test("an agent turn that ends without carrying out the operation reports it", as
     const served = feed.served
     await until(() => feed.served > served + 1, "the feed replaying new events")
   }
-  const state = (value: "working" | "idle", at: number) => ({ type: "state", seq: 0, at, state: value })
+  const state = (value: "working" | "idle") => ({ type: "state", seq: 0, at: Date.now(), state: value })
+  /** The feed's entry for a sent review: pending while admitted, plain once a turn has taken it up. */
+  const user = (id: string, pending = false) => ({
+    type: "user",
+    seq: 0,
+    at: Date.now(),
+    id,
+    text: "",
+    notes: 0,
+    ...(pending ? { pending: true } : {}),
+  })
   const sent = await captureFeedback(page)
   try {
     await page.goto(`${base}${current.root}/review`)
     const preview = page.frameLocator("#preview")
     await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+    // A replayed conversation row keeps its node, and with it the reader's text selection.
+    await page.getByText("Keep this row across reconnects", { exact: true }).waitFor()
+    const probe = () =>
+      page.evaluate(() => {
+        const shadow = document.querySelector("#review")!.shadowRoot as ShadowRoot & {
+          getSelection?: () => Selection | null
+        }
+        const row = shadow.querySelector('.entry[data-key="reply:txt_keep"]') as
+          | (HTMLElement & { probe?: string })
+          | null
+        return { probe: row?.probe ?? "", selection: (shadow.getSelection?.() ?? getSelection())?.toString() ?? "" }
+      })
+    await page.evaluate(() => {
+      const row = document
+        .querySelector("#review")!
+        .shadowRoot!.querySelector('.entry[data-key="reply:txt_keep"]') as HTMLElement & { probe?: string }
+      row.probe = "kept"
+      getSelection()!.selectAllChildren(row)
+    })
+    await replay(quiet)
+    expect(await probe()).toEqual({ probe: "kept", selection: "Keep this row across reconnects" })
+    // An earlier turn is still working when the operation is sent.
+    await replay([...quiet, state("working")])
     await variantAction(page, "Delete…")
     await page.getByRole("button", { name: "Delete", exact: true }).click()
     await page.locator("#status").filter({ hasText: "Variant change sent" }).waitFor()
     await until(async () => (await tabNames(page)).join() === "Spacious", "provisional delete")
-    // States stamped before the operation was admitted, as a reconnect replays them, do not end it.
-    await replay([...quiet, state("working", Date.now() - 60000), state("idle", Date.now() - 59000)])
+    // That turn ends before taking the operation up: it stays pending and nothing is reported.
+    await replay([...quiet, user(sent[0].id, true), state("idle")])
+    await replay([...quiet, user(sent[0].id, true), state("idle")])
     expect(await page.locator("#operation-state").isHidden()).toBe(true)
     expect(await tabNames(page)).toEqual(["Spacious"])
-    // A failed tool call is not attributed to the operation; only the idle agent is reported.
-    feed.events = [
+    await page.locator("#operation-badge", { hasText: "Applying…" }).waitFor()
+    // The next turn takes it up; a failed tool call in it is not blamed on the operation.
+    await replay([
       ...quiet,
-      state("working", Date.now()),
+      state("working"),
+      user(sent[0].id),
       { type: "tool", seq: 0, at: Date.now(), id: "call_fail", tool: "bash", status: "failed", summary: "npm test" },
-      state("idle", Date.now() + 1),
-    ]
+    ])
+    expect(await page.locator("#operation-state").isHidden()).toBe(true)
+    // It ends without publishing: the operation failed.
+    feed.events = [...quiet, user(sent[0].id), state("idle")]
     await page.locator("#operation-state:not([hidden])").waitFor()
     expect(await page.locator("#operation-error").textContent()).toBe(
       "The variant change was not applied: The agent stopped without publishing this variant change.",
@@ -2053,7 +2094,10 @@ test("an agent turn that ends without carrying out the operation reports it", as
     await showsRevision(page, unchanged.id)
     await until(async () => (await tabNames(page)).join() === "Compact,Spacious", "the revision's real variants")
     expect(await page.locator("#operation-state").isHidden()).toBe(true)
-    feed.events = [...quiet, state("working", Date.now()), state("idle", Date.now() + 1)]
+    // The agent had taken this one up and goes idle with the variant still there.
+    await replay([...quiet, state("working"), user(sent[1].id)])
+    expect(await page.locator("#operation-state").isHidden()).toBe(true)
+    feed.events = [...quiet, user(sent[1].id), state("idle")]
     await page
       .locator("#operation-state", { hasText: "The agent published a revision without this variant change." })
       .waitFor()
@@ -2116,6 +2160,12 @@ test("the variant menu, operation dialogs and merge selection keep A and Escape 
     await page.keyboard.press("a")
     expect(await pressed()).toBe("true")
     await page.keyboard.press("Escape")
+    await group.waitFor({ state: "hidden" })
+    expect(await pressed()).toBe("true")
+    // Escape pressed inside the preview leaves the merge selection too.
+    await variantAction(page, "Select variants to merge")
+    await group.waitFor()
+    await page.frameLocator("#preview").locator("h1").first().press("Escape")
     await group.waitFor({ state: "hidden" })
     expect(await pressed()).toBe("true")
     // With none of them open the shortcuts work as before.
@@ -2271,6 +2321,60 @@ test("the server's refusal of an operation on a replaced revision shows in the p
     expect((await frameRoots(page)).find((root) => root.id === "compact")?.shown).toBe(true)
   } finally {
     await page.close()
+  }
+}, 60000)
+
+test("a pending reorder keeps other siblings in place and uses CSS order only when every child is a variant", async () => {
+  const section = (id: string, label: string) =>
+    `<section data-design-variant="${id}" data-design-label="${label}"><h1>${label} checkout</h1></section>`
+  const layouts = [
+    {
+      // A footer shares the flex container: reordering by CSS would push the roots past it.
+      html: `<!doctype html><html lang="en"><body><div id="stage" style="display:flex;flex-direction:column">${section("compact", "Compact")}${section("spacious", "Spacious")}<footer id="footer">Footer</footer></div></body></html>`,
+      children: "spacious,compact,footer",
+      order: ["spacious:0", "compact:0"],
+    },
+    {
+      // Only variant roots in the flex container: CSS order, and the DOM stays as the prototype built it.
+      html: `<!doctype html><html lang="en"><body><div id="stage" style="display:flex">${section("compact", "Compact")}${section("spacious", "Spacious")}</div><footer id="footer">Footer</footer></body></html>`,
+      children: "compact,spacious",
+      order: ["compact:1", "spacious:0"],
+    },
+  ]
+  for (const layout of layouts) {
+    const current = await published("html")
+    await Bun.write(path.join(current.document.root, current.document.entry), layout.html)
+    await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", { name: "Stage" })
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    await withoutFeed(page)
+    const sent = await captureFeedback(page)
+    try {
+      await page.goto(`${base}${current.root}/review`)
+      await page.getByRole("tab", { name: "Compact", exact: true }).waitFor()
+      await variantAction(page, "Move right")
+      await until(() => sent.length === 1, "reorder request")
+      await until(async () => (await tabNames(page)).join() === "SpaciousApplying…,CompactApplying…", "pending tabs")
+      const arrangement = () =>
+        page
+          .frameLocator("#preview")
+          .locator("#stage")
+          .evaluate((stage) => ({
+            children: [...stage.children].map((node) => (node as HTMLElement).dataset.designVariant ?? node.id).join(),
+            order: [...stage.querySelectorAll<HTMLElement>("[data-design-variant]")].map(
+              (node) => `${node.dataset.designVariant}:${getComputedStyle(node).order}`,
+            ),
+          }))
+      await until(
+        async () =>
+          JSON.stringify(await arrangement()) === JSON.stringify({ children: layout.children, order: layout.order }),
+        `arrangement ${layout.children}`,
+      )
+      expect(errors).toEqual([])
+    } finally {
+      await page.close()
+    }
   }
 }, 60000)
 

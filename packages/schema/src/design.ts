@@ -336,6 +336,8 @@ export const FeedEvent = Schema.Union([
     text: Schema.String,
     /** Review notes attached to the message; the client renders the count in its own language. */
     notes: Schema.Number,
+    /** True while the prompt is admitted but not yet delivered into a turn; absent once a turn takes it up. */
+    pending: Schema.Boolean.pipe(optional),
   }),
   Schema.Struct({ ...FeedBase, type: Schema.Literal("reply"), id: Schema.String, text: Schema.String }),
   Schema.Struct({
