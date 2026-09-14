@@ -20,7 +20,8 @@ new sessions. Adoption and event reconnection never resume provider work.
 
 Review pages (`/review`, `--open`, the TUI's `/design-review` and
 `design_preview`) open in Google Chrome or Chromium when one is installed, and
-otherwise in the system default browser. Set `REDCODE_DESIGN_BROWSER=default` to
+otherwise in the system default browser, which is also used when the chosen
+browser fails to launch. WSL uses the Windows default browser. Set `REDCODE_DESIGN_BROWSER=default` to
 always use the system browser, or to an app name or absolute path to use that
 browser. `REDCODE_DESIGN_NO_OPEN` still skips opening from `design_preview`.
 
