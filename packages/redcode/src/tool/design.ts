@@ -271,7 +271,7 @@ export const DesignTools = Effect.gen(function* () {
               connected:
                 "A review page is already connected and loads this revision automatically; no new tab was requested.",
               pending:
-                "A review tab was already requested and no page has connected since; no new tab was requested. Give the user the review link if they cannot find it.",
+                "No new tab was requested: a review tab was requested moments ago or never connected, or a review page just closed (a reload reconnects on its own). Give the user the review link if they cannot find it.",
               disabled: `Browser launch is disabled by ${disabled}; no tab was requested. Give the user the review link.`,
             }[outcome]
             return result(

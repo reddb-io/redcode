@@ -173,8 +173,9 @@ const openEffect = Effect.fn("open")(function* () {
   if (Option.isNone(active)) return yield* println("No active account")
 
   const url = active.value.url
+  const blocked = NoBrowser.blockedBy()
   yield* openBrowser(url)
-  yield* Prompt.outro("Opened " + url)
+  yield* Prompt.outro(blocked ? `Open ${url} (browser launch disabled by ${blocked})` : "Opened " + url)
 })
 
 export const LoginCommand = effectCmd({
