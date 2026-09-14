@@ -292,10 +292,14 @@ export const DesignTools = Effect.gen(function* () {
           ctx,
           Effect.gen(function* () {
             const store = yield* DesignStore.Service
-            yield* store.get(input.id, ctx.sessionID)
-            const revisions = input.restore
-              ? [yield* store.restore(input.id, input.restore, yield* DesignRead.make(ctx.ask))]
-              : yield* store.revisions(input.id)
+            const document = yield* store.get(input.id, ctx.sessionID)
+            if (!input.restore)
+              return result(
+                (yield* store.revisions(input.id)).map((revision) => `${revision.id}: ${revision.name}`).join("\n"),
+              )
+            yield* DesignRead.grant(document, ctx.ask)
+            const tooling = yield* DesignRead.tooling(document, ctx.ask)
+            const revisions = [yield* store.restore(input.id, input.restore, yield* DesignRead.make(ctx.ask), tooling)]
             return result(revisions.map((revision) => `${revision.id}: ${revision.name}`).join("\n"))
           }),
         ),

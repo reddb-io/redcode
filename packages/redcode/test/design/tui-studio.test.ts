@@ -23,6 +23,7 @@ import { expect } from "bun:test"
 import { Effect, DateTime, Schema, Cause, Exit } from "effect"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import type { Design } from "@reddb-io/redcode-schema/design"
 import { AppNodeBuilderV1 } from "../../src/effect/app-node-builder-v1"
 import { DesignStudio } from "../../src/design/studio"
 import { Session } from "../../src/session/session"
@@ -792,3 +793,108 @@ it.instance(
     },
   },
 )
+
+it.instance("the TUI agents ask before executing project tooling for design builds", () =>
+  Effect.gen(function* () {
+    const agents = yield* Agent.Service
+    for (const name of ["build", "design"]) {
+      const agent = yield* agents.get(name)
+      expect(Permission.evaluate("project_tooling", "/project/tailwind.config.ts", agent!.permission).action).toBe(
+        "ask",
+      )
+    }
+  }),
+)
+
+const tailwindProject = (directory: string) =>
+  Effect.promise(async () => {
+    const { cp } = await import("node:fs/promises")
+    const { materializeDependencies } = await import("../../../core/test/fixture/design-dependencies")
+    await cp(path.join(import.meta.dir, "../../../core/test/fixture/tailwind"), directory, { recursive: true })
+    await materializeDependencies(directory, ["react", "react-dom", "tailwindcss", "autoprefixer"])
+  })
+const tailwindEntry =
+  'import { createRoot } from "react-dom/client"\nimport { Button } from "@/components/Button"\ncreateRoot(document.getElementById("root")!).render(<main className="p-4"><Button>Buy</Button></main>)\n'
+const compiledCss = (store: DesignStore.Interface, revision: Design.Revision) =>
+  Effect.promise(async () =>
+    (
+      await Promise.all(
+        Object.entries(revision.files)
+          .filter(([name]) => name.startsWith(".compiled/") && name.endsWith(".css"))
+          .map(([, hash]) => Bun.file(path.join(store.blobs, hash)).text()),
+      )
+    ).join("\n"),
+  )
+
+for (const decision of ["deny", "allow"] as const)
+  it.instance(
+    `TUI design_preview and design_history honour a user ${decision} on project tooling`,
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* ToolRegistry.Service
+        const sessions = yield* Session.Service
+        const agents = yield* Agent.Service
+        const permissions = yield* Permission.Service
+        const studio = yield* DesignStudio.Service
+        const directory = (yield* TestInstance).directory
+        yield* tailwindProject(directory)
+        const session = yield* sessions.create({ agent: "design" })
+        const agent = yield* agents.get("design")
+        const asked: string[] = []
+        const context: Tool.Context = {
+          sessionID: session.id,
+          messageID: MessageID.ascending(),
+          agent: "design",
+          abort: new AbortController().signal,
+          messages: [],
+          metadata: () => Effect.void,
+          ask: (request) => {
+            asked.push(request.permission)
+            return permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie)
+          },
+        }
+        const tools = yield* registry.all()
+        const created = yield* tools
+          .find((tool) => tool.id === "design_document")!
+          .execute(
+            { action: "create", input: { name: "Tooling", engine: "react", journey: "existing", kind: "screen" } },
+            context,
+          )
+        const id = created.output.match(/^Design (design_[^:]+):/m)![1] as Design.ID
+        const document = yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => store.get(id)))
+        expect(document.system?.tailwind).toBe(true)
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), tailwindEntry))
+        const preview = yield* tools
+          .find((tool) => tool.id === "design_preview")!
+          .execute({ id, name: "First" }, context)
+        expect(asked).toContain("project_tooling")
+        const revisions = yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => store.revisions(id)))
+        const first = revisions.find((revision) => revision.name === "First")!
+        const css = yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => compiledCss(store, first)))
+        if (decision === "deny") {
+          expect(preview.output).toContain("Project tooling permission was not granted")
+          expect(first.document.system?.tailwind).toBe(false)
+          expect(css).toContain("@tailwind")
+          expect(css).not.toContain(".p-4{")
+        }
+        if (decision === "allow") {
+          expect(preview.output).not.toContain("not granted")
+          expect(first.document.system?.tailwind).toBe(true)
+          expect(css).toContain(".p-4{")
+        }
+        asked.length = 0
+        yield* tools.find((tool) => tool.id === "design_history")!.execute({ id, restore: first.id }, context)
+        expect(asked).toContain("project_tooling")
+        const restored = (yield* studio.use(Effect.flatMap(DesignStore.Service, (store) => store.revisions(id)))).find(
+          (revision) => revision.name.startsWith("Restored"),
+        )!
+        expect(restored.document.system?.tailwind).toBe(decision === "allow")
+      }),
+    {
+      config: {
+        permission: { project_tooling: decision },
+        design: { system: { paths: ["src/components"], css: ["src/styles/globals.css"] } },
+      },
+    },
+    120000,
+  )

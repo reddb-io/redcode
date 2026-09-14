@@ -224,6 +224,44 @@ it.live(
 )
 
 it.live(
+  "loads an ESM postcss config through the same reloadable path",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      yield* Effect.promise(async () => {
+        await cp(path.join(import.meta.dir, "fixture/tailwind"), location.directory, { recursive: true })
+        await materializeDependencies(location.directory, ["react", "react-dom", "tailwindcss", "autoprefixer"])
+        await rm(path.join(location.directory, "postcss.config.cjs"))
+        await Bun.write(
+          path.join(location.directory, "postcss.config.mjs"),
+          "export default { plugins: { tailwindcss: {}, autoprefixer: {} } }\n",
+        )
+      })
+      const document = yield* store.create(sessionID, {
+        name: "ESM",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react('<main className="p-4"><Button>Buy</Button></main>', 'import { Button } from "@/components/Button"\n'),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: ["src/components"], css: ["src/styles/globals.css"], tailwind: true, framework: "react" },
+        "esm",
+      )
+      expect(built.reads).toEqual([])
+      expect(built.css).toContain(".p-4{")
+    }),
+  120000,
+)
+
+it.live(
   "does not trust a package linked to a source tree outside the named node_modules unless it is declared",
   () =>
     Effect.gen(function* () {

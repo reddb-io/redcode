@@ -28,7 +28,8 @@ type PathAction =
   | LocationMutation.ExternalDirectoryAuthorization["action"]
   | typeof ReadTool.name
   | typeof EditTool.name
-const pathActions = ["external_directory", "read", "edit"] as const satisfies readonly PathAction[]
+  | "project_tooling"
+const pathActions = ["external_directory", "read", "edit", "project_tooling"] as const satisfies readonly PathAction[]
 const agentKeys = new Set([
   "model",
   "variant",

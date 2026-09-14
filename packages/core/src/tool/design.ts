@@ -2,7 +2,7 @@ export * as DesignTools from "./design"
 
 import path from "node:path"
 import { stat } from "node:fs/promises"
-import { DateTime, Effect, Layer, Schema } from "effect"
+import { Cause, DateTime, Effect, Layer, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Tool } from "./tool"
@@ -124,7 +124,10 @@ const layer = Layer.effectDiscard(
         const files = yield* Effect.promise(() => DesignBuild.tooling(document))
         if (!files.length) return false
         const resources = yield* Effect.forEach(files, (file) =>
-          mutation.resolve({ path: file, kind: "file" }).pipe(Effect.map((target) => target.resource)),
+          Effect.all({
+            target: mutation.resolve({ path: file, kind: "directory" }),
+            directory: Effect.promise(() => stat(file).then((info) => info.isDirectory())),
+          }).pipe(Effect.map(({ target, directory }) => (directory ? `${target.resource}/*` : target.resource))),
         )
         return yield* permissions
           .assert({
@@ -141,7 +144,9 @@ const layer = Layer.effectDiscard(
           })
           .pipe(
             Effect.as(true),
-            Effect.catch(() => Effect.succeed(false)),
+            // Only a refusal (deny rule, rejected prompt or correction) builds without the pipeline;
+            // a rejected prompt arrives as a defect. Anything else surfaces as a tool error.
+            Effect.catchCause((cause) => (refused(cause) ? Effect.succeed(false) : Effect.failCause(cause))),
           )
       }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))
 
@@ -484,4 +489,13 @@ function pipeline(document: { readonly system?: Design.System }) {
   return document.system.tailwind
     ? "\nProject PostCSS/Tailwind pipeline: ran."
     : "\nProject PostCSS/Tailwind pipeline: did not run for this revision (project tooling permission not granted, or tailwind off); Tailwind utility classes are absent."
+}
+
+function refused(cause: Cause.Cause<unknown>) {
+  const error = Cause.squash(cause)
+  return (
+    error instanceof PermissionV2.DeclinedError ||
+    error instanceof PermissionV2.CorrectedError ||
+    error instanceof PermissionV2.BlockedError
+  )
 }
