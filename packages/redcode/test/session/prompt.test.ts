@@ -4935,7 +4935,6 @@ it.instance(
       const started = Date.now()
       yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
       yield* awaitWithTimeout(Fiber.join(fiber), "Approved design handoff never reached Build", "20 seconds")
-      console.log(`plan_exit Yes to Build turn end: ${Date.now() - started}ms, plan ${content.length} chars`)
       const messages = yield* sessions.messages({ sessionID: chat.id })
       expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "build" })
       expect((yield* sessions.get(chat.id)).agent).toBe("build")

@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
-import { createMemo, For, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, For, Match, on, onCleanup, Show, Switch } from "solid-js"
 import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
@@ -18,9 +18,26 @@ import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut } from "../../keyma
 import { usePathFormatter } from "../../context/path-format"
 import { useToast } from "../../ui/toast"
 import { useExit } from "../../context/exit"
-import { DialogTimeoutError, dialogRequest, repeatedExitPress } from "../../util/dialog-request"
+import {
+  classifyDialogFailure,
+  createExitPresses,
+  dialogRequest,
+  dialogTimeout,
+  type DialogFailure,
+} from "../../util/dialog-request"
 
 type PermissionStage = "permission" | "always" | "reject"
+
+const FAILURE: Record<DialogFailure, string> = {
+  gone: "This permission request is no longer active. You can continue typing.",
+  "slow-gone":
+    "The server was slow and this permission request is no longer pending. Your reply may still be applied; check the session before retrying.",
+  "slow-pending":
+    "The server is slow and has not taken your reply yet. Still waiting: choose again to retry or press Esc to reject.",
+  unreachable:
+    "The server is not responding. Your reply may still be applied. Press Esc to reject, or Ctrl+C twice to exit.",
+  failed: "Sending your reply failed. Choose again to retry, or press Esc to reject.",
+}
 
 function EditBody(props: { request: PermissionRequest }) {
   const themeState = useTheme()
@@ -121,29 +138,49 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const pathFormatter = usePathFormatter()
   const toast = useToast()
 
-  // Same contract as the question dialog: an HTTP error or a server that never answers removes the
-  // prompt and says why, instead of leaving a dialog whose keys all appear to do nothing.
+  // Blocking prompts rebind Ctrl+C; a repeat on the same request and stage still exits.
+  const presses = createExitPresses()
+  onCleanup(presses.reset)
+  createEffect(
+    on(
+      () => store.stage,
+      () => presses.reset(),
+      { defer: true },
+    ),
+  )
+  const repeatedExit = () => presses.press(`${props.request.id}:${store.stage}`)
+
+  // Same contract as the question dialog: a failed or slow reply never leaves the prompt unresponsive,
+  // and only a request the server no longer has removes it.
   function reply(body: { reply: "once" | "always" | "reject"; message?: string }) {
-    dialogRequest((signal) =>
-      sdk.client.permission.reply(
-        {
-          ...body,
-          requestID: props.request.id,
-          directory: props.directory,
-          workspace: project.workspace.current(),
-        },
-        { throwOnError: true, signal },
-      ),
-    ).catch((error) => {
-      sync.removePermission(props.request.sessionID, props.request.id)
-      toast.show({
-        variant: "error",
-        message:
-          error instanceof DialogTimeoutError
-            ? "The server did not respond; the permission request was dismissed. Retry the action to ask again."
-            : "This permission request is no longer active. You can continue typing.",
-      })
+    const request = props.request
+    const timeout = dialogTimeout(sdk.url)
+    dialogRequest(
+      (signal) =>
+        sdk.client.permission.reply(
+          {
+            ...body,
+            requestID: request.id,
+            directory: props.directory,
+            workspace: project.workspace.current(),
+          },
+          { throwOnError: true, signal },
+        ),
+      timeout,
+    ).catch(async (error: unknown) => {
       console.error("permission reply failed", error)
+      const outcome = await classifyDialogFailure(error, () =>
+        dialogRequest(
+          (signal) =>
+            sdk.client.permission.list(
+              { directory: props.directory, workspace: project.workspace.current() },
+              { throwOnError: true, signal },
+            ),
+          timeout,
+        ).then((result) => (result.data ?? []).some((item) => item.id === request.id)),
+      )
+      if (outcome === "gone" || outcome === "slow-gone") sync.removePermission(request.sessionID, request.id)
+      toast.show({ variant: "error", message: FAILURE[outcome] })
     })
   }
 
@@ -167,6 +204,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
     <Switch>
       <Match when={store.stage === "always"}>
         <Prompt
+          repeatedExit={repeatedExit}
           title="Always allow"
           body={
             <Switch>
@@ -201,6 +239,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       </Match>
       <Match when={store.stage === "reject"}>
         <RejectPrompt
+          repeatedExit={repeatedExit}
           onConfirm={(message) => {
             reply({ reply: "reject", message: message || undefined })
           }}
@@ -438,6 +477,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
 
           const body = (
             <Prompt
+              repeatedExit={repeatedExit}
               title="Permission required"
               header={header()}
               body={current.body}
@@ -469,7 +509,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   )
 }
 
-function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: () => void }) {
+function RejectPrompt(props: {
+  onConfirm: (message: string) => void
+  onCancel: () => void
+  repeatedExit?: () => boolean
+}) {
   let input: TextareaRenderable
   const exit = useExit()
   const { theme } = useTheme()
@@ -484,7 +528,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
         title: "Cancel permission rejection",
         category: "Permission",
         run() {
-          if (repeatedExitPress()) return exit()
+          if (props.repeatedExit?.()) return exit()
           props.onCancel()
         },
       },
@@ -554,6 +598,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
 }
 
 function Prompt<const T extends Record<string, string>>(props: {
+  repeatedExit?: () => boolean
   title: string
   header?: JSX.Element
   body: JSX.Element
@@ -583,7 +628,7 @@ function Prompt<const T extends Record<string, string>>(props: {
         category: "Permission",
         run() {
           if (!props.escapeKey) return
-          if (repeatedExitPress()) return exit()
+          if (props.repeatedExit?.()) return exit()
           props.onSelect(props.escapeKey)
         },
       },

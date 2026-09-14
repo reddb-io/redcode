@@ -103,7 +103,7 @@ const layer = Layer.effect(
       }
       pending.set(id, { info, deferred })
       // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
-      const waiting = input.tool?.callID ? HumanWait.start(input.tool.callID) : undefined
+      const waiting = input.tool?.callID ? HumanWait.start(input.sessionID, input.tool.callID) : undefined
       yield* events.publish(Event.Asked, info)
 
       // If the asking fiber dies (interrupt, crash) the request must not linger:

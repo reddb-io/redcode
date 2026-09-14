@@ -2,7 +2,7 @@
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
-import { onCleanup } from "solid-js"
+import { createSignal, onCleanup } from "solid-js"
 import { QuestionPrompt } from "../../src/routes/session/question"
 import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider } from "../../src/config"
@@ -37,7 +37,23 @@ const handoff = [
   "END OF HANDOFF",
 ].join("\n")
 
-function PlanExitPrompt(props: { question: string; timeout?: number; onExit?: () => void }) {
+const PENDING = {
+  id: "que_exit",
+  sessionID: "ses_test",
+  questions: [{ header: "Build Agent", question: "x", options: [] }],
+}
+
+async function waitForFrame(setup: { app: { renderOnce(): Promise<void>; captureCharFrame(): string } }, text: string) {
+  const start = Date.now()
+  for (;;) {
+    await setup.app.renderOnce()
+    if (setup.app.captureCharFrame().includes(text)) return
+    if (Date.now() - start > 2000) throw new Error(`timed out waiting for "${text}"`)
+    await Bun.sleep(10)
+  }
+}
+
+function PlanExitPrompt(props: { question: string; timeout?: number; onExit?: () => void; requestID?: () => string }) {
   const renderer = useRenderer()
   const keymap = createDefaultOpenTuiKeymap(renderer)
   const config = createTuiResolvedConfig({ keybinds: {}, leader_timeout: 1000 })
@@ -51,7 +67,7 @@ function PlanExitPrompt(props: { question: string; timeout?: number; onExit?: ()
               <QuestionPrompt
                 timeout={props.timeout}
                 request={{
-                  id: "que_exit",
+                  id: props.requestID?.() ?? "que_exit",
                   sessionID: "ses_test",
                   questions: [
                     {
@@ -215,6 +231,7 @@ test("a plan approval the server never answers is dismissed with a retry hint", 
   const calls: string[] = []
   const setup = await mount(
     async (url) => {
+      if (url.pathname === "/question") return json([])
       if (url.pathname !== "/question/que_exit/reply") return
       calls.push(url.pathname)
       return new Promise<Response>(() => {})
@@ -233,7 +250,7 @@ test("a plan approval the server never answers is dismissed with a retry hint", 
     await wait(() => calls.length === 1)
     await wait(() => (setup.sync.data.question.ses_test ?? []).length === 0)
     await setup.app.renderOnce()
-    expect(setup.app.captureCharFrame()).toContain("The server did not respond")
+    expect(setup.app.captureCharFrame()).toContain("may still be")
   } finally {
     setup.app.renderer.destroy()
   }
@@ -263,6 +280,96 @@ test("a second Ctrl+C leaves the app while the question's reject is still hangin
     setup.app.mockInput.pressKey("c", { ctrl: true })
     await wait(() => exits === 1)
     expect(calls).toHaveLength(1)
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a slow server that still holds the plan approval keeps the dialog and keeps waiting", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const calls: string[] = []
+  const setup = await mount(
+    async (url) => {
+      if (url.pathname === "/question") return json([PENDING])
+      if (url.pathname !== "/question/que_exit/reply") return
+      calls.push(url.pathname)
+      return new Promise<Response>(() => {})
+    },
+    tmp.path,
+    () => <PlanExitPrompt question={handoff} timeout={100} />,
+  )
+  try {
+    setup.sync.set("question", "ses_test", [PENDING])
+    await setup.app.renderOnce()
+    await Bun.sleep(50)
+    await setup.app.renderOnce()
+    setup.app.mockInput.pressKey("\r")
+    await wait(() => calls.length === 1)
+    await waitForFrame(setup, "Still waiting")
+    expect(setup.sync.data.question.ses_test).toHaveLength(1)
+    expect(setup.app.captureCharFrame()).toContain("1. Yes")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a plan approval reply that fails with a server error stays open to retry", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const calls: string[] = []
+  const setup = await mount(
+    async (url) => {
+      if (url.pathname !== "/question/que_exit/reply") return
+      calls.push(url.pathname)
+      return Response.json({ name: "UnknownError", data: { message: "database is locked" } }, { status: 500 })
+    },
+    tmp.path,
+    () => <PlanExitPrompt question={handoff} />,
+  )
+  try {
+    setup.sync.set("question", "ses_test", [PENDING])
+    await setup.app.renderOnce()
+    await Bun.sleep(50)
+    await setup.app.renderOnce()
+    setup.app.mockInput.pressKey("\r")
+    await wait(() => calls.length === 1)
+    await waitForFrame(setup, "failed")
+    expect(setup.sync.data.question.ses_test).toHaveLength(1)
+    setup.app.mockInput.pressKey("\r")
+    await wait(() => calls.length === 2)
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("Ctrl+C that dismissed one question does not arm an exit on the next", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const calls: string[] = []
+  let exits = 0
+  const [requestID, setRequestID] = createSignal("que_exit")
+  const setup = await mount(
+    async (url) => {
+      if (!url.pathname.endsWith("/reject")) return
+      calls.push(url.pathname)
+      return new Promise<Response>(() => {})
+    },
+    tmp.path,
+    () => <PlanExitPrompt question={handoff} requestID={requestID} onExit={() => exits++} />,
+  )
+  try {
+    await setup.app.renderOnce()
+    await Bun.sleep(50)
+    await setup.app.renderOnce()
+    setup.app.mockInput.pressKey("c", { ctrl: true })
+    await wait(() => calls.length === 1)
+    setRequestID("que_next")
+    await setup.app.renderOnce()
+    setup.app.mockInput.pressKey("c", { ctrl: true })
+    await wait(() => calls.length === 2)
+    expect(calls).toEqual(["/question/que_exit/reject", "/question/que_next/reject"])
+    expect(exits).toBe(0)
   } finally {
     setup.app.renderer.destroy()
   }
