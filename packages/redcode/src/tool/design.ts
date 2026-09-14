@@ -178,7 +178,14 @@ export const DesignTools = Effect.gen(function* () {
           ctx,
           Effect.gen(function* () {
             const store = yield* DesignStore.Service
-            if (input.action === "list") return result((yield* store.list(ctx.sessionID)).map(describe).join("\n\n"))
+            if (input.action === "list")
+              return result(
+                (yield* store.list(ctx.sessionID))
+                  .map((document) =>
+                    describe(document, `Design system: ${DesignSystem.summary(document) || "none detected"}`),
+                  )
+                  .join("\n\n"),
+              )
             yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
             if (input.action === "create") return result(describe(yield* store.create(ctx.sessionID, input.input)))
             yield* store.get(input.id, ctx.sessionID)
@@ -408,8 +415,8 @@ export const DesignTools = Effect.gen(function* () {
   ])
 })
 
-function describe(document: Design.Info) {
-  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`
+function describe(document: Design.Info, system = DesignSystem.describe(document)) {
+  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${system}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`
 }
 
 function define<S extends Schema.Decoder<unknown>>(

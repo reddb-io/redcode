@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { mkdir, symlink } from "node:fs/promises"
 import path from "node:path"
+import { DesignManifest } from "../src/design/manifest"
 import { DesignSystem } from "../src/design/system"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -48,8 +49,27 @@ test("discovers root design guidance and supported nested source files with cont
   )
   const started = Date.now()
   const sources = await DesignSystem.discover(tmp.path)
+  // Configuration, docs, tokens, component barrels, then stories: excerpt budget follows this order.
   expect(sources.map((source) => source.file.split(path.sep).join("/"))).toEqual([
-    ...files.toSorted(),
+    ".storybook/main.ts",
+    "components.json",
+    "package.json",
+    "postcss.config.js",
+    "tailwind.config.ts",
+    "DESIGN.md",
+    "PRODUCT.md",
+    "design-system.md",
+    "docs/DESIGN.md",
+    "src/app/globals.css",
+    "src/config/tokens.json",
+    "src/global.css",
+    "src/layout/theme.ts",
+    "src/styles/tokens.ts",
+    "src/theme.css",
+    "src/tokens.css",
+    "packages/ui/src/index.ts",
+    "src/components/index.ts",
+    "src/design-system/index.tsx",
     ...stories.toSorted(),
   ])
   expect(sources.filter((source) => source.authoritative).map((source) => source.file)).toEqual([
@@ -58,9 +78,9 @@ test("discovers root design guidance and supported nested source files with cont
     "design-system.md",
     "docs/DESIGN.md",
   ])
-  expect(sources[1].file).toBe("DESIGN.md")
-  expect(sources[1].hash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-  expect(sources[1].excerpt).toBe("")
+  expect(sources[5].file).toBe("DESIGN.md")
+  expect(sources[5].hash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+  expect(sources[5].excerpt).toBe("")
   expect(sources.every((source) => source.observed >= started && source.observed <= Date.now())).toBe(true)
   expect(sources.find((source) => source.file === "package.json")?.excerpt).toBe(
     "@radix-ui/react-dialog ^1.1.0\nreact ^18.3.1\ntailwindcss ^3.4.1",
@@ -87,8 +107,8 @@ test("discovers root design guidance and supported nested source files with cont
 
   await Bun.write(path.join(tmp.path, "DESIGN.md"), "# Design system\nUse a cyan accent for checkout.")
   const refreshed = await DesignSystem.discover(tmp.path)
-  expect(refreshed[1].hash).not.toBe(sources[1].hash)
-  expect(refreshed[1].excerpt).toBe("# Design system\nUse a cyan accent for checkout.")
+  expect(refreshed[5].hash).not.toBe(sources[5].hash)
+  expect(refreshed[5].excerpt).toBe("# Design system\nUse a cyan accent for checkout.")
 })
 
 test("records package.json only when it declares a design dependency", async () => {
@@ -108,6 +128,13 @@ test("discovers product context in supported context directories without losing 
   expect(sources.every((source) => source.authoritative && source.excerpt === `Guidance from ${source.file}`)).toBe(
     true,
   )
+  await Bun.write(
+    path.join(tmp.path, ".red/DESIGN.md"),
+    `# Design system\n${DesignManifest.START}\n${DesignManifest.END}`,
+  )
+  const generated = await DesignSystem.discover(tmp.path)
+  expect(generated.find((source) => source.file === ".red/DESIGN.md")?.authoritative).toBe(false)
+  expect(DesignSystem.classify(".red/DESIGN.md")).toBe("manifest")
 })
 
 test("keeps the deterministic sixty-source limit with excerpts for the first twenty", async () => {
@@ -118,6 +145,26 @@ test("keeps the deterministic sixty-source limit with excerpts for the first twe
   expect(sources.map((source) => source.file.split(path.sep).join("/"))).toEqual(files.slice(0, 60))
   expect(sources.map((source) => source.excerpt)).toEqual([...files.slice(0, 20), ...Array(40).fill("")])
   expect(sources.every((source) => source.hash.length === 64)).toBe(true)
+})
+
+test("spends the excerpt budget on configuration before token files regardless of path order", async () => {
+  await using tmp = await tmpdir()
+  const files = Array.from({ length: 25 }, (_, index) => `src/group-${String(index).padStart(2, "0")}/tokens.css`)
+  await Promise.all([
+    ...files.map((file) => Bun.write(path.join(tmp.path, file), file)),
+    Bun.write(path.join(tmp.path, "tailwind.config.ts"), "export default {}"),
+    Bun.write(path.join(tmp.path, "package.json"), JSON.stringify({ dependencies: { react: "^18.3.1" } })),
+  ])
+  const sources = await DesignSystem.discover(tmp.path)
+  expect(sources.slice(0, 2).map((source) => [source.file, source.excerpt])).toEqual([
+    ["package.json", "react ^18.3.1"],
+    ["tailwind.config.ts", "export default {}"],
+  ])
+  expect(DesignSystem.stack(sources)).toMatchObject({
+    framework: "react ^18.3.1",
+    pipeline: ["Tailwind (tailwind.config.ts)"],
+  })
+  expect(sources.at(-1)?.excerpt).toBe("")
 })
 
 test("does not follow source-directory links outside the application", async () => {

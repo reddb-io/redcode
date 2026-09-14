@@ -157,6 +157,7 @@ export const Info = Schema.Struct({
   designSystem: Schema.String,
   sources: Schema.Array(Source),
   inventory: Schema.Array(Component).pipe(optional),
+  manifest: Schema.String.pipe(optional),
   tweaks: Tweaks,
   revision: Schema.NullOr(Schema.String),
   approvedRevision: Schema.NullOr(Schema.String),

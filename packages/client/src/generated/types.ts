@@ -2078,6 +2078,13 @@ export type DesignsListOutput = ReadonlyArray<{
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -2201,6 +2208,13 @@ export type DesignsCreateOutput = {
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -2290,6 +2304,13 @@ export type DesignsGetOutput = {
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3029,6 +3050,13 @@ export type DesignsUpdateOutput = {
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3125,6 +3153,13 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
       readonly authoritative: boolean
       readonly excerpt: string
     }>
+    readonly inventory?: ReadonlyArray<{
+      readonly root: string
+      readonly file: string
+      readonly name: string
+      readonly props?: string
+    }>
+    readonly manifest?: string
     readonly tweaks: { readonly [x: string]: string }
     readonly revision: string | null
     readonly approvedRevision: string | null
@@ -3239,6 +3274,13 @@ export type DesignsPublishOutput = {
       readonly authoritative: boolean
       readonly excerpt: string
     }>
+    readonly inventory?: ReadonlyArray<{
+      readonly root: string
+      readonly file: string
+      readonly name: string
+      readonly props?: string
+    }>
+    readonly manifest?: string
     readonly tweaks: { readonly [x: string]: string }
     readonly revision: string | null
     readonly approvedRevision: string | null
@@ -3337,6 +3379,13 @@ export type DesignsRestoreOutput = {
       readonly authoritative: boolean
       readonly excerpt: string
     }>
+    readonly inventory?: ReadonlyArray<{
+      readonly root: string
+      readonly file: string
+      readonly name: string
+      readonly props?: string
+    }>
+    readonly manifest?: string
     readonly tweaks: { readonly [x: string]: string }
     readonly revision: string | null
     readonly approvedRevision: string | null
@@ -3427,6 +3476,13 @@ export type DesignsReopenOutput = {
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3516,6 +3572,13 @@ export type DesignsRefreshOutput = {
     readonly authoritative: boolean
     readonly excerpt: string
   }>
+  readonly inventory?: ReadonlyArray<{
+    readonly root: string
+    readonly file: string
+    readonly name: string
+    readonly props?: string
+  }>
+  readonly manifest?: string
   readonly tweaks: { readonly [x: string]: string }
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3957,6 +4020,13 @@ export type DesignsApprovalOutput = {
         readonly authoritative: boolean
         readonly excerpt: string
       }>
+      readonly inventory?: ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string
+      }>
+      readonly manifest?: string
       readonly tweaks: { readonly [x: string]: string }
       readonly revision: string | null
       readonly approvedRevision: string | null

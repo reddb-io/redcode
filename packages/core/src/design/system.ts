@@ -35,6 +35,14 @@ const decodePackage = Schema.decodeUnknownOption(
     Schema.Struct({ dependencies: Dependencies, devDependencies: Dependencies, peerDependencies: Dependencies }),
   ),
 )
+/** A lenient read of the configured system that design-system-config records on Design.Info; absent until it lands. */
+const decodeConfigured = Schema.decodeUnknownOption(
+  Schema.Struct({
+    paths: Schema.Array(Schema.String).pipe(Schema.optionalKey),
+    css: Schema.Array(Schema.String).pipe(Schema.optionalKey),
+    tailwind: Schema.Boolean.pipe(Schema.optionalKey),
+  }),
+)
 
 export type Kind =
   | "manifest"
@@ -47,25 +55,33 @@ export type Kind =
   | "tokens"
   | "components"
   | "story"
-
-/** PR design-system-config records the configured system on Design.Info; it is rendered when present so both changes compose. */
-export interface Configured {
-  readonly paths?: readonly string[]
-  readonly css?: readonly string[]
-  readonly tailwind?: boolean
+/** Excerpt budget order: configuration first so stack() always sees it, stories last and never excerpted. */
+const TIER: Record<Kind, number> = {
+  tailwind: 0,
+  postcss: 0,
+  shadcn: 0,
+  storybook: 0,
+  package: 0,
+  manifest: 1,
+  doc: 1,
+  tokens: 2,
+  components: 3,
+  story: 4,
 }
+
 type Source = typeof Design.Source.Type
 /** Encoded or decoded documents both render: only the discovery fields are read. */
 type Document = {
   readonly sources: readonly Source[]
   readonly inventory?: readonly Design.Component[]
-  readonly system?: Configured
+  readonly manifest?: string
+  readonly system?: unknown
 }
 
 export function classify(file: string): Kind {
   const name = path.basename(file)
   if (/\.stories\.[^/]+$/.test(name)) return "story"
-  if (file === ".red/DESIGN.md") return "manifest"
+  if (file === DesignManifest.FILE) return "manifest"
   if (/^(?:product|design|design-system)\.md$/i.test(name)) return "doc"
   if (name.startsWith("tailwind.config.")) return "tailwind"
   if (name.startsWith("postcss.config.")) return "postcss"
@@ -88,21 +104,18 @@ export async function discover(application: string) {
     .flat()
     .map((file) => file.split(path.sep).join("/"))
     .sort()
-  // Stories are names only and sort last so a large Storybook cannot crowd out the files that carry excerpts.
-  const ordered = [
-    ...files.filter((file) => classify(file) !== "story"),
-    ...files.filter((file) => classify(file) === "story"),
-  ]
+    .toSorted((a, b) => TIER[classify(a)] - TIER[classify(b)])
   return (
     await Promise.all(
-      ordered.map(async (file, index) => {
+      files.map(async (file, index) => {
         const bytes = await Bun.file(await DesignFiles.resolve(application, file)).bytes()
         const kind = classify(file)
+        const text = new TextDecoder().decode(bytes)
         const excerpt =
           kind === "story" || index >= EXCERPTS
             ? ""
             : kind === "package"
-              ? dependencies(new TextDecoder().decode(bytes))
+              ? dependencies(text)
               : new TextDecoder().decode(bytes.subarray(0, EXCERPT))
         if (kind === "package" && !excerpt) return []
         return [
@@ -110,7 +123,8 @@ export async function discover(application: string) {
             file,
             hash: DesignFiles.hash(bytes),
             observed: Date.now(),
-            authoritative: kind === "doc" || kind === "manifest",
+            // A generated manifest is inferred from the files it lists; only a hand-written one is a source of truth.
+            authoritative: kind === "doc" || (kind === "manifest" && !text.includes(DesignManifest.START)),
             excerpt,
           },
         ]
@@ -138,7 +152,7 @@ function dependencies(text: string) {
 /** Component roots: declared paths plus the directories whose index file discovery found, outermost only. */
 export function roots(sources: readonly Source[], declared: readonly string[] = []) {
   const all = [
-    ...declared.map((entry) => entry.split(path.sep).join("/").replace(/\/+$/, "")),
+    ...declared.map((entry) => path.posix.normalize(entry.split(path.sep).join("/")).replace(/\/+$/, "")),
     ...sources
       .filter((source) => classify(source.file) === "components")
       .map((source) => path.posix.dirname(source.file)),
@@ -175,18 +189,32 @@ export function stack(sources: readonly Source[]) {
   }
 }
 
-export const declared = (document: Document) => document.system?.paths ?? []
+export const configured = (document: object) => {
+  const parsed = decodeConfigured("system" in document ? document.system : undefined)
+  return parsed._tag === "Some" ? parsed.value : undefined
+}
+export const declared = (document: object) => configured(document)?.paths ?? []
 
-/** Discovery, the component inventory and the generated manifest, in the order the manifest needs them. */
+/**
+ * Discovery, the component inventory and the manifest, in the order the manifest needs them. The
+ * manifest is only written for an existing application whose scan found something to record.
+ */
 export async function load(
   application: string,
-  options: { readonly refresh: boolean; readonly declared?: readonly string[] },
+  options: { readonly refresh: boolean; readonly manifest: boolean; readonly declared?: readonly string[] },
 ) {
   const discovered = await discover(application)
   const found = roots(discovered, options.declared)
   const inventory = await DesignInventory.scan(application, found)
   const facts = stack(discovered)
-  const written = await DesignManifest.write(
+  const present = facts.tokens.length > 0 || facts.pipeline.length > 0 || inventory.length > 0
+  if (!options.manifest || !present)
+    return {
+      sources: discovered,
+      inventory,
+      manifest: options.manifest ? `${DesignManifest.FILE} not generated: nothing found to record` : "",
+    }
+  const result = await DesignManifest.write(
     application,
     {
       stack: [
@@ -195,28 +223,43 @@ export async function load(
         ...(facts.dependencies.length ? [`Dependencies: ${facts.dependencies.join(", ")}`] : []),
       ],
       tokens: facts.tokens,
-      roots: found,
+      roots: found.filter((root) => inventory.some((entry) => entry.root === root)),
       inventory,
     },
     options.refresh,
   )
-  return { sources: written ? await discover(application) : discovered, inventory }
+  const written = result.status === "created" || result.status === "updated"
+  return {
+    sources: written ? await discover(application) : discovered,
+    inventory,
+    manifest:
+      result.status === "kept"
+        ? `${DesignManifest.FILE} kept as is: ${result.reason}`
+        : result.status === "created"
+          ? `generated ${DesignManifest.FILE}`
+          : result.status === "updated"
+            ? `refreshed the generated block in ${DesignManifest.FILE}`
+            : "",
+  }
 }
 
-/** The model-visible block; both runtimes render exactly this under the design document. */
+/** The model-visible block: paths and counts only, never file content. Both runtimes render exactly this. */
 export function describe(document: Document) {
-  const docs = document.sources.filter((source) => source.authoritative)
+  const docs = document.sources.filter((source) => source.authoritative).map((source) => source.file)
+  const manifest = document.sources.find((source) => classify(source.file) === "manifest" && !source.authoritative)
   const facts = stack(document.sources)
   const inventory = document.inventory ?? []
   const stories = document.sources.filter((source) => classify(source.file) === "story").length
-  if (!docs.length && !facts.tokens.length && !facts.pipeline.length && !inventory.length && !document.system)
+  const system = configured(document)
+  if (!docs.length && !manifest && !facts.tokens.length && !facts.pipeline.length && !inventory.length && !system)
     return "Design system: none detected. Say so in designSystem and design from the brief; do not assume a component library."
   return [
-    "Design system (read .red/DESIGN.md first; import from the component roots instead of re-implementing; write new CSS only for what the system lacks):",
-    ...docs.map(
-      (source) =>
-        `Doc ${source.file}${classify(source.file) === "manifest" ? " (generated, edit the Notes section)" : ""}:\n${source.excerpt.length > 2000 ? source.excerpt.slice(0, 2000) + "\n[truncated; read the file for the rest]" : source.excerpt}`,
-    ),
+    "Design system (import from the component roots instead of re-implementing; take colors, type and spacing from the token files; write new CSS only for what the system lacks):",
+    ...(manifest
+      ? [`Manifest: ${manifest.file} (generated from the files below; read it first, edit only its Notes)`]
+      : []),
+    ...(document.manifest ? [`Manifest status: ${document.manifest}`] : []),
+    ...(docs.length ? [`Docs: ${docs.join(", ")} (authoritative; read with the read tool before designing)`] : []),
     ...(facts.tokens.length ? [`Tokens: ${facts.tokens.join(", ")}`] : []),
     ...(facts.pipeline.length ? [`Pipeline: ${facts.pipeline.join("; ")}`] : []),
     ...(facts.framework ? [`Framework: ${facts.framework}`] : []),
@@ -225,21 +268,23 @@ export function describe(document: Document) {
       return `Components ${root}: ${names.slice(0, 40).join(", ")}${names.length > 40 ? ` (+${names.length - 40} more)` : ""}`
     }),
     ...(stories ? [`Stories: ${stories} files`] : []),
-    ...(document.system
+    ...(system
       ? [
-          `Configured: paths ${document.system.paths?.join(", ") || "none"}; css ${document.system.css?.join(", ") || "none"}; tailwind ${document.system.tailwind === undefined ? "auto" : document.system.tailwind ? "on" : "off"}`,
+          `Configured: paths ${system.paths?.join(", ") || "none"}; css ${system.css?.join(", ") || "none"}; tailwind ${system.tailwind === undefined ? "auto" : system.tailwind ? "on" : "off"}`,
         ]
       : []),
   ].join("\n")
 }
 
-/** Paths and counts only: what the Design Context Source carries on every turn. */
+/** Paths and counts only: what a list and the Design Context Source carry on every turn. */
 export function summary(document: Document) {
   const docs = document.sources.filter((source) => source.authoritative).map((source) => source.file)
+  const manifest = document.sources.find((source) => classify(source.file) === "manifest" && !source.authoritative)
   const tokens = stack(document.sources).tokens.length
   const inventory = document.inventory ?? []
-  if (!docs.length && !tokens && !inventory.length) return ""
+  if (!docs.length && !manifest && !tokens && !inventory.length) return ""
   return [
+    ...(manifest ? [`manifest ${manifest.file}`] : []),
     ...(docs.length ? [`docs ${docs.join(", ")}`] : []),
     ...(tokens ? [`${tokens} token file${tokens === 1 ? "" : "s"}`] : []),
     ...(inventory.length
