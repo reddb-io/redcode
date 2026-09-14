@@ -737,6 +737,27 @@ it.instance(
         notes: [],
         operation: "rename Stone → Granite",
       })
+      // Once a newer revision exists, an operation issued against the older one is refused.
+      yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          yield* store.publish(document.id, "Newer review")
+        }),
+      )
+      const stale = yield* feedback
+        .admit(session.id, document.id, {
+          id: SessionMessage.ID.make("msg_variant_operation_stale"),
+          revision: document.revision,
+          text: "",
+          items: [],
+          assets: [],
+          snapshot: "",
+          end: false,
+          delivery: "steer",
+          action: { kind: "delete", variants: ["stone"] },
+        })
+        .pipe(Effect.flip)
+      expect(stale.message).toBe("Variant operations apply to the latest revision; reload the review and try again")
       const refused = yield* feedback
         .admit(session.id, document.id, {
           id: SessionMessage.ID.make("msg_variant_operation_invalid"),

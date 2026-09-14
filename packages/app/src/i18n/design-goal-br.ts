@@ -159,6 +159,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.operationRetry": "Tentar a alteração de variantes novamente",
   "session.design.studio.noteOrphaned": "Variante removida",
   "session.design.studio.retarget": "Mover para",
+  "session.design.studio.renameSame": "Digite um nome diferente para renomear esta variante.",
   "session.design.studio.approvalReselect":
     "A variante aprovada não está nesta revisão. Selecione uma variante antes de aprovar novamente.",
   "session.design.studio.mobile": "Celular · 390 px",

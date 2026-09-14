@@ -20,13 +20,20 @@ export function annotations() {
       .filter((node) => !node.parentElement?.closest("[data-design-variant]"))
       .filter((node) => /^[a-zA-Z0-9_-]{1,64}$/.test(node.dataset.designVariant ?? ""))
   const visible = () => variants().filter((node) => !state.hidden.has(node.dataset.designVariant!))
+  /** Hides every variant but the selected one, and always the ones the host removed. */
+  const paint = () => {
+    style.textContent = variants()
+      .filter((node) => {
+        const id = node.dataset.designVariant!
+        return state.hidden.has(id) || (!!state.variant && id !== state.variant)
+      })
+      .map((node) => `[data-design-variant="${node.dataset.designVariant}"]{display:none!important}`)
+      .join("\n")
+  }
   const selectVariant = (id: string) => {
     if (!visible().some((node) => node.dataset.designVariant === id)) return
     state.variant = id
-    style.textContent = variants()
-      .filter((node) => node.dataset.designVariant !== id)
-      .map((node) => `[data-design-variant="${node.dataset.designVariant}"]{display:none!important}`)
-      .join("\n")
+    paint()
   }
   const announce = () => {
     const items = visible().map((node) => ({
@@ -94,8 +101,8 @@ export function annotations() {
       if (!/^[a-zA-Z0-9_-]{1,64}$/.test(event.data.id) || state.hidden.has(event.data.id)) return
       state.hidden.add(event.data.id)
       announce()
-      // The hidden root stays hidden even when it was not the selected one.
-      if (state.variant) selectVariant(state.variant)
+      // The removed root stays hidden whether or not a variant is selected.
+      paint()
     }
     if (
       event.data?.type === "design:variant-label" &&
@@ -113,8 +120,19 @@ export function annotations() {
         roots.filter((node) => typeof id === "string" && node.dataset.designVariant === id),
       ) as HTMLElement[]
       const sorted = [...new Set([...wanted, ...roots])]
+      // Only siblings are rearranged: moving roots between parents would break a framework's own tree.
+      // Roots that are not siblings keep their place; the host still shows the order in its tabs.
+      const container = roots[0]?.parentElement
+      if (!container || roots.some((node) => node.parentElement !== container)) return
+      // A flex or grid container reorders visually without touching the DOM a framework re-renders.
+      if (/flex|grid/.test(getComputedStyle(container).display)) {
+        sorted.forEach((node, index) => node.style.setProperty("order", String(index)))
+        return
+      }
+      // A component entry owns the children of its mount point; moving them could break its next render.
+      if (container.closest("#root")) return
       if (sorted.every((node, index) => node === roots[index])) return
-      // A marker holds each root's slot, so roots under different parents trade places too.
+      // A marker holds each root's slot among its siblings while the roots trade places.
       const slots = roots.map((node) => {
         const slot = document.createComment("")
         node.before(slot)
