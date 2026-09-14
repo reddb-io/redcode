@@ -418,6 +418,8 @@ async function pipeline(
     await authorize(file)
     // Evicting the require cache lets an edited config apply without a restart; Bun's ESM
     // loader ignores URL queries, so a dynamic import would keep returning the first evaluation.
+    // Bun's transpile cache is keyed by path and mtime, so an edit that keeps the same mtime
+    // (within the filesystem's timestamp granularity) can still be served from that cache.
     delete require.cache[file]
     const module: unknown = require(file)
     return typeof module === "object" && module && "default" in module ? module.default : module

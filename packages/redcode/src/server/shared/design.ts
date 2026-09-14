@@ -1,3 +1,4 @@
+import type { Tool } from "@/tool/tool"
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
 import { DesignReviewServer } from "@/design/review-server"
@@ -233,19 +234,27 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               const agents = yield* Agent.Service
               const session = yield* studio.assertSession(sessionID)
               const agent = yield* agents.get(session.agent ?? "design")
-              const read = yield* DesignRead.make((input) =>
+              const ask = (input: Parameters<Tool.Context["ask"]>[0]) =>
                 permissions
                   .ask({
                     ...input,
                     sessionID,
                     ruleset: Permission.merge(agent!.permission, session.permission ?? []),
                   })
-                  .pipe(Effect.orDie),
-              )
+                  .pipe(Effect.orDie)
+              const read = yield* DesignRead.make(ask)
+              const tooling = yield* DesignRead.tooling(yield* store.get(id, sessionID), ask)
               if (parts[4] === "revision")
-                return reply(yield* store.publish(id, (yield* json(Schema.Struct({ name: Schema.String }))).name, read))
+                return reply(
+                  yield* store.publish(id, (yield* json(Schema.Struct({ name: Schema.String }))).name, read, tooling),
+                )
               return reply(
-                yield* store.restore(id, (yield* json(Schema.Struct({ revision: Schema.String }))).revision, read),
+                yield* store.restore(
+                  id,
+                  (yield* json(Schema.Struct({ revision: Schema.String }))).revision,
+                  read,
+                  tooling,
+                ),
               )
             }
             if (parts[4] === "approve" && request.method === "POST") {

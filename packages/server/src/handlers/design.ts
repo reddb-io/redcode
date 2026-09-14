@@ -1,7 +1,8 @@
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
 import path from "node:path"
-import { DateTime, Effect, Stream } from "effect"
+import { stat } from "node:fs/promises"
+import { Cause, DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
@@ -68,11 +69,16 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
     const document = yield* store.get(designID)
     const files = yield* Effect.promise(() => DesignBuild.tooling(document))
     if (!files.length) return false
+    const session = yield* sessions
+      .get(sessionID)
+      .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
+    const resources = yield* Effect.forEach(files, (file) =>
+      Effect.all({
+        target: mutation.resolve({ path: file, kind: "directory" }),
+        directory: Effect.promise(() => stat(file).then((info) => info.isDirectory())),
+      }).pipe(Effect.map(({ target, directory }) => (directory ? `${target.resource}/*` : target.resource))),
+    ).pipe(Effect.orDie)
     return yield* Effect.gen(function* () {
-      const session = yield* sessions.get(sessionID)
-      const resources = yield* Effect.forEach(files, (file) =>
-        mutation.resolve({ path: file, kind: "file" }).pipe(Effect.map((target) => target.resource)),
-      )
       yield* permissions.assert({
         action: "project_tooling",
         resources,
@@ -85,7 +91,19 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
         },
       })
       return true
-    }).pipe(Effect.catch(() => Effect.succeed(false)))
+    }).pipe(
+      // Only a refusal (deny rule, rejected prompt or correction) builds without the pipeline;
+      // a rejected prompt arrives as a defect. Anything else surfaces.
+      Effect.catchCause((cause) => {
+        const error = Cause.squash(cause)
+        return error instanceof PermissionV2.DeclinedError ||
+          error instanceof PermissionV2.CorrectedError ||
+          error instanceof PermissionV2.BlockedError
+          ? Effect.succeed(false)
+          : Effect.failCause(cause)
+      }),
+      Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })),
+    )
   })
   return handlers
     .handleRaw(

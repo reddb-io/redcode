@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import path from "node:path"
 import { HttpRouter } from "effect/unstable/http"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { tmpdir } from "../fixture/fixture"
@@ -301,3 +302,51 @@ test("TUI preview reports a missing resource without an opaque internal error", 
     await server.dispose()
   }
 }, 60000)
+
+for (const decision of ["deny", "allow"] as const)
+  test(`TUI review publish and restore routes honour a user ${decision} on project tooling`, async () => {
+    await using tmp = await tmpdir({
+      config: {
+        permission: { project_tooling: decision },
+        design: { system: { paths: ["src/components"], css: ["src/styles/globals.css"] } },
+      },
+    })
+    const { cp } = await import("node:fs/promises")
+    const { materializeDependencies } = await import("../../../core/test/fixture/design-dependencies")
+    await cp(path.join(import.meta.dir, "../../../core/test/fixture/tailwind"), tmp.path, { recursive: true })
+    await materializeDependencies(tmp.path, ["react", "react-dom", "tailwindcss", "autoprefixer"])
+    const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
+    const request = async (route: string, method = "GET", body?: unknown) =>
+      server.handler(
+        new Request(`http://localhost${route}`, {
+          method,
+          headers: { "content-type": "application/json", "x-opencode-directory": tmp.path },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        }),
+        HttpApiApp.context,
+      )
+    try {
+      const session = await (await request("/session", "POST", { agent: "design" })).json()
+      const root = `/design/session/${session.id}`
+      const document = await (
+        await request(root, "POST", { name: "Tooling", engine: "react", journey: "existing", kind: "screen" })
+      ).json()
+      expect(document.system?.tailwind).toBe(true)
+      await Bun.write(
+        path.join(document.root, document.entry),
+        'import { createRoot } from "react-dom/client"\nimport { Button } from "@/components/Button"\ncreateRoot(document.getElementById("root")!).render(<main className="p-4"><Button>Buy</Button></main>)\n',
+      )
+      const published = await request(`${root}/${document.id}/revision`, "POST", { name: "First" })
+      expect(published.status).toBe(200)
+      const revision = await published.json()
+      expect(revision.document.system?.tailwind).toBe(decision === "allow")
+      const preview = await (await request(`${root}/${document.id}/revision/${revision.id}/preview`)).text()
+      if (decision === "allow") expect(preview).toContain(".p-4{")
+      if (decision === "deny") expect(preview).not.toContain(".p-4{")
+      const restored = await request(`${root}/${document.id}/restore`, "POST", { revision: revision.id })
+      expect(restored.status).toBe(200)
+      expect((await restored.json()).document.system?.tailwind).toBe(decision === "allow")
+    } finally {
+      await server.dispose()
+    }
+  }, 120000)

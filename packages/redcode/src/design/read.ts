@@ -1,7 +1,7 @@
 export * as DesignRead from "./read"
 
 import path from "node:path"
-import { Effect, Exit } from "effect"
+import { Cause, Effect, Exit } from "effect"
 import { realpath, stat } from "node:fs/promises"
 import type { Design } from "@reddb-io/redcode-schema/design"
 import { DesignBuild } from "@reddb-io/redcode-core/design/build"
@@ -65,14 +65,28 @@ export const grant = Effect.fn("DesignRead.grant")(function* (document: Design.I
 export const tooling = Effect.fn("DesignRead.tooling")(function* (document: Design.Info, ask: Tool.Context["ask"]) {
   const files = yield* Effect.promise(() => DesignBuild.tooling(document))
   if (!files.length) return false
+  const patterns = yield* Effect.promise(() =>
+    Promise.all(files.map(async (file) => ((await stat(file)).isDirectory() ? path.join(file, "*") : file))),
+  )
   const exit = yield* ask({
     permission: "project_tooling",
-    patterns: files,
-    always: files,
+    patterns,
+    always: patterns,
     metadata: {
       origin: "design.system",
       reason: `execute project tooling: ${files.map((file) => path.basename(file)).join(", ")} (runs in the redcode process)`,
     },
   }).pipe(Effect.exit)
-  return Exit.isSuccess(exit)
+  if (Exit.isSuccess(exit)) return true
+  // Only a refusal (a deny rule, a rejected prompt or a correction) means building without the
+  // pipeline; tool contexts surface those as defects, so inspect the squashed cause. Anything else propagates.
+  const refusal: unknown = Cause.squash(exit.cause)
+  if (
+    typeof refusal === "object" &&
+    refusal &&
+    "_tag" in refusal &&
+    ["PermissionDeniedError", "PermissionRejectedError", "PermissionCorrectedError"].includes(String(refusal._tag))
+  )
+    return false
+  return yield* Effect.failCause(exit.cause)
 })

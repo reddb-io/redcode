@@ -144,6 +144,9 @@ function permissionTitle(toolName: string, input: ToolInput) {
     case "external_directory":
       return stringValue(input.description) ?? stringValue(input.command) ?? stringValue(input.parentDir)
 
+    case "project_tooling":
+      return stringValue(input.reason)
+
     case "webfetch":
       return stringValue(input.url)
 

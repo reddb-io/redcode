@@ -122,6 +122,8 @@ const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
+          // Design builds execute the project's PostCSS and Tailwind configuration in this process.
+          project_tooling: "ask",
           design_exit: "deny",
           goal_complete: "deny",
           external_directory: {
