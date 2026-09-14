@@ -2,6 +2,7 @@ export * as DesignBuild from "./build"
 
 import path from "node:path"
 import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
 import { mkdir, realpath, stat } from "node:fs/promises"
 import { parse } from "jsonc-parser"
 import { Option, Schema } from "effect"
@@ -429,8 +430,14 @@ async function pipeline(
     // loader ignores URL queries, so a dynamic import would keep returning the first evaluation.
     // Bun's transpile cache is keyed by path and mtime, so an edit that keeps the same mtime
     // (within the filesystem's timestamp granularity) can still be served from that cache.
+    // A process with an asynchronous Bun loader plugin (the TUI's solid transform) cannot
+    // require such a file at all; the import fallback then applies until the next restart.
     delete require.cache[file]
-    const module: unknown = require(file)
+    const module: unknown = await (async () => require(file))().catch((error: unknown) =>
+      error instanceof Error && error.message.includes("async module")
+        ? import(pathToFileURL(file).href)
+        : Promise.reject(error),
+    )
     return typeof module === "object" && module && "default" in module ? module.default : module
   }
   const tailwindFile = await locate(base, "tailwind.config", tailwindExtensions)
