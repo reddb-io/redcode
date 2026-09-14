@@ -86,7 +86,15 @@ describe("DesignFeed.reduce", () => {
       event(SessionEvent.AgentSwitched, 8, encoded({ sessionID, messageID: "msg_switch", agent: "plan" })),
     ])
     expect(items).toEqual([
-      { type: "user", seq: 3, at: 1_700_000_000_000, id: "msg_review", text: "Overall the flow works", notes: 2 },
+      {
+        type: "user",
+        seq: 3,
+        at: 1_700_000_000_000,
+        id: "msg_review",
+        text: "Overall the flow works",
+        notes: 2,
+        pending: true,
+      },
       {
         type: "tool",
         seq: 4,

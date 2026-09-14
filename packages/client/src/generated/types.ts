@@ -1978,6 +1978,7 @@ export type DesignsFeedOutput =
       readonly id: string
       readonly text: string
       readonly notes: number
+      readonly pending?: boolean
     }
   | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
   | {

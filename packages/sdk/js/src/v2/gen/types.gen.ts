@@ -5087,6 +5087,7 @@ export type DesignFeedEvent =
       id: string
       text: string
       notes: number | "NaN" | "Infinity" | "-Infinity"
+      pending?: boolean
     }
   | {
       seq: number | "NaN" | "Infinity" | "-Infinity"

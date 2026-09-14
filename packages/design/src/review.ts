@@ -120,9 +120,12 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           variants: { id: string; name: string }[]
           variant: string
           phase: "sending" | "applying"
-          /** When the server admitted it, in the feed's clock; earlier agent states say nothing about it. */
-          admitted?: number
+          /** A turn took its message up: the feed echoed it delivered, not merely admitted. */
+          consumed?: boolean
+          /** The agent was working after taking it up. */
           working?: boolean
+          /** The agent went idle again after that. */
+          idle?: boolean
           published?: string
         }
       | undefined,
@@ -130,10 +133,12 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     operationCheck: undefined as
       | {
           action: Design.VariantOperation
+          feedback: string
           revision: string
           variants: { id: string; name: string }[]
-          admitted: number
+          consumed: boolean
           working: boolean
+          idle: boolean
           unchanged: boolean
         }
       | undefined,
@@ -141,7 +146,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     lastFailure: undefined as
       | { action: Design.VariantOperation; revision: string; variants: { id: string; name: string }[] }
       | undefined,
-    agentAt: 0,
+    /** Pending check that an idle agent stayed idle; a following turn reports working first. */
+    idleCheck: undefined as ReturnType<typeof setTimeout> | undefined,
     /** The operation last requested, kept for a retry until the agent's revision carries it. */
     operationDraft: undefined as Design.VariantOperation | undefined,
     /** The operation the dialog is composing. */
@@ -1114,30 +1120,58 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (!state.loading && !state.working && !state.creating && !document.hidden && !root.querySelector("dialog[open]"))
       void run(refresh, undefined, true)
   }
+  /**
+   * The agent went idle after taking the operation up. It counts only once the agent is still idle a
+   * moment later: a host may end one turn before starting the next that picks the message up.
+   */
+  const agentIdle = () => {
+    state.idleCheck = undefined
+    if (state.stopped || state.agent !== "idle") return
+    const operation = state.pendingOperation
+    const check = state.operationCheck
+    if (operation?.consumed && operation.working) {
+      operation.idle = true
+      if (!operation.published) failOperation(copy.operationStopped)
+      return
+    }
+    if (!check?.consumed || !check.working) return
+    check.idle = true
+    if (check.unchanged) failOperation(copy.operationUnchanged)
+  }
   const onFeed = (event: Design.FeedEvent) => {
     if (state.stopped) return
     const operation = state.pendingOperation
     const check = state.operationCheck
-    // A state stamped before the operation was admitted (a reconnect replays them) says nothing about
-    // it. The feed and this page share the serving host's clock; a second of slack absorbs rounding.
-    const since = (admitted: number | undefined) => admitted !== undefined && event.at >= admitted - 1000
+    // Agent states say nothing about an operation until a turn has taken its message up: an operation
+    // sent while an earlier turn runs waits for that turn, or the next one, to deliver it.
     if (event.type === "state") {
       pill(event.state === "working" ? "stateWorking" : "stateIdle")
       state.agent = event.state
-      state.agentAt = event.at
       if (event.state === "working") {
-        if (operation?.phase === "applying" && since(operation.admitted)) operation.working = true
-        if (check && since(check.admitted)) check.working = true
+        clearTimeout(state.idleCheck)
+        state.idleCheck = undefined
+        if (operation?.consumed) operation.working = true
+        if (check?.consumed) check.working = true
         return
       }
-      // The agent went idle after taking up the operation without publishing anything newer.
-      if (operation?.phase === "applying" && operation.working && !operation.published && since(operation.admitted))
-        failOperation(copy.operationStopped)
-      else if (check?.unchanged && check.working && since(check.admitted)) failOperation(copy.operationUnchanged)
+      if (!state.idleCheck && ((operation?.consumed && operation.working) || (check?.consumed && check.working)))
+        state.idleCheck = setTimeout(agentIdle, 2000)
       return
     }
     if (event.type === "agent") return
     upsert(event)
+    if (event.type === "user" && !event.pending) {
+      // Delivered into a turn: from here on the agent's working and idle states are about this operation.
+      const running = state.agent === "working"
+      if (operation?.feedback.id === event.id) {
+        operation.consumed = true
+        operation.working ||= running
+      }
+      if (check?.feedback === event.id) {
+        check.consumed = true
+        check.working ||= running
+      }
+    }
     if (event.type !== "published") return
     if (operation && event.design === state.design?.id && event.revision !== operation.feedback.revision)
       operation.published = event.revision
@@ -1173,10 +1207,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       state.pendingOperation = undefined
       state.operationCheck = {
         action: operation.feedback.action,
+        feedback: operation.feedback.id,
         revision: operation.feedback.revision,
         variants: operation.variants,
-        admitted: operation.admitted ?? Date.now(),
+        consumed: !!operation.consumed,
         working: !!operation.working,
+        idle: !!operation.idle,
         unchanged: false,
       }
     }
@@ -1741,7 +1777,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       variants: state.variants.map((item) => ({ ...item })),
       variant: state.variant,
       phase: "sending",
-      ...(state.agent === "working" ? { working: true } : {}),
     }
     state.operationDraft = action
     state.operationCheck = undefined
@@ -1764,10 +1799,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         failOperation(error instanceof Error ? error.message : copy.failure)
       return
     }
-    if (state.pendingOperation?.feedback.id === feedback.id) {
-      state.pendingOperation.phase = "applying"
-      state.pendingOperation.admitted = Date.now()
-    }
+    if (state.pendingOperation?.feedback.id === feedback.id) state.pendingOperation.phase = "applying"
     save()
     status(copy.operationRequested, "operationRequested", "success")
   }
@@ -1989,6 +2021,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // in, an open dialog, menu or card.
   const annotationKey = (key: string) => {
     if (element("studio").hidden || element("review-tools").hidden) return false
+    // Escape leaves the merge selection wherever it is pressed, the preview frame included.
+    if (state.merging && key === "Escape" && !root.querySelector("dialog[open]")) {
+      element("cancel-merge").click()
+      return true
+    }
     if (
       root.querySelector("dialog[open]") ||
       !element("menu").hidden ||
@@ -2155,8 +2192,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (check && latest && state.revision !== check.revision) {
         check.unchanged = unchanged(check, state.variants)
         if (!check.unchanged) settleOperation(check.action)
-        else if (check.working && state.agent === "idle" && state.agentAt >= check.admitted - 1000)
-          failOperation(copy.operationUnchanged)
+        else if (check.consumed && check.working && check.idle) failOperation(copy.operationUnchanged)
       }
       // The feed can report the agent idle before the revision it published reaches the page.
       const failure = state.lastFailure
