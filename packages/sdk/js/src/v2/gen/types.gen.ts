@@ -5289,6 +5289,15 @@ export type DesignRevision = {
   document: DesignInfo
 }
 
+export type DesignVariantOperation = {
+  kind: "delete" | "rename" | "reorder" | "merge" | "split"
+  variants: Array<string>
+  labels?: Array<string>
+  name?: string
+  order?: Array<string>
+  text?: string
+}
+
 export type DesignParamContext = {
   values: DesignParamValues
   preset?: string
@@ -5308,6 +5317,7 @@ export type DesignFeedbackItem = {
 }
 
 export type DesignFeedback = {
+  action?: DesignVariantOperation
   params?: DesignParamContext
   id: string
   revision: string

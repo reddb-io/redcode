@@ -3652,7 +3652,54 @@ export type DesignsRefreshOutput = {
 export type DesignsFeedbackInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly action?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly revision?: string
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["action"]
   readonly params?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3684,6 +3731,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["params"]
   readonly id: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3715,6 +3770,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["id"]
   readonly revision: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3746,6 +3809,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["revision"]
   readonly text: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3777,6 +3848,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["text"]
   readonly items: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3808,6 +3887,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["items"]
   readonly assets: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3839,6 +3926,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["assets"]
   readonly snapshot: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3870,6 +3965,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["snapshot"]
   readonly whiteboards?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3901,6 +4004,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["whiteboards"]
   readonly delivery: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -3932,6 +4043,14 @@ export type DesignsFeedbackInput = {
     readonly end: boolean
   }["delivery"]
   readonly end: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string
@@ -4116,6 +4235,14 @@ export type DesignsApprovalOutput = {
     readonly created: number | "Infinity" | "-Infinity" | "NaN"
   }>
   readonly feedback: ReadonlyArray<{
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
     readonly params?: {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
       readonly preset?: string

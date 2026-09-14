@@ -711,6 +711,46 @@ it.instance(
       expect(message?.parts.filter((part) => part.type === "file").map((part) => part.filename)).toEqual([
         "reference.png",
       ])
+      // A variant operation needs no note and reaches the session through the shared renderer.
+      const operation = yield* feedback.admit(session.id, document.id, {
+        id: SessionMessage.ID.make("msg_variant_operation"),
+        revision: document.revision,
+        text: "",
+        params: { values: {}, variant: "stone" },
+        items: [],
+        assets: [],
+        snapshot: "",
+        end: false,
+        delivery: "steer",
+        action: { kind: "rename", variants: ["stone"], labels: ["Stone"], name: "Granite" },
+      })
+      expect(operation.status).toBe("admitted")
+      const operationPart = (yield* sessions.messages({ sessionID: session.id }))
+        .find((item) => item.info.id === "msg_variant_operation")
+        ?.parts.find((part) => part.type === "text")
+      expect(operationPart?.type === "text" && operationPart.text).toContain(
+        '## Variant operation\nOperation: rename Stone → Granite\nKind: rename\nVariants: stone "Stone"\nNew label: "Granite"',
+      )
+      expect(operationPart?.type === "text" && operationPart.metadata?.designFeedback).toMatchObject({
+        feedback: "msg_variant_operation",
+        text: "",
+        notes: [],
+        operation: "rename Stone → Granite",
+      })
+      const refused = yield* feedback
+        .admit(session.id, document.id, {
+          id: SessionMessage.ID.make("msg_variant_operation_invalid"),
+          revision: document.revision,
+          text: "",
+          items: [],
+          assets: [],
+          snapshot: "",
+          end: false,
+          delivery: "steer",
+          action: { kind: "merge", variants: ["stone"] },
+        })
+        .pipe(Effect.flip)
+      expect(refused.message).toBe("A merge operation names at least two variants")
     }),
   {
     config: {

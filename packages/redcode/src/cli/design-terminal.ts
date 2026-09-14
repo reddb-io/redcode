@@ -64,6 +64,7 @@ export async function create(input: {
         input.write(
           [
             `Design review ${review.id} · ${review.revision}${review.variant ? ` · ${review.variant}` : ""}${review.ended ? " · ended" : ""}`,
+            review.operation ? `Variant operation: ${review.operation}` : "",
             review.text,
             ...review.notes.map((note, index) => `${index + 1}. ${note.label} — ${note.text}`),
             review.attachments.length ? `Attachments: ${review.attachments.join(", ")}` : "",

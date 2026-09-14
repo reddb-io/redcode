@@ -310,8 +310,16 @@ const make = Effect.gen(function* () {
   const prepareFeedback = Effect.fn("Design.prepareFeedback")(function* (id: Design.ID, input: Design.Feedback) {
     if (!/^msg_[A-Za-z0-9_-]{1,128}$/.test(input.id))
       return yield* new Design.Error({ code: "invalid", message: "Invalid feedback identifier" })
-    if (!input.text.trim() && !input.items.length && !input.whiteboards?.length && !input.assets.length)
+    if (
+      !input.action &&
+      !input.text.trim() &&
+      !input.items.length &&
+      !input.whiteboards?.length &&
+      !input.assets.length
+    )
       return yield* new Design.Error({ code: "invalid", message: "Write a note before sending feedback" })
+    const operationProblem = input.action && Design.variantOperationProblem(input.action)
+    if (operationProblem) return yield* new Design.Error({ code: "invalid", message: operationProblem })
     // Frozen rows and approval packages predate this bound, so it is enforced on admission, not in the schema.
     if (input.snapshot.length > 30000)
       return yield* new Design.Error({ code: "invalid", message: "Page snapshot exceeds 30 000 characters" })

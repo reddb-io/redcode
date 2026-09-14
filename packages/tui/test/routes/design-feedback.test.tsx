@@ -26,6 +26,20 @@ test("compact Design review lists the notes and attachments without the rendered
             snapshot: true,
           }}
         />
+        <DesignFeedbackNotice
+          value={{
+            id: "design_checkout",
+            feedback: "msg_operation",
+            revision: "rev_2",
+            variant: "compact",
+            ended: false,
+            text: "",
+            notes: [],
+            attachments: [],
+            snapshot: false,
+            operation: "merge Spacious + Compact",
+          }}
+        />
         <DesignFeedbackNotice value={{ id: "design_checkout", notes: "MALFORMED REVIEW" }} />
         <input id="prompt" placeholder="Continue the conversation" focused />
       </>
@@ -42,6 +56,9 @@ test("compact Design review lists the notes and attachments without the rendered
     expect(screen).toContain("2. page — Add a footer")
     expect(screen).toContain("reference.png")
     expect(screen).toContain("Page text captured")
+    expect(screen).toContain("Design review · design_checkout · rev_2 · compact")
+    expect(screen).toContain("Variant operation: merge Spacious + Compact")
+    expect(screen.split("Variant operation:")).toHaveLength(2)
     expect(screen).toContain("Continue the conversation")
     expect(screen).not.toContain("<design-review")
     expect(screen).not.toContain("MALFORMED REVIEW")

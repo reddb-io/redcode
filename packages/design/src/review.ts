@@ -109,6 +109,41 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     peer: "",
     comparing: false,
     variantPending: undefined as Design.Feedback | undefined,
+    /**
+     * A variant operation sent to the agent and shown provisionally on the revision it was issued
+     * against, until a newer revision replaces it or the request fails.
+     */
+    pendingOperation: undefined as
+      | {
+          feedback: Design.Feedback & { action: Design.VariantOperation }
+          /** The variants and selection before the provisional change, to revert to. */
+          variants: { id: string; name: string }[]
+          variant: string
+          phase: "sending" | "applying"
+          working?: boolean
+          published?: string
+          failure?: string
+        }
+      | undefined,
+    /** An operation whose newer revision arrived; it fails if that revision left it undone once the agent is idle. */
+    operationCheck: undefined as
+      | {
+          action: Design.VariantOperation
+          revision: string
+          variants: { id: string; name: string }[]
+          working: boolean
+          unchanged: boolean
+        }
+      | undefined,
+    /** The operation last requested, kept for a retry until the agent's revision carries it. */
+    operationDraft: undefined as Design.VariantOperation | undefined,
+    /** The operation the dialog is composing. */
+    composing: undefined as { kind: Design.VariantOperationKind; variants: string[] } | undefined,
+    merging: false,
+    mergePick: [] as string[],
+    /** Where notes on a variant merged away go by default: removed id to kept id. */
+    retarget: {} as Record<string, string>,
+    agent: "" as "" | "working" | "idle",
     approving: undefined as Design.Approve | undefined,
     approval: undefined as Design.Approval | undefined,
     feed: [] as Design.FeedEvent[],
@@ -199,6 +234,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     more: icon('<path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.4"/>'),
     add: icon('<path d="M8 3.2v9.6M3.2 8h9.6"/>'),
     annotate: icon('<path d="M10.6 2.6l2.8 2.8-7.7 7.7-3.4.6.6-3.4z"/><path d="M9 4.2l2.8 2.8"/>'),
+    edit: icon('<path d="M10.6 2.8l2.6 2.6-7.5 7.5-3.3.7.7-3.3z"/><path d="M9.2 4.2l2.6 2.6"/>'),
     single: icon('<rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.5"/>'),
     compare: icon(
       '<rect x="1.7" y="3.2" width="5.4" height="9.6" rx="1.3"/><rect x="8.9" y="3.2" width="5.4" height="9.6" rx="1.3"/>',
@@ -219,9 +255,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 .note{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.note .note-label{font-weight:600;font-size:12px}.note .note-text{flex:1 1 100%;white-space:pre-wrap}.note button{float:none;margin-left:auto;padding:2px 7px;font-size:11px}.note button+button{margin-left:0}.note:hover{background:color-mix(in oklch,var(--panel) 60%,transparent)}
 .sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
 #inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
+#variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
     </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
     <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
+    <section id="studio" hidden><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" class="icon" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.edit}</button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div class="viewport"><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
     <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
@@ -236,9 +273,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     <div id="param-fields"></div></div>
     <div class="section"><label><span data-copy="paramName">${copy.paramName}</span><input id="param-name" required maxlength="100"></label>
     <button type="button" id="param-save" data-copy="paramSave">${copy.paramSave}</button>
-    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><div id="status" role="status" aria-live="polite"></div>`
+    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><div id="status" role="status" aria-live="polite"></div>`
 
-  for (const id of ["approve-dialog", "variant-dialog"]) {
+  for (const id of ["approve-dialog", "variant-dialog", "operation-dialog"]) {
     const notice = document.createElement("p")
     notice.dataset.actionStatus = ""
     notice.setAttribute("role", "status")
@@ -286,9 +323,30 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         (!!state.design?.ended && !["html", "audit", "gif", "compare"].includes(id))
     element<HTMLButtonElement>("param-save").disabled ||=
       !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
-    element<HTMLButtonElement>("approve").disabled ||= state.revision !== state.design?.revision
+    element<HTMLButtonElement>("approve").disabled ||=
+      state.revision !== state.design?.revision || !!state.pendingOperation
     element<HTMLButtonElement>("confirm-approve").disabled ||=
-      !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
+      !state.revision ||
+      !!state.failedPreview ||
+      state.revision !== state.design?.revision ||
+      !!state.design?.ended ||
+      !!state.pendingOperation
+    // Variant operations change the latest revision only, one at a time, while the review is open.
+    const blocked = operationBlocked()
+    const index = state.variants.findIndex((item) => item.id === state.variant)
+    for (const id of ["rename-variant", "split-variant", "delete-variant", "select-merge"])
+      element<HTMLButtonElement>(id).disabled = blocked || index < 0
+    element<HTMLButtonElement>("move-left").disabled = blocked || index <= 0
+    element<HTMLButtonElement>("move-right").disabled = blocked || index < 0 || index >= state.variants.length - 1
+    element<HTMLButtonElement>("merge-variants").disabled = blocked || state.mergePick.length < 2
+    element<HTMLButtonElement>("confirm-operation").disabled = blocked
+    element<HTMLButtonElement>("retry-operation").disabled = blocked
+    element<HTMLButtonElement>("variant-actions").disabled = state.working || !!state.failedPreview
+    element("merge-options")
+      .querySelectorAll("input")
+      .forEach((box) => {
+        box.disabled = blocked
+      })
     element<HTMLButtonElement>("send").disabled =
       state.working || !state.revision || !!state.failedPreview || (!!state.design?.ended && !state.pending)
     element<HTMLButtonElement>("send-end").disabled =
@@ -308,7 +366,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   // Overflow entries stand in for the icon buttons they delegate to, so they follow the same state.
   const syncMenu = () =>
-    root.querySelectorAll<HTMLButtonElement>("#menu [data-for]").forEach((item) => {
+    root.querySelectorAll<HTMLButtonElement>("[role=menu] [data-for]").forEach((item) => {
       const target = element<HTMLButtonElement>(item.dataset.for!)
       item.disabled = target.disabled
       item.hidden = target.hidden || (target.closest<HTMLElement>("#studio")?.hidden ?? false)
@@ -329,16 +387,82 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const items = state.variants
     element("no-variants").hidden = items.length > 0
     element("organize-variants").hidden = items.length > 0
+    element("variant-actions").hidden = items.length === 0
+    state.mergePick = state.mergePick.filter((id) => items.some((item) => item.id === id))
+    state.merging &&= items.length > 1
+    element("variants").hidden = state.merging
+    element("merge-bar").hidden = !state.merging
+    element("merge-options").replaceChildren(
+      ...(state.merging ? items : []).map((item) => {
+        const label = document.createElement("label")
+        label.className = "check"
+        const box = document.createElement("input")
+        box.type = "checkbox"
+        box.id = `merge-${item.id}`
+        box.checked = state.mergePick.includes(item.id)
+        // Ticking order is merge order: the first ticked variant keeps its id.
+        box.addEventListener("change", () => {
+          state.mergePick = box.checked
+            ? [...state.mergePick.filter((id) => id !== item.id), item.id]
+            : state.mergePick.filter((id) => id !== item.id)
+          controls()
+        })
+        label.append(box, item.name)
+        return label
+      }),
+    )
+    const operation = state.pendingOperation?.feedback.action
+    const badge = operation
+      ? operation.kind === "merge"
+        ? ("operationMerging" as const)
+        : operation.kind === "split"
+          ? ("operationSplitting" as const)
+          : ("operationApplying" as const)
+      : undefined
+    element("operation-badge").hidden = !badge
+    if (badge) {
+      element("operation-badge").dataset.copy = badge
+      element("operation-badge").textContent = copy[badge]
+    }
+    const before = state.pendingOperation?.variants ?? []
+    const involved = (id: string) =>
+      !!operation &&
+      (operation.kind === "reorder"
+        ? before.findIndex((item) => item.id === id) !== items.findIndex((item) => item.id === id)
+        : operation.variants.includes(id))
+    const approved = state.approval?.variant
+    element("approval-reselect").hidden =
+      !approved ||
+      state.approval?.revision.id === state.revision ||
+      !!state.design?.ended ||
+      !items.length ||
+      items.some((item) => item.id === approved.id)
     element("variants").replaceChildren(
       ...items.map((item, index) => {
         const button = document.createElement("button")
         button.id = `variant-${item.id}`
         button.textContent = item.name
+        if (badge && involved(item.id)) {
+          const mark = document.createElement("span")
+          mark.className = "op-badge"
+          mark.dataset.copy = badge
+          mark.textContent = copy[badge]
+          button.dataset.operation = operation!.kind
+          button.append(mark)
+        }
         button.setAttribute("role", "tab")
         button.setAttribute("aria-controls", "primary-pane")
         button.setAttribute("aria-selected", String(item.id === state.variant))
         button.tabIndex = item.id === state.variant ? 0 : -1
-        button.onclick = () => selectVariant(item.id)
+        // Shift-click starts choosing variants to merge, beginning with the one on screen.
+        button.addEventListener("click", (event) => {
+          if (!event.shiftKey) return selectVariant(item.id)
+          if (operationBlocked() || item.id === state.variant) return
+          state.merging = true
+          state.mergePick = [...new Set([state.variant, ...state.mergePick, item.id])].filter(Boolean)
+          drawVariants()
+          input(`merge-${item.id}`).focus()
+        })
         button.onkeydown = (event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
           event.preventDefault()
@@ -381,6 +505,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (state.comparing && peer.srcdoc !== state.html) peer.srcdoc = state.html
     if (!state.comparing) peer.removeAttribute("srcdoc")
     if (state.comparing) peer.contentWindow?.postMessage({ type: "design:variant", id: state.peer }, "*")
+    drawNotes()
     controls()
   }
   const tabs = ["review", "assets", "details", "params"] as const
@@ -561,6 +686,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           board: state.board,
           variantPrompt: input("variant-prompt").value,
           variantPending: state.variantPending,
+          pendingOperation: state.pendingOperation,
+          operationDraft: state.operationDraft,
+          retarget: state.retarget,
         }),
       )
     } catch {
@@ -602,8 +730,41 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         const text = document.createElement("span")
         text.className = "note-text"
         text.textContent = note.text
+        // A note on a variant that is gone from the revision on screen says so and offers a new home.
+        const from = variantOf(note.target)
+        const orphaned = !!from && state.variants.length > 0 && !state.variants.some((item) => item.id === from)
+        const destination = orphaned
+          ? (state.variants.find((item) => item.id === state.retarget[from!]) ??
+            state.variants.find((item) => item.id === state.variant) ??
+            state.variants[0])
+          : undefined
+        const orphan: HTMLElement[] = []
+        if (orphaned && destination) {
+          row.dataset.orphaned = "true"
+          const mark = document.createElement("span")
+          mark.className = "note-orphaned"
+          mark.dataset.copy = "noteOrphaned"
+          mark.textContent = copy.noteOrphaned
+          const move = document.createElement("button")
+          move.type = "button"
+          move.dataset.copy = "retarget"
+          move.dataset.copySuffix = ` ${destination.name}`
+          move.textContent = `${copy.retarget} ${destination.name}`
+          move.addEventListener("click", () => {
+            if (state.pending) return
+            state.notes[index] = {
+              ...note,
+              target: note.target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, `variant:${destination.id} `),
+              ...(note.params ? { params: { ...note.params, variant: destination.id } } : {}),
+            }
+            save()
+            drawNotes()
+          })
+          orphan.push(mark, move)
+        }
         row.append(
           label,
+          ...orphan,
           action("reveal", () => reveal(note.target)),
           action("remove", () => {
             if (state.pending) return
@@ -820,6 +981,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.boards = []
     state.board = undefined
     state.variantPending = undefined
+    state.pendingOperation = undefined
+    state.operationDraft = undefined
+    state.retarget = {}
     input("variant-prompt").value = ""
     input("note").value = ""
     try {
@@ -837,6 +1001,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.boards = stored.boards ?? []
         state.board = stored.board
         state.variantPending = stored.variantPending
+        // A provisional change survives a reload only while its revision is still the latest one.
+        state.pendingOperation =
+          stored.pendingOperation?.feedback?.revision === state.revision && state.revision === state.design?.revision
+            ? stored.pendingOperation
+            : undefined
+        state.operationDraft = stored.operationDraft
+        state.retarget = stored.retarget ?? {}
         input("variant-prompt").value = stored.variantPrompt ?? ""
         input("note").value = stored.text ?? ""
       }
@@ -928,13 +1099,28 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   const onFeed = (event: Design.FeedEvent) => {
     if (state.stopped) return
+    const operation = state.pendingOperation
     if (event.type === "state") {
       pill(event.state === "working" ? "stateWorking" : "stateIdle")
+      state.agent = event.state
+      if (event.state === "working") {
+        if (operation) operation.working = true
+        if (state.operationCheck) state.operationCheck.working = true
+        return
+      }
+      // The agent went idle after taking up the operation without publishing anything newer.
+      if (operation?.phase === "applying" && operation.working && !operation.published)
+        failOperation(operation.failure ? `${copy.operationStopped} ${operation.failure}` : copy.operationStopped)
+      else if (state.operationCheck?.unchanged && state.operationCheck.working) failOperation(copy.operationUnchanged)
       return
     }
     if (event.type === "agent") return
     upsert(event)
+    if (event.type === "tool" && event.status === "failed" && operation)
+      operation.failure = `${event.tool}${event.summary ? `: ${event.summary}` : ""}`
     if (event.type !== "published") return
+    if (operation && event.design === state.design?.id && event.revision !== operation.feedback.revision)
+      operation.published = event.revision
     pill("statePublished")
     if (event.revision !== state.revision && event.revision !== state.design?.revision) poll()
   }
@@ -961,6 +1147,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.failedPreview = ""
     element("preview-error").hidden = true
     element("primary-pane").hidden = false
+    // A newer latest revision replaces the provisional view; its variants decide whether it carried the change.
+    const operation = state.pendingOperation
+    if (operation && revisionID !== operation.feedback.revision && revisionID === state.design?.revision) {
+      state.pendingOperation = undefined
+      state.operationCheck = {
+        action: operation.feedback.action,
+        revision: operation.feedback.revision,
+        variants: operation.variants,
+        working: !!operation.working,
+        unchanged: false,
+      }
+    }
     if (state.revision) save()
     if (state.revision !== revisionID && !keep) {
       state.variant = ""
@@ -1407,6 +1605,229 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     void run(() => requestVariant(), element("request-variant"))
   }
   click("organize-variants", () => requestVariant(true))
+
+  // Variant operations: the agent carries each one out in a new revision; the page shows it at once.
+  const operationBlocked = () =>
+    state.working ||
+    !state.revision ||
+    !!state.failedPreview ||
+    state.revision !== state.design?.revision ||
+    !!state.design?.ended ||
+    !!state.pendingOperation
+  const provisional = (items: { id: string; name: string }[]) => {
+    const action = state.pendingOperation?.feedback.action
+    if (!action) return items
+    const [id] = action.variants
+    if (action.kind === "delete") return items.filter((item) => item.id !== id)
+    if (action.kind === "rename") return items.map((item) => (item.id === id ? { ...item, name: action.name! } : item))
+    if (action.kind === "reorder") {
+      const ordered = (action.order ?? []).flatMap((id) => items.filter((item) => item.id === id))
+      return [...ordered, ...items.filter((item) => !ordered.includes(item))]
+    }
+    return items
+  }
+  const showOperation = (frame: "preview" | "peer-preview") => {
+    const action = state.pendingOperation?.feedback.action
+    const target = element<HTMLIFrameElement>(frame).contentWindow
+    if (!action || !target) return
+    if (action.kind === "delete") target.postMessage({ type: "design:variant-hide", id: action.variants[0] }, "*")
+    if (action.kind === "rename")
+      target.postMessage({ type: "design:variant-label", id: action.variants[0], name: action.name }, "*")
+    if (action.kind === "reorder") target.postMessage({ type: "design:variant-order", order: action.order }, "*")
+  }
+  /** Whether the variants on screen still look the way they did before the operation. */
+  const unchanged = (
+    check: { action: Design.VariantOperation; variants: { id: string; name: string }[] },
+    after: { id: string; name: string }[],
+  ) => {
+    const { action, variants: before } = check
+    const [id] = action.variants
+    if (action.kind === "delete") return after.some((item) => item.id === id)
+    if (action.kind === "rename")
+      return after.find((item) => item.id === id)?.name === before.find((item) => item.id === id)?.name
+    if (action.kind === "merge") return action.variants.every((id) => after.some((item) => item.id === id))
+    if (action.kind === "split") return after.every((item) => before.some((old) => old.id === item.id))
+    const ids = after.map((item) => item.id).filter((id) => before.some((item) => item.id === id))
+    return ids.join("\n") === before.map((item) => item.id).join("\n")
+  }
+  const reloadFrames = () => {
+    state.restoreScroll = true
+    for (const id of ["preview", ...(state.comparing ? ["peer-preview"] : [])]) {
+      const frame = element<HTMLIFrameElement>(id)
+      frame.removeAttribute("srcdoc")
+      frame.srcdoc = state.html
+    }
+  }
+  /** Reverts a provisional change still on screen and reports why, keeping the request for a retry. */
+  const failOperation = (message: string) => {
+    const operation = state.pendingOperation
+    const action = operation?.feedback.action ?? state.operationCheck?.action
+    state.pendingOperation = undefined
+    state.operationCheck = undefined
+    if (action) state.operationDraft = action
+    if (operation && operation.feedback.revision === state.revision) {
+      state.variants = operation.variants
+      if (operation.variants.some((item) => item.id === operation.variant)) state.variant = operation.variant
+      reloadFrames()
+    }
+    const text = `${copy.operationFailed} ${message}`
+    element("operation-error").textContent = text
+    element("operation-state").hidden = false
+    status(text, undefined, "error")
+    save()
+    drawVariants()
+  }
+  const startOperation = async (action: Design.VariantOperation) => {
+    // Runs inside `run`, so the working flag is already set; every other block still applies.
+    if (
+      state.pendingOperation ||
+      !state.design ||
+      !state.revision ||
+      state.failedPreview ||
+      state.revision !== state.design.revision ||
+      state.design.ended
+    )
+      return
+    const feedback = {
+      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      revision: state.revision,
+      text: "",
+      items: [],
+      assets: [],
+      snapshot: "",
+      delivery: "steer" as const,
+      end: false,
+      action,
+      ...(state.variant ? { params: { values: {}, variant: state.variant } } : {}),
+    }
+    state.pendingOperation = {
+      feedback,
+      variants: state.variants.map((item) => ({ ...item })),
+      variant: state.variant,
+      phase: "sending",
+      ...(state.agent === "working" ? { working: true } : {}),
+    }
+    state.operationDraft = action
+    state.operationCheck = undefined
+    if (action.kind === "merge") for (const id of action.variants.slice(1)) state.retarget[id] = action.variants[0]
+    state.merging = false
+    state.mergePick = []
+    element("operation-state").hidden = true
+    // Show the change before the request settles.
+    showOperation("preview")
+    if (state.comparing) showOperation("peer-preview")
+    state.variants = provisional(state.variants)
+    if (!state.variants.some((item) => item.id === state.variant)) state.variant = state.variants[0]?.id ?? ""
+    save()
+    drawVariants()
+    try {
+      await api(`/${state.design.id}/feedback`, "POST", feedback)
+    } catch (error) {
+      if (state.pendingOperation?.feedback.id === feedback.id)
+        failOperation(error instanceof Error ? error.message : copy.failure)
+      return
+    }
+    if (state.pendingOperation?.feedback.id === feedback.id) state.pendingOperation.phase = "applying"
+    save()
+    status(copy.operationRequested, "operationRequested", "success")
+  }
+  const variantLabels = (ids: readonly string[]) =>
+    ids.map((id) => state.variants.find((item) => item.id === id)?.name.slice(0, 100) ?? id)
+  const operationDialog = element<HTMLDialogElement>("operation-dialog")
+  const openOperation = (kind: Design.VariantOperationKind, variants: string[]) => {
+    if (operationBlocked() || !variants.length) return
+    if (kind === "merge" && variants.length < 2) {
+      status(copy.mergeNeedsTwo, "mergeNeedsTwo", "error")
+      return
+    }
+    const draft =
+      state.operationDraft?.kind === kind && state.operationDraft.variants.join("\n") === variants.join("\n")
+        ? state.operationDraft
+        : undefined
+    state.composing = { kind, variants }
+    const key = (suffix: "Heading" | "Action") => `${kind}${suffix}` as keyof ReviewCopy
+    element("operation-heading").dataset.copy = key("Heading")
+    element("operation-heading").textContent = copy[key("Heading")]
+    element("confirm-operation").dataset.copy = key("Action")
+    element("confirm-operation").textContent = copy[key("Action")]
+    element("operation-subject").textContent = variantLabels(variants).join(kind === "merge" ? " + " : ", ")
+    const hint = kind === "rename" ? undefined : (`${kind}Hint` as keyof ReviewCopy)
+    element("operation-hint").hidden = !hint
+    if (hint) {
+      element("operation-hint").dataset.copy = hint
+      element("operation-hint").textContent = copy[hint]
+    }
+    element("operation-name-field").hidden = kind !== "rename"
+    input("operation-name").required = kind === "rename"
+    input("operation-name").value = draft?.name ?? variantLabels(variants)[0]
+    element("operation-text-field").hidden = kind !== "merge" && kind !== "split"
+    input("operation-text").value = draft?.text ?? ""
+    operationDialog.showModal()
+    controls()
+    if (kind === "rename") input("operation-name").select()
+    else if (kind === "delete") element("cancel-operation").focus()
+    else input("operation-text").focus()
+  }
+  const composed = (): Design.VariantOperation | undefined => {
+    const current = state.composing
+    if (!current) return undefined
+    const text = input("operation-text").value.trim().slice(0, 2000)
+    return {
+      kind: current.kind,
+      variants: current.variants,
+      labels: variantLabels(current.variants),
+      ...(current.kind === "rename" ? { name: input("operation-name").value.trim().slice(0, 100) } : {}),
+      ...((current.kind === "merge" || current.kind === "split") && text ? { text } : {}),
+    }
+  }
+  // Typed guidance and names stay with the request until it is sent, including across a reload.
+  for (const id of ["operation-name", "operation-text"])
+    input(id).addEventListener("input", () => {
+      const action = composed()
+      if (!action || (action.kind === "rename" && !action.name)) return
+      state.operationDraft = action
+      save()
+    })
+  element("operation-form").addEventListener("submit", (event) => {
+    event.preventDefault()
+    const action = composed()
+    if (!action || (action.kind === "rename" && !action.name)) return
+    if (state.working) {
+      status(copy.busy, "busy")
+      return
+    }
+    operationDialog.close()
+    void run(() => startOperation(action), element("variant-actions"))
+  })
+  element("cancel-operation").addEventListener("click", () => operationDialog.close())
+  operationDialog.addEventListener("close", () => {
+    state.composing = undefined
+    const trigger = element<HTMLButtonElement>("variant-actions")
+    if (!trigger.hidden) trigger.focus()
+  })
+  const move = (step: -1 | 1) => {
+    const index = state.variants.findIndex((item) => item.id === state.variant)
+    const next = index + step
+    if (operationBlocked() || index < 0 || next < 0 || next >= state.variants.length) return
+    const ids = state.variants.map((item) => item.id)
+    const order = [...ids]
+    order.splice(index, 1)
+    order.splice(next, 0, ids[index])
+    void run(() => startOperation({ kind: "reorder", variants: ids, labels: variantLabels(ids), order }))
+  }
+  element("merge-variants").addEventListener("click", () => openOperation("merge", [...state.mergePick]))
+  element("cancel-merge").addEventListener("click", () => {
+    state.merging = false
+    state.mergePick = []
+    drawVariants()
+    element<HTMLButtonElement>("variant-actions").focus()
+  })
+  element("retry-operation").addEventListener("click", () => {
+    const draft = state.operationDraft
+    if (!draft) return
+    if (draft.kind === "reorder") void run(() => startOperation({ ...draft, labels: variantLabels(draft.variants) }))
+    else openOperation(draft.kind, [...draft.variants])
+  })
   for (const id of ["view-single", "view-compare"])
     element(id).onclick = () => {
       state.comparing = id === "view-compare"
@@ -1608,6 +2029,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (event.data?.type === "design:variants") {
       if (event.source === element<HTMLIFrameElement>("peer-preview").contentWindow) {
+        if (state.pendingOperation?.feedback.revision === state.revision) showOperation("peer-preview")
         element<HTMLIFrameElement>("peer-preview").contentWindow?.postMessage(
           { type: "design:variant", id: state.peer },
           "*",
@@ -1631,7 +2053,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           "*",
         )
       }
-      state.variants = event.data.variants
+      const announced: { id: string; name: string }[] = event.data.variants
         .slice(0, 20)
         .filter(
           (item: unknown): item is { id: string; name: string } =>
@@ -1647,7 +2069,21 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           (item: { id: string }, index: number, items: { id: string }[]) =>
             items.findIndex((other) => other.id === item.id) === index,
         )
+      const operation = state.pendingOperation
+      // A freshly loaded frame still shows the original variants: repeat the provisional change.
+      if (operation?.feedback.revision === state.revision) showOperation("preview")
+      state.variants = operation?.feedback.revision === state.revision ? provisional(announced) : announced
       if (!state.variants.some((item) => item.id === state.variant)) state.variant = state.variants[0]?.id ?? ""
+      const check = state.operationCheck
+      if (check && state.revision !== check.revision && state.revision === state.design?.revision) {
+        check.unchanged = unchanged(check, state.variants)
+        if (!check.unchanged) {
+          state.operationCheck = undefined
+          state.operationDraft = undefined
+          element("operation-state").hidden = true
+          save()
+        } else if (check.working && state.agent === "idle") failOperation(copy.operationUnchanged)
+      }
       drawVariants()
       drawParams()
       // A restored card re-anchors to its element once the frame has rendered it.
@@ -1823,69 +2259,97 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     input("card-text").focus()
   }
-  // The overflow menu holds the rarely used header actions: it opens from its trigger, moves with
-  // the arrow keys, and closes on Escape, on an outside pointer, or once an entry has been chosen.
-  const menu = element("menu")
-  const more = element<HTMLButtonElement>("more")
-  const menuItems = () =>
-    [...menu.querySelectorAll<HTMLButtonElement>("button")].filter((item) => !item.hidden && !item.disabled)
-  const closeMenu = (refocus = false) => {
-    if (menu.hidden) return
-    menu.hidden = true
-    more.setAttribute("aria-expanded", "false")
-    if (refocus) more.focus()
-  }
-  const openMenu = (last = false) => {
-    syncMenu()
-    menu.hidden = false
-    more.setAttribute("aria-expanded", "true")
-    const items = menuItems()
-    ;(last ? items.at(-1) : items[0])?.focus()
-  }
-  more.addEventListener("click", () => (menu.hidden ? openMenu() : closeMenu(true)))
-  more.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
-    event.preventDefault()
-    // The menu host would otherwise treat the same key as a move within the menu it just opened.
-    event.stopPropagation()
-    openMenu(event.key === "ArrowUp")
-  })
-  element("menu-host").addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+  // A menu opens from its trigger, moves with the arrow keys, and closes on Escape, on an outside
+  // pointer, or once an entry has been chosen. The header overflow and the variant actions share it.
+  const dropdown = (hostID: string, triggerID: string, menuID: string, choose: (item: HTMLButtonElement) => void) => {
+    const menu = element(menuID)
+    const trigger = element<HTMLButtonElement>(triggerID)
+    const items = () =>
+      [...menu.querySelectorAll<HTMLButtonElement>("button")].filter((item) => !item.hidden && !item.disabled)
+    const close = (refocus = false) => {
+      if (menu.hidden) return
+      menu.hidden = true
+      trigger.setAttribute("aria-expanded", "false")
+      if (refocus) trigger.focus()
+    }
+    const open = (last = false) => {
+      syncMenu()
+      menu.hidden = false
+      trigger.setAttribute("aria-expanded", "true")
+      const list = items()
+      ;(last ? list.at(-1) : list[0])?.focus()
+    }
+    trigger.addEventListener("click", () => (menu.hidden ? open() : close(true)))
+    trigger.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
       event.preventDefault()
-      closeMenu(true)
-      return
-    }
-    if (menu.hidden || !["ArrowDown", "ArrowUp", "Home", "End", "Tab"].includes(event.key)) return
-    if (event.key === "Tab") {
-      closeMenu()
-      return
-    }
-    event.preventDefault()
-    const items = menuItems()
-    const index = items.indexOf(root.activeElement as HTMLButtonElement)
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length
-    items[next]?.focus()
-  })
-  menu.addEventListener("click", (event) => {
-    const item = (event.target as HTMLElement).closest("button")
-    if (!item || item.disabled) return
+      // The menu host would otherwise treat the same key as a move within the menu it just opened.
+      event.stopPropagation()
+      open(event.key === "ArrowUp")
+    })
+    element(hostID).addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        close(true)
+        return
+      }
+      if (menu.hidden || !["ArrowDown", "ArrowUp", "Home", "End", "Tab"].includes(event.key)) return
+      if (event.key === "Tab") {
+        close()
+        return
+      }
+      event.preventDefault()
+      const list = items()
+      const index = list.indexOf(root.activeElement as HTMLButtonElement)
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? list.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + list.length) % list.length
+      list[next]?.focus()
+    })
+    menu.addEventListener("click", (event) => {
+      const item = (event.target as HTMLElement).closest("button")
+      if (!item || item.disabled) return
+      choose(item)
+    })
+    return { close, host: element(hostID) }
+  }
+  const more = element<HTMLButtonElement>("more")
+  const overflow = dropdown("menu-host", "more", "menu", (item) => {
     // Create design opens the brief and takes focus there; the other entries hand it back.
-    closeMenu(item.id !== "new")
+    overflow.close(item.id !== "new")
     if (item.dataset.for) element(item.dataset.for).click()
   })
+  const variantMenu = dropdown("variant-menu-host", "variant-actions", "variant-menu", (item) => {
+    const opensDialog = ["rename-variant", "split-variant", "delete-variant", "select-merge"].includes(item.id)
+    variantMenu.close(!opensDialog)
+    if (item.dataset.for) return element(item.dataset.for).click()
+    if (item.id === "move-left" || item.id === "move-right") return move(item.id === "move-left" ? -1 : 1)
+    if (item.id === "select-merge") {
+      state.merging = true
+      state.mergePick = state.variant ? [state.variant] : []
+      drawVariants()
+      input(`merge-${state.variants.find((variant) => variant.id !== state.variant)?.id ?? state.variant}`)?.focus()
+      return
+    }
+    openOperation(item.id === "rename-variant" ? "rename" : item.id === "split-variant" ? "split" : "delete", [
+      state.variant,
+    ])
+  })
+  const closeMenus = () => {
+    overflow.close()
+    variantMenu.close()
+  }
   const outside = (event: Event) => {
-    if (!event.composedPath().includes(element("menu-host"))) closeMenu()
+    if (!event.composedPath().includes(overflow.host)) overflow.close()
+    if (!event.composedPath().includes(variantMenu.host)) variantMenu.close()
   }
   document.addEventListener("pointerdown", outside)
   // A pointer landing in the preview frame never reaches this document, but it does take the
   // window's focus away.
-  const blurred = () => closeMenu()
+  const blurred = () => closeMenus()
   window.addEventListener("blur", blurred)
   window.addEventListener("message", message)
   const timer = setInterval(poll, 5000)
