@@ -30366,6 +30366,9 @@
               "external_directory": {
                 "$ref": "#/components/schemas/PermissionRuleConfig"
               },
+              "project_tooling": {
+                "$ref": "#/components/schemas/PermissionRuleConfig"
+              },
               "todowrite": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
@@ -37526,7 +37529,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and the project's node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused."
+            "description": "Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and stylesheets, the tooling configuration and the project's node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused, and a package linked to a source tree outside node_modules (a workspace package) must be declared here; \".\" grants the whole project."
           },
           "css": {
             "type": "array",
@@ -41188,6 +41191,25 @@
         "required": ["paths", "css", "tailwind"],
         "additionalProperties": false
       },
+      "DesignComponent": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "props": {
+            "type": "string"
+          }
+        },
+        "required": ["root", "file", "name"],
+        "additionalProperties": false
+      },
       "DesignInfo": {
         "type": "object",
         "properties": {
@@ -41308,6 +41330,15 @@
               "required": ["file", "hash", "observed", "authoritative", "excerpt"],
               "additionalProperties": false
             }
+          },
+          "inventory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignComponent"
+            }
+          },
+          "manifest": {
+            "type": "string"
           },
           "tweaks": {
             "type": "object",
