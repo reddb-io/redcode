@@ -10,11 +10,14 @@ import { useToast } from "../../ui/toast"
 import { SplitBorder } from "../../ui/border"
 import { useTuiConfig } from "../../config"
 import { useBindings, useOpencodeModeStack } from "../../keymap"
+import { useExit } from "../../context/exit"
+import { DialogTimeoutError, dialogRequest, repeatedExitPress } from "../../util/dialog-request"
 
 const QUESTION_MODE = "question"
 
-export function QuestionPrompt(props: { request: QuestionRequest; directory?: string }) {
+export function QuestionPrompt(props: { request: QuestionRequest; directory?: string; timeout?: number }) {
   const sdk = useSDK()
+  const exit = useExit()
   const sync = useSync()
   const toast = useToast()
   const { theme } = useTheme()
@@ -58,35 +61,42 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     sync.removeQuestion(props.request.sessionID, props.request.id)
     toast.show({
       variant: "error",
-      message: "This question is no longer active — the request was interrupted. You can continue typing.",
+      message:
+        error instanceof DialogTimeoutError
+          ? "The server did not respond; the question was dismissed. Ask the agent again to retry (for a plan, ask Plan to request approval again)."
+          : "This question is no longer active — the request was interrupted. You can continue typing.",
     })
     console.error("question reply/reject failed", error)
   }
 
   function submit() {
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    sdk.client.question
-      .reply(
-        {
-          requestID: props.request.id,
-          directory: props.directory,
-          answers,
-        },
-        { throwOnError: true },
-      )
-      .catch(fail)
+    dialogRequest(
+      (signal) =>
+        sdk.client.question.reply(
+          {
+            requestID: props.request.id,
+            directory: props.directory,
+            answers,
+          },
+          { throwOnError: true, signal },
+        ),
+      props.timeout,
+    ).catch(fail)
   }
 
   function reject() {
-    sdk.client.question
-      .reject(
-        {
-          requestID: props.request.id,
-          directory: props.directory,
-        },
-        { throwOnError: true },
-      )
-      .catch(fail)
+    dialogRequest(
+      (signal) =>
+        sdk.client.question.reject(
+          {
+            requestID: props.request.id,
+            directory: props.directory,
+          },
+          { throwOnError: true, signal },
+        ),
+      props.timeout,
+    ).catch(fail)
   }
 
   function pick(answer: string, custom: boolean = false) {
@@ -99,16 +109,18 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       setStore("custom", inputs)
     }
     if (single()) {
-      sdk.client.question
-        .reply(
-          {
-            requestID: props.request.id,
-            directory: props.directory,
-            answers: [[answer]],
-          },
-          { throwOnError: true },
-        )
-        .catch(fail)
+      dialogRequest(
+        (signal) =>
+          sdk.client.question.reply(
+            {
+              requestID: props.request.id,
+              directory: props.directory,
+              answers: [[answer]],
+            },
+            { throwOnError: true, signal },
+          ),
+        props.timeout,
+      ).catch(fail)
       return
     }
     setStore("tab", store.tab + 1)
@@ -253,6 +265,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           title: "Reject question",
           category: "Question",
           run() {
+            if (repeatedExitPress()) return exit()
             reject()
           },
         },

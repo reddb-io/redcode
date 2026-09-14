@@ -5,6 +5,7 @@ import { SessionID } from "@/session/schema"
 import { QuestionID } from "./schema"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { QuestionV1 } from "@reddb-io/redcode-schema/question-v1"
+import { HumanWait } from "@/session/human-wait"
 
 export const Option = QuestionV1.Option
 export type Option = typeof Option.Type
@@ -101,6 +102,8 @@ const layer = Layer.effect(
         tool: input.tool,
       }
       pending.set(id, { info, deferred })
+      // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
+      const waiting = input.tool?.callID ? HumanWait.start(input.tool.callID) : undefined
       yield* events.publish(Event.Asked, info)
 
       // If the asking fiber dies (interrupt, crash) the request must not linger:
@@ -108,6 +111,7 @@ const layer = Layer.effect(
       return yield* Effect.ensuring(
         Deferred.await(deferred),
         Effect.gen(function* () {
+          waiting?.()
           if (!pending.delete(id)) return
           yield* events.publish(Event.Rejected, {
             sessionID: input.sessionID,

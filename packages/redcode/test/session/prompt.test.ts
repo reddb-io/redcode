@@ -4891,6 +4891,110 @@ it.instance(
   30000,
 )
 
+it.instance(
+  "Plan approval with a large Design handoff reaches Build without stalling",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 3 } } }))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const questions = yield* Question.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Design handoff" })
+      const file = Session.plan(chat, yield* InstanceState.context)
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "Redesenhe as tabelas de leads do admin" }],
+      })
+      const decision =
+        "Tabela de leads → colunas reordenáveis [status, origem, responsável] com filtros por $domain/$resource e paginação server-side — ícones à direita"
+      const content = [
+        "# Plan",
+        ...Array.from({ length: 40 }, (_, index) => `- Step ${index}: ${decision}`),
+        "<!-- redcode:design:start -->",
+        "Approved Design design_87d1d4df: Leads – redesign das tabelas do admin. Revision: rev_98aa",
+        "Decisions:",
+        ...Array.from({ length: 400 }, (_, index) => `- ${index}. ${decision} ${decision}`),
+        "Acceptance criteria:",
+        ...Array.from({ length: 60 }, (_, index) => `- ${decision} (critério ${index})`),
+        "<!-- redcode:design:end -->",
+      ].join("\n")
+      yield* llm.tool("write", { filePath: file, content })
+      yield* llm.tool("plan_exit", {
+        tasks: [{ key: "tables", content: "Redesign the tables", criterion: "Tables match", quote: "Step 0" }],
+      })
+      yield* llm.text("Implementing the approved design.")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      const question = yield* pollWithTimeout(
+        questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+        "Plan approval never opened",
+        "15 seconds",
+      )
+      expect(question.questions[0].question).toContain("<!-- redcode:design:start -->")
+      const started = Date.now()
+      yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
+      yield* awaitWithTimeout(Fiber.join(fiber), "Approved design handoff never reached Build", "20 seconds")
+      console.log(`plan_exit Yes to Build turn end: ${Date.now() - started}ms, plan ${content.length} chars`)
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      expect(messages.at(-1)?.info).toMatchObject({ role: "assistant", agent: "build" })
+      expect((yield* sessions.get(chat.id)).agent).toBe("build")
+    }),
+  30000,
+)
+
+it.instance(
+  "time spent deciding a plan approval does not count against the tool deadline",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        agent: { build: { steps: 3 } },
+        experimental: { tool_timeout: 500 },
+      }))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const questions = yield* Question.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Slow reviewer" })
+      const file = Session.plan(chat, yield* InstanceState.context)
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "Plan the leads table redesign" }],
+      })
+      const content = "# Plan\nRedesign the leads table. Verify the columns reorder."
+      yield* llm.tool("write", { filePath: file, content })
+      yield* llm.tool("plan_exit", {
+        tasks: [
+          {
+            key: "table",
+            content: "Redesign the table",
+            criterion: "Columns reorder",
+            quote: "Redesign the leads table",
+          },
+        ],
+      })
+      yield* llm.text("Implementing the approved plan.")
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      const question = yield* pollWithTimeout(
+        questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+        "Plan approval never opened",
+        "15 seconds",
+      )
+      // A person reads the plan for longer than the tool deadline before answering.
+      yield* Effect.sleep("1500 millis")
+      expect((yield* questions.list()).map((item) => item.id)).toContain(question.id)
+      yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
+      yield* awaitWithTimeout(Fiber.join(fiber), "Approved plan never reached Build", "20 seconds")
+      const parts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((item) => item.parts)
+      const exit = parts.find((part) => part.type === "tool" && part.tool === "plan_exit")
+      expect(exit).toMatchObject({ state: { status: "completed" } })
+      expect((yield* sessions.get(chat.id)).agent).toBe("build")
+    }),
+  30000,
+)
+
 for (const outcome of ["reject", "change", "remove"] as const) {
   it.instance(
     `Plan approval ${outcome} keeps the session in Plan and never authorizes changed content`,

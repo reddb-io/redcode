@@ -27,6 +27,7 @@ import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { ToolDeadline } from "./tool-deadline"
+import { HumanWait } from "./human-wait"
 import type { SessionGuardLog } from "./guard-log"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
@@ -136,7 +137,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     tool: toolID,
                     ms: deadline,
                     abort: options.abortSignal,
-                    waitedMs: () => permissionWaitMs(options.toolCallId),
+                    waitedMs: () => permissionWaitMs(options.toolCallId) + HumanWait.waited(options.toolCallId ?? ""),
                     onExpire: input.recordGuard({
                       sessionID: input.session.id,
                       guard: "tool_timeout",
@@ -146,6 +147,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     }),
                   })
             ).pipe(Effect.exit)
+            HumanWait.forget(options.toolCallId ?? "")
             if (Exit.isFailure(executed)) {
               yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
               return yield* Effect.failCause(executed.cause)
