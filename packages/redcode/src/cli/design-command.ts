@@ -39,7 +39,7 @@ export async function run(args: {
   const review = async (sessionID: string) => {
     const url = new URL(`/api/session/${encodeURIComponent(sessionID)}/design/review`, baseUrl).toString()
     write(`Review: ${url}`)
-    await Effect.runPromise(DesignBrowser.open(url))
+    Effect.runFork(DesignBrowser.open(url))
   }
   const terminal = await DesignTerminal.create({
     client: Redcode.make({ baseUrl, headers: ServerAuth.headers() }),

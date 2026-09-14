@@ -249,7 +249,7 @@ export const DesignTools = Effect.gen(function* () {
               yield* DesignRead.make(ctx.ask),
             )
             const url = new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
-            if (!process.env.REDCODE_DESIGN_NO_OPEN) yield* DesignBrowser.open(url)
+            if (!process.env.REDCODE_DESIGN_NO_OPEN) yield* Effect.forkDetach(DesignBrowser.open(url))
             return result(
               `Published ${revision.id}. Review: ${url}\nReplies appear in the review page and in this TUI.`,
               {
