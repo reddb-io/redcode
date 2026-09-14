@@ -262,6 +262,49 @@ it.live(
 )
 
 it.live(
+  "loads a config the TUI's asynchronous loader plugin makes an async module",
+  () =>
+    Effect.gen(function* () {
+      const { location, store, sessionID } = yield* setup
+      yield* Effect.promise(async () => {
+        await cp(path.join(import.meta.dir, "fixture/tailwind"), location.directory, { recursive: true })
+        await materializeDependencies(location.directory, ["react", "react-dom", "tailwindcss", "autoprefixer"])
+      })
+      // Registered for this fixture directory only: like the opentui preload, the loader is asynchronous.
+      const config = path.join(location.directory, "tailwind.config.ts")
+      Bun.plugin({
+        name: "design-async-config-fixture",
+        setup(build) {
+          build.onLoad({ filter: new RegExp(`^${config.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }, async (args) => ({
+            contents: await Bun.file(args.path).text(),
+            loader: "ts",
+          }))
+        },
+      })
+      const document = yield* store.create(sessionID, {
+        name: "Async",
+        journey: "existing",
+        engine: "react",
+        kind: "screen",
+      })
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(document.root, document.entry),
+          react('<main className="p-4"><Button>Buy</Button></main>', 'import { Button } from "@/components/Button"\n'),
+        ),
+      )
+      const built = yield* compile(
+        store,
+        document,
+        { paths: ["src/components"], css: ["src/styles/globals.css"], tailwind: true, framework: "react" },
+        "async",
+      )
+      expect(built.css).toContain(".bg-brand{")
+    }),
+  120000,
+)
+
+it.live(
   "does not trust a package linked to a source tree outside the named node_modules unless it is declared",
   () =>
     Effect.gen(function* () {
