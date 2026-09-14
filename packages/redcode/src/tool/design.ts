@@ -243,6 +243,7 @@ export const DesignTools = Effect.gen(function* () {
                 : yield* store.get(input.id, ctx.sessionID)
             if (document.ended)
               return result(`The user ended this review. Reopen only on an explicit request. Design: ${document.id}`)
+            yield* DesignRead.grant(document, ctx.ask)
             const revision = yield* store.publish(
               document.id,
               input.name ?? document.name,

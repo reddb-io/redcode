@@ -349,9 +349,10 @@ MCP timeouts have separate startup and request budgets, expressed in millisecond
 
 Behavior affecting long-running conversations and context management.
 
-| Field        | Current Purpose                                             | Status   | Notes                                                                                 |
-| ------------ | ----------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------- |
-| `compaction` | Automatic compaction, pruning, and context reserve settings | redesign | Group retained verbatim history under `keep` and rename context headroom to `buffer`. |
+| Field        | Current Purpose                                             | Status   | Notes                                                                                           |
+| ------------ | ----------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `compaction` | Automatic compaction, pruning, and context reserve settings | redesign | Group retained verbatim history under `keep` and rename context headroom to `buffer`.           |
+| `design`     | The project's design system reused by Design mode previews  | new      | `design.system` declares component roots, stylesheets, the CSS pipeline and aliases; see below. |
 
 Retain the compaction capability but redesign the less clear limits. `keep.tokens` is the token budget for recent history serialized into the textual compaction checkpoint. `buffer` is the token headroom reserved so automatic compaction triggers before the input window is exhausted.
 
@@ -364,6 +365,22 @@ Retain the compaction capability but redesign the less clear limits. `keep.token
       "tokens": 2000,
     },
     "buffer": 10000,
+  },
+}
+```
+
+`design.system` is read when a design document is created or refreshed and recorded on it. `paths` are project-relative component and token roots: declaring one is a standing read grant for design builds, asked once at `design_preview` for the roots, the declared stylesheets, the tooling configuration and the project's `node_modules`, so preview builds import from them without a prompt per file. `css` lists stylesheets every preview includes. `tailwind` runs the project's `postcss.config.*` (or tailwindcss with autoprefixer from `tailwind.config.*`), defaulting to on when `tailwind.config.*` exists and tailwindcss is a dependency; `framework` defaults from the dependencies; `aliases` add import prefixes on top of the tsconfig paths.
+
+```jsonc
+{
+  "design": {
+    "system": {
+      "paths": ["src/components", "src/tokens"],
+      "css": ["src/styles/globals.css"],
+      "tailwind": true,
+      "framework": "react",
+      "aliases": { "@ui": "packages/ui/src" },
+    },
   },
 }
 ```

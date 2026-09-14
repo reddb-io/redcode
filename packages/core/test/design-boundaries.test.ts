@@ -298,3 +298,124 @@ it.live("rejects review-directory symlinks escaping Design storage", () =>
     ).toBe(false)
   }),
 )
+
+it.live("imports declared design-system roots without read prompts while undeclared files still prompt", () =>
+  Effect.gen(function* () {
+    const { location, store, sessionID } = yield* setup
+    yield* Effect.promise(() => designDependencies(location.directory))
+    const document = yield* store.create(sessionID, {
+      name: "Declared",
+      journey: "existing",
+      engine: "react",
+      kind: "screen",
+    })
+    const declared = path.join(location.directory, "src/components/Card.ts")
+    const undeclared = path.join(location.directory, "src/private/secret.ts")
+    yield* Effect.promise(async () => {
+      await Bun.write(declared, 'export const card = "Declared design-system component"')
+      await Bun.write(undeclared, 'export const secret = "ONLY_TEST_DATA"')
+    })
+    const files = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+    const revision: Design.Revision = {
+      id: "rev_declared",
+      designID: document.id,
+      parent: null,
+      name: "Declared",
+      created: Date.now(),
+      files,
+      document: { ...document, system: { paths: ["src/components"], css: [], tailwind: false, framework: "react" } },
+    }
+    const build = (name: string, source: string, reads: string[]) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), source))
+        const files = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+        return yield* Effect.tryPromise(() =>
+          DesignBuild.build(
+            { ...revision, id: `rev_${name}`, files },
+            store.blobs,
+            path.join(store.storage, document.id, "builds", name),
+            async (file) => {
+              reads.push(file)
+              if (file === undeclared) throw new Error("Fixture permission denied")
+            },
+          ),
+        ).pipe(Effect.result)
+      })
+    const granted: string[] = []
+    const output = yield* build(
+      "granted",
+      `import { card } from ${JSON.stringify(declared)}; document.body.textContent = card`,
+      granted,
+    )
+    expect(output._tag).toBe("Success")
+    expect(granted).toEqual([])
+    if (output._tag === "Success") {
+      const compiled = yield* Effect.promise(async () =>
+        Promise.all(
+          (await Array.fromAsync(new Bun.Glob("**/*.js").scan({ cwd: output.success }))).map((file) =>
+            Bun.file(path.join(output.success, file)).text(),
+          ),
+        ),
+      )
+      expect(compiled.some((text) => text.includes("Declared design-system component"))).toBe(true)
+    }
+    const prompted: string[] = []
+    const denied = yield* build(
+      "denied",
+      `import { secret } from ${JSON.stringify(undeclared)}; document.body.textContent = secret`,
+      prompted,
+    )
+    expect(denied._tag).toBe("Failure")
+    expect(prompted).toContain(undeclared)
+  }),
+)
+
+it.live("refuses symlinks escaping a declared design-system root", () =>
+  Effect.gen(function* () {
+    const { location, store, sessionID } = yield* setup
+    yield* Effect.promise(() => designDependencies(location.directory))
+    const document = yield* store.create(sessionID, {
+      name: "Escape",
+      journey: "existing",
+      engine: "react",
+      kind: "screen",
+    })
+    const protectedPath = path.join(location.directory, ".env.escape-fixture")
+    const escape = path.join(location.directory, "src/components/escape.ts")
+    yield* Effect.promise(async () => {
+      await Bun.write(protectedPath, "ONLY_TEST_DATA")
+      await mkdir(path.dirname(escape), { recursive: true })
+      await symlink(protectedPath, escape)
+      await Bun.write(
+        path.join(document.root, document.entry),
+        `import content from ${JSON.stringify(escape + "?raw")}; document.body.textContent = content`,
+      )
+    })
+    const files = yield* Effect.promise(() => DesignFiles.snapshot(document.root, store.blobs))
+    const reads: string[] = []
+    const result = yield* Effect.tryPromise(() =>
+      DesignBuild.build(
+        {
+          id: "rev_escape",
+          designID: document.id,
+          parent: null,
+          name: "Escape",
+          created: Date.now(),
+          files,
+          document: {
+            ...document,
+            system: { paths: ["src/components"], css: [], tailwind: false, framework: "react" },
+          },
+        },
+        store.blobs,
+        path.join(store.storage, document.id, "builds", "escape"),
+        async (file) => {
+          reads.push(file)
+          if (file === protectedPath) throw new Error("Fixture permission denied")
+        },
+      ),
+    ).pipe(Effect.result)
+    expect(result._tag).toBe("Failure")
+    expect(reads).toContain(protectedPath)
+  }),
+)

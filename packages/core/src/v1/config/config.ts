@@ -2,6 +2,7 @@ export * as ConfigV1 from "./config"
 
 import { Schema } from "effect"
 import { NonNegativeInt, PositiveInt, type DeepMutable } from "../../schema"
+import { ConfigDesign } from "../../config/design"
 import { ConfigExperimental } from "../../config/experimental"
 import { ConfigReference } from "../../config/reference"
 import { ConfigAgentV1 } from "./agent"
@@ -169,6 +170,9 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  design: Schema.optional(ConfigDesign.Info).annotate({
+    description: "Design mode: the project's design system reused by previews",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),
