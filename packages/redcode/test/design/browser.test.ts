@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { spawn, type ChildProcess } from "node:child_process"
 import path from "node:path"
-import { Effect } from "effect"
+import { Effect, Logger } from "effect"
 import { DesignBrowser } from "../../src/design/browser"
 
 const url = "http://127.0.0.1:4096/design/session/ses_browser/review"
@@ -19,6 +19,7 @@ function fixture(
     found?: string[]
     bundles?: string[]
     wsl?: boolean
+    mount?: string
     grace?: number
     outcome?: (browser: string) => Outcome
   } = {},
@@ -38,6 +39,7 @@ function fixture(
     grace: input.grace ?? 5000,
     home: "/Users/tester",
     wsl: () => input.wsl ?? false,
+    wslMount: () => input.mount ?? "/mnt/",
     exists: (file: string) => input.bundles?.includes(file) ?? false,
     which: (command: string) => ([...(input.found ?? []), "xdg-open"].includes(command) ? `/usr/bin/${command}` : null),
     spawn: (command: string, list: readonly string[]) => {
@@ -127,9 +129,69 @@ describe("DesignBrowser.open", () => {
   })
 
   test("WSL skips the Chrome search and opens the Windows default browser", async () => {
-    const browser = fixture({ found: ["google-chrome"], wsl: true })
+    const browser = fixture({
+      found: ["google-chrome"],
+      wsl: true,
+      bundles: ["/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"],
+    })
     await run(browser.options("linux"))
     expect(browser.calls).toEqual(["open:default"])
+  })
+
+  test("WSL without PowerShell at the mount point never calls open and uses xdg-open", async () => {
+    const browser = fixture({
+      found: ["google-chrome"],
+      wsl: true,
+      mount: "/windows/",
+      bundles: ["/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"],
+    })
+    expect(await run(browser.options("linux"))).toBe(true)
+    expect(browser.calls).toEqual(["spawn:/usr/bin/xdg-open"])
+  })
+
+  // A missing binary emits `error` asynchronously; the listener must already be attached on the tick
+  // the child is handed over, so the check runs in the first microtask after the spawner returns.
+  test("error listeners are attached in the same tick the child is spawned", async () => {
+    const counts: number[] = []
+    const probe = (process: ChildProcess) => {
+      queueMicrotask(() => counts.push(process.listenerCount("error")))
+      return process
+    }
+    const opened = await run({
+      platform: "linux",
+      env: {},
+      wsl: () => false,
+      grace: 500,
+      which: (command) => `/nonexistent/${command}`,
+      spawn: () => probe(child("missing")),
+      load: async () => ({ apps: { chrome: "chrome" }, open: () => Promise.resolve(probe(child("missing"))) }),
+    })
+    expect(opened).toBe(false)
+    expect(counts).toHaveLength(7)
+    expect(counts.every((count) => count > 0)).toBe(true)
+  })
+
+  test("launch failures are logged at warn level with every browser tried", async () => {
+    const entries: { level: string; message: unknown }[] = []
+    const logger = Logger.make((entry) => {
+      entries.push({ level: entry.logLevel, message: entry.message })
+    })
+    const browser = fixture({ found: ["google-chrome"], outcome: () => 3 })
+    const opened = await Effect.runPromise(
+      DesignBrowser.open(url, browser.options("linux")).pipe(Effect.provide(Logger.layer([logger]))),
+    )
+    expect(opened).toBe(false)
+    const warning = entries.find((entry) => entry.level === "Warn")
+    expect(warning?.message).toEqual([
+      "design review browser did not open",
+      {
+        url,
+        tried: [
+          { browser: "/usr/bin/google-chrome", error: "Error: browser exited with code 3" },
+          { browser: "/usr/bin/xdg-open", error: "Error: browser exited with code 3" },
+        ],
+      },
+    ])
   })
 
   test("macOS opens Chrome only when its app bundle is installed", async () => {

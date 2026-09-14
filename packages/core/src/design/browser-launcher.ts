@@ -23,6 +23,8 @@ export interface Options {
   readonly spawn?: Spawner
   readonly home?: string
   readonly wsl?: () => boolean
+  /** WSL drive mount point, as `open` reads it from /etc/wsl.conf. */
+  readonly wslMount?: () => string
   /** How long to watch a launched process. Defaults to 1.5 s, or 5 s on Windows. */
   readonly grace?: number
 }
@@ -42,6 +44,12 @@ const MAC_CANDIDATES = [
   { bundle: "Chromium.app", name: "chromium" },
 ]
 
+export interface Result {
+  readonly opened: boolean
+  /** Every browser attempted, in order, with the failure of each one that did not open. */
+  readonly tried: readonly { readonly browser: string; readonly error?: string }[]
+}
+
 interface Launch {
   readonly browser: string
   readonly start: () => Promise<void>
@@ -53,6 +61,16 @@ const wsl = () => {
     return readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft")
   } catch {
     return false
+  }
+}
+
+const wslMount = () => {
+  try {
+    const root = /^(?!\s*#)\s*root\s*=\s*(.*)$/m.exec(readFileSync("/etc/wsl.conf", "utf8"))?.[1]?.trim()
+    if (!root) return "/mnt/"
+    return root.endsWith("/") ? root : `${root}/`
+  } catch {
+    return "/mnt/"
   }
 }
 
@@ -76,7 +94,7 @@ const watch = (child: ChildProcess, grace: number, running: "opened" | "failed")
     })
   })
 
-/** Opens a Design review URL, preferring Chrome or Chromium. Never fails; succeeds with whether a browser opened. */
+/** Opens a Design review URL, preferring Chrome or Chromium. Never fails; reports whether and how it opened. */
 export const open = (url: string, options: Options) =>
   Effect.gen(function* () {
     const platform = options.platform ?? process.platform
@@ -121,9 +139,12 @@ export const open = (url: string, options: Options) =>
       }
       if (platform === "win32") return [opener.apps.chrome].flat().map((app) => opened(app))
       if (platform === "darwin") {
+        // macOS paths are POSIX whatever the host, including tests that simulate darwin elsewhere.
         const home = options.home ?? os.homedir()
         return MAC_CANDIDATES.filter((item) =>
-          [path.join("/Applications", item.bundle), path.join(home, "Applications", item.bundle)].some(exists),
+          [path.posix.join("/Applications", item.bundle), path.posix.join(home, "Applications", item.bundle)].some(
+            exists,
+          ),
         ).map((item) => opened(item.name))
       }
       if (inWsl) return []
@@ -132,25 +153,36 @@ export const open = (url: string, options: Options) =>
     })
     if (!configured && preferred.length === 0) yield* Effect.logDebug("design review found no Chrome or Chromium")
 
-    const xdg = direct && !inWsl ? which("xdg-open") : null
-    const system = !direct || inWsl ? [opened()] : xdg ? [spawned(xdg)] : []
+    // In WSL `open` execs Windows PowerShell through the drive mount; skip it when that path is missing
+    // (a custom mount point) instead of letting the spawn emit an uncaught ENOENT.
+    const powershell = inWsl
+      ? `${(options.wslMount ?? wslMount)()}c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`
+      : undefined
+    if (powershell && !exists(powershell))
+      yield* Effect.logDebug("design review found no Windows PowerShell under WSL", { powershell })
+    const xdg = direct ? which("xdg-open") : null
+    const system = [
+      ...(!direct || (powershell && exists(powershell)) ? [opened()] : []),
+      ...(xdg ? [spawned(xdg)] : []),
+    ]
 
+    const tried: { browser: string; error?: string }[] = []
     for (const launch of [...preferred, ...system]) {
       yield* Effect.logDebug("design review opening browser", { browser: launch.browser })
-      const ok = yield* Effect.tryPromise(launch.start).pipe(
-        Effect.as(true),
-        Effect.catch((error) =>
-          Effect.logDebug("design review could not launch browser", { browser: launch.browser, error }).pipe(
-            Effect.as(false),
-          ),
-        ),
+      const error = yield* Effect.tryPromise(launch.start).pipe(
+        Effect.as(undefined),
+        Effect.catch((failure) => Effect.succeed(String(failure.cause ?? failure))),
       )
-      if (ok) return true
+      tried.push(error === undefined ? { browser: launch.browser } : { browser: launch.browser, error })
+      if (error === undefined) return { opened: true, tried } satisfies Result
+      yield* Effect.logDebug("design review could not launch browser", { browser: launch.browser, error })
     }
-    return false
+    return { opened: false, tried } satisfies Result
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logDebug("design review browser did not open", { cause }).pipe(Effect.as(false)),
+      Effect.logDebug("design review browser did not open", { cause }).pipe(
+        Effect.as({ opened: false, tried: [] } satisfies Result),
+      ),
     ),
   )
 
