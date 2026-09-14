@@ -67,6 +67,12 @@ const showsRevision = (page: Page, id: string) =>
   )
 const activeID = (page: Page) =>
   page.evaluate(() => document.querySelector("#review")!.shadowRoot!.activeElement?.id ?? "")
+/** Turns the toolbar's annotation toggle on or off, clicking only when it is in the other state. */
+const annotate = async (page: Page, enabled: boolean) => {
+  const toggle = page.getByRole("button", { name: "Annotate elements", exact: true })
+  if ((await toggle.getAttribute("aria-pressed")) !== String(enabled)) await toggle.click()
+  expect(await toggle.getAttribute("aria-pressed")).toBe(String(enabled))
+}
 
 beforeAll(async () => {
   await Bun.write(path.join(directory, "redcode.json"), JSON.stringify({ permission: { external_directory: "allow" } }))
@@ -109,7 +115,7 @@ test("new interface: native review, annotation draft, lost response retry and ap
   const frame = page.frameLocator("#preview")
   await frame.getByRole("button", { name: "Add item" }).click()
   expect(await frame.getByRole("button", { name: "Added" }).textContent()).toBe("Added")
-  await page.getByLabel("Annotate elements", { exact: true }).check()
+  await annotate(page, true)
   const card = page.getByLabel("Note for this element", { exact: true })
   await frame.getByRole("heading", { name: "Checkout" }).click()
   await card.fill("Make this title more prominent")
@@ -212,12 +218,12 @@ test("existing Solid component: isolated interactive preview and history restora
   await frame.getByRole("button", { name: "Add item" }).click()
   expect(await frame.getByRole("button", { name: "Added" }).textContent()).toBe("Added")
   // Switching variants closes a card anchored in the variant that leaves the screen.
-  await page.getByLabel("Annotate elements", { exact: true }).check()
+  await annotate(page, true)
   await frame.getByRole("heading", { name: "Checkout", exact: true }).click()
   await page.locator("#card:not([hidden])").waitFor()
   await page.getByRole("tab", { name: "Spacious", exact: true }).click()
   await page.locator("#card").waitFor({ state: "hidden" })
-  await page.getByLabel("Annotate elements", { exact: true }).uncheck()
+  await annotate(page, false)
   await frame.getByRole("heading", { name: "Spacious checkout" }).waitFor()
   expect(await frame.getByRole("heading", { name: "Checkout", exact: true }).isVisible()).toBe(false)
   // Restore is offered only once an older revision is on screen.
@@ -628,7 +634,7 @@ test("review controls stay compact, keyboard accessible and isolated from protot
   expect((await page.locator("#preview").boundingBox())!.height).toBeGreaterThan(150)
   // The annotation card stays inside a phone-width viewport and never widens the page.
   await page.getByRole("tab", { name: "Conversation", exact: true }).click()
-  await page.getByLabel("Annotate elements", { exact: true }).check()
+  await annotate(page, true)
   await prototype.getByRole("heading", { name: "Checkout" }).click()
   await page.locator("#card:not([hidden])").waitFor()
   const card = await page.locator("#card").boundingBox()
@@ -716,7 +722,7 @@ test("conversation shows reply, state and auto-reloads on publish", async () => 
     await page.locator("#agent-state").filter({ hasText: "Idle" }).waitFor({ state: "attached" })
     expect(await page.locator("#agent-state").getAttribute("data-state")).toBe("idle")
     await frame.getByRole("heading", { name: "Checkout" }).waitFor()
-    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await annotate(page, true)
     await frame.getByRole("heading", { name: "Checkout" }).click()
     await page.getByLabel("Note for this element", { exact: true }).fill("Make this bigger")
     await page.getByLabel("Note for this element", { exact: true }).press("Enter")
@@ -860,11 +866,11 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     await frame.getByRole("button", { name: "Submit", exact: true }).click()
     await frame.getByText("Something went wrong", { exact: true }).waitFor()
     await page.getByRole("tab", { name: "Conversation", exact: true }).click()
-    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await annotate(page, true)
     await frame.getByRole("button", { name: "Try again", exact: true }).click()
     await page.getByLabel("Note for this element", { exact: true }).fill("Make the retry action clearer")
     await page.getByLabel("Note for this element", { exact: true }).press("Enter")
-    await page.getByLabel("Annotate elements", { exact: true }).uncheck()
+    await annotate(page, false)
     await page.getByRole("tab", { name: "Params", exact: true }).click()
     await frame.getByRole("button", { name: "Try again", exact: true }).click()
     await page.getByLabel("Simulated outcome", { exact: true }).selectOption("success")
@@ -1021,7 +1027,7 @@ test("annotation card keyboard map and reveal", async () => {
     await page.goto(`${base}${current.root}/review`)
     const frame = page.frameLocator("#preview")
     const card = page.getByLabel("Note for this element", { exact: true })
-    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await annotate(page, true)
     await frame.getByRole("heading", { name: "Checkout" }).click()
     await page.locator("#card:not([hidden])").waitFor()
     expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
@@ -1045,7 +1051,7 @@ test("annotation card keyboard map and reveal", async () => {
     await page.locator("#card:not([hidden])").waitFor()
     expect(await card.inputValue()).toBe("Line one\nline two")
     expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
-    await page.getByLabel("Annotate elements", { exact: true }).check()
+    await annotate(page, true)
     await card.press("Enter")
     await note(page, 'h1 "Checkout"', "Line one").waitFor()
     await page.locator("#card").waitFor({ state: "hidden" })
@@ -1241,6 +1247,7 @@ test("compact toolbar keeps every action reachable", async () => {
       "Side by side",
       "Approve this revision",
       "More actions",
+      "Annotate elements",
     ])
       expect(await page.getByRole("button", { name, exact: true }).isVisible()).toBe(true)
     expect(await page.getByRole("button", { name: "Single view", exact: true }).getAttribute("aria-pressed")).toBe(
@@ -1318,6 +1325,109 @@ test("compact toolbar keeps every action reachable", async () => {
     expect(await page.getByLabel("Revision", { exact: true }).isVisible()).toBe(false)
     expect(await page.getByRole("button", { name: "Approve this revision", exact: true }).isVisible()).toBe(false)
     expect(await page.getByRole("button", { name: "Refresh", exact: true }).isVisible()).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("annotate toggle stays in the toolbar and responds to A", async () => {
+  const current = await published("html")
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  // A long conversation must not push the annotation control out of reach.
+  const canned = Array.from({ length: 40 }, (_, index) => ({
+    type: "reply",
+    seq: index + 1,
+    at: 1,
+    id: `txt_${index}`,
+    text: `Reply number ${index}\n\nA longer paragraph so the conversation grows well past the panel height.`,
+  }))
+  await page.route(/\/design\/feed(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: canned.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  )
+  const pressed = (value: boolean) =>
+    page.waitForFunction(
+      (expected) =>
+        document.querySelector("#review")!.shadowRoot!.querySelector("#annotate")!.getAttribute("aria-pressed") ===
+        String(expected),
+      value,
+      { timeout: 5000 },
+    )
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    const frame = page.frameLocator("#preview")
+    await frame.getByRole("heading", { name: "Checkout" }).waitFor()
+    await page.getByText("Reply number 39", { exact: false }).waitFor()
+    const toggle = page.getByRole("button", { name: "Annotate elements", exact: true })
+    expect(await toggle.isVisible()).toBe(true)
+    expect(await toggle.getAttribute("title")).toBe("Annotate elements (A)")
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
+    const box = (await toggle.boundingBox())!
+    expect(box.y + box.height).toBeLessThanOrEqual(80)
+    // It sits before Approve in the actions group and the panel no longer has a checkbox.
+    expect(
+      (await page.getByRole("button", { name: "Approve this revision", exact: true }).boundingBox())!.x,
+    ).toBeGreaterThan(box.x)
+    expect(await page.getByRole("checkbox", { name: "Annotate elements" }).count()).toBe(0)
+    expect(await page.locator("aside #annotate").count()).toBe(0)
+    // Click toggles.
+    await toggle.click()
+    await pressed(true)
+    await toggle.click()
+    await pressed(false)
+    // A toggles from the toolbar and from a page with nothing focused.
+    await page.keyboard.press("a")
+    await pressed(true)
+    await page.evaluate(() => (document.querySelector("#review")!.shadowRoot!.activeElement as HTMLElement)?.blur())
+    await page.keyboard.press("A")
+    await pressed(false)
+    // Typing A in the notes never toggles.
+    const notes = page.getByLabel("Review notes", { exact: true })
+    await notes.fill("")
+    await notes.press("a")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(await notes.inputValue()).toBe("a")
+    // Not while the overflow menu is open either.
+    await page.getByRole("button", { name: "More actions", exact: true }).click()
+    await page.getByRole("menu").waitFor()
+    await page.keyboard.press("a")
+    await page.waitForTimeout(200)
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    // Escape ends annotation.
+    await toggle.click()
+    await pressed(true)
+    await page.keyboard.press("Escape")
+    await pressed(false)
+    // Keys pressed inside the preview are forwarded: A turns it on, Escape turns it off.
+    await frame.locator("body").press("a")
+    await pressed(true)
+    await frame.locator("body").press("Escape")
+    await pressed(false)
+    // With a card open, Escape closes the card first and annotation stays on.
+    await annotate(page, true)
+    await frame.getByRole("heading", { name: "Checkout" }).click()
+    await page.locator("#card:not([hidden])").waitFor()
+    await page.getByLabel("Note for this element", { exact: true }).press("Escape")
+    await page.locator("#card").waitFor({ state: "hidden" })
+    expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+    await page.keyboard.press("Escape")
+    await pressed(false)
+    // At phone width the control collapses to its icon and the page never widens.
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await toggle.isVisible()).toBe(true)
+    expect(await page.locator("#annotate .label").isVisible()).toBe(false)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await toggle.click()
+    await pressed(true)
+    expect(errors).toEqual([])
   } finally {
     await page.close()
   }

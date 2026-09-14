@@ -140,6 +140,8 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.sourceChanged": "Arquivo de origem alterado ou removido; publique uma revisão atualizada",
   "session.design.studio.whiteboard": "Abrir quadro branco do diagrama",
   "session.design.studio.close": "Fechar quadro branco",
+  "session.design.studio.annotateShort": "Anotar",
+  "session.design.studio.annotateShortcut": "Anotar elementos (A)",
   "session.goal.providerBudget": "{{used}}/{{max}} turnos do provedor",
   "session.goal.turnLimit": "Limite de turnos do provedor",
   "session.goal.executePlan": "Permitir a implementação do plano deste objetivo sem outra aprovação de execução",
