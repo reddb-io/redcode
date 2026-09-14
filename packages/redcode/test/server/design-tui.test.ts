@@ -352,3 +352,160 @@ for (const decision of ["deny", "allow"] as const)
       await server.dispose()
     }
   }, 120000)
+
+test("legacy feed reports a variant operation pending while an earlier turn works and delivered once a turn takes it up", async () => {
+  // The first streamed turn is held open so the operation is admitted while the agent is working.
+  const release = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const streamed = { count: 0 }
+  const model = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      const input = await request.json()
+      if (!input.stream)
+        return Response.json({
+          id: "fixture",
+          model: "fixture",
+          choices: [{ index: 0, message: { role: "assistant", content: "Title" }, finish_reason: "stop" }],
+        })
+      streamed.count++
+      if (streamed.count === 1) {
+        started.resolve()
+        await release.promise
+      }
+      return new Response(
+        'data: {"id":"fixture","model":"fixture","choices":[{"index":0,"delta":{"content":"Working on it."},"finish_reason":null}]}\n\ndata: {"id":"fixture","model":"fixture","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    },
+  })
+  await using tmp = await tmpdir({
+    git: true,
+    config: {
+      model: "fixture/fixture",
+      provider: {
+        fixture: {
+          npm: "@ai-sdk/openai-compatible",
+          models: { fixture: { name: "Fixture", limit: { context: 100000, output: 4096 } } },
+          options: { apiKey: "fixture", baseURL: model.url.origin + "/v1" },
+        },
+      },
+    },
+  })
+  const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
+  const request = async (route: string, method = "GET", body?: unknown) =>
+    server.handler(
+      new Request(`http://localhost${route}`, {
+        method,
+        headers: { "content-type": "application/json", "x-opencode-directory": tmp.path },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      HttpApiApp.context,
+    )
+  type Entry = { type: string; id?: string; state?: string; text?: string; pending?: boolean }
+  /** Follows one feed connection, collecting its entries as they arrive. */
+  const follow = async (route: string) => {
+    const response = await request(route)
+    expect(response.status).toBe(200)
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    const entries: Entry[] = []
+    let buffer = ""
+    const pump = (async () => {
+      while (true) {
+        const chunk = await reader.read().catch(() => ({ done: true as const, value: undefined }))
+        if (chunk.done) return
+        buffer += decoder.decode(chunk.value, { stream: true })
+        const blocks = buffer.split("\n\n")
+        buffer = blocks.pop() ?? ""
+        for (const block of blocks)
+          for (const line of block.split("\n")) if (line.startsWith("data:")) entries.push(JSON.parse(line.slice(5)))
+      }
+    })()
+    return {
+      entries,
+      close: async () => {
+        await reader.cancel().catch(() => undefined)
+        await pump
+      },
+    }
+  }
+  const until = async (check: () => boolean, message: string, timeout = 30000) => {
+    const deadline = Date.now() + timeout
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error(`Timed out: ${message}`)
+      await Bun.sleep(25)
+    }
+  }
+  const feeds: { close: () => Promise<void> }[] = []
+  try {
+    const session = await (await request("/session", "POST", { agent: "design" })).json()
+    const root = `/design/session/${session.id}`
+    const document = await (
+      await request(root, "POST", { name: "Checkout", engine: "html", journey: "new", kind: "screen" })
+    ).json()
+    await Bun.write(
+      document.root + "/index.html",
+      '<!doctype html><html><body><section data-design-variant="compact" data-design-label="Compact">Compact</section><section data-design-variant="spacious" data-design-label="Spacious">Spacious</section></body></html>',
+    )
+    const revision = await (await request(`${root}/${document.id}/revision`, "POST", { name: "Two directions" })).json()
+    const feed = await follow(`${root}/feed?after=0`)
+    feeds.push(feed)
+    const start = await request(`/session/${session.id}/prompt_async`, "POST", {
+      parts: [{ type: "text", text: "Start on the checkout" }],
+    })
+    expect(start.status).toBeLessThan(300)
+    await Promise.race([
+      started.promise,
+      Bun.sleep(30000).then(() => {
+        throw new Error("The turn never reached the model")
+      }),
+    ])
+    await until(() => feed.entries.some((entry) => entry.type === "state" && entry.state === "working"), "working")
+    const operation = {
+      id: "msg_tui_variant_operation",
+      revision: revision.id,
+      text: "",
+      items: [],
+      assets: [],
+      snapshot: "",
+      delivery: "steer",
+      end: false,
+      action: { kind: "delete", variants: ["compact"], labels: ["Compact"] },
+    }
+    expect((await request(`${root}/${document.id}/feedback`, "POST", operation)).status).toBe(200)
+    const mine = (entry: Entry) => entry.type === "user" && entry.id === operation.id
+    await until(() => feed.entries.some(mine), "the operation's entry")
+    const admitted = feed.entries.findIndex(mine)
+    expect(feed.entries[admitted]).toMatchObject({ text: "Variant operation: delete Compact", pending: true })
+    // A reconnect while the turn still runs replays it pending too.
+    const early = await follow(`${root}/feed?after=0`)
+    feeds.push(early)
+    await until(() => early.entries.some(mine), "the replayed pending entry")
+    expect(early.entries.find(mine)).toMatchObject({ pending: true })
+    await early.close()
+    expect(feed.entries.some((entry) => mine(entry) && !entry.pending)).toBe(false)
+    release.resolve()
+    await until(() => feed.entries.some((entry) => mine(entry) && !entry.pending), "the delivered entry")
+    const delivered = feed.entries.findIndex((entry) => mine(entry) && !entry.pending)
+    await until(
+      () => feed.entries.slice(delivered).some((entry) => entry.type === "state" && entry.state === "idle"),
+      "idle after delivery",
+    )
+    // The turn that was running when it arrived never went idle without taking it up.
+    expect(
+      feed.entries.slice(admitted, delivered).some((entry) => entry.type === "state" && entry.state === "idle"),
+    ).toBe(false)
+    // After promotion a reconnect replays it delivered.
+    const later = await follow(`${root}/feed?after=0`)
+    feeds.push(later)
+    await until(() => later.entries.some(mine), "the replayed delivered entry")
+    expect(later.entries.find(mine)).not.toHaveProperty("pending")
+  } finally {
+    release.resolve()
+    for (const feed of feeds) await feed.close()
+    await server.dispose()
+    await model.stop(true)
+  }
+}, 90000)

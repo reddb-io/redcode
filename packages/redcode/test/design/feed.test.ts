@@ -109,6 +109,68 @@ describe("DesignFeed (legacy)", () => {
     for (const item of replayed.events) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
   })
 
+  test("reports a review pending until a turn takes its admitted prompt up, on replay and live", () => {
+    const operation = (id: string) =>
+      message(id, "user", [
+        {
+          id: `prt_${id}`,
+          type: "text",
+          text: "<design-review ...>",
+          metadata: {
+            designFeedback: {
+              id: "design_checkout",
+              feedback: id,
+              revision: "rev_1",
+              variant: "compact",
+              ended: false,
+              text: "",
+              notes: [],
+              attachments: [],
+              snapshot: false,
+              operation: "delete Compact",
+            },
+          },
+        },
+      ])
+    const entry = { type: "user" as const, seq: 0, id: "msg_op", text: "Variant operation: delete Compact", notes: 0 }
+    // Replay reads the inbox: an unpromoted row is pending, every other message delivered.
+    const replayed = DesignFeed.replay([operation("msg_old"), operation("msg_op")], new Set(["msg_op"]))
+    expect(replayed.events).toEqual([
+      { ...entry, id: "msg_old", at: 1_700_000_000_000 },
+      { ...entry, at: 1_700_000_000_000, pending: true },
+    ])
+    for (const item of replayed.events) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
+    const promoted = DesignFeed.reduce(
+      replayed.state,
+      live(SessionV1.Event.MessagePromoted.type, { sessionID, messageID: "msg_op" }),
+    )
+    expect(promoted[1].map((item) => ({ ...item, at: 0 }))).toEqual([{ ...entry, at: 0 }])
+    // Live: the message and its parts are written at admission, the promotion comes when a turn takes it up.
+    const admitted = operation("msg_live_op")
+    const steps = [
+      live("message.updated", { sessionID, info: admitted.info }),
+      live("message.part.updated", { sessionID, time: 1, part: admitted.parts[0] }),
+      live("session.status", { sessionID, status: { type: "busy" } }),
+      live(SessionV1.Event.MessagePromoted.type, { sessionID, messageID: "msg_live_op" }),
+      live("message.part.updated", { sessionID, time: 2, part: admitted.parts[0] }),
+      live(SessionV1.Event.MessagePromoted.type, { sessionID, messageID: "msg_unknown" }),
+    ]
+    const items = steps.reduce<{ state: DesignFeed.State; items: Design.FeedEvent[] }>(
+      (result, item) => {
+        const [state, items] = DesignFeed.reduce(result.state, item)
+        return { state, items: [...result.items, ...items] }
+      },
+      { state: promoted[0], items: [] },
+    ).items
+    const live_ = { ...entry, id: "msg_live_op", at: 0 }
+    expect(items.map((item) => ({ ...item, at: 0 }))).toEqual([
+      { ...live_, pending: true },
+      { type: "state", seq: 0, at: 0, state: "working" },
+      live_,
+      live_,
+    ])
+  })
+
   test("reduces live bus events by role: status, agent, running tools and finished assistant text only", () => {
     const assistant = message("msg_live", "assistant", []).info
     const steps = [

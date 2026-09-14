@@ -7,21 +7,32 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import { DesignFeed } from "@reddb-io/redcode-core/design/feed"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionSchema } from "@reddb-io/redcode-core/session/schema"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { Session } from "@/session/session"
 import { SessionStatus } from "@/session/status"
 import { MessageID, SessionID } from "@/session/schema"
 
-/** Message roles seen so far: a V1 part update does not say whose message it belongs to. */
+/**
+ * What the live reducer continues from. A V1 part update does not say whose message it belongs to,
+ * and a user message is written when its prompt is admitted, before a turn takes it up.
+ */
 export interface State {
   readonly roles: ReadonlyMap<MessageID, "user" | "assistant">
+  /** User messages a turn has taken up (Prompt Promotion); any other user message is still pending. */
+  readonly promoted: ReadonlySet<MessageID>
+  /** The latest entry of each user message, repeated without `pending` once it is promoted. */
+  readonly users: ReadonlyMap<MessageID, Design.FeedEvent>
 }
 
-export const initial: State = { roles: new Map() }
+export const initial: State = { roles: new Map(), promoted: new Set(), users: new Map() }
 
 const isPart = Schema.is(Schema.toType(SessionV1.Event.PartUpdated.data))
 const isMessage = Schema.is(Schema.toType(SessionV1.Event.MessageUpdated.data))
+const isPromoted = Schema.is(Schema.toType(SessionV1.Event.MessagePromoted.data))
 const isSession = Schema.is(Schema.toType(SessionV1.Event.Updated.data))
 const isStatus = Schema.is(Schema.toType(SessionStatusEvent.Status.data))
 const isNotice = Schema.is(Design.FeedbackNotice)
@@ -31,6 +42,7 @@ export function part(
   role: "user" | "assistant" | undefined,
   item: typeof SessionV1.Part.Type,
   at: number,
+  pending = false,
 ): Design.FeedEvent[] {
   const base = { seq: 0, at }
   if (item.type === "text" && role === "user" && !item.synthetic && !item.ignored) {
@@ -38,7 +50,7 @@ export function part(
     const described = isNotice(notice)
       ? { text: DesignFeed.reviewText(notice), notes: notice.notes.length }
       : DesignFeed.describe(item.text)
-    return [{ ...base, type: "user", id: item.messageID, ...described }]
+    return [{ ...base, type: "user", id: item.messageID, ...described, ...(pending ? { pending: true } : {}) }]
   }
   if (item.type === "text" && role === "assistant" && item.time?.end !== undefined) {
     const text = DesignFeed.bound(item.text, DesignFeed.LIMITS.text)
@@ -68,17 +80,30 @@ export function part(
   return [entry, { ...base, type: "published", design, revision, name: typeof name === "string" ? name : "" }]
 }
 
-/** Entries for the stored transcript, oldest first, with the roles the live reducer continues from. */
-export function replay(messages: ReadonlyArray<typeof SessionV1.WithParts.Type>): {
+/**
+ * Entries for the stored transcript, oldest first, with the state the live reducer continues from.
+ * `pending` holds the ids of admitted prompts no turn has taken up yet (their inbox rows are unpromoted).
+ */
+export function replay(
+  messages: ReadonlyArray<typeof SessionV1.WithParts.Type>,
+  pending: ReadonlySet<string> = new Set(),
+): {
   state: State
   events: Design.FeedEvent[]
 } {
   const roles = new Map(messages.map((message) => [message.info.id, message.info.role] as const))
-  return {
-    state: { roles },
-    events: messages.flatMap((message) =>
-      message.parts.flatMap((item) => part(message.info.role, item, message.info.time.created)),
+  const events = messages.flatMap((message) =>
+    message.parts.flatMap((item) =>
+      part(message.info.role, item, message.info.time.created, pending.has(message.info.id)),
     ),
+  )
+  return {
+    state: {
+      roles,
+      promoted: new Set(messages.flatMap((message) => (pending.has(message.info.id) ? [] : [message.info.id]))),
+      users: new Map(events.flatMap((entry) => (entry.type === "user" ? [[MessageID.make(entry.id), entry]] : []))),
+    },
+    events,
   }
 }
 
@@ -86,9 +111,24 @@ export function replay(messages: ReadonlyArray<typeof SessionV1.WithParts.Type>)
 export function reduce(state: State, event: EventV2.Payload): readonly [state: State, events: Design.FeedEvent[]] {
   const at = Date.now()
   if (event.type === SessionV1.Event.MessageUpdated.type && isMessage(event.data))
-    return [{ roles: new Map(state.roles).set(event.data.info.id, event.data.info.role) }, []]
-  if (event.type === SessionV1.Event.PartUpdated.type && isPart(event.data))
-    return [state, part(state.roles.get(event.data.part.messageID), event.data.part, at)]
+    return [{ ...state, roles: new Map(state.roles).set(event.data.info.id, event.data.info.role) }, []]
+  if (event.type === SessionV1.Event.PartUpdated.type && isPart(event.data)) {
+    const id = event.data.part.messageID
+    const role = state.roles.get(id)
+    // A user message's parts are written at admission; until its promotion no turn has read them.
+    const entries = part(role, event.data.part, at, role === "user" && !state.promoted.has(id))
+    const user = entries.find((entry) => entry.type === "user")
+    return [user ? { ...state, users: new Map(state.users).set(id, user) } : state, entries]
+  }
+  // Prompt Promotion: a turn has taken the admitted prompt up, so its entry is repeated as delivered.
+  if (event.type === SessionV1.Event.MessagePromoted.type && isPromoted(event.data)) {
+    const id = event.data.messageID
+    const next = { ...state, promoted: new Set(state.promoted).add(id) }
+    const entry = state.users.get(id)
+    if (entry?.type !== "user") return [next, []]
+    const { pending: _pending, ...delivered } = entry
+    return [next, [{ ...delivered, at }]]
+  }
   if (event.type === SessionStatusEvent.Status.type && isStatus(event.data))
     return [state, [{ type: "state", seq: 0, at, state: event.data.status.type === "idle" ? "idle" : "working" }]]
   if (event.type === SessionV1.Event.Updated.type && isSession(event.data) && event.data.info.agent)
@@ -113,6 +153,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const sessions = yield* Session.Service
     const status = yield* SessionStatus.Service
+    const database = yield* Database.Service
     const stream = Effect.fn("DesignFeed.stream")(function* (sessionID: SessionID) {
       const instance = yield* InstanceState.context
       // A client that cannot keep up loses the oldest live entries; its next connection replays anyway.
@@ -129,7 +170,11 @@ const layer = Layer.effect(
       )
       const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
       const current = yield* status.get(sessionID)
-      const replayed = replay(yield* sessions.messages({ sessionID }).pipe(Effect.orDie))
+      const messages = yield* sessions.messages({ sessionID }).pipe(Effect.orDie)
+      // Read after the transcript: a prompt promoted in between is simply reported delivered, and its
+      // live promotion event repeats the same entry.
+      const pending = yield* SessionInput.listPending(database.db, SessionSchema.ID.make(sessionID))
+      const replayed = replay(messages, new Set(pending.map((row) => row.id)))
       const at = Date.now()
       const head: Design.FeedEvent[] = [
         { type: "agent", seq: 0, at, agent: session.agent ?? "" },
@@ -146,5 +191,5 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [EventV2Bridge.node, Session.node, SessionStatus.node],
+  deps: [EventV2Bridge.node, Session.node, SessionStatus.node, Database.node],
 })
