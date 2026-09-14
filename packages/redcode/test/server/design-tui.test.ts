@@ -337,15 +337,17 @@ for (const decision of ["deny", "allow"] as const)
         'import { createRoot } from "react-dom/client"\nimport { Button } from "@/components/Button"\ncreateRoot(document.getElementById("root")!).render(<main className="p-4"><Button>Buy</Button></main>)\n',
       )
       const published = await request(`${root}/${document.id}/revision`, "POST", { name: "First" })
-      expect(published.status).toBe(200)
+      // The body carries the build error, so a failure shows why the revision was refused.
       const revision = await published.json()
+      expect({ status: published.status, body: revision }).toMatchObject({ status: 200 })
       expect(revision.document.system?.tailwind).toBe(decision === "allow")
       const preview = await (await request(`${root}/${document.id}/revision/${revision.id}/preview`)).text()
       if (decision === "allow") expect(preview).toContain(".p-4{")
       if (decision === "deny") expect(preview).not.toContain(".p-4{")
       const restored = await request(`${root}/${document.id}/restore`, "POST", { revision: revision.id })
-      expect(restored.status).toBe(200)
-      expect((await restored.json()).document.system?.tailwind).toBe(decision === "allow")
+      const body = await restored.json()
+      expect({ status: restored.status, body }).toMatchObject({ status: 200 })
+      expect(body.document.system?.tailwind).toBe(decision === "allow")
     } finally {
       await server.dispose()
     }
