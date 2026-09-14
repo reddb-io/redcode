@@ -16,6 +16,9 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
+import { useToast } from "../../ui/toast"
+import { useExit } from "../../context/exit"
+import { DialogTimeoutError, dialogRequest, repeatedExitPress } from "../../util/dialog-request"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -116,6 +119,33 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
     stage: "permission" as PermissionStage,
   })
   const pathFormatter = usePathFormatter()
+  const toast = useToast()
+
+  // Same contract as the question dialog: an HTTP error or a server that never answers removes the
+  // prompt and says why, instead of leaving a dialog whose keys all appear to do nothing.
+  function reply(body: { reply: "once" | "always" | "reject"; message?: string }) {
+    dialogRequest((signal) =>
+      sdk.client.permission.reply(
+        {
+          ...body,
+          requestID: props.request.id,
+          directory: props.directory,
+          workspace: project.workspace.current(),
+        },
+        { throwOnError: true, signal },
+      ),
+    ).catch((error) => {
+      sync.removePermission(props.request.sessionID, props.request.id)
+      toast.show({
+        variant: "error",
+        message:
+          error instanceof DialogTimeoutError
+            ? "The server did not respond; the permission request was dismissed. Retry the action to ask again."
+            : "This permission request is no longer active. You can continue typing.",
+      })
+      console.error("permission reply failed", error)
+    })
+  }
 
   const session = createMemo(() => sync.data.session.find((s) => s.id === props.request.sessionID))
 
@@ -165,25 +195,14 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           onSelect={(option) => {
             setStore("stage", "permission")
             if (option === "cancel") return
-            void sdk.client.permission.reply({
-              reply: "always",
-              requestID: props.request.id,
-              directory: props.directory,
-              workspace: project.workspace.current(),
-            })
+            reply({ reply: "always" })
           }}
         />
       </Match>
       <Match when={store.stage === "reject"}>
         <RejectPrompt
           onConfirm={(message) => {
-            void sdk.client.permission.reply({
-              reply: "reject",
-              requestID: props.request.id,
-              directory: props.directory,
-              message: message || undefined,
-              workspace: project.workspace.current(),
-            })
+            reply({ reply: "reject", message: message || undefined })
           }}
           onCancel={() => {
             setStore("stage", "permission")
@@ -435,20 +454,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                     setStore("stage", "reject")
                     return
                   }
-                  void sdk.client.permission.reply({
-                    reply: "reject",
-                    requestID: props.request.id,
-                    directory: props.directory,
-                    workspace: project.workspace.current(),
-                  })
+                  reply({ reply: "reject" })
                   return
                 }
-                void sdk.client.permission.reply({
-                  reply: "once",
-                  requestID: props.request.id,
-                  directory: props.directory,
-                  workspace: project.workspace.current(),
-                })
+                reply({ reply: "once" })
               }}
             />
           )
@@ -462,6 +471,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
 
 function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: () => void }) {
   let input: TextareaRenderable
+  const exit = useExit()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
   const dimensions = useTerminalDimensions()
@@ -474,6 +484,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
         title: "Cancel permission rejection",
         category: "Permission",
         run() {
+          if (repeatedExitPress()) return exit()
           props.onCancel()
         },
       },
@@ -554,6 +565,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
   const dimensions = useTerminalDimensions()
+  const exit = useExit()
   const keys = Object.keys(props.options) as (keyof T)[]
   const [store, setStore] = createStore({
     selected: keys[0],
@@ -571,6 +583,7 @@ function Prompt<const T extends Record<string, string>>(props: {
         category: "Permission",
         run() {
           if (!props.escapeKey) return
+          if (repeatedExitPress()) return exit()
           props.onSelect(props.escapeKey)
         },
       },
