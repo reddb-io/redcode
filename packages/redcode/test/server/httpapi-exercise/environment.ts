@@ -1,7 +1,8 @@
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Effect } from "effect"
 import { spawnSync } from "node:child_process"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "path"
 import { removeOnExit, sharePlaywrightBrowsers } from "../../../../core/test/fixture/temp-root"
 
@@ -9,9 +10,10 @@ import { removeOnExit, sharePlaywrightBrowsers } from "../../../../core/test/fix
 sharePlaywrightBrowsers()
 
 const preserveExerciseGlobalRoot = !!process.env.REDCODE_HTTPAPI_EXERCISE_GLOBAL
-export const exerciseGlobalRoot =
-  process.env.REDCODE_HTTPAPI_EXERCISE_GLOBAL ??
-  path.join(process.env.TMPDIR ?? "/tmp", `opencode-httpapi-global-${process.pid}`)
+// Absolute before anything is registered against it: the process changes directory below.
+export const exerciseGlobalRoot = path.resolve(
+  process.env.REDCODE_HTTPAPI_EXERCISE_GLOBAL || path.join(os.tmpdir(), `opencode-httpapi-global-${process.pid}`),
+)
 // The finalizer in index.ts only runs when the Effect program gets to finish; an interrupt or a
 // crash before it used to leave the whole root behind.
 if (!preserveExerciseGlobalRoot) removeOnExit(exerciseGlobalRoot)
@@ -23,21 +25,51 @@ if (!preserveExerciseGlobalRoot) removeOnExit(exerciseGlobalRoot)
 // A throwaway repository inside the root is what those scenarios act on instead.
 export const exerciseWorkingDirectory = path.join(exerciseGlobalRoot, "cwd")
 mkdirSync(exerciseWorkingDirectory, { recursive: true })
+// This runs before HOME is repointed, so git would otherwise read the developer's own config: a
+// signing requirement fails the commit or waits on a pinentry, and a global hooks path runs their
+// hooks. A repository with no commit still "works" — scenarios pass against a different kind of
+// project — so a failure here stops the run instead of being ignored.
+const gitHome = path.join(exerciseGlobalRoot, "git")
+mkdirSync(path.join(gitHome, "hooks"), { recursive: true })
+writeFileSync(path.join(gitHome, "config"), "")
 const git = (...args: string[]) =>
-  spawnSync("git", ["-C", exerciseWorkingDirectory, ...args], { stdio: "ignore" }).status === 0
-if (!git("rev-parse", "--verify", "HEAD")) {
-  git("init", "--quiet")
-  git(
-    "-c",
-    "user.name=Exerciser",
-    "-c",
-    "user.email=exerciser@example.test",
-    "commit",
-    "--allow-empty",
-    "--quiet",
-    "-m",
-    "exerciser root",
+  spawnSync(
+    "git",
+    [
+      "-C",
+      exerciseWorkingDirectory,
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      `core.hooksPath=${path.join(gitHome, "hooks")}`,
+      "-c",
+      "init.defaultBranch=main",
+      ...args,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: path.join(gitHome, "config"),
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_AUTHOR_NAME: "Exerciser",
+        GIT_AUTHOR_EMAIL: "exerciser@example.test",
+        GIT_COMMITTER_NAME: "Exerciser",
+        GIT_COMMITTER_EMAIL: "exerciser@example.test",
+      },
+    },
   )
+const mustGit = (...args: string[]) => {
+  const result = git(...args)
+  if (result.status !== 0)
+    throw new Error(
+      `git ${args.join(" ")} failed in ${exerciseWorkingDirectory}: ${result.stderr || result.stdout || result.error?.message || `exit ${result.status}`}`,
+    )
+}
+if (git("rev-parse", "--verify", "--quiet", "HEAD").status !== 0) {
+  mustGit("init", "--quiet")
+  mustGit("commit", "--allow-empty", "--no-verify", "--quiet", "-m", "exerciser root")
 }
 process.chdir(exerciseWorkingDirectory)
 process.env.XDG_DATA_HOME = path.join(exerciseGlobalRoot, "data")
@@ -54,9 +86,9 @@ export const exerciseConfigDirectory = path.join(exerciseGlobalRoot, "config", "
 export const exerciseDataDirectory = path.join(exerciseGlobalRoot, ".red", "code", "data")
 
 const preserveExerciseDatabase = !!process.env.REDCODE_HTTPAPI_EXERCISE_DB
-export const exerciseDatabasePath =
-  process.env.REDCODE_HTTPAPI_EXERCISE_DB ??
-  path.join(process.env.TMPDIR ?? "/tmp", `opencode-httpapi-exercise-${process.pid}.db`)
+export const exerciseDatabasePath = path.resolve(
+  process.env.REDCODE_HTTPAPI_EXERCISE_DB || path.join(os.tmpdir(), `opencode-httpapi-exercise-${process.pid}.db`),
+)
 process.env.REDCODE_DB = exerciseDatabasePath
 if (!preserveExerciseDatabase)
   removeOnExit(exerciseDatabasePath, `${exerciseDatabasePath}-wal`, `${exerciseDatabasePath}-shm`)

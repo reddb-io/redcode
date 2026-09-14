@@ -2629,12 +2629,18 @@ it.instance("leaves a turn alone while a tool is still running", () =>
     // Waits for the watchdog itself rather than for the wall clock. A fixed sleep either ends before
     // the watchdog has looked at a quiet stretch past the abort threshold, proving nothing, or — at
     // several times the threshold, which is what it took to be sure — spends most of the test's
-    // budget, and a loaded machine spends the rest on setup. The first look past the threshold with
-    // the tool in flight is exactly the moment the old watchdog would have ended the turn.
+    // budget, and a loaded machine spends the rest on setup.
+    //
+    // Released on the second look past the threshold, not the first: the spy runs before the loop
+    // acts on a decision, and the loop sleeps a poll interval between looks, so by the second look
+    // whatever the first one decided has been recorded in full. The spy does not filter on the tool
+    // count either — a watchdog that miscounts running tools has to fail on the assertions below.
+    // And if a wrong abort ends the turn, there is no second look: the turn ending releases the wait.
     const pastAbort = yield* Deferred.make<void>()
     const decide = SessionStall.decide
+    let looksPastAbort = 0
     const watched = spyOn(SessionStall, "decide").mockImplementation((input) => {
-      if (input.activeToolCount > 0 && input.quietMs >= input.limits.abortMs) succeedVoid(pastAbort)
+      if (input.quietMs >= input.limits.abortMs && ++looksPastAbort === 2) succeedVoid(pastAbort)
       return decide(input)
     })
     yield* Effect.addFinalizer(() => Effect.sync(() => watched.mockRestore()))
@@ -2643,8 +2649,8 @@ it.instance("leaves a turn alone while a tool is still running", () =>
     yield* awaitWithTimeout(llm.wait(1), "provider was never called", "10 seconds")
     yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for the tool to start", "10 seconds")
     yield* awaitWithTimeout(
-      Deferred.await(pastAbort),
-      "the watchdog never looked at a quiet stretch past the abort threshold",
+      Effect.raceFirst(Deferred.await(pastAbort), Fiber.await(fiber).pipe(Effect.asVoid)),
+      "the watchdog never looked twice at a quiet stretch past the abort threshold",
       "20 seconds",
     )
     expect((yield* status.get(chat.id)).type).toBe("busy")
