@@ -1,5 +1,21 @@
 # opencode
 
+## 0.29.0
+
+### Minor Changes
+
+- 8fd1ed7: Design review: delete, rename, reorder, merge and split variants from the variant strip. Each operation is sent to the agent as structured feedback and shows in the preview at once (hidden, relabelled or reordered variants; merging and splitting tabs are marked) until the agent's new revision replaces it; a failed request or a turn that ends without the change reverts the view and keeps the request for a retry. Notes on a removed variant can be retargeted, and the terminal and TUI transcript name the requested operation.
+
+### Patch Changes
+
+- bb1fd8a: Design review opens at most one browser tab per review. The Design tool, the TUI's Open Design review and `redcode design` all claim the launch through the server, which counts connected review pages (including an open app review panel): a publish while a page is connected opens nothing and the page live-reloads, rapid publishes or a publish right after an explicit open open one tab, a failed launch is retried on the next publish, and a closed tab is reopened only after a short debounce. The tool result says whether a tab was requested instead of claiming one opened. `REDCODE_NO_BROWSER` now stops every browser launch (Design review, MCP OAuth, account login, plugin OAuth), and test suites set it.
+- 108cda3: Plan approval no longer leaves an unanswerable dialog. When the server no longer has a question (its turn was interrupted, or the instance reloaded), answering or dismissing it now removes the dialog and says why. Before, the failure was silently ignored, so Enter, Esc and Ctrl+C all appeared to do nothing and the only way out was to kill the terminal. The v2 runtime now also tells clients when a pending question ends without an answer.
+- 4ec7a88: Question and permission dialogs are easier to get out of when the server is slow or failing.
+  - **Slow replies:** if the server doesn't take a reply within 10 seconds (30 seconds for a remote server), the TUI checks whether the request is still pending. If it is, the dialog stays open and says it is still waiting. If not, the dialog closes and warns that your answer may still be applied.
+  - **Errors:** a request that no longer exists closes the dialog. Any other error keeps it open so you can try again.
+  - **Ctrl+C:** pressing it twice on the same dialog within 5 seconds exits, even while a dismiss is still pending. Dismissing one dialog never makes the next one exit.
+  - **Plan approval:** time spent reading a plan approval or answering a permission prompt no longer counts against the tool deadline. Before, a long read stopped plan_exit and left the approval dialog stale. Waits are tracked per session, so a subagent that reuses a provider's call ID doesn't affect its parent.
+
 ## 0.28.0
 
 ### Minor Changes
