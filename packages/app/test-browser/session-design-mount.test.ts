@@ -94,6 +94,47 @@ describe("Design review translations and lifetime", () => {
     expect(fixture.cleanups()).toBe(1)
   })
 
+  test("keeps the annotation shortcut scoped to the review so the prompt still gets typed letters", async () => {
+    const fixture = createFixture()
+    const outside = document.createElement("button")
+    document.body.append(outside, fixture.root)
+    try {
+      fixture.module.resolve({ mountReview: fixture.mount })
+      await fixture.mounted[0].promise
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      // Stand in for a loaded revision: the toggle only acts while the studio is on screen.
+      fixture.element("studio").hidden = false
+      fixture.element("review-tools").hidden = false
+      const toggle = fixture.element("annotate")
+      const press = () => {
+        const event = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true, composed: true })
+        document.body.dispatchEvent(event)
+        return event
+      }
+      const pointer = (target: Element) =>
+        target.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }))
+
+      // Nothing has been touched yet: the key is left for the session page.
+      expect(press().defaultPrevented).toBe(false)
+      expect(toggle.getAttribute("aria-pressed")).toBe("false")
+      pointer(outside)
+      expect(press().defaultPrevented).toBe(false)
+      expect(toggle.getAttribute("aria-pressed")).toBe("false")
+
+      pointer(fixture.element("canvas"))
+      expect(press().defaultPrevented).toBe(true)
+      expect(toggle.getAttribute("aria-pressed")).toBe("true")
+
+      pointer(outside)
+      expect(press().defaultPrevented).toBe(false)
+      expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    } finally {
+      fixture.dispose()
+      outside.remove()
+      fixture.root.remove()
+    }
+  })
+
   test("does not mount after its owner is disposed during import", async () => {
     const fixture = createFixture()
     fixture.dispose()
@@ -136,6 +177,7 @@ function createFixture(request: ReviewOptions["request"] = async () => Response.
       translate: (key) => designGoalDictionary(state.locale)[key],
     })
     return {
+      root,
       module,
       mounted,
       mount,

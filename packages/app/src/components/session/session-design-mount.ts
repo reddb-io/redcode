@@ -24,7 +24,8 @@ export function createSessionDesignMount(input: {
     const host = document.createElement("div")
     host.style.height = "100%"
     input.root.replaceChildren(host)
-    const mounted = module.mountReview(host, { ...options, copy: untrack(copy), appearance })
+    // The session page sends typed letters to the prompt, so the review's shortcuts stay scoped to it.
+    const mounted = module.mountReview(host, { ...options, shortcuts: "scoped", copy: untrack(copy), appearance })
     onCleanup(mounted)
     createEffect(() => mounted.updateCopy(copy()))
   })

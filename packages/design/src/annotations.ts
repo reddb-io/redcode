@@ -149,18 +149,15 @@ export function annotations() {
     { passive: true },
   )
   // Keys pressed inside the sandbox never reach the host document; Escape and the A annotation
-  // shortcut are the ones it acts on, A only when the prototype is not taking typed text.
+  // shortcut are the ones it acts on, and neither while the prototype is taking typed text (also
+  // inside a web component, hence the composed path).
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.enabled) parent.postMessage({ type: "design:key", key: "Escape" }, "*")
-    if (event.key.toLowerCase() !== "a" || event.ctrlKey || event.metaKey || event.altKey) return
-    if (event.repeat || event.isComposing || event.defaultPrevented) return
-    const target = event.target
-    if (
-      target instanceof HTMLElement &&
-      (target.isContentEditable || target.matches("input, textarea, select, [contenteditable]"))
-    )
+    if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing || event.defaultPrevented)
       return
-    parent.postMessage({ type: "design:key", key: "a" }, "*")
+    const target = event.composedPath()[0]
+    if (target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"))) return
+    if (event.key === "Escape" && state.enabled) parent.postMessage({ type: "design:key", key: "Escape" }, "*")
+    if (event.key.toLowerCase() === "a") parent.postMessage({ type: "design:key", key: "a" }, "*")
   })
   document.addEventListener(
     "click",
