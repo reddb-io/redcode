@@ -1899,7 +1899,13 @@ const layer = Layer.effect(
               }
             }
 
-            if (result === "stop") return "break" as const
+            if (result === "stop") {
+              // A loop-guard stop breaks here, before the goal loop below, so an active goal would
+              // otherwise stay active on an idle session.
+              if (handle.guardStop)
+                yield* goals.pause(sessionID, `stopped by the loop guard: ${handle.guardStop}`).pipe(Effect.ignore)
+              return "break" as const
+            }
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,

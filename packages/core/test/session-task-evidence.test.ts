@@ -812,6 +812,13 @@ it.effect("normalises relative paths against the session directory before compar
     ])
     expect(SessionTaskFacts.paths("read", { filePath: "./src/a.ts" }, "/project")).toEqual(["/project/src/a.ts"])
     expect(SessionTaskFacts.overlaps(["./src/a.ts"], ["src"])).toBe(true)
+    // Windows spellings compare the same way: backslashes, drive letters and a relative root.
+    expect(SessionTaskFacts.overlaps(["C:\\project\\src\\a.ts"], ["src"])).toBe(true)
+    expect(SessionTaskFacts.overlaps(["C:\\project\\src\\a.ts"], ["/project/src/"])).toBe(true)
+    expect(SessionTaskFacts.overlaps(["C:\\project\\lib\\a.ts"], ["src"])).toBe(false)
+    expect(SessionTaskFacts.overlaps(["/project/srcs/a.ts"], ["src"])).toBe(false)
+    expect(SessionTaskFacts.paths("grep", { path: "src\\lib" }, "C:\\project")).toEqual(["/project/src/lib"])
+    expect(SessionTaskFacts.paths("edit", { filePath: "D:\\project\\src\\..\\a.ts" })).toEqual(["/project/a.ts"])
     yield* result("edit", "edit-other", 30, 0, "completed", { filePath: "/project/lib/b.ts" })
     expect(yield* todos.review(sessionID)).toEqual(done)
     yield* result("edit", "edit-src", 40, 0, "completed", { filePath: "/project/src/a.ts" })
@@ -874,5 +881,95 @@ it.effect("refuses a stale read, an explanation of whitespace, and keeps a proof
     yield* result("bash", "sed", 50, 0, "completed", { command: "sed -i 's/a/b/' a.ts" })
     const reviewed = yield* todos.review(sessionID)
     expect(reviewed.find((entry) => entry.content === "Fourth")?.status).toBe("completed")
+  }),
+)
+
+it.effect("asks for a missing explanation without counting it toward blocking the task", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const { criterion: _criterion, ...bare } = task
+    const created = (yield* todos.update({ sessionID, todos: [bare] }))[0]
+    yield* result("edit", "edit-a", 20, 0, "completed", { filePath: "/project/a.ts" })
+    yield* result("bash", "tests", 30, 0, "completed", { command: "bun test" })
+    const completion = { id: created.id, revision: created.revision, status: "completed" as const }
+    const first = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(first.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+    expect(first.message).not.toContain(SessionTodoStore.REFUSED)
+    // The exact update to send, with the real task and result ids, and reason as the alternative.
+    expect(first.message).toContain(
+      `{"todos":[{"id":"${created.id}","revision":${created.revision},"status":"completed","evidence":{"callID":"tests","messageID":"msg_result_tests_30","explanation":`,
+    )
+    expect(first.message).toContain('"reason"')
+    yield* refusal("attempt-1", 31, completion, first.message)
+    const second = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(second.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+    yield* refusal("attempt-2", 32, completion, second.message)
+    // Two of them still do not block; a cited proof without explanation gets the same request.
+    const cited = yield* todos
+      .update({ sessionID, todos: [{ ...completion, evidence: { callID: "tests", explanation: " " } }] })
+      .pipe(Effect.flip)
+    expect(cited.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+    expect(cited.message).toContain("needs an explanation")
+    yield* refusal("attempt-3", 33, completion, cited.message)
+    expect((yield* todos.get(sessionID))[0].status).not.toBe("blocked")
+    const done = yield* todos.update({
+      sessionID,
+      todos: [{ ...completion, evidence: { callID: "tests", explanation: "bun test exercises the retry path" } }],
+    })
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "tests" } })
+    // A reason works as the explanation too.
+    const other = (yield* todos.update({ sessionID, todos: [{ ...bare, content: "Other" }] })).find(
+      (entry) => entry.content === "Other",
+    )!
+    expect(
+      (yield* todos.update({
+        sessionID,
+        todos: [{ id: other.id, revision: other.revision, status: "completed", reason: "bun test covers it" }],
+      })).find((entry) => entry.id === other.id)?.evidence,
+    ).toMatchObject({ callID: "tests", explanation: "bun test covers it" })
+  }),
+)
+
+it.effect("never records an inspecting command as verification and compares criteria loosely", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
+    const completion = { id: created.id, revision: created.revision, status: "completed" as const }
+    for (const command of ["ls -la", "git status && git diff", "cat a.ts | grep retry", "echo ok"])
+      expect(SessionTaskFacts.readOnly({ command })).toBe(true)
+    for (const command of ["bun test", "echo x > a.ts", "find . -delete", "sed -i s/a/b/ a.ts"])
+      expect(SessionTaskFacts.readOnly({ command })).toBe(false)
+    // `ls` is refused even though the task has a criterion that could explain a real check.
+    yield* result("bash", "listing", 20, 0, "completed", { command: "ls -la" })
+    const listed = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(listed.message).toStartWith(SessionTodoStore.REFUSED)
+    expect(listed.message).toContain("cite the verifying command")
+    expect(listed.message).toContain("listing (bash: ls -la)")
+    // A real check is accepted, explained by a criterion that differs from the title, and an
+    // inspection after it does not hide it.
+    yield* result("bash", "tests", 30, 0, "completed", { command: "bun test" })
+    yield* result("bash", "status", 31, 0, "completed", { command: "git status" })
+    const done = yield* todos.update({ sessionID, todos: [completion] })
+    expect(done[0].evidence).toMatchObject({ callID: "tests", explanation: task.criterion })
+    // A criterion that differs from the title only by case and punctuation explains nothing.
+    const echo = (yield* todos.update({
+      sessionID,
+      todos: [{ ...task, content: "Verify the retries", criterion: "verify THE retries!" }],
+    })).find((entry) => entry.content === "Verify the retries")!
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ id: echo.id, revision: echo.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+    const sent = yield* todos
+      .update({
+        sessionID,
+        todos: [{ id: echo.id, revision: echo.revision, status: "completed", criterion: "Verify the retries." }],
+      })
+      .pipe(Effect.flip)
+    expect(sent.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
   }),
 )

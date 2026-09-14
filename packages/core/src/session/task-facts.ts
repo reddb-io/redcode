@@ -60,11 +60,18 @@ const designs = new Set(["design_edit", "design_generate", "design_asset", "desi
 const scoped = (entries: ReadonlyArray<string>) =>
   entries.length > 0 && entries.every((entry) => entry.startsWith(DESIGN))
 
-/** `./src/`, `src` and `/project/src` name one directory once a session directory resolves the relative forms. */
+/**
+ * One spelling for a path on every platform: forward slashes, no drive letter, `.` and `..` resolved,
+ * relative forms joined to the session directory. Dropping the drive can only make two paths overlap
+ * that would not, which reopens more rather than less.
+ */
+const posix = (entry: string) => entry.replaceAll("\\", "/").replace(/^[A-Za-z]:(?=\/|$)/, "")
 const normal = (entry: string, directory?: string) => {
   if (entry.startsWith(DESIGN)) return entry
-  const resolved = directory && !path.isAbsolute(entry) ? path.resolve(directory, entry) : path.normalize(entry)
-  return resolved.length > 1 ? resolved.replace(/[\\/]+$/, "") : resolved
+  const value = posix(entry)
+  const resolved =
+    directory && !value.startsWith("/") ? path.posix.join(posix(directory) || "/", value) : path.posix.normalize(value)
+  return resolved.length > 1 ? resolved.replace(/\/+$/, "") : resolved
 }
 
 /**
@@ -78,12 +85,21 @@ export const overlaps = (edit: ReadonlyArray<string>, proof: ReadonlyArray<strin
   const b = proof.map((entry) => normal(entry))
   if (scoped(a)) return b.some((entry) => a.includes(entry))
   if (scoped(b)) return true
+  // A relative side is a path whose root is unknown: it overlaps any path containing it as a whole segment.
+  const inside = (x: string, y: string) => !y.startsWith("/") && (x.includes(`/${y}/`) || x.startsWith(`${y}/`))
   return (
     !a.length ||
     !b.length ||
     a.some((x) =>
       b.some(
-        (y) => x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`) || x.startsWith(`${y}/`) || y.startsWith(`${x}/`),
+        (y) =>
+          x === y ||
+          x.endsWith(`/${y}`) ||
+          y.endsWith(`/${x}`) ||
+          x.startsWith(`${y}/`) ||
+          y.startsWith(`${x}/`) ||
+          inside(x, y) ||
+          inside(y, x),
       ),
     )
   )
@@ -108,6 +124,61 @@ export function paths(tool: string, input: unknown, directory?: string): string[
         )
       : []
   return [...new Set([...named, ...patch].map((entry) => normal(entry, directory)))]
+}
+
+const inspecting = new Set([
+  "ls",
+  "cat",
+  "pwd",
+  "echo",
+  "printf",
+  "true",
+  ":",
+  "head",
+  "tail",
+  "wc",
+  "find",
+  "grep",
+  "rg",
+  "which",
+  "type",
+  "stat",
+  "file",
+  "tree",
+  "less",
+  "more",
+  "whoami",
+  "date",
+  "env",
+  "cd",
+  "du",
+  "df",
+])
+const inspectingGit = new Set(["status", "diff", "log", "show", "branch", "remote", "rev-parse"])
+
+/**
+ * A shell command that only looks at things: every step of it is a listing, a print, a search or a
+ * read-only git query, with no output redirected into a file. Exiting 0 proves nothing about a task,
+ * so such a command is never recorded as a verification on the model's behalf.
+ */
+export function readOnly(input: unknown) {
+  const value = typeof input === "object" && input !== null ? (input as { command?: unknown }).command : undefined
+  if (typeof value !== "string" || !value.trim()) return false
+  if (/(^|[^0-9&])>{1,2}(?!&)/.test(value.replace(/\d?>\s*\/dev\/null|2>&1/g, ""))) return false
+  return value
+    .split(/&&|\|\||;|\||\n/)
+    .map((step) =>
+      step
+        .trim()
+        .split(/\s+/)
+        .filter((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)),
+    )
+    .filter((tokens) => tokens.length)
+    .every(([program, ...args]) => {
+      if (program === "git") return inspectingGit.has(args.find((arg) => !arg.startsWith("-")) ?? "")
+      if (program === "find") return !args.some((arg) => ["-delete", "-exec", "-execdir", "-fprint"].includes(arg))
+      return inspecting.has(program!)
+    })
 }
 
 /** The command a shell result ran, cut to `limit` characters, for quoting it back to the model. */

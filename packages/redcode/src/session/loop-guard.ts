@@ -40,7 +40,7 @@ export interface Limits {
 export const LIMITS: Limits = { correctAt: 3, stopAt: 5, nudgeAt: 12, failureStopAt: 8 }
 
 export function limits(
-  config?: false | { correct_at?: number; stop_at?: number; nudge_at?: number },
+  config?: false | { correct_at?: number; stop_at?: number; nudge_at?: number; failure_stop_at?: number },
 ): Limits | undefined {
   if (config === false) return undefined
   const correctAt = config?.correct_at ?? LIMITS.correctAt
@@ -51,7 +51,7 @@ export function limits(
     correctAt,
     stopAt: Math.max(stopAt, correctAt),
     nudgeAt: Math.max(nudgeAt, correctAt),
-    failureStopAt: Math.max(LIMITS.failureStopAt, correctAt),
+    failureStopAt: Math.max(config?.failure_stop_at ?? LIMITS.failureStopAt, correctAt),
   }
 }
 

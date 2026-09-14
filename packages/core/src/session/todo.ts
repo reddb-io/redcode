@@ -118,6 +118,22 @@ export function notes(
   })
 }
 
+/**
+ * Whether `notes` has an automatically selected shell check to quote, and so needs the session's
+ * results. Without one the notes are complete without them, and the results are not loaded again.
+ */
+export function quotesCommand(incoming: ReadonlyArray<Input>, todos: ReadonlyArray<Info>) {
+  return incoming.some((item) => {
+    if (item.status !== "completed") return false
+    const task = todos.find((entry) => (item.id ? entry.id === item.id : entry.content === item.content?.trim()))
+    return (
+      task?.status === "completed" &&
+      (task.evidence?.tool === "bash" || task.evidence?.tool === "shell") &&
+      task.evidence.callID !== item.evidence?.callID
+    )
+  })
+}
+
 /** The minimal correct shapes, quoted when an update fails validation so the retry is not a guess. */
 export function validationHint(detail: string) {
   return `${detail}\nEach todo needs status plus either content and priority (new task) or id and revision (update). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence: {"callID":"<successful result>","explanation":"<how it meets criterion>"}; omit it only when a verification check ran after the last edit). Do not resend the failed shape.`

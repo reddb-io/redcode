@@ -87,9 +87,7 @@ const layer = Layer.effectDiscard(
               const notes = SessionTodo.notes(
                 input.todos,
                 updated,
-                input.todos.some((item) => item.status === "completed")
-                  ? (yield* facts.load(context.sessionID)).results
-                  : [],
+                SessionTodo.quotesCommand(input.todos, updated) ? (yield* facts.load(context.sessionID)).results : [],
               )
               return {
                 todos: updated,
