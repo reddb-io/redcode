@@ -55,7 +55,7 @@ export const Input = Schema.Struct({
   evidence: optional(
     EvidenceInput.annotate({
       description:
-        "Successful tool result proving completion; omitted on completion selects the newest successful result after the request",
+        "Successful tool result proving completion, with an explanation. When omitted, only a verification result (successful bash or shell check, design_preview or design_export) newer than the last edit is selected",
     }),
   ),
   scopeChange: optional(Schema.Struct({ messageID: Schema.String, quote: Schema.String })),
@@ -75,13 +75,15 @@ export interface Input extends Schema.Schema.Type<typeof Input> {}
 // the model sees still only advertises content.
 export const ModelInput = Schema.Struct({
   ...Input.fields,
+  // Empty content is checked after folding, so {"content":"","title":"X"} still becomes X.
+  content: optional(Schema.String),
   text: optional(Schema.String),
   title: optional(Schema.String),
   task: optional(Schema.String),
 }).pipe(
   Schema.decodeTo(Input, {
     decode: SchemaGetter.transform(({ text, title, task, ...item }) => {
-      const content = item.content ?? text ?? title ?? task
+      const content = [item.content, text, title, task].find((value) => value?.trim()) ?? item.content
       return content === undefined ? item : { ...item, content }
     }),
     encode: SchemaGetter.passthrough({ strict: false }),

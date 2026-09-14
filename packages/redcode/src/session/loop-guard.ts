@@ -139,13 +139,24 @@ export function repeats(parts: readonly Part[], next: { tool: string; input: unk
 }
 
 /**
- * How many times in a row this tool has just failed the same way, whatever the arguments were.
+ * Tools whose identical failure across drifting arguments is itself the loop.
+ *
+ * Only todowrite: its evidence refusals repeat word for word while the model reshuffles callIDs.
+ * Other tools fail the same way for legitimate reasons while the model is making progress — three
+ * different edits that each miss their oldString are three attempts, not one repeated.
+ */
+const FAILURE_STREAK_TOOLS = new Set(["todowrite"])
+
+/**
+ * How many times in a row todowrite has just failed the same way, whatever the arguments were.
  *
  * A model that keeps being refused for the same reason usually reshuffles its arguments between
  * attempts, so byte-identical input never lines up; the refusal text does. Only settled error
- * results count, and the guard's own refusals are part of the run it is measuring.
+ * results count, and the guard's own refusals are part of the run it is measuring. Always zero for
+ * any other tool.
  */
 export function failures(parts: readonly Part[], next: { tool: string }): number {
+  if (!FAILURE_STREAK_TOOLS.has(next.tool)) return 0
   let count = 0
   let last: string | undefined
   for (let i = parts.length - 1; i >= 0; i--) {
@@ -173,9 +184,11 @@ export function assess(input: {
   if (!input.limits) return { type: "ok" }
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
   const same = streak(input.parts, input.next) + 1
-  const failed = failures(input.parts, input.next) + 1
+  // A failure streak only ever corrects: the task gate blocks the task on its own after two genuine
+  // refusals, so ending the turn over it would stop work the model could still do.
+  const failed = FAILURE_STREAK_TOOLS.has(input.next.tool) ? failures(input.parts, input.next) + 1 : 0
+  if (same >= input.limits.stopAt) return { type: "stop", streak: same, message: stopped(input.next, same) }
   const count = Math.max(same, failed)
-  if (count >= input.limits.stopAt) return { type: "stop", streak: count, message: stopped(input.next, count) }
   if (count >= input.limits.correctAt)
     return {
       type: "correct",

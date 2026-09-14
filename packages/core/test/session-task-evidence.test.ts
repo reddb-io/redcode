@@ -17,6 +17,7 @@ import {
   TodoHistoryTable,
 } from "@reddb-io/redcode-core/session/sql"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { SessionTodoStore } from "@reddb-io/redcode-core/session/todo-store"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { testEffect } from "./lib/effect"
@@ -66,6 +67,7 @@ const result = (
   input: Record<string, unknown> = { command: "bun test" },
   messageID = `msg_result_${callID}_${completed}`,
   seq = completed,
+  error = "Partial edit failed",
 ) =>
   message(
     {
@@ -88,12 +90,37 @@ const result = (
                   input,
                   structured: { exit },
                   content: [{ type: "text", text: exit ? "Failed" : "Passed" }],
-                  ...(status === "error" ? { error: { type: "unknown", message: "Partial edit failed" } } : {}),
+                  ...(status === "error" ? { error: { type: "unknown", message: error } } : {}),
                 },
         },
       ],
     },
     seq,
+  )
+/** A todowrite call the runtime recorded as failed with `error`. */
+const refusal = (callID: string, completed: number, todo: unknown, error: string) =>
+  result("todowrite", callID, completed, 0, "error", { todos: [todo] }, undefined, undefined, error)
+/** An assistant message the runtime closed (a crashed or aborted turn) with a tool part still pending. */
+const abandoned = (name: string, callID: string, created: number, input: Record<string, unknown>) =>
+  message(
+    {
+      id: `msg_abandoned_${callID}`,
+      type: "assistant",
+      agent: "build",
+      model: { id: "fixture", providerID: "fixture" },
+      time: { created, completed: created + 1 },
+      error: { type: "unknown", message: "The turn was abandoned" },
+      content: [
+        {
+          type: "tool",
+          id: callID,
+          name,
+          time: { created },
+          state: { status: "pending", input: JSON.stringify(input) },
+        },
+      ],
+    },
+    created,
   )
 const task = {
   content: "Verify retries",
@@ -246,7 +273,7 @@ it.effect("selects the newest successful result when evidence is omitted and exp
         sessionID,
         todos: [{ id: bare[0].id, revision: bare[0].revision, status: "completed" }],
       }))[0].evidence,
-    ).toMatchObject({ callID: "verify-2", explanation: "auto-selected latest successful result bash" })
+    ).toMatchObject({ callID: "verify-2", explanation: "auto-selected latest verification bash" })
     const facts = yield* SessionTaskFacts.Service
     expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "edit-1")).toMatchObject({
       kind: "edit",
@@ -259,11 +286,11 @@ it.effect("keeps evidence valid across later verification commands and edits to 
   Effect.gen(function* () {
     yield* setup
     yield* request()
-    yield* result("edit", "edit-a", 20, 0, "completed", { filePath: "/project/a.ts" })
+    yield* result("read", "read-a", 20, 0, "completed", { filePath: "/project/a.ts" })
     const todos = yield* SessionTodo.Service
     const done = yield* todos.update({
       sessionID,
-      todos: [{ ...task, status: "completed", evidence: { callID: "edit-a", explanation: "Retry loop added" } }],
+      todos: [{ ...task, status: "completed", evidence: { callID: "read-a", explanation: "Retry loop is present" } }],
     })
     expect(done[0].status).toBe("completed")
     // A verification command after the proof is not an invalidating action.
@@ -323,17 +350,17 @@ it.effect("spells out missing, unknown and stale evidence with the candidates in
       todos
         .update({ sessionID, todos: [{ ...task, status: "completed", ...(evidence ? { evidence } : {}) }] })
         .pipe(Effect.flip)
-    expect((yield* attempt()).message).toContain("none exists yet")
+    expect((yield* attempt()).message).toContain("no verification result")
     expect((yield* attempt()).message).toContain("msg_request_10")
-    expect((yield* attempt()).message).toContain("old (bash, message msg_result_old_5, succeeded")
+    expect((yield* attempt()).message).toContain("old (bash, verification, message msg_result_old_5, succeeded")
     expect((yield* attempt({ callID: "invented", explanation: "x" })).message).toContain(
       'callID "invented" does not match',
     )
     yield* result("bash", "failed", 20, 1)
     expect((yield* attempt({ callID: "old", explanation: "x" })).message).toContain("before the request msg_request_10")
     const later = yield* attempt({ callID: "failed", explanation: "x" })
-    expect(later.message).toContain('callID "failed" (bash) did not succeed')
-    expect(later.message).toContain("failed (bash, message msg_result_failed_20, failed")
+    expect(later.message).toContain('callID "failed" (bash) is a failed result')
+    expect(later.message).toContain("failed (bash, verification, message msg_result_failed_20, failed")
     yield* result("bash", "verify", 30)
     yield* result("edit", "late", 40, 0, "error", { filePath: "/project/a.ts" })
     const stale = yield* attempt({ callID: "verify", explanation: "x" })
@@ -350,21 +377,20 @@ it.effect("blocks a task after two consecutive failed completion attempts in the
     const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
     const completion = { id: created.id, revision: created.revision, status: "completed" as const }
     const first = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
-    expect(first.message).toContain("none exists yet")
+    expect(first.message).toContain("no verification result")
     // The runtime records the refused call; a success in between resets the count.
-    yield* result("todowrite", "attempt-1", 20, 0, "error", { todos: [completion] })
+    yield* refusal("attempt-1", 20, completion, first.message)
     yield* result("todowrite", "progress", 21, 0, "completed", { todos: [{ ...completion, status: "in_progress" }] })
-    expect((yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)).message).toContain(
-      "none exists yet",
-    )
-    yield* result("todowrite", "attempt-2", 22, 0, "error", { todos: [completion] })
+    const second = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(second.message).toContain("no verification result")
+    yield* refusal("attempt-2", 22, completion, second.message)
     const blocked = yield* todos.update({ sessionID, todos: [completion] })
     expect(blocked[0]).toMatchObject({ status: "blocked", revision: created.revision! + 1 })
     expect(blocked[0].reason).toContain("completion evidence could not be verified after 2 attempts")
-    expect(blocked[0].reason).toContain("none exists yet")
+    expect(blocked[0].reason).toContain("no verification result")
     expect(SessionTodo.reminder(blocked)).toBeUndefined()
     // Once the failure is on a previous turn it no longer counts.
-    yield* result("todowrite", "attempt-3", 25, 0, "error", { todos: [completion] })
+    yield* refusal("attempt-3", 25, completion, second.message)
     yield* request("Try again", 30)
     const unblocked = yield* todos.update({
       sessionID,
@@ -375,7 +401,7 @@ it.effect("blocks a task after two consecutive failed completion attempts in the
       (yield* todos
         .update({ sessionID, todos: [{ id: created.id, revision: unblocked[0].revision, status: "completed" }] })
         .pipe(Effect.flip)).message,
-    ).toContain("none exists yet")
+    ).toContain("no verification result")
   }),
 )
 
@@ -518,5 +544,201 @@ it.effect("legacy tool evidence survives compaction metadata and excludes synthe
     expect(SessionTodo.context(done)).not.toContain(task.criterion)
     const facts = yield* SessionTaskFacts.Service
     expect((yield* facts.load(sessionID)).requests[0].text).toBe(task.requirement)
+  }),
+)
+
+it.effect("refuses a cited failing check instead of substituting another successful result", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* result("edit", "edit-a", 20, 0, "completed", { filePath: "/project/a.ts" })
+    yield* result("bash", "tests", 30, 1)
+    const todos = yield* SessionTodo.Service
+    const cite = (callID: string) =>
+      todos
+        .update({ sessionID, todos: [{ ...task, status: "completed", evidence: { callID, explanation: "Passed" } }] })
+        .pipe(Effect.flip)
+    const failed = yield* cite("tests")
+    expect(failed.message).toStartWith(SessionTodoStore.REFUSED)
+    expect(failed.message).toContain('callID "tests" (bash) is a failed result')
+    // A passing check elsewhere does not rescue an unknown, stale or superseded citation either.
+    yield* result("bash", "old-check", 5)
+    yield* result("bash", "passing", 40)
+    expect((yield* cite("invented")).message).toContain('callID "invented" does not match')
+    expect((yield* cite("old-check")).message).toContain("before the request msg_request_10")
+    yield* result("edit", "edit-b", 50, 0, "completed", { filePath: "/project/b.ts" })
+    yield* result("bash", "later-pass", 60)
+    expect((yield* cite("passing")).message).toContain("predates a later edit edit-b")
+    expect((yield* cite("edit-a")).message).toContain("is the edit itself")
+  }),
+)
+
+it.effect("selects only verification results on the model's behalf and accepts cited reads for investigation", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* result("edit", "edit-a", 20, 0, "completed", { filePath: "/project/a.ts" })
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
+    const bare = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(bare.message).toContain("no verification result")
+    expect(bare.message).toContain("edit-a (edit, edit")
+    expect(bare.message).toContain("cite the read, grep or other result")
+    // A read after the edit is not selected either: it proves nothing about the change working.
+    yield* result("read", "read-a", 30, 0, "completed", { filePath: "/project/a.ts" })
+    expect(
+      (yield* todos
+        .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+        .pipe(Effect.flip)).message,
+    ).toContain("read-a (read, other")
+    // A verification that predates the last overlapping edit is not a candidate.
+    yield* result("bash", "early", 25)
+    yield* result("edit", "edit-late", 35, 0, "completed", { filePath: "/project/a.ts" })
+    expect(
+      (yield* todos
+        .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+        .pipe(Effect.flip)).message,
+    ).toContain("no verification result")
+  }),
+)
+
+it.effect("completes an exploration task from a cited read with its explanation", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Explore the current Leads table in the code")
+    yield* result("grep", "grep-leads", 20, 0, "completed", { pattern: "LeadsTable", path: "/project/src" })
+    yield* result("read", "read-leads", 30, 0, "completed", { filePath: "/project/src/leads/table.tsx" })
+    const todos = yield* SessionTodo.Service
+    const explore = {
+      content: "Explore the Leads table",
+      requirement: "Explore the current Leads table",
+      status: "completed" as const,
+      priority: "high" as const,
+    }
+    const done = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          ...explore,
+          evidence: { callID: "read-leads", explanation: "table.tsx renders the columns, sorting and row actions" },
+        },
+      ],
+    })
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "read-leads", tool: "read" } })
+    // An edit elsewhere leaves it standing; editing the explored file reopens it.
+    yield* result("edit", "edit-other", 40, 0, "completed", { filePath: "/project/src/other.ts" })
+    expect((yield* todos.review(sessionID))[0].status).toBe("completed")
+    yield* result("edit", "edit-table", 50, 0, "completed", { filePath: "/project/src/leads/table.tsx" })
+    expect((yield* todos.review(sessionID))[0].status).toBe("in_progress")
+    // A grep over a directory is invalidated by an edit beneath it.
+    const facts = yield* SessionTaskFacts.Service
+    const observed = yield* facts.load(sessionID)
+    const grep = observed.results.find((entry) => entry.callID === "grep-leads")!
+    expect(SessionTaskFacts.overlaps(["/project/src/leads/table.tsx"], grep.paths)).toBe(true)
+  }),
+)
+
+it.effect("auto-selects a design preview and lets a later design edit invalidate it", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* result("design_preview", "preview-1", 20, 0, "completed", { id: "des_1" })
+    const todos = yield* SessionTodo.Service
+    const done = yield* todos.update({ sessionID, todos: [{ ...task, status: "completed" }] })
+    expect(done[0].evidence).toMatchObject({ callID: "preview-1", tool: "design_preview" })
+    yield* request("Now implement retries and verify duplicate requests again", 30)
+    yield* result("design_preview", "preview-2", 40, 0, "completed", { id: "des_1" })
+    yield* result("design_edit", "design-edit", 50, 0, "completed", { id: "des_1" })
+    const again = { ...task, content: "Verify retries again", requirement: "verify duplicate requests again" }
+    const stale = yield* todos
+      .update({
+        sessionID,
+        todos: [{ ...again, status: "completed", evidence: { callID: "preview-2", explanation: "Preview matches" } }],
+      })
+      .pipe(Effect.flip)
+    expect(stale.message).toContain("predates a later edit design-edit (design_edit")
+    expect(
+      (yield* todos.update({ sessionID, todos: [{ ...again, status: "completed" }] }).pipe(Effect.flip)).message,
+    ).toContain("no verification result")
+    for (const tool of ["design_edit", "design_generate", "design_asset"])
+      expect(SessionTaskFacts.kind(tool)).toBe("edit")
+  }),
+)
+
+it.effect("settles tool parts abandoned in a closed message so they neither invalidate nor stay running", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* abandoned("edit", "crashed-edit", 15, { filePath: "/project/a.ts" })
+    yield* result("bash", "verify", 30)
+    const todos = yield* SessionTodo.Service
+    const done = yield* todos.update({
+      sessionID,
+      todos: [{ ...task, status: "completed", evidence: { callID: "verify", explanation: "Passed" } }],
+    })
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "verify" } })
+    // A crash after the proof leaves the completion standing on review.
+    yield* abandoned("edit", "crashed-later", 40, { filePath: "/project/a.ts" })
+    expect(yield* todos.review(sessionID)).toEqual(done)
+    const facts = yield* SessionTaskFacts.Service
+    expect((yield* facts.load(sessionID)).results.find((entry) => entry.callID === "crashed-later")).toMatchObject({
+      abandoned: true,
+      settled: true,
+      errored: true,
+      successful: false,
+    })
+    // Citing the abandoned part itself is refused with that reason.
+    expect(
+      (yield* todos
+        .update({
+          sessionID,
+          todos: [
+            {
+              ...task,
+              content: "Other",
+              status: "completed",
+              evidence: { callID: "crashed-later", explanation: "x" },
+            },
+          ],
+        })
+        .pipe(Effect.flip)).message,
+    ).toContain("never finished")
+    // An unsettled edit in a message that is still open still counts against review.
+    yield* result("edit", "in-flight", 50, 0, "pending", { filePath: "/project/a.ts" }, "msg_open")
+    expect((yield* todos.review(sessionID))[0].status).toBe("in_progress")
+  }),
+)
+
+it.effect("counts only genuine evidence refusals toward blocking a task", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
+    const completion = { id: created.id, revision: created.revision, status: "completed" as const }
+    const refused = (yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)).message
+    // A malformed call and a loop-guard correction quoting a refusal are not evidence refusals.
+    yield* refusal(
+      "malformed",
+      20,
+      { id: created.id, status: "completed", evidence: {} },
+      "Invalid task update: Missing key",
+    )
+    yield* refusal(
+      "guard",
+      21,
+      completion,
+      `This is call 3 of \`todowrite\`, and every one of them failed with the same error.\nresult: ${refused}`,
+    )
+    // So this is still the first genuine refusal: refused again, not blocked.
+    const second = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(second.message).toStartWith(SessionTodoStore.REFUSED)
+    // Recorded (as the runtime's error formatting may wrap it), the next refusal is the second one.
+    yield* refusal("real-1", 22, completion, `Error: ${second.message}`)
+    const blocked = yield* todos.update({ sessionID, todos: [completion] })
+    expect(blocked[0].status).toBe("blocked")
+    expect(blocked[0].reason).toContain("after 2 attempts")
   }),
 )

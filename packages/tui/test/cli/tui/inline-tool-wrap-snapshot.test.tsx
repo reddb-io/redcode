@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { createSignal, For, Show } from "solid-js"
+import { createStore, produce } from "solid-js/store"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { testRender, type JSX } from "@opentui/solid"
 import {
@@ -14,7 +15,9 @@ import {
   parseQuestions,
   parseTodos,
   alwaysSeparate,
-  collapseTodoFailures,
+  foldTodoFailures,
+  TodoFailureRow,
+  TodoFailureRunsProvider,
   toolDisplay,
 } from "../../../src/routes/session"
 
@@ -202,22 +205,6 @@ function FailedPendingToolFixture() {
   )
 }
 
-function CollapsedTodoFailuresFixture(props: { errorExpanded?: boolean }) {
-  return (
-    <InlineToolRow
-      icon="⚙"
-      complete={false}
-      pending="Updating todos…"
-      failed={true}
-      failure="Todo update failed ×3"
-      error="Completing needs a successful tool result after the request, and none exists yet."
-      errorExpanded={props.errorExpanded}
-    >
-      Updating todos…
-    </InlineToolRow>
-  )
-}
-
 function FailedCompleteToolFixture() {
   return (
     <InlineToolRow icon="→" complete={true} pending="Reading file…" failed={true} failure="Read failed">
@@ -251,26 +238,118 @@ describe("TUI inline tool wrapping", () => {
     expect(frame).not.toContain("Preparing patch")
   })
 
-  test("folds consecutive failed todowrite parts into one counted row that expands to the last error", async () => {
-    const todo = (status: string) => ({ type: "tool", tool: "todowrite", state: { status } })
-    const read = { type: "tool", tool: "read", state: { status: "completed" } }
-    const text = { type: "text" }
-    expect(collapseTodoFailures([text, todo("error"), todo("error"), todo("error"), read, todo("error")])).toEqual([
-      { type: "part", part: text },
-      { type: "todo-failures", parts: [todo("error"), todo("error"), todo("error")] },
-      { type: "part", part: read },
-      { type: "part", part: todo("error") },
-    ])
-    expect(collapseTodoFailures([todo("completed"), todo("error")])).toEqual([
-      { type: "part", part: todo("completed") },
-      { type: "part", part: todo("error") },
-    ])
-    const collapsed = await renderFrame(() => <CollapsedTodoFailuresFixture />, { width: 72, height: 3 })
-    expect(collapsed).toContain("Todo update failed ×3")
-    expect(collapsed).not.toContain("none exists yet")
-    const expanded = await renderFrame(() => <CollapsedTodoFailuresFixture errorExpanded />, { width: 72, height: 4 })
-    expect(expanded).toContain("Todo update failed ×3")
-    expect(expanded).toContain("none exists yet")
+  test("folds failed todowrite runs across assistant messages, broken by user messages and rendered parts", () => {
+    const todo = (id: string, status = "error") => ({ id, type: "tool", tool: "todowrite", state: { status } })
+    const parts: Record<
+      string,
+      Array<{ id: string; type: string; tool?: string; text?: string; state?: { status: string } }>
+    > = {
+      a1: [{ id: "t1", type: "text", text: "Completing" }, todo("f1")],
+      a2: [{ id: "s2", type: "step-start" }, { id: "r2", type: "reasoning", text: "retry" }, todo("f2")],
+      a3: [
+        { id: "e3", type: "text", text: "  " },
+        todo("f3"),
+        { id: "read", type: "tool", tool: "read", state: { status: "completed" } },
+        todo("f4"),
+      ],
+      u: [{ id: "ut", type: "text", text: "keep going" }],
+      a4: [todo("f5"), todo("ok", "completed"), todo("f6")],
+    }
+    const runs = foldTodoFailures(
+      [
+        { id: "a1", role: "assistant" },
+        { id: "a2", role: "assistant" },
+        { id: "a3", role: "assistant" },
+        { id: "u", role: "user" },
+        { id: "a4", role: "assistant" },
+      ],
+      (id) => parts[id] ?? [],
+    )
+    for (const id of ["f1", "f2", "f3"])
+      expect(runs.get(id)).toMatchObject({ lead: "f1", count: 3, latest: { id: "f3" } })
+    // A rendered tool breaks the run, as does a user message and a successful todowrite.
+    expect(runs.get("f4")).toMatchObject({ lead: "f4", count: 1 })
+    expect(runs.get("f5")).toMatchObject({ lead: "f5", count: 1 })
+    expect(runs.get("f6")).toMatchObject({ lead: "f6", count: 1 })
+    expect(runs.has("ok")).toBe(false)
+  })
+
+  test("renders one counted todowrite failure row across messages without remounting it as the run grows", async () => {
+    type FixturePart = { id: string; type: string; tool: string; state: { status: string; error: string } }
+    const failure = (id: string, error: string): FixturePart => ({
+      id,
+      type: "tool",
+      tool: "todowrite",
+      state: { status: "error", error },
+    })
+    const [store, setStore] = createStore<{
+      messages: Array<{ id: string; role: string }>
+      parts: Record<string, FixturePart[]>
+    }>({
+      messages: [
+        { id: "a1", role: "assistant" },
+        { id: "a2", role: "assistant" },
+      ],
+      parts: { a1: [failure("f1", "first refusal")], a2: [failure("f2", "second refusal")] },
+    })
+    let mounts = 0
+    let expand = () => {}
+    function Row(props: { failure: string; part: FixturePart }) {
+      mounts++
+      const [expanded, setExpanded] = createSignal(false)
+      expand = () => setExpanded(true)
+      return (
+        <InlineToolRow
+          icon="⚙"
+          complete={false}
+          pending="Updating todos…"
+          failed={true}
+          failure={props.failure}
+          error={props.part.state.error}
+          errorExpanded={expanded()}
+        >
+          Updating todos…
+        </InlineToolRow>
+      )
+    }
+    const frame = async () => {
+      await testSetup!.renderOnce()
+      await testSetup!.renderOnce()
+      return testSetup!.captureCharFrame()
+    }
+    testSetup = await testRender(
+      () => (
+        <box flexDirection="column" width={72}>
+          <TodoFailureRunsProvider messages={store.messages} parts={(id) => store.parts[id] ?? []}>
+            <For each={store.messages}>
+              {(message) => (
+                <For each={store.parts[message.id]}>{(part) => <TodoFailureRow part={part} row={Row} />}</For>
+              )}
+            </For>
+          </TodoFailureRunsProvider>
+        </box>
+      ),
+      { width: 72, height: 6 },
+    )
+    const two = await frame()
+    expect(two).toContain("Todo update failed ×2")
+    expect(two.match(/Todo update failed/g)).toHaveLength(1)
+    expect(mounts).toBe(1)
+    expand()
+    expect(await frame()).toContain("second refusal")
+    setStore(
+      produce((draft) => {
+        draft.messages.push({ id: "a3", role: "assistant" })
+        draft.parts.a3 = [failure("f3", "third refusal")]
+      }),
+    )
+    const three = await frame()
+    expect(three).toContain("Todo update failed ×3")
+    expect(three.match(/Todo update failed/g)).toHaveLength(1)
+    // Still expanded, now quoting the latest refusal: the row was updated in place, not remounted.
+    expect(three).toContain("third refusal")
+    expect(three).not.toContain("second refusal")
+    expect(mounts).toBe(1)
   })
 
   test("preserves useful completed copy when a tool fails", async () => {

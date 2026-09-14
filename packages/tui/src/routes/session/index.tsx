@@ -1428,102 +1428,104 @@ export function Session() {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <For each={messages()}>
-                  {(message, index) => (
-                    <Switch>
-                      <Match when={message.id === revert()?.messageID}>
-                        {(function () {
-                          const redoShortcut = useCommandShortcut("session.redo")
-                          const [hover, setHover] = createSignal(false)
-                          const dialog = useDialog()
+                <TodoFailureRunsProvider messages={messages()} parts={(id) => sync.data.part[id] ?? []}>
+                  <For each={messages()}>
+                    {(message, index) => (
+                      <Switch>
+                        <Match when={message.id === revert()?.messageID}>
+                          {(function () {
+                            const redoShortcut = useCommandShortcut("session.redo")
+                            const [hover, setHover] = createSignal(false)
+                            const dialog = useDialog()
 
-                          const handleUnrevert = async () => {
-                            const confirmed = await DialogConfirm.show(
-                              dialog,
-                              "Confirm Redo",
-                              "Are you sure you want to restore the reverted messages?",
-                            )
-                            if (confirmed) {
-                              keymap.dispatchCommand("session.redo")
+                            const handleUnrevert = async () => {
+                              const confirmed = await DialogConfirm.show(
+                                dialog,
+                                "Confirm Redo",
+                                "Are you sure you want to restore the reverted messages?",
+                              )
+                              if (confirmed) {
+                                keymap.dispatchCommand("session.redo")
+                              }
                             }
-                          }
 
-                          return (
-                            <box
-                              onMouseOver={() => setHover(true)}
-                              onMouseOut={() => setHover(false)}
-                              onMouseUp={handleUnrevert}
-                              marginTop={1}
-                              flexShrink={0}
-                              border={["left"]}
-                              customBorderChars={SplitBorder.customBorderChars}
-                              borderColor={theme.backgroundPanel}
-                            >
+                            return (
                               <box
-                                paddingTop={1}
-                                paddingBottom={1}
-                                paddingLeft={2}
-                                backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                                onMouseOver={() => setHover(true)}
+                                onMouseOut={() => setHover(false)}
+                                onMouseUp={handleUnrevert}
+                                marginTop={1}
+                                flexShrink={0}
+                                border={["left"]}
+                                customBorderChars={SplitBorder.customBorderChars}
+                                borderColor={theme.backgroundPanel}
                               >
-                                <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                                <text fg={theme.textMuted}>
-                                  <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
-                                </text>
-                                <Show when={revert()!.diffFiles?.length}>
-                                  <box marginTop={1}>
-                                    <For each={revert()!.diffFiles}>
-                                      {(file) => (
-                                        <text fg={theme.text}>
-                                          {file.filename}
-                                          <Show when={file.additions > 0}>
-                                            <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                          </Show>
-                                          <Show when={file.deletions > 0}>
-                                            <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                          </Show>
-                                        </text>
-                                      )}
-                                    </For>
-                                  </box>
-                                </Show>
+                                <box
+                                  paddingTop={1}
+                                  paddingBottom={1}
+                                  paddingLeft={2}
+                                  backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                                >
+                                  <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                                  <text fg={theme.textMuted}>
+                                    <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
+                                  </text>
+                                  <Show when={revert()!.diffFiles?.length}>
+                                    <box marginTop={1}>
+                                      <For each={revert()!.diffFiles}>
+                                        {(file) => (
+                                          <text fg={theme.text}>
+                                            {file.filename}
+                                            <Show when={file.additions > 0}>
+                                              <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                            </Show>
+                                            <Show when={file.deletions > 0}>
+                                              <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                            </Show>
+                                          </text>
+                                        )}
+                                      </For>
+                                    </box>
+                                  </Show>
+                                </box>
                               </box>
-                            </box>
-                          )
-                        })()}
-                      </Match>
-                      <Match
-                        when={revert()?.messageID && revertMessageIndex() !== -1 && index() >= revertMessageIndex()}
-                      >
-                        <></>
-                      </Match>
-                      <Match when={message.role === "user"}>
-                        <UserMessage
-                          index={index()}
-                          onMouseUp={() => {
-                            if (renderer.getSelection()?.getSelectedText()) return
-                            dialog.replace(() => (
-                              <DialogMessage
-                                messageID={message.id}
-                                sessionID={route.sessionID}
-                                setPrompt={(promptInfo) => prompt?.set(promptInfo)}
-                              />
-                            ))
-                          }}
-                          message={message as UserMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                          pending={pending()}
-                        />
-                      </Match>
-                      <Match when={message.role === "assistant"}>
-                        <AssistantMessage
-                          last={lastAssistant()?.id === message.id}
-                          message={message as AssistantMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                        />
-                      </Match>
-                    </Switch>
-                  )}
-                </For>
+                            )
+                          })()}
+                        </Match>
+                        <Match
+                          when={revert()?.messageID && revertMessageIndex() !== -1 && index() >= revertMessageIndex()}
+                        >
+                          <></>
+                        </Match>
+                        <Match when={message.role === "user"}>
+                          <UserMessage
+                            index={index()}
+                            onMouseUp={() => {
+                              if (renderer.getSelection()?.getSelectedText()) return
+                              dialog.replace(() => (
+                                <DialogMessage
+                                  messageID={message.id}
+                                  sessionID={route.sessionID}
+                                  setPrompt={(promptInfo) => prompt?.set(promptInfo)}
+                                />
+                              ))
+                            }}
+                            message={message as UserMessage}
+                            parts={sync.data.part[message.id] ?? []}
+                            pending={pending()}
+                          />
+                        </Match>
+                        <Match when={message.role === "assistant"}>
+                          <AssistantMessage
+                            last={lastAssistant()?.id === message.id}
+                            message={message as AssistantMessage}
+                            parts={sync.data.part[message.id] ?? []}
+                          />
+                        </Match>
+                      </Switch>
+                    )}
+                  </For>
+                </TodoFailureRunsProvider>
               </scrollbox>
               <box flexShrink={0}>
                 <Show when={permissions().length > 0}>
@@ -1746,41 +1748,20 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
 
-  const groups = createMemo(() => collapseTodoFailures(props.parts))
-
   return (
     <>
-      <For each={groups()}>
-        {(group, index) => {
-          const component = createMemo(() =>
-            group.type === "part" ? PART_MAPPING[group.part.type as keyof typeof PART_MAPPING] : undefined,
-          )
+      <For each={props.parts}>
+        {(part, index) => {
+          const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
           return (
-            <Switch>
-              <Match when={group.type === "todo-failures" && group}>
-                {(failures) => (
-                  <InlineTool
-                    icon="⚙"
-                    pending="Updating todos…"
-                    failure={`Todo update failed ×${failures().parts.length}`}
-                    complete={false}
-                    part={failures().parts[failures().parts.length - 1] as ToolPart}
-                  >
-                    Updating todos…
-                  </InlineTool>
-                )}
-              </Match>
-              <Match when={group.type === "part" && component() && group}>
-                {(single) => (
-                  <Dynamic
-                    last={index() === groups().length - 1}
-                    component={component()!}
-                    part={single().part as any}
-                    message={props.message}
-                  />
-                )}
-              </Match>
-            </Switch>
+            <Show when={component()}>
+              <Dynamic
+                last={index() === props.parts.length - 1}
+                component={component()}
+                part={part as any}
+                message={props.message}
+              />
+            </Show>
           )
         }}
       </For>
@@ -1864,26 +1845,87 @@ const PART_MAPPING = {
   reasoning: ReasoningPart,
 }
 
+type TodoFoldPart = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
+export type TodoFailureRun<P> = { lead: string; count: number; latest: P }
+
 /**
- * Consecutive failed todowrite calls fold into one row.
+ * Consecutive failed todowrite calls fold into one row, across assistant messages.
  *
- * A model that trips the evidence gate retries it several times in a row; each refusal used to be
- * its own red line. One row that counts them, and expands to the last refusal, says the same thing
- * with less alarm. A single failure stays an ordinary tool part.
+ * A model that trips the evidence gate retries it several times in a row, and every retry is a new
+ * step and so a new assistant message; each refusal used to be its own red line. The run is keyed
+ * by part id: its first part renders one counted row that expands to the latest refusal, the rest
+ * render nothing. Reasoning, empty text and step markers do not break a run; anything else that
+ * renders, a user message, or an assistant error does.
  */
-export function collapseTodoFailures<P extends { type: string; tool?: string; state?: { status: string } }>(
-  parts: readonly P[],
-): Array<{ type: "part"; part: P } | { type: "todo-failures"; parts: P[] }> {
-  const failed = (part: P) => part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error"
-  return parts.reduce<Array<{ type: "part"; part: P } | { type: "todo-failures"; parts: P[] }>>((groups, part) => {
-    const last = groups[groups.length - 1]
-    if (!failed(part)) return [...groups, { type: "part", part }]
-    if (last?.type === "todo-failures")
-      return [...groups.slice(0, -1), { type: "todo-failures", parts: [...last.parts, part] }]
-    if (last?.type === "part" && failed(last.part))
-      return [...groups.slice(0, -1), { type: "todo-failures", parts: [last.part, part] }]
-    return [...groups, { type: "part", part }]
-  }, [])
+export function foldTodoFailures<P extends TodoFoldPart>(
+  messages: ReadonlyArray<{ id: string; role: string; error?: unknown }>,
+  partsOf: (messageID: string) => ReadonlyArray<P>,
+): Map<string, TodoFailureRun<P>> {
+  const runs = new Map<string, TodoFailureRun<P>>()
+  let run: { lead: string; parts: P[] } | undefined
+  const close = () => {
+    if (run)
+      for (const part of run.parts)
+        runs.set(part.id, { lead: run.lead, count: run.parts.length, latest: run.parts.at(-1)! })
+    run = undefined
+  }
+  for (const message of messages) {
+    if (message.role !== "assistant") {
+      close()
+      continue
+    }
+    for (const part of partsOf(message.id)) {
+      if (part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error") {
+        if (run) run.parts.push(part)
+        else run = { lead: part.id, parts: [part] }
+        continue
+      }
+      if (part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish") continue
+      if (part.type === "text" && !part.text?.trim()) continue
+      close()
+    }
+    if (message.error) close()
+  }
+  close()
+  return runs
+}
+
+const TodoFailureRuns = createContext<() => Map<string, TodoFailureRun<TodoFoldPart>>>()
+
+/** Folds the session's failed todowrite runs once for every row below it. */
+export function TodoFailureRunsProvider(props: {
+  messages: ReadonlyArray<{ id: string; role: string; error?: unknown }>
+  parts: (messageID: string) => ReadonlyArray<TodoFoldPart>
+  children: JSX.Element
+}) {
+  const runs = createMemo(() => foldTodoFailures(props.messages, props.parts))
+  return <TodoFailureRuns.Provider value={runs}>{props.children}</TodoFailureRuns.Provider>
+}
+
+/**
+ * One failed todowrite part. The same row component renders a lone failure and the head of a run,
+ * with only its label and quoted part changing, so a run growing while it streams never remounts
+ * the row or loses its expanded error.
+ */
+export function TodoFailureRow<P extends TodoFoldPart>(props: {
+  part: P
+  row: (props: { failure: string; part: P }) => JSX.Element
+}) {
+  const runs = useContext(TodoFailureRuns)
+  const run = createMemo(() => runs?.().get(props.part.id) as TodoFailureRun<P> | undefined)
+  return (
+    <Show when={!run() || run()!.lead === props.part.id}>
+      {props.row({
+        get failure() {
+          const count = run()?.count ?? 1
+          return count > 1 ? `Todo update failed ×${count}` : "Todo update failed"
+        },
+        get part() {
+          return run()?.latest ?? props.part
+        },
+      })}
+    </Show>
+  )
 }
 
 const INLINE_TOOL_ICON_WIDTH = 2
@@ -2831,9 +2873,14 @@ function TodoWrite(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="⚙" pending="Updating todos…" failure="Todo update failed" complete={false} part={props.part}>
-          Updating todos…
-        </InlineTool>
+        <TodoFailureRow
+          part={props.part}
+          row={(row) => (
+            <InlineTool icon="⚙" pending="Updating todos…" failure={row.failure} complete={false} part={row.part}>
+              Updating todos…
+            </InlineTool>
+          )}
+        />
       </Match>
     </Switch>
   )

@@ -52,6 +52,7 @@ import { SessionStore } from "@reddb-io/redcode-core/session/store"
 import { SessionGoal } from "../src/session/goal"
 import { SessionPlan } from "../src/session/plan"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SystemContext } from "@reddb-io/redcode-core/system-context"
 import { SystemContextRegistry } from "@reddb-io/redcode-core/system-context/registry"
 import { SkillGuidance } from "@reddb-io/redcode-core/skill/guidance"
@@ -264,6 +265,7 @@ const it = testEffect(
       SessionProjector.node,
       SessionStore.node,
       SessionTodo.node,
+      SessionTaskFacts.node,
       SessionGoal.node,
       SessionPlan.node,
       ApplicationTools.node,
@@ -1833,6 +1835,118 @@ describe("SessionRunnerLLM", () => {
         { type: "assistant", finish: "stop" },
       ])
     }),
+  )
+
+  it.effect(
+    "hands the issuing assistant message id to the todo engine so a running sibling edit is not held against it",
+    () =>
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        const todos = yield* SessionTodo.Service
+        const facts = yield* SessionTaskFacts.Service
+        const applicationTools = yield* ApplicationTools.Service
+        const editGate = yield* Deferred.make<void>()
+        const outcome: { messageID?: string; sibling?: SessionTaskFacts.Result; result?: string } = {}
+        yield* applicationTools.register({
+          bash: Tool.make({
+            description: "Run a check",
+            input: Schema.Struct({ command: Schema.String }),
+            output: Schema.Struct({ exit: Schema.Number }),
+            // The prompt is persisted by the time the first step runs, so the task can quote it here.
+            execute: (_, context) =>
+              todos
+                .update({
+                  sessionID: context.sessionID,
+                  todos: [
+                    {
+                      content: "Verify retries",
+                      status: "in_progress",
+                      priority: "high",
+                      requirement: "verify duplicate requests",
+                    },
+                  ],
+                })
+                .pipe(Effect.orDie, Effect.as({ exit: 0 })),
+          }),
+          edit: Tool.make({
+            description: "Edit a file",
+            input: Schema.Struct({ filePath: Schema.String }),
+            output: Schema.Struct({}),
+            execute: () => Deferred.await(editGate).pipe(Effect.as({})),
+          }),
+          todowrite: Tool.make({
+            description: "Update todos",
+            input: Schema.Struct({ todos: Schema.Array(SessionTodo.Input) }),
+            output: Schema.Struct({}),
+            execute: (input, context) =>
+              Effect.gen(function* () {
+                outcome.messageID = context.assistantMessageID
+                outcome.sibling = (yield* facts.load(context.sessionID)).results.find(
+                  (entry) => entry.callID === "call-edit",
+                )
+                outcome.result = yield* todos
+                  .update({ sessionID: context.sessionID, todos: input.todos, messageID: context.assistantMessageID })
+                  .pipe(
+                    Effect.map((updated) => updated[0]?.status ?? "missing"),
+                    Effect.catch((error) => Effect.succeed(error.message)),
+                  )
+                return {}
+              }).pipe(Effect.ensuring(Deferred.succeed(editGate, undefined))),
+          }),
+        })
+        yield* session.prompt({
+          sessionID,
+          prompt: Prompt.make({ text: "Implement retries and verify duplicate requests" }),
+          resume: false,
+        })
+        requests.length = 0
+        responses = [
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: "call-check", name: "bash", input: { command: "bun test" } }),
+            LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: "call-edit", name: "edit", input: { filePath: "/project/a.ts" } }),
+            LLMEvent.toolCall({
+              id: "call-complete",
+              name: "todowrite",
+              input: {
+                todos: [
+                  {
+                    content: "Verify retries",
+                    priority: "high",
+                    status: "completed",
+                    evidence: { callID: "call-check", explanation: "The check passed" },
+                  },
+                ],
+              },
+            }),
+            LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+            LLMEvent.finish({ reason: "stop" }),
+          ],
+        ]
+
+        yield* session.resume(sessionID)
+
+        // The sibling edit was still unsettled in the very message the engine was told about.
+        expect(outcome.sibling).toMatchObject({ settled: false, abandoned: false, messageID: outcome.messageID })
+        expect(outcome.result).toBe("completed")
+        const holder = (yield* session.context(sessionID)).find(
+          (message) =>
+            message.type === "assistant" &&
+            message.content.some((part) => part.type === "tool" && part.id === "call-complete"),
+        )
+        expect(outcome.messageID).toBe(holder?.id)
+      }),
   )
 
   it.effect("pauses after seven reminders and keeps remaining tasks actionable", () =>
