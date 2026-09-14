@@ -15,6 +15,7 @@ import {
   parseQuestions,
   parseTodos,
   alwaysSeparate,
+  createTodoFold,
   foldTodoFailures,
   TodoFailureRow,
   TodoFailureRunsProvider,
@@ -272,6 +273,62 @@ describe("TUI inline tool wrapping", () => {
     expect(runs.get("f5")).toMatchObject({ lead: "f5", count: 1 })
     expect(runs.get("f6")).toMatchObject({ lead: "f6", count: 1 })
     expect(runs.has("ok")).toBe(false)
+  })
+
+  test("re-folds only live messages while a session streams, with the same runs as a full fold", () => {
+    type Fixture = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
+    const todo = (id: string): Fixture => ({ id, type: "tool", tool: "todowrite", state: { status: "error" } })
+    const parts: Record<string, Fixture[]> = {
+      a1: [{ id: "t1", type: "text", text: "Completing" }, todo("f1")],
+      a2: [{ id: "r2", type: "reasoning", text: "retry" }, todo("f2")],
+      a3: [todo("f3")],
+    }
+    const messages = [
+      { id: "a1", role: "assistant", time: { completed: 1 } },
+      { id: "a2", role: "assistant", time: { completed: 2 } },
+      { id: "a3", role: "assistant", time: {} },
+    ]
+    const reads: string[] = []
+    const partsOf = (id: string) => {
+      reads.push(id)
+      return parts[id] ?? []
+    }
+    const fold = createTodoFold<Fixture>()
+    const first = fold(messages, partsOf)
+    expect([...first]).toEqual([...foldTodoFailures(messages, (id) => parts[id] ?? [])])
+    expect(first.get("f3")).toMatchObject({ lead: "f1", count: 3 })
+    // A streamed token in the live message: finished messages are not read again.
+    reads.length = 0
+    parts.a3 = [...parts.a3!, { id: "t3", type: "text", text: "" }]
+    expect([...fold(messages, partsOf)]).toEqual([...foldTodoFailures(messages, (id) => parts[id] ?? [])])
+    expect(reads).toEqual(["a3"])
+    // The live message finishing with a rendered part breaks the run, and is then cached too.
+    parts.a3 = [...parts.a3!, { id: "t4", type: "text", text: "Done" }, todo("f4")]
+    const finished = [...messages.slice(0, 2), { id: "a3", role: "assistant", time: { completed: 3 } }]
+    reads.length = 0
+    const settled = fold(finished, partsOf)
+    expect([...settled]).toEqual([...foldTodoFailures(finished, (id) => parts[id] ?? [])])
+    expect(settled.get("f4")).toMatchObject({ lead: "f4", count: 1 })
+    reads.length = 0
+    fold(finished, partsOf)
+    expect(reads).toEqual([])
+  })
+
+  test("does not fold failures across a revert boundary", () => {
+    const todo = (id: string) => ({ id, type: "tool", tool: "todowrite", state: { status: "error" } })
+    const parts: Record<string, Array<ReturnType<typeof todo>>> = {
+      a1: [todo("f1")],
+      a2: [todo("f2")],
+      a3: [todo("f3")],
+      a4: [todo("f4")],
+    }
+    const messages = ["a1", "a2", "a3", "a4"].map((id) => ({ id, role: "assistant" }))
+    // Everything from the reverted message on is hidden, so nothing there joins or extends a visible run.
+    const runs = foldTodoFailures(messages, (id) => parts[id] ?? [], "a3")
+    expect(runs.get("f1")).toMatchObject({ lead: "f1", count: 2, latest: { id: "f2" } })
+    expect(runs.has("f3")).toBe(false)
+    expect(runs.has("f4")).toBe(false)
+    expect(createTodoFold()(messages, (id) => parts[id] ?? [], "a3")).toEqual(runs)
   })
 
   test("renders one counted todowrite failure row across messages without remounting it as the run grows", async () => {

@@ -1428,7 +1428,11 @@ export function Session() {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <TodoFailureRunsProvider messages={messages()} parts={(id) => sync.data.part[id] ?? []}>
+                <TodoFailureRunsProvider
+                  messages={messages()}
+                  parts={(id) => sync.data.part[id] ?? []}
+                  revert={revert()?.messageID}
+                >
                   <For each={messages()}>
                     {(message, index) => (
                       <Switch>
@@ -1846,21 +1850,37 @@ const PART_MAPPING = {
 }
 
 type TodoFoldPart = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
+type TodoFoldMessage = { id: string; role: string; error?: unknown; time?: { created?: number; completed?: number } }
 export type TodoFailureRun<P> = { lead: string; count: number; latest: P }
+/** A message reduced to what folding reads: its failed todowrite parts, and `null` wherever a run breaks. */
+type TodoFoldSegment<P> = ReadonlyArray<P | null>
 
-/**
- * Consecutive failed todowrite calls fold into one row, across assistant messages.
- *
- * A model that trips the evidence gate retries it several times in a row, and every retry is a new
- * step and so a new assistant message; each refusal used to be its own red line. The run is keyed
- * by part id: its first part renders one counted row that expands to the latest refusal, the rest
- * render nothing. Reasoning, empty text and step markers do not break a run; anything else that
- * renders, a user message, or an assistant error does.
- */
-export function foldTodoFailures<P extends TodoFoldPart>(
-  messages: ReadonlyArray<{ id: string; role: string; error?: unknown }>,
+function todoFoldSegment<P extends TodoFoldPart>(
+  message: TodoFoldMessage,
   partsOf: (messageID: string) => ReadonlyArray<P>,
-): Map<string, TodoFailureRun<P>> {
+): TodoFoldSegment<P> {
+  if (message.role !== "assistant") return [null]
+  const items: Array<P | null> = []
+  for (const part of partsOf(message.id)) {
+    if (part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error") {
+      items.push(part)
+      continue
+    }
+    if (part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish") continue
+    if (part.type === "text" && !part.text?.trim()) continue
+    if (items.at(-1) !== null) items.push(null)
+  }
+  if (message.error && items.at(-1) !== null) items.push(null)
+  return items
+}
+
+/** Messages that render: a revert hides its message and everything after it. */
+function todoFoldVisible<M extends TodoFoldMessage>(messages: ReadonlyArray<M>, revert?: string) {
+  const index = revert ? messages.findIndex((message) => message.id === revert) : -1
+  return index === -1 ? messages : messages.slice(0, index)
+}
+
+function todoFoldRuns<P extends TodoFoldPart>(segments: Iterable<TodoFoldSegment<P>>) {
   const runs = new Map<string, TodoFailureRun<P>>()
   let run: { lead: string; parts: P[] } | undefined
   const close = () => {
@@ -1869,36 +1889,75 @@ export function foldTodoFailures<P extends TodoFoldPart>(
         runs.set(part.id, { lead: run.lead, count: run.parts.length, latest: run.parts.at(-1)! })
     run = undefined
   }
-  for (const message of messages) {
-    if (message.role !== "assistant") {
-      close()
-      continue
-    }
-    for (const part of partsOf(message.id)) {
-      if (part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error") {
-        if (run) run.parts.push(part)
-        else run = { lead: part.id, parts: [part] }
+  for (const segment of segments)
+    for (const item of segment) {
+      if (item === null) {
+        close()
         continue
       }
-      if (part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish") continue
-      if (part.type === "text" && !part.text?.trim()) continue
-      close()
+      if (run) run.parts.push(item)
+      else run = { lead: item.id, parts: [item] }
     }
-    if (message.error) close()
-  }
   close()
   return runs
+}
+
+/**
+ * Consecutive failed todowrite calls fold into one row, across assistant messages.
+ *
+ * A model that trips the evidence gate retries it several times in a row, and every retry is a new
+ * step and so a new assistant message; each refusal used to be its own red line. The run is keyed
+ * by part id: its first part renders one counted row that expands to the latest refusal, the rest
+ * render nothing. Reasoning, empty text and step markers do not break a run; anything else that
+ * renders, a user message, or an assistant error does. Nothing from a reverted message on is folded.
+ */
+export function foldTodoFailures<P extends TodoFoldPart>(
+  messages: ReadonlyArray<TodoFoldMessage>,
+  partsOf: (messageID: string) => ReadonlyArray<P>,
+  revert?: string,
+): Map<string, TodoFailureRun<P>> {
+  return todoFoldRuns(todoFoldVisible(messages, revert).map((message) => todoFoldSegment(message, partsOf)))
+}
+
+/**
+ * `foldTodoFailures` with each finished message reduced once.
+ *
+ * The fold runs again on every streamed token; walking every part of every finished message each
+ * time made a long session's streaming cost grow with its history. A finished message's segment is
+ * cached by id and its parts are not read again, so only the live message is re-scanned.
+ */
+export function createTodoFold<P extends TodoFoldPart>() {
+  const cache = new Map<string, TodoFoldSegment<P>>()
+  return (
+    messages: ReadonlyArray<TodoFoldMessage>,
+    partsOf: (messageID: string) => ReadonlyArray<P>,
+    revert?: string,
+  ): Map<string, TodoFailureRun<P>> =>
+    todoFoldRuns(
+      todoFoldVisible(messages, revert).map((message) => {
+        if (message.role === "assistant" && message.time?.completed === undefined)
+          return todoFoldSegment(message, partsOf)
+        const cached = cache.get(message.id)
+        if (cached) return cached
+        const segment = todoFoldSegment(message, partsOf)
+        cache.set(message.id, segment)
+        return segment
+      }),
+    )
 }
 
 const TodoFailureRuns = createContext<() => Map<string, TodoFailureRun<TodoFoldPart>>>()
 
 /** Folds the session's failed todowrite runs once for every row below it. */
 export function TodoFailureRunsProvider(props: {
-  messages: ReadonlyArray<{ id: string; role: string; error?: unknown }>
+  messages: ReadonlyArray<TodoFoldMessage>
   parts: (messageID: string) => ReadonlyArray<TodoFoldPart>
+  /** The reverted message, from which nothing renders. */
+  revert?: string
   children: JSX.Element
 }) {
-  const runs = createMemo(() => foldTodoFailures(props.messages, props.parts))
+  const fold = createTodoFold<TodoFoldPart>()
+  const runs = createMemo(() => fold(props.messages, props.parts, props.revert))
   return <TodoFailureRuns.Provider value={runs}>{props.children}</TodoFailureRuns.Provider>
 }
 

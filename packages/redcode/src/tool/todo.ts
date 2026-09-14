@@ -47,7 +47,11 @@ export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.
               messageID: ctx.messageID,
             })
             .pipe(Effect.orDie)
-          const notes = SessionTodo.notes(params.todos, todos)
+          const notes = SessionTodo.notes(
+            params.todos,
+            todos,
+            params.todos.some((item) => item.status === "completed") ? (yield* facts.load(ctx.sessionID)).results : [],
+          )
 
           return {
             title: `${todos.filter((x) => x.status !== "completed" && x.status !== "cancelled").length} todos`,

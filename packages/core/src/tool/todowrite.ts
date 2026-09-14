@@ -84,7 +84,13 @@ const layer = Layer.effectDiscard(
                 todos: input.todos,
                 messageID: context.assistantMessageID,
               })
-              const notes = SessionTodo.notes(input.todos, updated)
+              const notes = SessionTodo.notes(
+                input.todos,
+                updated,
+                input.todos.some((item) => item.status === "completed")
+                  ? (yield* facts.load(context.sessionID)).results
+                  : [],
+              )
               return {
                 todos: updated,
                 ...(notes.length ? { notes } : {}),
