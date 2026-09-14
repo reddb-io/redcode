@@ -856,7 +856,7 @@ const layer = Layer.effect(
         // not go through `shouldBreak`.
         if (decision.type === "stop") {
           ctx.blocked = true
-          ctx.guardStop = decision.message
+          ctx.guardStop = decision.summary
         }
         return decision
       })

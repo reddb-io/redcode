@@ -87,7 +87,14 @@ export function turn<M extends { readonly info: { readonly role: string }; reado
 export type Decision =
   | { readonly type: "ok" }
   | { readonly type: "correct"; readonly streak: number; readonly message: string }
-  | { readonly type: "stop"; readonly streak: number; readonly message: string }
+  | {
+      readonly type: "stop"
+      readonly streak: number
+      /** The model-facing refusal, returned as the tool's error. */
+      readonly message: string
+      /** A short account for people, recorded as the reason an active goal was paused. */
+      readonly summary: string
+    }
 
 /**
  * A call this guard already refused.
@@ -218,10 +225,22 @@ export function assess(input: {
   // refusals, so ending the turn over it would stop work the model could still do. What does end the
   // turn is a long run of todowrite failures of any kind, which no correction has broken.
   const failed = FAILURE_STREAK_TOOLS.has(input.next.tool) ? failures(input.parts, input.next) + 1 : 0
-  if (same >= input.limits.stopAt) return { type: "stop", streak: same, message: stopped(input.next, same) }
+  if (same >= input.limits.stopAt)
+    return {
+      type: "stop",
+      streak: same,
+      message: stopped(input.next, same),
+      summary: `Paused: the same \`${input.next.tool}\` call repeated ${same} times`,
+    }
   if (FAILURE_STREAK_TOOLS.has(input.next.tool)) {
     const run = todoFailures(input.parts)
-    if (run >= input.limits.failureStopAt) return { type: "stop", streak: run, message: failureStopped(run) }
+    if (run >= input.limits.failureStopAt)
+      return {
+        type: "stop",
+        streak: run,
+        message: failureStopped(run),
+        summary: `Paused: task updates kept failing (${run} in a row)`,
+      }
   }
   const count = Math.max(same, failed)
   if (count >= input.limits.correctAt)

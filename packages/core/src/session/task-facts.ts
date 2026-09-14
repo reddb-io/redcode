@@ -65,13 +65,57 @@ const scoped = (entries: ReadonlyArray<string>) =>
  * relative forms joined to the session directory. Dropping the drive can only make two paths overlap
  * that would not, which reopens more rather than less.
  */
-const posix = (entry: string) => entry.replaceAll("\\", "/").replace(/^[A-Za-z]:(?=\/|$)/, "")
+const windowsish = (entry: string) => /^[A-Za-z]:|\\/.test(entry)
+const posix = (entry: string) => {
+  const slashed = entry.replaceAll("\\", "/")
+  return /^[A-Za-z]:/.test(slashed) ? slashed[0]!.toLowerCase() + slashed.slice(1) : slashed
+}
+/** `c:/a` → `c:` and `/a`; a UNC path (`//server/share/a`) keeps its double slash as part of its root. */
+const drive = (entry: string) => {
+  const match = /^[a-z]:/.exec(entry)
+  return match ? ([match[0], entry.slice(2) || "/"] as const) : (["", entry] as const)
+}
 const normal = (entry: string, directory?: string) => {
   if (entry.startsWith(DESIGN)) return entry
-  const value = posix(entry)
-  const resolved =
-    directory && !value.startsWith("/") ? path.posix.join(posix(directory) || "/", value) : path.posix.normalize(value)
-  return resolved.length > 1 ? resolved.replace(/\/+$/, "") : resolved
+  // Windows paths are case-insensitive; so is the comparison of any path that came from one.
+  const fold = windowsish(entry) || (!!directory && windowsish(directory) && !entry.startsWith("/"))
+  const value = posix(fold ? entry.toLowerCase() : entry)
+  const base = directory ? posix(fold ? directory.toLowerCase() : directory) : ""
+  const [root, rest] = drive(value)
+  const absolute = rest.startsWith("/")
+  const joined =
+    !absolute && base
+      ? (([r, b]) => r + path.posix.join(b || "/", rest))(drive(base))
+      : root + path.posix.normalize(rest)
+  const unc = (absolute ? value : base).replace(/^[a-z]:/, "").startsWith("//") ? "/" : ""
+  const [head, tail] = drive(joined)
+  // With no directory to resolve against, a leading `../` only says the root is unknown.
+  const relative = !tail.startsWith("/") ? tail.replace(/^(\.\.?\/)+/, "").replace(/^\.\.?$/, "") : tail
+  const trimmed = relative.length > 1 ? relative.replace(/\/+$/, "") : relative
+  return head + (trimmed.startsWith("/") && !trimmed.startsWith("//") ? unc : "") + trimmed
+}
+
+/**
+ * Whether two normalised paths name the same file or one contains the other. A path without a drive
+ * matches either drive; paths on different drives never overlap. A relative path, whose root is
+ * unknown, overlaps any path containing it as whole segments, and an empty one overlaps everything.
+ */
+const related = (left: string, right: string) => {
+  const [dx, x] = drive(left)
+  const [dy, y] = drive(right)
+  if (dx && dy && dx !== dy) return false
+  if (!x || !y) return true
+  const inside = (outer: string, inner: string) =>
+    !inner.startsWith("/") && (outer.includes(`/${inner}/`) || outer.startsWith(`${inner}/`))
+  return (
+    x === y ||
+    x.endsWith(`/${y}`) ||
+    y.endsWith(`/${x}`) ||
+    x.startsWith(`${y}/`) ||
+    y.startsWith(`${x}/`) ||
+    inside(x, y) ||
+    inside(y, x)
+  )
 }
 
 /**
@@ -85,24 +129,7 @@ export const overlaps = (edit: ReadonlyArray<string>, proof: ReadonlyArray<strin
   const b = proof.map((entry) => normal(entry))
   if (scoped(a)) return b.some((entry) => a.includes(entry))
   if (scoped(b)) return true
-  // A relative side is a path whose root is unknown: it overlaps any path containing it as a whole segment.
-  const inside = (x: string, y: string) => !y.startsWith("/") && (x.includes(`/${y}/`) || x.startsWith(`${y}/`))
-  return (
-    !a.length ||
-    !b.length ||
-    a.some((x) =>
-      b.some(
-        (y) =>
-          x === y ||
-          x.endsWith(`/${y}`) ||
-          y.endsWith(`/${x}`) ||
-          x.startsWith(`${y}/`) ||
-          y.startsWith(`${x}/`) ||
-          inside(x, y) ||
-          inside(y, x),
-      ),
-    )
-  )
+  return !a.length || !b.length || a.some((x) => b.some((y) => related(x, y)))
 }
 
 /**
@@ -155,30 +182,120 @@ const inspecting = new Set([
   "df",
 ])
 const inspectingGit = new Set(["status", "diff", "log", "show", "branch", "remote", "rev-parse"])
+const shells = new Set(["bash", "sh", "zsh", "dash"])
+
+type Word = { text: string; quoted: boolean }
+/**
+ * Splits a command into steps of words, honouring quotes and backslashes. Returns `undefined` for
+ * anything it will not vouch for: a redirect into a file, command substitution or an unclosed quote.
+ */
+function steps(command: string): Word[][] | undefined {
+  const out: Word[][] = [[]]
+  let word: Word | undefined
+  const push = () => {
+    if (word) out.at(-1)!.push(word)
+    word = undefined
+  }
+  const extend = (text: string, quoted = false) => {
+    word = { text: (word?.text ?? "") + text, quoted: (word?.quoted ?? false) || quoted }
+  }
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i]!
+    if (char === "'" || char === '"') {
+      const end = command.indexOf(char, i + 1)
+      if (end === -1) return undefined
+      const inner = command.slice(i + 1, end)
+      if (char === '"' && /\$\(|`/.test(inner)) return undefined
+      extend(inner, true)
+      i = end
+      continue
+    }
+    if (char === "\\") {
+      extend(command[i + 1] ?? "")
+      i++
+      continue
+    }
+    if (char === "`" || (char === "$" && command[i + 1] === "(")) return undefined
+    if (/\s/.test(char) && char !== "\n") {
+      push()
+      continue
+    }
+    if (char === ">") {
+      // Only a duplicate of another descriptor (`2>&1`) or a discard (`>/dev/null`) writes nothing.
+      const fd = word && !word.quoted && /^\d*$/.test(word.text) ? word : undefined
+      if (word && !fd) push()
+      word = undefined
+      let j = i + 1
+      if (command[j] === ">") j++
+      if (command[j] === "&" && /\d|-/.test(command[j + 1] ?? "")) {
+        i = j + 1
+        continue
+      }
+      while (command[j] === " ") j++
+      if (!command.startsWith("/dev/null", j) || /[^\s;&|)]/.test(command[j + 9] ?? " ")) return undefined
+      i = j + 8
+      continue
+    }
+    if (char === "<") {
+      push()
+      continue
+    }
+    if (";|&\n()".includes(char)) {
+      push()
+      if (out.at(-1)!.length) out.push([])
+      continue
+    }
+    extend(char)
+  }
+  push()
+  return out.filter((step) => step.length)
+}
+
+function inspects(words: Word[]): boolean {
+  const args = words.map((entry) => entry.text)
+  while (args.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0]!)) args.shift()
+  const [program, ...rest] = args
+  if (program === undefined) return true
+  if (program === "env") {
+    const index = rest.findIndex((arg) => !arg.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(arg))
+    return index === -1 || inspects(rest.slice(index).map((text) => ({ text, quoted: false })))
+  }
+  if (shells.has(program)) {
+    const flag = rest.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg))
+    return flag !== -1 && rest[flag + 1] !== undefined && readOnly({ command: rest[flag + 1] })
+  }
+  if (program === "git") {
+    let index = 0
+    while (index < rest.length && rest[index]!.startsWith("-")) index += ["-C", "-c"].includes(rest[index]!) ? 2 : 1
+    const [sub, ...options] = rest.slice(index)
+    if (!sub || !inspectingGit.has(sub)) return false
+    // `git branch x`, `git branch -D x` and `git remote add` change things; bare listings do not.
+    if (sub === "branch")
+      return options.every((arg) => ["-a", "-r", "-v", "-vv", "--all", "--list", "--show-current"].includes(arg))
+    if (sub === "remote")
+      return options.every((arg) => ["-v", "--verbose"].includes(arg)) || ["show", "get-url"].includes(options[0] ?? "")
+    return true
+  }
+  if (program === "sed")
+    return (
+      rest.some((arg) => /^-[A-Za-z]*n[A-Za-z]*$/.test(arg) || arg === "--quiet") &&
+      !rest.some((arg) => /^-[A-Za-z]*i/.test(arg) || arg.startsWith("--in-place"))
+    )
+  if (program === "find") return !rest.some((arg) => ["-delete", "-exec", "-execdir", "-fprint", "-ok"].includes(arg))
+  return inspecting.has(program)
+}
 
 /**
- * A shell command that only looks at things: every step of it is a listing, a print, a search or a
- * read-only git query, with no output redirected into a file. Exiting 0 proves nothing about a task,
- * so such a command is never recorded as a verification on the model's behalf.
+ * A shell command that only looks at things: every step of it is a listing, a print, a search, a
+ * `sed -n` or a read-only git query, including inside `bash -c` and subshells, with no output
+ * redirected into a file. Exiting 0 proves nothing about a task, so such a command is never recorded
+ * as a verification on the model's behalf.
  */
-export function readOnly(input: unknown) {
+export function readOnly(input: unknown): boolean {
   const value = typeof input === "object" && input !== null ? (input as { command?: unknown }).command : undefined
   if (typeof value !== "string" || !value.trim()) return false
-  if (/(^|[^0-9&])>{1,2}(?!&)/.test(value.replace(/\d?>\s*\/dev\/null|2>&1/g, ""))) return false
-  return value
-    .split(/&&|\|\||;|\||\n/)
-    .map((step) =>
-      step
-        .trim()
-        .split(/\s+/)
-        .filter((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)),
-    )
-    .filter((tokens) => tokens.length)
-    .every(([program, ...args]) => {
-      if (program === "git") return inspectingGit.has(args.find((arg) => !arg.startsWith("-")) ?? "")
-      if (program === "find") return !args.some((arg) => ["-delete", "-exec", "-execdir", "-fprint"].includes(arg))
-      return inspecting.has(program!)
-    })
+  const parsed = steps(value)
+  return !!parsed && parsed.every(inspects)
 }
 
 /** The command a shell result ran, cut to `limit` characters, for quoting it back to the model. */
