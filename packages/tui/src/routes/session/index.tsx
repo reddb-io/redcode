@@ -56,7 +56,7 @@ import type {
 } from "@reddb-io/redcode-sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { webSearchProviderLabel } from "../../util/tool-display"
+import { TOOL_SEARCH_TOOLS, toolSearchSummary, webSearchProviderLabel } from "../../util/tool-display"
 import { Dynamic, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -2284,6 +2284,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={display() === "websearch"}>
           <WebSearch {...toolprops} />
         </Match>
+        <Match when={display() === "tool_search"}>
+          <ToolSearch {...toolprops} />
+        </Match>
         <Match when={display() === "write"}>
           <Write {...toolprops} />
         </Match>
@@ -2749,6 +2752,16 @@ function WebFetch(props: ToolProps) {
   )
 }
 
+function ToolSearch(props: ToolProps) {
+  const summary = createMemo(() => toolSearchSummary(props.input, props.metadata, props.output))
+  return (
+    <InlineTool icon="◇" pending="Searching tools…" complete={true} part={props.part}>
+      Tool search<Show when={summary().query}> "{summary().query}"</Show>
+      <Show when={summary().loaded !== undefined}> ({summary().loaded} loaded)</Show>
+    </InlineTool>
+  )
+}
+
 function WebSearch(props: ToolProps) {
   return (
     <InlineTool icon="◈" pending="Searching web…" complete={stringValue(props.input.query)} part={props.part}>
@@ -3207,6 +3220,7 @@ const toolDisplays = new Set([
 ])
 
 export function toolDisplay(tool: string) {
+  if (TOOL_SEARCH_TOOLS.has(tool)) return "tool_search"
   return toolDisplays.has(tool) ? tool : "generic"
 }
 

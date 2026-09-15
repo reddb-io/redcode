@@ -4,7 +4,7 @@ import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Provider } from "@/provider/provider"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
-import { Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
 import { NoSuchToolError, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import { unknownToolMessage } from "@/tool/invalid"
@@ -33,6 +33,7 @@ import { LLMRequestPrep } from "./llm/request"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { ToolSearch } from "./tool-search"
 import { SessionSpend } from "./spend"
+import { NativeToolSearch } from "./native-tool-search"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -90,7 +91,7 @@ const live: Layer.Layer<
     const hooks = yield* OperationHookBridge.Service
     const spend = yield* SessionSpend.Service
 
-    const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
+    const run = Effect.fn("LLM.run")(function* (input: StreamRequest, allowNativeSearch: boolean) {
       yield* Effect.logInfo("stream", {
         providerID: input.model.providerID,
         modelID: input.model.id,
@@ -120,6 +121,18 @@ const live: Layer.Layer<
         isWorkflow,
         hooks,
       })
+
+      // Provider-native tool search, as SessionTools chose it for this step (a fallback attempt
+      // runs without it). History keeps only search parts the request can replay, and a deferred
+      // tool the history calls stays advertised when the client-side search is in use.
+      const search = allowNativeSearch ? NativeToolSearch.modeOf(prepared.tools, input.model) : undefined
+      const messages = NativeToolSearch.history(prepared.messages, search)
+      const nativeSearch = search ? NativeToolSearch.aiSdk(prepared.tools, search) : undefined
+      const called = NativeToolSearch.called(messages)
+      const activeTools = nativeSearch?.active ?? [
+        ...ToolSearch.activeNames(prepared.tools),
+        ...ToolSearch.deferredNames(prepared.tools).filter((name) => called.has(name)),
+      ]
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via opencode's tool system
@@ -238,10 +251,15 @@ const live: Layer.Layer<
           provider: item,
           auth: info,
           llmClient,
-          messages: prepared.messages,
+          messages,
           // As on the AI SDK path: every tool is dispatchable, only the active ones are sent.
           tools: prepared.tools,
-          advertise: ToolSearch.activeNames(prepared.tools),
+          ...(search === "anthropic"
+            ? (() => {
+                const plan = NativeToolSearch.native(prepared.tools)
+                return { advertise: plan.advertise, toolSearch: { deferred: plan.deferred } }
+              })()
+            : { advertise: activeTools }),
           toolChoice: input.toolChoice,
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
@@ -260,6 +278,7 @@ const live: Layer.Layer<
           return {
             type: "native" as const,
             stream: native.stream,
+            search,
           }
         }
         yield* Effect.logInfo("llm runtime selected", {
@@ -288,6 +307,7 @@ const live: Layer.Layer<
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
       return {
         type: "ai-sdk" as const,
+        search,
         result: streamText({
           onError(error) {
             bridge.fork(
@@ -330,15 +350,16 @@ const live: Layer.Layer<
           topK: prepared.params.topK,
           providerOptions: ProviderTransform.providerOptions(input.model, prepared.params.options),
           // The SDK sends only activeTools to the provider but validates calls against every tool,
-          // so a deferred tool is unadvertised yet still callable.
-          activeTools: ToolSearch.activeNames(prepared.tools),
-          tools: prepared.tools,
+          // so a deferred tool is unadvertised yet still callable. With native search, deferred
+          // tools are advertised flagged and the provider search tool replaces tool_search.
+          activeTools,
+          tools: nativeSearch?.tools ?? prepared.tools,
           toolChoice: input.toolChoice,
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
           headers: prepared.headers,
           maxRetries: input.retries ?? 0,
-          messages: prepared.messages,
+          messages,
           model: wrapLanguageModel({
             model: language,
             middleware: [
@@ -371,7 +392,7 @@ const live: Layer.Layer<
       }
     })
 
-    const stream: Interface["stream"] = (input) =>
+    const attempt = (input: StreamInput, allowNativeSearch: boolean): Stream.Stream<LLMEvent, unknown> =>
       Stream.scoped(
         Stream.unwrap(
           Effect.gen(function* () {
@@ -380,33 +401,68 @@ const live: Layer.Layer<
               (ctrl) => Effect.sync(() => ctrl.abort()),
             )
 
-            const result = yield* run({ ...input, abort: ctrl.signal })
-
-            if (result.type === "native") return result.stream
+            const result = yield* run({ ...input, abort: ctrl.signal }, allowNativeSearch)
 
             // Adapter seam: both runtimes expose the same LLMEvent stream. Native
             // already returns one; AI SDK streams are converted here.
-            const state = LLMAISDK.adapterState()
-            return Stream.fromAsyncIterable(result.result.fullStream, (e) =>
-              e instanceof Error ? e : new Error(String(e)),
-            ).pipe(
-              Stream.mapEffect((event) => LLMAISDK.toLLMEvents(state, event)),
-              Stream.flatMap((events) => Stream.fromIterable(events)),
+            const events =
+              result.type === "native"
+                ? result.stream
+                : (() => {
+                    const state = LLMAISDK.adapterState()
+                    return Stream.fromAsyncIterable(result.result.fullStream, (e) =>
+                      e instanceof Error ? e : new Error(String(e)),
+                    ).pipe(
+                      Stream.mapEffect((event) => LLMAISDK.toLLMEvents(state, event)),
+                      Stream.flatMap((events) => Stream.fromIterable(events)),
+                    )
+                  })()
+            if (!result.search) return events
+
+            // A provider or proxy that does not know the search tool, deferral or its beta answers
+            // 400 before streaming anything. Retry this request once with client-side tool_search
+            // and keep it off for this model for the rest of the process.
+            let started = false
+            return events.pipe(
+              Stream.tap(() =>
+                Effect.sync(() => {
+                  started = true
+                }),
+              ),
+              Stream.catchCause((cause) => {
+                const error = Cause.squash(cause)
+                if (started || !NativeToolSearch.isRejection(error)) return Stream.failCause(cause)
+                NativeToolSearch.reject(input.model)
+                return Stream.unwrap(
+                  Effect.logWarning("provider rejected native tool search; falling back to tool_search", {
+                    providerID: input.model.providerID,
+                    modelID: input.model.id,
+                    "session.id": input.sessionID,
+                    mode: result.search,
+                    error: error instanceof Error ? error.message : String(error),
+                  }).pipe(Effect.as(attempt(input, false))),
+                )
+              }),
             )
           }),
-        ).pipe(
-          // Every provider call passes here — turns, subagents, compaction, titles, the goal judge — so
-          // this is the one place spend is counted. A step reports its own usage; `finish` repeats the total.
-          Stream.tap((event) =>
-            event.type === "step-finish" && event.usage
-              ? spend.record({
-                  sessionID: input.sessionID,
-                  model: input.model,
-                  usage: event.usage,
-                  metadata: event.providerMetadata,
-                })
-              : Effect.void,
-          ),
+        ),
+      )
+
+    const stream: Interface["stream"] = (input) =>
+      attempt(input, true).pipe(
+        // Every provider call passes here — turns, subagents, compaction, titles, the goal judge — so
+        // this is the one place spend is counted. A step reports its own usage; `finish` repeats the total.
+        // The tap sits outside `attempt` so a native tool search fallback, which re-enters `attempt`,
+        // is still counted once.
+        Stream.tap((event) =>
+          event.type === "step-finish" && event.usage
+            ? spend.record({
+                sessionID: input.sessionID,
+                model: input.model,
+                usage: event.usage,
+                metadata: event.providerMetadata,
+              })
+            : Effect.void,
         ),
       )
 

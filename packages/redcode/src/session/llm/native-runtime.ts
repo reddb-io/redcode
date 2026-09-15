@@ -11,6 +11,7 @@ import {
   LLMRequest,
   Tool as NativeTool,
   ToolFailure,
+  ToolDefinition,
   ToolRuntime,
   toDefinitions,
   type JsonSchema,
@@ -38,6 +39,11 @@ type StreamInput = {
    * tool the model calls by name still runs, as on the AI SDK path. Omitted, all are sent.
    */
   readonly advertise?: ReadonlyArray<string>
+  /**
+   * Anthropic's server-side tool search: these advertised tools go out with `defer_loading` next
+   * to the BM25 search tool.
+   */
+  readonly toolSearch?: { readonly deferred: ReadonlyArray<string> }
   readonly toolChoice?: "auto" | "required" | "none"
   readonly temperature?: number
   readonly topP?: number
@@ -96,6 +102,11 @@ export function stream(input: StreamInput): StreamResult {
   const advertised = advertise
     ? Object.fromEntries(Object.entries(tools).filter(([name]) => advertise.has(name)))
     : tools
+  const deferred = new Set(input.toolSearch?.deferred ?? [])
+  const definitions = toDefinitions(advertised).map((definition) =>
+    deferred.has(definition.name) ? new ToolDefinition({ ...definition, deferLoading: true }) : definition,
+  )
+  const providerOptions = ProviderTransform.providerOptions(input.model, input.providerOptions ?? {})
   const request = LLMNative.request({
     model: input.model,
     apiKey: current.apiKey,
@@ -106,7 +117,9 @@ export function stream(input: StreamInput): StreamResult {
     topP: input.topP,
     topK: input.topK,
     maxOutputTokens: input.maxOutputTokens,
-    providerOptions: ProviderTransform.providerOptions(input.model, input.providerOptions ?? {}),
+    providerOptions: input.toolSearch
+      ? { ...providerOptions, anthropic: { ...providerOptions.anthropic, toolSearch: "bm25" } }
+      : providerOptions,
     headers: { ...providerHeaders(input.provider.options.headers), ...input.headers },
   })
   const stream = Stream.scoped(
@@ -117,7 +130,7 @@ export function stream(input: StreamInput): StreamResult {
         const provider = input.llmClient
           .stream(
             LLMRequest.update(request, {
-              tools: [...request.tools, ...toDefinitions(advertised)],
+              tools: [...request.tools, ...definitions],
             }),
           )
           .pipe(

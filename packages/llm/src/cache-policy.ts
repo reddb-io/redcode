@@ -44,9 +44,11 @@ const RESPECTS_INLINE_HINTS = new Set(["anthropic-messages", "bedrock-converse"]
 const makeHint = (ttlSeconds: number | undefined): CacheHint =>
   ttlSeconds !== undefined ? new CacheHint({ type: "ephemeral", ttlSeconds }) : new CacheHint({ type: "ephemeral" })
 
+// A deferred tool is not part of the cached prefix and cannot carry a breakpoint (Anthropic
+// answers 400), so the breakpoint goes on the last tool that is loaded up front.
 const markLastTool = (tools: ReadonlyArray<ToolDefinition>, hint: CacheHint): ReadonlyArray<ToolDefinition> => {
-  if (tools.length === 0) return tools
-  const last = tools.length - 1
+  const last = tools.findLastIndex((tool) => tool.deferLoading !== true)
+  if (last < 0) return tools
   if (tools[last]!.cache) return tools
   return tools.map((tool, i) => (i === last ? new ToolDefinition({ ...tool, cache: hint }) : tool))
 }

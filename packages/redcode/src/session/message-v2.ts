@@ -36,6 +36,7 @@ import { isMedia } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
+import { NativeToolSearch } from "./native-tool-search"
 
 /** Error shape thrown by Bun's fetch() when gzip/br decompression fails mid-stream */
 interface FetchDecompressionError extends Error {
@@ -309,8 +310,11 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             }
             const finalAttachments = attachments.filter((a) => !isMedia(a.mime) || supportsMediaInToolResult(a))
 
-            const output =
-              finalAttachments.length > 0
+            // A provider-native tool search result replays as the structured value the provider SDK
+            // turns back into its search result block.
+            const output = NativeToolSearch.isSearchPart(part.tool, part.metadata?.providerExecuted)
+              ? NativeToolSearch.replayOutput(part.state.output)
+              : finalAttachments.length > 0
                 ? {
                     text: outputText,
                     attachments: finalAttachments,
@@ -400,7 +404,18 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     }
   }
 
-  const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
+  // A provider-native search result must replay as JSON for the provider SDK to rebuild its block;
+  // the client-side tool_search, which shares OpenAI's name, stores text and stays text.
+  const searchOutput = (options: { output: unknown }) =>
+    typeof options.output === "string"
+      ? { type: "text", value: options.output }
+      : { type: "json", value: options.output as never }
+  const tools = Object.fromEntries(
+    Array.from(toolNames).map((toolName) => [
+      toolName,
+      { toModelOutput: NativeToolSearch.isSearchPart(toolName, true) ? searchOutput : toModelOutput },
+    ]),
+  )
 
   return yield* Effect.promise(() =>
     convertToModelMessages(
