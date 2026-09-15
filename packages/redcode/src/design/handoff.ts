@@ -78,7 +78,7 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
         type: "text",
         synthetic: true,
         metadata: { designApproval: { id, name: record.revision.document.name, revision, variant: record.variant } },
-        text: `Design ${record.revision.document.name}, revision ${revision}${variant ? `, variant ${variant.name} (${variant.id})` : ""}, approved. Continue in Plan. Approved decisions and constraints are supplied automatically in context. Details: design_read {"id":"${id}","revision":"${revision}"}. Plan: ${plan}. Open review with /design-review.`,
+        text: `Design ${record.revision.document.name}, revision ${revision}${variant ? `, variant ${variant.name} (${variant.id})` : ""}, approved. Continue in Plan. Approved decisions, constraints, target files and the implementation contract are supplied automatically in context: plan an incremental migration of the existing implementation, not a copy of the prototype. Details: design_read {"id":"${id}","revision":"${revision}"}. Plan: ${plan}. Open review with /design-review.`,
       })
       yield* sessions.setAgentModel({
         sessionID,
