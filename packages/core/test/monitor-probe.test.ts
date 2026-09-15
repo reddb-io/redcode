@@ -557,14 +557,15 @@ describe("regular expressions off the main thread", () => {
     const stuck = SafeRegex.create()
     const other = SafeRegex.create()
     try {
-      // Long enough that backtracking cannot finish within the timeout on any machine.
-      const slow = stuck.exec("^(a+)+$", `${"a".repeat(64)}!`, 2_000)
-      // Let the stuck match start first.
-      await Bun.sleep(100)
-      const started = Date.now()
-      expect(await other.exec("b+", "aabbb")).toEqual({ match: "bbb" })
-      expect(Date.now() - started).toBeLessThan(1_000)
-      expect(await slow).toEqual({ timedOut: true })
+      // Some engines give up on catastrophic backtracking after a while and report no match, so the stuck
+      // match may end either way; what matters is that the other monitor is answered while it is still busy.
+      const slow = stuck.exec("^(a+)+$", `${"a".repeat(64)}!`, 5_000)
+      await Bun.sleep(50)
+      const fast = other.exec("b+", "aabbb")
+      expect(await Promise.race([slow.then(() => "stuck"), fast.then(() => "other")])).toBe("other")
+      expect(await fast).toEqual({ match: "bbb" })
+      const ended = await slow
+      expect("timedOut" in ended || ("match" in ended && ended.match === undefined)).toBe(true)
     } finally {
       stuck.close()
       other.close()

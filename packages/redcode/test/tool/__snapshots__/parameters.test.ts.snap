@@ -36,10 +36,16 @@ exports[`tool parameters JSON Schema (wire shape) bash 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "failure_regex": {
+          "type": "string",
+        },
         "interval_ms": {
           "maximum": 3600000,
           "minimum": 1000,
           "type": "integer",
+        },
+        "jitter": {
+          "type": "boolean",
         },
         "mode": {
           "enum": [
@@ -50,6 +56,15 @@ exports[`tool parameters JSON Schema (wire shape) bash 1`] = `
         },
         "success_contains": {
           "minLength": 1,
+          "type": "string",
+        },
+        "success_regex": {
+          "type": "string",
+        },
+        "until": {
+          "enum": [
+            "changed",
+          ],
           "type": "string",
         },
         "wait_ms": {
