@@ -122,6 +122,15 @@ test("a global design.browser survives a project design.system, in the static re
     system: "project",
   })
   expect(ConfigDesign.merge([undefined, {}])).toBeUndefined()
+  // application travels with system: a project system without application drops the global one...
+  expect(
+    ConfigDesign.merge([{ system: "global", application: "apps/global", browser: "chromium" }, { system: "project" }]),
+  ).toEqual({ system: "project", browser: "chromium" })
+  // ...and a project application alone under a global system is ignored.
+  expect(ConfigDesign.merge([{ system: "global", application: "apps/global" }, { application: "apps/web" }])).toEqual({
+    system: "global",
+    application: "apps/global",
+  })
 })
 
 test("commit reports configured when another system appeared meanwhile, and refuses an application outside the project", async () => {
@@ -186,6 +195,44 @@ test("No is remembered for the project and Edit later snoozes for a day; nothing
   expect(JSON.parse(await Bun.file(remembered.state).text())[tmp.path]).toMatchObject({
     dismissed: now + 3 * DesignProposal.SNOOZE,
   })
+})
+
+test("a scan that runs out of time is never cached as nothing detected nor presented as confident", async () => {
+  await using tmp = await tmpdir()
+  // Only component files, which are found by walking directories: a spent budget stops every walk at
+  // its first deadline check, so this scan finds nothing, but only because it ran out of time.
+  await mkdir(path.join(tmp.path, ".git"), { recursive: true })
+  await Bun.write(path.join(tmp.path, "package.json"), JSON.stringify({ dependencies: { react: "^19.0.0" } }))
+  await Bun.write(path.join(tmp.path, "src/components/Button.tsx"), "export function Button() { return <button /> }\n")
+  const scanned = await DesignDetect.scan(tmp.path, { budget: -1 })
+  expect(scanned.partial).toBe(true)
+  expect(scanned.proposal).toBeUndefined()
+  const state = path.join(tmp.path, ".state", DesignProposal.STATE)
+  const timedOut = await Effect.runPromise(
+    DesignProposal.decide({
+      directory: tmp.path,
+      state,
+      configured: false,
+      budget: -1,
+      ask: () => Effect.succeed("Yes"),
+    }),
+  )
+  expect(timedOut.status).toBe("none")
+  expect(await Bun.file(state).exists()).toBe(false)
+  expect((await offer(tmp.path, "No")).asked).toHaveLength(1)
+
+  // A proposal found before the deadline but with parts left unscanned is capped at 50%.
+  await using partial = await tmpdir()
+  await mkdir(path.join(partial.path, ".git"), { recursive: true })
+  await Bun.write(path.join(partial.path, "package.json"), JSON.stringify({ dependencies: { tailwindcss: "^3" } }))
+  await Bun.write(path.join(partial.path, "tailwind.config.js"), "module.exports = {}\n")
+  await Bun.write(path.join(partial.path, "src/components/Button.tsx"), "export const Button = () => null\n")
+  const capped = await DesignDetect.scan(partial.path, { budget: -1 })
+  expect(capped.partial).toBe(true)
+  expect(capped.proposal?.partial).toBe(true)
+  expect(capped.proposal?.confidence).toBeLessThanOrEqual(0.5)
+  expect(DesignDetect.summary(capped.proposal!)).toContain("(partial scan: the time limit was reached)")
+  expect(capped.proposal?.fields.application.evidence.at(-1)).toContain("the scan ran out of time")
 })
 
 test("nothing detected is cached until the project's top-level files change", async () => {

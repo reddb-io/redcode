@@ -122,12 +122,19 @@ export async function remember(state: string, directory: string, value: Answer, 
   })
 }
 
-/** Modification times of the files detection starts from; a change invalidates a cached "nothing detected". */
+/**
+ * Modification times of the files detection starts from; a change invalidates a cached "nothing
+ * detected". Directory times only move when entries are added or removed directly inside them, so
+ * the top-level `apps` and `packages` directories catch a new or removed workspace package, while an
+ * edit deeper inside an existing package is seen only once NONE_TTL (ten minutes) has passed.
+ */
 async function stamp(directory: string, application = ".") {
   const files = [
     "",
     "package.json",
     "pnpm-workspace.yaml",
+    "apps",
+    "packages",
     application,
     `${application}/package.json`,
     `${application}/components.json`,
@@ -323,6 +330,8 @@ export interface Input<E, R> {
   /** Asks the question and resolves the chosen option label, or undefined when dismissed. */
   readonly ask: (request: ReturnType<typeof question>) => Effect.Effect<string | undefined, E, R>
   readonly now?: number
+  /** Detection time budget in milliseconds; defaults to DesignDetect's. */
+  readonly budget?: number
 }
 
 /** Questions in flight per project: a second session waits for the first answer instead of asking again. */
@@ -340,11 +349,16 @@ const interview = <E, R>(input: Input<E, R>) =>
     if (input.application !== undefined && application === undefined) return { status: "none" } satisfies Decision
     if (yield* Effect.promise(() => cachedNone(input.state, input.directory, application, now).catch(() => false)))
       return { status: "none" } satisfies Decision
-    const proposal = yield* Effect.promise(() =>
-      DesignDetect.detect(input.directory, { application }).catch(() => undefined),
+    // A failed or partial scan is not evidence of "nothing there", so only a complete one is cached.
+    const { proposal, partial } = yield* Effect.promise(() =>
+      DesignDetect.scan(input.directory, { application, budget: input.budget }).catch(() => ({
+        proposal: undefined,
+        partial: true,
+      })),
     )
     if (!proposal) {
-      yield* Effect.promise(() => rememberNone(input.state, input.directory, application, now).catch(() => undefined))
+      if (!partial)
+        yield* Effect.promise(() => rememberNone(input.state, input.directory, application, now).catch(() => undefined))
       return { status: "none" } satisfies Decision
     }
     const choice = answer(yield* input.ask(question(proposal)))
@@ -405,11 +419,13 @@ export const adoption = (proposal: DesignDetect.Proposal): ConfigDesign.Effectiv
 /**
  * Runs a design operation around the proposal: the question comes first so an accepted system
  * applies to this operation, but the config file is written only once the operation succeeded. A
- * failed operation, or a failed write, forgets the adoption again.
+ * failed operation, or a failed write, forgets the adoption again. `adopt` belongs to the calling
+ * session: an adoption is visible to that session until it is committed (written and verified),
+ * and only then to every session of the location.
  */
 export const around = <A, E, R, AE, AR>(
   input: Input<AE, AR> & {
-    readonly adopt: (design: ConfigDesign.Effective | undefined) => Effect.Effect<void>
+    readonly adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) => Effect.Effect<void>
   },
   operation: Effect.Effect<A, E, R>,
 ) =>
@@ -422,7 +438,7 @@ export const around = <A, E, R, AE, AR>(
     yield* input.adopt(adoption(decision.proposal))
     const value = yield* operation.pipe(Effect.onError(() => input.adopt(undefined)))
     const outcome = yield* settle({ ...input, proposal: decision.proposal })
-    if (outcome.status !== "adopted") yield* input.adopt(undefined)
+    yield* outcome.status === "adopted" ? input.adopt(adoption(decision.proposal), true) : input.adopt(undefined)
     return { value, report: report(outcome, input.directory) }
   })
 
@@ -450,8 +466,8 @@ export async function detection(input: {
     input.application === undefined ? undefined : await DesignDetect.contained(input.directory, input.application)
   if (input.application !== undefined && application === undefined)
     return `Design system detection: ${input.application} is not a directory inside the project.`
-  const [proposal, design, answered] = await Promise.all([
-    DesignDetect.detect(input.directory, { application }).catch(() => undefined),
+  const [{ proposal, partial }, design, answered] = await Promise.all([
+    DesignDetect.scan(input.directory, { application }).catch(() => ({ proposal: undefined, partial: true })),
     configured(input.directory, input.global).catch(() => undefined),
     input.state ? status(input.state, input.directory).catch(() => undefined) : undefined,
   ])
@@ -460,6 +476,9 @@ export async function detection(input: {
     : answered === "dismissed"
       ? "design.system is not configured and the user declined the proposal; do not propose it again."
       : "design.system is not configured; design_document create or refresh asks the user whether to adopt it."
-  if (!proposal) return `Design system detection: nothing detected.\n${state}`
+  if (!proposal)
+    return partial
+      ? `Design system detection: nothing detected before the scan ran out of time; the project may still have one.\n${state}`
+      : `Design system detection: nothing detected.\n${state}`
   return `Design system detection (nothing was written):\n${DesignDetect.evidence(proposal)}\n${state}`
 }
