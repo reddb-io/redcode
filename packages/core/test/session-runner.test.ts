@@ -4218,6 +4218,39 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
     }),
   )
 
+  it.effect("defers MCP tools behind tool_search and puts their index in the system context", () =>
+    withExperimental(
+      { tool_search: { enabled: true } },
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        const registry = yield* ToolRegistry.Service
+        yield* registry.register({
+          github_list_issues: Tool.external(
+            Tool.make({
+              description: "List issues in a repository",
+              input: Schema.Struct({}),
+              output: Schema.Struct({}),
+              execute: () => Effect.succeed({}),
+            }),
+          ),
+        })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Find a tool" }), resume: false })
+        requests.length = 0
+        responses = [[]]
+
+        yield* session.resume(sessionID)
+
+        const advertised = requests[0]!.tools.map((tool) => tool.name)
+        // The MCP tool is withheld; the search tool takes its place.
+        expect(advertised).not.toContain("github_list_issues")
+        expect(advertised).toContain("tool_search")
+        // The index rides the system context, so the tools block keeps its cached bytes.
+        expect(requests[0]!.system.map((part) => part.text).join("\n")).toContain("github (1)")
+      }),
+    ),
+  )
+
   it.effect("lets identical tool calls run when experimental.loop_guard is false", () =>
     withExperimental(
       { loop_guard: false },

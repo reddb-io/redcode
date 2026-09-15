@@ -29530,6 +29530,9 @@
                       },
                       "recent": {
                         "type": "string"
+                      },
+                      "tools": {
+                        "$ref": "#/components/schemas/SessionMessageCompactionTools"
                       }
                     },
                     "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -36387,6 +36390,22 @@
         "required": ["message", "isRetryable"],
         "additionalProperties": false
       },
+      "SessionMessageCompactionTools": {
+        "type": "object",
+        "properties": {
+          "loaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mcpDeferred": {
+            "type": "boolean"
+          }
+        },
+        "required": ["loaded", "mcpDeferred"],
+        "additionalProperties": false
+      },
       "FileDiff": {
         "type": "object",
         "properties": {
@@ -38688,6 +38707,9 @@
                   },
                   "recent": {
                     "type": "string"
+                  },
+                  "tools": {
+                    "$ref": "#/components/schemas/SessionMessageCompactionTools"
                   }
                 },
                 "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -40458,6 +40480,9 @@
           "recent": {
             "type": "string"
           },
+          "tools": {
+            "$ref": "#/components/schemas/SessionMessageCompactionTools"
+          },
           "id": {
             "type": "string",
             "pattern": "^msg_"
@@ -42162,6 +42187,9 @@
               },
               "recent": {
                 "type": "string"
+              },
+              "tools": {
+                "$ref": "#/components/schemas/SessionMessageCompactionTools"
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -49918,6 +49946,9 @@
               },
               "recent": {
                 "type": "string"
+              },
+              "tools": {
+                "$ref": "#/components/schemas/SessionMessageCompactionTools"
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],

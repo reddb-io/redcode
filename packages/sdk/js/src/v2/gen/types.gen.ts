@@ -1222,6 +1222,7 @@ export type GlobalEvent = {
           reason: "auto" | "manual"
           text: string
           recent: string
+          tools?: SessionMessageCompactionTools
         }
       }
     | {
@@ -3409,6 +3410,11 @@ export type SessionNextRetryError = {
   }
 }
 
+export type SessionMessageCompactionTools = {
+  loaded: Array<string>
+  mcpDeferred: boolean
+}
+
 export type FileDiff = {
   path: string
   status: "added" | "modified" | "deleted"
@@ -4128,6 +4134,7 @@ export type SyncEventSessionNextCompactionEnded = {
       reason: "auto" | "manual"
       text: string
       recent: string
+      tools?: SessionMessageCompactionTools
     }
   }
 }
@@ -4698,6 +4705,7 @@ export type SessionMessageCompaction = {
   reason: "auto" | "manual"
   summary: string
   recent: string
+  tools?: SessionMessageCompactionTools
   id: string
   metadata?: {
     [key: string]: unknown
@@ -5287,6 +5295,7 @@ export type SessionNextCompactionEnded = {
     reason: "auto" | "manual"
     text: string
     recent: string
+    tools?: SessionMessageCompactionTools
   }
 }
 
@@ -7645,6 +7654,7 @@ export type EventSessionNextCompactionEnded = {
     reason: "auto" | "manual"
     text: string
     recent: string
+    tools?: SessionMessageCompactionTools
   }
 }
 
