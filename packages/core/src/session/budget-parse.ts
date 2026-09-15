@@ -57,6 +57,15 @@ export function parseTokens(raw: string): Parsed<number> {
   return ok(value)
 }
 
+/** A turn budget: a whole number from 1 that survives a round trip through a JSON number. */
+export function parseTurns(raw: string): Parsed<number> {
+  const text = raw.trim()
+  const value = Number(text)
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value < 1)
+    return fail(`"${text}" is not a number of turns: use a whole number from 1`)
+  return ok(value)
+}
+
 export interface LimitsChange {
   readonly max_cost_usd?: number | null
   readonly max_tokens?: number | null
@@ -83,8 +92,9 @@ export function parseLimits(raw: string): Parsed<LimitsChange> {
       continue
     }
     if (next?.startsWith("turn")) {
-      if (!/^\d+$/.test(word) || Number(word) < 1) return fail(`"${word} ${next}" needs a whole number of turns`)
-      out.max_turns = Number(word)
+      const turns = parseTurns(word)
+      if (!turns.ok) return turns
+      out.max_turns = turns.value
       index++
       continue
     }
@@ -96,7 +106,9 @@ export function parseLimits(raw: string): Parsed<LimitsChange> {
       continue
     }
     if (/^\d+$/.test(word) && words.length === 1) {
-      out.max_turns = Number(word)
+      const turns = parseTurns(word)
+      if (!turns.ok) return turns
+      out.max_turns = turns.value
       continue
     }
     return fail(`"${word}" is not understood: write $5 for dollars, 200k tokens for tokens, or 30 turns`)

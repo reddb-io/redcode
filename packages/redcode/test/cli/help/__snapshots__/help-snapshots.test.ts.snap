@@ -103,7 +103,11 @@ Options:
       --thinking     show thinking blocks                                                  [boolean]
   -i, --interactive  run in direct interactive split-footer mode          [boolean] [default: false]
       --auto         auto-approve permissions that are not explicitly denied (dangerous!)
-                                                                          [boolean] [default: false]"
+                                                                          [boolean] [default: false]
+      --max-cost     stop after the step that spends this many dollars (subagents included); exits 1
+                     when reached. No default                                               [number]
+      --max-tokens   stop after the step that spends this many tokens (subagents included); exits 1
+                     when reached. No default                                               [number]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode debug --help 1`] = `
