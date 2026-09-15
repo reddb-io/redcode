@@ -1,10 +1,11 @@
 # V2 Schema Changelog
 
-## 2026-09-15: Focus, Trims And Loaded Tools On A Compaction
+## 2026-09-15: Focus And Loaded Tools On A Compaction
 
 - Add optional `focus` (string) to `SummarizePayload` (`POST /session/{sessionID}/summarize`): instructions for what the summary should focus on, typed as `/compact <focus>` in the TUI. It is stored on the created `CompactionPart` and included in the summary prompt.
-- Add optional fields to `CompactionPart`, returned wherever message parts are (the V1 session message routes and `message.part.updated`): `focus` (string, as above); `trimmed` (non-negative integer, estimated tokens of old tool output trimmed before the compaction); `tools` (`loaded`: tool names loaded through `tool_search`, optional `mcpDeferred` boolean), restored after the compaction so loaded tools stay loaded. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `openapi.json` and `js/src/v2/gen`).
+- Add optional fields to `CompactionPart`, returned wherever message parts are (the V1 session message routes and `message.part.updated`): `focus` (string, as above); `tools` (`loaded`: tool names loaded through `tool_search`, optional `mcpDeferred` boolean), restored after the compaction so loaded tools stay loaded. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `openapi.json` and `js/src/v2/gen`).
 - Add no route, migration or durable-event version; stored parts and requests without these fields decode as before. `--preview` for `/compact` is not implemented.
+- Trimming old tool output (`compaction.prune`, now on by default) sets the existing `ToolStateCompleted.time.compacted` mark; the mark is permanent, and the model is pointed at `session_history`, which searches trimmed outputs, instead of re-running the tool.
 
 ## 2026-09-15: Provider-Native Tool Search
 

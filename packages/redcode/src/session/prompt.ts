@@ -1330,7 +1330,7 @@ const layer = Layer.effect(
         let overhead = 0
         // The last request's system prompt and tools, which a cached summary request repeats, and
         // the finished step whose context trimming old tool output already brought under the band.
-        let lastRequest: { system: string[]; tools: Record<string, AITool> } | undefined
+        let lastRequest: SessionCompaction.ProcessInput["request"]
         let relieved: string | undefined
         const measured = (effective: boolean) => {
           ineffectiveCompactions = effective ? 0 : ineffectiveCompactions + 1
@@ -1821,7 +1821,6 @@ const layer = Layer.effect(
               model,
               tokens: lastFinished.tokens,
               at: lastFinished.time.completed,
-              overhead,
             })
             if (relief === "fits") {
               relieved = lastFinished.id
@@ -2091,7 +2090,11 @@ const layer = Layer.effect(
                   ]),
                 ),
               )
-            lastRequest = { system, tools }
+            const stepMessages = [
+              ...modelMsgs,
+              ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS_PROMPT }] : []),
+            ]
+            lastRequest = { system, tools, messages: stepMessages, seen: msgs.map((message) => message.info.id) }
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -2099,10 +2102,7 @@ const layer = Layer.effect(
               sessionID,
               parentSessionID: session.parentID,
               system,
-              messages: [
-                ...modelMsgs,
-                ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS_PROMPT }] : []),
-              ],
+              messages: stepMessages,
               tools,
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
@@ -2154,7 +2154,6 @@ const layer = Layer.effect(
                   model,
                   tokens: handle.message.tokens,
                   at: handle.message.time.completed,
-                  overhead,
                 })) === "fits"
               ) {
                 relieved = handle.message.id

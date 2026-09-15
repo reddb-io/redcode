@@ -409,15 +409,107 @@ function responses(item: Sse, model: string) {
   return { ...item, head: lines, tail: [] } satisfies Sse
 }
 
+/** The same reply as Anthropic Messages API stream events. */
+function anthropic(item: Sse, model: string) {
+  const lines: unknown[] = []
+  let usage: Usage | undefined
+  let index = -1
+  let open = false
+  let toolCalls = false
+  const close = () => {
+    if (open) lines.push({ type: "content_block_stop", index })
+    open = false
+  }
+  let block: "text" | "tool" | undefined
+  for (const part of flow(item)) {
+    if (part.type === "usage") {
+      usage = part.usage
+      continue
+    }
+    if (part.type === "text") {
+      if (block !== "text") {
+        close()
+        index += 1
+        open = true
+        block = "text"
+        lines.push({ type: "content_block_start", index, content_block: { type: "text", text: "" } })
+      }
+      lines.push({ type: "content_block_delta", index, delta: { type: "text_delta", text: part.text } })
+      continue
+    }
+    if (part.type === "tool-start") {
+      close()
+      index += 1
+      open = true
+      block = "tool"
+      toolCalls = true
+      lines.push({
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id: part.id, name: part.name, input: {} },
+      })
+      continue
+    }
+    if (part.type === "tool-args")
+      lines.push({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: part.text } })
+  }
+  close()
+  const start = {
+    type: "message_start",
+    message: {
+      id: "msg_test",
+      type: "message",
+      role: "assistant",
+      model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: usage?.input ?? 0, output_tokens: 0 },
+    },
+  }
+  const end =
+    item.hang || item.error
+      ? []
+      : [
+          {
+            type: "message_delta",
+            delta: { stop_reason: toolCalls ? "tool_use" : "end_turn", stop_sequence: null },
+            usage: { output_tokens: usage?.output ?? 0 },
+          },
+          { type: "message_stop" },
+        ]
+  return { ...item, head: [start, ...lines], tail: end } satisfies Sse
+}
+
+/**
+ * Anthropic rejects a request whose history carries tool_use or tool_result blocks unless it also
+ * sends tools; the fake does the same, so a summary request that drops them fails here too.
+ */
+export function anthropicToolsMissing(body: unknown) {
+  if (!body || typeof body !== "object") return false
+  const record = body as { messages?: unknown; tools?: unknown }
+  const blocks = Array.isArray(record.messages)
+    ? record.messages.flatMap((message) => {
+        const content = message && typeof message === "object" ? (message as { content?: unknown }).content : undefined
+        return Array.isArray(content) ? content : []
+      })
+    : []
+  const toolBlocks = blocks.some((block) => {
+    const type = block && typeof block === "object" ? (block as { type?: unknown }).type : undefined
+    return type === "tool_use" || type === "tool_result"
+  })
+  return toolBlocks && !(Array.isArray(record.tools) && record.tools.length > 0)
+}
+
 function modelFrom(body: unknown) {
   if (!body || typeof body !== "object") return "test-model"
   if (!("model" in body) || typeof body.model !== "string") return "test-model"
   return body.model
 }
 
-function send(item: Sse) {
+function send(item: Sse, terminate = true) {
   const head = bytes(item.head)
-  const tail = bytes([...item.tail, ...(item.hang || item.error ? [] : [done])])
+  const tail = bytes([...item.tail, ...(item.hang || item.error || !terminate ? [] : [done])])
   const empty = Stream.fromIterable<Uint8Array>([])
   const wait = item.wait
   const body: Stream.Stream<Uint8Array, unknown> = wait
@@ -681,31 +773,47 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         return first.item
       }
 
-      const handle = Effect.fn("TestLLMServer.handle")(function* (mode: "chat" | "responses") {
+      const handle = Effect.fn("TestLLMServer.handle")(function* (mode: "chat" | "responses" | "messages") {
         const req = yield* HttpServerRequest.HttpServerRequest
         const body = yield* req.json.pipe(Effect.orElseSucceed(() => ({})))
         const current = hit(req.originalUrl, body)
+        const reply = (item: Sse) => {
+          if (mode === "responses") return send(responses(item, modelFrom(body)))
+          if (mode === "messages") return send(anthropic(item, modelFrom(body)), false)
+          return send(item)
+        }
         if (isTitleRequest(body)) {
           hits = [...hits, current]
           yield* notify()
           const auto: Sse = titlesHang
             ? { type: "sse", head: [role()], tail: [], hang: true }
             : { type: "sse", head: [role()], tail: [textLine("E2E Title"), finishLine("stop")] }
-          if (mode === "responses") return send(responses(auto, modelFrom(body)))
-          return send(auto)
+          return reply(auto)
+        }
+        if (mode === "messages" && anthropicToolsMissing(body)) {
+          hits = [...hits, current]
+          yield* notify()
+          return fail(
+            httpError(400, {
+              type: "error",
+              error: {
+                type: "invalid_request_error",
+                message: "messages: tool_use and tool_result blocks require tools to be defined",
+              },
+            }) as HttpError,
+          )
         }
         const next = pull(current)
         if (!next) {
           hits = [...hits, current]
           yield* notify()
           const auto: Sse = { type: "sse", head: [role()], tail: [textLine("ok"), finishLine("stop")] }
-          if (mode === "responses") return send(responses(auto, modelFrom(body)))
-          return send(auto)
+          return reply(auto)
         }
         hits = [...hits, current]
         yield* notify()
         if (next.type !== "sse") return fail(next)
-        if (mode === "responses") return send(responses(next, modelFrom(body)))
+        if (mode !== "chat") return reply(next)
         if (next.reset) {
           yield* reset(next)
           return HttpServerResponse.empty()
@@ -715,6 +823,7 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
 
       yield* router.add("POST", "/v1/chat/completions", handle("chat"))
       yield* router.add("POST", "/v1/responses", handle("responses"))
+      yield* router.add("POST", "/v1/messages", handle("messages"))
 
       yield* server.serve(router.asHttpEffect())
 

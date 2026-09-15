@@ -11,7 +11,8 @@ export const ID = "session_history"
 const DEFAULT_LIMIT = 5
 const MAX_LIMIT = 20
 const EXCERPT_CHARS = 300
-const MAX_OUTPUT_TOKENS = 4_000
+export const MAX_OUTPUT_TOKENS = 4_000
+const PAGE = 50
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "Keywords to look for in the compacted-away messages" }),
@@ -20,7 +21,7 @@ export const Parameters = Schema.Struct({
   }),
 })
 
-type Metadata = { matches: number; hidden: number }
+type Metadata = { matches: number; searched: number }
 
 /** The searchable text of a message: what the person wrote, what the model wrote, and its tool calls. */
 export function text(message: SessionV1.WithParts) {
@@ -38,37 +39,54 @@ export function text(message: SessionV1.WithParts) {
     .join("\n")
 }
 
+/** Only the tool outputs trimmed from a message the model still sees: the rest is in its context. */
+export function trimmedText(message: SessionV1.WithParts) {
+  return message.parts
+    .flatMap((part) =>
+      part.type === "tool" && part.state.status === "completed" && part.state.time.compacted
+        ? [`${part.tool}(${JSON.stringify(part.state.input)})`, part.state.output]
+        : [],
+    )
+    .join("\n")
+}
+
 function terms(query: string) {
-  return [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))]
+  return [...new Set(query.split(/\s+/u).filter(Boolean))]
+}
+
+const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
+
+/**
+ * Where each term first appears, case-insensitively, as offsets into the original text: matching
+ * on a lowercased copy would shift offsets wherever case mapping changes a string's length.
+ */
+function offsets(body: string, words: readonly string[]) {
+  return words.flatMap((word) => {
+    const index = new RegExp(escape(word), "iu").exec(body)?.index
+    return index === undefined ? [] : [index]
+  })
 }
 
 function excerpt(body: string, at: number) {
   const start = Math.max(0, at - Math.floor(EXCERPT_CHARS / 2))
   const end = Math.min(body.length, start + EXCERPT_CHARS)
-  return `${start > 0 ? "…" : ""}${body.slice(start, end).replace(/\s+/g, " ").trim()}${end < body.length ? "…" : ""}`
+  return `${start > 0 ? "…" : ""}${body.slice(start, end).replace(/\s+/gu, " ").trim()}${end < body.length ? "…" : ""}`
 }
 
-/**
- * Ranks the messages compaction removed from the model's context against the keywords: more
- * distinct terms first, then the newest. Pure, so the ranking is testable without a session.
- */
-export function search(
-  all: readonly SessionV1.WithParts[],
-  visible: readonly SessionV1.WithParts[],
-  query: string,
-  limit = DEFAULT_LIMIT,
-) {
-  const shown = new Set(visible.map((message) => message.info.id))
-  const hidden = all.filter((message) => !shown.has(message.info.id))
-  const words = terms(query)
-  const matches = hidden
-    .map((message) => {
-      const body = text(message)
-      const lower = body.toLowerCase()
-      const hits = words.map((word) => lower.indexOf(word)).filter((index) => index >= 0)
-      return { message, body, score: hits.length, first: hits.length ? Math.min(...hits) : -1 }
-    })
-    .filter((item) => item.score > 0)
+export type Match = { message: SessionV1.WithParts; body: string; score: number; first: number }
+
+/** Scores one message; `trimmedOnly` searches just its trimmed tool outputs. */
+export function score(message: SessionV1.WithParts, query: string, trimmedOnly = false): Match | undefined {
+  const body = trimmedOnly ? trimmedText(message) : text(message)
+  if (!body) return
+  const hits = offsets(body, terms(query))
+  if (hits.length === 0) return
+  return { message, body, score: hits.length, first: Math.min(...hits) }
+}
+
+/** More distinct terms first, then the newest. */
+export function rank(matches: readonly Match[], limit = DEFAULT_LIMIT) {
+  return matches
     .toSorted(
       (a, b) =>
         b.score - a.score ||
@@ -76,7 +94,24 @@ export function search(
         (b.message.info.id > a.message.info.id ? 1 : -1),
     )
     .slice(0, Math.max(1, Math.min(MAX_LIMIT, Math.floor(limit))))
-  return { hidden: hidden.length, matches }
+}
+
+/** The tool output: excerpts with message ids, cut off before `maxTokens`. */
+export function render(matches: readonly Match[], maxTokens = MAX_OUTPUT_TOKENS) {
+  const lines: string[] = []
+  let used = 0
+  for (const item of matches) {
+    const entry = [
+      `<message id="${item.message.info.id}" role="${item.message.info.role}" time="${new Date(item.message.info.time.created).toISOString()}">`,
+      excerpt(item.body, item.first),
+      "</message>",
+    ].join("\n")
+    const cost = Token.estimate(entry)
+    if (used + cost > maxTokens) break
+    used += cost
+    lines.push(entry)
+  }
+  return lines
 }
 
 export const SessionHistoryTool = Tool.define<typeof Parameters, Metadata, Database.Service>(
@@ -91,44 +126,49 @@ export const SessionHistoryTool = Tool.define<typeof Parameters, Metadata, Datab
           yield* ctx.ask({ permission: ID, patterns: ["*"], always: ["*"], metadata: {} })
           const query = params.query.trim()
           if (!query) throw new Error("Provide query: keywords to look for.")
+          const limit = params.limit ?? DEFAULT_LIMIT
+          const words = terms(query)
           // Only this session's rows: the id comes from the tool context, never from the model.
           const sessionID: SessionID = ctx.sessionID
-          const all = yield* MessageV2.stream(sessionID).pipe(Effect.provideService(Database.Service, database))
-          const visible = MessageV2.filterCompacted(all)
-          const result = search(all, visible, query, params.limit ?? DEFAULT_LIMIT)
-          const metadata = { matches: result.matches.length, hidden: result.hidden }
-          if (result.hidden === 0)
-            return {
-              title: `History: ${query}`,
-              output: "Nothing in this session has been compacted away yet; every message is still in context.",
-              metadata,
+          const provide = Effect.provideService(Database.Service, database)
+          const shown = new Set((yield* MessageV2.filterCompactedEffect(sessionID).pipe(provide)).map((m) => m.info.id))
+          // Newest first, a page at a time, stopping once enough messages match every term.
+          const matches: Match[] = []
+          let searched = 0
+          let before: string | undefined
+          while (true) {
+            const page = yield* MessageV2.page({ sessionID, limit: PAGE, before }).pipe(
+              provide,
+              Effect.catch(() => Effect.succeed({ items: [] as SessionV1.WithParts[], more: false, cursor: undefined })),
+            )
+            for (const message of [...page.items].reverse()) {
+              const visible = shown.has(message.info.id)
+              if (!visible) searched++
+              const found = score(message, query, visible)
+              if (found) matches.push(found)
             }
-          if (result.matches.length === 0)
-            return {
-              title: `History: ${query}`,
-              output: `No compacted-away message matches "${query}" (${result.hidden} messages searched).`,
-              metadata,
-            }
-          const lines: string[] = []
-          let used = 0
-          for (const item of result.matches) {
-            const entry = [
-              `<message id="${item.message.info.id}" role="${item.message.info.role}" time="${new Date(item.message.info.time.created).toISOString()}">`,
-              excerpt(item.body, item.first),
-              "</message>",
-            ].join("\n")
-            const cost = Token.estimate(entry)
-            if (used + cost > MAX_OUTPUT_TOKENS) break
-            used += cost
-            lines.push(entry)
+            if (matches.filter((item) => item.score === words.length).length >= limit) break
+            if (!page.more || !page.cursor) break
+            before = page.cursor
           }
+          const ranked = rank(matches, limit)
+          const title = `History: ${query}`
+          if (ranked.length === 0)
+            return {
+              title,
+              output:
+                searched === 0 && matches.length === 0
+                  ? `Nothing matches "${query}": no message has been compacted away and no tool output has been trimmed yet.`
+                  : `No compacted-away message or trimmed tool output matches "${query}".`,
+              metadata: { matches: 0, searched },
+            }
+          const lines = render(ranked)
           return {
-            title: `History: ${query}`,
-            output: [
-              `${lines.length} of ${result.hidden} compacted-away messages match "${query}":`,
-              ...lines,
-            ].join("\n\n"),
-            metadata: { ...metadata, matches: lines.length },
+            title,
+            output: [`${lines.length} matches for "${query}" in compacted-away messages and trimmed tool output:`, ...lines].join(
+              "\n\n",
+            ),
+            metadata: { matches: lines.length, searched },
           }
         }),
     } satisfies Tool.DefWithoutID<typeof Parameters, Metadata>

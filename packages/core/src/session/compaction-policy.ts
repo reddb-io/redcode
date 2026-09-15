@@ -33,9 +33,12 @@ export const tailBudget = (input: { readonly usable: number; readonly configured
 export const summaryMaxTokens = (output: number | undefined) =>
   output !== undefined && output > 0 ? Math.min(output, SUMMARY_MAX_TOKENS) : SUMMARY_MAX_TOKENS
 
-/** What the model reads in place of a trimmed tool result. */
+/**
+ * What the model reads in place of a trimmed tool result. The trim is permanent, and running the
+ * tool again may repeat its side effects, so the model is pointed at the stored output instead.
+ */
 export const trimPlaceholder = (input: { readonly tokens: number; readonly tool: string }) =>
-  `[tool output trimmed: ${input.tokens} tokens from ${input.tool}. Read it again if you still need it.]`
+  `[tool output trimmed: ${input.tokens} tokens from ${input.tool}. If you still need it, find it with session_history instead of running the tool again.]`
 
 /**
  * Whether the provider's cached prefix is already gone: nothing was sent yet, or the session has
