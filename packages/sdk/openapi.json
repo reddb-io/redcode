@@ -29390,6 +29390,9 @@
                       },
                       "recent": {
                         "type": "string"
+                      },
+                      "tools": {
+                        "$ref": "#/components/schemas/SessionMessageCompactionTools"
                       }
                     },
                     "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -36238,6 +36241,22 @@
         "required": ["message", "isRetryable"],
         "additionalProperties": false
       },
+      "SessionMessageCompactionTools": {
+        "type": "object",
+        "properties": {
+          "loaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mcpDeferred": {
+            "type": "boolean"
+          }
+        },
+        "required": ["loaded", "mcpDeferred"],
+        "additionalProperties": false
+      },
       "FileDiff": {
         "type": "object",
         "properties": {
@@ -38481,6 +38500,9 @@
                   },
                   "recent": {
                     "type": "string"
+                  },
+                  "tools": {
+                    "$ref": "#/components/schemas/SessionMessageCompactionTools"
                   }
                 },
                 "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -40251,6 +40273,9 @@
           "recent": {
             "type": "string"
           },
+          "tools": {
+            "$ref": "#/components/schemas/SessionMessageCompactionTools"
+          },
           "id": {
             "type": "string",
             "pattern": "^msg_"
@@ -41896,6 +41921,9 @@
               },
               "recent": {
                 "type": "string"
+              },
+              "tools": {
+                "$ref": "#/components/schemas/SessionMessageCompactionTools"
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
@@ -42666,6 +42694,9 @@
           "variant": {
             "type": "string"
           },
+          "screen": {
+            "type": "string"
+          },
           "selector": {
             "type": "string"
           },
@@ -42698,6 +42729,23 @@
           }
         },
         "required": ["id", "name", "selector", "state", "actions"],
+        "additionalProperties": false
+      },
+      "DesignTarget": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": ["path", "role"],
         "additionalProperties": false
       },
       "DesignSystem": {
@@ -42819,6 +42867,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DesignScenario"
+            }
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignTarget"
             }
           },
           "designSystem": {
@@ -43019,6 +43073,13 @@
               "$ref": "#/components/schemas/DesignScenario"
             }
           },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignTarget"
+            },
+            "maxItems": 20
+          },
           "designSystem": {
             "type": "string"
           },
@@ -43151,6 +43212,9 @@
           },
           "component": {
             "type": "string"
+          },
+          "screen": {
+            "type": "string"
           }
         },
         "required": ["values"],
@@ -43183,6 +43247,14 @@
           "label": {
             "type": "string",
             "maxLength": 120
+          },
+          "xpath": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "context": {
+            "type": "string",
+            "maxLength": 240
           },
           "revision": {
             "type": "string"
@@ -49571,6 +49643,9 @@
               },
               "recent": {
                 "type": "string"
+              },
+              "tools": {
+                "$ref": "#/components/schemas/SessionMessageCompactionTools"
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],

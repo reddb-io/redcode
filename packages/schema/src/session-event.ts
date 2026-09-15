@@ -618,6 +618,8 @@ export namespace Compaction {
       reason: Started.data.fields.reason,
       text: Schema.String,
       recent: Schema.String,
+      /** Tools loaded through `tool_search` before this compaction, so they stay loaded after it. */
+      tools: SessionMessage.CompactionTools.pipe(optional),
     },
   })
   export type Ended = typeof Ended.Type

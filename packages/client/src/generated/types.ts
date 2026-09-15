@@ -872,6 +872,7 @@ export type SessionsContextOutput = {
         readonly reason: "auto" | "manual"
         readonly summary: string
         readonly recent: string
+        readonly tools?: { readonly loaded: ReadonlyArray<string>; readonly mcpDeferred: boolean }
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
@@ -1293,6 +1294,7 @@ export type SessionsHistoryOutput = {
           readonly reason: "auto" | "manual"
           readonly text: string
           readonly recent: string
+          readonly tools?: { readonly loaded: ReadonlyArray<string>; readonly mcpDeferred: boolean }
         }
       }
     | {
@@ -1751,6 +1753,7 @@ export type SessionsEventsOutput =
         readonly reason: "auto" | "manual"
         readonly text: string
         readonly recent: string
+        readonly tools?: { readonly loaded: ReadonlyArray<string>; readonly mcpDeferred: boolean }
       }
     }
   | {
@@ -1950,6 +1953,7 @@ export type SessionsMessageOutput = {
         readonly reason: "auto" | "manual"
         readonly summary: string
         readonly recent: string
+        readonly tools?: { readonly loaded: ReadonlyArray<string>; readonly mcpDeferred: boolean }
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
@@ -5012,6 +5016,7 @@ export type MessagesListOutput = {
         readonly reason: "auto" | "manual"
         readonly summary: string
         readonly recent: string
+        readonly tools?: { readonly loaded: ReadonlyArray<string>; readonly mcpDeferred: boolean }
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }

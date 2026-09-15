@@ -386,6 +386,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
             reason: event.data.reason,
             summary: event.data.text,
             recent: event.data.recent,
+            ...(event.data.tools === undefined ? {} : { tools: event.data.tools }),
             time: { created: event.data.timestamp },
           }),
         )

@@ -11,6 +11,7 @@ import { Token } from "../util/token"
 import type { Hook } from "@reddb-io/redcode-schema/hook"
 import { CompactionAnchors } from "./compaction-anchors"
 import { CompactionPolicy } from "./compaction-policy"
+import { ToolSearch } from "../tool/tool-search"
 
 const DEFAULT_BUFFER = 20_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
@@ -188,11 +189,13 @@ export const anchorsOf = (entries: readonly Entry[]) => {
     for (const part of message.content) {
       if (part.type !== "tool" || typeof part.state.input === "string") continue
       const input = part.state.input
-      const path = typeof input.filePath === "string" ? input.filePath : typeof input.path === "string" ? input.path : undefined
+      const path =
+        typeof input.filePath === "string" ? input.filePath : typeof input.path === "string" ? input.path : undefined
       if (READ_TOOLS.has(part.name) && path) files.push({ path, kind: "read" })
       if (WRITE_TOOLS.has(part.name) && path) files.push({ path, kind: "modified" })
       if (part.name === "apply_patch" && typeof input.patchText === "string")
-        for (const match of input.patchText.matchAll(PATCH_FILE)) files.push({ path: match[1]!.trim(), kind: "modified" })
+        for (const match of input.patchText.matchAll(PATCH_FILE))
+          files.push({ path: match[1]!.trim(), kind: "modified" })
     }
   }
   return CompactionAnchors.build({ userMessages, files })
@@ -453,6 +456,9 @@ export const make = (dependencies: Dependencies) => {
       .filter((entry) => !candidate.prepared.selected.kept.has(entry.message.id))
     const text = [candidate.summary, anchorsOf(summarized)].filter(Boolean).join("\n\n")
     yield* record(input, text, recent)
+    // Tools loaded through `tool_search` stay loaded across the compaction: the summary replaces
+    // the history they were loaded in, so the next step reads them from this message instead.
+    const tools = ToolSearch.carried(input.entries.map((entry) => entry.message))
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,
@@ -460,6 +466,7 @@ export const make = (dependencies: Dependencies) => {
       reason: "auto",
       text,
       recent,
+      ...(tools.loaded.length > 0 || tools.mcpDeferred ? { tools } : {}),
     })
     return true
   })
