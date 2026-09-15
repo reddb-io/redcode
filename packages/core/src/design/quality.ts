@@ -118,28 +118,31 @@ export function inspect() {
  * Structural problems with data-design-screen markup. Self-contained so it runs on a parsed static
  * document and, serialized, inside the rendered prototype.
  */
-export function screenProblems(root: ParentNode) {
+export function screenProblems(root: ParentNode = document) {
   const ID = /^[a-zA-Z0-9_-]{1,64}$/
   const problems: string[] = []
   const scopeOf = (node: Element) => node.closest("[data-design-variant]")?.getAttribute("data-design-variant") ?? ""
   const where = (scope: string) => (scope ? `variant "${scope}"` : "the page")
-  const nodes = [...root.querySelectorAll("[data-design-screen]")]
   const seen = new Map<string, number>()
-  for (const node of nodes) {
+  for (const node of root.querySelectorAll("[data-design-screen]")) {
     const id = node.getAttribute("data-design-screen") ?? ""
     const scope = scopeOf(node)
-    if (!ID.test(id)) {
+    if (node.hasAttribute("data-design-variant")) {
       problems.push(
-        `Screen id "${id}" in ${where(scope)} is invalid: use 1-64 letters, digits, underscores or hyphens. It is never shown.`,
+        `data-design-screen="${id}" is on a variant root and is ignored; put screens inside the variant root.`,
       )
       continue
     }
-    if (node.hasAttribute("data-design-variant"))
-      problems.push(`Screen "${id}" is on a variant root; put screens inside the variant root instead.`)
-    const outer = node.parentElement?.closest("[data-design-screen]")
+    const outer = node.parentElement?.closest("[data-design-screen]:not([data-design-variant])")
     if (outer) {
       problems.push(
-        `Screen "${id}" is nested inside screen "${outer.getAttribute("data-design-screen")}"; nested screens are ignored. Keep screens one level deep and use params for states inside a screen.`,
+        `Screen "${id}" is inside screen "${outer.getAttribute("data-design-screen")}", so it is part of that screen rather than a screen of its own. Keep screens one level deep and use params for states inside a screen.`,
+      )
+      continue
+    }
+    if (!ID.test(id)) {
+      problems.push(
+        `Screen id "${id}" in ${where(scope)} is invalid: use 1-64 letters, digits, underscores or hyphens. It stays hidden.`,
       )
       continue
     }
@@ -148,11 +151,11 @@ export function screenProblems(root: ParentNode) {
     const key = `${scope} ${id}`
     seen.set(key, (seen.get(key) ?? 0) + 1)
     if (seen.get(key) === 2)
-      problems.push(`Screen id "${id}" is repeated in ${where(scope)}; only the first one is used.`)
+      problems.push(
+        `Screen id "${id}" is repeated in ${where(scope)}; only the first one is shown and the repeat stays hidden.`,
+      )
   }
-  const ids = new Set(
-    nodes.map((node) => `${scopeOf(node)} ${node.getAttribute("data-design-screen")}`).filter((key) => seen.has(key)),
-  )
+  const ids = new Set(seen.keys())
   for (const node of root.querySelectorAll("[data-design-go]")) {
     const id = node.getAttribute("data-design-go") ?? ""
     const scope = scopeOf(node)
@@ -167,40 +170,83 @@ export function screenProblems(root: ParentNode) {
  * component sources only reveal literal attribute values, so they are checked for unknown targets.
  */
 export async function screenWarnings(root: string, engine: Design.Info["engine"], entry: string) {
-  const { DesignFiles } = await import("./files")
   if (engine === "html") {
+    const { DesignFiles } = await import("./files")
     const { parseHTML } = await import("linkedom")
     const file = await DesignFiles.resolve(root, entry).catch(() => undefined)
     if (!file) return []
-    return screenProblems(parseHTML(await Bun.file(file).text()).document as unknown as ParentNode)
+    const html = await Bun.file(file).text()
+    if (!html.includes("data-design-")) return []
+    return screenProblems(parseHTML(html).document as unknown as ParentNode)
   }
-  const sources = await Array.fromAsync(new Bun.Glob("**/*.{tsx,jsx,ts,js,html}").scan({ cwd: root, onlyFiles: true }))
-  const text = (
-    await Promise.all(
-      sources
-        // Glob results use the platform separator, so Windows paths arrive with backslashes.
-        .filter((name) => !name.split(/[\\/]/).includes("node_modules"))
-        .slice(0, 200)
-        .map((name) =>
-          Bun.file(`${root}/${name}`)
-            .text()
-            .catch(() => ""),
-        ),
-    )
-  ).join("\n")
+  const { files, truncated } = await sources(root)
+  const texts = await Promise.all(
+    files.map((file) =>
+      Bun.file(file)
+        .text()
+        .catch(() => ""),
+    ),
+  )
+  const text = texts.filter((item) => item.includes("data-design-")).join("\n")
+  if (!text.includes("data-design-screen")) return []
   const literal = (name: string) =>
     [...text.matchAll(new RegExp(`${name}=(?:"([^"]*)"|'([^']*)'|\\{\\s*["'\`]([^"'\`]*)["'\`]\\s*\\})`, "g"))].map(
       (match) => match[1] ?? match[2] ?? match[3] ?? "",
     )
   const screens = new Set(literal("data-design-screen"))
+  // A computed screen id could match any target, so targets are only checked when every id is literal.
+  const computed = /data-design-screen=\{(?!\s*["'`][^"'`]*["'`]\s*\})/.test(text)
   return [
     ...[...screens]
       .filter((id) => !/^[a-zA-Z0-9_-]{1,64}$/.test(id))
       .map((id) => `Screen id "${id}" is invalid: use 1-64 letters, digits, underscores or hyphens.`),
-    ...[...new Set(literal("data-design-go"))]
-      .filter((id) => !screens.has(id))
-      .map((id) => `data-design-go="${id}" names no data-design-screen in the sources; the click does nothing.`),
+    ...(computed
+      ? []
+      : [...new Set(literal("data-design-go"))]
+          .filter((id) => !screens.has(id))
+          .map((id) => `data-design-go="${id}" names no data-design-screen in the sources; the click does nothing.`)),
+    ...(truncated ? [`Only the first ${SOURCE_LIMIT} source files were checked for screen markup.`] : []),
   ].slice(0, 20)
+}
+
+const SOURCE_LIMIT = 5000
+
+/** Script and markup files under root, never descending into node_modules or dot directories. */
+async function sources(root: string) {
+  const { readdir } = await import("node:fs/promises")
+  const path = await import("node:path")
+  const files: string[] = []
+  let truncated = false
+  const walk = async (directory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (files.length >= SOURCE_LIMIT) {
+        truncated = true
+        return
+      }
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue
+      const full = path.join(directory, entry.name)
+      if (entry.isDirectory()) await walk(full)
+      else if (/\.(?:tsx|jsx|ts|js|mjs|html)$/.test(entry.name)) files.push(full)
+    }
+  }
+  await walk(root)
+  return { files, truncated }
+}
+
+/** Whether any source or built file under root marks screens, so audits wait for late-mounting ones. */
+export async function mentionsScreens(root: string) {
+  const { files } = await sources(root)
+  for (const file of files)
+    if (
+      (
+        await Bun.file(file)
+          .text()
+          .catch(() => "")
+      ).includes("data-design-screen")
+    )
+      return true
+  return false
 }
 
 /** Appended to a publish result so the agent fixes screen markup before the reviewer meets it. */

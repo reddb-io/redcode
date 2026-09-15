@@ -396,7 +396,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     })
   const selectVariant = (id: string) => {
     if (state.working || state.failedPreview) return
+    const screen = currentScreen()
     state.variant = id
+    // Comparing directions step by step: stay on the same screen when the new variant has it.
+    if (screen && screen !== currentScreen()) selectScreen(screen)
     element("target").textContent = ""
     input("selection").value = ""
     state.snapshot = ""
@@ -574,6 +577,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         return button
       }),
     )
+    syncPeerScreen()
+  }
+  /** The side-by-side frame follows the switcher when its variant has the same screen. */
+  const syncPeerScreen = () => {
+    const screen = currentScreen()
+    if (!state.comparing || !screen) return
+    const scope = state.screens.some((item) => item.variant === state.peer) ? state.peer : ""
+    if (state.screens.some((item) => item.id === screen && item.variant === scope))
+      element<HTMLIFrameElement>("peer-preview").contentWindow?.postMessage(
+        { type: "design:screen", id: screen, variant: scope, scroll: false },
+        "*",
+      )
   }
   const tabs = ["review", "assets", "details", "params"] as const
   const selectTab = (name: (typeof tabs)[number]) => {
@@ -2239,9 +2254,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           ([variant, screen]) => (variant === "" || id.test(variant)) && typeof screen === "string" && id.test(screen),
         ),
       )
-      const restore = state.restoreScreens
-      state.restoreScreens = undefined
-      for (const [variant, screen] of Object.entries(restore ?? {}))
+      // A framework can announce an empty list before it mounts: a scope is restored, and forgotten,
+      // only once the frame lists screens in it.
+      const restore = state.restoreScreens ?? {}
+      for (const [variant, screen] of Object.entries(restore)) {
+        if (!state.screens.some((item) => item.variant === variant)) continue
+        delete restore[variant]
         if (
           state.screenCurrent[variant] !== screen &&
           state.screens.some((item) => item.id === screen && item.variant === variant)
@@ -2249,12 +2267,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           state.screenCurrent[variant] = screen
           preview?.postMessage({ type: "design:screen", id: screen, variant, scroll: false }, "*")
         }
+      }
+      if (!Object.keys(restore).length) state.restoreScreens = undefined
       drawScreens()
       return
     }
     if (event.data?.type === "design:variants") {
       if (event.source === element<HTMLIFrameElement>("peer-preview").contentWindow) {
         if (state.pendingOperation?.feedback.revision === state.revision) showOperation("peer-preview")
+        syncPeerScreen()
         element<HTMLIFrameElement>("peer-preview").contentWindow?.postMessage(
           { type: "design:variant", id: state.peer },
           "*",

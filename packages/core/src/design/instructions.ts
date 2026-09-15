@@ -12,20 +12,29 @@ Browser feedback can carry a ## Variant operation section naming a kind, the var
 
 Four mechanisms, one job each. Variants are alternative directions (one data-design-variant root each). Screens are the pages or steps of one flow, inside the prototype or inside each variant root. Scenarios are states an audit verifies (loading, empty, error, populated, edge) with the click/fill/press actions that reach them. Params are live knobs the reviewer changes in the Params panel.
 
-Screens: never write show/hide code for pages. Mark each page with data-design-screen="stable-id" and data-design-label="Name" (same ID rules as variants, unique within a variant, not nested). The injected runtime shows the first screen, or the one named in location.hash, hides the others, and gives the review a screen switcher. Navigate with data-design-go="screen-id" on any button or link, href="#screen-id", or design.go("screen-id") from script; call event.preventDefault() in your own click handler to stay put, for example on invalid input. After each change window receives CustomEvent "design:screen" with detail {screen, previous, variant}. Set scenario.screen so an audit opens that screen before the actions. Keep states within one screen (loading, error, a modal) in params, not in extra screens.
+Screens: never write show/hide code for pages. Mark each page with data-design-screen="stable-id" and data-design-label="Name" (same ID rules as variants, unique within a variant, one level deep: a screen inside another screen is part of it). The injected runtime shows the first screen, or the one named in location.hash, hides the others, and gives the review a screen switcher. Navigate with data-design-go="screen-id" on any button or link, href="#screen-id", or design.go("screen-id") from script. Navigation writes #screen-id to the URL, so do not add another hash router. To stay put, for example on invalid input, call event.preventDefault() in any click handler, including delegated ones; a data-design-go submit button inside a form navigates when the form submits, so browser validation (required, pattern) stops it. After each change window receives CustomEvent "design:screen" with detail {screen, previous, variant}. Set scenario.screen so an audit opens that screen before the actions. Keep states within one screen (loading, error, a modal) in params, not in extra screens. If the prototype defines its own window.design, use window.__redcodeDesign for the helper.
 
 Params, for interactive components and multi-step flows: 1. Declare controls with design_document update: {id, name, selector, variant?, fields}, each field {id, name, type, default} with type text, boolean, number (optional min/max) or select (options required). Cover wizard step, simulated outcome (success, error, loading), modal kind and available actions. 2. Apply values with design.params.on(componentID, (fields, {reset}) => ...); it replays the current values, so it also works after an asynchronous mount. reset asks for a fresh scenario: cancel pending simulated timers. 3. After every user-driven change call design.state(componentID, changedFields) so the panel follows. 4. Save named presets as {id, name, variant?, values} and put the same params on scenarios. Example:
-<section id="checkout" data-design-screen="cart" data-design-label="Cart"><p id="count"></p><button data-design-go="pay">Pay</button></section>
+<main id="checkout">
+<section data-design-screen="cart" data-design-label="Cart"><p id="count"></p><button id="remove">Remove item</button><button data-design-go="pay">Pay</button></section>
 <section data-design-screen="pay" data-design-label="Payment"><button id="submit">Confirm</button><p id="result" data-state="empty"></p></section>
+</main>
 <script>
+let items = 2
 let outcome = "success"
+const count = () => (document.querySelector("#count").textContent = items + " items")
 design.params.on("checkout", (fields) => {
+  if (typeof fields.items === "number") items = fields.items
   if (fields.outcome) outcome = fields.outcome
-  if (typeof fields.items === "number") document.querySelector("#count").textContent = fields.items + " items"
+  count()
 })
+document.querySelector("#remove").onclick = () => {
+  items = Math.max(0, items - 1)
+  count()
+  design.state("checkout", { items })
+}
 document.querySelector("#submit").onclick = () => {
   document.querySelector("#result").dataset.state = outcome === "error" ? "error" : "populated"
-  design.state("checkout", { outcome })
 }
 </script>
 with controls [{id:"checkout", name:"Checkout", selector:"#checkout", fields:[{id:"items", name:"Items", type:"number", min:0, default:2}, {id:"outcome", name:"Outcome", type:"select", options:["success","error"], default:"success"}]}], preset {id:"empty", name:"Empty cart", values:{checkout:{items:0}}} and scenario {id:"pay-error", name:"Payment fails", screen:"pay", params:{checkout:{outcome:"error"}}, selector:"#result", state:"error", actions:[{action:"click", selector:"#submit"}]}. design.* wraps the window CustomEvents "design:params" (detail {values, reset}) and "design:state" (detail {values}), which keep working. Use the same state for panel edits and the real Next/Previous/submit/retry controls, and keep requests simulated with local fixtures. Exercise forward/back, success/error/retry and confirmation actions where applicable. Simple static artifacts may omit controls; a DOM marker without a working state binding does not count.
