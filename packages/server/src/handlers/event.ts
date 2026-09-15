@@ -1,6 +1,6 @@
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import { RedcodeEvent } from "@reddb-io/redcode-protocol/groups/event"
-import { Effect, Schema, Stream } from "effect"
+import { Effect, Option, Schema, Stream } from "effect"
 import { HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
@@ -8,12 +8,24 @@ import { Api } from "../api"
 
 const subscriberCapacity = 256
 
+const encodeRedcodeEvent = Schema.encodeUnknownOption(RedcodeEvent)
+
+/**
+ * The wire form of one event, or undefined when the v2 protocol cannot describe it.
+ *
+ * The bus also carries live events that only legacy consumers know, such as `session.status`.
+ * Throwing on one of those ended the whole stream for every subscriber, so they are skipped.
+ */
+export function encodeEvent(data: unknown): unknown {
+  return Option.getOrUndefined(encodeRedcodeEvent(data))
+}
+
 function eventData(data: unknown): Sse.Event {
   return {
     _tag: "Event",
     event: "message",
     id: undefined,
-    data: JSON.stringify(Schema.encodeUnknownSync(RedcodeEvent)(data)),
+    data: JSON.stringify(data),
   }
 }
 
@@ -33,7 +45,12 @@ export const EventHandler = HttpApiBuilder.group(Api, "server.event", (handlers)
             const live = yield* EventV2.allBounded(events, subscriberCapacity)
             return Stream.make(connected).pipe(Stream.concat(live))
           }),
-        ).pipe(Stream.map(eventData), Stream.pipeThroughChannel(Sse.encode()))
+        ).pipe(
+          Stream.map(encodeEvent),
+          Stream.filter((encoded) => encoded !== undefined),
+          Stream.map(eventData),
+          Stream.pipeThroughChannel(Sse.encode()),
+        )
         const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
         return HttpServerResponse.stream(
           output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText),
