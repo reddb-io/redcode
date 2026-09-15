@@ -45,6 +45,8 @@ export namespace PluginLoader {
   type Report = {
     // Called before each attempt so callers can log initial load attempts and retries uniformly.
     start?: (candidate: Candidate, retry: boolean) => void
+    // Called with the resolved entrypoint right before it is imported.
+    load?: (resolved: Resolved) => void
     // Called when the package exists but does not provide the requested entrypoint.
     missing?: (candidate: Candidate, retry: boolean, message: string, resolved: Missing) => void
     // Called for operational failures such as install, compatibility, or dynamic import errors.
@@ -178,6 +180,7 @@ export namespace PluginLoader {
       return { retry: filePlugin && isRetryableResolveError(resolved.stage, resolved.error) }
     }
 
+    report?.load?.(resolved.value)
     const loaded = await load(resolved.value)
     if (!loaded.ok) {
       report?.error?.(candidate, retry, "load", loaded.error, resolved.value)
