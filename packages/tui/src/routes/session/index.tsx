@@ -62,7 +62,7 @@ import {
   toolSearchSummary,
   webSearchProviderLabel,
 } from "../../util/tool-display"
-import { pendingBadge } from "../../prompt/steer"
+import { pendingBadge, steeredLabel } from "../../prompt/steer"
 import { Dynamic, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -1702,13 +1702,12 @@ function UserMessage(props: {
   const [hover, setHover] = createSignal(false)
   const queued = createMemo(() => props.pending !== undefined && props.index > props.pending)
   const sync = useSync()
-  const delivery = createMemo(() => sync.data.prompt_delivery[props.message.id])
-  const badge = createMemo(() => pendingBadge(delivery()))
-  // Promotion moves the message into the running turn; a remembered steer then shows it landed.
-  const steered = createMemo(() => !queued() && delivery() === "steer")
+  const badge = createMemo(() => pendingBadge(sync.data.prompt_steer[props.message.id] === true))
+  // Set by the promotion itself, never inferred from the transcript layout.
+  const steered = createMemo(() => sync.data.prompt_steered[props.message.id])
   const color = createMemo(() => local.agent.color(props.message.agent))
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
-  const metadataVisible = createMemo(() => queued() || steered() || ctx.showTimestamps())
+  const metadataVisible = createMemo(() => queued() || steered() !== undefined || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
   const approvals = createMemo(() =>
@@ -1770,10 +1769,10 @@ function UserMessage(props: {
             <Show
               when={queued()}
               fallback={
-                <Show when={ctx.showTimestamps() || steered()}>
+                <Show when={ctx.showTimestamps() || steered() !== undefined}>
                   <text fg={theme.textMuted}>
                     <Show when={steered()}>
-                      <span style={{ fg: theme.accent }}>↳ steered mid-turn</span>
+                      <span style={{ fg: theme.accent }}>{steeredLabel(steered() ?? "idle")}</span>
                       <Show when={ctx.showTimestamps()}>
                         <span style={{ fg: theme.textMuted }}> · </span>
                       </Show>

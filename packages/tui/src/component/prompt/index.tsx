@@ -59,7 +59,15 @@ import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 import { useLocation } from "../../context/location"
 import { useRedskilled } from "../../context/redskilled"
-import { busyHint, parseSteerCommand, promptDelivery, STEER_SLASH, type PromptIntent } from "../../prompt/steer"
+import {
+  busyHint,
+  parseSteerCommand,
+  promptDelivery,
+  STEER_SLASH,
+  steerKeyActive,
+  stripSteerCommand,
+  type PromptIntent,
+} from "../../prompt/steer"
 
 registerOpencodeSpinner()
 
@@ -190,6 +198,12 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const submitShortcut = useCommandShortcut("input.submit")
   const steerShortcut = useCommandShortcut("input.steer")
+  // The terminal answers the capability query after startup, so the steer hint re-reads it then.
+  const [kittyKeyboard, setKittyKeyboard] = createSignal(renderer.capabilities?.kitty_keyboard)
+  const onCapabilities = (capabilities: { kitty_keyboard?: boolean } | null | undefined) =>
+    setKittyKeyboard(capabilities?.kitty_keyboard)
+  renderer.on("capabilities", onCapabilities)
+  onCleanup(() => renderer.off("capabilities", onCapabilities))
   const exit = useExit()
   const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
@@ -438,7 +452,9 @@ export function Prompt(props: PromptProps) {
         desc: "Deliver the prompt at the agent's next step instead of queueing it",
         name: "prompt.steer",
         category: "Prompt",
-        slashName: STEER_SLASH,
+        // A server command named `steer` owns the slash; the palette entry steps aside.
+        hidden: serverSteerCommand(),
+        slashName: serverSteerCommand() ? undefined : STEER_SLASH,
         run: async () => {
           dialog.clear()
           const text = input.plainText
@@ -902,11 +918,15 @@ export function Prompt(props: PromptProps) {
     }
   })
 
-  // The steer key must win over the managed textarea layer, which would otherwise read a rebound
-  // steer key that overlaps `input.newline` as a newline.
+  // Only while the session works: the steer key then wins over the managed textarea layer, where
+  // the same key (shift+return by default) inserts a newline, which is what it does when idle.
   useBindings(() => ({
     target: inputTarget,
-    enabled: inputTarget() !== undefined && !props.disabled,
+    enabled: steerKeyActive({
+      focused: inputTarget() !== undefined,
+      disabled: Boolean(props.disabled),
+      statusType: status().type,
+    }),
     priority: 1,
     commands: [
       {
@@ -1044,6 +1064,14 @@ export function Prompt(props: PromptProps) {
     }
   })
 
+  function serverSteerCommand() {
+    return sync.data.command.some((x) => x.name === STEER_SLASH)
+  }
+
+  function steerCommandAvailable() {
+    return store.mode !== "shell" && !serverSteerCommand()
+  }
+
   let submitting = false
   async function submit(intent: PromptIntent = "submit") {
     // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
@@ -1104,6 +1132,9 @@ export function Prompt(props: PromptProps) {
       return false
     }
 
+    // An empty `/steer` sends nothing, and must not create a session on the way.
+    if (steerCommandAvailable() && parseSteerCommand(store.prompt.input)?.trim() === "") return false
+
     const variant = local.model.variant.current()
     let sessionID = props.sessionID
     let finishMoveProgress = false
@@ -1153,20 +1184,18 @@ export function Prompt(props: PromptProps) {
       ),
     )
 
+    // Filter out text parts (pasted content) since they're now expanded inline
+    let nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
+
     // `/steer <text>` steers from any terminal, including those that report shift+return as a
     // plain return. A server command with the same name keeps precedence.
-    const steerText =
-      store.mode === "shell" || sync.data.command.some((x) => x.name === STEER_SLASH)
-        ? undefined
-        : parseSteerCommand(inputText)
-    if (steerText !== undefined) {
-      if (!steerText.trim()) return false
-      inputText = steerText
+    const steerCommand = steerCommandAvailable() ? stripSteerCommand(inputText, nonTextParts) : undefined
+    if (steerCommand) {
+      if (!steerCommand.text.trim()) return false
+      inputText = steerCommand.text
+      nonTextParts = steerCommand.parts
       intent = "steer"
     }
-
-    // Filter out text parts (pasted content) since they're now expanded inline
-    const nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
 
     // Capture mode before it gets reset
     const currentMode = store.mode
@@ -1220,7 +1249,7 @@ export function Prompt(props: PromptProps) {
         })
         .catch(failed)
     } else if (
-      steerText === undefined &&
+      !steerCommand &&
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {
@@ -1243,9 +1272,9 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      // Busy session: enter queues behind the running turn, the steer key delivers at its next
-      // step. Idle session: a plain submit either way.
-      const delivery = props.sessionID ? promptDelivery(intent, status().type) : undefined
+      // Enter queues behind a running turn, the steer key delivers at its next step. Both run right
+      // away on an idle session, so the delivery is always sent: no client-side status to race.
+      const delivery = promptDelivery(intent)
       sdk.client.session
         .prompt(
           {
@@ -1254,7 +1283,7 @@ export function Prompt(props: PromptProps) {
             agent: agent.name,
             model: selectedModel,
             variant,
-            ...(delivery ? { delivery } : {}),
+            delivery,
             parts: [
               ...editorParts,
               {
@@ -1768,15 +1797,13 @@ export function Prompt(props: PromptProps) {
                     })()}
                   </box>
                 </box>
-                <Show when={status().type !== "retry"}>
-                  <text fg={theme.textMuted} flexShrink={1}>
-                    {busyHint({
-                      submitKey: submitShortcut(),
-                      steerKey: steerShortcut(),
-                      kittyKeyboard: renderer.capabilities?.kitty_keyboard,
-                    })}
-                  </text>
-                </Show>
+                <text fg={theme.textMuted} flexShrink={1}>
+                  {busyHint({
+                    submitKey: submitShortcut(),
+                    steerKey: steerShortcut(),
+                    kittyKeyboard: kittyKeyboard(),
+                  })}
+                </text>
                 <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
                   esc{" "}
                   <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>

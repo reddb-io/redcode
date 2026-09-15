@@ -39,6 +39,7 @@ type Definition = {
 }
 
 export const LeaderDefault = "ctrl+x"
+const STEER_DEFAULT = "shift+return"
 
 const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
 
@@ -164,10 +165,10 @@ export const Definitions = {
   input_clear: keybind("ctrl+c", "Clear input field"),
   input_paste: keybind({ key: "ctrl+v", preventDefault: false }, "Paste from clipboard"),
   input_submit: keybind("return", "Submit input"),
-  input_newline: keybind("ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
+  input_newline: keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
   input_steer: keybind(
-    "shift+return",
-    "Steer the running agent: deliver the prompt at its next step instead of queueing it (needs a terminal that reports shift+return; /steer <text> works everywhere)",
+    STEER_DEFAULT,
+    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key falls through to newline (needs a terminal that reports shift+return; /steer <text> works everywhere)",
   ),
   input_move_left: keybind("left,ctrl+b", "Move cursor left in input"),
   input_move_right: keybind("right,ctrl+f", "Move cursor right in input"),
@@ -461,12 +462,39 @@ export function defaultValue(name: KeybindName) {
 export function parse(keybinds: KeybindOverrides): Keybinds {
   const invalid = unknownKeys(keybinds)
   if (invalid.length) throw new Error(`Unrecognized keybind${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`)
+  const defaults: Partial<Record<KeybindName, BindingValueSchema>> = { input_steer: steerDefault(keybinds) }
   return Object.fromEntries(
     Object.entries(Definitions).map(([name, item]) => [
       name,
-      decodeBindingValue(keybinds[name as KeybindName] ?? item.default),
+      decodeBindingValue(keybinds[name as KeybindName] ?? defaults[name as KeybindName] ?? item.default),
     ]),
   ) as Keybinds
+}
+
+function normalizeKey(key: string) {
+  const parts = key
+    .trim()
+    .toLowerCase()
+    .split("+")
+    .map((part) => (part === "enter" ? "return" : part))
+  const name = parts.pop() ?? ""
+  return [...parts.sort(), name].join("+")
+}
+
+function bindingKeys(value: unknown): string[] {
+  if (typeof value === "string") return value === "none" ? [] : value.split(",").map(normalizeKey).filter(Boolean)
+  if (Array.isArray(value)) return value.flatMap(bindingKeys)
+  if (typeof value === "object" && value !== null && "key" in value) return bindingKeys(value.key)
+  return []
+}
+
+// A config that puts the steer key on `input_newline` without mentioning `input_steer` asked for a
+// newline on that key: the steer default steps aside there instead of taking it over while busy.
+function steerDefault(keybinds: KeybindOverrides): BindingValueSchema {
+  if (keybinds.input_newline === undefined) return STEER_DEFAULT
+  const taken = new Set(bindingKeys(keybinds.input_newline))
+  const keys = STEER_DEFAULT.split(",").filter((key) => !taken.has(normalizeKey(key)))
+  return keys.length > 0 ? keys.join(",") : "none"
 }
 
 export const Keybinds = { parse }

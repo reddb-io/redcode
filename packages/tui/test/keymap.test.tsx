@@ -6,6 +6,7 @@ import { testRender, useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { onCleanup } from "solid-js"
 import { TuiKeybind } from "../src/config/keybind"
+import { steerKeyActive } from "../src/prompt/steer"
 import { getOpencodeModeStack, OPENCODE_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
 
 function createResolvedKeymapConfig(input: TuiKeybind.KeybindOverrides = {}) {
@@ -141,14 +142,14 @@ test("mode-less bindings stay active when opencode mode changes", async () => {
   }
 })
 
-test("shift+return runs input.steer while return still submits and no newline is inserted", async () => {
+async function mountSteer(input: { busy: boolean; keybinds?: TuiKeybind.KeybindOverrides }) {
   const calls: string[] = []
   let textarea: TextareaRenderable | undefined
 
   function Harness() {
     const renderer = useRenderer()
     const keymap = createDefaultOpenTuiKeymap(renderer)
-    const config = createResolvedKeymapConfig()
+    const config = createResolvedKeymapConfig(input.keybinds)
     const offKeymap = registerOpencodeKeymap(keymap, renderer, config)
     let offSteer = () => {}
     onCleanup(() => {
@@ -164,9 +165,12 @@ test("shift+return runs input.steer while return still submits and no newline is
           ref={(r: TextareaRenderable) => {
             textarea = r
             r.focus()
+            // Mirrors the prompt's steer layer.
             offSteer = keymap.registerLayer({
               target: r,
               priority: 1,
+              enabled: () =>
+                steerKeyActive({ focused: true, disabled: false, statusType: input.busy ? "busy" : "idle" }),
               commands: [{ name: "input.steer", run: () => void calls.push("steer") }],
               bindings: config.keybinds.gather("prompt.steer", ["input.steer"]),
             })
@@ -177,12 +181,39 @@ test("shift+return runs input.steer while return still submits and no newline is
   }
 
   const app = await testRender(() => <Harness />, { kittyKeyboard: true })
+  await app.renderOnce()
+  return { app, calls, text: () => textarea?.plainText }
+}
+
+test("while busy, shift+return steers and return still submits", async () => {
+  const { app, calls, text } = await mountSteer({ busy: true })
   try {
-    await app.renderOnce()
     app.mockInput.pressEnter({ shift: true })
     app.mockInput.pressEnter()
     expect(calls).toEqual(["steer", "submit"])
-    expect(textarea?.plainText).toBe("draft")
+    expect(text()).toBe("draft")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("while idle, shift+return inserts a newline", async () => {
+  const { app, calls, text } = await mountSteer({ busy: false })
+  try {
+    app.mockInput.pressEnter({ shift: true })
+    expect(calls).toEqual([])
+    expect(text()).toContain("\n")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("an explicit input_newline on shift+return keeps its newline while busy", async () => {
+  const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_newline: "shift+return,ctrl+j" } })
+  try {
+    app.mockInput.pressEnter({ shift: true })
+    expect(calls).toEqual([])
+    expect(text()).toContain("\n")
   } finally {
     app.renderer.destroy()
   }
