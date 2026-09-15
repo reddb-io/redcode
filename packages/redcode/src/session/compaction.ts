@@ -1236,7 +1236,7 @@ const layer = Layer.effect(
       type Attempt =
         | { stream: LLM.StreamInput; events?: readonly LLMEvent[]; source: string }
         | { error: NonNullable<SessionV1.Assistant["error"]> }
-      const attempt: Effect.Effect<Attempt | "timeout"> = deadline(
+      const attempt = deadline<Attempt | "timeout">(
         Effect.gen(function* () {
           if (candidate) return { stream: prepared.stream, events: candidate.events, source: prepared.source }
           if (prepared.cached) {

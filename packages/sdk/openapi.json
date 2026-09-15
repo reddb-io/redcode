@@ -26923,10 +26923,6 @@
           "focus": {
             "type": "string"
           },
-          "trimmed": {
-            "type": "integer",
-            "minimum": 0
-          },
           "tools": {
             "type": "object",
             "properties": {
@@ -37835,9 +37831,188 @@
           "failure_contains": {
             "type": "string",
             "minLength": 1
+          },
+          "success_regex": {
+            "type": "string"
+          },
+          "failure_regex": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string",
+            "enum": ["changed"]
+          },
+          "jitter": {
+            "type": "boolean"
           }
         },
         "required": ["mode"],
+        "additionalProperties": false
+      },
+      "MonitorHttpProbe": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["http"]
+          },
+          "url": {
+            "type": "string",
+            "description": "http:// or https:// URL"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "HEAD"]
+          },
+          "expect_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 1
+              }
+            ],
+            "description": "Status code(s) that count as up. Default: any 2xx."
+          },
+          "json_path": {
+            "type": "string"
+          },
+          "equals": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "contains": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regex": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["type", "url"],
+        "additionalProperties": false
+      },
+      "MonitorFileProbe": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["file"]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": ["exists", "missing", "changed"]
+          },
+          "min_size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["type", "path", "state"],
+        "additionalProperties": false
+      },
+      "MonitorProcessProbe": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["process"]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "match": {
+            "type": "string",
+            "enum": ["name", "cmdline"]
+          },
+          "pid": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": ["running", "exited"]
+          }
+        },
+        "required": ["type", "state"],
+        "additionalProperties": false
+      },
+      "MonitorProbe": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/MonitorHttpProbe"
+          },
+          {
+            "$ref": "#/components/schemas/MonitorFileProbe"
+          },
+          {
+            "$ref": "#/components/schemas/MonitorProcessProbe"
+          }
+        ]
+      },
+      "MonitorProbeResult": {
+        "type": "object",
+        "properties": {
+          "matched": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          },
+          "redirect": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "mtime": {
+            "type": "number"
+          },
+          "pids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["matched"],
         "additionalProperties": false
       },
       "MonitorEvidence": {
@@ -37856,6 +38031,15 @@
             "type": "boolean"
           },
           "outputPath": {
+            "type": "string"
+          },
+          "probe": {
+            "$ref": "#/components/schemas/MonitorProbeResult"
+          },
+          "matched": {
+            "type": "string"
+          },
+          "error": {
             "type": "string"
           }
         },
@@ -37895,6 +38079,9 @@
           },
           "options": {
             "$ref": "#/components/schemas/MonitorOptions"
+          },
+          "probe": {
+            "$ref": "#/components/schemas/MonitorProbe"
           },
           "status": {
             "type": "string",
