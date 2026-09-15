@@ -2,7 +2,7 @@ export * as PermissionV2 from "./permission"
 import { RepositoryGuard } from "./repository-guard"
 
 import { makeLocationNode } from "./effect/app-node"
-import { Context, Deferred, Effect as EffectRuntime, Layer, Schema } from "effect"
+import { Clock, Context, Deferred, Effect as EffectRuntime, Layer, Schema } from "effect"
 import { Permission } from "@reddb-io/redcode-schema/permission"
 import { EventV2 } from "./event"
 import { Location } from "./location"
@@ -42,6 +42,11 @@ export const AssertInput = Schema.Struct({
   id: ID.pipe(Schema.optional),
   ...RequestFields,
   agent: AgentV2.ID.pipe(Schema.optional),
+  /**
+   * The action is an external (MCP, plugin) tool. Only an allow rule that names it exactly, or `*`,
+   * allows it: a built-in family pattern such as `design_*` must not auto-allow a server named `design`.
+   */
+  external: Schema.Boolean.pipe(Schema.optional),
 }).annotate({ identifier: "PermissionV2.AssertInput" })
 export type AssertInput = typeof AssertInput.Type
 
@@ -162,7 +167,10 @@ const layer = Layer.effect(
       if (RepositoryGuard.yolo()) return { effect: "allow" as const, rules }
       if (denied(input, rules)) return { effect: "deny" as const, rules }
       const all = [...rules, ...(yield* savedRules())]
-      const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
+      const applicable = input.external
+        ? all.filter((rule) => rule.effect !== "allow" || rule.action === input.action || rule.action === "*")
+        : all
+      const effects = input.resources.map((resource) => evaluate(input.action, resource, applicable).effect)
       const effect: Permission.Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
       if (effect !== "ask") return { effect, rules: all }
       const hook = yield* hooks.run({
@@ -224,14 +232,18 @@ const layer = Layer.effect(
           // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
           const source = input.source as { readonly type?: string; readonly callID?: string } | undefined
           const waiting =
-            source?.type === "tool" && source.callID ? HumanWait.start(input.sessionID, source.callID) : undefined
+            source?.type === "tool" && source.callID
+              ? HumanWait.start(input.sessionID, source.callID, yield* Clock.currentTimeMillis)
+              : undefined
           return yield* restore(Deferred.await(item.deferred)).pipe(
             EffectRuntime.catchTag("PermissionV2.DeclinedError", (error) => EffectRuntime.die(error)),
             EffectRuntime.ensuring(
-              EffectRuntime.sync(() => {
-                waiting?.()
-                pending.delete(item.request.id)
-              }),
+              Clock.currentTimeMillis.pipe(
+                EffectRuntime.map((end) => {
+                  waiting?.(end)
+                  pending.delete(item.request.id)
+                }),
+              ),
             ),
           )
         }),

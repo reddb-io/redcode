@@ -59,7 +59,14 @@ export const POLL_MS = 250
  */
 export const guard = <A, E, R>(
   self: (abort: AbortSignal) => Effect.Effect<A, E, R>,
-  input: { tool: string; ms: number; waitedMs: () => number; abort?: AbortSignal; onExpire?: Effect.Effect<void> },
+  input: {
+    tool: string
+    ms: number
+    /** Human wait so far, measured against `now` from the same clock the deadline reads. */
+    waitedMs: (now: number) => number
+    abort?: AbortSignal
+    onExpire?: Effect.Effect<void>
+  },
 ): Effect.Effect<A, E, R> => {
   const own = new AbortController()
   const abort = input.abort ? AbortSignal.any([input.abort, own.signal]) : own.signal
@@ -69,7 +76,11 @@ export const guard = <A, E, R>(
       // Effect's clock rather than Date.now: identical at runtime, and drivable by a test clock.
       const start = yield* Clock.currentTimeMillis
       const step = Duration.millis(Math.max(1, Math.min(input.ms, POLL_MS)))
-      while ((yield* Clock.currentTimeMillis) - start - input.waitedMs() < input.ms) yield* Effect.sleep(step)
+      while (true) {
+        const now = yield* Clock.currentTimeMillis
+        if (now - start - input.waitedMs(now) >= input.ms) break
+        yield* Effect.sleep(step)
+      }
       const reason = new Error(message(input))
       own.abort(reason)
       if (input.onExpire) yield* input.onExpire

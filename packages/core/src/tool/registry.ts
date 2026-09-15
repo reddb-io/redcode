@@ -10,7 +10,16 @@ import { SessionSchema } from "../session/schema"
 import { ToolOutputStore } from "../tool-output-store"
 import { Wildcard } from "../util/wildcard"
 import { ApplicationTools } from "./application-tools"
-import { definition, media, permission, settle, validateName, type AnyTool, type RegistrationError } from "./tool"
+import {
+  definition,
+  isExternal,
+  media,
+  permission,
+  settle,
+  validateName,
+  type AnyTool,
+  type RegistrationError,
+} from "./tool"
 import { Tools } from "./tools"
 import { makeLocationNode } from "../effect/app-node"
 
@@ -49,9 +58,16 @@ const registryLayer = Layer.effect(
     type Registration = { readonly identity: object; readonly tool: AnyTool }
     const local = new Map<string, Array<{ readonly token: object; readonly registration: Registration }>>()
 
+    // Built-in tools always win a name: an MCP server called `design` must not replace `design_preview`,
+    // whatever order the layers registered in. Local built-ins, then application tools, then external.
+    const resolve = (name: string): Registration | undefined => {
+      const entries = local.get(name)
+      const builtin = entries?.findLast((entry) => !isExternal(entry.registration.tool))?.registration
+      return builtin ?? applications.entries().get(name) ?? entries?.at(-1)?.registration
+    }
+
     const settleWith = Effect.fn("ToolRegistry.settle")(function* (input: ExecuteInput, advertised?: object) {
-      const registration =
-        local.get(input.call.name)?.at(-1)?.registration ?? applications.entries().get(input.call.name)
+      const registration = resolve(input.call.name)
       if (!registration)
         return {
           result: {
@@ -88,6 +104,19 @@ const registryLayer = Layer.effect(
         const entries = Object.entries(tools)
         if (entries.length === 0) return
         yield* Effect.forEach(entries, ([name]) => validateName(name), { discard: true })
+        for (const [name, tool] of entries) {
+          const others = [
+            ...(local.get(name) ?? []).map((entry) => entry.registration.tool),
+            ...(applications.entries().has(name) ? [applications.entries().get(name)!.tool] : []),
+          ]
+          const collides = isExternal(tool)
+            ? others.some((other) => !isExternal(other))
+            : others.some((other) => isExternal(other))
+          if (collides)
+            yield* Effect.logWarning(
+              `External tool "${name}" has the same name as a built-in tool; the built-in tool is used`,
+            )
+        }
         yield* Effect.uninterruptible(
           Effect.gen(function* () {
             const token = {}
@@ -106,9 +135,9 @@ const registryLayer = Layer.effect(
         )
       }),
       materialize: Effect.fn("ToolRegistry.materialize")(function* (permissions = []) {
-        const registrations = new Map(applications.entries())
-        for (const [name, entries] of local) {
-          const registration = entries.at(-1)?.registration
+        const registrations = new Map<string, Registration>()
+        for (const name of new Set([...applications.entries().keys(), ...local.keys()])) {
+          const registration = resolve(name)
           if (registration) registrations.set(name, registration)
         }
         for (const [name, registration] of registrations)

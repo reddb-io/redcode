@@ -1,7 +1,7 @@
 export * as QuestionV2 from "./question"
 
 import { makeLocationNode } from "./effect/app-node"
-import { Context, Deferred, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Deferred, Effect, Layer, Schema } from "effect"
 import { Question } from "@reddb-io/redcode-schema/question"
 import { EventV2 } from "./event"
 import { SessionSchema } from "./session/schema"
@@ -102,17 +102,21 @@ const layer = Layer.effect(
           const request: Request = { id, ...input }
           pending.set(id, { request, deferred })
           // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
-          const waiting = input.tool?.callID ? HumanWait.start(input.sessionID, input.tool.callID) : undefined
+          const waiting = input.tool?.callID
+            ? HumanWait.start(input.sessionID, input.tool.callID, yield* Clock.currentTimeMillis)
+            : undefined
           return yield* events.publish(Event.Asked, request).pipe(
             Effect.andThen(restore(Deferred.await(deferred))),
             Effect.ensuring(
-              Effect.suspend(() => {
-                waiting?.()
-                const item = pending.get(id)
-                if (!item) return Effect.void
-                pending.delete(id)
-                return settle(item)
-              }),
+              Clock.currentTimeMillis.pipe(
+                Effect.flatMap((end) => {
+                  waiting?.(end)
+                  const item = pending.get(id)
+                  if (!item) return Effect.void
+                  pending.delete(id)
+                  return settle(item)
+                }),
+              ),
             ),
           )
         }),

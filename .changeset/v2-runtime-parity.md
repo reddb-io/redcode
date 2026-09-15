@@ -9,4 +9,9 @@ Bring the v2 session runner behind `redcode design` to parity with the legacy ru
 - live `session.status` busy, retry and idle events;
 - the stall watchdog, which ends unattended turns after 10 minutes without output.
 
-MCP tools in v2 are now registered as `<server>_<tool>`, the same key legacy uses, instead of `mcp_<server>_<tool>`. Permission rules or hooks that named v2 MCP tools with the `mcp_` prefix must drop it. Tool calls already in existing v2 transcripts keep their old names and are only replayed as history.
+MCP tools in v2 are now registered as `<server>_<tool>`, the same key legacy uses, instead of `mcp_<server>_<tool>`. Permission rules or hooks that named v2 MCP tools with the `mcp_` prefix must drop it. Config load logs a warning for any such rule and leaves it unchanged. Tool calls already in existing v2 transcripts keep their old names and are only replayed as history.
+
+Two safeguards come with the shorter names:
+
+- A built-in tool always wins over an MCP or plugin tool of the same name, and the collision is logged. A server named `design` can no longer replace `design_preview`.
+- An external tool is allowed only by a rule that names it exactly, or by `*`. A built-in family pattern such as `design_*` no longer auto-allows it.
