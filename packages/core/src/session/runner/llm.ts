@@ -458,7 +458,7 @@ const layer = Layer.effect(
           }
           if (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
             return yield* Effect.failCause(settled.cause)
-          yield* todos.review(sessionID).pipe(Effect.orDie)
+          yield* SessionTodo.reviewOrKeep(todos, sessionID)
           if (settled._tag === "Success" && !publisher.hasProviderError()) {
             const failure = yield* restore(completion.settle(sessionID)).pipe(
               Effect.match({
@@ -580,7 +580,7 @@ const layer = Layer.effect(
             promotion = "steer"
             if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
             if (!needsContinuation && result.todoEligible) {
-              const reminder = SessionTodo.reminder(yield* todos.review(input.sessionID).pipe(Effect.orDie))
+              const reminder = SessionTodo.reminder(yield* SessionTodo.reviewOrKeep(todos, input.sessionID))
               if (reminder && todoContinuations < 7) {
                 yield* events.publish(SessionEvent.Synthetic, {
                   sessionID: input.sessionID,
