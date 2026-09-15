@@ -60,6 +60,58 @@ test("monitor list handles server failure without losing the dialog", async () =
   }
 })
 
+test("monitor dialog renders a probe monitor with its schedule and what matched", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const info = {
+    id: "monitor_probe",
+    sessionID: "ses_owner",
+    command: "probe: GET http://127.0.0.1:3/up",
+    workdir: "/project",
+    status: "succeeded",
+    attempts: 3,
+    created: 1,
+    updated: 2,
+    options: { mode: "poll", interval_ms: 10_000 },
+    probe: { type: "http", url: "http://127.0.0.1:3/up", headers: { Authorization: "Bearer hidden-value" } },
+    delivery: "delivered",
+    evidence: {
+      exit: 0,
+      output: "HTTP 200 (expected 2xx)",
+      truncated: false,
+      matched: "HTTP 200 (expected 2xx)",
+      probe: { matched: true, status: 200 },
+    },
+  }
+  const setup = await mount(
+    (url) => (url.pathname === "/experimental/session/ses_owner/monitors" ? json([info]) : undefined),
+    tmp.path,
+    () => <Dialogs />,
+  )
+  /** Renders until the frame shows the text, and returns that frame. */
+  const shown = async (text: string) => {
+    for (let i = 0; i < 200; i++) {
+      await setup.app.renderOnce()
+      const frame = setup.app.captureCharFrame()
+      if (frame.includes(text)) return frame
+      await Bun.sleep(10)
+    }
+    throw new Error(`never rendered: ${text}\n${setup.app.captureCharFrame()}`)
+  }
+  try {
+    await wait(() => setup.app.renderer.currentFocusedRenderable instanceof InputRenderable)
+    // The title is cut to the dialog width.
+    expect(await shown("probe: GET http://127.0.0.1")).toContain("3 checks · http probe")
+    setup.app.mockInput.pressEnter()
+    // The details name the effective schedule, jitter included.
+    expect(await shown("View last result")).toContain("3 checks · every 10s ±1s · http")
+    setup.app.mockInput.pressEnter()
+    expect(await shown("Matched: HTTP 200")).not.toContain("hidden-value")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
 test("monitor dialog inspects and cancels once while keeping the originating session", async () => {
   await using tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")

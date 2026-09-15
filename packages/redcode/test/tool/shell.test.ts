@@ -1344,7 +1344,7 @@ describe("tool.shell monitors", () => {
         | undefined
       expect(asked?.metadata).toMatchObject({
         command: "gh pr checks 12",
-        monitor: 'poll every 1m, for up to 1h, fail on "fail"',
+        monitor: 'poll every 1m ±6s, for up to 1h, fail on "fail"',
       })
       // An hour of repetition is approved every time, never saved as "always".
       expect(asked?.force).toBe(true)

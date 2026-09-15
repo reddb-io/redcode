@@ -20,9 +20,12 @@ export type Start = {
   sessionID: string
   originMessageID?: string
   autonomous?: boolean
+  /** The polled command, or for a probe monitor its label (`Monitor.probeLabel`). */
   command: string
   workdir: string
   options: Monitor.Options
+  /** Set for a native probe monitor; `run` evaluates it and reports `evidence.probe`. */
+  probe?: Monitor.Probe
   /**
    * One observation. Call `track` with the pid of a detached process group it spawns, so a runtime
    * that restarts after a crash can stop that group, or at least name it, instead of forgetting it.
@@ -50,6 +53,9 @@ export type Probe = Identity | undefined | "unknown"
 export const probe: {
   spawn: (command: string, args: string[], options: SpawnSyncOptionsWithStringEncoding) => SpawnSyncReturns<string>
 } = { spawn: spawnSync }
+
+/** The random source behind poll jitter, replaceable so tests can make schedules deterministic. */
+export const jitter: { random: () => number } = { random: Math.random }
 
 const PROBE_OPTIONS: SpawnSyncOptionsWithStringEncoding = {
   encoding: "utf8",
@@ -360,6 +366,7 @@ export const make = Effect.gen(function* () {
               command: input.command,
               workdir: input.workdir,
               options: input.options,
+              ...(input.probe ? { probe: input.probe } : {}),
               status: "running",
               created: now,
               updated: now,
@@ -373,6 +380,7 @@ export const make = Effect.gen(function* () {
               .run()
               .pipe(Effect.orDie)
             let current = initial
+            const initialInfo = initial
             // Recorded even where no start time can be read, so recovery can at least name the pid.
             const track = (pid: number) =>
               Effect.gen(function* () {
@@ -380,35 +388,35 @@ export const make = Effect.gen(function* () {
                 current = { ...current, process: { pid, started: typeof found === "object" ? found.started : "" } }
                 yield* save(current)
               })
+            /** The first attempt's normalized output, which `until: "changed"` compares against. */
+            let baseline: string | undefined
             const run = Effect.gen(function* () {
+              const initial = Monitor.initialDelay(input.options, jitter.random)
+              if (initial > 0) yield* Effect.sleep(initial)
               while (true) {
                 const evidence = yield* input.run(track)
                 const now = yield* Clock.currentTimeMillis
-                const failed =
-                  input.options.failure_contains !== undefined &&
-                  evidence.output.includes(input.options.failure_contains)
-                const succeeded =
-                  evidence.exit === 0 &&
-                  (input.options.success_contains === undefined ||
-                    evidence.output.includes(input.options.success_contains))
+                const decided = Monitor.verdict(input.options, evidence, baseline)
+                if (baseline === undefined && !evidence.probe) baseline = Monitor.normalizeOutput(evidence.output)
                 current = {
                   ...current,
                   updated: now,
                   attempts: current.attempts + 1,
-                  evidence,
-                  status: failed
-                    ? "failed"
-                    : succeeded
-                      ? "succeeded"
-                      : input.options.mode === "once"
-                        ? evidence.timedOut
-                          ? "timed_out"
-                          : "failed"
-                        : "running",
+                  evidence: decided ? { ...evidence, matched: decided.matched } : evidence,
+                  status: decided
+                    ? decided.status
+                    : input.options.mode === "once"
+                      ? evidence.timedOut
+                        ? "timed_out"
+                        : "failed"
+                      : "running",
                 }
                 yield* save(current)
                 if (current.status !== "running") return
-                yield* Effect.sleep(input.options.interval_ms ?? Monitor.DEFAULT_INTERVAL_MS)
+                const delay = Monitor.nextDelay(input.options, (yield* Clock.currentTimeMillis) - initialInfo.created, jitter.random)
+                // No attempt fits before the deadline: wait for it, so the monitor times out as before.
+                if (delay === undefined) return yield* Effect.never
+                yield* Effect.sleep(delay)
               }
             }).pipe(
               Effect.timeoutOption(Monitor.deadline(input.options)),

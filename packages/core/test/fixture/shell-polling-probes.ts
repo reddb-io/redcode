@@ -4,8 +4,9 @@
  */
 import { describe, expect, test } from "bun:test"
 import { ShellPolling } from "@reddb-io/redcode-core/tool/shell-polling"
+import type { Monitor } from "@reddb-io/redcode-schema/monitor"
 
-export function shellPollingProbes(decode: (call: unknown) => unknown) {
+export function shellPollingProbes(decode: (call: unknown) => unknown, decodeProbe?: (call: unknown) => unknown) {
   /** The retry a model would send, checked against the real bash parameters. */
   function retry(command: string, workdir?: string) {
     const detection = ShellPolling.detect(command)
@@ -362,6 +363,97 @@ export function shellPollingProbes(decode: (call: unknown) => unknown) {
         "bash -c 'gh pr checks 12'",
       ])
         expect({ command, change: ShellPolling.mutating(command) }).toEqual({ command, change: undefined })
+    })
+  })
+
+  describe("shell polling guard native probes", () => {
+    test("offers an http probe for a curl readiness loop, keeping the bash poll as the fallback", () => {
+      const { detection, call, refusal } = retry(
+        "until curl -fsS http://localhost:3000/health; do sleep 2; done",
+        "/repo/app",
+      )
+      expect(detection.probe).toEqual({
+        probe: { type: "http", url: "http://localhost:3000/health" },
+        interval_ms: 2_000,
+        deadline_ms: 120_000,
+      })
+      const probeLine = ShellPolling.probeCall(detection.probe!, "/repo/app")
+      const lines = refusal.split("\n")
+      expect(lines).toContain(probeLine)
+      // The probe comes first: it is the retry a model should send.
+      expect(lines.indexOf(probeLine)).toBeLessThan(
+        lines.indexOf(ShellPolling.call(detection.suggestion!, "/repo/app")),
+      )
+      expect(refusal).toContain("Retry with this monitor tool call:")
+      expect(call.command).toBe("curl -fsS http://localhost:3000/health")
+      const probeCall = JSON.parse(probeLine)
+      expect(probeCall).toEqual({
+        action: "probe",
+        probe: { type: "http", url: "http://localhost:3000/health" },
+        interval_ms: 2_000,
+        deadline_ms: 120_000,
+      })
+      if (decodeProbe) expect(() => decodeProbe(probeCall)).not.toThrow()
+      // The v2 runtime has no monitors: its refusal never offers a probe.
+      expect(ShellPolling.boundedRefusal(detection)).not.toContain('"action":"probe"')
+    })
+
+    test("maps the checks that clearly correspond to a probe, and nothing else", () => {
+      const cases: [string, Monitor.Probe][] = [
+        ["curl -fs http://localhost:3000/health", { type: "http", url: "http://localhost:3000/health" }],
+        ["curl --fail --silent https://api.example.com/ready", { type: "http", url: "https://api.example.com/ready" }],
+        ["test -f dist/app.js", { type: "file", path: "dist/app.js", state: "exists" }],
+        ["[ -e build/done ]", { type: "file", path: "build/done", state: "exists" }],
+        ["[[ -f 'out dir/report.json' ]]", { type: "file", path: "out dir/report.json", state: "exists" }],
+        ["! test -e /tmp/lock", { type: "file", path: "/tmp/lock", state: "missing" }],
+        ["[ ! -e /tmp/lock ]", { type: "file", path: "/tmp/lock", state: "missing" }],
+        ["test -s out.json", { type: "file", path: "out.json", state: "exists", min_size: 1 }],
+        ["pgrep vite", { type: "process", name: "vite", state: "running" }],
+        ["pgrep -f 'vite build' >/dev/null 2>&1", { type: "process", name: "vite build", state: "running" }],
+        ["! pgrep -f 'vite build'", { type: "process", name: "vite build", state: "exited" }],
+      ]
+      for (const [check, probe] of cases) {
+        expect({ check, probe: ShellPolling.nativeProbe(check) }).toEqual({ check, probe })
+        if (decodeProbe) expect(() => decodeProbe({ action: "probe", probe })).not.toThrow()
+      }
+      for (const check of [
+        "curl -s http://localhost:3000/health",
+        "curl -fs -H 'Authorization: x' http://localhost:3000/health",
+        "curl -fsk https://localhost/health",
+        "! curl -fs http://localhost/health",
+        "curl -fs http://localhost/health | grep ok",
+        'test -f "$OUT"',
+        "test -f dist/*.js",
+        "[ -s out.json ] && echo ok",
+        "pgrep -u root vite",
+        "pgrep vite node",
+        "gh pr checks 12",
+      ])
+        expect({ check, probe: ShellPolling.nativeProbe(check) }).toEqual({ check, probe: undefined })
+    })
+
+    test("keeps a relative file path relative to the bash workdir", () => {
+      expect(
+        JSON.parse(
+          ShellPolling.probeCall(
+            { probe: { type: "file", path: "dist/app.js", state: "exists" }, interval_ms: 1_000 },
+            "/repo",
+          ),
+        ).probe.path,
+      ).toBe("/repo/dist/app.js")
+    })
+
+    test("offers a probe for local file and process loops the guard recognises", () => {
+      for (const [command, type] of [
+        ["until test -f /tmp/ready; do sleep 1; done", "file"],
+        ["while pgrep -f 'vite build'; do sleep 2; done", "process"],
+        ["until pgrep postgres; do sleep 1; done", "process"],
+      ] as const) {
+        const detection = ShellPolling.detect(command)
+        // Local loops without a remote status command are recognised once the local-loop guard is in place.
+        if (!detection?.suggestion) continue
+        expect({ command, type: detection.probe?.probe.type }).toEqual({ command, type })
+      }
     })
   })
 }

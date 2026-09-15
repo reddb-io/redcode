@@ -85,8 +85,17 @@ export interface Suggestion {
   readonly monitor: Monitor.Options
 }
 
+/** A native monitor probe that checks the same condition as a polled command, without a shell. */
+export interface ProbeSuggestion {
+  readonly probe: Monitor.Probe
+  readonly interval_ms?: number
+  readonly deadline_ms?: number
+}
+
 export interface Detection {
   readonly kind: "loop" | "sleep" | "watch"
+  /** Preferred over `suggestion` when the polled check maps cleanly onto a probe. */
+  readonly probe?: ProbeSuggestion
   /** How long the command would have held the turn, when that can be read off it. */
   readonly waitMs?: number
   /** Commands ahead of the wait, which still have to run on their own first. */
@@ -714,12 +723,90 @@ function scan(command: string, masked: string) {
   return detectLoop(command, masked) ?? detectWatch(command, masked) ?? detectSleep(command, masked)
 }
 
+/** Shell words with simple quotes removed, or undefined when the text holds anything a probe cannot mirror. */
+function literalWords(text: string): string[] | undefined {
+  if (/[|;&`$<>(){}*?\\]/.test(text.replace(/'[^']*'|"[^"$`\\]*"/g, ""))) return undefined
+  return (text.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((word) =>
+    word.length >= 2 && (word[0] === "'" || word[0] === '"') && word.at(-1) === word[0] ? word.slice(1, -1) : word,
+  )
+}
+
+/**
+ * The native probe for a polled check, when it clearly maps onto one:
+ * `curl -fs URL` → http, `test -f P` / `[ -e P ]` → file exists (negated: missing),
+ * `pgrep X` → process running, `! pgrep X` → process exited. Anything else stays a command poll.
+ */
+export function nativeProbe(check: string): Monitor.Probe | undefined {
+  const text = check.replace(/\s+(?:&>\s*\/dev\/null|>\s*\/dev\/null|2>\s*\/dev\/null|2>&1)(?=\s|$)/g, "").trim()
+  const bang = /^!\s+(.+)$/.exec(text)
+  const words = literalWords(bang ? bang[1]! : text)
+  if (!words || words.length < 2) return undefined
+  let negated = Boolean(bang)
+  const [name, ...args] = words
+  if (name === "curl" && !negated) {
+    const urls = args.filter((arg) => !arg.startsWith("-"))
+    const flags = args.filter((arg) => arg.startsWith("-"))
+    const known = flags.every(
+      (flag) => /^-[fsSL]+$/.test(flag) || ["--fail", "--silent", "--show-error", "--location"].includes(flag),
+    )
+    const fails = flags.some((flag) => flag === "--fail" || /^-[sSL]*f/.test(flag))
+    if (!known || !fails || urls.length !== 1 || !/^https?:\/\/[^\s]+$/.test(urls[0]!)) return undefined
+    return { type: "http", url: urls[0]! }
+  }
+  if (name === "test" || name === "[" || name === "[[") {
+    const close = name === "[" ? "]" : name === "[[" ? "]]" : undefined
+    if (close !== undefined && args.pop() !== close) return undefined
+    if (args[0] === "!") {
+      negated = !negated
+      args.shift()
+    }
+    if (args.length !== 2 || !["-e", "-f", "-d", "-s"].includes(args[0]!)) return undefined
+    const path = args[1]!
+    if (args[0] === "-s") return negated ? undefined : { type: "file", path, state: "exists", min_size: 1 }
+    return { type: "file", path, state: negated ? "missing" : "exists" }
+  }
+  if (name === "pgrep") {
+    const names = args.filter((arg) => !arg.startsWith("-"))
+    if (names.length !== 1 || !args.every((arg) => !arg.startsWith("-") || arg === "-f" || arg === "-x")) return undefined
+    return { type: "process", name: names[0]!, state: negated ? "exited" : "running" }
+  }
+  return undefined
+}
+
+function withProbe(detection: Detection | undefined): Detection | undefined {
+  const suggestion = detection?.suggestion
+  if (!detection || !suggestion || suggestion.monitor.mode !== "poll") return detection
+  const probe = nativeProbe(suggestion.command)
+  if (!probe) return detection
+  return {
+    ...detection,
+    probe: {
+      probe,
+      ...(suggestion.monitor.interval_ms !== undefined ? { interval_ms: suggestion.monitor.interval_ms } : {}),
+      ...(suggestion.monitor.deadline_ms !== undefined ? { deadline_ms: suggestion.monitor.deadline_ms } : {}),
+    },
+  }
+}
+
+/** The monitor tool call for a probe, as the JSON a model would send. A relative file path keeps the bash workdir. */
+export function probeCall(suggestion: ProbeSuggestion, workdir?: string) {
+  const probe =
+    suggestion.probe.type === "file" && workdir && !/^(?:\/|[A-Za-z]:[\\/])/.test(suggestion.probe.path)
+      ? { ...suggestion.probe, path: `${workdir.replace(/[\\/]+$/, "")}/${suggestion.probe.path}` }
+      : suggestion.probe
+  return JSON.stringify({ action: "probe", probe, interval_ms: suggestion.interval_ms, deadline_ms: suggestion.deadline_ms })
+}
+
 export function detect(command: string): Detection | undefined {
+  return withProbe(find(command))
+}
+
+function find(command: string): Detection | undefined {
   const masked = mask(command)
   const wrapped = unwrap(command, masked)
   if (!wrapped) return scan(command, masked)
   // The suggestion is built from the script itself, never from a fragment cut out of the quotes.
-  const found = detect(wrapped.inner)
+  const found = find(wrapped.inner)
   if (found) {
     const setup = [before(command, masked, wrapped.word.start), found.before].filter(Boolean).join("\n")
     const rest = [found.after, trimHead(command.slice(wrapped.end))].filter(Boolean).join("\n")
@@ -822,14 +909,23 @@ export function refusal(detection: Detection, workdir?: string) {
       : detection.kind === "watch"
         ? "Not run: this command watches a job until it ends, which blocks the turn for as long as the job runs."
         : `Not run: this command sleeps${held}, which blocks the turn. Sleeps shorter than ${duration(LONG_SLEEP_MS)} are allowed.`,
-    detection.suggestion?.monitor.mode === "once"
-      ? "Run the command as a one-shot bash monitor instead of sleeping in front of it. It starts now in the background, releases the turn, and resumes this session with the result when it exits."
-      : "Wait with a bash monitor instead. It runs the status command in the background every interval_ms, releases the turn, and resumes this session with the result once the condition is met: exit code 0 (and success_contains, if set, is in the output), failure_contains is in the output, or deadline_ms passes.",
+    detection.probe
+      ? "Wait with a native monitor probe instead. It checks the same condition in the background every interval_ms without a shell, releases the turn, and resumes this session with the result once the condition holds or deadline_ms passes."
+      : detection.suggestion?.monitor.mode === "once"
+        ? "Run the command as a one-shot bash monitor instead of sleeping in front of it. It starts now in the background, releases the turn, and resumes this session with the result when it exits."
+        : "Wait with a bash monitor instead. It runs the status command in the background every interval_ms, releases the turn, and resumes this session with the result once the condition is met: exit code 0 (and success_contains, if set, is in the output), failure_contains is in the output, or deadline_ms passes.",
   ]
   if (detection.before)
     lines.push(`Run the part before the wait first, as its own bash call without any sleep: ${detection.before}`)
   if (detection.suggestion) {
-    lines.push("Retry with this bash call:", call(detection.suggestion, workdir))
+    if (detection.probe)
+      lines.push(
+        "Retry with this monitor tool call:",
+        probeCall(detection.probe, workdir),
+        "Only if that probe cannot express the check, poll the command with this bash call instead:",
+      )
+    else lines.push("Retry with this bash call:")
+    lines.push(call(detection.suggestion, workdir))
     if (
       detection.suggestion.monitor.mode === "poll" &&
       !detection.suggestion.monitor.success_contains &&

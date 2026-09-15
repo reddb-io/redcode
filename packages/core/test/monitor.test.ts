@@ -19,6 +19,9 @@ import { SessionSchema } from "../src/session/schema"
 import { AbsolutePath } from "../src/schema"
 import { testEffect } from "./lib/effect"
 
+// Jitter is covered by its own pure tests; here polls start at once and keep their timing.
+Monitor.jitter.random = () => 0
+
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Monitor.node, AppProcess.node, Database.node, BackgroundJob.node])),
 )
@@ -240,6 +243,63 @@ describe("Monitors", () => {
         attempts: 1,
       })
       expect(result.evidence?.output.trim()).toBe("ready")
+    }),
+  )
+
+  it.live("settles a probe monitor as soon as its probe matches, recording what matched", () =>
+    Effect.gen(function* () {
+      const monitors = yield* Monitor.Service
+      const sessionID = yield* setup
+      let attempts = 0
+      const info = yield* monitors.start({
+        ...base,
+        sessionID,
+        command: "probe: GET http://127.0.0.1/health",
+        probe: { type: "http", url: "http://127.0.0.1/health" },
+        options: { mode: "poll", wait_ms: 0, interval_ms: 1_000, deadline_ms: 30_000 },
+        run: () =>
+          Effect.sync(() => {
+            attempts++
+            const matched = attempts > 1
+            return {
+              exit: matched ? 0 : 1,
+              output: `HTTP ${matched ? 200 : 503} (expected 2xx)`,
+              truncated: false,
+              probe: { matched, status: matched ? 200 : 503 },
+            }
+          }),
+        notify: () => Effect.void,
+      })
+      expect(info.status).toBe("running")
+      const done = yield* monitors.wait(sessionID, info.id, 5_000)
+      expect(done).toMatchObject({
+        status: "succeeded",
+        attempts: 2,
+        probe: { type: "http" },
+        evidence: { matched: "HTTP 200 (expected 2xx)", probe: { matched: true, status: 200 } },
+      })
+    }),
+  )
+
+  it.live("recovers a persisted jittered probe monitor after a crash without running it again", () =>
+    Effect.gen(function* () {
+      const monitors = yield* Monitor.Service
+      const sessionID = yield* setup
+      const row = yield* orphan(sessionID, {
+        command: "probe: process \"vite\" exited",
+        options: { mode: "poll", interval_ms: 2_000, deadline_ms: 60_000, jitter: true, until: "changed" },
+        probe: { type: "process", name: "vite", state: "exited" },
+      })
+      const [recovered] = yield* monitors.list(sessionID)
+      expect(recovered).toMatchObject({
+        id: row.id,
+        status: "interrupted",
+        delivery: "suppressed",
+        attempts: 0,
+        options: { jitter: true },
+        probe: { type: "process" },
+      })
+      expect(MonitorSchema.render(recovered!)).toContain('"schedule":"every 2s ±250ms"')
     }),
   )
 

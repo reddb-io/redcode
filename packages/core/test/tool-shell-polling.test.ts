@@ -11,7 +11,13 @@ const Retry = Schema.Struct({
   monitor: Monitor.Options,
 })
 
-shellPollingProbes(Schema.decodeUnknownSync(Retry))
+const decodeControl = Schema.decodeUnknownSync(Monitor.Control)
+shellPollingProbes(Schema.decodeUnknownSync(Retry), (call) => {
+  const control = decodeControl(call)
+  const problem = control.probe && Monitor.probeProblem(control.probe)
+  if (problem) throw new Error(problem)
+  return control
+})
 
 describe("shell polling guard without monitors", () => {
   const lines = (text: string) =>

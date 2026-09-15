@@ -264,18 +264,43 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
+            // A probe monitor keeps checking after approval: say how often and for how long.
+            const probeMonitor =
+              typeof props.request.metadata?.probe === "string" && typeof props.request.metadata?.monitor === "string"
+                ? props.request.metadata.monitor
+                : ""
+
             if (permission === "read") {
-              const raw = data.filePath
+              const raw = typeof data.filePath === "string" ? data.filePath : props.request.metadata?.filepath
               const filePath = typeof raw === "string" ? raw : ""
               return {
                 icon: "→",
-                title: `Read ${pathFormatter.format(filePath)}`,
+                title: `${probeMonitor ? "Watch" : "Read"} ${pathFormatter.format(filePath)}`,
                 body: (
                   <Show when={filePath}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={1} flexDirection="column">
                       <text fg={theme.textMuted}>{"Path: " + pathFormatter.format(filePath)}</text>
+                      <Show when={probeMonitor}>
+                        <text fg={theme.textMuted}>{"Monitor: " + probeMonitor}</text>
+                      </Show>
                     </box>
                   </Show>
+                ),
+              }
+            }
+
+            if (permission === "monitor") {
+              const probe = typeof props.request.metadata?.probe === "string" ? props.request.metadata.probe : ""
+              return {
+                icon: "#",
+                title: "Monitor",
+                body: (
+                  <box paddingLeft={1} flexDirection="column">
+                    <text fg={theme.text}>{probe}</text>
+                    <Show when={probeMonitor}>
+                      <text fg={theme.textMuted}>{"Monitor: " + probeMonitor}</text>
+                    </Show>
+                  </box>
                 ),
               }
             }
@@ -370,14 +395,18 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             }
 
             if (permission === "webfetch") {
-              const url = typeof data.url === "string" ? data.url : ""
+              const raw = typeof data.url === "string" ? data.url : props.request.metadata?.url
+              const url = typeof raw === "string" ? raw : ""
               return {
                 icon: "%",
-                title: `WebFetch ${url}`,
+                title: `${probeMonitor ? "Watch" : "WebFetch"} ${url}`,
                 body: (
                   <Show when={url}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={1} flexDirection="column">
                       <text fg={theme.textMuted}>{"URL: " + url}</text>
+                      <Show when={probeMonitor}>
+                        <text fg={theme.textMuted}>{"Monitor: " + probeMonitor}</text>
+                      </Show>
                     </box>
                   </Show>
                 ),

@@ -4100,6 +4100,59 @@ export type MonitorOptions = {
   interval_ms?: number
   success_contains?: string
   failure_contains?: string
+  success_regex?: string
+  failure_regex?: string
+  until?: "changed"
+  jitter?: boolean
+}
+
+export type MonitorHttpProbe = {
+  type: "http"
+  /**
+   * http:// or https:// URL
+   */
+  url: string
+  method?: "GET" | "HEAD"
+  /**
+   * Status code(s) that count as up. Default: any 2xx.
+   */
+  expect_status?: number | Array<number>
+  json_path?: string
+  equals?: string | number | boolean
+  contains?: string
+  regex?: string
+  headers?: {
+    [key: string]: string
+  }
+}
+
+export type MonitorFileProbe = {
+  type: "file"
+  path: string
+  state: "exists" | "missing" | "changed"
+  min_size?: number
+}
+
+export type MonitorProcessProbe = {
+  type: "process"
+  name?: string
+  pid?: number
+  state: "running" | "exited"
+}
+
+export type MonitorProbe = MonitorHttpProbe | MonitorFileProbe | MonitorProcessProbe
+
+export type MonitorProbeResult = {
+  matched: boolean
+  status?: number
+  value?: string
+  redirect?: string
+  truncated?: boolean
+  exists?: boolean
+  size?: number
+  mtime?: number
+  pids?: Array<number>
+  error?: string
 }
 
 export type MonitorEvidence = {
@@ -4108,6 +4161,8 @@ export type MonitorEvidence = {
   truncated: boolean
   timedOut?: boolean
   outputPath?: string
+  probe?: MonitorProbeResult
+  matched?: string
 }
 
 export type MonitorProcess = {
@@ -4122,6 +4177,7 @@ export type MonitorInfo = {
   command: string
   workdir: string
   options: MonitorOptions
+  probe?: MonitorProbe
   status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted"
   created: number
   updated: number
