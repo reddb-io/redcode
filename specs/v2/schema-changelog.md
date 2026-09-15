@@ -1,5 +1,13 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Opt-In Spend Budgets For Goals And Sessions
+
+- Add optional `session` to the current and V1 configuration schemas (`ConfigV2.Session`), carried through the V1 migration unchanged. It holds `budget` (`ConfigV2.SessionBudget`): optional `max_cost_usd` and `max_tokens` (positive finite numbers) and optional `reset_on_message` (boolean, default false). None of these has a default, so nothing is limited unless set. A configured budget binds top-level sessions only, because a subagent's spend already counts toward its parent.
+- Add `SpendLimits` (`max_cost_usd?`, `max_tokens?`), `SpendTotals` (`cost`, `tokens`, `unpriced`: tokens spent on models without pricing) and `SessionBudget` (`limits`, `override`, `spent`, `exceeded`, `unknown`, `reason`).
+- Add optional `budget` (`SpendLimits`) and `spendStart` (`SpendTotals`) to `SessionGoal`. Add optional `max_cost_usd` and `max_tokens` to `POST /session/:sessionID/goal` (`session.goalSet`). On `POST /session/:sessionID/goal/budget` (`session.goalBudget`), `max_turns` is now optional, and it accepts optional `max_cost_usd` and `max_tokens`: a number sets the limit, null removes it, an absent field keeps it.
+- Add `GET /session/:sessionID/budget` (`session.budget`) and `POST /session/:sessionID/budget` (`session.budgetSet`, payload `max_cost_usd?` and `max_tokens?`, each a number or null), which return `SessionBudget`. Regenerated the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`). `bun run generate` in `packages/client` and the root `bun dev generate` changed no files.
+- Legacy runtime only: running totals are stored in session `metadata.spend` (`cost`, `tokens`, `unpriced`, optional `baseline`, `anchor`, `warned`) and a per-session override in `metadata.budget`. Session metadata is already a free-form record, so neither needs a schema change. Add the `budget` guard to the guard log and `BUDGET_PAUSE` (`"budget: "`) to the loop markers. Add no migration or durable-event version. The V2 core runner does not read budgets yet.
+
 ## 2026-09-15: Record Context Size Around A Compaction
 
 - Add optional `tokens` (`before`, `after`: estimated tokens of the next request before and after the checkpoint, including system prompt and tool schemas) to `CompactionPart`, returned wherever message parts are (the V1 session message routes and `message.part.updated`). The TUI compaction divider shows it as `Compaction · before → after tokens`. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `openapi.json` and `js/src/v2/gen`).
