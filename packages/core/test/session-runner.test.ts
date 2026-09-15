@@ -1286,14 +1286,15 @@ describe("SessionRunnerLLM", () => {
       ])
       expect(userTexts(requests[0])[0]).toContain("## Objective")
       expect(userTexts(requests[1])).toHaveLength(1)
-      expect(userTexts(requests[1])[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
+      // The model's summary, then the code-built anchors quoting the summarized request.
+      expect(userTexts(requests[1])[0]).toContain("<summary>\n## Objective\n- Preserve the task\n\n<session-anchors>")
       expect(userTexts(requests[1])[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
 
       const context = yield* (yield* SessionStore.Service).context(sessionID)
       expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
       expect(context[0]).toMatchObject({
         type: "compaction",
-        summary: "## Objective\n- Preserve the task",
+        summary: expect.stringMatching(/^## Objective\n- Preserve the task\n\n<session-anchors>\n[\s\S]*Earlier question/),
       })
 
       requests.length = 0
@@ -1346,8 +1347,10 @@ describe("SessionRunnerLLM", () => {
       expect(summary.match(/EARLIER_BOUNDARY/g)).toHaveLength(1)
       expect(summary).toContain(`EARLIER_BOUNDARY ${"a".repeat(3_000)} EARLIER_END`)
       expect(summary).not.toContain("RECENT_BOUNDARY")
-      expect(continuation).not.toContain("EARLIER_BOUNDARY")
-      expect(continuation).not.toContain("EARLIER_END")
+      // The anchors may quote the summarized request; the retained history may not.
+      const retained = continuation.slice(continuation.indexOf("<recent-context>"))
+      expect(retained).not.toContain("EARLIER_BOUNDARY")
+      expect(retained).not.toContain("EARLIER_END")
       expect(continuation).toContain("<recent-context>\n[Assistant]: Earlier answer")
       expect(continuation).toContain(`RECENT_BOUNDARY ${"b".repeat(3_000)} RECENT_END`)
     }),
@@ -1400,9 +1403,9 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests).toHaveLength(3)
       expect(userTexts(requests[1])[0]).toContain("## Objective")
-      expect(userTexts(requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow\n</summary>")
+      expect(userTexts(requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow\n")
       expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "compaction", summary: "## Objective\n- Recover overflow" },
+        { type: "compaction", summary: expect.stringMatching(/^## Objective\n- Recover overflow(\n\n<session-anchors>|$)/) },
         { type: "assistant", finish: "stop" },
       ])
       yield* replaySessionProjection(sessionID)
@@ -1458,7 +1461,10 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests).toHaveLength(3)
       expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "compaction", summary: "## Objective\n- Recover raw overflow" },
+        {
+          type: "compaction",
+          summary: expect.stringMatching(/^## Objective\n- Recover raw overflow(\n\n<session-anchors>|$)/),
+        },
         { type: "assistant", finish: "stop" },
       ])
     }),
