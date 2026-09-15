@@ -394,7 +394,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_export", {
       description:
-        "Start HTML export, rendered scenario audit, implementation comparison, or SVG-to-GIF export. Poll design_jobs. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
+        "Start HTML export, rendered scenario audit, implementation comparison, or SVG-to-GIF export. Poll design_jobs. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
       parameters: Schema.Struct({ id: Design.ID, input: Design.Render }),
       execute: (input, ctx) =>
         run(
@@ -431,7 +431,11 @@ export const DesignTools = Effect.gen(function* () {
     define("design_exit", {
       description:
         "Ask the user to approve the published revision, record its immutable handoff, and continue in Plan in this same TUI session.",
-      parameters: Schema.Struct({ id: Design.ID, variant: Schema.optional(Design.Variant) }),
+      parameters: Schema.Struct({
+        id: Design.ID,
+        variant: Schema.optional(Design.Variant),
+        noTargets: Schema.optional(Schema.Boolean).annotate({ description: DesignApproval.NO_TARGETS }),
+      }),
       execute: (input, ctx) =>
         run(
           "design_exit",
@@ -441,6 +445,7 @@ export const DesignTools = Effect.gen(function* () {
             const document = yield* store.get(input.id, ctx.sessionID)
             if (!document.revision)
               return yield* new Design.Error({ code: "conflict", message: "Publish the design before approval" })
+            if (DesignApproval.missingTargets(document, input.noTargets)) return result(DesignApproval.TARGETS_NUDGE)
             const savedGoal = SessionGoal.fromMetadata((yield* sessions.get(ctx.sessionID)).metadata)
             const stay = savedGoal?.status === "active" && savedGoal.stopAfter === "design"
             const answers = yield* questions

@@ -417,7 +417,7 @@ const layer = Layer.effectDiscard(
         }),
         design_export: Tool.make({
           description:
-            "Start a local HTML export, rendered scenario audit, or SVG-to-GIF export. Poll design_jobs for progress and the resulting file. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
+            "Start a local HTML export, rendered scenario audit, implementation comparison, or SVG-to-GIF export. Poll design_jobs for progress and the resulting file. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
           input: Schema.Struct({ id: Design.ID, input: Design.Render }),
           output: Design.Job,
           toModelOutput: ({ output }) => [
@@ -449,7 +449,11 @@ const layer = Layer.effectDiscard(
         design_exit: Tool.make({
           description:
             "Ask the user to approve the currently published revision. Only after approval, update the design section of the plan and switch to Plan. Never silently approve open work.",
-          input: Schema.Struct({ id: Design.ID, variant: Schema.optional(Design.Variant) }),
+          input: Schema.Struct({
+            id: Design.ID,
+            variant: Schema.optional(Design.Variant),
+            noTargets: Schema.optional(Schema.Boolean).annotate({ description: DesignApproval.NO_TARGETS }),
+          }),
           output: Schema.Struct({ plan: Schema.String, revision: Schema.String }),
           toModelOutput: ({ output }) => [
             {
@@ -463,6 +467,8 @@ const layer = Layer.effectDiscard(
               const document = yield* owned(input.id, context)
               if (!document.revision)
                 return yield* new ToolFailure({ message: "Publish the design before requesting approval" })
+              if (DesignApproval.missingTargets(document, input.noTargets))
+                return yield* new ToolFailure({ message: DesignApproval.TARGETS_NUDGE })
               const savedGoal = yield* goals
                 .get(context.sessionID)
                 .pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))

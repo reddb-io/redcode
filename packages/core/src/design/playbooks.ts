@@ -59,7 +59,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     id: "screen",
     use_when: "Create a new interface or improve a screen in an existing application",
     choose: [
-      "For existing applications, import their real components from the roots in .red/DESIGN.md and style with the recorded token files; re-implement a component only when the system has none and say so in designSystem. When redesigning an existing screen, read its implementation and record it in targets; keep the prototype's data shapes close to the real API so the implementation can swap fixtures for the existing data layer. For new interfaces, explore three distinct compositions unless the user supplied a direction.",
+      "For existing applications, import their real components from the roots in .red/DESIGN.md and style with the recorded token files; re-implement a component only when the system has none and say so in designSystem. When redesigning an existing screen, record its implementation files in targets. For new interfaces, explore three distinct compositions unless the user supplied a direction.",
     ],
     structure: [
       "Start from the main user task and real content. Make the primary action and information hierarchy clear.",

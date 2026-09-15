@@ -4687,7 +4687,9 @@ const budgetTrips = Effect.fn("test.budgetTrips")(function* () {
 })
 
 const globStep = (name: string, input: number) =>
-  reply().tool("glob", { pattern: `**/*.${name}-nothing` }).usage({ input, output: 0 })
+  reply()
+    .tool("glob", { pattern: `**/*.${name}-nothing` })
+    .usage({ input, output: 0 })
 
 it.instance("a goal pauses at its cost budget after the step that reached it", () =>
   Effect.gen(function* () {
@@ -5496,6 +5498,74 @@ it.instance(
       )
     }),
   30000,
+)
+
+it.instance(
+  "Build requests after compaction carry the Design implementation contract once",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => providerCfg(url))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const studio = yield* DesignStudio.Service
+      const plans = yield* SessionPlan.Service
+      const compaction = yield* SessionCompaction.Service
+      const chat = yield* sessions.create({ agent: "build", title: "Leads" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Implement the approved plan" }],
+      })
+      const handoff = yield* studio.use(
+        Effect.gen(function* () {
+          const store = yield* DesignStore.Service
+          const document = yield* store.create(chat.id, {
+            name: "Leads",
+            engine: "html",
+            journey: "existing",
+            kind: "screen",
+          })
+          yield* store.update(document.id, {
+            targets: [{ path: "src/leads/table.tsx", role: "Leads table with server pagination" }],
+          })
+          const revision = yield* store.publish(document.id, "Approved leads")
+          const approved = yield* store.approve(document.id, revision.id)
+          return yield* Effect.promise(() => Bun.file(approved.plan).text())
+        }),
+      )
+      yield* plans.record({
+        sessionID: chat.id,
+        revision: "plan-leads",
+        path: "plan.md",
+        content: `# Plan\nEvolve the leads table.\n${handoff}`,
+        status: "approved",
+        created: Date.now(),
+      })
+      yield* llm.text("Inventoried the current table.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Build request did not finish", "30 seconds")
+      yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: false })
+      yield* llm.text("Summary.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Compaction did not finish", "30 seconds")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "continue" }],
+      })
+      yield* llm.text("Continuing the migration.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "Resumed Build did not finish", "30 seconds")
+      const hits = yield* llm.hits
+      const last = JSON.stringify(hits[hits.length - 1]!.body)
+      expect(last).toContain("Implementation contract (redcode rule):")
+      expect(last.split("Implementation contract (redcode rule):")).toHaveLength(2)
+      expect(last).toContain("src/leads/table.tsx (Leads table with server pagination)")
+      expect(last).toContain("Evolve the leads table.")
+      expect(last).toContain(
+        "[Design section: see the approved Design context, including its implementation contract.]",
+      )
+    }),
+  60000,
 )
 
 it.instance(
@@ -6530,15 +6600,17 @@ unix(
       expect((yield* monitors.list(chat.id))[0]).toMatchObject({ status: "running", probe: { type: "http" } })
       up = true
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the probe result was never answered",
         "30 seconds",
       )
@@ -6605,15 +6677,17 @@ unix(
         "30 seconds",
       )
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the admitted result never reached the model",
         "30 seconds",
       )
@@ -6712,15 +6786,17 @@ unix(
       gate.resolve()
       yield* awaitWithTimeout(Fiber.join(turn), "the user's turn never ended", "30 seconds")
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The deploy finished."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The deploy finished."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the result was never answered",
         "30 seconds",
       )
@@ -6778,7 +6854,10 @@ unix(
       })
       // A stand-in for `gh run view`: in progress until the test writes the finished status.
       const gh = path.join(dir, "gh")
-      yield* writeText(gh, `#!/bin/sh\ncat "$(dirname "$0")/run-status" 2>/dev/null || echo '{"status":"in_progress"}'\n`)
+      yield* writeText(
+        gh,
+        `#!/bin/sh\ncat "$(dirname "$0")/run-status" 2>/dev/null || echo '{"status":"in_progress"}'\n`,
+      )
       yield* Effect.promise(() => import("fs/promises").then((fs) => fs.chmod(gh, 0o755)))
       const polling = `for i in $(seq 1 60); do sleep 1; STATUS=$(./gh run view 42 --json status -q .status); case "$STATUS" in completed) break;; esac; done`
       const retry = JSON.parse(ShellPolling.call(ShellPolling.detect(polling)!.suggestion!))
@@ -6815,17 +6894,19 @@ unix(
 
       yield* writeText(path.join(dir, "run-status"), `{"status":"completed","conclusion":"success"}\n`)
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some(
-              (message) =>
-                message.info.role === "assistant" &&
-                message.parts.some((part) => part.type === "text" && part.text === "Run 42 completed successfully."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some(
+                (message) =>
+                  message.info.role === "assistant" &&
+                  message.parts.some((part) => part.type === "text" && part.text === "Run 42 completed successfully."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the monitor never resumed the session",
         "30 seconds",
       )
@@ -6878,7 +6959,9 @@ unix(
       yield* awaitWithTimeout(Fiber.join(turn), "the turn never ended", "30 seconds")
 
       const texts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
-        message.info.role === "assistant" ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) : [],
+        message.info.role === "assistant"
+          ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          : [],
       )
       expect(texts).toContain("Handled the follow-up.")
       expect((yield* monitors.list(chat.id))[0]?.status).toBe("running")
@@ -6929,15 +7012,17 @@ unix(
         "30 seconds",
       )
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The build finished."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The build finished."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the pending result never reached the model",
         "30 seconds",
       )
@@ -6970,7 +7055,10 @@ unix(
         "30 seconds",
       )
       const now = Date.now()
-      yield* goals.set(chat.id, SessionGoal.paused(SessionGoal.parse("ship the release", { now }), "paused by the person", now))
+      yield* goals.set(
+        chat.id,
+        SessionGoal.paused(SessionGoal.parse("ship the release", { now }), "paused by the person", now),
+      )
       const calls = yield* llm.calls
       yield* writeText(path.join(dir, "released"), "")
       yield* pollWithTimeout(
