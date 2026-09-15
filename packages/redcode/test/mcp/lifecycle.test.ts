@@ -332,6 +332,37 @@ it.instance("tools() lists servers in config order however their connections fin
   }),
 )
 
+it.instance("a server removed from config and added back appends its tools at the end", () =>
+  Effect.gen(function* () {
+    const mcp = yield* MCP.Service
+    const test = yield* TestInstance
+    const file = path.join(test.directory, "opencode.json")
+    const first = yield* lifecycleServer()
+    const second = yield* lifecycleServer()
+    first.state.tools = [{ name: "a_tool", inputSchema: { type: "object", properties: {} } }]
+    second.state.tools = [{ name: "b_tool", inputSchema: { type: "object", properties: {} } }]
+    const write = (mcpConfig: Record<string, unknown>) =>
+      Effect.promise(() => Bun.write(file, JSON.stringify({ mcp: mcpConfig })))
+    yield* mcp.status()
+
+    yield* write({ first: remote(first.url), second: remote(second.url) })
+    yield* mcp.reload()
+    expect(Object.keys(yield* mcp.tools())).toEqual(["first_a_tool", "second_b_tool"])
+
+    // Reload reconnects every configured server, so each fake server needs a fresh protocol session.
+    yield* Effect.promise(second.restart)
+    yield* write({ second: remote(second.url) })
+    yield* mcp.reload()
+    expect(Object.keys(yield* mcp.tools())).toEqual(["second_b_tool"])
+
+    yield* Effect.promise(first.restart)
+    yield* Effect.promise(second.restart)
+    yield* write({ first: remote(first.url), second: remote(second.url) })
+    yield* mcp.reload()
+    expect(Object.keys(yield* mcp.tools())).toEqual(["second_b_tool", "first_a_tool"])
+  }),
+)
+
 it.instance("a server keeps its tool slot when it disconnects and reconnects", () =>
   Effect.gen(function* () {
     const first = yield* lifecycleServer()
