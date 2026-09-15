@@ -2427,8 +2427,33 @@ it.instance("a queued prompt on an idle session with an active goal is promoted 
   }),
 )
 
+it.instance("a queued prompt on an idle session runs right away", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Idle queue" })
+    yield* llm.text("answered")
+
+    const result = yield* awaitWithTimeout(
+      prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        delivery: "queue",
+        parts: [{ type: "text", text: "idle-queued-prompt" }],
+      }),
+      "the queued prompt never ran",
+      "20 seconds",
+    )
+    expect(result.parts.some((part) => part.type === "text" && part.text === "answered")).toBe(true)
+    expect(yield* llm.calls).toBe(1)
+    expect(JSON.stringify(messagesOf((yield* llm.hits)[0]!))).toContain("idle-queued-prompt")
+  }),
+)
+
 it.instance(
-  "a promoted prompt starts the todo continuation budget over",
+  "a queued prompt goes ahead of todo continuations, which then get their full budget",
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig(providerCfg)
@@ -2455,10 +2480,10 @@ it.instance(
       })
 
       yield* llm.tool("todowrite", { todos: [{ content: "one", status: "in_progress", priority: "high" }] })
-      // Seven continuations exhaust the first turn's budget; the eighth natural stop ends it.
-      for (let i = 0; i < 8; i++) yield* llm.text(`still working ${i}`)
+      // The first natural stop would inject a todo continuation; the waiting prompt goes first.
+      yield* llm.text("still working")
       yield* llm.text("queued answered")
-      // Reset by the promotion, the reminder gets a full budget of seven again.
+      // Then the reminder resumes with its full budget of seven; the eighth natural stop ends it.
       for (let i = 0; i < 7; i++) yield* llm.text(`still working again ${i}`)
 
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
@@ -2466,10 +2491,11 @@ it.instance(
       const hits = yield* llm.hits
       // The continuation is the last user message before the trailing per-step reminder.
       const reminders = hits.map((hit) => JSON.stringify(messagesOf(hit).at(-2)).includes("unfinished todo items"))
-      expect(hits).toHaveLength(17)
-      expect(reminders.slice(2, 9)).toEqual(Array(7).fill(true))
-      expect(JSON.stringify(messagesOf(hits[9]!))).toContain("queued-after-limit")
-      expect(reminders.slice(10)).toEqual(Array(7).fill(true))
+      expect(hits).toHaveLength(10)
+      expect(JSON.stringify(messagesOf(hits[1]!))).not.toContain("queued-after-limit")
+      expect(JSON.stringify(messagesOf(hits[2]!))).toContain("queued-after-limit")
+      expect(reminders.slice(0, 3)).toEqual([false, false, false])
+      expect(reminders.slice(3)).toEqual(Array(7).fill(true))
       expect(yield* llm.pending).toBe(0)
     }),
   60_000,
@@ -5084,6 +5110,44 @@ it.instance("a CONTINUE verdict is one more synthetic turn inside the same run; 
     const guards = yield* SessionGuardLog.Service
     const trips = (yield* guards.recent()).filter((t) => t.guard === "goal")
     expect(trips.map((t) => t.action).sort()).toEqual(["correct", "stop"])
+  }),
+)
+
+it.instance("a queued prompt runs before a goal continuation instead of waiting for the goal to finish", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => providerCfg(url))
+    const { chat, goals, prompt } = yield* startGoal("make the tests pass; verify: bun test; gate: true", {
+      maxTurns: 5,
+    })
+    const queued = MessageID.ascending()
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      messageID: queued,
+      agent: "build",
+      model: ref,
+      noReply: true,
+      delivery: "queue",
+      parts: [{ type: "text", text: "queued-during-goal" }],
+    })
+
+    yield* llm.textMatch(judgeRequest, verdict("continue", "the tests were not run"))
+    yield* llm.textMatch(judgeRequest, verdict("done", "bun test shows 12 pass"))
+    yield* llm.text("I changed the code.")
+    yield* llm.text("queued answered")
+    yield* llm.text("Ran bun test: 12 pass.")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
+
+    const hits = yield* llm.hits
+    // The goal's first answer is not judged ahead of the waiting prompt: the prompt is the next request.
+    expect(hits.slice(0, 2).some(judgeRequest)).toBe(false)
+    expect(JSON.stringify(messagesOf(hits[1]!))).toContain("queued-during-goal")
+    // The goal stayed active and picked up again: judged, continued once, then done.
+    expect(hits.filter(judgeRequest)).toHaveLength(2)
+    const users = yield* userTexts(chat.id)
+    expect(users.some((text) => text.includes("the tests were not run"))).toBe(true)
+    expect((yield* goals.get(chat.id))?.status).toBe("done")
+    expect(yield* llm.pending).toBe(0)
   }),
 )
 
