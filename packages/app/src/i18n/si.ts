@@ -412,6 +412,11 @@ export const dict: Record<string, string> = {
   "mcp.status.needs_auth": "auth අවශ්‍යයි",
   "mcp.status.disabled": "ආබාධිතයි",
   "mcp.auth.clickToAuthenticate": "සත්‍යාපනය කිරීමට ක්ලික් කරන්න",
+  "mcp.auth.browserBlocked.title": "{{name}} අනුමත කරන්න",
+  "mcp.auth.browserBlocked.description":
+    "බ්‍රව්සරයක් විවෘත කළ නොහැකි විය. අනුමත කිරීමට මෙම URL එක විවෘත කරන්න: {{url}}",
+  "mcp.auth.browserBlocked.open": "URL විවෘත කරන්න",
+  "mcp.auth.browserBlocked.copy": "URL පිටපත් කරන්න",
   "dialog.fork.empty": "ෆෝක් කිරීමට පණිවිඩ නැත",
   "dialog.directory.search.placeholder": "ෆෝල්ඩර සොයන්න",
   "dialog.directory.empty": "ෆෝල්ඩර හමු නොවීය",

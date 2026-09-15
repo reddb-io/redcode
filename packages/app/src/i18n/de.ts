@@ -324,6 +324,11 @@ export const dict = {
   "mcp.status.failed": "fehlgeschlagen",
   "mcp.status.needs_auth": "Authentifizierung erforderlich",
   "mcp.auth.clickToAuthenticate": "Zum Authentifizieren klicken",
+  "mcp.auth.browserBlocked.title": "{{name}} autorisieren",
+  "mcp.auth.browserBlocked.description":
+    "Browser konnte nicht geöffnet werden. Öffne diese URL zur Autorisierung: {{url}}",
+  "mcp.auth.browserBlocked.open": "URL öffnen",
+  "mcp.auth.browserBlocked.copy": "URL kopieren",
   "mcp.status.disabled": "deaktiviert",
   "dialog.fork.empty": "Keine Nachrichten zum Abzweigen vorhanden",
   "dialog.directory.search.placeholder": "Ordner durchsuchen",

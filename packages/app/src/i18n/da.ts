@@ -340,6 +340,10 @@ export const dict = {
   "mcp.status.failed": "mislykkedes",
   "mcp.status.needs_auth": "kræver godkendelse",
   "mcp.auth.clickToAuthenticate": "Klik for at godkende",
+  "mcp.auth.browserBlocked.title": "Godkend {{name}}",
+  "mcp.auth.browserBlocked.description": "Kunne ikke åbne en browser. Åbn denne URL for at godkende: {{url}}",
+  "mcp.auth.browserBlocked.open": "Åbn URL",
+  "mcp.auth.browserBlocked.copy": "Kopiér URL",
   "mcp.status.disabled": "deaktiveret",
 
   "dialog.fork.empty": "Ingen beskeder at forgrene fra",

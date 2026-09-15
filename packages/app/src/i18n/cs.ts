@@ -413,6 +413,11 @@ export const dict = {
   "mcp.status.needs_auth": "potřebuje autentizaci",
   "mcp.status.disabled": "zakázáno",
   "mcp.auth.clickToAuthenticate": "Klikněte pro ověření",
+  "mcp.auth.browserBlocked.title": "Autorizovat {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Nepodařilo se otevřít prohlížeč. Pro autorizaci otevřete tuto adresu URL: {{url}}",
+  "mcp.auth.browserBlocked.open": "Otevřít URL",
+  "mcp.auth.browserBlocked.copy": "Kopírovat URL",
   "dialog.fork.empty": "Žádné zprávy k rozvětvení",
   "dialog.directory.search.placeholder": "Hledat složky",
   "dialog.directory.empty": "Nebyly nalezeny žádné složky",

@@ -418,6 +418,11 @@ export const dict = {
   "mcp.status.needs_auth": "reikia autentifikavimo",
   "mcp.status.disabled": "neįgalus",
   "mcp.auth.clickToAuthenticate": "Spustelėkite, kad patvirtintumėte",
+  "mcp.auth.browserBlocked.title": "Autorizuoti {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Nepavyko atidaryti naršyklės. Norėdami autorizuoti, atidarykite šį URL: {{url}}",
+  "mcp.auth.browserBlocked.open": "Atidaryti URL",
+  "mcp.auth.browserBlocked.copy": "Kopijuoti URL",
   "dialog.fork.empty": "Nėra pranešimų, iš kurių būtų galima išsišakoti",
   "dialog.directory.search.placeholder": "Ieškokite aplankų",
   "dialog.directory.empty": "Aplankų nerasta",

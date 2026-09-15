@@ -58,6 +58,8 @@ import type {
   SessionActiveOutput,
 } from "@opencode-ai/client/promise"
 import { toggleMcp } from "./global-sync/mcp"
+import { mcpBrowserOpenFailedToast, readMcpBrowserOpenFailed } from "./global-sync/mcp-browser-open-failed"
+import { usePlatform } from "./platform"
 import { createServerSession, type ServerSession } from "./server-session"
 
 type GlobalStore = {
@@ -204,6 +206,7 @@ export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
 export function createServerSyncContextInner(serverSDK: ServerSDK) {
   const language = useLanguage()
+  const platform = usePlatform()
   const owner = getOwner()
   if (!owner) throw new Error("ServerSync must be created within owner")
 
@@ -542,6 +545,22 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     }
     homeSessions.refresh(event.type)
     if (eventType === "integration.connection.updated") void refreshProviders()
+    // Without a browser the MCP OAuth flow stalls silently unless the user gets the authorization URL.
+    const browserOpenFailed = readMcpBrowserOpenFailed(event)
+    if (browserOpenFailed)
+      showToast(
+        mcpBrowserOpenFailedToast(browserOpenFailed, {
+          t: (key, params) => language.t(key, params),
+          openExternal: (url) => platform.openExternal(url),
+          copy: (url) =>
+            void navigator.clipboard
+              .writeText(url)
+              .then(() =>
+                showToast({ variant: "success", icon: "circle-check", title: language.t("session.share.copy.copied") }),
+              )
+              .catch(() => {}),
+        }),
+      )
 
     if (directory === "global") {
       if (eventType === "server.connected" && activeSessionsQuery.data === undefined && !activeSessionsQuery.isFetching)

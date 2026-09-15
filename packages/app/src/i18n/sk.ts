@@ -412,6 +412,11 @@ export const dict = {
   "mcp.status.needs_auth": "vyžaduje overenie",
   "mcp.status.disabled": "vypnuté",
   "mcp.auth.clickToAuthenticate": "Kliknite na overenie",
+  "mcp.auth.browserBlocked.title": "Autorizovať {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Nepodarilo sa otvoriť prehliadač. Na autorizáciu otvorte túto adresu URL: {{url}}",
+  "mcp.auth.browserBlocked.open": "Otvoriť URL",
+  "mcp.auth.browserBlocked.copy": "Kopírovať URL",
   "dialog.fork.empty": "Žiadne správy na vytvorenie vetvy",
   "dialog.directory.search.placeholder": "Hľadať priečinky",
   "dialog.directory.empty": "Nenašli sa žiadne priečinky",

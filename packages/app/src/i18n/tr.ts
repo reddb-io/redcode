@@ -447,6 +447,10 @@ export const dict = {
   "mcp.status.failed": "başarısız",
   "mcp.status.needs_auth": "kimlik doğrulama gerekli",
   "mcp.auth.clickToAuthenticate": "Kimlik doğrulamak için tıklayın",
+  "mcp.auth.browserBlocked.title": "{{name}} yetkilendir",
+  "mcp.auth.browserBlocked.description": "Tarayıcı açılamadı. Yetkilendirmek için bu URL'yi açın: {{url}}",
+  "mcp.auth.browserBlocked.open": "URL'yi aç",
+  "mcp.auth.browserBlocked.copy": "URL'yi kopyala",
   "mcp.status.disabled": "devre dışı",
 
   "dialog.fork.empty": "Dallandırılacak mesaj yok",

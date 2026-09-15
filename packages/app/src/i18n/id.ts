@@ -444,6 +444,10 @@ export const dict = {
   "mcp.status.needs_auth": "perlu autentikasi",
   "mcp.status.disabled": "nonaktif",
   "mcp.auth.clickToAuthenticate": "Klik untuk mengautentikasi",
+  "mcp.auth.browserBlocked.title": "Otorisasi {{name}}",
+  "mcp.auth.browserBlocked.description": "Tidak dapat membuka browser. Buka URL ini untuk mengotorisasi: {{url}}",
+  "mcp.auth.browserBlocked.open": "Buka URL",
+  "mcp.auth.browserBlocked.copy": "Salin URL",
 
   "dialog.fork.empty": "Tidak ada pesan yang dapat dicabangkan",
 

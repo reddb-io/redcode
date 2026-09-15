@@ -440,6 +440,10 @@ export const dict = {
   "mcp.status.failed": "ล้มเหลว",
   "mcp.status.needs_auth": "ต้องยืนยันตัวตน",
   "mcp.auth.clickToAuthenticate": "คลิกเพื่อยืนยันตัวตน",
+  "mcp.auth.browserBlocked.title": "อนุญาต {{name}}",
+  "mcp.auth.browserBlocked.description": "ไม่สามารถเปิดเบราว์เซอร์ได้ เปิด URL นี้เพื่ออนุญาต: {{url}}",
+  "mcp.auth.browserBlocked.open": "เปิด URL",
+  "mcp.auth.browserBlocked.copy": "คัดลอก URL",
   "mcp.status.disabled": "ปิดใช้งาน",
 
   "dialog.fork.empty": "ไม่มีข้อความให้แตกแขนง",
