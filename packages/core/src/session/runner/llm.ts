@@ -37,6 +37,7 @@ import { ToolRegistry } from "../../tool/registry"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
 import { SessionCompaction } from "../compaction"
+import { CompactionGuardStore } from "../compaction-guard-store"
 import { SessionEvent } from "../event"
 import { SessionHistory } from "../history"
 import { SessionGuardTripTable } from "../sql"
@@ -156,6 +157,7 @@ const layer = Layer.effect(
       config: yield* config.entries(),
       beforeCompact: ({ sessionID, reason }) =>
         hooks.run({ event: "PreCompact", session_id: sessionID, matcher: reason }),
+      guardStore: CompactionGuardStore.make(db),
     })
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
       const session = yield* store.get(sessionID)
