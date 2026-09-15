@@ -1,5 +1,12 @@
 # @reddb-io/redcode-protocol
 
+## 1.18.22
+
+### Patch Changes
+
+- Updated dependencies [4636b64]
+  - @reddb-io/redcode-schema@1.21.0
+
 ## 1.18.21
 
 ### Patch Changes

@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-Design mode prototypes can now have several pages without hand-written show/hide code. Mark each page with `data-design-screen="id"` and `data-design-label="Name"` (inside a variant root or the page) and navigate with `data-design-go="id"`, `href="#id"` or `design.go("id")`; one screen shows at a time per variant, and a `design:screen` event reports each change. The review page shows a screen switcher that follows in-prototype navigation, review notes record the screen they were taken on and revealing a note opens it. Scenarios accept `screen`, so an audit opens that screen before its actions and reports screens it never rendered. `design_preview` and audits warn about duplicate, invalid or nested screen ids and `data-design-go` targets that do not exist. A small in-frame helper, `design.params.on`, `design.state` and `design.go`, wraps the params events and replays current values to components that mount late. The Design prompt now explains variants, screens, scenarios and params separately, with a short worked example, and the flow playbook covers multi-page apps.

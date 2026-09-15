@@ -1,5 +1,20 @@
 # @reddb-io/redcode-core
 
+## 1.24.0
+
+### Minor Changes
+
+- 4636b64: Session monitors can now wait on an HTTP endpoint, a file or a process natively, without a shell and on every platform: call the `monitor` tool with `action: "probe"` and an `http` probe (status, `json_path` with `equals`/`contains`/`regex`, same-host redirects only, 1 MB and 10 s bounds, `{env:NAME}` header values that ask a separate `env` permission per variable and host and are never shown), a `file` probe (`exists`, `missing` or `changed`, with `min_size`) or a `process` probe (`running` or `exited`, by exact executable `name`, by command line with `match: "cmdline"`, or by `pid`, among the current user's processes). Regular expressions run in a worker with a hard timeout, so a catastrophic pattern cannot freeze the runtime. An http probe asks the `webfetch` permission, a file probe asks `read` and `external_directory` (symlink targets included), and a process probe needs none; a poll longer than 10 minutes is still approved every time. Command polls gain `success_regex`, `failure_regex` and `until: "changed"`. Poll checks are now spread by a small random jitter (`jitter: false` keeps exact intervals), the last check always starts before the deadline, and a finished monitor's resume message states what matched. The sleep-polling guard offers the matching probe for `curl -f`, `test -f`/`[ -e ]` and `pgrep` loops, and `/monitors` shows probe monitors with their schedule.
+
+### Patch Changes
+
+- 6c299c7: The sleep-polling guard now refuses wait loops around local checks, such as `until grep -q PASSED ci.log; do sleep 5; done`, when their total wait is 30 s or more or cannot be read off the command. Before, it only caught loops around remote status commands. The refusal suggests polling the check itself: every 1–2 s with a 2-minute deadline for an open-ended readiness loop, done when it exits 0, and it names any commands that came after the wait. A `while` condition is inverted so that exit 0 still means done. Batch loops that act on each item, and retries bounded under 30 s by a counter, an iteration count or `timeout`, still run.
+- Updated dependencies [4636b64]
+- Updated dependencies [92e03f2]
+  - @reddb-io/redcode-schema@1.21.0
+  - @reddb-io/redcode-llm@1.19.0
+  - @reddb-io/redcode-design@0.0.1
+
 ## 1.23.1
 
 ### Patch Changes
