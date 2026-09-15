@@ -61,6 +61,8 @@ describe("parsing /budget input", () => {
   test("a bare number is turns; garbage is refused with a message", () => {
     expect(value("30")).toEqual({ max_turns: 30 })
     expect(value("40 turns $3")).toEqual({ max_turns: 40, max_cost_usd: 3 })
+    // What the turn dialog always refused: zero, fractions, and integers a JSON number cannot hold.
+    for (const text of ["0", "1.5", "Infinity", "9007199254740992", "0 turns"]) expect(Budget.parse(text).ok).toBe(false)
     const garbage = Budget.parse("lots")
     expect(garbage.ok).toBe(false)
     if (!garbage.ok) expect(garbage.error).toContain("not understood")
