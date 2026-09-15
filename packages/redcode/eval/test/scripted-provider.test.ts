@@ -59,6 +59,28 @@ describe("scripted provider", () => {
     }
   })
 
+  test("a template that cannot resolve answers 400 and records why, instead of an HTML 500", async () => {
+    const provider = ScriptedProvider.start({
+      cassette: {
+        version: 1,
+        name: "t",
+        source: "test",
+        steps: [{ tools: [{ name: "todowrite", input: { id: "{{todo.0.id}}" } }], usage: { input: 1, output: 1 } }],
+      },
+      resolve: () => {
+        throw new Error("the session has 0 todos")
+      },
+    })
+    try {
+      const response = await post(provider.url, { messages: [] })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toContain("the session has 0 todos")
+      expect(provider.exhausted()).toBe("script step 1 could not be resolved: the session has 0 todos")
+    } finally {
+      provider.stop()
+    }
+  })
+
   test("a step without usage streams no usage, as a model that stops does", () => {
     const text = ScriptedProvider.sse({ text: "hi" })
     expect(text).not.toContain("usage")

@@ -81,7 +81,13 @@ export function start(input: { cassette: Cassette; resolve: Resolve; model?: str
       const [{ step, index }] = queue.splice(found, 1)
       requests.push({ ...base, kind: "step", step: index })
       if (step.error) return Response.json({ error: { message: step.error.message } }, { status: step.error.status })
-      const resolved = await resolveStep(step, input.resolve)
+      // A template that cannot resolve (a todo the run never created) means the trajectory went
+      // off script: answer with a non-retryable error and let the run end as crashed, with why.
+      const resolved = await resolveStep(step, input.resolve).catch((error: unknown) => {
+        exhausted ??= `script step ${index + 1} could not be resolved: ${error instanceof Error ? error.message : String(error)}`
+        return undefined
+      })
+      if (!resolved) return Response.json({ error: { message: `eval script failed: ${exhausted}` } }, { status: 400 })
       exchanges.push({ requestBytes: base.bytes, responseBytes: answerBytes(resolved) })
       return stream(resolved, input.model)
     },
