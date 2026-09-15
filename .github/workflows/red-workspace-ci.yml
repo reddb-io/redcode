@@ -22,9 +22,36 @@ jobs:
         env:
           REDCODE_RPC_SIDECAR_OUTPUT: dist/release/redcode-rpc-sidecar-linux-x64
         run: bun run build
+      # The verification build embeds a models catalog. Cache it per day so PR CI does not depend on
+      # the catalog endpoints being reachable; restore-keys fall back to an earlier day's copy.
+      - name: Date key for the models catalog cache
+        id: models-date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - name: Restore models catalog snapshot
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/models-api.json
+          key: models-catalog-${{ steps.models-date.outputs.date }}
+          restore-keys: models-catalog-
+      - name: Fetch models catalog snapshot (best effort)
+        run: |
+          file="$RUNNER_TEMP/models-api.json"
+          if [ ! -s "$file" ] || [ "$(find "$file" -mmin +1440 2>/dev/null)" ]; then
+            for url in https://models.opencode.ai/api.json https://models.dev/api.json; do
+              if curl --fail --silent --show-error --location --max-time 60 --max-filesize 20971520 --output "$file.tmp" "$url"; then
+                mv "$file.tmp" "$file"
+                break
+              fi
+            done
+          fi
+          rm -f "$file.tmp"
       - name: Build the current native binary
         env:
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
+          # Validated by the build; when missing or invalid the build fetches, and in this
+          # verification-only build embeds an empty catalog with a warning. red-publish never sets it.
+          MODELS_DEV_API_JSON: ${{ runner.temp }}/models-api.json
+          REDCODE_MODELS_SNAPSHOT: optional
         run: REDCODE_VERSION="$(node -p "require('./package.json').version")" REDCODE_CHANNEL=latest REDCODE_RELEASE=1 ./packages/redcode/script/build.ts --single --skip-install --skip-embed-web-ui --skip-upload
       - name: Verify the native package contains the RPC sidecar
         run: test -x packages/redcode/dist/redcode-linux-x64/bin/redcode-rpc-sidecar

@@ -137,13 +137,21 @@ export class Service extends Context.Service<Service, Interface>()("@redcode/Con
 
 export const use = serviceUse(Service)
 
+/** models.sources in a project config is ignored; warn about it once per process. */
+let warnedProjectModelsSources = false
+
 function globalConfigFile() {
   // Highest precedence first: an existing file is always reused, so a user who only has
   // the legacy OpenCode-named file keeps writing to it instead of gaining a second file.
   // Only a fresh install with no config at all creates the primary `config.jsonc` one.
-  const candidates = ["config.jsonc", "config.json", "redcode.jsonc", "redcode.json", "opencode.jsonc", "opencode.json"].map((file) =>
-    path.join(Global.Path.config, file),
-  )
+  const candidates = [
+    "config.jsonc",
+    "config.json",
+    "redcode.jsonc",
+    "redcode.json",
+    "opencode.jsonc",
+    "opencode.json",
+  ].map((file) => path.join(Global.Path.config, file))
   for (const file of candidates) {
     if (existsSync(file)) return file
   }
@@ -262,7 +270,14 @@ const layer = Layer.effect(
       // Only the primary directory (~/.red/code by default) is read. Ordered lowest to highest
       // so the Redcode-named files override the legacy OpenCode-named ones field by field.
       const primary = Global.Path.config
-      const primaryFiles = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
+      const primaryFiles = [
+        "opencode.json",
+        "opencode.jsonc",
+        "redcode.json",
+        "redcode.jsonc",
+        "config.json",
+        "config.jsonc",
+      ]
       for (const file of primaryFiles) {
         result = mergeConfig(result, yield* loadFile(path.join(primary, file), env))
       }
@@ -358,7 +373,19 @@ const layer = Layer.effect(
 
         const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope) => {
           result = mergeConfigConcatArrays(result, next)
-          return mergePluginOrigins(source, next.plugin, kind)
+          if (!next.models?.sources?.length || warnedProjectModelsSources)
+            return mergePluginOrigins(source, next.plugin, kind)
+          return Effect.gen(function* () {
+            // The models catalog cache is shared by every project, so ModelsDev reads
+            // models.sources from the global config only.
+            if ((kind ?? (yield* pluginScopeForSource(source))) === "local" && !warnedProjectModelsSources) {
+              warnedProjectModelsSources = true
+              yield* Effect.logWarning(
+                `models.sources in ${source} is ignored: it is read from the global config only (~/.red/code/redcode.json, REDCODE_CONFIG_DIR, REDCODE_CONFIG or REDCODE_CONFIG_CONTENT), or set REDCODE_MODELS_URL`,
+              )
+            }
+            return yield* mergePluginOrigins(source, next.plugin, kind)
+          })
         }
 
         for (const [key, value] of Object.entries(auth)) {
@@ -434,10 +461,7 @@ const layer = Layer.effect(
         for (const dir of directories) {
           // The global config home has the shape of a project directory (`~/.red/code`); it is
           // loaded on its own elsewhere, so it is not read again as one here.
-          if (
-            (ProjectDir.isProjectDir(dir) && dir !== Global.Path.config) ||
-            dir === Flag.REDCODE_CONFIG_DIR
-          ) {
+          if ((ProjectDir.isProjectDir(dir) && dir !== Global.Path.config) || dir === Flag.REDCODE_CONFIG_DIR) {
             for (const file of [
               "opencode.json",
               "opencode.jsonc",

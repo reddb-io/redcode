@@ -357,6 +357,132 @@ describe("ModelsDev source chain", () => {
   )
 })
 
+describe("ModelsDev review hardening", () => {
+  it.live("keeps the valid part of a partially broken catalog and does not back off", () =>
+    Effect.gen(function* () {
+      const partial = {
+        ...catalog("good"),
+        broken: { name: "no id", models: {} },
+        mixed: {
+          id: "mixed",
+          name: "Mixed",
+          env: [],
+          models: { bad: "not a model", ...catalog("mixed").mixed.models },
+        },
+      }
+      routes.set(OPENCODE, { status: 200, body: JSON.stringify(partial), type: "application/json" })
+      const providers = yield* run(
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          yield* svc.refresh(true)
+          return yield* svc.get()
+        }),
+      )
+      expect(Object.keys(providers).sort()).toEqual(["good", "mixed"])
+      expect(Object.keys(providers.mixed.models)).toEqual(["mixed-1"])
+      const state = yield* readState()
+      expect(state.source).toBe("https://models.opencode.ai/api.json")
+      expect(state.sources["https://models.opencode.ai/api.json"]).toBeUndefined()
+      expect(hits.get(MODELSDEV)).toBeUndefined()
+    }),
+  )
+
+  it.live("treats an oversized body as a failed fetch, not a block", () =>
+    Effect.gen(function* () {
+      routes.set(OPENCODE, { status: 200, body: "x".repeat(21 * 1024 * 1024), type: "application/json" })
+      routes.set(MODELSDEV, ok("upstream"))
+      const providers = yield* run(
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          yield* svc.refresh(true)
+          return yield* svc.get()
+        }),
+      )
+      expect(providers).toEqual(catalog("upstream"))
+      const state = yield* readState()
+      expect(state.sources["https://models.opencode.ai/api.json"]).toBeUndefined()
+    }),
+  )
+
+  it.live("caps a skewed blockedUntil at 24h and drops malformed state entries", () =>
+    Effect.sync(() => {
+      const now = 1_000_000
+      const state = ModelsDev.decodeState(
+        {
+          source: 42,
+          sources: {
+            skewed: { failures: 3, blockedUntil: now + 365 * 24 * 3_600_000, reason: "HTTP 403" },
+            noFailures: { blockedUntil: now + 1000 },
+            badUntil: { failures: 1, blockedUntil: "tomorrow" },
+            notObject: "blocked",
+          },
+        },
+        now,
+      )
+      expect(state.source).toBeUndefined()
+      expect(Object.keys(state.sources)).toEqual(["skewed"])
+      expect(state.sources.skewed.blockedUntil).toBe(now + 24 * 3_600_000)
+      expect(ModelsDev.decodeState("garbage", now)).toEqual({
+        source: undefined,
+        fetchedAt: undefined,
+        legacyCacheRemoved: undefined,
+        sources: {},
+      })
+    }),
+  )
+
+  it.live("classifies failures from messages and codes, never from stack frames", () =>
+    Effect.sync(() => {
+      const refused = new Error("connect ECONNREFUSED 127.0.0.1:443")
+      refused.stack = "Error: connect ECONNREFUSED\n    at node:internal/tls/wrap.js:1:1 (ssl proxy certificate)"
+      expect(ModelsDev.classifyError(refused)).toEqual({ blocked: false, reason: "connect ECONNREFUSED 127.0.0.1:443" })
+
+      const tls = Object.assign(new Error("fetch failed"), {
+        cause: Object.assign(new Error("unable to verify the first certificate"), {
+          code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+        }),
+      })
+      expect(ModelsDev.classifyError(tls).blocked).toBe(true)
+      expect(ModelsDev.classifyError({ _tag: "TimeoutError", message: "timed out" }).blocked).toBe(false)
+    }),
+  )
+
+  it.live("removes legacy per-URL cache files once", () =>
+    Effect.gen(function* () {
+      const legacy = path.join(Global.Path.cache, `models-${"a".repeat(40)}.json`)
+      yield* Effect.promise(async () => {
+        await mkdir(Global.Path.cache, { recursive: true })
+        await writeFile(legacy, JSON.stringify(catalog("legacy")))
+      })
+      routes.set(OPENCODE, ok("fresh"))
+      yield* run(ModelsDev.Service.use((svc) => svc.refresh(true)))
+      expect(yield* Effect.promise(() => Bun.file(legacy).exists())).toBe(false)
+      expect((yield* readState()).legacyCacheRemoved).toBe(true)
+    }),
+  )
+
+  it.live("applies {env:} substitution to models.sources", () =>
+    Effect.gen(function* () {
+      process.env.REDCODE_TEST_MODELS_MIRROR = `${base}/mirror`
+      yield* Effect.promise(() =>
+        writeFile(
+          path.join(configDir, "redcode.json"),
+          JSON.stringify({ models: { sources: ["{env:REDCODE_TEST_MODELS_MIRROR}"] } }),
+        ),
+      )
+      routes.set(MIRROR, ok("mirror"))
+      const status = yield* run(
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          yield* svc.refresh(true)
+          return yield* svc.status()
+        }),
+      ).pipe(Effect.ensuring(Effect.sync(() => delete process.env.REDCODE_TEST_MODELS_MIRROR)))
+      expect(status.source).toBe(`${base}${MIRROR}`)
+    }),
+  )
+})
+
 describe("ModelsDev backoff schedule", () => {
   it.live("grows from 1h to 6h and caps at 24h", () =>
     Effect.sync(() => {
