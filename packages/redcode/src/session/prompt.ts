@@ -2404,10 +2404,21 @@ const layer = Layer.effect(
       // sent to an idle session does. Detached: the caller does not wait for the turn.
       if (row.delivery === "steer")
         yield* Effect.gen(function* () {
-          yield* loop({ sessionID: input.sessionID })
-          // Joining a drain past its last promotion boundary returns without promoting the steer.
-          // Wake once more while it is still pending.
-          if (yield* SessionInput.hasPending(db, input.sessionID, "steer")) yield* loop({ sessionID: input.sessionID })
+          // Unlike `notify`, this wake checks neither the cancel generation nor the goal status:
+          // a person asked for this steer just now, which outranks both.
+          //
+          // Joining a drain past its last promotion boundary returns without promoting the steer,
+          // and so can the drain after it. Keep waking while the steer is still pending — once the
+          // session reports idle a fresh drain starts and promotes it — with a ceiling so a row
+          // that can never be promoted (its message never stored) cannot spin here.
+          for (let attempt = 0; attempt < 10; attempt++) {
+            yield* loop({ sessionID: input.sessionID })
+            if (!(yield* SessionInput.hasPending(db, input.sessionID, "steer"))) return
+          }
+          yield* Effect.logWarning("gave up waking the session for a converted steer", {
+            "session.id": input.sessionID,
+            messageID: input.messageID,
+          })
         }).pipe(Effect.forkIn(scope))
       return row
     })

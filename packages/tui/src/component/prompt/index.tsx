@@ -307,7 +307,10 @@ export function Prompt(props: PromptProps) {
     return latestQueuedPrompt({
       messages: sync.data.message[props.sessionID] ?? [],
       statusType: status().type,
-      isSteer: (messageID) => sync.data.prompt_steer[messageID] === true,
+      // A pending steer is already on its way, and a promoted one has been taken up by the loop:
+      // neither is still waiting in the queue, whatever its place in the transcript says.
+      settled: (messageID) =>
+        sync.data.prompt_steer[messageID] === true || sync.data.prompt_steered[messageID] !== undefined,
     })
   })
 
@@ -319,6 +322,7 @@ export function Prompt(props: PromptProps) {
       await sdk.client.session.promptDelivery({ sessionID, messageID, delivery: "steer" }, { throwOnError: true })
     } catch (error) {
       toast.show({ title: "Failed to steer the queued prompt", message: errorMessage(error), variant: "error" })
+      return false
     }
     return true
   }
@@ -1183,9 +1187,11 @@ export function Prompt(props: PromptProps) {
     // already queued it steers that one, which is the only thing an empty steer can mean.
     if (steerCommandAvailable() && parseSteerCommand(store.prompt.input)?.trim() === "") {
       if (!queuedPrompt()) return false
+      // Cleared only once the steer is accepted, so a refused one leaves the text to try again.
+      if (!(await steerQueuedPrompt())) return false
       input.setText("")
       setStore("prompt", { input: "", parts: [] })
-      return await steerQueuedPrompt()
+      return true
     }
 
     const variant = local.model.variant.current()

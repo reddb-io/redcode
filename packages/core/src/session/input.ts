@@ -138,12 +138,20 @@ export const setDelivery = Effect.fn("SessionInput.setDelivery")(function* (
     return undefined
   if (existing.delivery === input.delivery) return existing
   const changed = yield* events
-    .publish(SessionEvent.PromptDeliveryChanged, {
-      sessionID: input.sessionID,
-      messageID: input.id,
-      timestamp: yield* DateTime.now,
-      delivery: input.delivery,
-    })
+    .publish(
+      SessionEvent.PromptDeliveryChanged,
+      {
+        sessionID: input.sessionID,
+        messageID: input.id,
+        timestamp: yield* DateTime.now,
+        delivery: input.delivery,
+      },
+      // The pending check belongs to this write, not to the event: a commit hook is committed
+      // atomically with the append and never replayed, so a prompt promoted or removed between the
+      // read above and the append rolls the whole thing back and the caller hears "not pending",
+      // while a replica replaying the same event later is not held to a race it cannot re-observe.
+      { commit: () => assertPending(db, input) },
+    )
     .pipe(
       Effect.as(true),
       Effect.catchDefect((defect) => (defect instanceof NotPending ? Effect.succeed(false) : Effect.die(defect))),
@@ -152,6 +160,10 @@ export const setDelivery = Effect.fn("SessionInput.setDelivery")(function* (
   return Admitted.make({ ...existing, delivery: input.delivery })
 })
 
+// Idempotent, because this also runs on replay: a workspace rebuilding its projection, a partial
+// replay, or a row this replica already promoted all reach here with nothing left to change, and a
+// projector that died there would fail the whole sync. Only the write path holds the prompt to
+// being pending, through the commit hook below.
 export const projectDeliveryChanged = Effect.fn("SessionInput.projectDeliveryChanged")(function* (
   db: DatabaseService,
   input: {
@@ -160,7 +172,24 @@ export const projectDeliveryChanged = Effect.fn("SessionInput.projectDeliveryCha
     readonly delivery: Delivery
   },
 ) {
-  const updated = yield* db
+  const updated = yield* setPendingDelivery(db, input)
+  if (!updated)
+    yield* Effect.logDebug("prompt delivery change skipped; the prompt is no longer pending", {
+      "session.id": input.sessionID,
+      messageID: input.id,
+      delivery: input.delivery,
+    })
+})
+
+const setPendingDelivery = (
+  db: DatabaseService,
+  input: {
+    readonly id: SessionMessage.ID
+    readonly sessionID: SessionSchema.ID
+    readonly delivery: Delivery
+  },
+) =>
+  db
     .update(SessionInputTable)
     .set({ delivery: input.delivery })
     .where(
@@ -172,8 +201,27 @@ export const projectDeliveryChanged = Effect.fn("SessionInput.projectDeliveryCha
     )
     .returning({ id: SessionInputTable.id })
     .get()
+    .pipe(Effect.orDie, Effect.map((row) => row !== undefined))
+
+// The write path's guarantee, run inside the append transaction: the projector above has just
+// changed the row if it could, so a row that is not pending now was promoted or removed by someone
+// else, and the event must not be stored at all.
+const assertPending = Effect.fn("SessionInput.assertPending")(function* (
+  db: DatabaseService,
+  input: {
+    readonly id: SessionMessage.ID
+    readonly sessionID: SessionSchema.ID
+    readonly delivery: Delivery
+  },
+) {
+  const row = yield* db
+    .select({ delivery: SessionInputTable.delivery, promoted: SessionInputTable.promoted_seq })
+    .from(SessionInputTable)
+    .where(and(eq(SessionInputTable.id, input.id), eq(SessionInputTable.session_id, input.sessionID)))
+    .get()
     .pipe(Effect.orDie)
-  if (!updated) return yield* Effect.die(new NotPending({ id: input.id }))
+  if (row === undefined || row.promoted !== null || row.delivery !== input.delivery)
+    return yield* Effect.die(new NotPending({ id: input.id }))
 })
 
 export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(function* (

@@ -64,6 +64,8 @@ export function reduce(
       state,
       [{ ...base, type: "user", id: event.data.messageID, ...describe(event.data.prompt.text), pending: true }],
     ]
+  // A delivery change (`session.next.prompt.delivery`) says when a waiting prompt reaches the model,
+  // not what it says. The feed's vocabulary is pending versus delivered, so there is nothing to add.
   if (event.type === "session.next.prompted")
     return [state, [{ ...base, type: "user", id: event.data.messageID, ...describe(event.data.prompt.text) }]]
   if (event.type === "session.next.text.ended") {

@@ -109,27 +109,35 @@ describe("the queued prompt an empty steer acts on", () => {
     expect(pendingAssistantIndex(messages, "idle")).toBeUndefined()
     // An open assistant message left by a killed process is not a running turn.
     expect(pendingAssistantIndex([user("u1"), assistant("a1")], undefined)).toBeUndefined()
-    expect(latestQueuedPrompt({ messages, statusType: "idle", isSteer: none })).toBeUndefined()
+    expect(latestQueuedPrompt({ messages, statusType: "idle", settled: none })).toBeUndefined()
   })
 
   test("the most recent prompt behind the running turn wins", () => {
     const messages = [user("u1"), assistant("a1"), user("u2"), user("u3")]
     expect(pendingAssistantIndex(messages, "busy")).toBe(1)
-    expect(latestQueuedPrompt({ messages, statusType: "busy", isSteer: none })).toBe("u3")
+    expect(latestQueuedPrompt({ messages, statusType: "busy", settled: none })).toBe("u3")
   })
 
   test("a prompt already steered is not offered again", () => {
     const messages = [user("u1"), assistant("a1"), user("u2"), user("u3")]
-    const isSteer = (id: string) => id === "u3"
-    expect(latestQueuedPrompt({ messages, statusType: "busy", isSteer })).toBe("u2")
+    const settled = (id: string) => id === "u3"
+    expect(latestQueuedPrompt({ messages, statusType: "busy", settled })).toBe("u2")
     expect(
-      latestQueuedPrompt({ messages, statusType: "busy", isSteer: (id) => id === "u2" || id === "u3" }),
+      latestQueuedPrompt({ messages, statusType: "busy", settled: (id) => id === "u2" || id === "u3" }),
     ).toBeUndefined()
+  })
+
+  test("a prompt the loop has already promoted is not offered", () => {
+    // Promotion re-stamps the message to now, so a just-promoted steer still sits after the open
+    // assistant message; only the promotion itself says it is gone from the queue.
+    const messages = [user("u1"), assistant("a1"), user("u2")]
+    expect(latestQueuedPrompt({ messages, statusType: "busy", settled: none })).toBe("u2")
+    expect(latestQueuedPrompt({ messages, statusType: "busy", settled: (id) => id === "u2" })).toBeUndefined()
   })
 
   test("nothing is waiting when the turn has no prompt behind it", () => {
     const messages = [user("u1"), assistant("a1")]
-    expect(latestQueuedPrompt({ messages, statusType: "busy", isSteer: none })).toBeUndefined()
+    expect(latestQueuedPrompt({ messages, statusType: "busy", settled: none })).toBeUndefined()
   })
 
   test("the hint says the key steers what is queued", () => {

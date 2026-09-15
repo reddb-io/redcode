@@ -64,7 +64,12 @@ export type ScenarioContext = {
   /** A prompt waiting in the session inbox: stored as a user message and admitted, never promoted. */
   admitPrompt: (
     sessionID: SessionID,
-    input?: { text?: string; delivery?: "steer" | "queue" },
+    input?: {
+      text?: string
+      delivery?: "steer" | "queue"
+      /** The model the promoted prompt runs on; defaults to the one `message(...)` seeds. */
+      model?: { providerID: string; modelID: string }
+    },
   ) => Effect.Effect<MessageSeed>
   todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<ReadonlyArray<SessionTodo.Info>>
   sessionMetadata: (sessionID: SessionID, metadata: Record<string, unknown>) => Effect.Effect<void>

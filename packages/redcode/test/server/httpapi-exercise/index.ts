@@ -1878,7 +1878,6 @@ const scenarios: Scenario[] = [
     ),
   http.protected
     .post("/session/{sessionID}/prompt/{messageID}/delivery", "session.promptDelivery")
-    .preserveDatabase()
     .seeded((ctx) =>
       Effect.gen(function* () {
         const session = yield* ctx.session({ title: "Delivery session" })
@@ -1895,12 +1894,39 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
       body: { delivery: "queue" },
     }))
-    .json(200, (body) => {
-      check(body === true, "delivery change should return true")
-    }),
+    .status(204),
+  http.protected
+    .post("/session/{sessionID}/prompt/{messageID}/delivery", "session.promptDelivery.steer")
+    .withLlm()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Delivery steer session" })
+        // Queued on an idle session: the change is what wakes it, so this covers the waking path.
+        const message = yield* ctx.admitPrompt(session.id, {
+          text: "convert me",
+          delivery: "queue",
+          model: { providerID: "test", modelID: "test-model" },
+        })
+        yield* ctx.llmText("steered answer")
+        yield* ctx.llmText("steered answer")
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt/{messageID}/delivery", {
+        sessionID: ctx.state.session.id,
+        messageID: ctx.state.message.info.id,
+      }),
+      headers: ctx.headers(),
+      body: { delivery: "steer" },
+    }))
+    .status(204, (ctx) =>
+      Effect.gen(function* () {
+        yield* ctx.llmWait(1)
+      }),
+    ),
   http.protected
     .post("/session/{sessionID}/prompt/{messageID}/delivery", "session.promptDelivery.missing")
-    .preserveDatabase()
     .seeded((ctx) =>
       Effect.gen(function* () {
         const session = yield* ctx.session({ title: "Delivery missing" })
@@ -2173,6 +2199,7 @@ const llmScenarios = new Set([
   "session.init",
   "session.prompt",
   "session.prompt_async",
+  "session.promptDelivery.steer",
   "session.command",
   "session.summarize",
 ])

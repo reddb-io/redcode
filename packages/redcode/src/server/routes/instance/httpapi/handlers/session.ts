@@ -487,7 +487,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         delivery: ctx.payload.delivery,
       })
       if (row === undefined) return yield* notFound(`Prompt is not pending: ${ctx.params.messageID}`)
-      return true
+      return HttpApiSchema.NoContent.make()
     })
 
     const command = Effect.fn("SessionHttpApi.command")(function* (ctx: {
