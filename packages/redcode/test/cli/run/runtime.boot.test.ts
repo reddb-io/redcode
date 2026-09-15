@@ -140,7 +140,8 @@ describe("run runtime boot", () => {
     expect(result.keybinds.get("prompt.history.next")?.[0]?.key).toBe("down")
     expect(result.keybinds.get("prompt.clear")?.[0]?.key).toBe("ctrl+c")
     expect(result.keybinds.get("input.submit")?.[0]?.key).toBe("return")
-    expect(result.keybinds.get("input.newline")?.[0]?.key).toBe("shift+return,ctrl+return,alt+return,ctrl+j")
+    expect(result.keybinds.get("input.newline")?.[0]?.key).toBe("ctrl+return,alt+return,ctrl+j")
+    expect(result.keybinds.get("input.steer")?.[0]?.key).toBe("shift+return")
   })
 
   test("preserves disabled leader from resolved tui config", async () => {
