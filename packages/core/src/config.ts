@@ -123,6 +123,20 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   providers: Schema.Record(Schema.String, ConfigProvider.Info).pipe(Schema.optional),
 }) {}
 
+/**
+ * Permission and hook patterns written for the old v2 MCP key (`mcp_<server>_<tool>`). They no longer
+ * match anything, and a deny rule among them fails open, so config load warns instead of rewriting them.
+ */
+export function legacyMcpPatterns(info: Info): string[] {
+  return [
+    ...(info.permissions ?? []).map((rule) => rule.action),
+    ...Object.values(info.agents ?? {}).flatMap((agent) => (agent.permissions ?? []).map((rule) => rule.action)),
+    ...Object.values(info.hooks ?? {}).flatMap((matchers) =>
+      matchers.flatMap((matcher) => (matcher.matcher === undefined ? [] : [matcher.matcher])),
+    ),
+  ].filter((pattern) => pattern.startsWith("mcp_"))
+}
+
 export class Document extends Schema.Class<Document>("Config.Document")({
   type: Schema.Literal("document"),
   path: Schema.String.pipe(Schema.optional),
@@ -179,6 +193,12 @@ const layer = Layer.effect(
           : decodeInfo(input),
       )
       if (!info) return
+      const stale = legacyMcpPatterns(info)
+      if (stale.length > 0)
+        yield* Effect.logWarning(
+          `${filepath}: ${stale.map((pattern) => `"${pattern}"`).join(", ")} no longer match MCP tools. ` +
+            "MCP tools are named <server>_<tool> without the mcp_ prefix; update these rules, which were left unchanged.",
+        )
       return new Document({ type: "document", path: filepath, info })
     })
 

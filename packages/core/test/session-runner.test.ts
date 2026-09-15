@@ -64,7 +64,6 @@ import { Location } from "@reddb-io/redcode-core/location"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { Cause, DateTime, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import * as TestClock from "effect/testing/TestClock"
-import { setSystemTime } from "bun:test"
 import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
 import { LOOP_GUARD_PAUSE, LOOP_GUARD_REFUSAL } from "@reddb-io/redcode-core/session/loop-marker"
 import { ToolDeadline } from "@reddb-io/redcode-core/session/tool-deadline"
@@ -78,6 +77,7 @@ let responseStream: Stream.Stream<LLMEvent, LLMError> | undefined
 let streamGate: Deferred.Deferred<void> | undefined
 let streamStarted: Deferred.Deferred<void> | undefined
 let streamFailure: LLMError | undefined
+let streamFailures: LLMError[] = []
 let toolExecutionGate: Deferred.Deferred<void> | undefined
 let toolExecutionsStarted: Deferred.Deferred<void> | undefined
 let toolExecutionsReady = 5
@@ -94,6 +94,8 @@ const client = Layer.succeed(
         responseStream = undefined
         return stream
       }
+      const queuedFailure = streamFailures.shift()
+      if (queuedFailure) return Stream.fail(queuedFailure)
       const events = streamFailure
         ? Stream.fail(streamFailure)
         : Stream.fromIterable(responses === undefined ? response : (responses.shift() ?? []))
@@ -337,6 +339,7 @@ const setup = Effect.gen(function* () {
   skillBaselines.clear()
   responses = undefined
   streamFailure = undefined
+  streamFailures = []
   responseStream = undefined
   streamGate = undefined
   streamStarted = undefined
@@ -4049,8 +4052,13 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       const statuses: string[] = []
+      const idle = yield* Deferred.make<void>()
       yield* events.subscribe(SessionStatusEvent.Status).pipe(
-        Stream.runForEach((event) => Effect.sync(() => statuses.push(event.data.status.type))),
+        Stream.runForEach((event) =>
+          Effect.sync(() => statuses.push(event.data.status.type)).pipe(
+            Effect.andThen(event.data.status.type === "idle" ? Deferred.succeed(idle, undefined) : Effect.void),
+          ),
+        ),
         Effect.forkScoped,
       )
       yield* Effect.yieldNow
@@ -4060,7 +4068,7 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       response = fragmentFixture("text", "retried", ["Recovered"]).completeEvents
 
       yield* session.resume(sessionID)
-      yield* Effect.sleep(Duration.millis(20))
+      yield* Deferred.await(idle).pipe(Effect.timeout(Duration.seconds(5)))
 
       expect(requests).toHaveLength(2)
       expect(statuses).toContain("busy")
@@ -4079,12 +4087,19 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Always rate limited" }), resume: false })
       requests.length = 0
-      streamFailure = rateLimited()
+      const failure = rateLimited()
+      streamFailure = failure
 
-      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
 
-      expect(Exit.isFailure(exit)).toBe(true)
       expect(requests).toHaveLength(6)
+      // Retried attempts streamed nothing and leave nothing behind; only the final failure is recorded.
+      const context = yield* session.context(sessionID)
+      expect(context.filter((message) => message.type === "assistant")).toHaveLength(1)
+      expect(context).toMatchObject([
+        { type: "user", text: "Always rate limited" },
+        { type: "assistant", finish: "error", error: { message: "Too many requests" } },
+      ])
     }),
   )
 
@@ -4207,9 +4222,8 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
         pending = yield* questions.list()
       }
       expect(pending).toHaveLength(1)
-      const waited = ToolDeadline.TOOL_DEADLINE_DEFAULT_MS + 60_000
-      yield* Effect.sync(() => setSystemTime(new Date(Date.now() + waited)))
-      yield* TestClock.adjust(Duration.millis(waited)).pipe(Effect.ensuring(Effect.sync(() => setSystemTime())))
+      // The wait and the deadline read the same clock, so one test clock drives both.
+      yield* TestClock.adjust(Duration.millis(ToolDeadline.TOOL_DEADLINE_DEFAULT_MS + 60_000))
       yield* questions.reply({ requestID: pending[0]!.id, answers: [["yes"]] })
       yield* Fiber.join(fiber)
 
@@ -4217,36 +4231,168 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
     }),
   )
 
+  /** Runs as an unattended client (not the TUI), restoring the environment whatever happens. */
+  const unattended = <A, E, R>(body: Effect.Effect<A, E, R>) =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const client = process.env["REDCODE_CLIENT"]
+        delete process.env["REDCODE_CLIENT"]
+        return client
+      }),
+      () => body,
+      (client) =>
+        Effect.sync(() => {
+          if (client === undefined) delete process.env["REDCODE_CLIENT"]
+          else process.env["REDCODE_CLIENT"] = client
+        }),
+    )
+  const tick = (count: number) =>
+    Effect.gen(function* () {
+      for (let index = 0; index < count; index++) yield* TestClock.adjust(Duration.seconds(15))
+    })
+
   it.effect("ends an unattended provider turn that stopped producing output", () =>
+    unattended(
+      Effect.gen(function* () {
+        yield* setup
+        yield* clearGuardTrips
+        const session = yield* SessionV2.Service
+        const goals = yield* SessionGoal.Service
+        yield* goals.start(sessionID, { objective: "Do not burn silently", maxTurns: 3 })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Go quiet" }), resume: false })
+        responseStream = Stream.concat(Stream.fromIterable([LLMEvent.stepStart({ index: 0 })]), Stream.never)
+
+        const fiber = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
+        yield* tick(50)
+        const exit = yield* Fiber.join(fiber)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(yield* guardTrips).toEqual([
+          ["stall", "warn"],
+          ["stall", "stop"],
+        ])
+        const goal = yield* goals.get(sessionID)
+        expect(goal?.status).toBe("paused")
+        expect(goal?.reason).toBe("stalled: no output for 10m")
+      }),
+    ),
+  )
+
+  it.effect("does not stall a turn while a tool runs, nor right after the tool ends", () =>
+    unattended(
+      Effect.gen(function* () {
+        yield* setup
+        yield* clearGuardTrips
+        const session = yield* SessionV2.Service
+        const applicationTools = yield* ApplicationTools.Service
+        const started = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        const ended = yield* Deferred.make<void>()
+        // `monitor` carries its own bound, so the tool deadline stays out of this test.
+        yield* applicationTools.register({
+          monitor: Tool.make({
+            description: "Waits on an observation",
+            input: Schema.Struct({}),
+            output: Schema.Struct({}),
+            execute: () =>
+              Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as({}),
+                Effect.ensuring(Deferred.succeed(ended, undefined)),
+              ),
+          }),
+        })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Wait on something" }), resume: false })
+        responseStream = Stream.concat(
+          Stream.fromIterable([
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: "call-monitor", name: "monitor", input: {} }),
+          ]),
+          Stream.never,
+        )
+
+        const fiber = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
+        yield* Deferred.await(started)
+        yield* tick(44)
+        expect(yield* guardTrips).toEqual([])
+
+        yield* Deferred.succeed(release, undefined)
+        yield* Deferred.await(ended)
+        for (let spin = 0; spin < 50; spin++) yield* Effect.yieldNow
+        yield* tick(16)
+        expect(yield* guardTrips).toEqual([])
+        yield* Fiber.interrupt(fiber)
+      }),
+    ),
+  )
+
+  it.live("does not retry once output has streamed, and leaves exactly one failed assistant", () =>
     Effect.gen(function* () {
       yield* setup
-      yield* clearGuardTrips
-      const client = process.env["REDCODE_CLIENT"]
-      delete process.env["REDCODE_CLIENT"]
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Cut off" }), resume: false })
+      requests.length = 0
+      const failure = new LLMError({
+        module: "test",
+        method: "stream",
+        reason: new TransportReason({ message: "socket hang up" }),
+      })
+      responseStream = Stream.concat(
+        Stream.fromIterable(fragmentFixture("text", "cut", ["Half an ans"]).partialEvents),
+        Stream.fail(failure),
+      )
+      response = fragmentFixture("text", "unrequested", ["Never requested"]).completeEvents
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+
+      // No second request would replay the partial answer as a trailing assistant prefill.
+      expect(requests).toHaveLength(1)
+      const context = yield* session.context(sessionID)
+      expect(context.filter((message) => message.type === "assistant")).toHaveLength(1)
+      expect(context).toMatchObject([
+        { type: "user", text: "Cut off" },
+        { type: "assistant", finish: "error", content: [{ type: "text", text: "Half an ans" }] },
+      ])
+    }),
+  )
+
+  it.live("does not charge provider retries to the goal's turn budget", () =>
+    Effect.gen(function* () {
+      yield* setup
       const session = yield* SessionV2.Service
       const goals = yield* SessionGoal.Service
-      yield* goals.start(sessionID, { objective: "Do not burn silently", maxTurns: 3 })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Go quiet" }), resume: false })
-      responseStream = Stream.concat(Stream.fromIterable([LLMEvent.stepStart({ index: 0 })]), Stream.never)
+      yield* goals.start(sessionID, { objective: "Survive a provider outage", maxTurns: 3 })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Work through the outage" }), resume: false })
+      requests.length = 0
+      streamFailures = [rateLimited(), rateLimited()]
+      responses = [
+        fragmentFixture("text", "budget-one", ["One"]).completeEvents,
+        fragmentFixture("text", "budget-two", ["Two"]).completeEvents,
+        fragmentFixture("text", "budget-three", ["Three"]).completeEvents,
+      ]
 
-      const fiber = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
-      for (let tick = 0; tick < 50; tick++) yield* TestClock.adjust(Duration.seconds(15))
-      const exit = yield* Fiber.join(fiber).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (client !== undefined) process.env["REDCODE_CLIENT"] = client
-          }),
-        ),
+      yield* session.resume(sessionID)
+
+      // Two retried attempts plus all three budgeted provider turns.
+      expect(requests).toHaveLength(5)
+      expect((yield* goals.get(sessionID))?.turns.used).toBe(3)
+    }),
+  )
+
+  it.live("does not retry a thrown failure after the provider already reported an error", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Error twice" }), resume: false })
+      requests.length = 0
+      responseStream = Stream.concat(
+        Stream.fromIterable([LLMEvent.providerError({ message: "Overloaded", retryable: true })]),
+        Stream.fail(rateLimited()),
       )
 
-      expect(Exit.isFailure(exit)).toBe(true)
-      expect(yield* guardTrips).toEqual([
-        ["stall", "warn"],
-        ["stall", "stop"],
-      ])
-      const goal = yield* goals.get(sessionID)
-      expect(goal?.status).toBe("paused")
-      expect(goal?.reason).toBe("stalled: no output for 10m")
+      yield* session.resume(sessionID).pipe(Effect.exit)
+
+      expect(requests).toHaveLength(1)
     }),
   )
 })

@@ -1,5 +1,7 @@
 import { describe, expect } from "bun:test"
-import { Cause, Deferred, Effect, Fiber, Layer } from "effect"
+import { Cause, Clock, Deferred, Duration, Effect, Fiber, Layer } from "effect"
+import * as TestClock from "effect/testing/TestClock"
+import { HumanWait } from "@reddb-io/redcode-core/session/human-wait"
 import { AgentV2 } from "@reddb-io/redcode-core/agent"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -334,6 +336,52 @@ describe("PermissionV2", () => {
       yield* service.assert(assertion({ id: PermissionV2.ID.create("per_next"), resources: ["src/next.ts"] }))
       yield* saved.remove(id)
       expect(yield* saved.list()).toEqual([])
+    }),
+  )
+})
+
+describe("PermissionV2 external tools and human wait", () => {
+  it.effect("does not let a built-in family allow rule auto-allow an external tool", () =>
+    Effect.gen(function* () {
+      yield* setup([{ action: "design_*", resource: "*", effect: "allow" }])
+      const service = yield* PermissionV2.Service
+      const external = assertion({ action: "design_x", resources: ["*"], external: true })
+      expect((yield* service.ask(assertion({ action: "design_x", resources: ["*"] }))).effect).toBe("allow")
+      expect((yield* service.ask(external)).effect).toBe("ask")
+
+      yield* setRules([{ action: "design_x", resource: "*", effect: "allow" }])
+      expect((yield* service.ask(external)).effect).toBe("allow")
+      yield* setRules([{ action: "*", resource: "*", effect: "allow" }])
+      expect((yield* service.ask(external)).effect).toBe("allow")
+    }),
+  )
+
+  it.effect("records a tool-sourced permission prompt as human wait on the test clock", () =>
+    Effect.gen(function* () {
+      yield* setup()
+      const sessionID = "ses_test"
+      const callID = "call-human-wait"
+      HumanWait.claim(sessionID, callID)
+      const service = yield* PermissionV2.Service
+      const events = yield* EventV2.Service
+      const asked = yield* Deferred.make<PermissionV2.Request>()
+      const unsubscribe = yield* events.listen((event) =>
+        event.type === PermissionV2.Event.Asked.type
+          ? Deferred.succeed(asked, event.data as PermissionV2.Request).pipe(Effect.asVoid)
+          : Effect.void,
+      )
+      yield* Effect.addFinalizer(() => unsubscribe.pipe(Effect.andThen(Effect.sync(() => HumanWait.forget(sessionID, callID)))))
+      const source = { type: "tool", messageID: "msg_human_wait", callID } as unknown as PermissionV2.Source
+      const fiber = yield* service.assert(assertion({ source })).pipe(Effect.forkScoped)
+      const request = yield* Deferred.await(asked)
+
+      yield* TestClock.adjust(Duration.minutes(5))
+      expect(HumanWait.waited(sessionID, callID, yield* Clock.currentTimeMillis)).toBe(300_000)
+
+      yield* service.reply({ requestID: request.id, reply: "once" })
+      yield* Fiber.join(fiber)
+      yield* TestClock.adjust(Duration.minutes(1))
+      expect(HumanWait.waited(sessionID, callID, yield* Clock.currentTimeMillis)).toBe(300_000)
     }),
   )
 })

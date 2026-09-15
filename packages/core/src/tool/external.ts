@@ -22,7 +22,7 @@ const make = Effect.gen(function* () {
               const validate = validator.compile(spec.inputSchema)
               return [
                 name,
-                Tool.make({
+                Tool.external(Tool.make({
                   description: spec.description,
                   input: Schema.Unknown,
                   inputSchema: spec.inputSchema,
@@ -42,6 +42,7 @@ const make = Effect.gen(function* () {
                       yield* permissions
                         .assert({
                           action: name,
+                          external: true,
                           sessionID: context.sessionID,
                           agent: context.agent,
                           resources: ["*"],
@@ -68,7 +69,7 @@ const make = Effect.gen(function* () {
                     output.content.map((part) =>
                       part.type === "text" ? part : { type: "file", data: part.data, mime: part.mimeType },
                     ),
-                }),
+                })),
               ]
             }),
           ),

@@ -71,6 +71,8 @@ type Config<
 type Runtime = {
   readonly media?: Config<Schema.Unknown, Schema.Unknown>["media"]
   readonly permission?: string
+  /** Supplied from outside the product (MCP, plugins): never allowed to replace a built-in name. */
+  readonly external?: boolean
   readonly definition: (name: string) => ToolDefinition
   readonly settle: (call: ToolCall, context: Context) => Effect.Effect<ToolOutput, ToolFailure>
 }
@@ -160,6 +162,14 @@ export const withPermission = <Input extends SchemaType<any>, Output extends Sch
   return decorated
 }
 
+/** Marks a tool as external (MCP, plugin): built-in tools of the same name always win over it. */
+export const external = <T extends AnyTool>(tool: T): T => {
+  const decorated = Object.freeze({}) as T
+  runtimes.set(decorated, { ...runtimeOf(tool), external: true })
+  return decorated
+}
+
+export const isExternal = (tool: AnyTool) => runtimeOf(tool).external === true
 export const permission = (tool: AnyTool, name: string) => runtimeOf(tool).permission ?? name
 export const media = (tool: AnyTool) => runtimeOf(tool).media
 export const definition = (name: string, tool: AnyTool) => runtimeOf(tool).definition(name)

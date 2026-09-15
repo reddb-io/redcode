@@ -108,6 +108,14 @@ const refused = (text: string) => text.startsWith(REFUSAL)
 /** Shared with the evidence gate, which must not count a correction quoting its refusal as one. */
 const REFUSAL = LOOP_GUARD_REFUSAL
 
+/** Arguments compared by value: the same keys in another order are the same call. */
+const stable = (value: unknown): string =>
+  JSON.stringify(value ?? null, (_key, item: unknown) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : item,
+  )
+
 const settled = (part: Part) =>
   part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")
 const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
@@ -121,14 +129,14 @@ const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
  * polling rather than repetition.
  */
 export function streak(parts: readonly Part[], next: { tool: string; input: unknown }): number {
-  const wanted = JSON.stringify(next.input ?? null)
+  const wanted = stable(next.input)
   let count = 0
   let last: string | undefined
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i]!
     if (!settled(part)) continue
     if (part.tool !== next.tool) break
-    if (JSON.stringify(part.state?.input ?? null) !== wanted) break
+    if (stable(part.state?.input) !== wanted) break
     const out = result(part)
     if (refused(out)) {
       count++
@@ -148,13 +156,13 @@ export function streak(parts: readonly Part[], next: { tool: string; input: unkn
  * of `streak`, which is what decides a correction or a stop.
  */
 export function repeats(parts: readonly Part[], next: { tool: string; input: unknown }): number {
-  const wanted = JSON.stringify(next.input ?? null)
+  const wanted = stable(next.input)
   let count = 0
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i]!
     if (!settled(part)) continue
     if (part.tool !== next.tool) break
-    if (JSON.stringify(part.state?.input ?? null) !== wanted) break
+    if (stable(part.state?.input) !== wanted) break
     count++
   }
   return count
