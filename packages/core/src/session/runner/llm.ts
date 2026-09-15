@@ -9,20 +9,7 @@ import {
   isContextOverflowFailure,
   type ProviderErrorEvent,
 } from "@reddb-io/redcode-llm"
-import {
-  Cause,
-  Clock,
-  DateTime,
-  Duration,
-  Effect,
-  FiberSet,
-  Layer,
-  Option,
-  Schema,
-  Scope,
-  Semaphore,
-  Stream,
-} from "effect"
+import { Cause, Clock, DateTime, Duration, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
 import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
 import { Flag } from "../../flag/flag"
 import { HumanWait } from "../human-wait"
@@ -415,31 +402,12 @@ const layer = Layer.effect(
       )
     }
 
-    /**
-     * The index of tools behind `tool_search` lives in the system context rather than in the
-     * tool's description, so a server that connects or disconnects reaches the model as one update
-     * at the next safe boundary and the tools block keeps its cached bytes.
-     */
-    const toolIndexContext = (text: string | undefined) =>
-      text === undefined
-        ? SystemContext.empty
-        : SystemContext.make({
-            key: SystemContext.Key.make("redcode/tool-index"),
-            codec: Schema.toCodecJson(Schema.String),
-            load: Effect.succeed(text),
-            baseline: (value: string) => value,
-            update: (_previous: string, value: string) =>
-              ["The tools available through tool_search are now:", value].join("\n"),
-            removed: () => "No additional tools are available through tool_search anymore.",
-          })
-
-    const loadSystemContext = (agent: AgentV2.Selection, sessionID: SessionSchema.ID, toolIndex?: string) =>
+    const loadSystemContext = (agent: AgentV2.Selection, sessionID: SessionSchema.ID) =>
       Effect.all(
         [
           systemContext.load(),
           skillGuidance.load(agent),
           referenceGuidance.load(),
-          Effect.succeed(toolIndexContext(toolIndex)),
           DesignContext.load(sessionID).pipe(Effect.provideService(DesignStore.Service, designs)),
           SessionProgressContext.load(sessionID).pipe(
             Effect.provideService(SessionGoal.Service, goals),
@@ -464,31 +432,7 @@ const layer = Layer.effect(
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
       const agent = yield* agents.select(session.agent)
-      const model = yield* models.resolve(session)
-      // Progressive discovery is decided before the context epoch, because the index of deferred
-      // tools is part of that context. History is read through the projection rather than the
-      // epoch baseline, which does not exist yet on the first turn.
-      const experimental = Config.latest(yield* config.entries(), "experimental")
-      const searchConfig = experimental?.tool_search
-      const projected = yield* getContext(session.id).pipe(Effect.orElseSucceed(() => []))
-      const native = NativeToolSearch.detect({ model, config: searchConfig })
-      const deferral: ToolRegistry.Deferral = {
-        ...(searchConfig ? { config: searchConfig } : {}),
-        servers: Object.keys(Config.latest(yield* config.entries(), "mcp")?.servers ?? {}),
-        designContext: (yield* designs.list(session.id).pipe(Effect.orElseSucceed(() => []))).length > 0,
-        tripped: ToolSearch.trippedInHistory(projected),
-        loaded: ToolSearch.loadedFromHistory(projected, ToolSearch.namesInHistory(projected)),
-        ...(native ? { native } : {}),
-      }
-      // Materialized before the epoch because the deferred index is part of the system context.
-      // The last-step gate is applied after promotion, which may reset the step to 1.
-      const materialized = yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
-      const toolIndex = materialized.toolIndex
-      const initialized = yield* SessionContextEpoch.initialize(
-        db,
-        loadSystemContext(agent, session.id, toolIndex),
-        session.id,
-      )
+      const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent, session.id), session.id)
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       let needsContinuation = false
       let currentStep = step
@@ -504,11 +448,26 @@ const layer = Layer.effect(
       }
       const system =
         initialized ??
-        (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id, toolIndex), session.id))
+        (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id))
+      const model = yield* models.resolve(session)
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
-      const toolMaterialization = isLastStep ? undefined : materialized
+      // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
+      const experimental = Config.latest(yield* config.entries(), "experimental")
+      const searchConfig = experimental?.tool_search
+      const native = NativeToolSearch.detect({ model, config: searchConfig })
+      const deferral: ToolRegistry.Deferral = {
+        ...(searchConfig ? { config: searchConfig } : {}),
+        servers: Object.keys(Config.latest(yield* config.entries(), "mcp")?.servers ?? {}),
+        designContext: (yield* designs.list(session.id).pipe(Effect.orElseSucceed(() => []))).length > 0,
+        tripped: ToolSearch.trippedInHistory(context),
+        loaded: ToolSearch.loadedFromHistory(context, ToolSearch.namesInHistory(context)),
+        ...(native ? { native } : {}),
+      }
+      const toolMaterialization = isLastStep
+        ? undefined
+        : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
       const request = LLM.request({
         model,
@@ -528,6 +487,9 @@ const layer = Layer.effect(
           .concat(
             toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [],
           )
+          // The index of tools behind `tool_search` is sent as its own system part rather than in
+          // the tool's description, so the tools block keeps its cached bytes when servers change.
+          .concat(toolMaterialization?.toolIndex ?? [])
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [
