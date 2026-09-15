@@ -3,6 +3,7 @@ import { DESIGN_INSTRUCTIONS } from "@reddb-io/redcode-core/design/instructions"
 import { DesignStudio } from "@/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignContext } from "@reddb-io/redcode-core/design/context"
+import { DesignApproval } from "@reddb-io/redcode-core/design/approval"
 import { SystemContext } from "@reddb-io/redcode-core/system-context/index"
 import path from "path"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
@@ -117,6 +118,14 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text: SessionTodo.context(input.todos),
     })
 
+  // The approved Design context carries the design-owned plan section, so the plan copy points to it
+  // instead of repeating the same guidance in one request.
+  const design = ["design", "plan", "build"].includes(input.agent.name)
+    ? yield* (yield* DesignStudio.Service).use(
+        DesignContext.load(input.session.id).pipe(Effect.flatMap(SystemContext.initialize)),
+      )
+    : undefined
+
   if (["plan", "build"].includes(input.agent.name)) {
     const plans = yield* SessionPlan.Service
     const guidance = SessionPlan.guidance(yield* plans.list(input.session.id))
@@ -127,25 +136,19 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         sessionID: trailing.info.sessionID,
         type: "text",
         synthetic: true,
-        text: guidance,
+        text: design?.baseline ? withoutDesignSection(guidance) : guidance,
       })
   }
 
-  if (["design", "plan", "build"].includes(input.agent.name)) {
-    const studio = yield* DesignStudio.Service
-    const context = yield* studio.use(
-      DesignContext.load(input.session.id).pipe(Effect.flatMap(SystemContext.initialize)),
-    )
-    if (context.baseline)
-      trailing.parts.push({
-        id: PartID.ascending(),
-        messageID: trailing.info.id,
-        sessionID: trailing.info.sessionID,
-        type: "text",
-        synthetic: true,
-        text: context.baseline,
-      })
-  }
+  if (design?.baseline)
+    trailing.parts.push({
+      id: PartID.ascending(),
+      messageID: trailing.info.id,
+      sessionID: trailing.info.sessionID,
+      type: "text",
+      synthetic: true,
+      text: design.baseline,
+    })
 
   if (input.agent.name === "design") {
     const studio = yield* DesignStudio.Service
@@ -208,3 +211,14 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
 })
 
 export * as SessionReminders from "./reminders"
+
+function withoutDesignSection(text: string) {
+  const start = text.indexOf(DesignApproval.PLAN_BEGIN)
+  const end = text.indexOf(DesignApproval.PLAN_END)
+  if (start < 0 || end < start) return text
+  return (
+    text.slice(0, start) +
+    "[Design section: see the approved Design context, including its implementation contract.]" +
+    text.slice(end + DesignApproval.PLAN_END.length)
+  )
+}

@@ -15,6 +15,13 @@ test("Design document keeps every operation and its payload through decoding", (
       id: "design_fixture",
       input: { targets: [{ path: "apps/admin/src/leads/page.tsx", role: "Leads table with server pagination" }] },
     },
+    {
+      action: "update",
+      id: "design_fixture",
+      input: {
+        targets: Array.from({ length: 20 }, (_, index) => ({ path: `src/${index}.tsx`, role: "r".repeat(200) })),
+      },
+    },
     { action: "reopen", id: "design_fixture" },
     { action: "refresh", id: "design_fixture" },
     { action: "detect" },
@@ -35,6 +42,12 @@ test("Design document rejects missing actions and incomplete conditional argumen
     { action: "update", id: "design_fixture" },
     { action: "update", id: "design_fixture", input: { questions: [42] } },
     { action: "update", id: "design_fixture", input: { targets: [{ path: "", role: "Page" }] } },
+    { action: "update", id: "design_fixture", input: { targets: [{ path: "src/page.tsx", role: "r".repeat(201) }] } },
+    {
+      action: "update",
+      id: "design_fixture",
+      input: { targets: Array.from({ length: 21 }, (_, index) => ({ path: `src/${index}.tsx`, role: "Page" })) },
+    },
     { action: "reopen" },
     { action: "refresh" },
     { action: "refresh", id: "invalid" },

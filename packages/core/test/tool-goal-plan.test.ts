@@ -574,6 +574,33 @@ it.live("design_document renders the project's design system as paths and counts
   }),
 )
 
+it.live("Design approval for an existing application asks for target files before the user is asked", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const store = yield* DesignStore.Service
+    const document = yield* store.create(test.sessionID, {
+      name: "Leads",
+      journey: "existing",
+      engine: "html",
+      kind: "screen",
+    })
+    yield* store.publish(document.id, "Review")
+    const asked = questions.length
+    const refused = yield* test.run("design_exit", { id: document.id }, AgentV2.ID.make("design"))
+    expect(refused.type).toBe("error")
+    expect(JSON.stringify(refused)).toContain(
+      "Record the product files this design changes with design_document update targets, or confirm none apply",
+    )
+    expect(questions).toHaveLength(asked)
+    expect((yield* store.get(document.id)).approvedRevision).toBeNull()
+    answer = "Approve"
+    const confirmed = yield* test.run("design_exit", { id: document.id, noTargets: true }, AgentV2.ID.make("design"))
+    expect(confirmed.type).not.toBe("error")
+    expect(questions).toHaveLength(asked + 1)
+    expect((yield* store.get(document.id)).approvedRevision).not.toBeNull()
+  }),
+)
+
 it.live("Design-only approval presents current findings and preserves its scope", () =>
   Effect.gen(function* () {
     const test = yield* setup

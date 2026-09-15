@@ -163,7 +163,7 @@ export const PlanExitTool = Tool.define(
 
           return {
             title: "Switching to build agent",
-            output: `User approved plan revision ${revision}. Switch to Build and execute the recorded plan.`,
+            output: `User approved plan revision ${revision}. Switch to Build and execute the recorded plan. If the plan implements an approved Design, follow its implementation contract.`,
             metadata: { agent: "build", revision },
           }
         }).pipe(Effect.orDie),
