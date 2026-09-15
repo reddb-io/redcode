@@ -264,6 +264,81 @@ export function shellPollingProbes(decode: (call: unknown) => unknown) {
         expect({ command, detection: ShellPolling.detect(command) }).toEqual({ command, detection: undefined })
     })
 
+    test("refuses open-ended wait loops around local checks, with a brisk exit-code monitor", () => {
+      const ci = retry("until grep -q PASSED ci.log; do sleep 5; done && pnpm deploy", "/repo")
+      expect(ci.detection).toMatchObject({ kind: "loop", after: "pnpm deploy" })
+      expect(ci.detection.waitMs).toBeUndefined()
+      expect(ci.call).toEqual({
+        command: "grep -q PASSED ci.log",
+        workdir: "/repo",
+        monitor: { mode: "poll", interval_ms: 2_000, deadline_ms: 120_000 },
+      })
+      expect(ci.refusal).toContain("exit code 0 means done")
+      expect(ci.refusal).toContain("run what came after the wait as its own bash call: pnpm deploy")
+      for (const [command, check] of [
+        ["until test -f /tmp/ready; do sleep 1; done", "test -f /tmp/ready"],
+        ["until [ -e build/done ]; do sleep 2; done", "[ -e build/done ]"],
+        ["while [ ! -e build/done ]; do sleep 2; done", "[ -e build/done ]"],
+        ["while ! test -s out.json; do sleep 1; done", "test -s out.json"],
+        ["until nc -z localhost 5432; do sleep 1; done", "nc -z localhost 5432"],
+        ["until pg_isready -h localhost; do sleep 1; done", "pg_isready -h localhost"],
+        ["until ls dist/index.js >/dev/null 2>&1; do sleep 1; done", "ls dist/index.js >/dev/null 2>&1"],
+        ["while pgrep -f 'vite build'; do sleep 2; done", "! pgrep -f 'vite build'"],
+        [
+          `while docker inspect -f '{{.State.Health.Status}}' db | grep -qv healthy; do sleep 2; done`,
+          `! docker inspect -f '{{.State.Health.Status}}' db | grep -qv healthy`,
+        ],
+        ["while true; do grep -q PASSED ci.log && break; sleep 1; done", "grep -q PASSED ci.log"],
+        ["while :; do if [ -f /tmp/ready ]; then break; fi; sleep 1; done", "[ -f /tmp/ready ]"],
+        ["for i in $(seq 1 $N); do test -f ready && break; sleep 1; done", "test -f ready"],
+      ]) {
+        const { detection, call } = retry(command!)
+        expect({ command, kind: detection.kind, check: call.command, monitor: call.monitor }).toEqual({
+          command,
+          kind: "loop",
+          check,
+          monitor: { mode: "poll", interval_ms: call.monitor.interval_ms, deadline_ms: 120_000 },
+        })
+        expect(call.monitor.interval_ms).toBeLessThanOrEqual(2_000)
+      }
+      // A counted wait of 30 s or more is refused too, with the deadline it meant.
+      const counted = retry("for i in $(seq 1 60); do test -f ready && break; sleep 1; done")
+      expect(counted.detection.waitMs).toBe(60_000)
+      expect(counted.call).toEqual({
+        command: "test -f ready",
+        monitor: { mode: "poll", interval_ms: 1_000, deadline_ms: 61_000 },
+      })
+      const counter = retry("n=0; until grep -q PASSED ci.log || [ $n -ge 60 ]; do sleep 1; n=$((n+1)); done")
+      expect(counter.detection.waitMs).toBe(60_000)
+      expect(counter.detection.before).toBe("n=0")
+      expect(counter.call.command).toBe("grep -q PASSED ci.log")
+    })
+
+    test("refuses an endless sleep loop that checks nothing", () => {
+      for (const command of ["while true; do date; sleep 1; done", "while :; do ./tick.sh; sleep 2; done"]) {
+        const detection = ShellPolling.detect(command)
+        expect({ command, kind: detection?.kind }).toEqual({ command, kind: "loop" })
+        expect(detection?.suggestion).toBeUndefined()
+      }
+    })
+
+    test("lets local retries bounded under 30 s and local batch loops run", () => {
+      for (const command of [
+        "timeout 20 bash -c 'until grep -q PASSED ci.log; do sleep 1; done'",
+        "timeout 25 sh -c 'while [ ! -e build/done ]; do sleep 5; done'",
+        "for i in 1 2 3 4 5; do test -f ready && break; sleep 5; done",
+        "for i in $(seq 1 10); do grep -q PASSED ci.log && break; sleep 2; done",
+        "n=0; until test -f ready || [ $n -ge 20 ]; do sleep 1; n=$((n+1)); done",
+        "i=0; while [ $i -lt 10 ]; do ls out; i=$((i+1)); sleep 2; done",
+        "tries=0; while true; do grep -q ok log && break; tries=$((tries+1)); [ $tries -ge 5 ] && break; sleep 5; done",
+        'for f in logs/*.log; do grep -q ERROR "$f" && echo "$f"; sleep 1; done',
+        "for f in $(ls dist); do test -s dist/$f; sleep 1; done",
+        "for h in a b c d e f g h i j k l; do ssh $h uptime; sleep 5; done",
+        "while read f; do test -f $f; sleep 1; done < files.txt",
+      ])
+        expect({ command, detection: ShellPolling.detect(command) }).toEqual({ command, detection: undefined })
+    })
+
     test("catches poll commands that change something through gh api, publishing, curl --json and shell wrappers", () => {
       for (const command of [
         "gh api repos/acme/app/issues -f title=broken",
