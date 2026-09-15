@@ -18,23 +18,19 @@ export function DialogGoalBudget(props: { sessionID: string }) {
       onCancel={() => dialog.clear()}
       onConfirm={async (text) => {
         const change = Budget.parse(text)
-        if (!change) {
-          toast.show({
-            variant: "warning",
-            message: "Enter turns (30), a spend limit ($3 or 500k tokens), or off.",
-            duration: 3000,
-          })
+        if (!change.ok) {
+          toast.show({ variant: "warning", message: change.error, duration: 4000 })
           return
         }
         setBusy(true)
         const result = await sdk.client.session
           // The route takes null to remove a limit; the generated client drops null from the type.
-          .goalBudget({ sessionID: props.sessionID, ...(change as { max_cost_usd?: number; max_tokens?: number }) })
+          .goalBudget({ sessionID: props.sessionID, ...(change.value as { max_cost_usd?: number; max_tokens?: number }) })
           .catch(() => undefined)
         setBusy(false)
         const goal = result?.data
         const limits = Budget.limitsOf(goal?.budget)
-        const spend = Budget.hasLimits(limits) ? ` Spend limit: ${Budget.lines(limits, { cost: 0, tokens: 0, unpriced: 0 }).map((line) => line.replace(/^.* of /, "")).join(", ")}.` : ""
+        const spend = Budget.hasLimits(limits) ? ` Spend limit: ${Budget.describeLimits(limits)}.` : ""
         toast.show({
           variant: goal ? "success" : "warning",
           message: goal

@@ -48,6 +48,12 @@ export interface Interface {
   /** Active → paused with a reason; anything else untouched. */
   readonly pause: (sessionID: SessionID, reason: string) => Effect.Effect<SessionGoal.Goal | undefined>
   readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<void>
+  /**
+   * Before a provider step: undefined to go ahead, or the transcript notice when a spend budget —
+   * the session's, a parent's, or this goal's — refuses it. Pauses an active goal and tells
+   * whoever is watching. Spends nothing.
+   */
+  readonly admit: (input: SessionSpend.AdmitInput) => Effect.Effect<string | undefined>
   /** Before a provider attempt: false when the budget has no turn left; spends nothing. */
   readonly beginTurn: (sessionID: SessionID) => Effect.Effect<boolean>
   /** The end of a turn: gates, judge, decision, record. The one place a turn is spent. */
@@ -86,11 +92,11 @@ const layer = Layer.effect(
     const set = Effect.fn("GoalRuntime.set")(function* (sessionID: SessionID, goal: SessionGoal.Goal | undefined) {
       // A goal's spend counts from when it was set: the session's total at that moment is its zero.
       const counted = goal && !goal.spendStart ? { ...goal, spendStart: yield* spend.totals(sessionID) } : goal
-      const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
       // An active goal always names the process driving it, so a later process can tell it was
       // not the one — and pause rather than pick the loop up on its own.
       const stamped = counted && counted.status === "active" ? { ...counted, boot: SessionGoal.BOOT } : counted
-      yield* sessions.setMetadata({ sessionID, metadata: SessionGoal.toMetadata(session.metadata, stamped) })
+      // Only the goal key, against a fresh read: spend and compaction write the same record.
+      yield* sessions.updateMetadata(sessionID, (metadata) => SessionGoal.toMetadata(metadata, stamped))
     })
 
     /** The goal's spend against its budget; undefined when the person set none. */
@@ -99,12 +105,32 @@ const layer = Layer.effect(
       return SessionGoal.spendStatus(goal, yield* spend.totals(sessionID))
     })
 
+    const goalNotice = (status: SessionBudget.Status) =>
+      `Goal paused at its budget: ${status.reason}. Raise it with /goal-budget, then /goal-resume.`
+
     const budgetNotice = (sessionID: SessionID, status: SessionBudget.Status) =>
-      spend.notify({
-        sessionID,
-        action: "stop",
-        subject: "goal",
-        message: `Goal paused at its budget: ${status.reason}. Raise it with /goal-budget, then /goal-resume.`,
+      spend.notify({ sessionID, action: "stop", subject: "goal", message: goalNotice(status) })
+
+    const admit: Interface["admit"] = (input) =>
+      Effect.gen(function* () {
+        const refused = yield* spend.admit(input)
+        if (refused) {
+          yield* pause(input.sessionID, refused.reason)
+          yield* spend.notify({
+            sessionID: input.sessionID,
+            action: "stop",
+            subject: refused.sessionID === input.sessionID ? "session" : "parent",
+            message: refused.message,
+          })
+          return refused.message
+        }
+        const goal = yield* get(input.sessionID)
+        if (!goal || goal.status !== "active") return undefined
+        const status = yield* spendStatus(input.sessionID, goal)
+        if (!status?.exceeded) return undefined
+        yield* set(input.sessionID, SessionGoal.paused(goal, SessionBudget.pauseReason(status), Date.now()))
+        yield* budgetNotice(input.sessionID, status)
+        return goalNotice(status)
       })
 
     // Admission only: the budget is spent in `afterTurn`, once per judged turn. This runs before
@@ -360,7 +386,7 @@ const layer = Layer.effect(
         return { action: "pause" as const, goal: paused }
       }).pipe(Effect.withSpan("GoalRuntime.afterTurn"))
 
-    return Service.of({ get, set, claim, pause, block, beginTurn, afterTurn })
+    return Service.of({ get, set, claim, pause, block, admit, beginTurn, afterTurn })
   }),
 )
 

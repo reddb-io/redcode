@@ -1074,6 +1074,8 @@ const ProviderCost = Schema.Struct({
   input: Schema.Finite,
   output: Schema.Finite,
   cache: ProviderCacheCost,
+  /** The catalog and the configuration gave no price, so zero means unknown rather than free. */
+  unknown: optional(Schema.Boolean),
   tiers: optional(Schema.Array(ProviderCostTier)),
   experimentalOver200K: optional(
     Schema.Struct({
@@ -1233,6 +1235,12 @@ export class Service extends Context.Service<Service, Interface>()("@redcode/Pro
 
 export const use = serviceUse(Service)
 
+/** A cost someone stated, so it is no longer unknown. */
+function priced(c: Model["cost"]): Model["cost"] {
+  const { unknown: _unknown, ...rest } = c
+  return rest
+}
+
 function cost(c: ModelsDev.Model["cost"]): Model["cost"] {
   const result: Model["cost"] = {
     input: c?.input ?? 0,
@@ -1241,6 +1249,7 @@ function cost(c: ModelsDev.Model["cost"]): Model["cost"] {
       read: c?.cache_read ?? 0,
       write: c?.cache_write ?? 0,
     },
+    ...(c ? {} : { unknown: true }),
   }
   if (c?.tiers) {
     result.tiers = c.tiers.map((item) => ({
@@ -1345,7 +1354,7 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
         ...base,
         id: ModelV2.ID.make(id),
         name: `${model.name} ${mode[0].toUpperCase()}${mode.slice(1)}`,
-        cost: opts.cost ? mergeDeep(base.cost, cost(opts.cost)) : base.cost,
+        cost: opts.cost ? priced(mergeDeep(base.cost, cost(opts.cost)) as Model["cost"]) : base.cost,
         options: modeOptions(base, opts.provider?.body),
         headers: opts.provider?.headers ?? base.headers,
       }
@@ -1563,6 +1572,10 @@ const layer = Layer.effect(
                     : false),
               },
               cost: {
+                // No price in the configuration and none in the catalog: zero is unknown, not free.
+                ...(model?.cost === undefined && (existingModel === undefined || existingModel.cost?.unknown)
+                  ? { unknown: true }
+                  : {}),
                 input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
                 output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
                 cache: {

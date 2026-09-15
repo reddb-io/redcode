@@ -55,6 +55,7 @@ import { SessionGuardLog } from "../../src/session/guard-log"
 import { SessionGoal } from "../../src/session/goal"
 import { GoalRuntime } from "../../src/session/goal-runtime"
 import { SessionSpend } from "../../src/session/spend"
+import { Usage } from "@reddb-io/redcode-llm"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -4753,17 +4754,132 @@ it.instance("the session budget stops the turn after its current step, then a ra
     expect(view).toMatchObject({ exceeded: true, reason: "$1.00 of $0.50 spent", limits: { max_cost_usd: 0.5 } })
     expect((yield* budgetTrips()).map((trip) => trip.action)).toEqual(["stop"])
 
+    // The refusal is in the transcript as a notice, and no assistant row is left empty.
+    const notices = Effect.fn("test.notices")(function* () {
+      const assistants = (yield* sessions.messages({ sessionID: chat.id })).filter((m) => m.info.role === "assistant")
+      expect(assistants.filter((m) => m.parts.length === 0)).toEqual([])
+      return assistants.flatMap((m) =>
+        m.parts.filter((part) => part.type === "text" && part.ignored === true && part.synthetic === true),
+      )
+    })
+    expect((yield* notices()).map((part) => (part.type === "text" ? part.text : ""))).toEqual([
+      "Session budget reached: $1.00 of $0.50 spent. Raise it with /budget to continue.",
+    ])
+
     // A new message alone does not re-arm a budget: it stops again without calling the provider.
     yield* user(chat.id, "keep going")
     yield* prompt.loop({ sessionID: chat.id })
     expect(yield* llm.calls).toBe(1)
+    expect(yield* notices()).toHaveLength(2)
 
-    // Raised, the same session goes on.
+    // Raised, the same session goes on, and the notices never reach the model.
     const raised = yield* spend.setLimits(chat.id, { max_cost_usd: 5 })
     expect(raised).toMatchObject({ exceeded: false, override: { max_cost_usd: 5 } })
+    yield* llm.text("resumed")
     yield* user(chat.id, "now continue")
     yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the raised session never answered", "30 seconds")
     expect(yield* llm.calls).toBe(2)
+    expect(JSON.stringify((yield* llm.inputs).at(-1))).not.toContain("Session budget reached")
+  }),
+)
+
+it.instance("a goal pause and a subagent's spend written at the same moment both survive", () =>
+  Effect.gen(function* () {
+    yield* useServerConfig((url) => pricedCfg(url))
+    const sessions = yield* Session.Service
+    const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
+    const provider = yield* ProviderSvc.Service
+    const parent = yield* sessions.create({ title: "Race parent" })
+    const child = yield* sessions.create({ title: "Race child", parentID: parent.id })
+    yield* goals.set(parent.id, SessionGoal.parse("Race the writers"))
+    const model = yield* provider.getModel(ref.providerID, ref.modelID).pipe(Effect.orDie)
+    const usage = new Usage({ inputTokens: 1000, outputTokens: 0 })
+    const step = () => spend.record({ sessionID: child.id, model, usage })
+
+    yield* Effect.all(
+      [
+        ...Array.from({ length: 12 }, step),
+        goals.claim(parent.id, "evidence while spending"),
+        goals.pause(parent.id, "paused while spending"),
+        ...Array.from({ length: 12 }, step),
+      ],
+      { concurrency: "unbounded", discard: true },
+    )
+
+    expect((yield* goals.get(parent.id))?.status).toBe("paused")
+    expect((yield* goals.get(parent.id))?.reason).toBe("paused while spending")
+    expect((yield* spend.totals(child.id)).tokens).toBe(24_000)
+    expect((yield* spend.totals(parent.id)).tokens).toBe(24_000)
+  }),
+)
+
+it.instance("a fork starts its own spend and keeps the limits", () =>
+  Effect.gen(function* () {
+    yield* useServerConfig((url) => pricedCfg(url))
+    const sessions = yield* Session.Service
+    const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
+    const provider = yield* ProviderSvc.Service
+    const original = yield* sessions.create({ title: "Original" })
+    yield* goals.set(original.id, SessionGoal.parse("Ship it; max cost: $5"))
+    yield* spend.setLimits(original.id, { max_tokens: 9000 })
+    const model = yield* provider.getModel(ref.providerID, ref.modelID).pipe(Effect.orDie)
+    yield* spend.record({ sessionID: original.id, model, usage: new Usage({ inputTokens: 1000, outputTokens: 0 }) })
+
+    const fork = yield* sessions.fork({ sessionID: original.id })
+
+    expect(yield* spend.totals(fork.id)).toEqual({ cost: 0, tokens: 0, unpriced: 0 })
+    const forked = yield* goals.get(fork.id)
+    expect(forked?.budget).toEqual({ max_cost_usd: 5 })
+    expect(forked?.spendStart).toBeUndefined()
+    expect((yield* spend.view(fork.id)).override).toEqual({ max_tokens: 9000 })
+    expect((yield* spend.totals(original.id)).tokens).toBe(1000)
+  }),
+)
+
+it.instance("a session's reset_on_message override counts the budget afresh from a person's message", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url, { session: { budget: { max_cost_usd: 0.8 } } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const spend = yield* SessionSpend.Service
+    const chat = yield* sessions.create({ title: "Reset per message" })
+    expect(yield* spend.setLimits(chat.id, { reset_on_message: true })).toMatchObject({ reset_on_message: true })
+    yield* llm.push(reply().text("first answer").stop().usage({ input: 1000, output: 0 }))
+    yield* llm.push(reply().text("second answer").stop().usage({ input: 1000, output: 0 }))
+
+    yield* user(chat.id, "first question")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the first turn never finished", "30 seconds")
+    expect(yield* spend.view(chat.id)).toMatchObject({ exceeded: true })
+
+    // The configuration says nothing about resetting; the session's own override does.
+    yield* user(chat.id, "second question")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the second turn never finished", "30 seconds")
+    expect(yield* llm.calls).toBe(2)
+    expect((yield* spend.totals(chat.id)).cost).toBeCloseTo(2)
+  }),
+)
+
+it.instance("a session budget pauses the goal, and resuming stays paused until that budget is raised", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url, { session: { budget: { max_cost_usd: 0.5 } } }))
+    const { chat, goals, prompt } = yield* startGoal("Deploy the service", { maxTurns: 5 })
+    const spend = yield* SessionSpend.Service
+    yield* llm.push(globStep("session-goal", 1000))
+    yield* llm.text("never reached")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never stopped", "30 seconds")
+
+    expect(yield* llm.calls).toBe(1)
+    const goal = yield* goals.get(chat.id)
+    expect(goal).toMatchObject({ status: "paused", reason: "budget: $1.00 of $0.50 spent" })
+    const resume = Effect.fn("test.resume")(function* () {
+      return SessionGoal.resumed(goal!, Date.now(), yield* spend.totals(chat.id), yield* spend.view(chat.id))
+    })
+    expect(yield* resume()).toMatchObject({ status: "paused", reason: "budget: $1.00 of $0.50 spent" })
+    yield* spend.setLimits(chat.id, { max_cost_usd: 5 })
+    expect((yield* resume()).status).toBe("active")
   }),
 )
 
@@ -4789,10 +4905,16 @@ it.instance("the 80% warning fires once", () =>
 
 it.instance("unknown pricing warns once, and the token budget still stops the turn", () =>
   Effect.gen(function* () {
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      session: { budget: { max_cost_usd: 1, max_tokens: 1500 } },
-    }))
+    // No cost at all in the configuration and none in the catalog: the price is unknown, not zero.
+    const { llm } = yield* useServerConfig((url) => {
+      const base = providerCfg(url)
+      const { cost: _cost, ...model } = base.provider.test.models["test-model"]
+      return {
+        ...base,
+        provider: { test: { ...base.provider.test, models: { "test-model": model } } },
+        session: { budget: { max_cost_usd: 1, max_tokens: 1500 } },
+      }
+    })
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
     const chat = yield* sessions.create({ title: "Unpriced" })

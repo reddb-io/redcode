@@ -38,17 +38,36 @@ describe("sidebar budget lines", () => {
 })
 
 describe("parsing /budget input", () => {
+  const value = (text: string) => {
+    const parsed = Budget.parse(text)
+    return parsed.ok ? parsed.value : undefined
+  }
+
   test("dollars, tokens, both, and off", () => {
-    expect(Budget.parse("$5")).toEqual({ max_cost_usd: 5 })
-    expect(Budget.parse("200k tokens")).toEqual({ max_tokens: 200_000 })
-    expect(Budget.parse("$2.50 1.5m")).toEqual({ max_cost_usd: 2.5, max_tokens: 1_500_000 })
-    expect(Budget.parse("off")).toEqual({ max_cost_usd: null, max_tokens: null })
+    expect(value("$5")).toEqual({ max_cost_usd: 5 })
+    expect(value("200k tokens")).toEqual({ max_tokens: 200_000 })
+    expect(value("$2.50 1.5m")).toEqual({ max_cost_usd: 2.5, max_tokens: 1_500_000 })
+    expect(value("off")).toEqual({ max_cost_usd: null, max_tokens: null })
   })
 
-  test("a bare number is turns; garbage is rejected", () => {
-    expect(Budget.parse("30")).toEqual({ max_turns: 30 })
-    expect(Budget.parse("40 turns $3")).toEqual({ max_turns: 40, max_cost_usd: 3 })
-    expect(Budget.parse("lots")).toBeUndefined()
-    expect(Budget.parse("$-1")).toBeUndefined()
+  test("the same separator rules as the server: decimal comma, thousands, mixed refused with a reason", () => {
+    expect(value("$2,50 1,5m")).toEqual({ max_cost_usd: 2.5, max_tokens: 1_500_000 })
+    expect(value("$1,000")).toEqual({ max_cost_usd: 1000 })
+    const mixed = Budget.parse("$1.000,50")
+    expect(mixed.ok).toBe(false)
+    if (!mixed.ok) expect(mixed.error).toContain("use a dot for decimals")
   })
+
+  test("a bare number is turns; garbage is refused with a message", () => {
+    expect(value("30")).toEqual({ max_turns: 30 })
+    expect(value("40 turns $3")).toEqual({ max_turns: 40, max_cost_usd: 3 })
+    const garbage = Budget.parse("lots")
+    expect(garbage.ok).toBe(false)
+    if (!garbage.ok) expect(garbage.error).toContain("not understood")
+    expect(Budget.parse("$-1").ok).toBe(false)
+  })
+})
+
+test("describeLimits names only the limits", () => {
+  expect(Budget.describeLimits({ max_cost_usd: 2, max_tokens: 500_000 })).toBe("$2.00, 500,000 tokens")
 })

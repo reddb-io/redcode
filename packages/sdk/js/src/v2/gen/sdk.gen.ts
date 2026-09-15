@@ -4489,6 +4489,7 @@ export class Session2 extends HeyApiClient {
       directory?: string
       workspace?: string
       max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      reset_on_message?: boolean
       max_cost_usd?: number
       max_tokens?: number
     },
@@ -4503,6 +4504,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "max_turns" },
+            { in: "body", key: "reset_on_message" },
             { in: "body", key: "max_cost_usd" },
             { in: "body", key: "max_tokens" },
           ],
@@ -4561,6 +4563,7 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       workspace?: string
+      reset_on_message?: boolean
       max_cost_usd?: number
       max_tokens?: number
     },
@@ -4574,6 +4577,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "body", key: "reset_on_message" },
             { in: "body", key: "max_cost_usd" },
             { in: "body", key: "max_tokens" },
           ],

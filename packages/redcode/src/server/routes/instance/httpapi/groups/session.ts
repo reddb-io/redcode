@@ -22,7 +22,7 @@ import {
   WorkspaceRoutingQuery,
   WorkspaceRoutingQueryFields,
 } from "../middleware/workspace-routing"
-import { ApiNotFoundError, PermissionNotFoundError, SessionBusyError } from "../errors"
+import { ApiNotFoundError, InvalidRequestError, PermissionNotFoundError, SessionBusyError } from "../errors"
 import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
@@ -89,6 +89,12 @@ export const GoalBudgetPayload = Schema.Struct({
 })
 export const SessionBudgetPayload = SessionBudget.UpdatePayload
 export const GoalResult = Schema.NullOr(SessionGoal.Info)
+export const GoalSetResult = Schema.Struct({
+  ...SessionGoal.Info.fields,
+  warnings: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "Lines of the goal text that were not understood, such as a spend limit that did not parse; they were kept in the objective",
+  }),
+}).annotate({ identifier: "SessionGoalSetResult" })
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
@@ -351,8 +357,8 @@ export const SessionApi = HttpApi.make("session")
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
           payload: GoalSetPayload,
-          success: described(SessionGoal.Info, "The goal, active"),
-          error: [HttpApiError.BadRequest, ApiNotFoundError],
+          success: described(GoalSetResult, "The goal, active, with any lines that were not understood"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError, InvalidRequestError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.goalSet",

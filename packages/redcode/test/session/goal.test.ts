@@ -285,6 +285,37 @@ describe("a goal's spend budget", () => {
     ).toBe("done")
   })
 
+  test("a spend line that does not parse stays in the objective and is reported, never dropped", () => {
+    const { goal, warnings } = SessionGoal.parseWithWarnings("Ship it; max cost: $2,5,0", { now })
+    expect(goal.budget).toBeUndefined()
+    expect(goal.objective).toBe("Ship it max cost: $2,5,0")
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('"max cost: $2,5,0" was not set as a spend limit')
+    expect(SessionGoal.parseWithWarnings("Ship it; max cost: $2", { now }).warnings).toEqual([])
+  })
+
+  test("spend lines alone are not a goal: the objective is empty and callers refuse it", () => {
+    expect(SessionGoal.parse("max cost: $2; max tokens: 500k", { now }).objective).toBe("")
+    expect(SessionGoal.parse("max cost: nonsense", { now }).objective).toBe("")
+    expect(SessionGoal.NEEDS_OBJECTIVE).toContain("goal needs an objective")
+    // A goal without spend lines keeps its old fallback.
+    expect(SessionGoal.parse("verify: bun test", { now }).objective).toBe("verify: bun test")
+  })
+
+  test("decimal commas set the limit they say", () => {
+    expect(SessionGoal.parse("Ship; max cost: $2,50; max tokens: 1,5m", { now }).budget).toEqual({
+      max_cost_usd: 2.5,
+      max_tokens: 1_500_000,
+    })
+  })
+
+  test("resuming stays paused while the session budget is reached, instead of starting and pausing again", () => {
+    const goal = SessionGoal.paused(SessionGoal.parse("x", { now }), "budget: $1.00 of $0.50 spent", now)
+    const still = SessionGoal.resumed(goal, now + 1, total(1), { exceeded: true, reason: "$1.00 of $0.50 spent" })
+    expect(still).toMatchObject({ status: "paused", reason: "budget: $1.00 of $0.50 spent" })
+    expect(SessionGoal.resumed(goal, now + 2, total(1), { exceeded: false, reason: "" }).status).toBe("active")
+  })
+
   test("resuming stays paused until the budget is raised, then asks before overspending", () => {
     const goal = { ...SessionGoal.parse("x", { now, budget: { max_cost_usd: 2 } }), spendStart: total(0) }
     const paused = SessionGoal.resumed(SessionGoal.paused(goal, "budget: $2.00 of $2.00 spent", now), now + 1, total(2))

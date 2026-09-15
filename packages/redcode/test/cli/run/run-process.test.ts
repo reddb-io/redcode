@@ -59,6 +59,40 @@ describe("opencode run (non-interactive subprocess)", () => {
   )
 
   cliIt.live(
+    "a budget from the configuration alone also stops the run with exit 1",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        const config = testProviderConfig(llm.url)
+        const budgeted = {
+          ...config,
+          provider: {
+            test: {
+              ...config.provider.test,
+              models: { "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } } },
+            },
+          },
+          session: { budget: { max_cost_usd: 0.5 } },
+        }
+        yield* llm.push(
+          reply()
+            .tool("bash", { command: "printf spent", description: "Print deterministic output" })
+            .usage({ input: 1000, output: 0 }),
+        )
+        yield* llm.text("never reached")
+
+        const result = yield* opencode.run("spend", {
+          extraArgs: ["--title", "Configured budget run", "--dangerously-skip-permissions"],
+          env: { REDCODE_CONFIG_CONTENT: JSON.stringify(budgeted) },
+        })
+
+        expect(result.exitCode).toBe(1)
+        expect(result.stderr).toContain("Budget reached: $1.00 of $0.50 spent")
+        expect(yield* llm.calls).toBe(1)
+      }),
+    60_000,
+  )
+
+  cliIt.live(
     "prints each completed text part in order around a tool continuation",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
