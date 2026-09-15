@@ -415,6 +415,11 @@ export const dict = {
   "mcp.status.needs_auth": "χρειάζεται εξουσιοδότηση",
   "mcp.status.disabled": "απενεργοποιημένο",
   "mcp.auth.clickToAuthenticate": "Κάντε κλικ για έλεγχο ταυτότητας",
+  "mcp.auth.browserBlocked.title": "Εξουσιοδότηση {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Δεν ήταν δυνατό το άνοιγμα προγράμματος περιήγησης. Ανοίξτε αυτό το URL για εξουσιοδότηση: {{url}}",
+  "mcp.auth.browserBlocked.open": "Άνοιγμα URL",
+  "mcp.auth.browserBlocked.copy": "Αντιγραφή URL",
   "dialog.fork.empty": "Δεν υπάρχουν μηνύματα για διακλάδωση",
   "dialog.directory.search.placeholder": "Αναζήτηση φακέλων",
   "dialog.directory.empty": "Δεν βρέθηκαν φάκελοι",

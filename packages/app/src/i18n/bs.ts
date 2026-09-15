@@ -443,6 +443,10 @@ export const dict = {
   "mcp.status.failed": "neuspjelo",
   "mcp.status.needs_auth": "potrebna autentifikacija",
   "mcp.auth.clickToAuthenticate": "Klikni za autentifikaciju",
+  "mcp.auth.browserBlocked.title": "Autorizuj {{name}}",
+  "mcp.auth.browserBlocked.description": "Nije moguće otvoriti preglednik. Otvorite ovaj URL za autorizaciju: {{url}}",
+  "mcp.auth.browserBlocked.open": "Otvori URL",
+  "mcp.auth.browserBlocked.copy": "Kopiraj URL",
   "mcp.status.disabled": "onemogućeno",
 
   "dialog.fork.empty": "Nema poruka za fork",

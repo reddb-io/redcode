@@ -417,6 +417,11 @@ export const dict = {
   "mcp.status.needs_auth": "hitelesítést igényel",
   "mcp.status.disabled": "letiltva",
   "mcp.auth.clickToAuthenticate": "Kattintson a hitelesítéshez",
+  "mcp.auth.browserBlocked.title": "{{name}} engedélyezése",
+  "mcp.auth.browserBlocked.description":
+    "Nem sikerült megnyitni a böngészőt. Az engedélyezéshez nyisd meg ezt az URL-t: {{url}}",
+  "mcp.auth.browserBlocked.open": "URL megnyitása",
+  "mcp.auth.browserBlocked.copy": "URL másolása",
   "dialog.fork.empty": "Nincsenek üzenetek, ahonnan elágazhatna",
   "dialog.directory.search.placeholder": "Mappák keresése",
   "dialog.directory.empty": "Nem találhatók mappák",

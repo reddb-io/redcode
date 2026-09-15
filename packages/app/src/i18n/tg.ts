@@ -415,6 +415,11 @@ export const dict = {
   "mcp.status.needs_auth": "аутент лозим аст",
   "mcp.status.disabled": "маъюб",
   "mcp.auth.clickToAuthenticate": "Барои тасдиқ кардан клик кунед",
+  "mcp.auth.browserBlocked.title": "Иҷозат додан ба {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Браузерро кушодан имконнопазир буд. Барои иҷозат додан ин URL-ро кушоед: {{url}}",
+  "mcp.auth.browserBlocked.open": "Кушодани URL",
+  "mcp.auth.browserBlocked.copy": "Нусхабардории URL",
   "dialog.fork.empty": "Паёме барои сохтани шоха нест",
   "dialog.directory.search.placeholder": "Ҷустуҷӯи ҷузвдонҳо",
   "dialog.directory.empty": "Ягон папка ёфт нашуд",

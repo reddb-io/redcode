@@ -445,6 +445,10 @@ export const dict = {
   "mcp.status.needs_auth": "потрібна авторизація",
   "mcp.status.disabled": "вимкнено",
   "mcp.auth.clickToAuthenticate": "Натисніть для автентифікації",
+  "mcp.auth.browserBlocked.title": "Авторизувати {{name}}",
+  "mcp.auth.browserBlocked.description": "Не вдалося відкрити браузер. Відкрийте цей URL для авторизації: {{url}}",
+  "mcp.auth.browserBlocked.open": "Відкрити URL",
+  "mcp.auth.browserBlocked.copy": "Копіювати URL",
 
   "dialog.fork.empty": "Немає повідомлень для відгалуження",
 

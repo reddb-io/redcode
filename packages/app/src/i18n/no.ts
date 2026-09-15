@@ -433,6 +433,10 @@ export const dict = {
   "mcp.status.failed": "mislyktes",
   "mcp.status.needs_auth": "trenger autentisering",
   "mcp.auth.clickToAuthenticate": "Klikk for å autentisere",
+  "mcp.auth.browserBlocked.title": "Autoriser {{name}}",
+  "mcp.auth.browserBlocked.description": "Kunne ikke åpne en nettleser. Åpne denne URL-en for å autorisere: {{url}}",
+  "mcp.auth.browserBlocked.open": "Åpne URL",
+  "mcp.auth.browserBlocked.copy": "Kopier URL",
   "mcp.status.disabled": "deaktivert",
 
   "dialog.fork.empty": "Ingen meldinger å forgrene fra",

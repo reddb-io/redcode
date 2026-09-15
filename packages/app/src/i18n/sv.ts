@@ -414,6 +414,11 @@ export const dict = {
   "mcp.status.needs_auth": "behöver autentisering",
   "mcp.status.disabled": "inaktiverad",
   "mcp.auth.clickToAuthenticate": "Klicka för att autentisera",
+  "mcp.auth.browserBlocked.title": "Auktorisera {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Det gick inte att öppna en webbläsare. Öppna den här URL:en för att auktorisera: {{url}}",
+  "mcp.auth.browserBlocked.open": "Öppna URL",
+  "mcp.auth.browserBlocked.copy": "Kopiera URL",
   "dialog.fork.empty": "Inga meddelanden att förgrena från",
   "dialog.directory.search.placeholder": "Sök i mappar",
   "dialog.directory.empty": "Inga mappar hittades",

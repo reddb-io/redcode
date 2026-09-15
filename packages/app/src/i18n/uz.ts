@@ -415,6 +415,11 @@ export const dict = {
   "mcp.status.needs_auth": "avtorizatsiya kerak",
   "mcp.status.disabled": "nogiron",
   "mcp.auth.clickToAuthenticate": "Haqiqiylikni tekshirish uchun bosing",
+  "mcp.auth.browserBlocked.title": "{{name}} ga ruxsat berish",
+  "mcp.auth.browserBlocked.description":
+    "Brauzerni ochib bo'lmadi. Ruxsat berish uchun ushbu URL manzilini oching: {{url}}",
+  "mcp.auth.browserBlocked.open": "URL ni ochish",
+  "mcp.auth.browserBlocked.copy": "URL ni nusxalash",
   "dialog.fork.empty": "Hech qanday xabar yo'q",
   "dialog.directory.search.placeholder": "Jildlarni qidirish",
   "dialog.directory.empty": "Hech qanday jild topilmadi",

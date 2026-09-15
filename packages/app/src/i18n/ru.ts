@@ -441,6 +441,10 @@ export const dict = {
   "mcp.status.failed": "ошибка",
   "mcp.status.needs_auth": "требуется авторизация",
   "mcp.auth.clickToAuthenticate": "Нажмите, чтобы авторизоваться",
+  "mcp.auth.browserBlocked.title": "Авторизовать {{name}}",
+  "mcp.auth.browserBlocked.description": "Не удалось открыть браузер. Откройте этот URL для авторизации: {{url}}",
+  "mcp.auth.browserBlocked.open": "Открыть URL",
+  "mcp.auth.browserBlocked.copy": "Копировать URL",
   "mcp.status.disabled": "отключено",
 
   "dialog.fork.empty": "Нет сообщений для ответвления",

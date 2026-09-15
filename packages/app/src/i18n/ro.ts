@@ -412,6 +412,11 @@ export const dict = {
   "mcp.status.needs_auth": "necesită autentificare",
   "mcp.status.disabled": "dezactivat",
   "mcp.auth.clickToAuthenticate": "Autentifică-te",
+  "mcp.auth.browserBlocked.title": "Autorizează {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Nu s-a putut deschide un browser. Deschide acest URL pentru autorizare: {{url}}",
+  "mcp.auth.browserBlocked.open": "Deschide URL",
+  "mcp.auth.browserBlocked.copy": "Copiază URL",
   "dialog.fork.empty": "Niciun mesaj de bifurcat",
   "dialog.directory.search.placeholder": "Caută foldere",
   "dialog.directory.empty": "Nu s-au găsit foldere",

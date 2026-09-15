@@ -440,6 +440,10 @@ export const dict = {
   "mcp.status.failed": "失敗",
   "mcp.status.needs_auth": "需要授權",
   "mcp.auth.clickToAuthenticate": "按一下以進行授權",
+  "mcp.auth.browserBlocked.title": "授權 {{name}}",
+  "mcp.auth.browserBlocked.description": "無法開啟瀏覽器。請開啟此 URL 以進行授權：{{url}}",
+  "mcp.auth.browserBlocked.open": "開啟 URL",
+  "mcp.auth.browserBlocked.copy": "複製 URL",
   "mcp.status.disabled": "已停用",
 
   "dialog.fork.empty": "沒有可用於分支的訊息",

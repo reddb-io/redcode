@@ -416,6 +416,11 @@ export const dict = {
   "mcp.status.needs_auth": "се нуждае от авт",
   "mcp.status.disabled": "деактивиран",
   "mcp.auth.clickToAuthenticate": "Щракнете за удостоверяване",
+  "mcp.auth.browserBlocked.title": "Упълномощаване на {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Браузърът не можа да се отвори. Отворете този URL адрес, за да упълномощите: {{url}}",
+  "mcp.auth.browserBlocked.open": "Отваряне на URL",
+  "mcp.auth.browserBlocked.copy": "Копиране на URL",
   "dialog.fork.empty": "Няма съобщения за разклонение",
   "dialog.directory.search.placeholder": "Папки за търсене",
   "dialog.directory.empty": "Няма намерени папки",

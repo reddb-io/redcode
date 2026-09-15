@@ -414,6 +414,11 @@ export const dict = {
   "mcp.status.needs_auth": "треба авт",
   "mcp.status.disabled": "оневозможено",
   "mcp.auth.clickToAuthenticate": "Кликнете за автентикација",
+  "mcp.auth.browserBlocked.title": "Овласти {{name}}",
+  "mcp.auth.browserBlocked.description":
+    "Не може да се отвори прелистувач. Отворете го овој URL за овластување: {{url}}",
+  "mcp.auth.browserBlocked.open": "Отвори URL",
+  "mcp.auth.browserBlocked.copy": "Копирај URL",
   "dialog.fork.empty": "Нема пораки од кои може да се префрлите",
   "dialog.directory.search.placeholder": "Пребарајте папки",
   "dialog.directory.empty": "Не се пронајдени папки",

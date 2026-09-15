@@ -369,6 +369,10 @@ export const dict = {
   "mcp.status.needs_auth": "needs auth",
   "mcp.status.disabled": "disabled",
   "mcp.auth.clickToAuthenticate": "Click to authenticate",
+  "mcp.auth.browserBlocked.title": "Authorize {{name}}",
+  "mcp.auth.browserBlocked.description": "Could not open a browser. Open this URL to authorize: {{url}}",
+  "mcp.auth.browserBlocked.open": "Open URL",
+  "mcp.auth.browserBlocked.copy": "Copy URL",
 
   "dialog.fork.empty": "No messages to fork from",
 
