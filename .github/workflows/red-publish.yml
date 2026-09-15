@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   sidecar:
-    if: github.repository == 'reddb-io/redcode'
+    if: github.repository == 'reddb-io/redcode' && !inputs.npm_only
     name: sidecar (${{ matrix.name }})
     strategy:
       fail-fast: false
@@ -133,10 +133,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Builds the binaries, uploads them to the draft GitHub Release, smokes the uploaded asset, and
-  # publishes the release. mise installs from these assets, so npm must never block this job.
+  # Builds the binaries, uploads them to the draft GitHub Release, smokes the uploaded asset, hands
+  # the npm packages to the npm job, and only then publishes the release. mise installs from these
+  # assets, so npm never blocks this job. For a tag whose release is already published (a rerun,
+  # or npm_only) it never uploads or edits anything: it unpacks the npm packages from the published
+  # assets instead, so npm ships the same bytes as the GitHub Release.
   release:
-    if: github.repository == 'reddb-io/redcode'
+    if: ${{ !cancelled() && github.repository == 'reddb-io/redcode' && (needs.sidecar.result == 'success' || (inputs.npm_only && needs.sidecar.result == 'skipped')) }}
     needs: sidecar
     runs-on: ubuntu-latest
     environment:
@@ -170,48 +173,73 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: bun script/red-version.ts "${TAG#v}" --check
-      - name: Create or resume draft GitHub Release
-        if: ${{ !inputs.npm_only }}
+      - name: Resolve GitHub Release state
+        id: state
         env:
           GH_TOKEN: ${{ github.token }}
+          NPM_ONLY: ${{ inputs.npm_only && 'true' || 'false' }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --draft --generate-notes --title "Redcode $TAG"
-            exit 0
+            state=missing
+          elif [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ]; then
+            state=draft
+          else
+            state=published
           fi
-          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
-            echo "::error::released tags are immutable; publish a new patch version instead of replacing $TAG, or rerun with npm_only to publish only the npm packages"
+          if [ "$NPM_ONLY" = true ] && [ "$state" != published ]; then
+            echo "::error::npm_only needs the GitHub Release $TAG to exist and be published (it is $state)"
             exit 1
           fi
-          echo "resuming existing draft $TAG"
-      - name: Require a published GitHub Release for npm-only runs
-        if: ${{ inputs.npm_only }}
+          if [ "$state" = published ]; then
+            echo "::notice::released tags are immutable; $TAG is already published, so this run leaves its assets untouched and prepares the npm packages from them"
+          fi
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Create or resume draft GitHub Release
+        if: steps.state.outputs.state != 'published'
         env:
           GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.state.outputs.state }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != false ]; then
-            echo "::error::npm_only needs the GitHub Release $TAG to exist and be published"
-            exit 1
+          if [ "$STATE" = missing ]; then
+            gh release create "$TAG" --verify-tag --draft --generate-notes --title "Redcode $TAG"
+          else
+            echo "resuming existing draft $TAG"
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: steps.state.outputs.state != 'published'
         with:
           pattern: rpc-sidecar-*
           path: packages/rpc-sidecar/dist/release
           merge-multiple: true
-      # npm_only rebuilds the npm packages without touching the published release assets.
       - name: Build and upload native binaries
+        if: steps.state.outputs.state != 'published'
         env:
           GH_REPO: reddb-io/redcode
           GH_TOKEN: ${{ github.token }}
           REDCODE_RELEASE: "1"
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
           VERSION: ${{ steps.release.outputs.version }}
-          NPM_ONLY: ${{ inputs.npm_only && 'true' || '' }}
-        run: REDCODE_VERSION="$VERSION" ./packages/redcode/script/build.ts ${NPM_ONLY:+--skip-upload}
+        run: REDCODE_VERSION="$VERSION" ./packages/redcode/script/build.ts
+      # The archives carry both redcode and redcode-rpc-sidecar, so nothing is rebuilt here.
+      - name: Unpack npm packages from the published GitHub Release assets
+        if: steps.state.outputs.state == 'published'
+        env:
+          GH_REPO: reddb-io/redcode
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/release-assets"
+          rm -rf "$assets" packages/redcode/dist
+          mkdir -p "$assets"
+          gh release download "$TAG" --dir "$assets"
+          (cd "$assets" && sha256sum --check --strict SHA256SUMS)
+          bun packages/redcode/script/npm-release-assets.ts "$assets" packages/redcode/dist "$VERSION"
       - name: Normalize native npm metadata
         run: |
           bun -e '
@@ -226,7 +254,7 @@ jobs:
           }))
           '
       - name: Smoke the uploaded GitHub Release asset
-        if: ${{ !inputs.npm_only }}
+        if: steps.state.outputs.state != 'published'
         env:
           GH_REPO: reddb-io/redcode
           GH_TOKEN: ${{ github.token }}
@@ -243,12 +271,6 @@ jobs:
           tar -xzf "$root/redcode-linux-x64.tar.gz" -C "$root/bin"
           "$root/bin/redcode" --version | grep -Fx "$VERSION"
           test -x "$root/bin/redcode-rpc-sidecar"
-      - name: Publish GitHub Release
-        if: ${{ !inputs.npm_only }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: gh release edit "$TAG" --draft=false --latest
       # tar keeps the executable bits that upload-artifact would drop.
       - name: Bundle npm packages for the npm job
         run: |
@@ -268,8 +290,18 @@ jobs:
           name: npm-packages
           path: ${{ runner.temp }}/npm-packages.tar.gz
           if-no-files-found: error
+          # A rerun of this job replaces the bundle from the earlier attempt.
+          overwrite: true
           # Staged versions can wait days for approval; keep the bundle so the npm job can be rerun.
           retention-days: 7
+      # Last on purpose: until this step the release is still a draft, so any earlier failure can
+      # be rerun from the top without tripping over an immutable published tag.
+      - name: Publish GitHub Release
+        if: steps.state.outputs.state != 'published'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
@@ -277,7 +309,7 @@ jobs:
   # Publishes to npm after the GitHub Release is out. A failure here (for example a version npm
   # staged for 2FA approval) leaves the GitHub Release untouched; rerun this job once it is fixed.
   npm:
-    if: github.repository == 'reddb-io/redcode'
+    if: ${{ !cancelled() && github.repository == 'reddb-io/redcode' && needs.release.result == 'success' }}
     needs: release
     runs-on: ubuntu-latest
     environment:
@@ -286,16 +318,52 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Only a pushed v*.*.* tag, or a dispatch from main for an existing tag, may publish. The
+      # red-release environment's deployment policy enforces the same refs on the GitHub side.
+      - name: Refuse refs that cannot publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              if ! [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "${GITHUB_REF#refs/tags/}" != "$RELEASE_TAG" ]; then
+                echo "::error::npm publishing runs only for a pushed v<major>.<minor>.<patch> tag (got $GITHUB_REF)"
+                exit 1
+              fi
+              ;;
+            workflow_dispatch)
+              if [ "$GITHUB_REF" != refs/heads/main ]; then
+                echo "::error::dispatch npm publishing from main only (got $GITHUB_REF)"
+                exit 1
+              fi
+              if ! [[ "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$INPUT_TAG" != "$RELEASE_TAG" ]; then
+                echo "::error::the tag input must be v<major>.<minor>.<patch> (got $INPUT_TAG)"
+                exit 1
+              fi
+              if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$INPUT_TAG" --jq .ref >/dev/null; then
+                echo "::error::tag $INPUT_TAG does not exist"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::npm publishing does not run for $GITHUB_EVENT_NAME events"
+              exit 1
+              ;;
+          esac
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.release.outputs.tag }}
       - uses: ./.github/actions/setup-bun
-      # Trusted publishing needs npm 11.5.1 or newer: https://docs.npmjs.com/trusted-publishers
+      # Trusted publishing needs npm 11.5.1+ (https://docs.npmjs.com/trusted-publishers) and
+      # `npm stage` needs 11.15.0+ (https://docs.npmjs.com/staged-publishing).
       - name: Install npm with trusted publishing support
         run: |
           set -euo pipefail
-          npm install -g npm@11.6.2
-          npm --version | grep -Fx 11.6.2
+          npm install -g npm@11.19.1
+          npm --version | grep -Fx 11.19.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: npm-packages

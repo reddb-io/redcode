@@ -70,7 +70,9 @@ for (const required of [
   "./packages/redcode/script/publish.ts",
   "@reddb-io/redcode",
   "id-token: write",
-  "npm install -g npm@",
+  "Refuse refs that cannot publish",
+  "Unpack npm packages from the published GitHub Release assets",
+  "bun packages/redcode/script/npm-release-assets.ts",
   "NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE }}",
   "NPM_TOKEN: ${{ vars.NPM_PUBLISH_MODE == 'token' && secrets.NPM_TOKEN || '' }}",
   'npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"',
@@ -106,6 +108,40 @@ for (const required of [
 ]) {
   if (!publish.includes(required)) throw new Error(`red-publish.yml is missing ${required}`)
 }
+
+// Structure, not just text: OIDC publishing rights stay confined to the npm job, and the GitHub
+// Release is published only after everything the npm job needs has been handed over.
+type WorkflowStep = { name?: string; uses?: string; if?: string; run?: string }
+type WorkflowJob = { permissions?: Record<string, string>; needs?: string | string[]; steps?: WorkflowStep[] }
+const workflow = Bun.YAML.parse(publish) as { permissions?: Record<string, string>; jobs: Record<string, WorkflowJob> }
+if (JSON.stringify(workflow.permissions) !== JSON.stringify({ contents: "read" }))
+  throw new Error(`red-publish.yml top-level permissions must be exactly contents: read`)
+for (const [id, job] of Object.entries(workflow.jobs)) {
+  if (id !== "npm" && job.permissions?.["id-token"] !== undefined)
+    throw new Error(`red-publish.yml grants id-token to job ${id}; only the npm job may request OIDC tokens`)
+}
+const npmJob = workflow.jobs.npm
+if (npmJob?.permissions?.["id-token"] !== "write" || npmJob.needs !== "release")
+  throw new Error("red-publish.yml npm job must need release and hold id-token: write")
+if (npmJob.steps?.[0]?.name !== "Refuse refs that cannot publish")
+  throw new Error("red-publish.yml npm job must start by refusing refs that cannot publish")
+const npmVersion = npmJob.steps
+  ?.map((step) => /npm install -g npm@(\d+)\.(\d+)\.(\d+)/.exec(step.run ?? ""))
+  .find(Boolean)
+if (
+  !npmVersion ||
+  Number(npmVersion[1]) * 1_000_000 + Number(npmVersion[2]) * 1_000 + Number(npmVersion[3]) < 11_019_001
+)
+  throw new Error("red-publish.yml npm job must install npm 11.19.1 or newer (trusted publishing and npm stage)")
+const releaseSteps = workflow.jobs.release?.steps ?? []
+const releaseLast = releaseSteps.at(-1)
+const bundleUpload = releaseSteps.findIndex((step) => step.uses?.startsWith("actions/upload-artifact@"))
+if (releaseLast?.name !== "Publish GitHub Release" || bundleUpload < 0 || bundleUpload > releaseSteps.length - 2)
+  throw new Error(
+    "red-publish.yml must publish the GitHub Release as the release job's last step, after the npm bundle upload",
+  )
+if (releaseLast.if !== "steps.state.outputs.state != 'published'")
+  throw new Error("red-publish.yml must never edit a GitHub Release that is already published")
 
 const build = await Bun.file(path.join(root, "packages", "redcode", "script", "build.ts")).text()
 for (const required of ["SHA256SUMS", 'new Bun.CryptoHasher("sha256")', "./dist/SHA256SUMS"]) {

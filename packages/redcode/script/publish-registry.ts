@@ -114,7 +114,9 @@ export class StagedPublishError extends Error {
       'This is not registry lag: npm answered a republish with E409 "Cannot publish over previously staged version".',
       "To release them, a maintainer must:",
       "  1. Open each package page above, go to its Staged Packages tab, check the version and tarball, and approve it with 2FA",
-      "     (or run `npm stage list <package>` then `npm stage approve <stage-id>`; `npm stage reject <stage-id>` discards it).",
+      // `npm stage` needs npm 11.15.0 or newer; npx pins a version that has it.
+      "     (or run `npx npm@11.19.1 stage list <package>` then `npx npm@11.19.1 stage approve <stage-id>`;",
+      "     `npx npm@11.19.1 stage reject <stage-id>` discards it).",
       "  2. Rerun this job. Approved versions are skipped and publishing continues.",
       "To stop npm staging CI publishes, configure npm trusted publishing (OIDC) for every package; see https://docs.npmjs.com/trusted-publishers.",
     ]
@@ -148,6 +150,17 @@ export async function waitForVisibility(
   }
 }
 
+function registryLagError(timeout: VisibilityTimeoutError, main: RegistryPackage, probeFailures: string[]) {
+  const probes =
+    probeFailures.length > 0 ? ` Probing the missing packages also failed: ${probeFailures.join("; ")}.` : ""
+  return new Error(
+    `${timeout.message}; not publishing ${main.name}@${main.version}. ` +
+      `npm did not report the missing packages as staged, so this looks like registry lag.${probes} ` +
+      `Rerun the failed job once the registry catches up; publishing is idempotent.`,
+    { cause: timeout },
+  )
+}
+
 /**
  * Publishes every platform package, waits until npm serves all of them, and only then publishes
  * the main package, so it never resolves to optional dependencies the registry cannot serve yet.
@@ -169,17 +182,34 @@ export async function publishRelease(
     if (!(error instanceof VisibilityTimeoutError)) throw error
     // A token publish that npm silently staged looks exactly like registry lag until it is
     // republished: a staged version answers E409 "previously staged", a lagging one "previously
-    // published". Probe every missing package once to tell the two apart.
+    // published". Probe every missing package once to tell the two apart. allSettled keeps a
+    // probe's own failure (a network error, say) from replacing the timeout that caused it.
     const missing = platforms.filter((item) => error.missing.includes(`${item.name}@${item.version}`))
-    const probes = await Promise.all(missing.map((item) => publishOnce(item, deps)))
-    const staged = missing.filter((_, index) => probes[index] === "staged")
+    const probes = await Promise.allSettled(missing.map((item) => publishOnce(item, deps)))
+    const outcome = (index: number) => {
+      const probe = probes[index]
+      return probe.status === "fulfilled" ? probe.value : undefined
+    }
+    const staged = missing.filter((_, index) => outcome(index) === "staged")
     if (staged.length > 0) throw new StagedPublishError(staged, main)
-    throw new Error(
-      `${error.message}; not publishing ${main.name}@${main.version}. ` +
-        `npm did not report the missing packages as staged, so this looks like registry lag. ` +
-        `Rerun the failed job once the registry catches up; publishing is idempotent.`,
-      { cause: error },
+    const failures = probes.flatMap((probe, index) =>
+      probe.status === "rejected"
+        ? [
+            `${missing[index].name}@${missing[index].version}: ${probe.reason instanceof Error ? probe.reason.message : String(probe.reason)}`,
+          ]
+        : [],
     )
+    // "published" means the first publish never reached the registry and the probe did; "skipped"
+    // means npm serves it now. Either way the registry deserves one more wait, but only one.
+    const republished = missing.some((_, index) => outcome(index) === "published" || outcome(index) === "skipped")
+    if (failures.length > 0 || !republished) throw registryLagError(error, main, failures)
+    deps.log(`republished ${missing.map((item) => `${item.name}@${item.version}`).join(", ")}; waiting once more`)
+    try {
+      await waitForVisibility(missing, deps, options)
+    } catch (second) {
+      if (!(second instanceof VisibilityTimeoutError)) throw second
+      throw registryLagError(second, main, [])
+    }
   }
 
   const outcome = await publishOnce(main, deps)
