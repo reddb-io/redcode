@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "name": "multi-file-edit",
+  "source": "hand-written",
+  "steps": [
+    {
+      "text": "Tracking the rename and its verification.",
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": {
+            "todos": [
+              {
+                "content": "Rename greet to welcome in src/greet.sh and src/main.sh",
+                "status": "in_progress",
+                "priority": "high",
+                "requirement": "Rename the greet function to welcome in both files",
+                "criterion": "sh verify.sh prints VERIFY OK"
+              },
+              {
+                "content": "Print welcome instead of hello",
+                "status": "pending",
+                "priority": "high",
+                "requirement": "print \"welcome <name>\"",
+                "criterion": "sh verify.sh prints VERIFY OK"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 6100, "output": 150 }
+    },
+    {
+      "tools": [
+        { "name": "read", "input": { "filePath": "{{workspace}}/src/greet.sh" } },
+        { "name": "read", "input": { "filePath": "{{workspace}}/src/main.sh" } }
+      ],
+      "usage": { "input": 6400, "output": 50 }
+    },
+    {
+      "tools": [
+        {
+          "name": "edit",
+          "input": {
+            "filePath": "{{workspace}}/src/greet.sh",
+            "oldString": "greet() {\n  echo \"hello $1\"",
+            "newString": "welcome() {\n  echo \"welcome $1\""
+          }
+        },
+        {
+          "name": "edit",
+          "input": { "filePath": "{{workspace}}/src/main.sh", "oldString": "greet \"$1\"", "newString": "welcome \"$1\"" }
+        }
+      ],
+      "usage": { "input": 6700, "output": 90 }
+    },
+    {
+      "tools": [{ "name": "bash", "input": { "command": "sh verify.sh", "description": "Verify the rename" } }],
+      "usage": { "input": 7000, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": {
+            "todos": [
+              { "id": "{{todo.0.id}}", "revision": "{{todo.0.revision}}", "status": "completed" },
+              { "id": "{{todo.1.id}}", "revision": "{{todo.1.revision}}", "status": "completed" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 7300, "output": 60 }
+    },
+    {
+      "text": "Renamed greet to welcome in both files; `sh verify.sh` reports VERIFY OK.",
+      "usage": { "input": 7500, "output": 25 }
+    }
+  ]
+}

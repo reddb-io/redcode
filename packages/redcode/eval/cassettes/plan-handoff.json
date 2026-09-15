@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "name": "plan-handoff",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [
+        {
+          "name": "write",
+          "input": {
+            "filePath": "{{plan}}",
+            "content": "# Plan\nKeep the idempotency key on payment retries so a duplicate request charges once. Verify with sh src/pay.sh."
+          }
+        }
+      ],
+      "usage": { "input": 5000, "output": 70 }
+    },
+    {
+      "tools": [
+        {
+          "name": "plan_exit",
+          "input": {
+            "tasks": [
+              {
+                "key": "implement",
+                "content": "Execute the reviewed plan",
+                "criterion": "sh src/pay.sh prints charged once",
+                "quote": "Keep the idempotency key on payment retries"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 5300, "output": 60 }
+    },
+    {
+      "text": "Plan approved; implementing it in Build.",
+      "tools": [
+        {
+          "name": "write",
+          "input": {
+            "filePath": "{{workspace}}/src/pay.sh",
+            "content": "#!/bin/sh\n# Charges once per idempotency key.\nkey=${1:-order-1}\nledger=$(mktemp)\nfor attempt in 1 2; do\n  grep -qx \"$key\" \"$ledger\" || echo \"$key\" >> \"$ledger\"\ndone\n[ \"$(wc -l < \"$ledger\")\" -eq 1 ] && echo \"charged once\"\nrm -f \"$ledger\"\n"
+          }
+        }
+      ],
+      "usage": { "input": 5600, "output": 120 }
+    },
+    {
+      "tools": [{ "name": "bash", "input": { "command": "sh src/pay.sh", "description": "Verify a retry charges once" } }],
+      "usage": { "input": 5900, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": { "todos": [{ "id": "{{todo.0.id}}", "revision": "{{todo.0.revision}}", "status": "completed" }] }
+        }
+      ],
+      "usage": { "input": 6200, "output": 40 }
+    },
+    {
+      "text": "Implemented src/pay.sh from the approved plan; `sh src/pay.sh` prints charged once. Handed off from Plan to Build.",
+      "usage": { "input": 6400, "output": 30 }
+    }
+  ]
+}

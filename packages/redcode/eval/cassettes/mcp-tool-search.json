@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "mcp-tool-search",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [{ "name": "tool_search", "input": { "query": "close an issue with a comment" } }],
+      "usage": { "input": 5300, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "tracker_close_issue",
+          "input": { "id": 42, "reason": "completed", "comment": "Fixed by the retry change." }
+        }
+      ],
+      "usage": { "input": 5900, "output": 45 }
+    },
+    {
+      "text": "Closed issue 42 as completed with a comment.",
+      "usage": { "input": 6100, "output": 15 }
+    }
+  ]
+}

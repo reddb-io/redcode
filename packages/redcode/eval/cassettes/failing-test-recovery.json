@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "failing-test-recovery",
+  "source": "hand-written",
+  "steps": [
+    {
+      "text": "Running the test suite first.",
+      "tools": [{ "name": "bash", "input": { "command": "sh test.sh", "description": "Run the project test" } }],
+      "usage": { "input": 5200, "output": 40 }
+    },
+    {
+      "tools": [{ "name": "read", "input": { "filePath": "{{workspace}}/src/sum.sh" } }],
+      "usage": { "input": 5400, "output": 30 }
+    },
+    {
+      "text": "sum.sh subtracts instead of adding.",
+      "tools": [
+        {
+          "name": "edit",
+          "input": { "filePath": "{{workspace}}/src/sum.sh", "oldString": "$(( $1 - $2 ))", "newString": "$(( $1 + $2 ))" }
+        }
+      ],
+      "usage": { "input": 5600, "output": 60 }
+    },
+    {
+      "tools": [{ "name": "bash", "input": { "command": "sh test.sh", "description": "Rerun the project test" } }],
+      "usage": { "input": 5800, "output": 30 }
+    },
+    {
+      "text": "Fixed: src/sum.sh used subtraction. `sh test.sh` now passes (PASS sum 2 3 = 5).",
+      "usage": { "input": 6000, "output": 25 }
+    }
+  ]
+}
