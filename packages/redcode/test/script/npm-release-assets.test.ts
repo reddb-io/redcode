@@ -63,7 +63,8 @@ describe("platformManifest", () => {
   })
 })
 
-describe("unpackReleaseAssets", () => {
+// The release job unpacks on ubuntu-latest; GNU tar on Windows reads "C:" in paths as a remote host.
+describe.skipIf(process.platform === "win32")("unpackReleaseAssets", () => {
   const scratch: string[] = []
   afterEach(async () => {
     await Promise.all(scratch.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
