@@ -30,7 +30,7 @@
     },
     "packages/app": {
       "name": "@reddb-io/redcode-app",
-      "version": "1.21.2",
+      "version": "1.21.3",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -99,7 +99,7 @@
     },
     "packages/cli": {
       "name": "@reddb-io/redcode-cli",
-      "version": "1.18.26",
+      "version": "1.18.27",
       "bin": {
         "lildax": "./bin/lildax.cjs",
       },
@@ -293,7 +293,7 @@
     },
     "packages/core": {
       "name": "@reddb-io/redcode-core",
-      "version": "1.23.0",
+      "version": "1.23.1",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.166",
@@ -497,7 +497,7 @@
     },
     "packages/enterprise": {
       "name": "@reddb-io/redcode-enterprise",
-      "version": "1.18.26",
+      "version": "1.18.27",
       "dependencies": {
         "@hono/standard-validator": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -638,7 +638,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.22.1",
+      "version": "0.31.2",
       "bin": {
         "redcode": "./bin/redcode",
       },
@@ -805,7 +805,7 @@
     },
     "packages/sdk-next": {
       "name": "@reddb-io/redcode-sdk-next",
-      "version": "1.18.26",
+      "version": "1.18.27",
       "dependencies": {
         "@reddb-io/redcode-client": "workspace:*",
         "@reddb-io/redcode-core": "workspace:*",
@@ -835,7 +835,7 @@
     },
     "packages/server": {
       "name": "@reddb-io/redcode-server",
-      "version": "1.18.26",
+      "version": "1.18.27",
       "dependencies": {
         "@reddb-io/multi-rpc": "0.29.6",
         "@reddb-io/redcode-core": "workspace:*",
@@ -857,7 +857,7 @@
     },
     "packages/session-ui": {
       "name": "@reddb-io/redcode-session-ui",
-      "version": "1.18.26",
+      "version": "1.18.27",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@opencode-ai/client": "file:../app/vendor/opencode-ai-client-1.17.13-v2.tgz",
@@ -1006,7 +1006,7 @@
     },
     "packages/tui": {
       "name": "@reddb-io/redcode-tui",
-      "version": "1.21.2",
+      "version": "1.21.3",
       "dependencies": {
         "@opentui/core": "catalog:",
         "@opentui/keymap": "catalog:",

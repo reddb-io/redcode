@@ -11,7 +11,6 @@ import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Auth } from "../auth"
 import { Env } from "../env"
 import { applyEdits, modify } from "jsonc-parser"
-import { InstallationLocal, InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { existsSync } from "fs"
 import { Account } from "@/account/account"
 import { isRecord } from "@/util/record"
@@ -481,25 +480,19 @@ const layer = Layer.effect(
 
           yield* ensureGitignore(dir).pipe(Effect.orDie)
 
-          const dep = yield* npmSvc
-            .install(dir, {
-              add: [
-                {
-                  name: "@reddb-io/redcode-plugin",
-                  version: InstallationLocal ? undefined : InstallationVersion,
-                },
-              ],
-            })
-            .pipe(
-              Effect.exit,
-              Effect.tap((exit) =>
-                Exit.isFailure(exit)
-                  ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
-                  : Effect.void,
-              ),
-              Effect.asVoid,
-              Effect.forkDetach,
-            )
+          // Only install what the directory itself declares. Nothing is added implicitly: the plugin
+          // types package is not published to npm, so adding it made every config load fetch a 404.
+          const hasManifest = yield* fs.existsSafe(path.join(dir, "package.json"))
+          const dep = yield* (hasManifest ? npmSvc.install(dir) : Effect.void).pipe(
+            Effect.exit,
+            Effect.tap((exit) =>
+              Exit.isFailure(exit)
+                ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
+                : Effect.void,
+            ),
+            Effect.asVoid,
+            Effect.forkDetach,
+          )
           deps.push(dep)
 
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
