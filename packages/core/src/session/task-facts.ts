@@ -2,13 +2,13 @@ export * as SessionTaskFacts from "./task-facts"
 
 import { createHash } from "node:crypto"
 import path from "node:path"
-import { eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { Context, DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
-import { MessageTable, PartTable, SessionMessageTable, SessionTable } from "./sql"
+import { MessageTable, PartTable, SessionInputTable, SessionMessageTable, SessionTable } from "./sql"
 import { SessionV1 } from "../v1/session"
 
 export type Kind = "edit" | "verification" | "bookkeeping" | "other"
@@ -39,6 +39,8 @@ export type Result = {
   input: unknown
   summary: string
 }
+/** A user request as the task gate reads it; `pending` when admitted to the inbox but not promoted. */
+export type Request = { id: string; text: string; created: number; pending?: boolean }
 export const hash = (value: unknown) =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "null")
@@ -426,10 +428,22 @@ const make = Effect.gen(function* () {
     // session simply has no legacy rows. Returning early on any projected row emptied the legacy
     // requests and results for the rest of the session.
     const legacy = yield* loadLegacy(sessionID, directory)
+    // A prompt admitted to the inbox but not promoted yet is not visible to the model: it is flagged,
+    // so a task never falls back to it, though its words can still be quoted.
+    const pending = new Set<string>(
+      (yield* db
+        .select({ id: SessionInputTable.id })
+        .from(SessionInputTable)
+        .where(and(eq(SessionInputTable.session_id, sessionID), isNull(SessionInputTable.promoted_seq)))
+        .all()
+        .pipe(Effect.orDie)).map((row) => row.id),
+    )
     const requestIDs = new Set<string>(requests.map((entry) => entry.id))
     const resultIDs = new Set(results.map((entry) => `${entry.messageID}:${entry.callID}`))
     return {
-      requests: [...requests, ...legacy.requests.filter((entry) => !requestIDs.has(entry.id))],
+      requests: [...requests, ...legacy.requests.filter((entry) => !requestIDs.has(entry.id))].map(
+        (entry): Request => (pending.has(entry.id) ? { ...entry, pending: true } : entry),
+      ),
       results: [...results, ...legacy.results.filter((entry) => !resultIDs.has(`${entry.messageID}:${entry.callID}`))],
     }
   })
@@ -448,6 +462,9 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)).map((row) =>
       Schema.decodeUnknownSync(SessionV1.Part)({ ...row.data, id: row.id, sessionID, messageID: row.message_id }),
     )
+    // Parts grouped by message once, so reading every request does not rescan every part.
+    const byMessage = new Map<string, typeof parts>()
+    for (const part of parts) byMessage.set(part.messageID, [...(byMessage.get(part.messageID) ?? []), part])
     const assistants = new Map(
       legacy.flatMap((row) => {
         if (row.data.role !== "assistant") return []
@@ -459,10 +476,8 @@ const make = Effect.gen(function* () {
     return {
       requests: legacy.flatMap((row) => {
         if (row.data.role !== "user") return []
-        const text = parts
-          .flatMap((part) =>
-            part.messageID === row.id && part.type === "text" && !part.synthetic && !part.ignored ? [part.text] : [],
-          )
+        const text = (byMessage.get(row.id) ?? [])
+          .flatMap((part) => (part.type === "text" && !part.synthetic && !part.ignored ? [part.text] : []))
           .join("\n")
         return text ? [{ id: row.id, text, created: row.data.time.created }] : []
       }),

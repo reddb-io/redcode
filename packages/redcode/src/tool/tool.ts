@@ -128,7 +128,11 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
             // Task updates fail silently in a folded TUI row; the log is where the reason survives.
             Effect.tapError((error) =>
               id === "todowrite"
-                ? Effect.logWarning("todowrite refused", { ...attrs, kind: "schema", error: error.detail })
+                ? Effect.logWarning("todowrite refused", {
+                    ...attrs,
+                    kind: "schema",
+                    error: (error.detail.split("\n")[0] ?? "").slice(0, 80),
+                  })
                 : Effect.void,
             ),
           )

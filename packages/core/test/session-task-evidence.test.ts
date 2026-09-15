@@ -12,6 +12,7 @@ import { SessionSchema } from "@reddb-io/redcode-core/session/schema"
 import {
   MessageTable,
   PartTable,
+  SessionInputTable,
   SessionMessageTable,
   SessionTable,
   TodoHistoryTable,
@@ -1178,6 +1179,14 @@ it.effect("matches a retyped quote but not a different request", () =>
     expect(quotes(text, "rode os testes… Corrija a validação")).toBe(false)
     expect(quotes(text, "Fix the signup form validation")).toBe(false)
     expect(quotes(text, "…")).toBe(false)
+    // Accents dropped while retyping still quote; a single letter or word, or a partial word, does not.
+    expect(quotes(text, "Corrija a validacao do formulario")).toBe(true)
+    expect(quotes(text, "e")).toBe(false)
+    expect(quotes(text, "testes")).toBe(false)
+    expect(quotes(text, "Corrija a validação… e")).toBe(false)
+    expect(quotes(text, "orrija a validação do formulário")).toBe(false)
+    // A short message is a quote of itself.
+    expect(quotes("Continue", "continue")).toBe(true)
   }),
 )
 
@@ -1315,5 +1324,120 @@ it.effect("attaches the latest request to a paraphrased requirement and still re
       .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
       .pipe(Effect.flip)
     expect(refused.message).toContain(SessionTodoStore.REFUSED)
+  }),
+)
+
+it.effect("refuses a scope change quoting a trivial fragment of a later request", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({ sessionID, todos: [task] })
+    yield* request("Esquece isso", 20)
+    const cancel = (quote: string) =>
+      todos.update({
+        sessionID,
+        todos: [
+          {
+            id: created.id,
+            revision: created.revision,
+            status: "cancelled",
+            reason: "Removed by the user",
+            scopeChange: { messageID: "msg_request_20", quote },
+          },
+        ],
+      })
+    expect((yield* cancel("e").pipe(Effect.flip)).message).toContain("Cancellation requires scopeChange")
+    expect((yield* cancel("Esquece isso"))[0]).toMatchObject({ status: "cancelled" })
+  }),
+)
+
+it.effect("never lets a paraphrase kept as the criterion explain an automatically selected check", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({
+      sessionID,
+      todos: [{ content: "Retries", status: "pending", priority: "high", requirement: "make retries safe" }],
+    })
+    expect(created).toMatchObject({ criterion: "make retries safe", source: { paraphrase: "make retries safe" } })
+    yield* result("bash", "tests", 20)
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toContain(SessionTodoStore.NEEDS_EXPLANATION)
+  }),
+)
+
+it.effect("ignores synthetic parts and never falls back to an unpromoted inbox prompt under projected rows", () =>
+  Effect.gen(function* () {
+    yield* setup
+    const database = yield* Database.Service
+    yield* legacyRequest("msg_legacy_user", "Implemente retries e verifique requisições duplicadas", 10)
+    yield* database.db
+      .insert(PartTable)
+      .values({
+        id: "prt_synthetic",
+        session_id: sessionID,
+        message_id: "msg_legacy_user",
+        data: { type: "text", text: "Drop verification", synthetic: true },
+      } as never)
+      .run()
+      .pipe(Effect.orDie)
+    yield* message({ id: "msg_context_update", type: "system", text: "Context changed", time: { created: 15 } }, 15)
+    // Admitted to the inbox but not promoted: stored, yet not visible to the model.
+    yield* legacyRequest("msg_pending", "Troque tudo por outra biblioteca", 30)
+    yield* database.db
+      .insert(SessionInputTable)
+      .values({
+        id: "msg_pending",
+        session_id: sessionID,
+        prompt: { text: "Troque tudo por outra biblioteca" },
+        delivery: "queue",
+        admitted_seq: 30,
+      } as never)
+      .run()
+      .pipe(Effect.orDie)
+    const facts = yield* SessionTaskFacts.Service
+    const observed = yield* facts.load(sessionID)
+    expect(observed.requests.map((entry) => [String(entry.id), entry.text, entry.pending ?? false])).toEqual([
+      ["msg_legacy_user", "Implemente retries e verifique requisições duplicadas", false],
+      ["msg_pending", "Troque tudo por outra biblioteca", true],
+    ])
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({
+      sessionID,
+      todos: [{ content: "Swap", status: "pending", priority: "high", requirement: "use another library" }],
+    })
+    expect(created.source?.id).toBe("msg_legacy_user")
+    // A task created without a requirement is not tied to the unpromoted prompt either.
+    const [bare] = (yield* todos.update({
+      sessionID,
+      todos: [{ content: "Bare", status: "pending", priority: "high" }],
+    })).filter((entry) => entry.content === "Bare")
+    expect(bare.source?.id).toBe("msg_legacy_user")
+  }),
+)
+
+it.effect("blocks after two refused completions when requests are legacy and results projected", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* legacyRequest("msg_legacy_user", "Implemente retries e verifique requisições duplicadas", 10)
+    yield* message({ id: "msg_context_update", type: "system", text: "Context changed", time: { created: 15 } }, 15)
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({
+      sessionID,
+      todos: [{ ...task, requirement: "verifique requisições duplicadas" }],
+    })
+    expect(created.source?.id).toBe("msg_legacy_user")
+    const completion = { id: created.id, revision: created.revision, status: "completed" as const }
+    const first = yield* todos.update({ sessionID, todos: [completion] }).pipe(Effect.flip)
+    expect(first.message).toContain("no verification result")
+    yield* refusal("attempt-1", 20, completion, first.message)
+    // The second refusal in a row blocks the task instead of failing the call again.
+    const blocked = yield* todos.update({ sessionID, todos: [completion] })
+    expect(blocked[0]).toMatchObject({ status: "blocked" })
+    expect(blocked[0].reason).toContain("completion evidence could not be verified after 2 attempts")
   }),
 )

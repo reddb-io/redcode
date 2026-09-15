@@ -1994,9 +1994,12 @@ export function createTodoFold<P extends TodoFoldPart>() {
     )
 }
 
+/** Tool error text as a terminal can show it: no ANSI sequences or control characters but newlines and tabs. */
+const printable = (text: string) => stripAnsi(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+
 const todoFailureError = (part: TodoFoldPart) => {
   const state = part.state as { status: string; error?: unknown } | undefined
-  return typeof state?.error === "string" ? state.error : ""
+  return typeof state?.error === "string" ? printable(state.error) : ""
 }
 
 /** The first line of a failed todowrite's error, cut for a one-line row. */
@@ -2327,8 +2330,8 @@ function InlineTool(props: {
   onClick?: () => void
   /** Replaces the part's own error in the expanded view, e.g. every error of a folded run. */
   errorText?: string
-  /** Called when the expanded error opens. */
-  onErrorExpand?: () => void
+  /** Offered as an explicit copy action under the expanded error. */
+  onCopyError?: () => void
 }) {
   const { theme } = useTheme()
   const ctx = use()
@@ -2374,6 +2377,7 @@ function InlineTool(props: {
       denied={Boolean(denied())}
       error={props.errorText ?? error()}
       errorExpanded={errorExpanded()}
+      onCopyError={props.onCopyError}
       complete={props.complete}
       pending={props.pending}
       failure={props.failure}
@@ -2384,9 +2388,7 @@ function InlineTool(props: {
       onMouseUp={() => {
         if (renderer.getSelection()?.getSelectedText()) return
         if (failed()) {
-          const open = !errorExpanded()
-          setErrorExpanded(open)
-          if (open) props.onErrorExpand?.()
+          setErrorExpanded((value) => !value)
           return
         }
         props.onClick?.()
@@ -2406,6 +2408,7 @@ export function InlineToolRow(props: {
   denied?: boolean
   error?: string
   errorExpanded?: boolean
+  onCopyError?: () => void
   complete: unknown
   pending: string
   failure?: string
@@ -2470,7 +2473,19 @@ export function InlineToolRow(props: {
       </Switch>
       <Show when={props.failed && props.errorExpanded}>
         <box paddingLeft={INLINE_TOOL_ICON_WIDTH}>
-          <text fg={props.errorColor}>{props.error}</text>
+          <text fg={props.errorColor}>{printable(props.error ?? "")}</text>
+          <Show when={props.onCopyError}>
+            <text
+              fg={props.errorColor}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={(event: MouseEvent) => {
+                event.stopPropagation()
+                props.onCopyError?.()
+              }}
+            >
+              Copy errors
+            </text>
+          </Show>
         </box>
       </Show>
     </box>
@@ -3001,7 +3016,7 @@ function ApplyPatch(props: ToolProps) {
 function TodoWrite(props: ToolProps) {
   const clipboard = useClipboard()
   const toast = useToast()
-  // Opening a failed run copies its errors: the reasons are otherwise easy to lose in a folded row.
+  // A folded run's reasons are easy to lose; its expanded row offers to copy every one of them.
   const copyTodoErrors = (errors: string) => {
     if (!errors || !clipboard.write) return
     void Promise.resolve(clipboard.write(errors))
@@ -3031,7 +3046,7 @@ function TodoWrite(props: ToolProps) {
               complete={false}
               part={row.part}
               errorText={row.errors}
-              onErrorExpand={() => copyTodoErrors(row.errors)}
+              onCopyError={() => copyTodoErrors(row.errors)}
             >
               Updating todos…
             </InlineTool>
