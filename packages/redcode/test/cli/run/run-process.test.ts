@@ -7,6 +7,7 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { reply } from "../../lib/llm-server"
 import { cliIt } from "../../lib/cli-process"
+import { testProviderConfig } from "../../lib/test-provider"
 
 describe("opencode run (non-interactive subprocess)", () => {
   // Happy path: prompt completes, output reaches stdout, process exits 0.
@@ -19,6 +20,39 @@ describe("opencode run (non-interactive subprocess)", () => {
         const result = yield* opencode.run("say hi")
         opencode.expectExit(result, 0)
         expect(result.stdout).toBe("hello from the test llm\n")
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "--max-cost stops the run after the step that reaches it and exits 1",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        const config = testProviderConfig(llm.url)
+        const priced = {
+          ...config,
+          provider: {
+            test: {
+              ...config.provider.test,
+              models: { "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } } },
+            },
+          },
+        }
+        yield* llm.push(
+          reply()
+            .tool("bash", { command: "printf spent", description: "Print deterministic output" })
+            .usage({ input: 1000, output: 0 }),
+        )
+        yield* llm.text("never reached")
+
+        const result = yield* opencode.run("spend", {
+          extraArgs: ["--max-cost", "0.5", "--dangerously-skip-permissions"],
+          env: { REDCODE_CONFIG_CONTENT: JSON.stringify(priced) },
+        })
+
+        expect(result.exitCode).toBe(1)
+        expect(result.stderr).toContain("Budget reached: $1.00 of $0.50 spent")
+        expect(yield* llm.calls).toBe(1)
       }),
     60_000,
   )

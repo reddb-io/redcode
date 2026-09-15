@@ -1539,7 +1539,57 @@ const scenarios: Scenario[] = [
     }))
     .json(200, (body) => {
       check(isRecord(body) && isRecord(body.turns) && body.turns.max === 7, "budget should set the turn ceiling")
+      check(isRecord(body) && body.budget === undefined, "a turn change adds no spend limit")
     }),
+  http.protected
+    .post("/session/{sessionID}/goal/budget", "session.goal.budget.spend")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal spend budget session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("paused"))
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/budget", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { max_cost_usd: 2.5, max_tokens: 400000 },
+    }))
+    .json(200, (body) => {
+      check(isRecord(body) && isRecord(body.turns) && body.turns.max === 20, "a spend change keeps the turn ceiling")
+      check(
+        isRecord(body) && isRecord(body.budget) && body.budget.max_cost_usd === 2.5 && body.budget.max_tokens === 400000,
+        "budget should set the goal's spend limits",
+      )
+    }),
+  http.protected
+    .get("/session/{sessionID}/budget", "session.budget")
+    .seeded((ctx) => ctx.session({ title: "Budget session" }))
+    .at((ctx) => ({ path: route("/session/{sessionID}/budget", { sessionID: ctx.state.id }), headers: ctx.headers() }))
+    .json(200, (body) => {
+      check(isRecord(body) && isRecord(body.limits), "budget should carry the limits in force")
+      check(isRecord(body) && Object.keys(body.limits as object).length === 0, "a fresh session has no limits")
+      check(isRecord(body) && body.exceeded === false, "a fresh session is not over budget")
+    }),
+  http.protected
+    .post("/session/{sessionID}/budget", "session.budget.set")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Budget set session" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/budget", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { max_cost_usd: 5 },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(isRecord(body) && isRecord(body.limits) && body.limits.max_cost_usd === 5, "the override is in force")
+        check(isRecord(body) && isRecord(body.override) && body.override.max_cost_usd === 5, "the override is reported")
+        const stored = yield* ctx.sessionGet(ctx.state.id)
+        const budget = stored?.metadata?.["budget"]
+        check(isRecord(budget) && budget.max_cost_usd === 5, "the override should be stored on the session")
+      }),
+    ),
   http.protected
     .get("/session/{sessionID}/diff", "session.diff")
     .seeded((ctx) => ctx.session({ title: "Diff session" }))
