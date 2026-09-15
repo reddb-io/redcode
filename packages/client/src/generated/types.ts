@@ -2062,6 +2062,7 @@ export type DesignsListOutput = ReadonlyArray<{
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2200,6 +2201,7 @@ export type DesignsCreateOutput = {
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2304,6 +2306,7 @@ export type DesignsGetOutput = {
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -2398,6 +2401,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2464,6 +2468,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2530,6 +2535,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2596,6 +2602,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2662,6 +2669,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2728,6 +2736,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2794,6 +2803,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2926,6 +2936,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -2992,6 +3003,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -3058,6 +3070,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -3134,6 +3147,7 @@ export type DesignsUpdateOutput = {
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -3245,6 +3259,7 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -3374,6 +3389,7 @@ export type DesignsPublishOutput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -3487,6 +3503,7 @@ export type DesignsRestoreOutput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
@@ -3592,6 +3609,7 @@ export type DesignsReopenOutput = {
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -3696,6 +3714,7 @@ export type DesignsRefreshOutput = {
     readonly id: string
     readonly name: string
     readonly variant?: string
+    readonly screen?: string
     readonly selector: string
     readonly state: "loading" | "empty" | "error" | "populated" | "edge"
     readonly actions: ReadonlyArray<{
@@ -3752,6 +3771,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3764,6 +3784,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3793,6 +3814,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3805,6 +3827,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3834,6 +3857,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3846,6 +3870,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3875,6 +3900,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3887,6 +3913,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3916,6 +3943,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3928,6 +3956,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3957,6 +3986,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -3969,6 +3999,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -3998,6 +4029,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4010,6 +4042,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -4039,6 +4072,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4051,6 +4085,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -4080,6 +4115,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4092,6 +4128,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -4121,6 +4158,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4133,6 +4171,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -4162,6 +4201,7 @@ export type DesignsFeedbackInput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4174,6 +4214,7 @@ export type DesignsFeedbackInput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string
@@ -4293,6 +4334,7 @@ export type DesignsApprovalOutput = {
         readonly id: string
         readonly name: string
         readonly variant?: string
+        readonly screen?: string
         readonly selector: string
         readonly state: "loading" | "empty" | "error" | "populated" | "edge"
         readonly actions: ReadonlyArray<{
@@ -4357,6 +4399,7 @@ export type DesignsApprovalOutput = {
       readonly preset?: string
       readonly variant?: string
       readonly component?: string
+      readonly screen?: string
     }
     readonly id: string
     readonly revision: string
@@ -4369,6 +4412,7 @@ export type DesignsApprovalOutput = {
         readonly preset?: string
         readonly variant?: string
         readonly component?: string
+        readonly screen?: string
       }
       readonly tag?: string
       readonly elementText?: string

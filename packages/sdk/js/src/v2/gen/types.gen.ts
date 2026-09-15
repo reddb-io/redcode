@@ -5414,6 +5414,7 @@ export type DesignScenario = {
   id: string
   name: string
   variant?: string
+  screen?: string
   selector: string
   state: "loading" | "empty" | "error" | "populated" | "edge"
   actions: Array<{
@@ -5533,6 +5534,7 @@ export type DesignParamContext = {
   preset?: string
   variant?: string
   component?: string
+  screen?: string
 }
 
 export type DesignFeedbackItem = {
