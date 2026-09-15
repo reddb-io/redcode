@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "name": "ptbr-todo-after-context-update",
+  "source": "hand-written",
+  "steps": [
+    {
+      "text": "Olá! Como posso ajudar?",
+      "usage": { "input": 5000, "output": 10 }
+    },
+    {
+      "match": "<system_update>",
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": {
+            "todos": [
+              {
+                "content": "Corrigir src/sum.sh",
+                "status": "in_progress",
+                "priority": "high",
+                "requirement": "Corrija o src/sum.sh para que o `sh test.sh` passe",
+                "criterion": "sh test.sh imprime PASS"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 5600, "output": 80 }
+    },
+    {
+      "tools": [{ "name": "read", "input": { "filePath": "{{workspace}}/src/sum.sh" } }],
+      "usage": { "input": 5800, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "edit",
+          "input": { "filePath": "{{workspace}}/src/sum.sh", "oldString": "$(( $1 - $2 ))", "newString": "$(( $1 + $2 ))" }
+        }
+      ],
+      "usage": { "input": 6000, "output": 50 }
+    },
+    {
+      "tools": [{ "name": "bash", "input": { "command": "sh test.sh", "description": "Verificar a correção" } }],
+      "usage": { "input": 6200, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": { "todos": [{ "id": "{{todo.0.id}}", "revision": "{{todo.0.revision}}", "status": "completed" }] }
+        }
+      ],
+      "usage": { "input": 6400, "output": 40 }
+    },
+    {
+      "text": "Corrigido: src/sum.sh agora soma e `sh test.sh` imprime PASS.",
+      "usage": { "input": 6600, "output": 25 }
+    }
+  ]
+}

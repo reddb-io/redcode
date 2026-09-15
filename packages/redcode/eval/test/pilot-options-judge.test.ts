@@ -48,14 +48,15 @@ describe("pilot estimate", () => {
 
 describe("options", () => {
   test("defaults to the scripted replay", () => {
+    const history = path.join("/work", ".red", "code", "eval", "history.jsonl")
     expect(EvalOptions.parse({}, "/work")).toMatchObject({
       mode: "scripted",
       model: SCRIPTED_MODEL,
       pilot: false,
       hermetic: false,
-      history: "/work/.red/code/eval/history.jsonl",
+      history,
     })
-    expect(EvalOptions.pilotPath("/work/.red/code/eval/history.jsonl")).toBe("/work/.red/code/eval/pilot.jsonl")
+    expect(EvalOptions.pilotPath(history)).toBe(path.join("/work", ".red", "code", "eval", "pilot.jsonl"))
   })
 
   test("a real model needs the live switch and a budget, unless it is only piloted", () => {

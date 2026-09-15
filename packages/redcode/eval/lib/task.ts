@@ -66,8 +66,9 @@ export function options() {
 
 export function task(name: string, spec: Spec, assertions: (run: Run) => void | Promise<void>) {
   const budget = spec.budget?.ms ?? DEFAULT_BUDGET.ms
-  test(
-    name,
+  const register = spec.knownFailure ? test.failing : test
+  register(
+    spec.knownFailure ? `${name} (known failure: ${spec.knownFailure})` : name,
     async () => {
       const opts = options()
       const run = await EvalHarness.run({
