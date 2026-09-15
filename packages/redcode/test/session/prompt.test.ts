@@ -2056,6 +2056,85 @@ unix(
   30_000,
 )
 
+unix(
+  "an explicit steer reaches the next step of a long tool loop without aborting the tool; a queue waits for the turn",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Steer and queue",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("steer answered")
+      yield* llm.text("queue answered")
+
+      const run = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      // What the TUI sends while busy: enter queues, the steer key steers. The queued prompt is
+      // admitted first, so admission order alone would not put the steer ahead of it.
+      const queued = MessageID.ascending()
+      const steer = MessageID.ascending()
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        messageID: queued,
+        agent: "build",
+        model: ref,
+        noReply: true,
+        delivery: "queue",
+        parts: [{ type: "text", text: "explicit-queued-prompt" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        messageID: steer,
+        agent: "build",
+        model: ref,
+        noReply: true,
+        delivery: "steer",
+        parts: [{ type: "text", text: "explicit-steer-prompt" }],
+      })
+      // Neither touches the running tool.
+      yield* toolRunning(chat.id)
+      expect(yield* llm.calls).toBe(1)
+
+      yield* held.release
+      const last = yield* awaitWithTimeout(Fiber.join(run), "the drain never finished", "20 seconds")
+      expect(last.info.role === "assistant" && last.info.parentID).toBe(queued)
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(3)
+      expect(JSON.stringify(messagesOf(hits[0]!))).not.toContain("explicit-")
+      // The tool-result request is the next step boundary: the steer is in it, the queue is not.
+      expect(JSON.stringify(messagesOf(hits[1]!))).toContain("explicit-steer-prompt")
+      expect(JSON.stringify(messagesOf(hits[1]!))).not.toContain("explicit-queued-prompt")
+      expect(JSON.stringify(messagesOf(hits[2]!))).toContain("explicit-queued-prompt")
+
+      // The tool ran to completion: steering is not an interruption.
+      const tool = (yield* sessions.messages({ sessionID: chat.id }))
+        .flatMap((msg) => msg.parts)
+        .find((part) => part.type === "tool" && part.tool === "bash")
+      expect(tool?.type === "tool" && tool.state.status).toBe("completed")
+      expect(tool?.type === "tool" && tool.state.status === "completed" && tool.state.output).toContain("released")
+
+      const steerRow = yield* admittedRow(steer)
+      const queuedRow = yield* admittedRow(queued)
+      expect(steerRow?.delivery).toBe("steer")
+      expect(queuedRow?.delivery).toBe("queue")
+      expect(steerRow?.promotedSeq ?? Infinity).toBeLessThan(queuedRow?.promotedSeq ?? -Infinity)
+      expect(yield* llm.pending).toBe(0)
+    }),
+  30_000,
+)
+
 it.instance("noReply admits the prompt without answering it", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
