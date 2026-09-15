@@ -715,8 +715,7 @@ export function Session() {
         }
         const { max_turns: _turns, ...limits } = change.value
         const result = await sdk.client.session
-          // The route takes null to remove a limit ("off"); the generated client drops null from the type.
-          .budgetSet({ sessionID: route.sessionID, ...(limits as { max_cost_usd?: number; max_tokens?: number }) })
+          .budgetSet({ sessionID: route.sessionID, ...limits })
           .catch(() => undefined)
         const view = result?.data
         toast.show({

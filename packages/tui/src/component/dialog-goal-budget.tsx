@@ -24,8 +24,7 @@ export function DialogGoalBudget(props: { sessionID: string }) {
         }
         setBusy(true)
         const result = await sdk.client.session
-          // The route takes null to remove a limit; the generated client drops null from the type.
-          .goalBudget({ sessionID: props.sessionID, ...(change.value as { max_cost_usd?: number; max_tokens?: number }) })
+          .goalBudget({ sessionID: props.sessionID, ...change.value })
           .catch(() => undefined)
         setBusy(false)
         const goal = result?.data

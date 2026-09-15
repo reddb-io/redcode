@@ -240,6 +240,8 @@ export const View = Schema.Struct({
   }),
 }).annotate({ identifier: "SessionBudget" })
 
+// null removes a limit. The public OpenAPI document strips null from optional fields, and
+// `httpapi/public.ts` adds it back for these payloads so generated clients can send it.
 export const UpdatePayload = Schema.Struct({
   reset_on_message: Schema.optional(Schema.NullOr(Schema.Boolean)).annotate({
     description: "Count the budget afresh from each message a person sends; null removes the override",

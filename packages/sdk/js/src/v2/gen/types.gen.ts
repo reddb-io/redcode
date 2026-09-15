@@ -11352,9 +11352,9 @@ export type SessionGoalDropResponse = SessionGoalDropResponses[keyof SessionGoal
 export type SessionGoalBudgetData = {
   body?: {
     max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-    reset_on_message?: boolean
-    max_cost_usd?: number
-    max_tokens?: number
+    reset_on_message?: boolean | null
+    max_cost_usd?: number | null
+    max_tokens?: number | null
   }
   path: {
     sessionID: string
@@ -11424,9 +11424,9 @@ export type SessionBudgetResponse = SessionBudgetResponses[keyof SessionBudgetRe
 
 export type SessionBudgetSetData = {
   body?: {
-    reset_on_message?: boolean
-    max_cost_usd?: number
-    max_tokens?: number
+    reset_on_message?: boolean | null
+    max_cost_usd?: number | null
+    max_tokens?: number | null
   }
   path: {
     sessionID: string
