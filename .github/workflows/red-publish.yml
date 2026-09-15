@@ -207,6 +207,9 @@ jobs:
             await Bun.write(target, `${JSON.stringify({ ...manifest, repository: { type: "git", url: "https://github.com/reddb-io/redcode" } }, null, 2)}\n`)
           }))
           '
+      # Recovery: rerunning failed jobs is safe. publish.ts skips versions npm already serves,
+      # treats an E409 "cannot publish over previously published version" as already published,
+      # and only publishes @reddb-io/redcode once every platform package is visible on npm.
       - name: Publish native packages and @reddb-io/redcode
         env:
           NPM_CONFIG_PROVENANCE: "true"
@@ -228,21 +231,54 @@ jobs:
           root="$(mktemp -d)"
           trap 'rm -rf "$root"' EXIT
           export npm_config_cache="$root/npm-cache"
-          # npm read replicas can lag a successful publish by several minutes.
-          # Ten attempts at attempt*15s provide roughly eleven minutes for the
-          # exact public package to become installable before the release ships.
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          # npm read replicas can lag a successful publish by many minutes. Wait up to twenty
+          # minutes overall: first until npm view serves the main package and every platform
+          # package, then until the exact version installs.
+          specs=("@reddb-io/redcode@${VERSION}")
+          for manifest in packages/redcode/dist/*/package.json; do
+            name="$(node -p 'require(process.argv[1]).name' "$PWD/$manifest")"
+            if [ "$name" != "@reddb-io/redcode" ]; then specs+=("${name}@${VERSION}"); fi
+          done
+          if [ "${#specs[@]}" -lt 2 ]; then
+            echo "::error::no platform package manifests found under packages/redcode/dist"
+            exit 1
+          fi
+          missing_specs() {
+            missing=()
+            for spec in "${specs[@]}"; do
+              if ! npm view "$spec" version >/dev/null 2>&1; then missing+=("$spec"); fi
+            done
+          }
+          deadline=$((SECONDS + 1200))
+          while true; do
+            missing_specs
+            if [ "${#missing[@]}" -eq 0 ]; then break; fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::npm registry still does not serve ${#missing[@]} of ${#specs[@]} packages: ${missing[*]}"
+              exit 1
+            fi
+            echo "waiting for npm to serve ${#missing[@]} of ${#specs[@]} packages: ${missing[*]}"
+            sleep 20
+          done
+          attempt=0
+          while true; do
+            attempt=$((attempt + 1))
             if npm install --prefix "$root" --no-audit --no-fund "@reddb-io/redcode@${VERSION}"; then
               "$root/node_modules/.bin/redcode" --version | grep -Fx "$VERSION"
               REDCODE_RPC_URL=http://127.0.0.1:1/rpc "$root/node_modules/.bin/redcode-rpc-sidecar" </dev/null
               exit 0
             fi
-            if [ "$attempt" -eq 10 ]; then
-              echo "::error::registry did not serve @reddb-io/redcode@${VERSION} after publish"
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              missing_specs
+              if [ "${#missing[@]}" -gt 0 ]; then
+                echo "::error::@reddb-io/redcode@${VERSION} did not install; npm registry does not serve: ${missing[*]}"
+              else
+                echo "::error::@reddb-io/redcode@${VERSION} did not install although npm view serves all ${#specs[@]} packages"
+              fi
               exit 1
             fi
-            echo "registry smoke attempt ${attempt}/10 not yet resolvable; sleeping ${attempt}*15s"
-            sleep $((attempt * 15))
+            echo "registry smoke install attempt ${attempt} failed; retrying in 20s"
+            sleep 20
           done
       - name: Publish GitHub Release
         env:
