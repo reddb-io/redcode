@@ -112,8 +112,32 @@ import {
   SandboxURLSearchParams,
 } from "../values.js"
 
+const PROGRAM_PREFIX = "async function __codemode__() {\n"
+
+/**
+ * A two-line code frame under the failing source line: the line itself, then a caret at the
+ * column. Long lines are windowed around the caret so the frame stays small.
+ */
+export const codeFrame = (code: string, line: number, column: number): string => {
+  const lines = code.split("\n")
+  const text = (lines[line - 1] ?? "").replace(/\t/g, " ")
+  const width = 100
+  const start = text.length > width ? Math.max(0, Math.min(column - 1 - width / 2, text.length - width)) : 0
+  const shown = text.slice(start, start + width)
+  const gutter = `${line} | `
+  return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${" ".repeat(Math.max(0, column - 1 - start))}^`
+}
+
+const parseFailure = (message: string, code: string, line: number, column: number) => {
+  const clampedLine = Math.min(Math.max(1, line), Math.max(1, code.split("\n").length))
+  const clampedColumn = Math.max(1, column)
+  const error = new InterpreterRuntimeError(message, undefined, "ParseError")
+  error.location = { line: clampedLine, column: clampedColumn, frame: codeFrame(code, clampedLine, clampedColumn) }
+  return error
+}
+
 const parseProgram = (code: string): ProgramNode => {
-  const transpiled = transpileModule(`async function __codemode__() {\n${code}\n}`, {
+  const transpiled = transpileModule(`${PROGRAM_PREFIX}${code}\n}`, {
     reportDiagnostics: true,
     compilerOptions: {
       target: ScriptTarget.ESNext,
@@ -123,23 +147,39 @@ const parseProgram = (code: string): ProgramNode => {
   const diagnostic = transpiled.diagnostics?.find((item) => item.category === DiagnosticCategory.Error)
 
   if (diagnostic) {
-    throw new InterpreterRuntimeError(
-      `Failed to parse TypeScript: ${flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
-      undefined,
-      "ParseError",
-    )
+    const message = `Failed to parse TypeScript: ${flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`
+    if (diagnostic.start === undefined) throw new InterpreterRuntimeError(message, undefined, "ParseError")
+    // Offsets are into the wrapped source; map them back onto the program the model wrote.
+    const before = code.slice(0, Math.max(0, diagnostic.start - PROGRAM_PREFIX.length))
+    const line = before.split("\n").length
+    const column = before.length - before.lastIndexOf("\n")
+    throw parseFailure(message, code, line, column)
   }
 
   const bodyStart = transpiled.outputText.indexOf("{") + 1
   const bodyEnd = transpiled.outputText.lastIndexOf("}")
   const executableCode = transpiled.outputText.slice(bodyStart, bodyEnd)
-  const parsed = parse(executableCode, {
-    ecmaVersion: "latest",
-    sourceType: "script",
-    allowReturnOutsideFunction: true,
-    allowAwaitOutsideFunction: true,
-    locations: true,
-  }) as unknown
+  let parsed: unknown
+  try {
+    parsed = parse(executableCode, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+      allowAwaitOutsideFunction: true,
+      locations: true,
+    }) as unknown
+  } catch (error) {
+    const loc = (error as { loc?: { line: number; column: number } }).loc
+    if (!(error instanceof SyntaxError) || loc === undefined) throw error
+    // The body starts on the wrapper's line, so source line N is line N + 1 here (best effort:
+    // the transpiler keeps statement lines but may reformat within them).
+    throw parseFailure(
+      `Failed to parse JavaScript: ${error.message.replace(/\s*\(\d+:\d+\)$/, "")}`,
+      code,
+      loc.line - 1,
+      loc.column + 1,
+    )
+  }
 
   if (!isRecord(parsed) || parsed.type !== "Program" || !Array.isArray(parsed.body)) {
     throw new InterpreterRuntimeError("Failed to parse script as a Program node.")
@@ -153,6 +193,15 @@ const publicErrorMessage = (message: string): string =>
 
 const normalizeError = (error: unknown): Diagnostic => {
   if (error instanceof InterpreterRuntimeError) {
+    if (!error.node?.loc && error.location) {
+      const { line, column, frame } = error.location
+      return {
+        kind: error.kind,
+        message: `${error.message} (line ${line}, col ${column})${frame ? `\n${frame}` : ""}`,
+        location: { line, column },
+        ...(error.suggestions ? { suggestions: error.suggestions } : {}),
+      }
+    }
     return {
       kind: error.kind,
       message: `${error.message}${formatLocation(error.node)}`,

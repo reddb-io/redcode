@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import { CodeModeTool, describeCatalog } from "@/tool/code-mode"
 import { McpCatalog } from "@/mcp/catalog"
 import { Agent } from "@/agent/agent"
+import { Config } from "@/config/config"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
 import { Session } from "@/session/session"
@@ -139,6 +140,7 @@ async function buildTool() {
   }
 
   const layer = Layer.mergeAll(
+    Layer.mock(Config.Service, { get: () => Effect.succeed({} as any) }),
     Layer.mock(Plugin.Service, {
       trigger: ((_name: unknown, _input: unknown, output: unknown) =>
         Effect.succeed(output)) as Plugin.Interface["trigger"],

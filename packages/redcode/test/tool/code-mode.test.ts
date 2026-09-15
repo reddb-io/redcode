@@ -3,6 +3,7 @@ import { CODE_MODE_TOOL, CodeModeTool, Parameters, describeCatalog } from "@/too
 import type { Tool as MCPToolDef } from "@modelcontextprotocol/sdk/types.js"
 import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Agent } from "@/agent/agent"
+import { Config } from "@/config/config"
 import { MCP } from "@/mcp"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
@@ -44,6 +45,7 @@ function harness(input: {
   trigger?: Plugin.Interface["trigger"]
 }) {
   return Layer.mergeAll(
+    Layer.mock(Config.Service, { get: () => Effect.succeed({} as any) }),
     Layer.mock(Plugin.Service, {
       trigger: input.trigger ?? (((_name, _input, output) => Effect.succeed(output)) as Plugin.Interface["trigger"]),
     }),
@@ -239,8 +241,11 @@ describe("code mode execute", () => {
     const result = JSON.parse(out.output)
     expect(result.items.map((i: any) => i.path)).toContain("tools.zeta.only_tool")
     expect(result).toMatchObject({ remaining: 0, next: null })
-    expect(result.items[0].signature).toContain("tools.")
-    const signature = result.items.find((i: any) => i.path === "tools.zeta.only_tool").signature
+    expect(result.items.find((i: any) => i.path === "tools.zeta.only_tool").params).toEqual(["topic"])
+    const exact = await Effect.runPromise(
+      tool.execute({ code: "return await tools.$codemode.search({ query: 'tools.zeta.only_tool' })" }, ctx),
+    )
+    const signature = JSON.parse(exact.output).items[0].signature
     expect(signature).toContain("tools.zeta.only_tool(input: {\n")
     expect(signature).toContain("  /** Subject to look up */\n  topic: string")
     expect(description).toContain("/** Subject to look up */")

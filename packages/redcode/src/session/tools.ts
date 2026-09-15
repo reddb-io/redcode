@@ -24,8 +24,10 @@ import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { isRecord } from "@/util/record"
-import { RuntimeFlags } from "@/effect/runtime-flags"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
+import { JsonSchemaValidate } from "@reddb-io/redcode-core/util/json-schema-validate"
+import { McpAttachments } from "@/mcp/attachments"
+import { CodeModeGate } from "@/tool/code-mode-gate"
 import { ToolDeadline } from "./tool-deadline"
 import { HumanWait } from "./human-wait"
 import type { SessionGuardLog } from "./guard-log"
@@ -38,14 +40,6 @@ const MCP_RESOURCE_TOOLS = {
   listTemplates: "list_mcp_resource_templates",
   read: "read_mcp_resource",
 } as const
-const MAX_MCP_RESOURCE_BLOB_BYTES = 10 * 1024 * 1024
-const SUPPORTED_MCP_RESOURCE_ATTACHMENT_MIMES = new Set([
-  "application/pdf",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-])
 
 export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
@@ -76,12 +70,95 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const registry = yield* ToolRegistry.Service
   const mcp = yield* MCP.Service
   const outputs = yield* ToolOutputBridge.Service
-  const flags = yield* RuntimeFlags.Service
   const hooks = yield* OperationHookBridge.Service
 
   // One global override rather than a knob per tool: the failure this guards against is a tool
   // that never returns, and that is not a per-tool judgement.
   const toolTimeout = input.toolTimeout
+
+  /**
+   * The policy every tool call goes through, whether the model made it or a code mode script did:
+   * `tool.execute.before`, PreExecute hooks (which may rewrite or refuse the arguments), the loop
+   * guard, the tool deadline with permission waits deducted, and PostExecute. One wrapper, so a
+   * script cannot reach a tool on terms a direct call would not get.
+   */
+  const guarded = <A>(call: {
+    readonly toolID: string
+    readonly callID: string
+    readonly args: Record<string, unknown>
+    readonly abort?: AbortSignal
+    readonly run: (args: Record<string, unknown>, abort: AbortSignal | undefined) => Effect.Effect<A, unknown>
+  }) =>
+    Effect.gen(function* () {
+      yield* plugin.trigger(
+        "tool.execute.before",
+        { tool: call.toolID, sessionID: input.session.id, callID: call.callID },
+        { args: call.args },
+      )
+      const decided = yield* hooks.waterfall(OperationHook.Operation.Tool.PreExecute, {
+        timestamp: yield* DateTime.now,
+        sessionID: input.session.id,
+        assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
+        callID: call.callID,
+        tool: call.toolID,
+        args: call.args,
+      })
+      const publishPost = (output: unknown, failed: boolean) =>
+        Effect.gen(function* () {
+          const payload = {
+            timestamp: yield* DateTime.now,
+            tool: call.toolID,
+            sessionID: input.session.id,
+            assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
+            callID: call.callID,
+            args: decided.args,
+            output,
+            failed,
+          }
+          yield* hooks.parallel(OperationHook.Operation.Tool.PostExecute, payload)
+          yield* input.publishEvent(SessionEvent.Tool.PostExecute, payload).pipe(Effect.ignore)
+        })
+      // Most tools carry no bound of their own, so one that never returns holds the whole
+      // turn with no output and no error — and the turn's watchdog cannot help, because a
+      // tool in flight is deliberately counted as work. A timeout here lands in the same
+      // failure branch as any other tool error, so the model reads it and can react. The
+      // signal the tool sees as `ctx.abort` is the guard's, so expiry also stops the tool
+      // itself rather than only the report of it.
+      const deadline = ToolDeadline.deadlineMs({ tool: call.toolID, configured: toolTimeout })
+      // Asked before the call is made: a call whose answer is already known cannot become
+      // useful by being made again, and the correction reaches the model as this tool's
+      // own result, so it can change course without anyone being asked a question.
+      const loop = yield* input.processor.guardLoop({ tool: call.toolID, input: decided.args })
+      if (loop.type !== "ok") {
+        yield* publishPost({ error: loop.message }, true).pipe(Effect.ignoreCause)
+        return yield* Effect.fail(new Error(loop.message))
+      }
+      HumanWait.claim(input.session.id, call.callID)
+      const executed = yield* (
+        deadline === undefined
+          ? call.run(decided.args, call.abort)
+          : ToolDeadline.guard((abort) => call.run(decided.args, abort), {
+              tool: call.toolID,
+              ms: deadline,
+              abort: call.abort,
+              waitedMs: () => HumanWait.waited(input.session.id, call.callID),
+              onExpire: input.recordGuard({
+                sessionID: input.session.id,
+                guard: "tool_timeout",
+                action: "stop",
+                subject: call.toolID,
+                detail: ToolDeadline.message({ tool: call.toolID, ms: deadline }),
+              }),
+            })
+      ).pipe(Effect.exit)
+      HumanWait.forget(input.session.id, call.callID)
+      if (Exit.isFailure(executed)) {
+        yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
+        return yield* Effect.failCause(executed.cause)
+      }
+      yield* publishPost(executed.value, false)
+      return executed.value
+    })
 
   const withOperationHooks = (toolID: string, item: AITool): AITool => {
     const execute = item.execute
@@ -90,83 +167,83 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       ...item,
       execute(args, options) {
         return run.promise(
-          Effect.gen(function* () {
-            const hookArgs = toRecord(args)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: toolID, sessionID: input.session.id, callID: options.toolCallId },
-              { args: hookArgs },
-            )
-            const decided = yield* hooks.waterfall(OperationHook.Operation.Tool.PreExecute, {
-              timestamp: yield* DateTime.now,
-              sessionID: input.session.id,
-              assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
-              callID: options.toolCallId ?? "",
-              tool: toolID,
-              args: hookArgs,
-            })
-            const publishPost = (output: unknown, failed: boolean) =>
-              Effect.gen(function* () {
-                const payload = {
-                  timestamp: yield* DateTime.now,
-                  tool: toolID,
-                  sessionID: input.session.id,
-                  assistantMessageID: SessionMessage.ID.make(input.processor.message.id),
-                  callID: options.toolCallId ?? "",
-                  args: decided.args,
-                  output,
-                  failed,
-                }
-                yield* hooks.parallel(OperationHook.Operation.Tool.PostExecute, payload)
-                yield* input.publishEvent(SessionEvent.Tool.PostExecute, payload).pipe(Effect.ignore)
-              })
-            // Most tools carry no bound of their own, so one that never returns holds the whole
-            // turn with no output and no error — and the turn's watchdog cannot help, because a
-            // tool in flight is deliberately counted as work. A timeout here lands in the same
-            // failure branch as any other tool error, so the model reads it and can react. The
-            // signal the tool sees as `ctx.abort` is the guard's, so expiry also stops the tool
-            // itself rather than only the report of it.
-            const deadline = ToolDeadline.deadlineMs({ tool: toolID, configured: toolTimeout })
-            // Asked before the call is made: a call whose answer is already known cannot become
-            // useful by being made again, and the correction reaches the model as this tool's
-            // own result, so it can change course without anyone being asked a question.
-            const loop = yield* input.processor.guardLoop({ tool: toolID, input: decided.args })
-            if (loop.type !== "ok") {
-              yield* publishPost({ error: loop.message }, true).pipe(Effect.ignoreCause)
-              return yield* Effect.fail(new Error(loop.message))
-            }
-            const call = (opts: ToolExecutionOptions) =>
-              Effect.promise(() => Promise.resolve(execute(decided.args, opts)))
-            HumanWait.claim(input.session.id, options.toolCallId ?? "")
-            const executed = yield* (
-              deadline === undefined
-                ? call(options)
-                : ToolDeadline.guard((abort) => call({ ...options, abortSignal: abort }), {
-                    tool: toolID,
-                    ms: deadline,
-                    abort: options.abortSignal,
-                    waitedMs: () => HumanWait.waited(input.session.id, options.toolCallId ?? ""),
-                    onExpire: input.recordGuard({
-                      sessionID: input.session.id,
-                      guard: "tool_timeout",
-                      action: "stop",
-                      subject: toolID,
-                      detail: ToolDeadline.message({ tool: toolID, ms: deadline }),
-                    }),
-                  })
-            ).pipe(Effect.exit)
-            HumanWait.forget(input.session.id, options.toolCallId ?? "")
-            if (Exit.isFailure(executed)) {
-              yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
-              return yield* Effect.failCause(executed.cause)
-            }
-            yield* publishPost(executed.value, false)
-            return executed.value
+          guarded({
+            toolID,
+            callID: options.toolCallId ?? "",
+            args: toRecord(args),
+            abort: options.abortSignal,
+            run: (decided, abort) =>
+              Effect.promise(() =>
+                Promise.resolve(execute(decided, abort ? { ...options, abortSignal: abort } : options)),
+              ),
           }),
         )
       },
     }
   }
+
+  // Read-only native tools a script may call this step; filled once the registry has resolved them.
+  let natives: Tool.NativeTool[] = []
+  // `parent/1`, `parent/2`, ... per parent call, for calls a tool makes itself.
+  const nestedCounts = new Map<string, number>()
+
+  /**
+   * A permission ask that belongs to the tool part `toolCallID` and pauses the deadline of every
+   * call in `waiting`: a script's call and the script itself are both blocked on the person.
+   */
+  const askFor =
+    (waiting: readonly string[], toolCallID: string): Tool.Context["ask"] =>
+    (req) =>
+      Effect.suspend(() => {
+        const stops = waiting.map((callID) => HumanWait.start(input.session.id, callID))
+        return permission
+          .ask({
+            ...req,
+            sessionID: input.session.id,
+            tool: { messageID: input.processor.message.id, callID: toolCallID },
+            ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
+          })
+          .pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                for (const stop of stops) stop()
+              }),
+            ),
+            Effect.orDie,
+          )
+      })
+
+  const nestedFor = (options: ToolExecutionOptions): Tool.Nested => ({
+    get natives() {
+      return natives
+    },
+    call: (request) =>
+      Effect.suspend(() => {
+        const parent = options.toolCallId ?? ""
+        const count = (nestedCounts.get(parent) ?? 0) + 1
+        nestedCounts.set(parent, count)
+        const callID = `${parent}/${count}`
+        return guarded({
+          toolID: request.tool,
+          callID,
+          args: request.args,
+          abort: options.abortSignal,
+          run: (args, abort) =>
+            request.run({
+              args,
+              ctx: {
+                ...context(args, options),
+                callID,
+                abort: abort ?? options.abortSignal!,
+                // The parent part shows its own progress; a nested call must not overwrite it.
+                metadata: () => Effect.void,
+                ask: askFor([parent, callID], options.toolCallId),
+                nested: undefined,
+              },
+            }),
+        })
+      }),
+  })
 
   const withAllOperationHooks = () =>
     Object.fromEntries(Object.entries(tools).map(([toolID, item]) => [toolID, withOperationHooks(toolID, item)]))
@@ -195,31 +272,32 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       }),
     evaluate: (key, pattern) =>
       Permission.evaluate(key, pattern, Permission.merge(input.agent.permission, input.session.permission ?? [])).action,
-    ask: (req) =>
-      // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
-      // deadline rather than counted against it.
-      Effect.suspend(() => {
-        const waiting = HumanWait.start(input.session.id, options.toolCallId ?? "")
-        return permission
-          .ask({
-            ...req,
-            sessionID: input.session.id,
-            tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-            ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
-          })
-          .pipe(Effect.ensuring(Effect.sync(() => waiting())), Effect.orDie)
-      }),
+    // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
+    // deadline rather than counted against it.
+    ask: askFor([options.toolCallId ?? ""], options.toolCallId),
+    nested: nestedFor(options),
   })
 
   const designEntries: ToolSearch.Entry[] = []
   const mcpEntries: ToolSearch.Entry[] = []
 
-  for (const item of yield* registry.tools({
+  const registered = yield* registry.tools({
     modelID: ModelV2.ID.make(input.model.api.id),
     providerID: input.model.providerID,
     agent: input.agent,
     permission: input.session.permission,
-  })) {
+    recent: scriptToolsUsed(input.messages),
+  })
+  {
+    const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
+    const candidates = registered.filter((item) => CodeModeGate.SCRIPT_NATIVE_TOOLS.has(item.id))
+    const hidden = Permission.disabled(
+      candidates.map((item) => item.id),
+      ruleset,
+    )
+    natives = candidates.filter((item) => !hidden.has(item.id) && input.userTools?.[item.id] !== false)
+  }
+  for (const item of registered) {
     const schema = ProviderTransform.schema(input.model, ToolJsonSchema.fromTool(item))
     if (item.id.startsWith(ToolSearch.DESIGN_NAMESPACE + "_"))
       designEntries.push({
@@ -569,7 +647,16 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     return wrapped
   })
 
-  if (flags.experimentalCodeMode) return yield* finish()
+  // Code mode replaces direct MCP tools only when this step really advertises `execute`: the
+  // registry gates it per model, and a permission rule or the prompt's switches can still drop it.
+  const codeMode =
+    tools[CodeModeGate.TOOL_ID] !== undefined &&
+    input.userTools?.[CodeModeGate.TOOL_ID] !== false &&
+    !Permission.disabled(
+      [CodeModeGate.TOOL_ID],
+      Permission.merge(input.agent.permission, input.session.permission ?? []),
+    ).has(CodeModeGate.TOOL_ID)
+  if (codeMode) return yield* finish()
 
   const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
   for (const [key, entry] of Object.entries(yield* mcp.tools())) {
@@ -590,6 +677,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
+          // The provider only parses the arguments as JSON; the server's schema is the contract.
+          const invalid = JsonSchemaValidate.problems(entry.def.inputSchema, args ?? {})
+          if (invalid.length > 0)
+            throw new Tool.InvalidArgumentsError({ tool: key, detail: JsonSchemaValidate.describe(invalid) })
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
             return yield* Effect.promise(() => execute(args, opts))
@@ -624,17 +715,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               if (resource.text) textParts.push(resource.text)
               if (resource.blob) {
                 const mime = resource.mimeType ?? "application/octet-stream"
-                const size = base64Size(resource.blob)
-                if (!SUPPORTED_MCP_RESOURCE_ATTACHMENT_MIMES.has(mime)) {
-                  textParts.push(
-                    `[Binary MCP resource omitted: ${resource.uri} (${mime}, ${formatBytes(size)}) is not a supported attachment type]`,
-                  )
-                  continue
-                }
-                if (size > MAX_MCP_RESOURCE_BLOB_BYTES) {
-                  textParts.push(
-                    `[Binary MCP resource omitted: ${resource.uri} (${mime}, ${formatBytes(size)}) exceeds ${formatBytes(MAX_MCP_RESOURCE_BLOB_BYTES)}]`,
-                  )
+                const refused = McpAttachments.refusal({ label: resource.uri, mime, base64: resource.blob })
+                if (refused) {
+                  textParts.push(refused)
                   continue
                 }
                 attachments.push({
@@ -729,17 +812,9 @@ function formatMcpResourceContent(server: string, uri: string, content: { conten
       continue
     }
     if (typeof item.blob === "string") {
-      const size = base64Size(item.blob)
-      if (!SUPPORTED_MCP_RESOURCE_ATTACHMENT_MIMES.has(mime)) {
-        text.push(
-          `[Binary MCP resource omitted: ${itemUri} (${mime}, ${formatBytes(size)}) is not a supported attachment type]`,
-        )
-        continue
-      }
-      if (size > MAX_MCP_RESOURCE_BLOB_BYTES) {
-        text.push(
-          `[Binary MCP resource omitted: ${itemUri} (${mime}, ${formatBytes(size)}) exceeds ${formatBytes(MAX_MCP_RESOURCE_BLOB_BYTES)}]`,
-        )
+      const refused = McpAttachments.refusal({ label: itemUri, mime, base64: item.blob })
+      if (refused) {
+        text.push(refused)
         continue
       }
       text.push(`[Binary MCP resource attached: ${itemUri} (${mime})]`)
@@ -761,16 +836,22 @@ function formatMcpResourceContent(server: string, uri: string, content: { conten
   }
 }
 
-function base64Size(value: string) {
-  const trimmed = value.replace(/\s/g, "")
-  const padding = trimmed.endsWith("==") ? 2 : trimmed.endsWith("=") ? 1 : 0
-  return Math.max(0, Math.floor((trimmed.length * 3) / 4) - padding)
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`
-  return `${Math.ceil(value / (1024 * 1024))} MB`
+/**
+ * Script tool paths (`github.issue_read`, `redcode.read`) this session's `execute` calls already
+ * made, for ranking the code mode catalog. A set, not counts: the catalog text only changes when a
+ * new tool is first used, and not at all while every signature fits.
+ */
+export function scriptToolsUsed(messages: readonly SessionV1.WithParts[]) {
+  const used = new Set<string>()
+  for (const message of messages)
+    for (const part of message.parts) {
+      if (part.type !== "tool" || part.tool !== CodeModeGate.TOOL_ID || !("metadata" in part.state)) continue
+      const calls = part.state.metadata?.toolCalls
+      if (!Array.isArray(calls)) continue
+      for (const call of calls)
+        if (isRecord(call) && typeof call.tool === "string" && !call.tool.startsWith("$codemode.")) used.add(call.tool)
+    }
+  return [...used].sort()
 }
 
 export * as SessionTools from "./tools"

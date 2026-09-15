@@ -378,7 +378,9 @@ describe("OpenAPI.fromSpec", () => {
       runtime
         .execute(
           `
-        return await tools.$codemode.search({ query: "global health", namespace: "opencode", limit: 1 })
+        const hit = await tools.$codemode.search({ query: "global health", namespace: "opencode", limit: 1 })
+        const full = await tools.$codemode.search({ query: hit.items[0].path })
+        return { hit, full }
       `,
         )
         .pipe(Effect.provide(layer)),
@@ -386,15 +388,19 @@ describe("OpenAPI.fromSpec", () => {
 
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) return
-    expect(result.value).toMatchObject({
+    const value = result.value as { hit: unknown; full: unknown }
+    expect(value.hit).toMatchObject({
       items: [
         {
           path: "tools.opencode.v2.health.get",
           description: "Check whether the API server is ready to accept requests.",
+          params: [],
         },
       ],
     })
-    expect(JSON.stringify(result.value)).toContain("healthy: true")
+    // A keyword match stays compact; the exact lookup carries the full signature.
+    expect(JSON.stringify(value.hit)).not.toContain("healthy: true")
+    expect(JSON.stringify(value.full)).toContain("healthy: true")
   })
 
   test("invokes real opencode path parameters and JSON request bodies", async () => {

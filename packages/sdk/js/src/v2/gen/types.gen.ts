@@ -2158,6 +2158,14 @@ export type Config = {
       enabled?: "auto" | boolean
       threshold?: number
     }
+    code_mode?: {
+      enabled?: "off" | "auto" | "on"
+      models?: Array<string>
+      threshold?: number
+      max_tool_calls?: number
+      timeout_ms?: number
+      max_output_bytes?: number
+    }
     /**
      * How long a turn may produce nothing before it is reported and, where nothing is watching, ended. Time a tool spends running or a permission spends awaiting an answer does not count. Set to false to disable.
      */

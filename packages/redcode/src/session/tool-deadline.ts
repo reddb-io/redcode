@@ -23,8 +23,10 @@ export const TOOL_DEADLINE_DEFAULT_MS = 600_000
  * child turn, which has its own watchdog — bounding it here would cut a subagent mid-thought and
  * report it as a stuck tool. `monitor` waits on an observation and caps its own wait at a minute;
  * a configured tool timeout below that must not turn a deliberate wait into a wedged tool.
+ * `execute` runs a code mode script under its own timeout, and each call the script makes gets this
+ * deadline on its own; bounding the whole script here as well would stop it while it waits on them.
  */
-const UNBOUNDED = new Set(["shell", "bash", "question", "task", "monitor"])
+const UNBOUNDED = new Set(["shell", "bash", "question", "task", "monitor", "execute"])
 
 export function deadlineMs(input: { tool: string; configured?: number | false }): number | undefined {
   if (UNBOUNDED.has(input.tool)) return undefined
