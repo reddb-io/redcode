@@ -563,3 +563,435 @@ exports[`tool parameters JSON Schema (wire shape) write 1`] = `
   "type": "object",
 }
 `;
+
+exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "action": {
+      "enum": [
+        "list",
+        "create",
+        "update",
+        "reopen",
+        "refresh",
+        "detect",
+      ],
+      "type": "string",
+    },
+    "id": {
+      "description": "Required for update, reopen and refresh.",
+      "pattern": "^design_[a-zA-Z0-9_-]+$",
+      "type": "string",
+    },
+    "input": {
+      "description": "Required for create and update. Create requires name, journey, engine and kind.",
+      "properties": {
+        "application": {
+          "type": "string",
+        },
+        "brief": {
+          "properties": {
+            "audience": {
+              "type": "string",
+            },
+            "constraints": {
+              "type": "string",
+            },
+            "content": {
+              "type": "string",
+            },
+            "objective": {
+              "type": "string",
+            },
+            "references": {
+              "items": {
+                "type": "string",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "objective",
+            "audience",
+            "content",
+            "constraints",
+            "references",
+          ],
+          "type": "object",
+        },
+        "controls": {
+          "items": {
+            "properties": {
+              "fields": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "default": {
+                          "type": "string",
+                        },
+                        "id": {
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                          "type": "string",
+                        },
+                        "name": {
+                          "minLength": 1,
+                          "type": "string",
+                        },
+                        "type": {
+                          "enum": [
+                            "text",
+                          ],
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "type",
+                        "default",
+                      ],
+                      "type": "object",
+                    },
+                    {
+                      "properties": {
+                        "default": {
+                          "type": "boolean",
+                        },
+                        "id": {
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                          "type": "string",
+                        },
+                        "name": {
+                          "minLength": 1,
+                          "type": "string",
+                        },
+                        "type": {
+                          "enum": [
+                            "boolean",
+                          ],
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "type",
+                        "default",
+                      ],
+                      "type": "object",
+                    },
+                    {
+                      "properties": {
+                        "default": {
+                          "type": "number",
+                        },
+                        "id": {
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                          "type": "string",
+                        },
+                        "max": {
+                          "type": "number",
+                        },
+                        "min": {
+                          "type": "number",
+                        },
+                        "name": {
+                          "minLength": 1,
+                          "type": "string",
+                        },
+                        "type": {
+                          "enum": [
+                            "number",
+                          ],
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "type",
+                        "default",
+                      ],
+                      "type": "object",
+                    },
+                    {
+                      "properties": {
+                        "default": {
+                          "type": "string",
+                        },
+                        "id": {
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                          "type": "string",
+                        },
+                        "name": {
+                          "minLength": 1,
+                          "type": "string",
+                        },
+                        "options": {
+                          "items": {
+                            "type": "string",
+                          },
+                          "type": "array",
+                        },
+                        "type": {
+                          "enum": [
+                            "select",
+                          ],
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "type",
+                        "default",
+                        "options",
+                      ],
+                      "type": "object",
+                    },
+                  ],
+                },
+                "maxItems": 32,
+                "type": "array",
+              },
+              "id": {
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                "type": "string",
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string",
+              },
+              "selector": {
+                "minLength": 1,
+                "type": "string",
+              },
+              "variant": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "id",
+              "name",
+              "selector",
+              "fields",
+            ],
+            "type": "object",
+          },
+          "maxItems": 32,
+          "type": "array",
+        },
+        "decisions": {
+          "items": {
+            "properties": {
+              "feedback": {
+                "type": "string",
+              },
+              "id": {
+                "type": "string",
+              },
+              "revision": {
+                "type": "string",
+              },
+              "text": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "id",
+              "text",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "designSystem": {
+          "type": "string",
+        },
+        "engine": {
+          "enum": [
+            "html",
+            "react",
+            "solid",
+          ],
+          "type": "string",
+        },
+        "entry": {
+          "type": "string",
+        },
+        "journey": {
+          "enum": [
+            "new",
+            "existing",
+          ],
+          "type": "string",
+        },
+        "kind": {
+          "enum": [
+            "screen",
+            "flow",
+            "comparison",
+            "deck",
+          ],
+          "type": "string",
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "presets": {
+          "items": {
+            "properties": {
+              "id": {
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$",
+                "type": "string",
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string",
+              },
+              "values": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "boolean",
+                      },
+                    ],
+                  },
+                  "type": "object",
+                },
+                "type": "object",
+              },
+              "variant": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "id",
+              "name",
+              "values",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "type": "array",
+        },
+        "questions": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "scenarios": {
+          "items": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "click",
+                        "fill",
+                        "press",
+                      ],
+                      "type": "string",
+                    },
+                    "selector": {
+                      "type": "string",
+                    },
+                    "value": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "selector",
+                    "action",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "id": {
+                "type": "string",
+              },
+              "name": {
+                "type": "string",
+              },
+              "notApplicable": {
+                "type": "string",
+              },
+              "params": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "boolean",
+                      },
+                    ],
+                  },
+                  "type": "object",
+                },
+                "type": "object",
+              },
+              "selector": {
+                "type": "string",
+              },
+              "state": {
+                "enum": [
+                  "loading",
+                  "empty",
+                  "error",
+                  "populated",
+                  "edge",
+                ],
+                "type": "string",
+              },
+              "variant": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "id",
+              "name",
+              "selector",
+              "state",
+              "actions",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "tweaks": {
+          "patternProperties": {
+            "^--[a-zA-Z][a-zA-Z0-9-]*$": {
+              "pattern": "^[^;{}<>]*$",
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+      },
+      "type": "object",
+    },
+  },
+  "required": [
+    "action",
+  ],
+  "type": "object",
+}
+`;

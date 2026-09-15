@@ -166,8 +166,11 @@ it.live("design merges per key, an adopted system applies, and never to a differ
     })
     entries = [document({ design: { browser: "chromium" } })]
     expect(yield* store.configured()).toEqual({ browser: "chromium" })
-    yield* store.adopt({ system: new ConfigDesign.System({ paths: ["src/components"] }), application: "apps/web" })
-    expect(yield* store.configured()).toEqual({
+    yield* store.adopt(sessionID, {
+      system: new ConfigDesign.System({ paths: ["src/components"] }),
+      application: "apps/web",
+    })
+    expect(yield* store.configured(sessionID)).toEqual({
       browser: "chromium",
       system: { paths: ["src/components"] },
       application: "apps/web",
@@ -189,9 +192,33 @@ it.live("design merges per key, an adopted system applies, and never to a differ
     // A system configured in a document wins over the adopted one.
     entries = [document({ design: { system: { paths: ["src/ui"] } } })]
     expect((yield* store.configured())?.system?.paths).toEqual(["src/ui"])
-    yield* store.adopt(undefined)
+    yield* store.adopt(sessionID, undefined)
     entries = []
+    expect(yield* store.configured(sessionID)).toBeUndefined()
+  }),
+)
+
+it.live("a pending adoption belongs to its session; only a committed one applies to every session", () =>
+  Effect.gen(function* () {
+    const first = yield* setup
+    const second = yield* setup
+    const store = first.store
+    entries = []
+    const system = { system: new ConfigDesign.System({ paths: ["src/components"] }) }
+    yield* store.adopt(first.sessionID, system)
+    // Another session's failure forgets only its own adoption.
+    yield* store.adopt(second.sessionID, undefined)
+    expect((yield* store.configured(first.sessionID))?.system?.paths).toEqual(["src/components"])
+    expect(yield* store.configured(second.sessionID)).toBeUndefined()
     expect(yield* store.configured()).toBeUndefined()
+    // Once committed (written and verified), every session sees it, and a later failure elsewhere keeps it.
+    yield* store.adopt(first.sessionID, system, true)
+    yield* store.adopt(second.sessionID, undefined)
+    expect((yield* store.configured(second.sessionID))?.system?.paths).toEqual(["src/components"])
+    expect((yield* store.configured())?.system?.paths).toEqual(["src/components"])
+    expect(
+      yield* store.create(second.sessionID, { name: "Shared", journey: "new", engine: "html", kind: "screen" }),
+    ).toMatchObject({ system: { paths: ["src/components"] } })
   }),
 )
 

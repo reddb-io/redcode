@@ -25,6 +25,7 @@ import { ModelParameters as TodoModel, Parameters as Todo } from "../../src/tool
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
 import { Parameters as Write } from "../../src/tool/write"
+import { DesignDocumentTool } from "@reddb-io/redcode-core/design/document-tool"
 
 const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S["Type"] =>
   Schema.decodeUnknownSync(schema)(input)
@@ -61,6 +62,18 @@ describe("tool parameters", () => {
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())
+    test("design_document", () => expect(toJsonSchema(DesignDocumentTool.Input)).toMatchSnapshot())
+    test("design_document accepts detect and still decodes every action", () => {
+      expect(toJsonSchema(DesignDocumentTool.Input)).toMatchObject({
+        properties: { action: { enum: ["list", "create", "update", "reopen", "refresh", "detect"] } },
+      })
+      expect(parse(DesignDocumentTool.Input, { action: "detect" })).toEqual({ action: "detect" })
+      expect(parse(DesignDocumentTool.Input, { action: "detect", input: { application: "apps/web" } })).toEqual({
+        action: "detect",
+        input: { application: "apps/web" },
+      })
+      expect(accepts(DesignDocumentTool.Input, { action: "refresh" })).toBe(false)
+    })
 
     test("inlines named child schemas for provider compatibility", () => {
       const schema = toJsonSchema(Question)

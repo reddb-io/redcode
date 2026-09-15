@@ -42,8 +42,16 @@ export interface Proposal {
     readonly framework: Field
     readonly aliases: Field
   }
-  /** Mean confidence of the fields that carry a value. */
+  /** Mean confidence of the fields that carry a value, capped at 0.5 for a partial scan. */
   readonly confidence: number
+  /** The time budget ran out: some directories or workspace packages were not looked at. */
+  readonly partial: boolean
+}
+
+/** A detection's deadline, and whether any part of the scan was cut short by it. */
+interface Budget {
+  readonly deadline: number
+  partial: boolean
 }
 
 export interface Options {
@@ -187,26 +195,28 @@ async function walk(
   return "done" as const
 }
 
-async function hasComponents(root: string, directory: string, deadline: number) {
+async function hasComponents(root: string, directory: string, budget: Budget) {
   if ((await kind(root, directory)) !== "directory") return false
   let found = false
-  await walk(directory, (file, isDirectory) => (found = !isDirectory && COMPONENT_FILE.test(file)), {
+  const status = await walk(directory, (file, isDirectory) => (found = !isDirectory && COMPONENT_FILE.test(file)), {
     entries: COMPONENT_ENTRIES,
     depth: COMPONENT_DEPTH,
-    deadline,
+    deadline: budget.deadline,
   })
+  // "No components" after running out of time is not an answer.
+  if (status === "deadline") budget.partial = true
   return found
 }
 
 /** Runs work over items with bounded concurrency, skipping what the deadline does not leave time for. */
-async function pool<T, A>(items: readonly T[], work: (item: T) => Promise<A>, deadline: number) {
+async function pool<T, A>(items: readonly T[], work: (item: T) => Promise<A>, budget: Budget) {
   const results: (A | undefined)[] = []
   let next = 0
   let skipped = 0
   const worker = async () => {
     while (next < items.length) {
       const index = next++
-      if (Date.now() > deadline) {
+      if (Date.now() > budget.deadline) {
         skipped++
         continue
       }
@@ -214,6 +224,7 @@ async function pool<T, A>(items: readonly T[], work: (item: T) => Promise<A>, de
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker))
+  if (skipped) budget.partial = true
   return { results, skipped }
 }
 
@@ -224,14 +235,14 @@ interface Candidate {
   readonly score: number
 }
 
-async function candidate(root: string, application: string, deadline: number): Promise<Candidate | undefined> {
+async function candidate(root: string, application: string, budget: Budget): Promise<Candidate | undefined> {
   const directory = path.join(root, application)
   const pkg = await manifest(root, directory)
   if (!pkg || frameworks(pkg.dependencies).length === 0) return undefined
   const found = await markers(root, directory, pkg.dependencies)
   let components = false
   for (const entry of COMPONENT_ROOTS)
-    if (!components) components = await hasComponents(root, path.join(directory, entry), deadline)
+    if (!components) components = await hasComponents(root, path.join(directory, entry), budget)
   const score =
     (found.length ? 10 : 0) +
     (application.startsWith("apps/") ? 3 : 0) +
@@ -241,7 +252,7 @@ async function candidate(root: string, application: string, deadline: number): P
 }
 
 /** Workspace package directories matched by package.json `workspaces` or pnpm-workspace.yaml patterns. */
-async function packages(root: string, patterns: readonly string[], deadline: number) {
+async function packages(root: string, patterns: readonly string[], budget: Budget) {
   const globs = patterns
     .filter((pattern) => !pattern.startsWith("!") && !escapes(clean(pattern)))
     .map((pattern) => new Bun.Glob(clean(pattern)))
@@ -253,12 +264,13 @@ async function packages(root: string, patterns: readonly string[], deadline: num
         if ((await kind(root, path.join(root, relative, "package.json"))) === "file") found.push(relative)
       return false
     },
-    { entries: WORKSPACE_ENTRIES, depth: WORKSPACE_DEPTH, deadline },
+    { entries: WORKSPACE_ENTRIES, depth: WORKSPACE_DEPTH, deadline: budget.deadline },
   )
+  if (status === "deadline") budget.partial = true
   return { packages: found.toSorted(), truncated: status === "limit" || status === "deadline" }
 }
 
-async function application(root: string, hint: string | undefined, deadline: number) {
+async function application(root: string, hint: string | undefined, budget: Budget) {
   if (hint !== undefined) {
     const named = clean(hint)
     if (escapes(named) || (await kind(root, path.join(root, named))) !== "directory") return undefined
@@ -272,7 +284,7 @@ async function application(root: string, hint: string | undefined, deadline: num
   }
   const rootManifest = await manifest(root, root)
   const patterns = [...(rootManifest?.workspaces ?? []), ...(await pnpmWorkspaces(root))]
-  const self = await candidate(root, ".", deadline)
+  const self = await candidate(root, ".", budget)
   if (!patterns.length || self?.markers.length) {
     if (!rootManifest) return undefined
     return {
@@ -291,9 +303,9 @@ async function application(root: string, hint: string | undefined, deadline: num
       workspace: [] as string[],
     }
   }
-  const workspace = await packages(root, patterns, deadline)
+  const workspace = await packages(root, patterns, budget)
   const considered = workspace.packages.slice(0, CANDIDATES)
-  const evaluated = await pool(considered, (dir) => candidate(root, dir, deadline), deadline)
+  const evaluated = await pool(considered, (dir) => candidate(root, dir, budget), budget)
   const ranked = evaluated.results
     .filter((item): item is Candidate => item !== undefined)
     .toSorted((a, b) => b.score - a.score || a.application.localeCompare(b.application))
@@ -378,11 +390,23 @@ function viaAlias(specifier: string, configs: readonly Tsconfig[]) {
 const TAILWIND_V4 = /@import\s+(?:url\()?["']tailwindcss(?:\/[^"']*)?["']/
 const TAILWIND_V3 = /@tailwind\s+(?:base|components|utilities)\b/
 
-export async function detect(project: string, options: Options = {}): Promise<Proposal | undefined> {
+/**
+ * Detection with its completeness: `partial` is true when the time budget cut any part of the scan
+ * short, so an absent proposal then means "not found in time", not "nothing there".
+ */
+export async function scan(project: string, options: Options = {}) {
+  const budget: Budget = { deadline: Date.now() + (options.budget ?? BUDGET), partial: false }
+  const proposal = await run(project, options, budget)
+  return { proposal, partial: budget.partial }
+}
+
+export const detect = (project: string, options: Options = {}) =>
+  scan(project, options).then((scanned) => scanned.proposal)
+
+async function run(project: string, options: Options, budget: Budget): Promise<Proposal | undefined> {
   const root = await canonical(project)
   if (!root) return undefined
-  const deadline = Date.now() + (options.budget ?? BUDGET)
-  const target = await application(root, options.application, deadline)
+  const target = await application(root, options.application, budget)
   if (!target) return undefined
   const directory = path.join(root, target.application)
   if ((await kind(root, directory)) !== "directory") return undefined
@@ -406,7 +430,7 @@ export async function detect(project: string, options: Options = {}): Promise<Pr
     roots.set(resolved, { confidence: 0.95, evidence: `components.json aliases.${key} ${alias} → ${resolved}` })
   }
   for (const entry of [...COMPONENT_ROOTS, ...(target.application === "." ? MONOREPO_ROOTS : [])]) {
-    if (roots.has(entry) || !(await hasComponents(app, path.join(directory, entry), deadline))) continue
+    if (roots.has(entry) || !(await hasComponents(app, path.join(directory, entry), budget))) continue
     roots.set(entry, {
       confidence: entry === "components" || entry === "app/components" ? 0.7 : 0.8,
       evidence: `${entry} holds component files`,
@@ -419,7 +443,7 @@ export async function detect(project: string, options: Options = {}): Promise<Pr
   for (const dir of target.workspace.filter(
     (dir) => dir !== target.application && /(?:^|\/)(?:ui|design-system|components)$/.test(dir),
   ))
-    if (await hasComponents(root, path.join(root, dir, "src"), deadline)) workspaceNotes.push(`${dir}/src`)
+    if (await hasComponents(root, path.join(root, dir, "src"), budget)) workspaceNotes.push(`${dir}/src`)
   const pathsField: Field = {
     confidence: paths.length ? Math.max(...paths.map((entry) => roots.get(entry)!.confidence)) : 0,
     evidence: [
@@ -569,14 +593,26 @@ export async function detect(project: string, options: Options = {}): Promise<Pr
       ? { tailwind: { ...(version ? { version } : {}), ...(tailwindConfig ? { config: tailwindConfig } : {}) } }
       : {}),
     fields: {
-      application: target.field,
+      application: budget.partial
+        ? {
+            ...target.field,
+            evidence: [
+              ...target.field.evidence,
+              "the scan ran out of time; directories or packages it did not reach may change this proposal",
+            ],
+          }
+        : target.field,
       paths: pathsField,
       css: cssField,
       tailwind: tailwindField,
       framework: frameworkField,
       aliases: aliasField,
     },
-    confidence: Math.round((weighted.reduce((sum, value) => sum + value, 0) / weighted.length) * 100) / 100,
+    confidence: Math.min(
+      budget.partial ? 0.5 : 1,
+      Math.round((weighted.reduce((sum, value) => sum + value, 0) / weighted.length) * 100) / 100,
+    ),
+    partial: budget.partial,
   }
 }
 
@@ -599,7 +635,7 @@ export function summary(proposal: Proposal) {
             .join(", ")} (${percent(fields.aliases.confidence)})`,
         ]
       : []),
-    `Overall confidence: ${percent(proposal.confidence)}`,
+    `Overall confidence: ${percent(proposal.confidence)}${proposal.partial ? " (partial scan: the time limit was reached)" : ""}`,
   ].join("\n")
 }
 

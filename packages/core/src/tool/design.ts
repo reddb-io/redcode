@@ -27,6 +27,7 @@ import { LocationMutation } from "../location-mutation"
 import { Location } from "../location"
 import { Global } from "../global"
 import { DesignProposal } from "../design/proposal"
+import type { ConfigDesign } from "../config/design"
 
 /** The proposal outcome travels with the returned document in its manifest status, rendered by both runtimes. */
 const withReport = (document: Design.Info, report: string) =>
@@ -49,13 +50,14 @@ const layer = Layer.effectDiscard(
     const state = path.join(global.state, DesignProposal.STATE)
     // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
     const proposal = (context: Tool.Context, application?: string) =>
-      Effect.map(store.configured(), (design) => ({
+      Effect.map(store.configured(context.sessionID), (design) => ({
         directory: location.directory,
         application,
         state,
         global: global.config,
         configured: design?.system !== undefined,
-        adopt: store.adopt,
+        adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
+          store.adopt(context.sessionID, design, committed),
         ask: (request: ReturnType<typeof DesignProposal.question>) =>
           questions
             .ask({

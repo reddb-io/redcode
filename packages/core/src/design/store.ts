@@ -55,18 +55,34 @@ const make = Effect.gen(function* () {
   )
   // Configuration is read once per location; a design system the user just adopted is written to the
   // config file for later locations and kept here so this location uses it without reopening.
-  let adopted: ConfigDesign.Effective | undefined
-  const configured = Effect.fn("Design.configured")(function* (): Effect.fn.Return<ConfigDesign.Effective | undefined> {
+  // An adoption stays with the session that accepted it until it is committed (written to the config
+  // file and verified); only a committed one applies to every session, so one session's failed
+  // operation never takes back a system another session is using.
+  let committed: ConfigDesign.Effective | undefined
+  const pending = new Map<string, ConfigDesign.Effective>()
+  const configured = Effect.fn("Design.configured")(function* (
+    sessionID?: Session.ID,
+  ): Effect.fn.Return<ConfigDesign.Effective | undefined> {
     const sections = (yield* config.entries()).flatMap((entry) =>
       entry.type === "document" && entry.info.design ? [entry.info.design] : [],
     )
-    // An adopted system sits under every document: a system configured meanwhile still wins.
-    return ConfigDesign.merge<ConfigDesign.System>([adopted, ...sections])
+    // Adoptions sit under every document: a system configured meanwhile still wins.
+    return ConfigDesign.merge<ConfigDesign.System>([
+      committed,
+      sessionID === undefined ? undefined : pending.get(sessionID),
+      ...sections,
+    ])
   })
-  /** Records (or, with undefined, forgets) a design system adopted for this location. */
-  const adopt = (design: ConfigDesign.Effective | undefined) =>
+  /**
+   * Records a design system a session adopted, or forgets that session's pending adoption with
+   * undefined. A committed adoption applies to every session of this location.
+   */
+  const adopt = (sessionID: Session.ID, design: ConfigDesign.Effective | undefined, commit = false) =>
     Effect.sync(() => {
-      adopted = design
+      pending.delete(sessionID)
+      if (design === undefined) return
+      if (commit) committed = design
+      else pending.set(sessionID, design)
     })
   /** The configured system, unless the configuration names a different application than this design's. */
   const applicable = (design: ConfigDesign.Effective | undefined, named: string) =>
@@ -104,7 +120,7 @@ const make = Effect.gen(function* () {
     if (!session || session.location.directory !== location.directory)
       return yield* new Design.Error({ code: "not-found", message: "Session not found in this location" })
     const id = Design.ID.make(`design_${crypto.randomUUID()}`)
-    const design = yield* configured()
+    const design = yield* configured(sessionID)
     const source = yield* io(() =>
       DesignFiles.resolve(
         location.directory,
@@ -549,7 +565,7 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
   const refresh = Effect.fn("Design.refresh")(function* (id: Design.ID) {
     const document = yield* get(id)
-    const design = yield* configured()
+    const design = yield* configured(document.sessionID)
     const system = yield* io(() =>
       DesignBuild.system(document.application, applicable(design, applicationOf(document))),
     )

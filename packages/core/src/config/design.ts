@@ -33,7 +33,7 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
   }),
   application: Schema.String.pipe(Schema.optional).annotate({
     description:
-      "Project-relative directory of the application package the design system belongs to, such as apps/web in a monorepo. design_document create uses it when no application is named; system paths are relative to it.",
+      "Project-relative directory of the application package the design system belongs to, such as apps/web in a monorepo. design_document create uses it when no application is named; system paths are relative to it. It is read together with system from the same configuration document: a document that sets system without application drops an application set elsewhere, and an application set without system is ignored while another document supplies system.",
   }),
   browser: Schema.String.pipe(Schema.optional).annotate({
     description:

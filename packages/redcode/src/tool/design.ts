@@ -26,6 +26,7 @@ import { SessionGoal } from "@/session/goal"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@reddb-io/redcode-core/global"
 import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
+import type { ConfigDesign } from "@reddb-io/redcode-core/config/design"
 import path from "node:path"
 
 export const DesignTools = Effect.gen(function* () {
@@ -205,13 +206,14 @@ export const DesignTools = Effect.gen(function* () {
             yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
             // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
             const proposal = (application?: string) =>
-              Effect.map(store.configured(), (design) => ({
+              Effect.map(store.configured(ctx.sessionID), (design) => ({
                 directory,
                 application,
                 state,
                 global,
                 configured: design?.system !== undefined,
-                adopt: store.adopt,
+                adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
+                  store.adopt(ctx.sessionID, design, committed),
                 ask: (request: ReturnType<typeof DesignProposal.question>) =>
                   questions
                     .ask({
