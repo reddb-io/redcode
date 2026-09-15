@@ -120,7 +120,9 @@ describe("tool.monitor probes", () => {
         expect(requests.map((request) => request.permission)).toEqual(["webfetch", "env"])
         expect(requests[1]).toMatchObject({
           patterns: ["MONITOR_PROBE_TEST_TOKEN@127.0.0.1:9"],
-          always: ["MONITOR_PROBE_TEST_TOKEN@127.0.0.1:9"],
+          // Never offered as "always": every probe that sends a secret asks again.
+          always: [],
+          force: true,
           metadata: { variable: "MONITOR_PROBE_TEST_TOKEN", host: "127.0.0.1:9" },
         })
         expect(JSON.stringify(requests)).not.toContain(secret)
@@ -241,7 +243,7 @@ describe("tool.monitor probes", () => {
               pending = (yield* permission.list()).find((request) => request.permission === "env")
               if (!pending) yield* Effect.sleep("10 millis")
             }
-            expect(pending).toMatchObject({ permission: "env", patterns: [pattern], always: [pattern] })
+            expect(pending).toMatchObject({ permission: "env", patterns: [pattern], always: [] })
             expect(JSON.stringify(pending)).not.toContain(secret)
             yield* permission.reply({ requestID: pending!.id, reply: "reject" })
             const exit = yield* Fiber.join(fiber)

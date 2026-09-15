@@ -121,12 +121,13 @@ export const MonitorTool = Tool.define(
         const variables = MonitorProbe.envNames(probe.headers)
         for (const variable of variables) {
           // Always asked, even where a rule such as "*": "allow" would let it through: a secret leaving the
-          // machine is never approved by a catch-all. "Always" is kept for this exact variable and host only.
+          // machine is never approved by a catch-all, nor by an earlier answer: "always" is not offered, so every
+          // probe that expands a variable asks again, like any other forced request.
           const pattern = MonitorProbe.envPermissionPattern(variable, host)
           yield* ctx.ask({
             permission: "env",
             patterns: [pattern],
-            always: force ? [] : [pattern],
+            always: [],
             force: true,
             metadata: { variable, host, url: probe.url, monitor: summary, probe: label },
           })
