@@ -13,6 +13,7 @@ import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { Snapshot } from "@/snapshot"
+import { SessionDelivery } from "@reddb-io/redcode-schema/session-delivery"
 import { Schema, Struct } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
@@ -102,6 +103,12 @@ export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
 export const RevertPayload = Schema.Struct(Struct.omit(SessionRevert.RevertInput.fields, ["sessionID"]))
+export const PromptDeliveryPayload = Schema.Struct({
+  delivery: SessionDelivery.Delivery.annotate({
+    description:
+      "`steer` promotes the prompt at the next safe boundary of the running turn, `queue` waits until the session would otherwise go idle",
+  }),
+})
 export const PermissionResponsePayload = Schema.Struct({
   response: PermissionV1.Reply,
 })
@@ -131,6 +138,7 @@ export const SessionPaths = {
   budget: `${root}/:sessionID/budget`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
+  promptDelivery: `${root}/:sessionID/prompt/:messageID/delivery`,
   command: `${root}/:sessionID/command`,
   shell: `${root}/:sessionID/shell`,
   revert: `${root}/:sessionID/revert`,
@@ -446,6 +454,20 @@ export const SessionApi = HttpApi.make("session")
             summary: "Send async message",
             description:
               "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
+          }),
+        ),
+        HttpApiEndpoint.post("promptDelivery", SessionPaths.promptDelivery, {
+          params: { sessionID: SessionID, messageID: MessageID },
+          query: WorkspaceRoutingQuery,
+          payload: PromptDeliveryPayload,
+          success: described(Schema.Boolean, "Delivery changed"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.promptDelivery",
+            summary: "Change prompt delivery",
+            description:
+              "Change how a prompt that is still waiting reaches the model: turn a queued prompt into a steer, delivered at the next safe boundary of the running turn, or send a steer back to the queue. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).",
           }),
         ),
         HttpApiEndpoint.post("command", SessionPaths.command, {

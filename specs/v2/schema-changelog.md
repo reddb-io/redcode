@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Change The Delivery Of A Waiting Prompt
+
+- Add the durable event `session.next.prompt.delivery` (version 1, aggregate `sessionID`, fields `timestamp`, `sessionID`, `messageID`, `delivery`): the delivery of an admitted prompt changed before its promotion. It is a new type at version 1, so no stored event changes meaning; readers that do not know it ignore it, and a session whose inbox never changed delivery has no such event. Its projector updates the `session_input` row only while `promoted_seq` is null and refuses anything else, and because projection runs inside the append transaction a prompt promoted or removed in the meantime never stores the event.
+- Add `POST /session/:sessionID/prompt/:messageID/delivery` (`session.promptDelivery`, payload `{ delivery: "steer" | "queue" }`, returns `true`). It answers `404 NotFoundError` when the prompt is not pending in that session (unknown, already promoted, or removed by a revert). Changing a prompt to `steer` wakes the session the way a prompt sent to an idle session does; a running drain picks it up at its next boundary, since it lists pending steers from the inbox each time. Regenerated the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`), `packages/sdk/openapi.json` (`bun dev generate`) and the V2 client (`bun run generate` in `packages/client`, which gains the new event in its event unions; the V2 surface does not carry the V1 inbox route itself).
+- Add no migration: the `session_input` row already stores `delivery`, and nothing about the column changes.
+
 ## 2026-09-15: Design Screens
 
 - Add optional `screen` (string, a `data-design-screen` id) to `Design.Scenario`: the audit opens that screen before the scenario's actions. Add optional `screen` to `Design.ParamContext`, carried by `Design.Feedback.params` and each `Design.FeedbackItem.params`: the screen the review page showed when the context was captured. The rendered `<design-review>` message gains a `Screen:` line per note and `screen=` in its preview parameters. Regenerated the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`) and the V2 client (`bun run generate` in `packages/client`).

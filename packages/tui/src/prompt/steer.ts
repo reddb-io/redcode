@@ -89,13 +89,56 @@ export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | und
   return /shift\+(return|enter)/i.test(steerKey)
 }
 
-/** The hint shown next to the prompt while the session works. */
-export function busyHint(input: { submitKey: string; steerKey: string; kittyKeyboard?: boolean }) {
+/**
+ * The hint shown next to the prompt while the session works. With `queued`, the steer key acts on
+ * the prompt already waiting in the queue rather than on what is typed, and says so.
+ */
+export function busyHint(input: {
+  submitKey: string
+  steerKey: string
+  kittyKeyboard?: boolean
+  queued?: boolean
+}) {
   const parts: string[] = []
+  const what = input.queued === true ? "steer queued" : "steer"
   if (input.submitKey) parts.push(`${input.submitKey} queue`)
-  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard)) parts.push(`${input.steerKey} steer`)
-  else parts.push(`/${STEER_SLASH} steer`)
+  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard))
+    parts.push(`${input.steerKey} ${what}`)
+  else parts.push(`/${STEER_SLASH} ${what}`)
   return parts.join(" · ")
+}
+
+type PendingMessageLike = { id: string; role: string; time: { created: number; completed?: number } }
+
+/**
+ * Index of the assistant message the session is working on, or `undefined` when nothing is running.
+ * An open assistant message alone is not a turn: a process killed mid-turn never writes
+ * `time.completed`, so the session has to actually be working for anything to be waiting on it.
+ */
+export function pendingAssistantIndex(messages: readonly PendingMessageLike[], statusType: string | undefined) {
+  if (!isBusy(statusType)) return undefined
+  const completed = messages.findLastIndex((message) => message.role === "assistant" && message.time.completed)
+  const pending = messages.findLastIndex(
+    (message, index) => index > completed && message.role === "assistant" && !message.time.completed,
+  )
+  return pending === -1 ? undefined : pending
+}
+
+/**
+ * The most recent prompt waiting behind the running turn that is not already a steer — the one
+ * "steer queued" acts on. `undefined` when nothing is waiting.
+ */
+export function latestQueuedPrompt(input: {
+  messages: readonly PendingMessageLike[]
+  statusType: string | undefined
+  isSteer: (messageID: string) => boolean
+}) {
+  const pending = pendingAssistantIndex(input.messages, input.statusType)
+  if (pending === undefined) return undefined
+  const queued = input.messages.findLast(
+    (message, index) => index > pending && message.role === "user" && !input.isSteer(message.id),
+  )
+  return queued?.id
 }
 
 export type PendingBadge = { label: string; tone: "steer" | "queue" }

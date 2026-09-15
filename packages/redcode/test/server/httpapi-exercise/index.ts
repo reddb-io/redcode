@@ -1877,6 +1877,49 @@ const scenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .post("/session/{sessionID}/prompt/{messageID}/delivery", "session.promptDelivery")
+    .preserveDatabase()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Delivery session" })
+        // Admitted as a steer and sent back to the queue, so the change needs no running turn.
+        const message = yield* ctx.admitPrompt(session.id, { text: "waiting", delivery: "steer" })
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt/{messageID}/delivery", {
+        sessionID: ctx.state.session.id,
+        messageID: ctx.state.message.info.id,
+      }),
+      headers: ctx.headers(),
+      body: { delivery: "queue" },
+    }))
+    .json(200, (body) => {
+      check(body === true, "delivery change should return true")
+    }),
+  http.protected
+    .post("/session/{sessionID}/prompt/{messageID}/delivery", "session.promptDelivery.missing")
+    .preserveDatabase()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Delivery missing" })
+        const message = yield* ctx.message(session.id, { text: "never admitted" })
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt/{messageID}/delivery", {
+        sessionID: ctx.state.session.id,
+        messageID: ctx.state.message.info.id,
+      }),
+      headers: ctx.headers(),
+      body: { delivery: "steer" },
+    }))
+    .json(404, (body) => {
+      check(isRecord(body) && body.name === "NotFoundError", "a prompt that is not pending should be a 404")
+    }),
+  http.protected
     .post("/session/{sessionID}/command", "session.command")
     .preserveDatabase()
     .withLlm()

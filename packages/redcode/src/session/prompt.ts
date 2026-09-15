@@ -156,6 +156,16 @@ export interface Interface {
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
+  /**
+   * Changes how a prompt that is still waiting reaches the model: a queued prompt becomes a steer
+   * (promoted at the next safe boundary) or a steer goes back to the queue. Returns `undefined`
+   * when the prompt is not pending in this session (unknown, promoted or removed).
+   */
+  readonly setDelivery: (input: {
+    sessionID: SessionID
+    messageID: MessageID
+    delivery: SessionInput.Delivery
+  }) => Effect.Effect<SessionInput.Admitted | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/SessionPrompt") {}
@@ -2377,6 +2387,31 @@ const layer = Layer.effect(
       return result
     })
 
+    const setDelivery = Effect.fn("SessionPrompt.setDelivery")(function* (input: {
+      sessionID: SessionID
+      messageID: MessageID
+      delivery: SessionInput.Delivery
+    }) {
+      const row = yield* SessionInput.setDelivery(db, events, {
+        sessionID: input.sessionID,
+        id: SessionMessage.ID.make(input.messageID),
+        delivery: input.delivery,
+      })
+      if (row === undefined) return undefined
+      // A running drain reads pending steers from the inbox at every boundary, so it picks the
+      // change up by itself; `loop` joins that drain rather than starting a second one. A session
+      // with nothing running has no boundary coming, so the steer starts one, the same way a prompt
+      // sent to an idle session does. Detached: the caller does not wait for the turn.
+      if (row.delivery === "steer")
+        yield* Effect.gen(function* () {
+          yield* loop({ sessionID: input.sessionID })
+          // Joining a drain past its last promotion boundary returns without promoting the steer.
+          // Wake once more while it is still pending.
+          if (yield* SessionInput.hasPending(db, input.sessionID, "steer")) yield* loop({ sessionID: input.sessionID })
+        }).pipe(Effect.forkIn(scope))
+      return row
+    })
+
     return Service.of({
       cancel,
       prompt,
@@ -2384,6 +2419,7 @@ const layer = Layer.effect(
       shell,
       command,
       resolvePromptParts,
+      setDelivery,
     })
   }),
 )

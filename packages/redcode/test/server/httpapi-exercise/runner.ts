@@ -13,6 +13,11 @@ import { runtime } from "./runtime"
 import type { ActiveScenario, Options, ProjectOptions, Result, Scenario, ScenarioContext, SeededContext } from "./types"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { Prompt } from "@reddb-io/redcode-core/session/prompt"
+import { EventV2Bridge } from "../../../src/event-v2-bridge"
 
 export function runScenario(options: Options) {
   return (scenario: Scenario) => {
@@ -176,6 +181,23 @@ function withContext<A, E>(
             }),
           messages: (sessionID) =>
             run(modules.Session.Service.use((svc) => svc.messages({ sessionID }).pipe(Effect.orDie))),
+          admitPrompt: (sessionID, input) =>
+            Effect.gen(function* () {
+              const seed = yield* base.message(sessionID, { text: input?.text })
+              yield* run(
+                Effect.gen(function* () {
+                  const { db } = yield* Database.Service
+                  const events = yield* EventV2Bridge.Service
+                  yield* SessionInput.admit(db, events, {
+                    id: SessionMessage.ID.make(seed.info.id),
+                    sessionID,
+                    prompt: Prompt.fromUserMessage({ text: seed.part.text }),
+                    delivery: input?.delivery ?? "queue",
+                  })
+                }),
+              )
+              return seed
+            }),
           todos: (sessionID, todos) =>
             run(modules.Todo.Service.use((svc) => svc.update({ sessionID, todos }).pipe(Effect.orDie))),
           sessionMetadata: (sessionID, metadata) =>

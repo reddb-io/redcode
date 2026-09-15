@@ -115,6 +115,67 @@ export const projectAdmitted = Effect.fn("SessionInput.projectAdmitted")(functio
   if (!stored) return yield* Effect.die(new LifecycleConflict({ id: input.id }))
 })
 
+export class NotPending extends Schema.TaggedErrorClass<NotPending>()("SessionInput.NotPending", {
+  id: SessionMessage.ID,
+}) {}
+
+// Changes the delivery of a prompt that is still waiting in the inbox. The change is a durable
+// event whose projection runs in the same transaction as its append: when the row was promoted or
+// removed in the meantime the projection refuses it, so the event is never stored and the caller
+// learns the prompt is no longer pending. Returns the row as it stands after the change, or
+// `undefined` when there is no pending prompt with this id in the session.
+export const setDelivery = Effect.fn("SessionInput.setDelivery")(function* (
+  db: DatabaseService,
+  events: EventV2.Interface,
+  input: {
+    readonly sessionID: SessionSchema.ID
+    readonly id: SessionMessage.ID
+    readonly delivery: Delivery
+  },
+) {
+  const existing = yield* find(db, input.id)
+  if (existing === undefined || existing.sessionID !== input.sessionID || existing.promotedSeq !== undefined)
+    return undefined
+  if (existing.delivery === input.delivery) return existing
+  const changed = yield* events
+    .publish(SessionEvent.PromptDeliveryChanged, {
+      sessionID: input.sessionID,
+      messageID: input.id,
+      timestamp: yield* DateTime.now,
+      delivery: input.delivery,
+    })
+    .pipe(
+      Effect.as(true),
+      Effect.catchDefect((defect) => (defect instanceof NotPending ? Effect.succeed(false) : Effect.die(defect))),
+    )
+  if (!changed) return undefined
+  return Admitted.make({ ...existing, delivery: input.delivery })
+})
+
+export const projectDeliveryChanged = Effect.fn("SessionInput.projectDeliveryChanged")(function* (
+  db: DatabaseService,
+  input: {
+    readonly id: SessionMessage.ID
+    readonly sessionID: SessionSchema.ID
+    readonly delivery: Delivery
+  },
+) {
+  const updated = yield* db
+    .update(SessionInputTable)
+    .set({ delivery: input.delivery })
+    .where(
+      and(
+        eq(SessionInputTable.id, input.id),
+        eq(SessionInputTable.session_id, input.sessionID),
+        isNull(SessionInputTable.promoted_seq),
+      ),
+    )
+    .returning({ id: SessionInputTable.id })
+    .get()
+    .pipe(Effect.orDie)
+  if (!updated) return yield* Effect.die(new NotPending({ id: input.id }))
+})
+
 export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(function* (
   db: DatabaseService,
   input: {

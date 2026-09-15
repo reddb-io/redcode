@@ -61,6 +61,7 @@ import { useLocation } from "../../context/location"
 import { useRedskilled } from "../../context/redskilled"
 import {
   busyHint,
+  latestQueuedPrompt,
   parseSteerCommand,
   promptDelivery,
   STEER_SLASH,
@@ -298,6 +299,30 @@ export function Prompt(props: PromptProps) {
     return messages.findLast((m): m is UserMessage => m.role === "user")
   })
 
+  // The prompt already waiting behind the running turn, which an empty steer acts on: rather than
+  // sending nothing, the steer key moves that prompt to the front instead of making the person
+  // type the same direction again.
+  const queuedPrompt = createMemo(() => {
+    if (!props.sessionID) return undefined
+    return latestQueuedPrompt({
+      messages: sync.data.message[props.sessionID] ?? [],
+      statusType: status().type,
+      isSteer: (messageID) => sync.data.prompt_steer[messageID] === true,
+    })
+  })
+
+  async function steerQueuedPrompt() {
+    const sessionID = props.sessionID
+    const messageID = queuedPrompt()
+    if (!sessionID || !messageID) return false
+    try {
+      await sdk.client.session.promptDelivery({ sessionID, messageID, delivery: "steer" }, { throwOnError: true })
+    } catch (error) {
+      toast.show({ title: "Failed to steer the queued prompt", message: errorMessage(error), variant: "error" })
+    }
+    return true
+  }
+
   // While a turn runs the footer used to be a bare spinner: no way to tell thinking from a
   // shell command from a request that has stalled. The parts already streaming in say what is
   // happening, so the label comes from them.
@@ -468,6 +493,17 @@ export function Prompt(props: PromptProps) {
             return
           }
           await submit("steer")
+        },
+      },
+      {
+        title: "Steer queued prompt",
+        desc: "Deliver the prompt already waiting at the agent's next step instead of at the end of the turn",
+        name: "prompt.steer_queued",
+        category: "Prompt",
+        enabled: queuedPrompt() !== undefined,
+        run: async () => {
+          dialog.clear()
+          await steerQueuedPrompt()
         },
       },
       {
@@ -935,7 +971,18 @@ export function Prompt(props: PromptProps) {
         category: "Prompt",
         // IME: double-defer like the textarea's native submit so the last composed character lands.
         run: () => {
-          setTimeout(() => setTimeout(() => void submit("steer"), 0), 0)
+          setTimeout(
+            () =>
+              setTimeout(() => {
+                // Nothing typed: steer what is already queued instead of sending an empty prompt.
+                if (!store.prompt.input.trim() && queuedPrompt()) {
+                  void steerQueuedPrompt()
+                  return
+                }
+                void submit("steer")
+              }, 0),
+            0,
+          )
         },
       },
     ],
@@ -1132,8 +1179,14 @@ export function Prompt(props: PromptProps) {
       return false
     }
 
-    // An empty `/steer` sends nothing, and must not create a session on the way.
-    if (steerCommandAvailable() && parseSteerCommand(store.prompt.input)?.trim() === "") return false
+    // An empty `/steer` sends nothing, and must not create a session on the way. With a prompt
+    // already queued it steers that one, which is the only thing an empty steer can mean.
+    if (steerCommandAvailable() && parseSteerCommand(store.prompt.input)?.trim() === "") {
+      if (!queuedPrompt()) return false
+      input.setText("")
+      setStore("prompt", { input: "", parts: [] })
+      return await steerQueuedPrompt()
+    }
 
     const variant = local.model.variant.current()
     let sessionID = props.sessionID
@@ -1802,6 +1855,7 @@ export function Prompt(props: PromptProps) {
                     submitKey: submitShortcut(),
                     steerKey: steerShortcut(),
                     kittyKeyboard: kittyKeyboard(),
+                    queued: !store.prompt.input.trim() && queuedPrompt() !== undefined,
                   })}
                 </text>
                 <text fg={store.interrupt > 0 ? theme.primary : theme.text}>

@@ -18,6 +18,7 @@ describe("public event manifest", () => {
       "message.removed",
       "message.promoted",
       "session.next.prompt.admitted",
+      "session.next.prompt.delivery",
       "session.status",
     ]) {
       expect(server).toContain(type)

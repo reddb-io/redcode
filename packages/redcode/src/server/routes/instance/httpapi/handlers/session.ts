@@ -37,13 +37,14 @@ import {
   ListQuery,
   MessagesQuery,
   PermissionResponsePayload,
+  PromptDeliveryPayload,
   PromptPayload,
   RevertPayload,
   ShellPayload,
   SummarizePayload,
   UpdatePayload,
 } from "../groups/session"
-import { InvalidRequestError, PermissionNotFoundError } from "../errors"
+import { InvalidRequestError, notFound, PermissionNotFoundError } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -475,6 +476,20 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return HttpApiSchema.NoContent.make()
     })
 
+    const promptDelivery = Effect.fn("SessionHttpApi.promptDelivery")(function* (ctx: {
+      params: { sessionID: SessionID; messageID: MessageID }
+      payload: typeof PromptDeliveryPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const row = yield* promptSvc.setDelivery({
+        sessionID: ctx.params.sessionID,
+        messageID: ctx.params.messageID,
+        delivery: ctx.payload.delivery,
+      })
+      if (row === undefined) return yield* notFound(`Prompt is not pending: ${ctx.params.messageID}`)
+      return true
+    })
+
     const command = Effect.fn("SessionHttpApi.command")(function* (ctx: {
       params: { sessionID: SessionID }
       payload: typeof CommandPayload.Type
@@ -585,6 +600,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("budgetSet", budgetSet)
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
+      .handle("promptDelivery", promptDelivery)
       .handle("command", command)
       .handle("shell", shell)
       .handle("revert", revert)
