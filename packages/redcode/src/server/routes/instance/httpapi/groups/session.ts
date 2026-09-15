@@ -6,6 +6,7 @@ import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionGoal } from "@/session/goal"
+import { SessionBudget } from "@/session/budget"
 import { SessionRevert } from "@/session/revert"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
@@ -75,8 +76,18 @@ export const GoalSetPayload = Schema.Struct({
       "The goal: free text, with optional fields on their own lines or after ';' — verify:, constraints:, boundaries:, stop when:, gate: (a shell command that must exit 0; repeatable).",
   }),
   max_turns: Schema.optional(Schema.Number).annotate({ description: "Turn budget for this goal (default: 20)" }),
+  max_cost_usd: Schema.optional(SessionBudget.LimitsInfo.fields.max_cost_usd).annotate({
+    description: "Dollars the goal may spend on providers, subagents and judging included (no default: unlimited)",
+  }),
+  max_tokens: Schema.optional(SessionBudget.LimitsInfo.fields.max_tokens).annotate({
+    description: "Tokens the goal may spend on providers, subagents and judging included (no default: unlimited)",
+  }),
 })
-export const GoalBudgetPayload = Schema.Struct({ max_turns: Schema.Number })
+export const GoalBudgetPayload = Schema.Struct({
+  max_turns: Schema.optional(Schema.Number),
+  ...SessionBudget.UpdatePayload.fields,
+})
+export const SessionBudgetPayload = SessionBudget.UpdatePayload
 export const GoalResult = Schema.NullOr(SessionGoal.Info)
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
@@ -108,6 +119,7 @@ export const SessionPaths = {
   goalResume: `${root}/:sessionID/goal/resume`,
   goalDrop: `${root}/:sessionID/goal/drop`,
   goalBudget: `${root}/:sessionID/goal/budget`,
+  budget: `${root}/:sessionID/budget`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   command: `${root}/:sessionID/command`,
@@ -372,7 +384,34 @@ export const SessionApi = HttpApi.make("session")
           payload: GoalBudgetPayload,
           success: described(GoalResult, "The goal with its new budget"),
           error: ApiNotFoundError,
-        }).annotateMerge(OpenApi.annotations({ identifier: "session.goalBudget", summary: "Set goal budget" })),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.goalBudget",
+            summary: "Set goal budget",
+            description:
+              "Change the goal's turn budget and, optionally, its spend limits. A number sets a limit, null removes it, an absent field is kept.",
+          }),
+        ),
+        HttpApiEndpoint.get("budget", SessionPaths.budget, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(SessionBudget.View, "The session's spend and the limits in force"),
+          error: ApiNotFoundError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.budget", summary: "Get session budget" })),
+        HttpApiEndpoint.post("budgetSet", SessionPaths.budget, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: SessionBudgetPayload,
+          success: described(SessionBudget.View, "The session's budget after the change"),
+          error: ApiNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.budgetSet",
+            summary: "Set session budget",
+            description:
+              "Override the configured spend limits for this session. A number sets a limit, null removes the override, an absent field is kept. Nothing is limited unless set.",
+          }),
+        ),
         HttpApiEndpoint.post("prompt", SessionPaths.prompt, {
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,

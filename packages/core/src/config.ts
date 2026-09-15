@@ -23,6 +23,7 @@ import { ConfigModels } from "./config/models"
 import { ConfigPlugin } from "./config/plugin"
 import { ConfigProvider } from "./config/provider"
 import { ConfigReference } from "./config/reference"
+import { ConfigSession } from "./config/session"
 import { ConfigToolOutput } from "./config/tool-output"
 import { ConfigWatcher } from "./config/watcher"
 import { ConfigHook } from "./config/hook"
@@ -93,6 +94,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   design: ConfigDesign.Info.pipe(Schema.optional).annotate({
     description: "Design mode: the project's design system reused by previews",
+  }),
+  session: ConfigSession.Info.pipe(Schema.optional).annotate({
+    description: "Session behaviour: an optional spend budget. Nothing is limited unless set.",
   }),
   models: ConfigModels.Info.pipe(Schema.optional).annotate({
     description: "Models catalog sources, for networks that block the public catalog endpoints",

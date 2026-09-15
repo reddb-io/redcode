@@ -6,6 +6,7 @@ import { ConfigDesign } from "../../config/design"
 import { ConfigExperimental } from "../../config/experimental"
 import { ConfigModels } from "../../config/models"
 import { ConfigReference } from "../../config/reference"
+import { ConfigSession } from "../../config/session"
 import { ConfigAgentV1 } from "./agent"
 import { ConfigAttachmentV1 } from "./attachment"
 import { ConfigCommandV1 } from "./command"
@@ -173,6 +174,9 @@ export const Info = Schema.Struct({
   ),
   design: Schema.optional(ConfigDesign.Info).annotate({
     description: "Design mode: the project's design system reused by previews",
+  }),
+  session: Schema.optional(ConfigSession.Info).annotate({
+    description: "Session behaviour: an optional spend budget. Nothing is limited unless set.",
   }),
   models: Schema.optional(ConfigModels.Info).annotate({
     description: "Models catalog sources, for networks that block the public catalog endpoints",

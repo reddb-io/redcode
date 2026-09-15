@@ -17,3 +17,9 @@ export const LOOP_GUARD_PAUSE = "loop guard: "
  * Resuming such a goal answers the context pressure, not a judge, so the continuation looks for it.
  */
 export const COMPACTION_GUARD_PAUSE = "compaction guard: "
+
+/**
+ * How the reason of a goal paused at its spend budget begins ("budget: $2.00 of $2.00 spent").
+ * Resuming such a goal answers the budget, not a judge, so the continuation looks for it.
+ */
+export const BUDGET_PAUSE = "budget: "

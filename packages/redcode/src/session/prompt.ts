@@ -108,6 +108,8 @@ import { Todo } from "./todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
+import { SessionBudget } from "./budget"
+import { SessionSpend } from "./spend"
 import { errorMessage } from "@/util/error"
 
 // @ts-ignore
@@ -203,6 +205,7 @@ const layer = Layer.effect(
     const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
     const { db } = database
     // Task review is bookkeeping around a turn. A list the store refuses to reconcile keeps its stored
     // state for this step instead of failing the prompt: it runs before every provider step, so a
@@ -1927,7 +1930,15 @@ const layer = Layer.effect(
               // Already incremented for this iteration, so this is the 1-based step number.
               model,
               step,
-              beforeAttempt: () => goals.beginTurn(sessionID),
+              // A reached session budget ends the turn here, after the step that reached it.
+              beforeAttempt: () =>
+                spend
+                  .admit({ sessionID, messageID: lastUser.id, human: SessionBudget.human(msgs, lastUser.id) })
+                  .pipe(
+                    Effect.flatMap((denied) =>
+                      denied ? goals.pause(sessionID, denied).pipe(Effect.as(false)) : goals.beginTurn(sessionID),
+                    ),
+                  ),
               onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
@@ -2471,6 +2482,7 @@ export const node = LayerNode.make({
     Database.node,
     MonitorRuntime.node,
     Todo.node,
+    SessionSpend.node,
   ],
 })
 
