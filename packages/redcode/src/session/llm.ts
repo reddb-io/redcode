@@ -31,6 +31,7 @@ import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
 import { OperationHookBridge } from "@/operation-hook-bridge"
+import { ToolSearch } from "./tool-search"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -235,7 +236,10 @@ const live: Layer.Layer<
           auth: info,
           llmClient,
           messages: prepared.messages,
-          tools: prepared.tools,
+          // The native runtime has no activeTools split, so deferred tools are simply absent.
+          tools: Object.fromEntries(
+            ToolSearch.activeNames(prepared.tools).map((name) => [name, prepared.tools[name]!]),
+          ),
           toolChoice: input.toolChoice,
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
@@ -321,7 +325,9 @@ const live: Layer.Layer<
           topP: prepared.params.topP,
           topK: prepared.params.topK,
           providerOptions: ProviderTransform.providerOptions(input.model, prepared.params.options),
-          activeTools: Object.keys(prepared.tools).filter((x) => x !== "invalid"),
+          // The SDK sends only activeTools to the provider but validates calls against every tool,
+          // so a deferred tool is unadvertised yet still callable.
+          activeTools: ToolSearch.activeNames(prepared.tools),
           tools: prepared.tools,
           toolChoice: input.toolChoice,
           maxOutputTokens: prepared.params.maxOutputTokens,

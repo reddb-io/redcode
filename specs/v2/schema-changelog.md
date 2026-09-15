@@ -1,5 +1,10 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Configure Tool Search
+
+- Add optional `experimental.tool_search` to the configuration schema: `enabled` (`"auto"` | `true` | `false`, default `"auto"`) and `threshold` (positive integer, estimated tokens of MCP tool schemas, default 3000). Legacy runtime only: with `"auto"` the legacy loop defers MCP tools above the threshold (never in code mode) and `design_*` tools outside a Design context behind the `tool_search` tool (`query`, `select`, `limit`); `true` always defers MCP tools. The V2 core runner does not read it yet. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
+- Add no route, migration or durable-event version; `tool_search` records what it loaded in its tool part metadata (`loaded`, `notFound`), which the loop reads back from history.
+
 ## 2026-09-14: Track Session Monitors
 
 - Add the `session_monitor` table (migration `20260915002032_session_monitors`): `id`, `session_id` (deleted with its session), `owner` (the runtime running the monitor, `pid:process-start-time:uuid`, so another live runtime on the same database is never mistaken for a crashed one) and `data` (`Monitor.Info` as JSON), indexed by session.
