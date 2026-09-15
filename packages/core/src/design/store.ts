@@ -108,10 +108,14 @@ const make = Effect.gen(function* () {
     const source = yield* io(() =>
       DesignFiles.resolve(
         location.directory,
-        path.relative(
-          location.directory,
-          path.resolve(location.directory, input.application ?? design?.application ?? "."),
-        ) || ".",
+        // DesignFiles.relative takes "/"-separated paths; path.relative yields "\" on Windows.
+        path
+          .relative(
+            location.directory,
+            path.resolve(location.directory, input.application ?? design?.application ?? "."),
+          )
+          .split(path.sep)
+          .join("/") || ".",
       ),
     )
     const workspace = yield* io(() => RepositoryGuard.prepare(location.directory, sessionID))
