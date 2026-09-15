@@ -19,6 +19,7 @@ import { ConfigExperimental } from "./config/experimental"
 import { ConfigFormatter } from "./config/formatter"
 import { ConfigLSP } from "./config/lsp"
 import { ConfigMCP } from "./config/mcp"
+import { ConfigModels } from "./config/models"
 import { ConfigPlugin } from "./config/plugin"
 import { ConfigProvider } from "./config/provider"
 import { ConfigReference } from "./config/reference"
@@ -92,6 +93,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   design: ConfigDesign.Info.pipe(Schema.optional).annotate({
     description: "Design mode: the project's design system reused by previews",
+  }),
+  models: ConfigModels.Info.pipe(Schema.optional).annotate({
+    description: "Models catalog sources, for networks that block the public catalog endpoints",
   }),
   skills: Schema.String.pipe(Schema.Array, Schema.optional).annotate({
     description: "Additional paths or URLs to discover skills from",

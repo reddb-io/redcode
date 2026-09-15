@@ -61,7 +61,11 @@ const resolve = Effect.fn(function* (info: unknown) {
   yield* ModelsDevPlugin.effect(context).pipe(
     Effect.provideService(
       ModelsDev.Service,
-      ModelsDev.Service.of({ get: () => Effect.succeed(catalogData), refresh: () => Effect.void }),
+      ModelsDev.Service.of({
+        get: () => Effect.succeed(catalogData),
+        refresh: () => Effect.void,
+        status: () => Effect.succeed({ origin: "file", sources: [] }),
+      }),
     ),
   )
   yield* ConfigProviderPlugin.Plugin.effect(context).pipe(

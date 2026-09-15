@@ -55,3 +55,26 @@ export NODE_EXTRA_CA_CERTS=/path/to/ca-cert.pem
 ```
 
 This works for both proxy connections and direct API access.
+
+---
+
+## Models catalog
+
+The model list comes from a catalog that Redcode fetches at startup and then hourly. It tries these sources in order and uses the first one that returns a valid catalog:
+
+1. `REDCODE_MODELS_URL`
+2. `models.sources` in the global config (`~/.red/code/redcode.json`), in order
+3. `https://models.opencode.ai/api.json`
+4. `https://models.dev/api.json`
+
+If your network blocks the public endpoints, point Redcode at a mirror you can reach. A URL without a `.json` path gets `/api.json` appended.
+
+```json title="~/.red/code/redcode.json"
+{
+  "models": {
+    "sources": ["https://artifacts.example.com/models/api.json"]
+  }
+}
+```
+
+A source that answers 401, 403, 407 or 451, fails with a proxy or TLS error, or returns a page that is not a catalog (such as a proxy block page) is skipped for 1 hour, then 6 hours, then up to 24 hours. Redcode logs one warning for it and keeps using the cached catalog, or the catalog bundled into the release. Run `redcode models --verbose` to see where the current catalog came from, how old it is, and which sources are blocked. `redcode models --refresh` retries every source immediately.

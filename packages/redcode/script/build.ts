@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
+import fs from "fs"
+import os from "os"
 import path from "path"
 import { fileURLToPath } from "url"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -226,6 +228,22 @@ for (const item of targets) {
     try {
       const versionOutput = await $`${binaryPath} --version`.text()
       console.log(`Smoke test passed: ${versionOutput.trim()}`)
+      // The embedded models catalog must answer with no cache and no network.
+      const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "redcode-smoke-"))
+      const catalog = await $`${binaryPath} models --verbose`
+        .env({
+          ...process.env,
+          REDCODE_TEST_HOME: home,
+          HOME: home,
+          REDCODE_DISABLE_MODELS_FETCH: "1",
+          REDCODE_NO_BROWSER: "1",
+        })
+        .quiet()
+        .nothrow()
+      await fs.promises.rm(home, { recursive: true, force: true })
+      if (catalog.exitCode !== 0 || !catalog.stderr.toString().includes("Models catalog: snapshot"))
+        throw new Error(`embedded models catalog missing: ${catalog.stderr.toString().slice(-2000)}`)
+      console.log("Smoke test passed: embedded models catalog")
     } catch (e) {
       console.error(`Smoke test failed for ${name}:`, e)
       process.exit(1)
