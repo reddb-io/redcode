@@ -1636,6 +1636,14 @@ const layer = Layer.effect(
               }
               break
             }
+            // A person waiting outranks a synthetic continuation: pending steers and one queued prompt
+            // run before any todo nudge or goal continuation is injected, or a goal that keeps
+            // continuing would starve the queue until it finished. The goal stays active; its judge
+            // and continuation pick up again once the promoted prompt's turn ends.
+            if (yield* promoteAtIdle(sessionID)) {
+              restart()
+              continue
+            }
             if (!lastAssistant.error && todoContinuations < 7) {
               const tracked = yield* reviewTodos(sessionID)
               const reminder = SessionTodo.reminder(tracked)
@@ -1733,6 +1741,11 @@ const layer = Layer.effect(
                 ),
               )
               const ag = outcome?.action === "continue" ? yield* agents.get(lastUser.agent) : undefined
+              // The judge is a provider call: a prompt admitted while it ran goes first too.
+              if (outcome?.action === "continue" && (yield* promoteAtIdle(sessionID))) {
+                restart()
+                continue
+              }
               if (outcome?.action === "continue" && outcome.text && step < (ag?.steps ?? Infinity)) {
                 const message: SessionV1.User = {
                   id: MessageID.ascending(),
