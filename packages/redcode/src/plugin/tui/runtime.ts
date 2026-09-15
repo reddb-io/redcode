@@ -1,5 +1,5 @@
 import { runtimeModules as keymapRuntimeModules } from "@opentui/keymap/runtime-modules"
-import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+import { admit, ensureRuntimeModules } from "./runtime-modules"
 import {
   type TuiDispose,
   type TuiPlugin,
@@ -44,7 +44,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Effect } from "effect"
 import { createPluginRuntime, type PluginRuntime, type TuiPluginHost } from "@reddb-io/redcode-tui/plugin/runtime"
 
-ensureRuntimePluginSupport({ additional: keymapRuntimeModules })
+ensureRuntimeModules(keymapRuntimeModules)
 
 type PluginLoad = {
   options: ConfigPluginV1.Options | undefined
@@ -749,6 +749,9 @@ async function resolveExternalPlugins(list: ConfigPlugin.Origin[], wait: () => P
     },
     report: {
       start() {},
+      load(resolved) {
+        admit(resolved.entry)
+      },
       missing(candidate, retry, message) {
         warn("tui plugin has no entrypoint", { path: candidate.plan.spec, retry, message })
       },
