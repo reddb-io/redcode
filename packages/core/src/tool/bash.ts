@@ -130,7 +130,14 @@ const layer = Layer.effectDiscard(
               const polling = ShellPolling.detect(input.command)
               if (polling)
                 return yield* Effect.fail(
-                  new ToolFailure({ message: ShellPolling.boundedRefusal(polling, input.workdir) }),
+                  new ToolFailure({
+                    // A native probe is offered where one expresses the check, because the monitor
+                    // tool can run it. Command polls still get the check-once refusal: starting one
+                    // needs bash's own monitor parameter, which this tool does not have.
+                    message: polling.probe
+                      ? ShellPolling.probeRefusal(polling, input.workdir)
+                      : ShellPolling.boundedRefusal(polling, input.workdir),
+                  }),
                 )
               const source = {
                 type: "tool" as const,

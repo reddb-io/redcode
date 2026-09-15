@@ -36,6 +36,9 @@ import { ReferenceGuidance } from "../../reference/guidance"
 import { ToolRegistry } from "../../tool/registry"
 import { NativeToolSearch } from "../../tool/native-tool-search"
 import { ToolSearch } from "../../tool/tool-search"
+import { Monitor } from "../../monitor"
+// `parks` is a rule about a monitor's options, not part of the runtime service.
+import { Monitor as MonitorSchema } from "@reddb-io/redcode-schema/monitor"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
 import { SessionCompaction } from "../compaction"
@@ -150,6 +153,7 @@ const layer = Layer.effect(
     const goals = yield* SessionGoal.Service
     const completion = yield* SessionGoalCompletion.Service
     const plans = yield* SessionPlan.Service
+    const monitors = yield* Monitor.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({
       scope: yield* Scope.Scope,
@@ -1055,6 +1059,12 @@ const layer = Layer.effect(
                 })
               }
             }
+            // Waiting on an external observation is a scheduler boundary: neither the todo nudger
+            // nor a goal continuation should spend provider calls while a monitor is still watching
+            // for a condition. The session goes idle instead, and the monitor's queued result starts
+            // the next turn. Only monitors waiting on a condition park; a long-running observation
+            // with a day-long deadline does not hold the goal back for a day.
+            if (!needsContinuation && (yield* monitors.list(input.sessionID)).some(MonitorSchema.parks)) return
             if (!needsContinuation) {
               const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
               const blocked = SessionTodo.blocker(yield* todos.get(input.sessionID))
@@ -1132,5 +1142,6 @@ export const node = makeLocationNode({
     SessionGoal.node,
     SessionGoalCompletion.node,
     SessionPlan.node,
+    Monitor.node,
   ],
 })

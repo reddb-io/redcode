@@ -1,0 +1,12 @@
+---
+"@reddb-io/redcode-core": minor
+"@reddb-io/redcode": minor
+---
+
+Monitors for the v2 runtime: `redcode design` can now wait on an HTTP endpoint, a file or a process in the background instead of holding the turn.
+
+- **The `monitor` tool.** `action: "probe"` starts a native probe — an http probe (status, `json_path` with `equals`/`contains`/`regex`, `{env:NAME}` headers), a file probe (`exists`, `missing`, `changed`) or a process probe (`running`, `exited`) — and `list`, `get`, `wait` and `cancel` manage what is running. The probe releases the turn, checks in the background every `interval_ms`, and resumes the session with the result once the condition holds or `deadline_ms` passes. It reuses the monitor runtime and background-job service that already live in core, so nothing about how monitors run or recover changed.
+- **The result arrives as a queued input**, never as a steer, so it cannot land inside a turn the person started. Whether it wakes the session is decided when the result arrives, not when the monitor started: a goal that is paused, blocked or waiting by then leaves the result queued for the person instead of resuming on its own. The message id is derived from the monitor id, so a redelivery after a restart admits nothing new.
+- **A session parks while a monitor watches.** With a monitor still waiting on a condition, the runner stops injecting todo nudges and goal continuations and lets the session go idle; the monitor's own result starts the next turn. Only monitors waiting on a condition park.
+- **Permissions.** An http probe asks `webfetch` for its URL, and each `{env:NAME}` header asks a separate `env` permission per variable and host. That ask is forced: no catch-all rule, no saved "always" and no yolo mode can answer it, because a secret leaving the machine should never be settled by an earlier decision about something else. A file probe asks `read`, plus `external_directory` when it points outside the location, and re-checks after every poll that its symlinks still lead somewhere approved. A process probe asks nothing, but any poll longer than ten minutes is approved every time.
+- **The shell polling guard now offers a probe.** A `curl`, `test -f` or `pgrep` wait loop that a native probe can express is refused with the matching `monitor` call. Command polls still get the check-once refusal, because starting one needs the shell tool's own `monitor` parameter, which the v2 shell tool does not have.

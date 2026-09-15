@@ -47,6 +47,12 @@ export const AssertInput = Schema.Struct({
    * allows it: a built-in family pattern such as `design_*` must not auto-allow a server named `design`.
    */
   external: Schema.Boolean.pipe(Schema.optional),
+  /**
+   * Ask every time, whatever the rules say. For decisions no catch-all should ever settle: sending
+   * an environment variable to a host, or repeating an observation for longer than ten minutes.
+   * A deny rule still denies, and `save` is expected to be empty so no "always" is offered.
+   */
+  force: Schema.Boolean.pipe(Schema.optional),
 }).annotate({ identifier: "PermissionV2.AssertInput" })
 export type AssertInput = typeof AssertInput.Type
 
@@ -173,9 +179,12 @@ const layer = Layer.effect(
 
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
       const rules = yield* configured(input.sessionID, input.agent)
-      if (RepositoryGuard.yolo()) return { effect: "allow" as const, rules }
+      if (RepositoryGuard.yolo() && !input.force) return { effect: "allow" as const, rules }
       if (denied(input, rules)) return { effect: "deny" as const, rules }
       const all = [...rules, ...(yield* savedRules())]
+      // A forced request is never settled by an allow rule, saved or configured. Only a deny rule,
+      // checked above, can answer it without asking.
+      if (input.force) return { effect: "ask" as const, rules: all }
       const applicable = input.external
         ? all.filter((rule) => rule.effect !== "allow" || rule.action === input.action || rule.action === "*")
         : all
