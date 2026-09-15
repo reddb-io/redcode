@@ -18,7 +18,7 @@
  * turn, bounded by the step ceiling, the loop guard and the retry policy, not by this budget.
  */
 
-import { LOOP_GUARD_PAUSE } from "@reddb-io/redcode-core/session/loop-marker"
+import { COMPACTION_GUARD_PAUSE, LOOP_GUARD_PAUSE } from "@reddb-io/redcode-core/session/loop-marker"
 import { Schema } from "effect"
 
 export const DEFAULT_MAX_TURNS = 20
@@ -265,11 +265,16 @@ export function continuation(goal: Goal, input: { readonly reason?: string; read
           `The last turn was stopped by the loop guard: ${input.reason.slice(LOOP_GUARD_PAUSE.length)}.`,
           "Do not make that call again as it was. Read its last error and do what it asks with other tools first; for a task update, cite a successful verification result with an explanation, or block the task with a concrete reason. If you cannot get past it, tell the user what is blocking you and stop.",
         ]
-      : [
-          input.reason
-            ? `The judge's reason for not accepting the last turn: ${input.reason}`
-            : "The last turn did not complete the goal.",
-        ]),
+      : input.reason?.startsWith(COMPACTION_GUARD_PAUSE)
+        ? [
+            `The last turn stopped at a context compaction: ${input.reason.slice(COMPACTION_GUARD_PAUSE.length)}.`,
+            "Re-read the summary and the recent messages first. Keep the context small from here: record progress in the task list, do not re-read large files or outputs you already have, and narrow searches before running them.",
+          ]
+        : [
+            input.reason
+              ? `The judge's reason for not accepting the last turn: ${input.reason}`
+              : "The last turn did not complete the goal.",
+          ]),
     "Take the next concrete step toward it. Verify as you go and show the evidence. If the goal is complete, call goal_complete with the evidence; if it cannot be reached, say exactly why and stop.",
   ].join("\n")
 }

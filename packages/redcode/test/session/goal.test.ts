@@ -239,3 +239,13 @@ test("resuming a goal the loop guard paused answers the guard, not a judge", () 
     "The judge's reason for not accepting the last turn: the tests were not run",
   )
 })
+
+test("resuming a goal the compaction guard paused answers the context pressure, not a judge", () => {
+  const goal = SessionGoal.parse("Sweep the repository")
+  const text = SessionGoal.continuation(goal, {
+    reason: "compaction guard: 2 compactions in a row left the context above 80% of the usable context",
+  })
+  expect(text).toContain("The last turn stopped at a context compaction: 2 compactions in a row")
+  expect(text).toContain("Keep the context small")
+  expect(text).not.toContain("The judge's reason")
+})

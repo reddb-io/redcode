@@ -45,6 +45,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { SessionCompaction } from "../../src/session/compaction"
 import { CompactionGuard } from "../../src/session/compaction-guard"
+import { TuiEvent } from "@/server/tui-event"
 import { SessionContext } from "../../src/session/context"
 import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
@@ -6781,34 +6782,42 @@ for (const trigger of ["threshold", "overflow"] as const) {
 }
 
 it.instance(
-  "automatic compaction runs at most twice per turn and ends the turn with one notice",
+  "a goal run whose compactions keep freeing room is never capped",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000))
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 60_000))
       const events = yield* EventV2Bridge.Service
-      const errors: string[] = []
+      const notices: string[] = []
       const off = yield* events.listen((event) => {
-        if (event.type === Session.Event.Error.type) errors.push(JSON.stringify(event.data))
+        if (event.type === Session.Event.Error.type || event.type === TuiEvent.ToastShow.type)
+          notices.push(JSON.stringify(event.data))
         return Effect.void
       })
-      const { chat, prompt, sessions } = yield* startChat("Do the work.")
-      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-1" }).usage({ input: 39_500, output: 10 }))
-      yield* llm.text("Summary one.")
-      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-2" }).usage({ input: 39_500, output: 10 }))
-      yield* llm.text("Summary two.")
-      yield* llm.error(413, overflow413)
-      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+      const { chat, goals, prompt, sessions } = yield* startGoal("Sweep the repository", { maxTurns: 3 })
+      yield* llm.textMatch(judgeRequest, verdict("blocked", "needs the maintainer's decision"))
+      // Every step crosses the threshold and every checkpoint brings the context well under it.
+      for (const index of [1, 2, 3, 4]) {
+        yield* llm.push(
+          reply()
+            .tool("glob", { pattern: `**/*.nothing-${index}` })
+            .usage({ input: 59_500, output: 10 }),
+        )
+        yield* llm.text(`Summary ${index}.`)
+      }
+      yield* llm.text("SWEEP-FINISHED")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "60 seconds")
       yield* off
 
       const all = yield* sessions.messages({ sessionID: chat.id })
-      expect(summaries(all)).toHaveLength(2)
-      expect(yield* llm.hits).toHaveLength(5)
-      expect(errors).toHaveLength(1)
-      expect(errors[0]).toContain("compacted 2 times")
-      const guards = yield* SessionGuardLog.Service
-      expect((yield* guards.recent()).some((trip) => trip.guard === "compaction" && trip.action === "stop")).toBe(true)
+      expect(summaries(all)).toHaveLength(4)
+      expect(JSON.stringify(all)).toContain("SWEEP-FINISHED")
+      expect(notices).toEqual([])
+      const judged = (yield* llm.hits).filter(judgeRequest)
+      expect(judged).toHaveLength(1)
+      expect(JSON.stringify(judged[0]!.body)).toContain("SWEEP-FINISHED")
+      expect((yield* goals.get(chat.id))?.status).toBe("blocked")
     }),
-  60_000,
+  90_000,
 )
 
 it.instance(
@@ -6819,8 +6828,11 @@ it.instance(
       const database = yield* Database.Service
       const events = yield* EventV2Bridge.Service
       const errors: string[] = []
+      const toasts: Array<{ variant: string; message: string; title?: string }> = []
       const off = yield* events.listen((event) => {
         if (event.type === Session.Event.Error.type) errors.push(JSON.stringify(event.data))
+        if (event.type === TuiEvent.ToastShow.type)
+          toasts.push(event.data as { variant: string; message: string; title?: string })
         return Effect.void
       })
       // The preserved request alone keeps the context above the band after every checkpoint.
@@ -6834,8 +6846,11 @@ it.instance(
 
       expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(2)
       expect(yield* llm.hits).toHaveLength(4)
-      expect(errors).toHaveLength(1)
-      expect(errors[0]).toContain("Automatic compaction is paused")
+      // One warning, not an error: nothing failed, and no red toast or error notification fires.
+      expect(errors).toEqual([])
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]).toMatchObject({ variant: "warning", title: CompactionGuard.NOTICE_TITLE })
+      expect(toasts[0]!.message).toContain("Automatic compaction is paused")
       expect(CompactionGuard.fromMetadata((yield* sessions.get(chat.id)).metadata).paused).toBeDefined()
 
       // A new process, and no new message from the person: over the threshold it keeps working
@@ -7040,6 +7055,14 @@ it.instance("an unattended run is asked to wrap up once near the context limit",
 )
 
 attended.instance("an attended session gets no wrap-up reminder near the context limit", () =>
+  Effect.gen(function* () {
+    expect(yield* wrapUpRun()).toBe(0)
+  }),
+)
+
+const editor = testEffect(makeHttp({ client: "acp" }))
+
+editor.instance("an ACP editor session is attended and gets no wrap-up reminder", () =>
   Effect.gen(function* () {
     expect(yield* wrapUpRun()).toBe(0)
   }),

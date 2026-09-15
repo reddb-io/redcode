@@ -34,6 +34,7 @@ import {
   systemPrompt,
 } from "@reddb-io/redcode-core/session/compaction"
 import { CompactionGuard } from "./compaction-guard"
+import { createHash } from "crypto"
 import { ToolOutputBridge } from "@/tool/output-bridge"
 import { SessionStatus } from "./status"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
@@ -111,6 +112,29 @@ function summaryText(message: SessionV1.WithParts) {
     .join("\n\n")
     .trim()
   return text || undefined
+}
+
+/**
+ * A request the person made: a user message carrying their own text or attachment. Synthetic
+ * messages (replays, continuations, reminders, goal turns) are the harness talking, not them.
+ */
+export function isRealRequest(message: SessionV1.WithParts) {
+  return (
+    message.info.role === "user" &&
+    !message.parts.some((part) => part.type === "compaction") &&
+    message.parts.some((part) => (part.type === "text" && !part.synthetic && !part.ignored) || part.type === "file")
+  )
+}
+
+/** The turn a compaction serves: the latest user message that is not compaction's own. */
+function turnOf(messages: SessionV1.WithParts[]) {
+  return messages.findLast(
+    (message) =>
+      message.info.role === "user" &&
+      !message.parts.some(
+        (part) => part.type === "compaction" || (part.type === "text" && part.metadata?.compaction_continue === true),
+      ),
+  )?.info.id
 }
 
 /** A message we wrote ourselves by replaying the person's prompt after a compaction. */
@@ -193,8 +217,10 @@ type ProcessInput = {
   sessionID: SessionID
   auto: boolean
   overflow?: boolean
-  /** Estimated tokens of what every request carries besides history: the system prompt. */
+  /** Estimated tokens of what every request carries besides history: system prompt and tools. */
   overhead?: number
+  /** Told, for an automatic compaction that committed, whether it freed enough room. */
+  onMeasured?: (effective: boolean) => void
 }
 
 /**
@@ -283,6 +309,30 @@ const layer = Layer.effect(
         model: input.model,
         outputTokenMax: flags.outputTokenMax,
       })
+    })
+
+    // The full text of an elided request, saved once per distinct content.
+    const saved = new Map<string, string>()
+    const retainRequest = Effect.fnUntraced(function* (text: string) {
+      const key = createHash("sha256").update(text).digest("hex")
+      const known = saved.get(key)
+      if (known) return known
+      const path = yield* outputs.retain(text)
+      if (path) saved.set(key, path)
+      return path
+    })
+
+    // What the last answered request carried besides history, from the tokens the provider reported
+    // for it: the fallback when the loop has not measured a step yet.
+    const reportedOverhead = Effect.fnUntraced(function* (messages: SessionV1.WithParts[], model: Provider.Model) {
+      const index = messages.findLastIndex(
+        (message) => message.info.role === "assistant" && !message.info.summary && !!message.info.finish,
+      )
+      const info = messages[index]?.info
+      if (!info || info.role !== "assistant") return 0
+      const reported = info.tokens.input + info.tokens.cache.read + info.tokens.cache.write
+      if (!reported) return 0
+      return Math.max(0, reported - (yield* estimate({ messages: messages.slice(0, index), model })))
     })
 
     const estimate = Effect.fn("SessionCompaction.estimate")(function* (input: {
@@ -447,14 +497,10 @@ const layer = Layer.effect(
       const pending = new Set<string>(
         (yield* SessionInput.listPending(database.db, input.sessionID)).map((row) => row.id),
       )
-      const latestRequest = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).findLast(
-        (message) =>
-          message.info.role === "user" &&
-          !pending.has(message.info.id) &&
-          message.info.id <= input.messages.at(-1)!.info.id &&
-          !message.parts.some((part) => part.type === "compaction") &&
-          !isReplay(message.parts),
+      const session_ = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).filter(
+        (message) => !pending.has(message.info.id) && message.info.id <= input.messages.at(-1)!.info.id,
       )
+      const latestRequest = session_.findLast(isRealRequest)
       // Membership in the retained tail, not an id comparison: a promoted prompt keeps its
       // admission-time id but sits later in history, and would otherwise be summarised twice.
       const tailStart = selected.tail_start_id
@@ -465,15 +511,12 @@ const layer = Layer.effect(
         tailStart >= 0 &&
         retained.slice(tailStart).some((message) => message.info.id === latestRequest.info.id)
       // A pasted request larger than the tail budget cannot ride every later request whole, or the
-      // checkpoint leaves the context as full as it found it. A bounded head and tail stay verbatim
-      // and the full text is saved where the model can read it again.
-      const preservedRequest = yield* Effect.gen(function* () {
-        if (replay || !latestRequest || inTail) return ""
-        const text = serialize(latestRequest)
-        const budget = preserveRecentBudget({ cfg, model })
-        const bounded = Token.estimate(text) <= budget ? text : elideMiddle(text, budget, yield* outputs.retain(text))
-        return `\n\n<latest-user-request>\n${bounded}\n</latest-user-request>`
-      })
+      // checkpoint leaves the context as full as it found it. A bounded head and tail stay verbatim;
+      // the full text is saved, where the model can read it again, only once the checkpoint commits.
+      const preserved =
+        replay || !latestRequest || inTail
+          ? undefined
+          : { text: serialize(latestRequest), budget: preserveRecentBudget({ cfg, model }) }
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
@@ -511,8 +554,10 @@ const layer = Layer.effect(
         agent,
         model,
         selected,
-        preservedRequest,
+        preserved,
         latestRequestID: latestRequest?.info.id,
+        // From the whole session: after a checkpoint the turn's opening message is often hidden.
+        turnID: turnOf(session_),
         previousSummary,
         conversation,
         stream: {
@@ -775,14 +820,16 @@ const layer = Layer.effect(
         yield* session.updateMessage(processor.message)
         return "stop"
       }
-      if (prepared.preservedRequest) {
+      if (prepared.preserved) {
+        const { text, budget } = prepared.preserved
+        const bounded = Token.estimate(text) <= budget ? text : elideMiddle(text, budget, yield* retainRequest(text))
         yield* session.updatePart({
           id: PartID.ascending(),
           messageID: msg.id,
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: prepared.preservedRequest,
+          text: `\n\n<latest-user-request>\n${bounded}\n</latest-user-request>`,
         })
       }
 
@@ -805,7 +852,7 @@ const layer = Layer.effect(
       const userModel = yield* provider
         .getModel(prepared.userMessage.model.providerID, prepared.userMessage.model.modelID)
         .pipe(Effect.orDie)
-      const overhead = input.overhead ?? 0
+      const overhead = input.overhead || (yield* reportedOverhead(input.messages, userModel))
       const before = overhead + (yield* estimate({ messages: input.messages, model: userModel }))
       const visible = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
         Effect.provideService(Database.Service, database),
@@ -833,9 +880,11 @@ const layer = Layer.effect(
         ? CompactionGuard.afterAutomatic(guard, {
             effective,
             latestRequestID: prepared.latestRequestID,
+            turnID: prepared.turnID,
             now: Date.now(),
           })
         : { ineffective: 0 }
+      if (input.auto) input.onMeasured?.(effective)
       if (JSON.stringify(next) !== JSON.stringify(guard))
         yield* session.setMetadata({
           sessionID: input.sessionID,

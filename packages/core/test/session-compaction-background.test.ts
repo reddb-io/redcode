@@ -242,16 +242,38 @@ it.effect("a huge latest request kept outside the history does not reject the su
   }),
 )
 
-it.effect("automatic compaction runs at most twice for one request", () =>
+it.effect("compactions that free room are never capped", () =>
   Effect.gen(function* () {
     const test = yield* setup(true, false)
     yield* Deferred.succeed(test.gate, undefined)
-    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
-    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
-    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(false)
+    for (const _ of [1, 2, 3, 4]) expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    expect(test.calls).toHaveLength(4)
+  }),
+)
+
+it.effect("two ineffective compactions pause automatic compaction until the next request", () =>
+  Effect.gen(function* () {
+    const test = yield* setup(true, false)
+    yield* Deferred.succeed(test.gate, undefined)
+    // A system prompt that alone keeps every next request above the band.
+    const input = { ...test.input, request: LLM.request({ ...test.input.request, system: "s".repeat(40_000) }) }
+    expect(yield* test.compaction.compactAfterOverflow(input)).toBe(true)
+    expect(yield* test.compaction.compactAfterOverflow(input)).toBe(true)
+    expect(yield* test.compaction.compactAfterOverflow(input)).toBe(false)
+    // A new run of the same request does not lift the pause.
+    yield* test.compaction.beginTurn(input.sessionID)
+    expect(yield* test.compaction.compactAfterOverflow(input)).toBe(false)
     expect(test.calls).toHaveLength(2)
-    // A new run of the same request starts with a fresh allowance.
-    yield* test.compaction.beginTurn(test.input.sessionID)
-    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+  }),
+)
+
+it.effect("an elided request never splits a surrogate pair", () =>
+  Effect.sync(() => {
+    const text = "😀".repeat(5_000)
+    const elided = SessionCompaction.elideMiddle(text, 100)
+    expect(elided).toContain("[middle elided:")
+    const [head, tail] = elided.split(/\n\[middle elided: \d+ tokens\]\n/)
+    expect(head).toMatch(/^(?:😀)+$/u)
+    expect(tail).toMatch(/^(?:😀)+$/u)
   }),
 )

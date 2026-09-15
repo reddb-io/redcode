@@ -1,5 +1,10 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Record Context Size Around A Compaction
+
+- Add optional `tokens` (`before`, `after`: estimated tokens of the next request before and after the checkpoint, including system prompt and tool schemas) to `CompactionPart`, returned wherever message parts are (the V1 session message routes and `message.part.updated`). The TUI compaction divider shows it as `Compaction · before → after tokens`. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `openapi.json` and `js/src/v2/gen`).
+- Legacy runtime only: the compaction guard state is stored in session `metadata.compaction` (`ineffective`, optional `turn`, optional `paused` `{ after, at }`); session metadata is already a free-form record, so no schema changes. Add no route, migration or durable-event version; stored parts without `tokens` decode as before.
+
 ## 2026-09-15: Add Native Monitor Probes, Richer Poll Conditions And Jitter
 
 - Add `Monitor.Probe`, a union on `type`: `Monitor.HttpProbe` (`url`, optional `method` `GET` | `HEAD`, `expect_status` (an integer or a non-empty integer array, default any 2xx), `json_path`, `equals` (string, number or boolean), `contains`, `regex`, `headers` (string record; `{env:NAME}` values resolved per attempt, never rendered)), `Monitor.FileProbe` (`path`, `state` `exists` | `missing` | `changed`, optional `min_size`) and `Monitor.ProcessProbe` (`name` or `pid`, `state` `running` | `exited`). Regular expressions are compiled at decode time and capped at 200 characters; `json_path` accepts dotted keys, bracketed quoted keys and array indexes. Rules spanning fields (an http(s) URL, exactly one of `name`/`pid`, no body matchers on `HEAD`, no `min_size` with `missing`) are enforced by `Monitor.probeProblem` when the tool starts a probe, not by the schema.

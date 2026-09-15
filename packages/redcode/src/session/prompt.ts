@@ -21,6 +21,7 @@ import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { CompactionGuard } from "./compaction-guard"
+import { TuiEvent } from "@/server/tui-event"
 import { usable as usableTokens } from "./overflow"
 import { Token } from "@/util/token"
 import { SystemPrompt } from "./system"
@@ -36,7 +37,8 @@ const STALL_POLL_SECONDS = 15
 
 /** Surfaces where a person is present to read a warning and stop the turn themselves. */
 function attendedClient(client: string) {
-  return client === "tui" || client === "app" || client === "desktop"
+  // ACP clients (Zed and other editors) have a person at the keyboard too.
+  return client === "tui" || client === "app" || client === "desktop" || client === "acp"
 }
 import { ToolRegistry } from "@/tool/registry"
 import { MCP } from "../mcp"
@@ -1324,45 +1326,49 @@ const layer = Layer.effect(
         // turn already finished (a wake, or a queued prompt on an idle session) has no turn of its
         // own to review or judge; it only promotes what is waiting.
         let ran = false
-        // Automatic compactions spent on the current request, and the system prompt size of the
-        // last step, which every request after a compaction carries again.
-        let autoCompactions = 0
+        // Automatic compactions in a row this turn that did not free enough room (one that did
+        // resets it: long work that keeps compacting effectively is never capped), and what the
+        // last step carried besides history, which every request after a compaction carries again.
+        let ineffectiveCompactions = 0
         let overhead = 0
+        const measured = (effective: boolean) => {
+          ineffectiveCompactions = effective ? 0 : ineffectiveCompactions + 1
+        }
         // A promoted prompt starts a fresh turn: the provider-turn allowance is reset once for the
         // batch, and with it the continuation budget that rides on it.
         const restart = () => {
           step = 0
           todoContinuations = 0
           reviewed = undefined
-          autoCompactions = 0
+          ineffectiveCompactions = 0
         }
         // Why automatic compaction may not run now, if it may not.
         const compactionHold = Effect.fnUntraced(function* (history: SessionV1.WithParts[]) {
           const current = yield* sessions.get(sessionID).pipe(Effect.orDie)
-          const latest = history.findLast(
-            (message) =>
-              message.info.role === "user" &&
-              !message.parts.some((part) => part.type === "compaction") &&
-              !message.parts.every((part) => part.type !== "text" || part.synthetic === true),
-          )?.info.id
+          const latest = history.findLast(SessionCompaction.isRealRequest)?.info.id
           if (CompactionGuard.isPaused(CompactionGuard.fromMetadata(current.metadata), latest)) return "paused" as const
-          if (autoCompactions >= CompactionGuard.MAX_AUTO_PER_TURN) return "limit" as const
+          if (ineffectiveCompactions >= CompactionGuard.MAX_AUTO_PER_TURN) return "limit" as const
           return undefined
         })
-        // One notice, then the turn ends: compacting again would only repeat the last attempt.
+        // One notice, then the turn ends: compacting again would only repeat the last attempt. A
+        // warning, not an error: nothing failed, and the notice says what to do.
         const stopCompacting = Effect.fnUntraced(function* (hold: "paused" | "limit") {
           const text = hold === "paused" ? CompactionGuard.PAUSED : CompactionGuard.LIMIT
           yield* guards.record({ sessionID, guard: "compaction", action: "stop", detail: text })
           yield* Effect.logWarning("automatic compaction held back; ending the turn", {
             "session.id": sessionID,
             hold,
-            compactions: autoCompactions,
+            ineffective: ineffectiveCompactions,
           })
-          yield* goals.pause(sessionID, text).pipe(Effect.ignore)
-          yield* events.publish(Session.Event.Error, {
-            sessionID,
-            error: new NamedError.Unknown({ message: text }).toObject(),
-          })
+          yield* goals.pause(sessionID, CompactionGuard.goalReason(hold)).pipe(Effect.ignore)
+          yield* events
+            .publish(TuiEvent.ToastShow, {
+              title: CompactionGuard.NOTICE_TITLE,
+              message: text,
+              variant: "warning",
+              duration: 10_000,
+            })
+            .pipe(Effect.ignore)
         })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // A goal never restarts itself: if the process that drove it is not this one, it is
@@ -1702,6 +1708,15 @@ const layer = Layer.effect(
               const unjudged =
                 answer !== undefined &&
                 (answer === lastAssistantMsg || judged === undefined || answer.info.time.created >= judged)
+              // Judging the same answer twice would spend a goal turn on nothing new; leaving the goal
+              // active would leave it with nothing driving it. It is paused with the reason instead.
+              if (!unjudged)
+                yield* goals
+                  .pause(
+                    sessionID,
+                    `${CompactionGuard.COMPACTION_GUARD_PAUSE}the turn ended on a compaction after an answer that was already judged, so nothing was left to continue`,
+                  )
+                  .pipe(Effect.ignore)
               const outcome = yield* (
                 unjudged
                   ? goals.afterTurn({ session: fresh, lastUser, lastAssistant: answer })
@@ -1735,6 +1750,8 @@ const layer = Layer.effect(
                   text: outcome.text,
                   synthetic: true,
                 })
+                // A new goal turn: its compactions are counted afresh.
+                ineffectiveCompactions = 0
                 continue
               }
             }
@@ -1781,6 +1798,7 @@ const layer = Layer.effect(
               auto: task.auto,
               overflow: task.overflow,
               overhead,
+              onMeasured: measured,
             })
             if (result === "paused") {
               yield* stopCompacting("paused")
@@ -1802,7 +1820,6 @@ const layer = Layer.effect(
             // Held back, the step still runs: over the threshold is not over the limit, and a
             // request the provider refuses ends the turn below with one notice.
             if (!(yield* compactionHold(msgs))) {
-              autoCompactions++
               yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
               continue
             }
@@ -2028,7 +2045,18 @@ const layer = Layer.effect(
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
-            overhead = Token.estimate(system.join("\n"))
+            // System prompt and tool schemas: both ride every request, compacted or not.
+            overhead =
+              Token.estimate(system.join("\n")) +
+              Token.estimate(
+                JSON.stringify(
+                  Object.entries(tools).map(([name, tool]) => [
+                    name,
+                    tool.description,
+                    (tool.inputSchema as { jsonSchema?: unknown } | undefined)?.jsonSchema,
+                  ]),
+                ),
+              )
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -2095,7 +2123,6 @@ const layer = Layer.effect(
                 yield* stopCompacting(hold)
                 return "break" as const
               }
-              autoCompactions++
               yield* compaction.create({
                 sessionID,
                 agent: lastUser.agent,
