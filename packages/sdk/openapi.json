@@ -8554,6 +8554,114 @@
         ]
       }
     },
+    "/session/{sessionID}/prompt/{messageID}/delivery": {
+      "post": {
+        "tags": ["session"],
+        "operationId": "session.promptDelivery",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "messageID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean",
+                  "description": "Delivery changed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Change how a prompt that is still waiting reaches the model: turn a queued prompt into a steer, delivered at the next safe boundary of the running turn, or send a steer back to the queue. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).",
+        "summary": "Change prompt delivery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delivery": {
+                    "type": "string",
+                    "enum": ["steer", "queue"],
+                    "description": "`steer` promotes the prompt at the next safe boundary of the running turn, `queue` waits until the session would otherwise go idle"
+                  }
+                },
+                "required": ["delivery"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.session.promptDelivery({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/command": {
       "post": {
         "tags": ["session"],
@@ -25619,6 +25727,9 @@
             "$ref": "#/components/schemas/EventSessionNextPromptAdmitted"
           },
           {
+            "$ref": "#/components/schemas/EventSessionNextPromptDelivery"
+          },
+          {
             "$ref": "#/components/schemas/EventSessionNextContextUpdated"
           },
           {
@@ -28379,6 +28490,43 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": ["session.next.prompt.delivery"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^msg_"
+                      },
+                      "delivery": {
+                        "type": "string",
+                        "enum": ["steer", "queue"]
+                      }
+                    },
+                    "required": ["timestamp", "sessionID", "messageID", "delivery"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
                     "enum": ["session.next.context.updated"]
                   },
                   "properties": {
@@ -30932,6 +31080,9 @@
               },
               {
                 "$ref": "#/components/schemas/SyncEventSessionNextPromptAdmitted"
+              },
+              {
+                "$ref": "#/components/schemas/SyncEventSessionNextPromptDelivery"
               },
               {
                 "$ref": "#/components/schemas/SyncEventSessionNextContextUpdated"
@@ -35182,6 +35333,9 @@
             "$ref": "#/components/schemas/SessionNextPromptAdmitted"
           },
           {
+            "$ref": "#/components/schemas/SessionNextPromptDelivery"
+          },
+          {
             "$ref": "#/components/schemas/SessionNextContextUpdated"
           },
           {
@@ -35584,6 +35738,9 @@
           },
           {
             "$ref": "#/components/schemas/SessionNextPromptAdmitted"
+          },
+          {
+            "$ref": "#/components/schemas/SessionNextPromptDelivery"
           },
           {
             "$ref": "#/components/schemas/SessionNextContextUpdated"
@@ -37188,6 +37345,64 @@
                   }
                 },
                 "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "id", "seq", "aggregateID", "data"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "id", "syncEvent"],
+        "additionalProperties": false
+      },
+      "SyncEventSessionNextPromptDelivery": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["sync"]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "syncEvent": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["session.next.prompt.delivery.1"]
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^evt_"
+              },
+              "seq": {
+                "type": "number"
+              },
+              "aggregateID": {
+                "type": "string"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg_"
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": ["steer", "queue"]
+                  }
+                },
+                "required": ["timestamp", "sessionID", "messageID", "delivery"],
                 "additionalProperties": false
               }
             },
@@ -40597,6 +40812,65 @@
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
+      "SessionNextPromptDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.next.prompt.delivery"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg_"
+              },
+              "delivery": {
+                "type": "string",
+                "enum": ["steer", "queue"]
+              }
+            },
+            "required": ["timestamp", "sessionID", "messageID", "delivery"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
       "SessionNextContextUpdated": {
         "type": "object",
         "properties": {
@@ -42666,6 +42940,9 @@
           "variant": {
             "type": "string"
           },
+          "screen": {
+            "type": "string"
+          },
           "selector": {
             "type": "string"
           },
@@ -42698,6 +42975,23 @@
           }
         },
         "required": ["id", "name", "selector", "state", "actions"],
+        "additionalProperties": false
+      },
+      "DesignTarget": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": ["path", "role"],
         "additionalProperties": false
       },
       "DesignSystem": {
@@ -42819,6 +43113,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DesignScenario"
+            }
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignTarget"
             }
           },
           "designSystem": {
@@ -43019,6 +43319,13 @@
               "$ref": "#/components/schemas/DesignScenario"
             }
           },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignTarget"
+            },
+            "maxItems": 20
+          },
           "designSystem": {
             "type": "string"
           },
@@ -43151,6 +43458,9 @@
           },
           "component": {
             "type": "string"
+          },
+          "screen": {
+            "type": "string"
           }
         },
         "required": ["values"],
@@ -43183,6 +43493,14 @@
           "label": {
             "type": "string",
             "maxLength": 120
+          },
+          "xpath": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "context": {
+            "type": "string",
+            "maxLength": 240
           },
           "revision": {
             "type": "string"
@@ -48553,6 +48871,43 @@
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionNextPromptDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.next.prompt.delivery"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg_"
+              },
+              "delivery": {
+                "type": "string",
+                "enum": ["steer", "queue"]
+              }
+            },
+            "required": ["timestamp", "sessionID", "messageID", "delivery"],
             "additionalProperties": false
           }
         },

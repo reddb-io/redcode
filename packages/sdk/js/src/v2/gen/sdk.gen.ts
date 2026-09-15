@@ -307,6 +307,8 @@ import type {
   SessionMessagesResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
+  SessionPromptDeliveryErrors,
+  SessionPromptDeliveryResponses,
   SessionPromptErrors,
   SessionPromptResponses,
   SessionRevertErrors,
@@ -4743,6 +4745,51 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionPromptAsyncResponses, SessionPromptAsyncErrors, ThrowOnError>({
       url: "/session/{sessionID}/prompt_async",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Change prompt delivery
+   *
+   * Change how a prompt that is still waiting reaches the model: turn a queued prompt into a steer, delivered at the next safe boundary of the running turn, or send a steer back to the queue. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).
+   */
+  public promptDelivery<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      workspace?: string
+      delivery?: "steer" | "queue"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "delivery" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionPromptDeliveryResponses,
+      SessionPromptDeliveryErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/prompt/{messageID}/delivery",
       ...options,
       ...params,
       headers: {

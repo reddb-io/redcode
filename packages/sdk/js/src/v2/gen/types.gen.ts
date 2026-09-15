@@ -23,6 +23,7 @@ export type Event =
   | EventSessionNextMoved
   | EventSessionNextPrompted
   | EventSessionNextPromptAdmitted
+  | EventSessionNextPromptDelivery
   | EventSessionNextContextUpdated
   | EventSessionNextSynthetic
   | EventSessionNextShellStarted
@@ -921,6 +922,16 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.next.prompt.delivery"
+        properties: {
+          timestamp: number
+          sessionID: string
+          messageID: string
+          delivery: "steer" | "queue"
+        }
+      }
+    | {
+        id: string
         type: "session.next.context.updated"
         properties: {
           timestamp: number
@@ -1663,6 +1674,7 @@ export type GlobalEvent = {
     | SyncEventSessionNextMoved
     | SyncEventSessionNextPrompted
     | SyncEventSessionNextPromptAdmitted
+    | SyncEventSessionNextPromptDelivery
     | SyncEventSessionNextContextUpdated
     | SyncEventSessionNextSynthetic
     | SyncEventSessionNextShellStarted
@@ -3026,6 +3038,7 @@ export type SessionDurableEvent =
   | SessionNextMoved
   | SessionNextPrompted
   | SessionNextPromptAdmitted
+  | SessionNextPromptDelivery
   | SessionNextContextUpdated
   | SessionNextSynthetic
   | SessionNextShellStarted
@@ -3161,6 +3174,7 @@ export type V2Event =
   | SessionNextMoved
   | SessionNextPrompted
   | SessionNextPromptAdmitted
+  | SessionNextPromptDelivery
   | SessionNextContextUpdated
   | SessionNextSynthetic
   | SessionNextShellStarted
@@ -3705,6 +3719,23 @@ export type SyncEventSessionNextPromptAdmitted = {
       sessionID: string
       messageID: string
       prompt: Prompt
+      delivery: "steer" | "queue"
+    }
+  }
+}
+
+export type SyncEventSessionNextPromptDelivery = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.next.prompt.delivery.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      messageID: string
       delivery: "steer" | "queue"
     }
   }
@@ -4784,6 +4815,26 @@ export type SessionNextPromptAdmitted = {
     sessionID: string
     messageID: string
     prompt: Prompt
+    delivery: "steer" | "queue"
+  }
+}
+
+export type SessionNextPromptDelivery = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.next.prompt.delivery"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    timestamp: number
+    sessionID: string
+    messageID: string
     delivery: "steer" | "queue"
   }
 }
@@ -7264,6 +7315,17 @@ export type EventSessionNextPromptAdmitted = {
     sessionID: string
     messageID: string
     prompt: Prompt
+    delivery: "steer" | "queue"
+  }
+}
+
+export type EventSessionNextPromptDelivery = {
+  id: string
+  type: "session.next.prompt.delivery"
+  properties: {
+    timestamp: number
+    sessionID: string
+    messageID: string
     delivery: "steer" | "queue"
   }
 }
@@ -11635,6 +11697,46 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionPromptDeliveryData = {
+  body?: {
+    /**
+     * `steer` promotes the prompt at the next safe boundary of the running turn, `queue` waits until the session would otherwise go idle
+     */
+    delivery: "steer" | "queue"
+  }
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/prompt/{messageID}/delivery"
+}
+
+export type SessionPromptDeliveryErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionPromptDeliveryError = SessionPromptDeliveryErrors[keyof SessionPromptDeliveryErrors]
+
+export type SessionPromptDeliveryResponses = {
+  /**
+   * Delivery changed
+   */
+  200: boolean
+}
+
+export type SessionPromptDeliveryResponse = SessionPromptDeliveryResponses[keyof SessionPromptDeliveryResponses]
 
 export type SessionCommandData = {
   body?: {
