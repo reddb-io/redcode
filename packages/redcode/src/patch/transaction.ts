@@ -18,6 +18,8 @@ import type { FSUtil } from "@reddb-io/redcode-core/fs-util"
 export interface Original {
   readonly bytes: Uint8Array
   readonly mode: number
+  /** Link text when the path itself is a symlink; rollback of a delete recreates the link. */
+  readonly link?: string
 }
 
 export interface Write {
@@ -87,7 +89,9 @@ export const atomicWrite = (fs: FSUtil.Interface, target: string, bytes: Uint8Ar
     )
     const exit = yield* Effect.exit(
       Effect.gen(function* () {
-        yield* fs.writeFile(temp, bytes)
+        // Create the temp file exclusively and with the target's mode, so its content is never
+        // readable with wider permissions than the file it replaces. chmod then undoes the umask.
+        yield* fs.writeFile(temp, bytes, { flag: "wx", mode: mode === undefined ? 0o666 : mode & 0o7777 })
         if (mode !== undefined) yield* fs.chmod(temp, mode & 0o7777)
         yield* fs.rename(temp, target)
       }),
@@ -128,7 +132,9 @@ export const commit = (fs: FSUtil.Interface, plan: Plan) =>
           for (const step of [...done].reverse()) {
             const undo =
               step.kind === "delete"
-                ? atomicWrite(fs, step.op.path, step.op.original.bytes, step.op.original.mode)
+                ? step.op.original.link !== undefined
+                  ? fs.symlink(step.op.original.link, step.op.path)
+                  : atomicWrite(fs, step.op.path, step.op.original.bytes, step.op.original.mode)
                 : step.op.original
                   ? atomicWrite(fs, step.op.path, step.op.original.bytes, step.op.original.mode)
                   : fs.remove(step.op.path)
