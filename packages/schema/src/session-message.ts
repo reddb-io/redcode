@@ -188,12 +188,24 @@ export const Assistant = Schema.Struct({
   }),
 }).annotate({ identifier: "Session.Message.Assistant" })
 
+/**
+ * What a compaction carries across itself so progressive tool discovery survives it: the tools
+ * loaded through `tool_search` before it, and whether MCP deferral had tripped. Without this the
+ * summary would drop both, and every tool the model had loaded would silently go back to deferred.
+ */
+export interface CompactionTools extends Schema.Schema.Type<typeof CompactionTools> {}
+export const CompactionTools = Schema.Struct({
+  loaded: Schema.Array(Schema.String),
+  mcpDeferred: Schema.Boolean,
+}).annotate({ identifier: "Session.Message.Compaction.Tools" })
+
 export interface Compaction extends Schema.Schema.Type<typeof Compaction> {}
 export const Compaction = Schema.Struct({
   type: Schema.Literal("compaction"),
   reason: Schema.Literals(["auto", "manual"]),
   summary: Schema.String,
   recent: Schema.String,
+  tools: CompactionTools.pipe(optional),
   ...Base,
 }).annotate({ identifier: "Session.Message.Compaction" })
 

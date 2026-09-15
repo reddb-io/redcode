@@ -48,9 +48,28 @@ export const TurnStall = Schema.Union([
     "How long a turn may produce nothing before it is reported and, where nothing is watching, ended. Time a tool spends running or a permission spends awaiting an answer does not count. Set to false to disable.",
 })
 
+export const ToolSearch = Schema.Struct({
+  enabled: Schema.Union([Schema.Literal("auto"), Schema.Boolean])
+    .pipe(Schema.optional)
+    .annotate({
+      description:
+        'Defer tools behind tool_search: "auto" defers MCP tools once their schemas exceed the threshold and Design tools outside a Design context, true always defers MCP tools, false advertises every tool (default: "auto").',
+    }),
+  threshold: PositiveInt.pipe(Schema.optional).annotate({
+    description: "Estimated tokens of MCP tool schemas above which MCP tools are deferred (default: 3000)",
+  }),
+  native: Schema.Union([Schema.Literal("auto"), Schema.Boolean])
+    .pipe(Schema.optional)
+    .annotate({
+      description:
+        'Use the provider\'s own tool search for deferred tools instead of tool_search: "auto" for models known to support it (Anthropic Claude 4.5 and later on the Anthropic API), true for any Anthropic Messages model, false never (default: "auto"). A provider that rejects it falls back to tool_search for the rest of the process.',
+    }),
+}).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." })
+
 export class Experimental extends Schema.Class<Experimental>("ConfigV2.Experimental")({
   policies: Policy.pipe(Schema.Array, Schema.optional),
   loop_guard: LoopGuard.pipe(Schema.optional),
   tool_timeout: ToolTimeout.pipe(Schema.optional),
   turn_stall: TurnStall.pipe(Schema.optional),
+  tool_search: ToolSearch.pipe(Schema.optional),
 }) {}
