@@ -439,7 +439,8 @@ const live: Layer.Layer<
               Stream.catchCause((cause) => {
                 const error = Cause.squash(cause)
                 if (started || !NativeToolSearch.isRejection(error)) return Stream.failCause(cause)
-                let remembered = false
+                // An unresolvable reference is a history problem, not missing support.
+                let remembered = NativeToolSearch.isMissingReference(error)
                 const retry = attempt(input, false).pipe(
                   Stream.tap(() =>
                     Effect.sync(() => {

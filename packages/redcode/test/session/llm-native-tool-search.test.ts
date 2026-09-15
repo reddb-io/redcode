@@ -511,6 +511,7 @@ describe("session.llm native tool search", () => {
               content: [
                 ...anthropicSearch("srvtoolu_1", ["github_issue_read", "github_disconnected_tool"]),
                 ...anthropicSearch("srvtoolu_2", ["github_disconnected_tool"]),
+                ...anthropicSearch("srvtoolu_3", []),
                 { type: "text", text: "Found it." },
               ],
             } as ModelMessage,
@@ -522,9 +523,16 @@ describe("session.llm native tool search", () => {
         const assistant = (body.messages as Array<{ role: string; content: Array<Record<string, any>> }>).find(
           (message) => message.role === "assistant",
         )!
+        // srvtoolu_2 loaded only a tool that is gone; srvtoolu_3 found nothing and stays as sent.
         expect(assistant.content.filter((block) => block.type === "server_tool_use").map((block) => block.id)).toEqual([
           "srvtoolu_1",
+          "srvtoolu_3",
         ])
+        expect(
+          assistant.content.find(
+            (block) => block.type === "tool_search_tool_result" && block.tool_use_id === "srvtoolu_3",
+          )!.content,
+        ).toEqual({ type: "tool_search_tool_search_result", tool_references: [] })
         expect(assistant.content.find((block) => block.type === "tool_search_tool_result")!.content).toEqual({
           type: "tool_search_tool_search_result",
           tool_references: [{ type: "tool_reference", tool_name: "github_issue_read" }],
@@ -535,7 +543,7 @@ describe("session.llm native tool search", () => {
   )
 
   it.instance(
-    "falls back to tool_search on Anthropic's missing tool reference 400",
+    "retries with tool_search on Anthropic's missing tool reference 400 without turning native search off",
     () =>
       Effect.gen(function* () {
         const resolved = yield* getModel("anthropic", "claude-sonnet-4-5")
@@ -552,7 +560,8 @@ describe("session.llm native tool search", () => {
         expect(Exit.isSuccess(exit)).toBe(true)
         expect(server.bodies).toHaveLength(2)
         expect(toolNames(server.bodies[1]!.body)).toContain("tool_search")
-        expect(NativeToolSearch.isRejected(resolved)).toBe(true)
+        // The reference came from this Session's history; the provider does support native search.
+        expect(NativeToolSearch.isRejected(resolved)).toBe(false)
       }),
     { config: anthropicConfig },
   )

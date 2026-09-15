@@ -1,5 +1,26 @@
 import { describe, expect, test } from "bun:test"
-import { toolDisplayMetadata, toolSearchSummary, webSearchProviderLabel } from "../../src/util/tool-display"
+import {
+  toolDisplayMetadata,
+  toolSearchComplete,
+  toolSearchSummary,
+  webSearchProviderLabel,
+} from "../../src/util/tool-display"
+
+describe("toolSearchComplete", () => {
+  test("a search without a query shows the pending line only while it runs", () => {
+    expect(toolSearchComplete("pending", undefined)).toBe(false)
+    expect(toolSearchComplete("running", undefined)).toBe(false)
+    expect(toolSearchComplete("completed", undefined)).toBe(true)
+  })
+
+  test("a failed search leaves the pending line", () => {
+    expect(toolSearchComplete("error", undefined)).toBe(true)
+  })
+
+  test("a query is shown as soon as it is known", () => {
+    expect(toolSearchComplete("running", "open issues")).toBe(true)
+  })
+})
 
 describe("toolSearchSummary", () => {
   test("client-side tool_search", () => {
