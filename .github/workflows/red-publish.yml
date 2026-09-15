@@ -10,10 +10,14 @@ on:
         description: "Existing draft Redcode tag to reconcile, e.g. v0.1.1"
         required: true
         type: string
+      npm_only:
+        description: "Skip the GitHub Release and only publish npm packages, for a tag whose GitHub Release is already published"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: red-publish
@@ -129,12 +133,16 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish:
+  # Builds the binaries, uploads them to the draft GitHub Release, smokes the uploaded asset, and
+  # publishes the release. mise installs from these assets, so npm must never block this job.
+  release:
     if: github.repository == 'reddb-io/redcode'
     needs: sidecar
     runs-on: ubuntu-latest
     environment:
       name: red-release
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -158,15 +166,12 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-bun
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
       - name: Verify tag contract
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: bun script/red-version.ts "${TAG#v}" --check
       - name: Create or resume draft GitHub Release
+        if: ${{ !inputs.npm_only }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -177,15 +182,27 @@ jobs:
             exit 0
           fi
           if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
-            echo "::error::released tags are immutable; publish a new patch version instead of replacing $TAG"
+            echo "::error::released tags are immutable; publish a new patch version instead of replacing $TAG, or rerun with npm_only to publish only the npm packages"
             exit 1
           fi
           echo "resuming existing draft $TAG"
+      - name: Require a published GitHub Release for npm-only runs
+        if: ${{ inputs.npm_only }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != false ]; then
+            echo "::error::npm_only needs the GitHub Release $TAG to exist and be published"
+            exit 1
+          fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: rpc-sidecar-*
           path: packages/rpc-sidecar/dist/release
           merge-multiple: true
+      # npm_only rebuilds the npm packages without touching the published release assets.
       - name: Build and upload native binaries
         env:
           GH_REPO: reddb-io/redcode
@@ -193,7 +210,8 @@ jobs:
           REDCODE_RELEASE: "1"
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
           VERSION: ${{ steps.release.outputs.version }}
-        run: REDCODE_VERSION="$VERSION" ./packages/redcode/script/build.ts
+          NPM_ONLY: ${{ inputs.npm_only && 'true' || '' }}
+        run: REDCODE_VERSION="$VERSION" ./packages/redcode/script/build.ts ${NPM_ONLY:+--skip-upload}
       - name: Normalize native npm metadata
         run: |
           bun -e '
@@ -207,25 +225,130 @@ jobs:
             await Bun.write(target, `${JSON.stringify({ ...manifest, repository: { type: "git", url: "https://github.com/reddb-io/redcode" } }, null, 2)}\n`)
           }))
           '
-      # Recovery: rerunning failed jobs is safe. publish.ts skips versions npm already serves,
-      # treats an E409 "cannot publish over previously published version" as already published,
-      # and only publishes @reddb-io/redcode once every platform package is visible on npm.
-      - name: Publish native packages and @reddb-io/redcode
+      - name: Smoke the uploaded GitHub Release asset
+        if: ${{ !inputs.npm_only }}
         env:
-          NPM_CONFIG_PROVENANCE: "true"
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_REPO: reddb-io/redcode
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN secret absent — cannot publish @reddb-io/redcode@${VERSION}"
+          root="$(mktemp -d)"
+          trap 'rm -rf "$root"' EXIT
+          # Download what mise users will download, not the local build output.
+          gh release download "$TAG" --dir "$root" --pattern redcode-linux-x64.tar.gz --pattern SHA256SUMS
+          (cd "$root" && grep -E '  redcode-linux-x64\.tar\.gz$' SHA256SUMS | sha256sum --check -)
+          mkdir "$root/bin"
+          tar -xzf "$root/redcode-linux-x64.tar.gz" -C "$root/bin"
+          "$root/bin/redcode" --version | grep -Fx "$VERSION"
+          test -x "$root/bin/redcode-rpc-sidecar"
+      - name: Publish GitHub Release
+        if: ${{ !inputs.npm_only }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest
+      # tar keeps the executable bits that upload-artifact would drop.
+      - name: Bundle npm packages for the npm job
+        run: |
+          set -euo pipefail
+          packages=()
+          for manifest in packages/redcode/dist/*/package.json; do
+            name="$(node -p 'require(process.argv[1]).name' "$PWD/$manifest")"
+            if [[ "$name" == @reddb-io/redcode-* ]]; then packages+=("$(basename "$(dirname "$manifest")")"); fi
+          done
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "::error::no platform package manifests found under packages/redcode/dist"
             exit 1
           fi
-          npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
+          tar -czf "$RUNNER_TEMP/npm-packages.tar.gz" -C packages/redcode/dist "${packages[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npm-packages
+          path: ${{ runner.temp }}/npm-packages.tar.gz
+          if-no-files-found: error
+          # Staged versions can wait days for approval; keep the bundle so the npm job can be rerun.
+          retention-days: 7
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+
+  # Publishes to npm after the GitHub Release is out. A failure here (for example a version npm
+  # staged for 2FA approval) leaves the GitHub Release untouched; rerun this job once it is fixed.
+  npm:
+    if: github.repository == 'reddb-io/redcode'
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: red-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+      - uses: ./.github/actions/setup-bun
+      # Trusted publishing needs npm 11.5.1 or newer: https://docs.npmjs.com/trusted-publishers
+      - name: Install npm with trusted publishing support
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.6.2
+          npm --version | grep -Fx 11.6.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-packages
+          path: ${{ runner.temp }}
+      - name: Restore npm packages
+        run: |
+          set -euo pipefail
+          mkdir -p packages/redcode/dist
+          tar -xzf "$RUNNER_TEMP/npm-packages.tar.gz" -C packages/redcode/dist
+      # Recovery: rerunning this job is safe. publish.ts skips versions npm already serves, treats
+      # an E409 "cannot publish over previously published version" as already published, fails
+      # with approval steps when npm staged a version, and only publishes @reddb-io/redcode once
+      # every platform package is visible on npm.
+      #
+      # NPM_PUBLISH_MODE (repository variable): unset or "oidc" publishes through npm trusted
+      # publishing with no stored token; "token" is the fallback that uses the NPM_TOKEN secret
+      # until every package has a trusted publisher. npm may stage token publishes for approval.
+      - name: Publish native packages and @reddb-io/redcode
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+          NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE }}
+          NPM_TOKEN: ${{ vars.NPM_PUBLISH_MODE == 'token' && secrets.NPM_TOKEN || '' }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          case "${NPM_PUBLISH_MODE:-oidc}" in
+            token)
+              if [ -z "${NPM_TOKEN:-}" ]; then
+                echo "::error::NPM_PUBLISH_MODE=token but the NPM_TOKEN secret is absent — cannot publish @reddb-io/redcode@${VERSION}"
+                exit 1
+              fi
+              echo "::warning::publishing with NPM_TOKEN; npm may stage these versions until a maintainer approves them with 2FA"
+              export NODE_AUTH_TOKEN="$NPM_TOKEN"
+              npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
+              ;;
+            oidc)
+              if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+                echo "::error::trusted publishing needs the id-token: write permission"
+                exit 1
+              fi
+              # npm exchanges the GitHub OIDC token itself; make sure no stale token wins.
+              unset NODE_AUTH_TOKEN
+              npm config delete //registry.npmjs.org/:_authToken || true
+              ;;
+            *)
+              echo "::error::NPM_PUBLISH_MODE must be unset, oidc, or token (got ${NPM_PUBLISH_MODE})"
+              exit 1
+              ;;
+          esac
           REDCODE_VERSION="$VERSION" ./packages/redcode/script/publish.ts
       - name: Smoke the published package
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
           root="$(mktemp -d)"
@@ -280,8 +403,3 @@ jobs:
             echo "registry smoke install attempt ${attempt} failed; retrying in 20s"
             sleep 20
           done
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: gh release edit "$TAG" --draft=false --latest

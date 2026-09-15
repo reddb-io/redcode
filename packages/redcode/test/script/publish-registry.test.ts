@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import {
   isPublishConflict,
+  isStagedConflict,
   publishOnce,
+  StagedPublishError,
   publishRelease,
   waitForVisibility,
   type RegistryDeps,
@@ -50,10 +52,51 @@ function fakeNpm(input: { preexisting?: string[]; visibleAfter?: Record<string, 
 function conflictError() {
   return Object.assign(new Error("Failed with exit code 1"), {
     stderr: Buffer.from(
-      "npm error code E409\nnpm error 409 Conflict - PUT https://registry.npmjs.org/@reddb-io%2fredcode-darwin-arm64 - Cannot publish over previously published version \"0.31.1\".",
+      'npm error code E409\nnpm error 409 Conflict - PUT https://registry.npmjs.org/@reddb-io%2fredcode-darwin-arm64 - Cannot publish over previously published version "0.31.1".',
     ),
   })
 }
+
+function stagedError(name = "@reddb-io/redcode-darwin-arm64") {
+  return Object.assign(new Error("Failed with exit code 1"), {
+    stderr: Buffer.from(
+      `npm notice npm tokens that bypass 2FA are being restricted for account changes and direct publishing.\nnpm error code E409\nnpm error 409 Conflict - PUT https://registry.npmjs.org/${name.replace("/", "%2f")} - Cannot publish over previously staged version "0.31.1".`,
+    ),
+  })
+}
+
+// Models npm turning a token publish into a staged publish: `npm publish` succeeds, `npm view`
+// never serves the version, and every later publish attempt fails with "previously staged".
+function stagingNpm(stagedNames: string[], input: { visibleAfter?: Record<string, number> } = {}) {
+  const npm = fakeNpm({ visibleAfter: Object.fromEntries(stagedNames.map((name) => [name, Infinity])), ...input })
+  const attempts = new Map<string, number>()
+  const pkg = (name: string) => {
+    if (!stagedNames.includes(name)) return npm.pkg(name)
+    const inner = npm.pkg(name)
+    return {
+      ...inner,
+      publish: async () => {
+        const count = (attempts.get(name) ?? 0) + 1
+        attempts.set(name, count)
+        if (count > 1) {
+          npm.events.push(`staged-conflict:${name}`)
+          throw stagedError(name)
+        }
+        await inner.publish()
+      },
+    }
+  }
+  return { ...npm, pkg, attempts }
+}
+
+describe("isStagedConflict", () => {
+  test("recognises npm's staged republish rejection and keeps it apart from a plain conflict", () => {
+    expect(isStagedConflict(stagedError())).toBe(true)
+    expect(isPublishConflict(stagedError())).toBe(false)
+    expect(isStagedConflict(conflictError())).toBe(false)
+    expect(isStagedConflict(new Error("npm error code E403 forbidden"))).toBe(false)
+  })
+})
 
 describe("isPublishConflict", () => {
   test("recognises npm's republish rejections", () => {
@@ -135,7 +178,11 @@ describe("publishRelease", () => {
   test("publishes the main package only after every platform package is visible", async () => {
     const npm = fakeNpm({ visibleAfter: { [platforms[0]]: 7_000, [platforms[1]]: 30_000 } })
     expect(
-      await publishRelease({ platforms: platforms.map((name) => npm.pkg(name)), main: npm.pkg(main) }, npm.deps, options),
+      await publishRelease(
+        { platforms: platforms.map((name) => npm.pkg(name)), main: npm.pkg(main) },
+        npm.deps,
+        options,
+      ),
     ).toBe("published")
     const mainPublish = npm.events.indexOf(`publish:${main}`)
     for (const name of platforms) expect(npm.events.indexOf(`publish:${name}`)).toBeLessThan(mainPublish)
@@ -148,9 +195,9 @@ describe("publishRelease", () => {
     const conflicted = npm.pkg(platforms[1], async () => {
       throw conflictError()
     })
-    expect(await publishRelease({ platforms: [npm.pkg(platforms[0]), conflicted], main: npm.pkg(main) }, npm.deps, options)).toBe(
-      "published",
-    )
+    expect(
+      await publishRelease({ platforms: [npm.pkg(platforms[0]), conflicted], main: npm.pkg(main) }, npm.deps, options),
+    ).toBe("published")
     expect(npm.events).toContain(`publish:${main}`)
   })
 
@@ -166,6 +213,79 @@ describe("publishRelease", () => {
     expect(message).toContain(`${platforms[1]}@0.31.1`)
     expect(message).not.toContain(`${platforms[0]}@0.31.1`)
     expect(message).toContain(`not publishing ${main}@0.31.1`)
+    expect(message).toContain("looks like registry lag")
+    expect(error).not.toBeInstanceOf(StagedPublishError)
+    expect(message).not.toContain("This is not registry lag")
     expect(npm.events).not.toContain(`publish:${main}`)
+  })
+
+  test("reports silently staged platform packages after the wait, with links and approval steps", async () => {
+    const staged = ["@reddb-io/redcode-darwin-arm64", "@reddb-io/redcode-linux-x64-musl"]
+    const all = ["@reddb-io/redcode-linux-x64", ...staged]
+    const npm = stagingNpm(staged)
+    const error = await publishRelease(
+      { platforms: all.map((name) => npm.pkg(name)), main: npm.pkg(main) },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    expect(error).toBeInstanceOf(StagedPublishError)
+    expect((error as StagedPublishError).staged.map((item) => item.name)).toEqual(staged)
+    const message = (error as Error).message
+    for (const name of staged) {
+      expect(message).toContain(`${name}@0.31.1`)
+      expect(message).toContain(`https://www.npmjs.com/package/${name}`)
+    }
+    expect(message).not.toContain("@reddb-io/redcode-linux-x64@0.31.1")
+    expect(message).toContain("This is not registry lag")
+    expect(message).toContain("npm stage approve <stage-id>")
+    expect(message).toContain("npm stage reject <stage-id>")
+    expect(message).toContain("https://docs.npmjs.com/trusted-publishers")
+    expect(message).toContain(`Not publishing ${main}@0.31.1`)
+    // The probe happens only after the full visibility wait, exactly once per missing package.
+    expect(npm.now()).toBe(options.timeoutMs)
+    for (const name of staged) expect(npm.attempts.get(name)).toBe(2)
+    expect(npm.attempts.has("@reddb-io/redcode-linux-x64")).toBe(false)
+    expect(npm.events).not.toContain(`publish:${main}`)
+  })
+
+  test("fails fast without waiting when a rerun hits a version that is already staged", async () => {
+    const npm = fakeNpm()
+    const staged = npm.pkg(platforms[1], async () => {
+      throw stagedError(platforms[1])
+    })
+    const error = await publishRelease(
+      { platforms: [npm.pkg(platforms[0]), staged], main: npm.pkg(main) },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    expect(error).toBeInstanceOf(StagedPublishError)
+    expect((error as Error).message).toContain(`${platforms[1]}@0.31.1`)
+    expect(npm.sleeps).toEqual([])
+    expect(npm.events).not.toContain(`publish:${main}`)
+  })
+
+  test("reports the main package when npm stages it", async () => {
+    const npm = fakeNpm()
+    const stagedMain = npm.pkg(main, async () => {
+      throw stagedError(main)
+    })
+    const error = await publishRelease(
+      { platforms: platforms.map((name) => npm.pkg(name)), main: stagedMain },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    expect(error).toBeInstanceOf(StagedPublishError)
+    expect((error as Error).message).toContain(`${main}@0.31.1  https://www.npmjs.com/package/${main}`)
+  })
+})
+
+describe("publishOnce staged", () => {
+  test("returns staged instead of treating a staged 409 as already published", async () => {
+    const npm = fakeNpm()
+    const item = npm.pkg("@reddb-io/redcode-darwin-arm64", async () => {
+      throw stagedError()
+    })
+    expect(await publishOnce(item, npm.deps)).toBe("staged")
+    expect(npm.logs.join("\n")).toContain("is staged and waiting for maintainer approval")
   })
 })
