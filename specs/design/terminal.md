@@ -21,9 +21,20 @@ new sessions. Adoption and event reconnection never resume provider work.
 Review pages (`/review`, `--open`, the TUI's `/design-review` and
 `design_preview`) open in Google Chrome or Chromium when one is installed, and
 otherwise in the system default browser, which is also used when the chosen
-browser fails to launch. WSL uses the Windows default browser. Set `REDCODE_DESIGN_BROWSER=default` to
+browser fails to launch. WSL uses the Windows default browser. Set `design.browser` in `redcode.json`
+(or `REDCODE_DESIGN_BROWSER`, which wins when both are set) to `default` to
 always use the system browser, or to an app name or absolute path to use that
 browser. `REDCODE_DESIGN_NO_OPEN` still skips opening from `design_preview`.
+
+When the project configures no `design.system` and a design system is detected
+(component roots, global stylesheet, Tailwind, framework, tsconfig aliases; the
+application package in a monorepo), `redcode design` first asks
+`Use detected design system? [y]es / [e]dit later / [n]o` with the summary and
+each field's confidence. Yes writes the `design` section into the project config,
+preserving other keys and comments, and generates `.red/DESIGN.md`; No is
+remembered for the project in user state; Edit later (or Ctrl+C) asks again after
+a day. `design_document` create and refresh ask the same question through the
+question dialog. Detection only reads files; it never runs project code.
 
 Messages steer at provider boundaries. `/queue message` waits until current work
 would otherwise become idle. `/stop` or Ctrl+C interrupts execution without

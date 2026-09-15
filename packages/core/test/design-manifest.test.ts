@@ -164,6 +164,20 @@ test("describe and summary carry paths and counts, never file content", async ()
   expect(
     DesignSystem.describe({ sources: [], system: { paths: ["src/ui"], css: ["src/app.css"], tailwind: true } }),
   ).toContain("Configured: paths src/ui; css src/app.css; tailwind on")
+  const configured = DesignSystem.describe({
+    sources: [],
+    system: {
+      paths: ["src/components"],
+      css: ["src/index.css"],
+      tailwind: false,
+      framework: "solid",
+      aliases: { "@": "src" },
+    },
+  })
+  expect(configured).toContain(
+    "Configured: paths src/components; css src/index.css; tailwind off; framework solid; aliases @ → src",
+  )
+  expect(configured).toContain("Configured design system: import components from the configured paths")
   expect(DesignSystem.declared({ system: { paths: ["src/ui"] } })).toEqual(["src/ui"])
   expect(DesignSystem.declared({ system: "broken" })).toEqual([])
   expect(DesignSystem.declared({})).toEqual([])

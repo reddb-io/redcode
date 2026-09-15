@@ -8,6 +8,7 @@ import { and, desc, eq, sql } from "drizzle-orm"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { Config } from "../config"
+import type { ConfigDesign } from "../config/design"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { Location } from "../location"
@@ -39,6 +40,22 @@ const make = Effect.gen(function* () {
   const raster = yield* Effect.cached(
     Effect.promise(() => import("../image/photon")).pipe(Effect.flatMap((module) => module.make)),
   )
+  // Configuration is read once per location; a design system the user just adopted is written to the
+  // config file for later locations and kept here so this location uses it without reopening.
+  let adopted: ConfigDesign.Info | undefined
+  const configured = Effect.fn("Design.configured")(function* () {
+    const design = Config.latest(yield* config.entries(), "design")
+    if (!adopted) return design
+    return {
+      ...design,
+      system: design?.system ?? adopted.system,
+      application: design?.system ? design.application : (adopted.application ?? design?.application),
+    }
+  })
+  const adopt = (design: ConfigDesign.Info) =>
+    Effect.sync(() => {
+      adopted = design
+    })
 
   const get = Effect.fn("Design.get")(function* (id: Design.ID, sessionID?: Session.ID) {
     const row = yield* db
@@ -72,16 +89,19 @@ const make = Effect.gen(function* () {
     if (!session || session.location.directory !== location.directory)
       return yield* new Design.Error({ code: "not-found", message: "Session not found in this location" })
     const id = Design.ID.make(`design_${crypto.randomUUID()}`)
+    const design = yield* configured()
     const source = yield* io(() =>
       DesignFiles.resolve(
         location.directory,
-        path.relative(location.directory, path.resolve(location.directory, input.application ?? ".")) || ".",
+        path.relative(
+          location.directory,
+          path.resolve(location.directory, input.application ?? design?.application ?? "."),
+        ) || ".",
       ),
     )
     const workspace = yield* io(() => RepositoryGuard.prepare(location.directory, sessionID))
     const application = path.resolve(workspace, path.relative(location.directory, source))
-    const configured = Config.latest(yield* config.entries(), "design")?.system
-    const system = yield* io(() => DesignBuild.system(application, configured))
+    const system = yield* io(() => DesignBuild.system(application, design?.system))
     const data: Design.Info = {
       ...input,
       id,
@@ -508,8 +528,8 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
   const refresh = Effect.fn("Design.refresh")(function* (id: Design.ID) {
     const document = yield* get(id)
-    const configured = Config.latest(yield* config.entries(), "design")?.system
-    const system = yield* io(() => DesignBuild.system(document.application, configured))
+    const design = yield* configured()
+    const system = yield* io(() => DesignBuild.system(document.application, design?.system))
     return yield* save({
       ...document,
       system,
@@ -573,6 +593,8 @@ const make = Effect.gen(function* () {
   return {
     get,
     list,
+    configured,
+    adopt,
     create,
     update,
     refresh,

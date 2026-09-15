@@ -19,6 +19,8 @@ export interface Options {
   }>
   readonly platform?: NodeJS.Platform
   readonly env?: Record<string, string | undefined>
+  /** `design.browser` from configuration; `REDCODE_DESIGN_BROWSER` wins over it. */
+  readonly browser?: string
   readonly which?: (command: string) => string | null
   readonly exists?: (file: string) => boolean
   readonly spawn?: Spawner
@@ -108,6 +110,10 @@ export const disabledBy = (env: Record<string, string | undefined> = process.env
 export const refused = (options: Pick<Options, "spawn">, env: Record<string, string | undefined> = process.env) =>
   options.spawn === undefined ? disabledBy(env) : undefined
 
+/** The chosen browser: `REDCODE_DESIGN_BROWSER` first, then `design.browser`; undefined picks Chrome/Chromium or the default. */
+export const browser = (env: Record<string, string | undefined>, configured?: string) =>
+  env.REDCODE_DESIGN_BROWSER?.trim() || configured?.trim() || undefined
+
 /** Opens a Design review URL, preferring Chrome or Chromium. Never fails; reports whether and how it opened. */
 export const open = (url: string, options: Options) =>
   Effect.gen(function* () {
@@ -146,7 +152,7 @@ export const open = (url: string, options: Options) =>
         ),
     })
 
-    const configured = env.REDCODE_DESIGN_BROWSER?.trim()
+    const configured = browser(env, options.browser)
     const preferred = yield* Effect.gen(function* () {
       if (configured === "default") return []
       if (configured && !direct) return [opened(configured)]
