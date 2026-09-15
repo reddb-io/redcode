@@ -1,5 +1,9 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Unambiguous Design Review Note Targets
+
+- Add optional `xpath` (at most 2000 characters: the element's absolute XPath in the revision the note was captured on) and `context` (at most 240 characters: the containers around the element, outermost first, plus the row and column headers of a table cell) to each `Design.Feedback.items[]` entry (`POST /api/session/:sessionID/design/:designID/feedback`). The rendered `<design-review>` message shows them as `Context:` and `XPath:` lines under each note. Stored notes without them decode and render as before.
+- The in-frame annotation script now sends a `target` selector verified to resolve to exactly the clicked element within its selected variant root (else the document): a unique `#id`, `[data-design-id]` or stable attribute, else a short path from the nearest unique ancestor, else the full `:nth-child` path from `body`. A `variant:<id>` target is re-addressed inside that variant root first, then in the document, so earlier targets still resolve. `label` names the element by its accessible name (associated label, `aria-label`/`aria-labelledby`, placeholder, text), input type and explicit role, and adds its position among same-tag elements when another one has the same label. Add no route, migration or durable-event version. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`; `packages/sdk/openapi.json` is unchanged because the V1 routes do not carry `Design.Feedback`).
 ## 2026-09-15: Focus And Loaded Tools On A Compaction
 
 - Add optional `focus` (string) to `SummarizePayload` (`POST /session/{sessionID}/summarize`): instructions for what the summary should focus on, typed as `/compact <focus>` in the TUI. It is stored on the created `CompactionPart` and included in the summary prompt.
@@ -12,6 +16,7 @@
 - Add optional `experimental.tool_search.native` (`"auto"` | `true` | `false`, default `"auto"`) to the configuration schema. Legacy runtime only: `"auto"` uses the provider's tool search for deferred tools on allowlisted models (Anthropic API Claude 4.5 and later via `@ai-sdk/anthropic`; OpenAI GPT-5.4 and later via `@ai-sdk/openai` on the AI SDK runtime), `true` on any model of those packages, `false` never. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
 - Add optional `deferLoading` to `LLM.ToolDefinition` in `@reddb-io/redcode-llm`, honoured by Anthropic Messages when `providerOptions.anthropic.toolSearch` is `"bm25"` or `"regex"`; the protocol also parses and replays `tool_search_tool_result` blocks.
 - No route, migration or durable-event change. A native search persists as a provider-executed tool part named `tool_search_tool_bm25` (Anthropic) or `tool_search` (OpenAI) whose output is the provider result as JSON; a tool it loaded stays deferred when called.
+||||||| parent of a32c8ccd27 (fix(design): give review notes an unambiguous element target)
 
 ## 2026-09-15: Opt-In Spend Budgets For Goals And Sessions
 

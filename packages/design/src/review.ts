@@ -78,6 +78,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           elementText: string
           selectedText: string
           label: string
+          xpath: string
+          context: string
           rect: { x: number; y: number; width: number; height: number }
           text: string
         }
@@ -963,6 +965,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       tag: card.tag,
       elementText: card.elementText,
       label: card.label,
+      ...(card.xpath ? { xpath: card.xpath } : {}),
+      ...(card.context ? { context: card.context } : {}),
       ...(card.selectedText ? { selectedText: card.selectedText } : {}),
     })
     closeCard()
@@ -984,6 +988,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       elementText: text("elementText"),
       selectedText: text("selectedText"),
       label: text("label") || text("tag") || "page",
+      xpath: text("xpath"),
+      context: text("context"),
       rect,
       text: text("text"),
     }
@@ -2360,6 +2366,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       elementText: field("elementText", 240),
       selectedText: field("selectedText", 12000),
       label: field("label", 120) || field("tag", 64) || "page",
+      xpath: field("xpath", 2000),
+      context: field("context", 240),
       rect: box(event.data.rect) ?? { x: 0, y: 0, width: 0, height: 0 },
       text: state.card?.text ?? "",
     }
