@@ -44,7 +44,10 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Effect } from "effect"
 import { createPluginRuntime, type PluginRuntime, type TuiPluginHost } from "@reddb-io/redcode-tui/plugin/runtime"
 
-ensureRuntimeModules(keymapRuntimeModules)
+const runtimeModules = ensureRuntimeModules(keymapRuntimeModules)
+for (const warning of runtimeModules.warnings) console.warn(`[tui.plugin] ${warning}`)
+if (!runtimeModules.installed)
+  console.warn(`[tui.plugin] runtime-module support not installed by redcode: ${runtimeModules.reason}`)
 
 type PluginLoad = {
   options: ConfigPluginV1.Options | undefined
