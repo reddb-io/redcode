@@ -35,6 +35,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     const handlers = new Set<(event: GlobalEvent) => void>()
     const reconnects = new Set<() => void>()
+    let connected = false
+    const markConnected = () => {
+      connected = true
+      for (const handler of reconnects) handler()
+    }
     const emitter = {
       emit(_type: "event", event: GlobalEvent) {
         for (const handler of handlers) handler(event)
@@ -107,7 +112,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
               connected = true
               // The SDK stream is lazy: obtaining its iterator does not establish a
               // subscription. A received event is the barrier before reading snapshots.
-              for (const handler of reconnects) handler()
+              markConnected()
               if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) void sdk.sync.start().catch(() => {})
             }
             handleEvent(event)
@@ -130,6 +135,8 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         const unsub = await props.events.subscribe(handleEvent)
         if (abort.signal.aborted) return unsub()
         unsubscribe = unsub
+        // An in-process event source is live as soon as the subscription resolves.
+        markConnected()
 
         if (Flag.REDCODE_EXPERIMENTAL_WORKSPACES) {
           // Start syncing workspaces, it's important to do this after
@@ -157,7 +164,14 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       },
       directory: props.directory,
       event: emitter,
-      /** Called after the event stream comes back, so consumers can re-read what they missed. */
+      /** Whether the event stream has delivered its first event (or the in-process source subscribed). */
+      get connected() {
+        return connected
+      },
+      /**
+       * Called every time the event stream connects, the first time included, so consumers can
+       * read snapshots only once events that change them are guaranteed to be delivered.
+       */
       onReconnect(handler: () => void) {
         reconnects.add(handler)
         return () => {
