@@ -3362,6 +3362,7 @@ export type TodoSource = {
   quote: string
   created: number
   key?: string
+  paraphrase?: string
 }
 
 export type TodoEvidence = {
@@ -4136,6 +4137,7 @@ export type MonitorFileProbe = {
 export type MonitorProcessProbe = {
   type: "process"
   name?: string
+  match?: "name" | "cmdline"
   pid?: number
   state: "running" | "exited"
 }
@@ -4163,6 +4165,7 @@ export type MonitorEvidence = {
   outputPath?: string
   probe?: MonitorProbeResult
   matched?: string
+  error?: string
 }
 
 export type MonitorProcess = {

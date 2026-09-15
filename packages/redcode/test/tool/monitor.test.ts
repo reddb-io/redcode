@@ -77,7 +77,7 @@ describe("tool.monitor probes", () => {
         deadline_ms: 120_000,
       })
       expect(error).toContain("Monitors require session continuation support.")
-      expect(requests).toHaveLength(1)
+      expect(requests.map((request) => request.permission)).toEqual(["webfetch", "env"])
       expect(requests[0]).toMatchObject({
         permission: "webfetch",
         patterns: ["http://127.0.0.1:9/health"],
@@ -90,6 +90,94 @@ describe("tool.monitor probes", () => {
       })
       expect(requests[0]?.force).toBeUndefined()
       expect(JSON.stringify(requests)).not.toContain("{env:TOKEN}")
+    }),
+  )
+
+  it.live("an environment variable in a header asks the env permission for that variable and host", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const secret = `secret-${crypto.randomUUID()}`
+      process.env.MONITOR_PROBE_TEST_TOKEN = secret
+      try {
+        const { requests, error } = yield* probe(tmp, {
+          action: "probe",
+          probe: {
+            type: "http",
+            url: "http://127.0.0.1:9/health",
+            headers: {
+              Authorization: "Bearer {env:MONITOR_PROBE_TEST_TOKEN}",
+              "X-Copy": "{env:MONITOR_PROBE_TEST_TOKEN}",
+            },
+          },
+          deadline_ms: 120_000,
+        })
+        expect(error).toContain("Monitors require session continuation support.")
+        // One ask per variable, however many headers use it.
+        expect(requests.map((request) => request.permission)).toEqual(["webfetch", "env"])
+        expect(requests[1]).toMatchObject({
+          patterns: ["MONITOR_PROBE_TEST_TOKEN@127.0.0.1:9"],
+          always: ["MONITOR_PROBE_TEST_TOKEN@127.0.0.1:9"],
+          metadata: { variable: "MONITOR_PROBE_TEST_TOKEN", host: "127.0.0.1:9" },
+        })
+        expect(JSON.stringify(requests)).not.toContain(secret)
+        expect(error).not.toContain(secret)
+      } finally {
+        delete process.env.MONITOR_PROBE_TEST_TOKEN
+      }
+    }),
+  )
+
+  it.live("a denied env permission blocks the probe before any request is sent", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      let hits = 0
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch: () => {
+          hits++
+          return new Response("ok")
+        },
+      })
+      yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)))
+      const secret = `secret-${crypto.randomUUID()}`
+      process.env.MONITOR_PROBE_DENIED_TOKEN = secret
+      try {
+        const requests: Request[] = []
+        const context: Tool.Context = {
+          ...capture(requests),
+          extra: { promptOps: { notify: () => Effect.void } },
+          ask: (request) =>
+            Effect.sync(() => {
+              requests.push(request)
+              if (request.permission === "env") throw new Error("denied by rule")
+            }),
+        }
+        const tool = yield* (yield* MonitorTool).init()
+        const exit = yield* tool
+          .execute(
+            {
+              action: "probe",
+              probe: {
+                type: "http",
+                url: `http://127.0.0.1:${server.port}/health`,
+                headers: { Authorization: "Bearer {env:MONITOR_PROBE_DENIED_TOKEN}" },
+              },
+              wait_ms: 0,
+              interval_ms: 1_000,
+              deadline_ms: 30_000,
+            },
+            context,
+          )
+          .pipe(provideInstance(tmp), Effect.exit)
+        const error = Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : ""
+        expect(error).toContain("denied by rule")
+        expect(error).not.toContain(secret)
+        yield* Effect.sleep("300 millis")
+        expect(hits).toBe(0)
+      } finally {
+        delete process.env.MONITOR_PROBE_DENIED_TOKEN
+      }
     }),
   )
 

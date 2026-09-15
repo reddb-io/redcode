@@ -5,7 +5,9 @@ import os from "node:os"
 import path from "node:path"
 import { Schema } from "effect"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
+import { statSync } from "node:fs"
 import { MonitorProbe } from "../src/monitor-probe"
+import { SafeRegex } from "../src/safe-regex"
 
 const decodeOptions = Schema.decodeUnknownSync(Monitor.Options)
 const decodeProbe = Schema.decodeUnknownSync(Monitor.Probe)
@@ -72,15 +74,25 @@ describe("monitor schema", () => {
 describe("command poll verdicts", () => {
   const evidence = (output: string, exit = 0): Monitor.Evidence => ({ exit, output, truncated: false })
 
-  test("success and failure regexes, with contains unchanged", () => {
+  test("success and failure regexes decide on what the worker found, with contains unchanged", () => {
     const options: Monitor.Options = { mode: "poll", success_regex: "deployed v\\d+", failure_regex: "ERROR \\d+" }
-    expect(Monitor.verdict(options, evidence("pending"), undefined)).toBeUndefined()
-    expect(Monitor.verdict(options, evidence("deployed v12"), undefined)).toEqual({
+    const none = { success: { match: undefined }, failure: { match: undefined } }
+    const deployed = { ...none, success: { match: "deployed v12" } }
+    expect(Monitor.verdict(options, evidence("pending"), undefined, none)).toBeUndefined()
+    expect(Monitor.verdict(options, evidence("deployed v12"), undefined, deployed)).toEqual({
       status: "succeeded",
       matched: 'exit code 0, success_regex matched "deployed v12"',
     })
-    expect(Monitor.verdict(options, evidence("deployed v12", 1), undefined)).toBeUndefined()
-    expect(Monitor.verdict(options, evidence("ERROR 503", 1), undefined)?.status).toBe("failed")
+    expect(Monitor.verdict(options, evidence("deployed v12", 1), undefined, deployed)).toBeUndefined()
+    expect(
+      Monitor.verdict(options, evidence("ERROR 503", 1), undefined, { ...none, failure: { match: "ERROR 503" } })
+        ?.status,
+    ).toBe("failed")
+    // A pattern that timed out, or was never run, is not a match.
+    expect(
+      Monitor.verdict(options, evidence("deployed v12"), undefined, { success: { timedOut: true } }),
+    ).toBeUndefined()
+    expect(Monitor.verdict(options, evidence("deployed v12"), undefined)).toBeUndefined()
     const contains: Monitor.Options = { mode: "poll", success_contains: "ready", failure_contains: "fail" }
     expect(Monitor.verdict(contains, evidence("ready"), undefined)?.status).toBe("succeeded")
     expect(Monitor.verdict(contains, evidence("ready but fail"), undefined)?.status).toBe("failed")
@@ -147,6 +159,21 @@ describe("poll jitter", () => {
     expect(Monitor.schedule({ mode: "poll", interval_ms: 2_000 })).toBe("every 2s ±250ms")
   })
 
+  test("keeps the first attempt inside an inline wait, and starts a changed poll at once", () => {
+    const high = () => 0.999
+    expect(Monitor.initialDelay({ mode: "poll", interval_ms: 10_000 }, high)).toBeLessThan(250)
+    expect(Monitor.initialDelay({ mode: "poll", interval_ms: 10_000, wait_ms: 400 }, high)).toBeLessThan(100)
+    expect(Monitor.initialDelay({ mode: "poll", interval_ms: 10_000, wait_ms: 0 }, high)).toBeGreaterThan(1_900)
+    expect(Monitor.initialDelay({ mode: "poll", wait_ms: 0, until: "changed" }, high)).toBe(0)
+  })
+
+  test("leaves the attempt's own timeout before the deadline", () => {
+    const options: Monitor.Options = { mode: "poll", interval_ms: 2_000, deadline_ms: 20_000, jitter: false }
+    expect(Monitor.nextDelay(options, 0, () => 0, 10_000)).toBe(2_000)
+    expect(Monitor.nextDelay(options, 9_000, () => 0, 10_000)).toBe(1_000)
+    expect(Monitor.nextDelay(options, 10_000, () => 0, 10_000)).toBeUndefined()
+  })
+
   test("never schedules an attempt past the deadline, and still checks before it", () => {
     for (const jitter of [true, false]) {
       const options: Monitor.Options = { mode: "poll", interval_ms: 10_000, deadline_ms: 35_000, jitter }
@@ -183,6 +210,7 @@ describe("http probe", () => {
         if (url.pathname === "/health") return new Response("ok", { status })
         if (url.pathname === "/job") return Response.json({ data: { state: "done", items: [{ n: 3 }] } })
         if (url.pathname === "/same") return Response.redirect(`${base()}/health`, 302)
+        if (url.pathname === "/redos") return new Response(`${"a".repeat(40)}!`)
         if (url.pathname === "/away") return Response.redirect(`http://localhost:${other.port}/secret?token=x`, 302)
         if (url.pathname === "/big") return new Response("x".repeat(MonitorProbe.HTTP_MAX_BYTES + 10) + "needle")
         if (url.pathname === "/slow") {
@@ -225,6 +253,41 @@ describe("http probe", () => {
     expect(away.probe.status).toBe(302)
     expect(away.probe.redirect).toContain("another host")
     expect(away.probe.redirect).not.toContain("token=")
+  })
+
+  test("does not follow a same-host redirect the webfetch rules do not cover", async () => {
+    status = 200
+    const result = await MonitorProbe.http({ type: "http", url: `${base()}/same` }, { allowRedirect: () => false })
+    expect(result.probe).toMatchObject({
+      matched: false,
+      status: 302,
+      redirect: expect.stringContaining("does not cover"),
+    })
+  })
+
+  test("a catastrophic regex times out as an error instead of freezing the probe", async () => {
+    const result = await MonitorProbe.http({ type: "http", url: `${base()}/redos`, regex: "^(a+)+$" })
+    expect(result.probe).toMatchObject({
+      matched: false,
+      status: 200,
+      error: expect.stringContaining(SafeRegex.TIMEOUT_ERROR),
+    })
+  })
+
+  test("reads no environment variable it was not given", async () => {
+    process.env.MONITOR_PROBE_UNGIVEN = "should-not-leak"
+    try {
+      status = 200
+      await MonitorProbe.http({
+        type: "http",
+        url: `${base()}/health`,
+        headers: { Authorization: "Bearer {env:MONITOR_PROBE_UNGIVEN}" },
+      })
+      expect(lastAuth ?? "").not.toContain("should-not-leak")
+      expect(MonitorProbe.envNames({ A: "{env:ONE} {env:TWO}", B: "{env:ONE}" })).toEqual(["ONE", "TWO"])
+    } finally {
+      delete process.env.MONITOR_PROBE_UNGIVEN
+    }
   })
 
   test("resolves {env:NAME} in header values without recording them", async () => {
@@ -303,17 +366,21 @@ describe("file probe", () => {
     const file = path.join(dir, "out.txt")
     await writeFile(file, "aaaa")
     const probe: Monitor.FileProbe = { type: "file", path: "out.txt", state: "changed" }
-    const first = await MonitorProbe.observeFile(file)
+    const hash = { hash: true }
+    // Only a changed probe reads the content.
+    expect((await MonitorProbe.observeFile(file)).hash).toBeUndefined()
+    const first = await MonitorProbe.observeFile(file, hash)
+    expect(first.hash).toBeDefined()
     expect(MonitorProbe.fileResult(probe, first, undefined).probe.matched).toBe(false)
-    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file), first).probe.matched).toBe(false)
+    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file, hash), first).probe.matched).toBe(false)
     // Same size and the same mtime: only the hash tells.
     const { mtime } = await stat(file)
     await writeFile(file, "bbbb")
     await utimes(file, mtime, mtime)
-    const rewritten = await MonitorProbe.observeFile(file)
+    const rewritten = await MonitorProbe.observeFile(file, hash)
     expect(MonitorProbe.fileResult(probe, rewritten, first).probe.matched).toBe(true)
     await rm(file)
-    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file), first).probe.matched).toBe(true)
+    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file, hash), first).probe.matched).toBe(true)
   })
 })
 
@@ -342,30 +409,91 @@ describe("process probe", () => {
   // `tasklist` reports image names only, so a command-line marker cannot be seen there.
   test.skipIf(process.platform === "win32")("running and exited by a command-line name", async () => {
     const marker = `monitor-probe-marker-${crypto.randomUUID()}`
-    expect(MonitorProbe.processCheck({ type: "process", name: marker, state: "exited" }).probe.matched).toBe(true)
+    const byCommandLine = { type: "process", name: marker, match: "cmdline" } as const
+    expect(MonitorProbe.processCheck({ ...byCommandLine, state: "exited" }).probe.matched).toBe(true)
     const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)", marker], { stdio: "ignore" })
     try {
-      let running = MonitorProbe.processCheck({ type: "process", name: marker, state: "running" })
+      let running = MonitorProbe.processCheck({ ...byCommandLine, state: "running" })
       for (let i = 0; i < 50 && !running.probe.matched; i++) {
         await Bun.sleep(20)
-        running = MonitorProbe.processCheck({ type: "process", name: marker, state: "running" })
+        running = MonitorProbe.processCheck({ ...byCommandLine, state: "running" })
       }
+      // By default a name is an executable name, which the marker is not.
+      expect(MonitorProbe.processCheck({ type: "process", name: marker, state: "running" }).probe.matched).toBe(false)
       expect(running.probe).toEqual({ matched: true, pids: [child.pid!] })
     } finally {
       child.kill()
     }
   })
 
-  test("never matches this runtime's own process, and matches names exactly or by command line", () => {
+  test("matches the executable name exactly by default, a command line only when asked, and never this process", () => {
     const self = { pid: process.pid, name: "bun", command: "bun redcode" }
-    expect(MonitorProbe.matchesName(self, "redcode")).toBe(false)
-    const vite = { pid: 1234, name: "node", command: "node /app/node_modules/.bin/vite build" }
-    expect(MonitorProbe.matchesName(vite, "vite build", "linux")).toBe(true)
-    expect(MonitorProbe.matchesName(vite, "node", "linux")).toBe(true)
-    expect(MonitorProbe.matchesName(vite, "Vite", "linux")).toBe(false)
-    expect(MonitorProbe.matchesName({ pid: 5, name: "Code", command: "Code.exe" }, "code.exe", "win32")).toBe(true)
+    expect(MonitorProbe.matchesName(self, "bun", "name", "linux")).toBe(false)
+    expect(MonitorProbe.matchesName(self, "redcode", "cmdline", "linux")).toBe(false)
+    const vite = { pid: 1234, name: "node", command: "/usr/bin/node /app/node_modules/.bin/vite build" }
+    expect(MonitorProbe.matchesName(vite, "node", "name", "linux")).toBe(true)
+    expect(MonitorProbe.matchesName(vite, "vite", "name", "linux")).toBe(false)
+    expect(MonitorProbe.matchesName(vite, "no", "name", "linux")).toBe(false)
+    expect(MonitorProbe.matchesName(vite, "vite build", "cmdline", "linux")).toBe(true)
+    expect(MonitorProbe.matchesName(vite, "Vite", "cmdline", "linux")).toBe(false)
+    // Linux cuts a process name to 15 characters; the executable in the command line still matches.
+    const long = { pid: 99, name: "very-long-serve", command: "/opt/bin/very-long-server-name --port 1" }
+    expect(MonitorProbe.matchesName(long, "very-long-server-name", "name", "linux")).toBe(true)
+    expect(MonitorProbe.matchesName({ pid: 5, name: "Code", command: "Code.exe" }, "code.exe", "name", "win32")).toBe(
+      true,
+    )
     expect(
-      MonitorProbe.processCheck({ type: "process", name: "vite", state: "running" }, "linux", () => undefined).probe,
+      MonitorProbe.processCheck({ type: "process", name: "vite", state: "exited" }, "linux", () => undefined).probe,
     ).toEqual({ matched: false, error: "could not list processes" })
+  })
+
+  test("a process that cannot be looked at is unknown, never exited", () => {
+    const fail = (code: string) => () => {
+      throw Object.assign(new Error(code), { code })
+    }
+    expect(MonitorProbe.pidState(999_999_999, "win32", fail("ESRCH"))).toBe("exited")
+    expect(MonitorProbe.pidState(999_999_999, "win32", fail("EPERM"))).toBe("unknown")
+    expect(MonitorProbe.pidState(999_999_999, "win32", fail("EINVAL"))).toBe("unknown")
+    expect(MonitorProbe.pidState(999_999_999, "win32", () => {})).toBe("running")
+    // A /proc entry hidden from this user reads as missing, while the signal check says the process exists.
+    if (process.platform === "linux") expect(MonitorProbe.pidState(999_999_999, "linux", fail("EPERM"))).toBe("unknown")
+    const unknown = MonitorProbe.processCheck(
+      { type: "process", pid: 999_999_999, state: "exited" },
+      "win32",
+      undefined,
+      fail("EPERM"),
+    )
+    expect(unknown.probe).toMatchObject({ matched: false, error: expect.stringContaining("could not tell") })
+  })
+
+  test.skipIf(process.platform !== "linux")("lists only this user's processes", () => {
+    const uid = process.getuid!()
+    const entries = MonitorProbe.listProcesses("linux")!
+    expect(entries.some((entry) => entry.pid === process.pid)).toBe(true)
+    for (const entry of entries.slice(0, 100)) {
+      let owner: number | undefined
+      try {
+        owner = statSync(`/proc/${entry.pid}`).uid
+      } catch {
+        continue
+      }
+      expect(owner).toBe(uid)
+    }
+  })
+})
+
+describe("regular expressions off the main thread", () => {
+  test("a catastrophic pattern times out while the event loop keeps running, and the next one still works", async () => {
+    let ticks = 0
+    const timer = setInterval(() => ticks++, 5)
+    const started = Date.now()
+    const outcome = await SafeRegex.exec("^(a+)+$", `${"a".repeat(40)}!`, 150)
+    const elapsed = Date.now() - started
+    clearInterval(timer)
+    expect(outcome).toEqual({ timedOut: true })
+    expect(elapsed).toBeLessThan(5_000)
+    expect(ticks).toBeGreaterThan(5)
+    expect(await SafeRegex.exec("b+", "aabbb")).toEqual({ match: "bbb" })
+    expect(await SafeRegex.exec("x", "abc")).toEqual({ match: undefined })
   })
 })

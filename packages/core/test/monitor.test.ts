@@ -281,6 +281,35 @@ describe("Monitors", () => {
     }),
   )
 
+  it.live("a catastrophic success_regex times out off the main thread and fails after repeated timeouts", () =>
+    Effect.gen(function* () {
+      const monitors = yield* Monitor.Service
+      const sessionID = yield* setup
+      let ticks = 0
+      const timer = setInterval(() => ticks++, 10)
+      const started = Date.now()
+      const info = yield* monitors.start({
+        ...base,
+        sessionID,
+        options: { mode: "poll", wait_ms: 0, interval_ms: 1, deadline_ms: 30_000, success_regex: "^(a+)+$" },
+        run: () => Effect.succeed({ exit: 0, output: `${"a".repeat(40)}!`, truncated: false }),
+        notify: () => Effect.void,
+      })
+      const done = yield* monitors.wait(sessionID, info.id, 20_000)
+      clearInterval(timer)
+      expect(done).toMatchObject({
+        status: "failed",
+        attempts: Monitor.REGEX_TIMEOUT_LIMIT,
+        evidence: {
+          matched: expect.stringContaining("timed out"),
+          error: expect.stringContaining("success_regex regex timed out"),
+        },
+      })
+      // The event loop kept turning while each match was stuck.
+      expect(ticks).toBeGreaterThan((Date.now() - started) / 10 / 4)
+    }),
+  )
+
   it.live("recovers a persisted jittered probe monitor after a crash without running it again", () =>
     Effect.gen(function* () {
       const monitors = yield* Monitor.Service

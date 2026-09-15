@@ -104,6 +104,7 @@ export const MonitorTool = Tool.define(
       const interval = options.interval_ms ?? Monitor.DEFAULT_INTERVAL_MS
 
       let observe: () => Effect.Effect<MonitorProbe.Observation>
+      let attemptTimeoutMs: number | undefined
       if (probe.type === "http") {
         // The same permission as webfetch: approving a probe approves repeated requests to this URL.
         yield* ctx.ask({
@@ -113,8 +114,38 @@ export const MonitorTool = Tool.define(
           ...(force ? { force } : {}),
           metadata: { url: probe.url, monitor: summary, probe: label, headers: Object.keys(probe.headers ?? {}) },
         })
+        // Sending an environment variable is a decision of its own, asked per variable and destination host,
+        // whatever webfetch allows. Only the variables approved here are ever read; values are never shown.
+        const host = new URL(probe.url).host
+        const variables = MonitorProbe.envNames(probe.headers)
+        for (const variable of variables) {
+          const pattern = `${variable}@${host}`
+          yield* ctx.ask({
+            permission: "env",
+            patterns: [pattern],
+            always: force ? [] : [pattern],
+            ...(force ? { force } : {}),
+            metadata: { variable, host, url: probe.url, monitor: summary, probe: label },
+          })
+        }
+        // A same-host redirect is followed only where the webfetch rules treat its target at least as openly
+        // as the approved URL: never where they deny it, nor where they only ask while the URL was allowed.
+        const original = ctx.evaluate?.("webfetch", probe.url)
+        const allowRedirect = (next: URL) => {
+          if (!ctx.evaluate) return true
+          const action = ctx.evaluate("webfetch", next.href)
+          return action === "allow" || (action === "ask" && original !== "allow")
+        }
         const timeoutMs = Math.min(MonitorProbe.HTTP_TIMEOUT_MS, interval)
-        observe = () => Effect.promise(() => MonitorProbe.http(probe, { timeoutMs }))
+        attemptTimeoutMs = timeoutMs
+        observe = () =>
+          Effect.promise(() =>
+            MonitorProbe.http(probe, {
+              timeoutMs,
+              env: Object.fromEntries(variables.map((name) => [name, process.env[name]])),
+              allowRedirect,
+            }),
+          )
       } else if (probe.type === "file") {
         const lexical = FSUtil.normalizePath(path.resolve(instance.directory, probe.path))
         const real = FSUtil.normalizePath(yield* Effect.promise(() => resolveReal(lexical)))
@@ -129,7 +160,9 @@ export const MonitorTool = Tool.define(
           metadata: { filepath: lexical, monitor: summary, probe: label },
         })
         const approved = [lexical, real].map((item) => path.dirname(item))
-        let first: MonitorProbe.FileState | undefined
+        const hash = probe.state === "changed"
+        // Taken now, before any jitter delay, so a change right after the call is not missed.
+        const first = hash ? yield* Effect.promise(() => MonitorProbe.observeFile(lexical, { hash })) : undefined
         observe = () =>
           Effect.gen(function* () {
             // A symlink created after approval must not lead the probe somewhere it was never allowed.
@@ -138,10 +171,8 @@ export const MonitorTool = Tool.define(
               return yield* Effect.die(
                 new Error(`${probe.path} now resolves to ${now}, outside the directories approved for this monitor.`),
               )
-            const state = yield* Effect.promise(() => MonitorProbe.observeFile(lexical))
-            const result = MonitorProbe.fileResult(probe, state, first)
-            first ??= state
-            return result
+            const state = yield* Effect.promise(() => MonitorProbe.observeFile(lexical, { hash }))
+            return MonitorProbe.fileResult(probe, state, first)
           })
       } else {
         // Listing processes is read-only and needs no permission, but a long poll is still approved each time.
@@ -164,6 +195,7 @@ export const MonitorTool = Tool.define(
         workdir: instance.directory,
         options,
         probe,
+        ...(attemptTimeoutMs !== undefined ? { attemptTimeoutMs } : {}),
         run: () =>
           observe().pipe(
             Effect.map((observation) => ({

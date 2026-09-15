@@ -7,11 +7,13 @@
 export * as MonitorProbe from "./monitor-probe"
 
 import { createHash } from "node:crypto"
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync, readFileSync, statSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { processInfo, probe as runner } from "./monitor"
+import { SafeRegex } from "./safe-regex"
 
 /** The most of a response body an http probe reads. */
 export const HTTP_MAX_BYTES = 1_048_576
@@ -19,7 +21,7 @@ export const HTTP_MAX_BYTES = 1_048_576
 export const HTTP_TIMEOUT_MS = 10_000
 const MAX_REDIRECTS = 5
 const VALUE_CHARS = 200
-/** Files up to this size are hashed, so a rewrite with the same size and mtime still counts as a change. */
+/** Files up to this size are hashed by a `changed` probe, so a rewrite with the same size and mtime still counts. */
 export const FILE_HASH_BYTES = 1_048_576
 const MAX_PIDS = 10
 
@@ -27,12 +29,26 @@ export type Observation = { output: string; probe: Monitor.ProbeResult }
 
 const clip = (text: string, chars = VALUE_CHARS) => (text.length > chars ? `${text.slice(0, chars)}…` : text)
 
-/** `{env:NAME}` in a header value reads that environment variable, as in the configuration file. */
+const ENV_REFERENCE = /\{env:([^}]+)\}/g
+
+/** The environment variables a probe's header values reference, each once. */
+export function envNames(headers: Record<string, string> | undefined) {
+  return [
+    ...new Set(
+      Object.values(headers ?? {}).flatMap((value) => [...value.matchAll(ENV_REFERENCE)].map((match) => match[1]!)),
+    ),
+  ]
+}
+
+/**
+ * Header values with `{env:NAME}` replaced from `env`. Only the variables in `env` are ever read: a caller
+ * passes just the ones a person allowed, so a reference to anything else becomes an empty string.
+ */
 export function headerValues(headers: Record<string, string> | undefined, env: Record<string, string | undefined>) {
   return Object.fromEntries(
     Object.entries(headers ?? {}).map(([name, value]) => [
       name,
-      value.replace(/\{env:([^}]+)\}/g, (_, key: string) => env[key] ?? ""),
+      value.replace(ENV_REFERENCE, (_, key: string) => (Object.hasOwn(env, key) ? (env[key] ?? "") : "")),
     ]),
   )
 }
@@ -82,18 +98,25 @@ function sameSite(from: URL, to: URL) {
   return from.protocol === to.protocol || (from.protocol === "http:" && to.protocol === "https:")
 }
 
+export type HttpOptions = {
+  timeoutMs?: number
+  /** The environment variables header values may read; nothing else is read. */
+  env?: Record<string, string | undefined>
+  fetch?: typeof fetch
+  /** Whether the permission rules cover a same-host redirect target; a target they do not cover is not followed. */
+  allowRedirect?: (url: URL) => boolean
+}
+
 /**
  * One http attempt. Uses the runtime's fetch, which honours HTTP_PROXY, HTTPS_PROXY and NO_PROXY like
- * webfetch does. Redirects are followed only on the same host; any other is reported, not followed.
+ * webfetch does. Redirects are followed only on the same host and only where `allowRedirect` agrees;
+ * any other is reported, not followed.
  */
-export async function http(
-  probe: Monitor.HttpProbe,
-  options: { timeoutMs?: number; env?: Record<string, string | undefined>; fetch?: typeof fetch } = {},
-): Promise<Observation> {
+export async function http(probe: Monitor.HttpProbe, options: HttpOptions = {}): Promise<Observation> {
   const timeoutMs = options.timeoutMs ?? HTTP_TIMEOUT_MS
   const doFetch = options.fetch ?? fetch
   const signal = AbortSignal.timeout(timeoutMs)
-  const headers = headerValues(probe.headers, options.env ?? process.env)
+  const headers = headerValues(probe.headers, options.env ?? {})
   const method = probe.method ?? "GET"
   const first = new URL(probe.url)
   let url = first
@@ -105,10 +128,14 @@ export async function http(
       if (status >= 300 && status < 400 && location) {
         await response.body?.cancel().catch(() => {})
         const next = new URL(location, url)
-        if (!sameSite(first, next)) {
-          const redirect = `not followed, points at another host: ${next.origin}${next.pathname}`
-          return { output: `HTTP ${status}, redirect ${redirect}`, probe: { matched: false, status, redirect } }
-        }
+        const where = `${next.origin}${next.pathname}`
+        const refused = !sameSite(first, next)
+          ? `not followed, points at another host: ${where}`
+          : options.allowRedirect && !options.allowRedirect(next)
+            ? `not followed, the webfetch permission does not cover ${where}`
+            : undefined
+        if (refused)
+          return { output: `HTTP ${status}, redirect ${refused}`, probe: { matched: false, status, redirect: refused } }
         if (hop >= MAX_REDIRECTS)
           return {
             output: `HTTP ${status}, too many redirects`,
@@ -181,21 +208,28 @@ async function judge(probe: Monitor.HttpProbe, response: Response): Promise<Obse
     parts.push(`contains ${JSON.stringify(probe.contains)}`)
   }
   if (probe.regex !== undefined) {
-    const hit = new RegExp(probe.regex).exec(subject.slice(0, Monitor.REGEX_INPUT_CHARS))
-    if (!hit) return { output: parts.join(", "), probe: result }
-    parts.push(`regex matched ${JSON.stringify(clip(hit[0], 80))}`)
+    const outcome = await SafeRegex.exec(probe.regex, subject.slice(0, Monitor.REGEX_INPUT_CHARS))
+    if ("timedOut" in outcome) {
+      const error = `${SafeRegex.TIMEOUT_ERROR} after ${SafeRegex.MATCH_TIMEOUT_MS} ms`
+      return { output: `${parts.join(", ")}, ${error}`, probe: { ...result, error } }
+    }
+    if ("error" in outcome || outcome.match === undefined) return { output: parts.join(", "), probe: result }
+    parts.push(`regex matched ${JSON.stringify(clip(outcome.match, 80))}`)
   }
   return { output: parts.join(", "), probe: { ...result, matched: statusOk } }
 }
 
 export type FileState = { exists: boolean; size?: number; mtime?: number; hash?: string; error?: string }
 
-/** What is at a path now. Symlinks are followed; the caller decides whether their target may be read. */
-export async function observeFile(target: string): Promise<FileState> {
+/**
+ * What is at a path now. Symlinks are followed; the caller decides whether their target may be read. The
+ * content is read and hashed only when asked (a `changed` probe), and only for files up to 1 MB.
+ */
+export async function observeFile(target: string, options: { hash?: boolean } = {}): Promise<FileState> {
   try {
     const info = await stat(target)
     const hash =
-      info.isFile() && info.size <= FILE_HASH_BYTES
+      options.hash && info.isFile() && info.size <= FILE_HASH_BYTES
         ? createHash("sha256")
             .update(await readFile(target))
             .digest("hex")
@@ -208,7 +242,7 @@ export async function observeFile(target: string): Promise<FileState> {
   }
 }
 
-/** The verdict on a file observation; `first` is the first observation, which `changed` compares against. */
+/** The verdict on a file observation; `first` is the observation taken when the monitor started, for `changed`. */
 export function fileResult(probe: Monitor.FileProbe, now: FileState, first: FileState | undefined): Observation {
   const stats = now.exists
     ? { exists: true, size: now.size, ...(now.mtime !== undefined ? { mtime: Math.round(now.mtime) } : {}) }
@@ -226,23 +260,27 @@ export function fileResult(probe: Monitor.FileProbe, now: FileState, first: File
     first !== undefined &&
     (first.exists !== now.exists || first.size !== now.size || first.mtime !== now.mtime || first.hash !== now.hash)
   return {
-    output: changed ? `${describe}, changed since the first check` : `${describe}, unchanged`,
+    output: changed ? `${describe}, changed since the monitor started` : `${describe}, unchanged`,
     probe: { matched: changed && (now.exists ? bigEnough : probe.min_size === undefined), ...stats },
   }
 }
 
 export type ProcessEntry = { pid: number; name: string; command: string }
 
+const currentUid = () => (typeof process.getuid === "function" ? process.getuid() : undefined)
+
 /**
- * Every live process: `/proc` on Linux, `ps` with LC_ALL=C elsewhere on POSIX, `tasklist` on Windows.
- * Zombies count as exited. Undefined when the listing itself failed.
+ * The live processes of the current user: `/proc` on Linux, `ps` with LC_ALL=C elsewhere on POSIX, `tasklist`
+ * on Windows. Zombies count as exited. Undefined when the listing itself failed.
  */
 export function listProcesses(platform: NodeJS.Platform = process.platform): ProcessEntry[] | undefined {
+  const uid = currentUid()
   if (platform === "linux") {
     try {
       return readdirSync("/proc").flatMap((entry) => {
         if (!/^\d+$/.test(entry)) return []
         try {
+          if (uid !== undefined && statSync(`/proc/${entry}`).uid !== uid) return []
           const stat = readFileSync(`/proc/${entry}/stat`, "utf8")
           if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z")) return []
           const name = stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")"))
@@ -258,7 +296,13 @@ export function listProcesses(platform: NodeJS.Platform = process.platform): Pro
   }
   const options = { encoding: "utf8" as const, timeout: 5_000, env: { ...process.env, LC_ALL: "C" }, windowsHide: true }
   if (platform === "win32") {
-    const result = runner.spawn("tasklist", ["/FO", "CSV", "/NH"], options)
+    let user: string
+    try {
+      user = os.userInfo().username
+    } catch {
+      return undefined
+    }
+    const result = runner.spawn("tasklist", ["/FO", "CSV", "/NH", "/FI", `USERNAME eq ${user}`], options)
     if (result.error || result.status !== 0 || typeof result.stdout !== "string") return undefined
     return result.stdout.split(/\r?\n/).flatMap((line) => {
       const match = /^"([^"]*)","(\d+)"/.exec(line)
@@ -266,40 +310,71 @@ export function listProcesses(platform: NodeJS.Platform = process.platform): Pro
       return [{ pid: Number(match[2]), name: match[1]!.replace(/\.exe$/i, ""), command: match[1]! }]
     })
   }
-  const result = runner.spawn("ps", ["-A", "-ww", "-o", "pid=", "-o", "stat=", "-o", "args="], options)
+  const result = runner.spawn("ps", ["-A", "-ww", "-o", "pid=", "-o", "uid=", "-o", "stat=", "-o", "args="], options)
   if (result.error || result.status !== 0 || typeof result.stdout !== "string") return undefined
   return result.stdout.split("\n").flatMap((line) => {
-    const match = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(line)
-    if (!match || match[2]!.startsWith("Z")) return []
-    const command = match[3]!.trim()
+    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line)
+    if (!match || match[3]!.startsWith("Z")) return []
+    if (uid !== undefined && Number(match[2]) !== uid) return []
+    const command = match[4]!.trim()
     return [{ pid: Number(match[1]), name: path.basename(command.split(/\s+/)[0] ?? ""), command }]
   })
 }
 
 /**
- * Whether a process matches a probe name: its name equals the text (case-insensitively on Windows, where
- * `.exe` is ignored), or its command line contains the text. This runtime's own process never matches.
+ * Whether a process matches a probe name. By default the executable name must equal it: the process name, or
+ * on POSIX the file name of the command's first word (Linux cuts process names to 15 characters). On Windows
+ * the comparison ignores case and `.exe`. With `cmdline`, the command line must contain it. This runtime's own
+ * process never matches.
  */
-export function matchesName(entry: ProcessEntry, name: string, platform: NodeJS.Platform = process.platform) {
+export function matchesName(
+  entry: ProcessEntry,
+  name: string,
+  match: "name" | "cmdline" = "name",
+  platform: NodeJS.Platform = process.platform,
+) {
   if (entry.pid === process.pid) return false
-  if (platform === "win32") {
-    const wanted = name.replace(/\.exe$/i, "").toLowerCase()
-    return entry.name.toLowerCase() === wanted || entry.command.toLowerCase().includes(name.toLowerCase())
-  }
-  return entry.name === name || entry.command.includes(name)
+  const windows = platform === "win32"
+  const fold = (text: string) => (windows ? text.replace(/\.exe$/i, "").toLowerCase() : text)
+  if (match === "cmdline")
+    return windows ? entry.command.toLowerCase().includes(name.toLowerCase()) : entry.command.includes(name)
+  const executable = path.basename(entry.command.split(/\s+/)[0] ?? "")
+  const candidates = windows ? [entry.name] : [entry.name, executable]
+  return candidates.some((candidate) => candidate !== "" && fold(candidate) === fold(name))
 }
 
-function pidState(pid: number, platform: NodeJS.Platform): "running" | "exited" | "unknown" {
+function zombie(pid: number) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+    return stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z")
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Whether a pid runs. Only a definite answer counts: a process whose entry cannot be read (a hidden `/proc`,
+ * a Windows access error) is "unknown", which keeps a monitor polling and never counts as exited. `signal`
+ * sends signal 0 and is replaceable in tests.
+ */
+export function pidState(
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+  signal: (pid: number) => void = (target) => process.kill(target, 0),
+): "running" | "exited" | "unknown" {
   if (pid === process.pid) return "running"
   if (platform === "linux" || platform === "darwin") {
     const found = processInfo(pid, platform)
-    return found === "unknown" ? "unknown" : found ? "running" : "exited"
+    if (found === "unknown") return "unknown"
+    if (found) return "running"
   }
   try {
-    process.kill(pid, 0)
-    return "running"
+    signal(pid)
+    // Signalable but without a readable entry: a zombie is done; anything else could not be looked at.
+    if (platform === "win32") return "running"
+    return platform === "linux" && zombie(pid) ? "exited" : "unknown"
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM" ? "running" : "exited"
+    return (error as NodeJS.ErrnoException).code === "ESRCH" ? "exited" : "unknown"
   }
 }
 
@@ -307,9 +382,10 @@ export function processCheck(
   probe: Monitor.ProcessProbe,
   platform: NodeJS.Platform = process.platform,
   list: () => ProcessEntry[] | undefined = () => listProcesses(platform),
+  signal?: (pid: number) => void,
 ): Observation {
   if (probe.pid !== undefined) {
-    const state = pidState(probe.pid, platform)
+    const state = pidState(probe.pid, platform, signal)
     if (state === "unknown") {
       const error = "could not tell whether the process runs"
       return { output: `process ${probe.pid}: ${error}`, probe: { matched: false, error } }
@@ -324,12 +400,14 @@ export function processCheck(
     const error = "could not list processes"
     return { output: error, probe: { matched: false, error } }
   }
-  const pids = entries.filter((entry) => matchesName(entry, probe.name!, platform)).map((entry) => entry.pid)
+  const match = probe.match ?? "name"
+  const pids = entries.filter((entry) => matchesName(entry, probe.name!, match, platform)).map((entry) => entry.pid)
   const running = pids.length > 0
+  const what = `${match === "cmdline" ? "command line containing" : "executable named"} ${JSON.stringify(probe.name)}`
   return {
     output: running
-      ? `${pids.length} process(es) match ${JSON.stringify(probe.name)}: ${pids.slice(0, MAX_PIDS).join(", ")}`
-      : `no process matches ${JSON.stringify(probe.name)}`,
+      ? `${pids.length} process(es) with a ${what}: ${pids.slice(0, MAX_PIDS).join(", ")}`
+      : `no process with a ${what}`,
     probe: { matched: running === (probe.state === "running"), pids: pids.slice(0, MAX_PIDS) },
   }
 }

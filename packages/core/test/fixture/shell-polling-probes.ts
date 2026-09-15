@@ -408,9 +408,12 @@ export function shellPollingProbes(decode: (call: unknown) => unknown, decodePro
         ["! test -e /tmp/lock", { type: "file", path: "/tmp/lock", state: "missing" }],
         ["[ ! -e /tmp/lock ]", { type: "file", path: "/tmp/lock", state: "missing" }],
         ["test -s out.json", { type: "file", path: "out.json", state: "exists", min_size: 1 }],
-        ["pgrep vite", { type: "process", name: "vite", state: "running" }],
-        ["pgrep -f 'vite build' >/dev/null 2>&1", { type: "process", name: "vite build", state: "running" }],
-        ["! pgrep -f 'vite build'", { type: "process", name: "vite build", state: "exited" }],
+        [
+          "pgrep -f 'vite build' >/dev/null 2>&1",
+          { type: "process", name: "vite build", match: "cmdline", state: "running" },
+        ],
+        ["! pgrep -f 'vite build'", { type: "process", name: "vite build", match: "cmdline", state: "exited" }],
+        ["pgrep -x postgres", { type: "process", name: "postgres", state: "running" }],
       ]
       for (const [check, probe] of cases) {
         expect({ check, probe: ShellPolling.nativeProbe(check) }).toEqual({ check, probe })
@@ -427,6 +430,11 @@ export function shellPollingProbes(decode: (call: unknown) => unknown, decodePro
         "[ -s out.json ] && echo ok",
         "pgrep -u root vite",
         "pgrep vite node",
+        // pgrep patterns are regular expressions: bare pgrep matches name substrings, and metacharacters are not literal.
+        "pgrep vite",
+        "pgrep -f 'vite.*build'",
+        "pgrep -f '^node'",
+        "pgrep -fx vite",
         "gh pr checks 12",
       ])
         expect({ check, probe: ShellPolling.nativeProbe(check) }).toEqual({ check, probe: undefined })
@@ -443,16 +451,41 @@ export function shellPollingProbes(decode: (call: unknown) => unknown, decodePro
       ).toBe("/repo/dist/app.js")
     })
 
-    test("offers a probe for local file and process loops the guard recognises", () => {
-      for (const [command, type] of [
-        ["until test -f /tmp/ready; do sleep 1; done", "file"],
-        ["while pgrep -f 'vite build'; do sleep 2; done", "process"],
-        ["until pgrep postgres; do sleep 1; done", "process"],
-      ] as const) {
+    test("keeps what the loop waits for across until and while, with and without !", () => {
+      const file = { type: "file", path: "build/done" } as const
+      const proc = { type: "process", name: "vite build", match: "cmdline" } as const
+      const http = { type: "http", url: "http://localhost:3000/health" } as const
+      const cases: [string, Monitor.Probe | undefined][] = [
+        ["until test -e build/done; do sleep 1; done", { ...file, state: "exists" }],
+        ["until ! test -e build/done; do sleep 1; done", { ...file, state: "missing" }],
+        ["while test -e build/done; do sleep 1; done", { ...file, state: "missing" }],
+        ["while ! test -e build/done; do sleep 1; done", { ...file, state: "exists" }],
+        ["until [ ! -e build/done ]; do sleep 1; done", { ...file, state: "missing" }],
+        ["while [ ! -e build/done ]; do sleep 1; done", { ...file, state: "exists" }],
+        ["until pgrep -f 'vite build'; do sleep 2; done", { ...proc, state: "running" }],
+        ["until ! pgrep -f 'vite build'; do sleep 2; done", { ...proc, state: "exited" }],
+        ["while pgrep -f 'vite build'; do sleep 2; done", { ...proc, state: "exited" }],
+        ["while ! pgrep -f 'vite build'; do sleep 2; done", { ...proc, state: "running" }],
+        ["until curl -fs http://localhost:3000/health; do sleep 2; done", http],
+        ["while ! curl -fs http://localhost:3000/health; do sleep 2; done", http],
+        // An http probe has no "down" state: waiting for an endpoint to stop answering stays a command poll.
+        ["until ! curl -fs http://localhost:3000/health; do sleep 2; done", undefined],
+        ["while curl -fs http://localhost:3000/health; do sleep 2; done", undefined],
+        // A pgrep pattern is a regular expression; only a plain literal with -f or -x maps onto a probe.
+        ["while pgrep -f 'vite.*build'; do sleep 2; done", undefined],
+        ["until pgrep postgres; do sleep 1; done", undefined],
+        ["while test -s out.json; do sleep 1; done", undefined],
+        ["until test -f a || test -f b; do sleep 1; done", undefined],
+        ["for i in $(seq 1 60); do test -f ready && break; sleep 1; done", undefined],
+        ["timeout 600 bash -c 'until test -e build/done; do sleep 5; done'", { ...file, state: "exists" }],
+      ]
+      for (const [command, probe] of cases) {
+        expect({ command, probe: ShellPolling.loopProbe(command) }).toEqual({ command, probe })
+        if (probe && decodeProbe) expect(() => decodeProbe({ action: "probe", probe })).not.toThrow()
+        // Whichever of these loops the guard refuses, the probe it offers is exactly this one, never an inverted one.
         const detection = ShellPolling.detect(command)
-        // Local loops without a remote status command are recognised once the local-loop guard is in place.
-        if (!detection?.suggestion) continue
-        expect({ command, type: detection.probe?.probe.type }).toEqual({ command, type })
+        const offered = detection?.suggestion && detection.kind === "loop" ? probe : undefined
+        expect({ command, offered: detection?.probe?.probe }).toEqual({ command, offered })
       }
     })
   })

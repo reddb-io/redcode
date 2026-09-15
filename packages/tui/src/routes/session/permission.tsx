@@ -289,6 +289,26 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
+            if (permission === "env") {
+              const meta = props.request.metadata ?? {}
+              const variable = typeof meta.variable === "string" ? meta.variable : ""
+              const host = typeof meta.host === "string" ? meta.host : ""
+              return {
+                icon: "$",
+                title: `Send ${variable} to ${host}`,
+                body: (
+                  <box paddingLeft={1} flexDirection="column">
+                    <text fg={theme.textMuted}>
+                      {`The value of the environment variable ${variable} is sent in a request header to ${host}.`}
+                    </text>
+                    <Show when={probeMonitor}>
+                      <text fg={theme.textMuted}>{"Monitor: " + probeMonitor}</text>
+                    </Show>
+                  </box>
+                ),
+              }
+            }
+
             if (permission === "monitor") {
               const probe = typeof props.request.metadata?.probe === "string" ? props.request.metadata.probe : ""
               return {

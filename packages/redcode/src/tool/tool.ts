@@ -43,6 +43,8 @@ export type Context<M extends Metadata = Metadata> = {
   messages: SessionV1.WithParts[]
   metadata(input: { title?: string; metadata?: M }): Effect.Effect<void>
   ask(input: Omit<PermissionV1.Request, "id" | "sessionID" | "tool"> & { force?: boolean }): Effect.Effect<void>
+  /** What the permission rules say about a request, without asking anyone; absent where the rules are not known. */
+  evaluate?(permission: string, pattern: string): "allow" | "ask" | "deny"
 }
 
 export interface ExecuteResult<M extends Metadata = Metadata> {
