@@ -1,8 +1,9 @@
 import type { AssistantMessage } from "@reddb-io/redcode-sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { createMemo, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 import { Throughput } from "../../util/throughput"
+import { Budget } from "../../util/budget"
 
 const id = "internal:sidebar-context"
 
@@ -16,6 +17,14 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const msg = createMemo(() => props.api.state.session.messages(props.session_id))
   const session = createMemo(() => props.api.state.session.get(props.session_id))
   const cost = createMemo(() => session()?.cost ?? 0)
+  // Shown only for budgets the person set; a session without one looks exactly as before.
+  const budget = createMemo(() =>
+    Budget.sidebar({
+      metadata: session()?.metadata,
+      configured: props.api.state.config?.session?.budget,
+      child: Boolean(session()?.parentID),
+    }),
+  )
   const pace = createMemo(() => {
     const last = msg().findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
     return last ? Throughput.of(last) : {}
@@ -47,6 +56,8 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
       <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
       <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      <For each={budget().session}>{(line) => <text fg={theme().textMuted}>budget {line}</text>}</For>
+      <For each={budget().goal}>{(line) => <text fg={theme().textMuted}>goal budget {line}</text>}</For>
       <Show when={pace().latency !== undefined}>
         <text fg={theme().textMuted}>{Throughput.formatLatency(pace().latency!)} latency</text>
       </Show>

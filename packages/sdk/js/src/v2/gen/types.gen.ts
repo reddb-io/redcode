@@ -2082,6 +2082,7 @@ export type Config = {
     reserved?: number
   }
   design?: ConfigV2Design
+  session?: ConfigV2Session
   models?: ConfigV2Models
   experimental?: {
     disable_paste_summary?: boolean
@@ -2693,6 +2694,20 @@ export type NotFoundError = {
   }
 }
 
+export type SpendLimits = {
+  max_cost_usd?: number
+  max_tokens?: number
+}
+
+export type SpendTotals = {
+  cost: number
+  tokens: number
+  /**
+   * Tokens spent on models without pricing
+   */
+  unpriced: number
+}
+
 export type SessionGoal = {
   id: string
   objective: string
@@ -2711,6 +2726,8 @@ export type SessionGoal = {
     used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     max: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
+  budget?: SpendLimits
+  spendStart?: SpendTotals
   judged?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   last?: {
     verdict: "done" | "continue" | "blocked" | "wait"
@@ -2725,6 +2742,18 @@ export type SessionGoal = {
   boot?: string
   created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type SessionBudget = {
+  limits: SpendLimits
+  override: SpendLimits
+  spent: SpendTotals
+  exceeded: boolean
+  /**
+   * A cost limit is set and some spend has no known price
+   */
+  unknown: boolean
+  reason: string
 }
 
 export type TextPartInput = {
@@ -4084,6 +4113,16 @@ export type ConfigV2Design = {
   system?: ConfigV2DesignSystem
   application?: string
   browser?: string
+}
+
+export type ConfigV2SessionBudget = {
+  max_cost_usd?: number
+  max_tokens?: number
+  reset_on_message?: boolean
+}
+
+export type ConfigV2Session = {
+  budget?: ConfigV2SessionBudget
 }
 
 export type ConfigV2Models = {
@@ -11131,6 +11170,8 @@ export type SessionGoalSetData = {
      * Turn budget for this goal (default: 20)
      */
     max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    max_cost_usd?: number
+    max_tokens?: number
   }
   path: {
     sessionID: string
@@ -11268,7 +11309,9 @@ export type SessionGoalDropResponse = SessionGoalDropResponses[keyof SessionGoal
 
 export type SessionGoalBudgetData = {
   body?: {
-    max_turns: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    max_cost_usd?: number
+    max_tokens?: number
   }
   path: {
     sessionID: string
@@ -11301,6 +11344,77 @@ export type SessionGoalBudgetResponses = {
 }
 
 export type SessionGoalBudgetResponse = SessionGoalBudgetResponses[keyof SessionGoalBudgetResponses]
+
+export type SessionBudgetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/budget"
+}
+
+export type SessionBudgetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionBudgetError = SessionBudgetErrors[keyof SessionBudgetErrors]
+
+export type SessionBudgetResponses = {
+  /**
+   * The session's spend and the limits in force
+   */
+  200: SessionBudget
+}
+
+export type SessionBudgetResponse = SessionBudgetResponses[keyof SessionBudgetResponses]
+
+export type SessionBudgetSetData = {
+  body?: {
+    max_cost_usd?: number
+    max_tokens?: number
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/budget"
+}
+
+export type SessionBudgetSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionBudgetSetError = SessionBudgetSetErrors[keyof SessionBudgetSetErrors]
+
+export type SessionBudgetSetResponses = {
+  /**
+   * The session's budget after the change
+   */
+  200: SessionBudget
+}
+
+export type SessionBudgetSetResponse = SessionBudgetSetResponses[keyof SessionBudgetSetResponses]
 
 export type SessionPromptAsyncData = {
   body?: {

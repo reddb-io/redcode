@@ -2,7 +2,7 @@ export * as ConfigSession from "./session"
 
 import { Schema } from "effect"
 
-const Positive = Schema.Number.check(Schema.isGreaterThan(0))
+const Positive = Schema.Finite.check(Schema.isGreaterThan(0))
 
 export class Budget extends Schema.Class<Budget>("ConfigV2.SessionBudget")({
   max_cost_usd: Positive.pipe(Schema.optional).annotate({

@@ -249,3 +249,52 @@ test("resuming a goal the compaction guard paused answers the context pressure, 
   expect(text).toContain("Keep the context small")
   expect(text).not.toContain("The judge's reason")
 })
+
+describe("a goal's spend budget", () => {
+  const total = (cost: number, tokens = 0) => ({ cost, tokens, unpriced: 0 })
+
+  test("there is none unless the person sets one, and the model never sees one", () => {
+    const goal = SessionGoal.parse("Ship the retry fix; verify: bun test", { now })
+    expect(goal.budget).toBeUndefined()
+    expect(SessionGoal.spendStatus(goal, total(10_000, 10_000_000))).toBeUndefined()
+    expect(SessionGoal.render(goal)).not.toMatch(/budget|\$/i)
+    expect(SessionGoal.inherit(goal)).not.toMatch(/budget|\$/i)
+    // Without a budget, no amount of spend changes a decision or blocks a resume.
+    expect(SessionGoal.decide({ goal, verdict: { verdict: "continue", reason: "more" } }).action).toBe("continue")
+    expect(SessionGoal.resumed(SessionGoal.paused(goal, "interrupted", now), now + 1, total(10_000)).status).toBe("active")
+  })
+
+  test("max cost and max tokens are the person's fields; they never reach the contract", () => {
+    const goal = SessionGoal.parse("Ship it; max cost: $2; max tokens: 500k; constraints: no new deps", { now })
+    expect(goal.budget).toEqual({ max_cost_usd: 2, max_tokens: 500_000 })
+    expect(goal.objective).toBe("Ship it")
+    expect(goal.contract).toEqual({ constraints: "no new deps" })
+    expect(SessionGoal.render(goal)).not.toContain("$2")
+    expect(SessionGoal.fromMetadata({ goal })?.budget).toEqual({ max_cost_usd: 2, max_tokens: 500_000 })
+  })
+
+  test("a reached budget turns more work into a pause, and a DONE still stands", () => {
+    const goal = { ...SessionGoal.parse("x", { now, budget: { max_cost_usd: 2 } }), spendStart: total(1) }
+    const budget = SessionGoal.spendStatus(goal, total(3))!
+    expect(budget.exceeded).toBe(true)
+    const stop = SessionGoal.decide({ goal, verdict: { verdict: "continue", reason: "more" }, budget })
+    expect(stop).toEqual({ action: "stop", reason: "budget: $2.00 of $2.00 spent" })
+    expect(SessionGoal.apply(goal, stop, { verdict: "continue", reason: "more" }, now).status).toBe("paused")
+    expect(
+      SessionGoal.decide({ goal, verdict: { verdict: "done", reason: "ok" }, evidence: true, budget }).action,
+    ).toBe("done")
+  })
+
+  test("resuming stays paused until the budget is raised, then asks before overspending", () => {
+    const goal = { ...SessionGoal.parse("x", { now, budget: { max_cost_usd: 2 } }), spendStart: total(0) }
+    const paused = SessionGoal.resumed(SessionGoal.paused(goal, "budget: $2.00 of $2.00 spent", now), now + 1, total(2))
+    expect(paused.status).toBe("paused")
+    expect(paused.reason).toBe("budget: $2.00 of $2.00 spent")
+    const raised = SessionGoal.resumed({ ...paused, budget: { max_cost_usd: 5 } }, now + 2, total(2))
+    expect(raised.status).toBe("active")
+    const text = SessionGoal.continuation(raised, { reason: "budget: $2.00 of $2.00 spent" })
+    expect(text).toContain("reached the spend budget the user set: $2.00 of $2.00 spent")
+    expect(text).toContain("ask the user whether to raise the budget")
+    expect(text).not.toContain("The judge's reason")
+  })
+})

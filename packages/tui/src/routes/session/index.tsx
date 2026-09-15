@@ -1,5 +1,6 @@
 import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
+import { Budget } from "../../util/budget"
 import { DialogMonitors } from "../../component/dialog-monitors"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
@@ -651,7 +652,8 @@ export function Session() {
       slash: { name: "goal" },
       run: async () => {
         // No arguments travel with a slash command, so the goal is typed in a prompt: free text,
-        // plus optional lines — verify:, constraints:, boundaries:, stop when:, gate:.
+        // plus optional lines — verify:, constraints:, boundaries:, stop when:, gate:, and the
+        // opt-in spend limits max cost: and max tokens: (no limit unless typed).
         const text = await DialogPrompt.show(dialog, "What does done look like?", {
           placeholder: "make the tests pass; verify: bun test; gate: bun test; constraints: …; stop when: …",
         })
@@ -663,7 +665,7 @@ export function Session() {
         toast.show({
           variant: goal ? "success" : "warning",
           message: goal
-            ? `Goal set · ${goal.turns.max} turns. Ctrl+C pauses it; /goal-resume continues.`
+            ? `Goal set · ${goal.turns.max} turns${Budget.hasLimits(Budget.limitsOf(goal.budget)) ? ` · budget ${Budget.lines(Budget.limitsOf(goal.budget), { cost: 0, tokens: 0, unpriced: 0 }).map((line) => line.replace(/^.* of /, "")).join(", ")}` : ""}. Ctrl+C pauses it; /goal-resume continues.`
             : "Could not set the goal.",
           duration: 4000,
         })
@@ -688,6 +690,38 @@ export function Session() {
       run: () => {
         const sessionID = route.sessionID
         dialog.replace(() => <DialogGoalBudget sessionID={sessionID} />)
+      },
+    },
+    {
+      title: "Set session budget",
+      value: "session.budget",
+      category: "Session",
+      slash: { name: "budget" },
+      run: async () => {
+        const text = await DialogPrompt.show(dialog, "Session spend limit", {
+          placeholder: "$5, 200k tokens, $5 200k, or off",
+        })
+        if (!text?.trim()) return
+        const change = Budget.parse(text)
+        if (!change || change.max_turns !== undefined) {
+          toast.show({ variant: "warning", message: "Enter an amount such as $5, 200k tokens, or off.", duration: 3000 })
+          return
+        }
+        const { max_turns: _turns, ...limits } = change
+        const result = await sdk.client.session
+          // The route takes null to remove a limit ("off"); the generated client drops null from the type.
+          .budgetSet({ sessionID: route.sessionID, ...(limits as { max_cost_usd?: number; max_tokens?: number }) })
+          .catch(() => undefined)
+        const view = result?.data
+        toast.show({
+          variant: view ? "success" : "warning",
+          message: view
+            ? Budget.hasLimits(Budget.limitsOf(view.limits))
+              ? `Session budget: ${Budget.lines(Budget.limitsOf(view.limits), Budget.totalsOf(view.spent)).join(" · ")}`
+              : "No session budget."
+            : "Could not set the session budget.",
+          duration: 4000,
+        })
       },
     },
     {

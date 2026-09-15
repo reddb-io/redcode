@@ -175,7 +175,7 @@ export function human(
   })
 }
 
-const Positive = Schema.Number.check(Schema.isGreaterThan(0))
+const Positive = Schema.Finite.check(Schema.isGreaterThan(0))
 
 export const LimitsInfo = Schema.Struct({
   max_cost_usd: Schema.optional(Positive).annotate({ description: "Dollars that may be spent on providers" }),
@@ -185,9 +185,9 @@ export const LimitsInfo = Schema.Struct({
 }).annotate({ identifier: "SpendLimits" })
 
 export const TotalsInfo = Schema.Struct({
-  cost: Schema.Number,
-  tokens: Schema.Number,
-  unpriced: Schema.Number.annotate({ description: "Tokens spent on models without pricing" }),
+  cost: Schema.Finite,
+  tokens: Schema.Finite,
+  unpriced: Schema.Finite.annotate({ description: "Tokens spent on models without pricing" }),
 }).annotate({ identifier: "SpendTotals" })
 
 /** A session's budget as clients see it. */

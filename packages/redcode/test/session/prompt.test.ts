@@ -54,6 +54,7 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { SessionGuardLog } from "../../src/session/guard-log"
 import { SessionGoal } from "../../src/session/goal"
 import { GoalRuntime } from "../../src/session/goal-runtime"
+import { SessionSpend } from "../../src/session/spend"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -243,6 +244,7 @@ const promptRoot = LayerNode.group([
   SessionPrompt.node,
   SessionGuardLog.node,
   GoalRuntime.node,
+  SessionSpend.node,
   Session.node,
   SessionProjector.node,
   MessageV2.node,
@@ -4654,6 +4656,185 @@ const userTexts = Effect.fn("test.userTexts")(function* (sessionID: SessionID) {
     .filter((m) => m.info.role === "user")
     .map((m) => m.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(""))
 })
+
+// ---------------------------------------------------------------------------------------------
+// Spend budgets
+// ---------------------------------------------------------------------------------------------
+
+/** $1 per 1,000 tokens, so a 1,000-token step costs exactly $1. */
+const pricedCfg = (url: string, extra?: Partial<ConfigV1.Info>): Partial<ConfigV1.Info> => {
+  const base = providerCfg(url)
+  return {
+    ...base,
+    provider: {
+      test: {
+        ...base.provider.test,
+        models: { "test-model": { ...base.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } } },
+      },
+    },
+    ...extra,
+  }
+}
+
+const budgetTrips = Effect.fn("test.budgetTrips")(function* () {
+  const guards = yield* SessionGuardLog.Service
+  return (yield* guards.recent()).filter((trip) => trip.guard === "budget")
+})
+
+const globStep = (name: string, input: number) =>
+  reply().tool("glob", { pattern: `**/*.${name}-nothing` }).usage({ input, output: 0 })
+
+it.instance("a goal pauses at its cost budget after the step that reached it", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url))
+    const { chat, goals, prompt } = yield* startGoal("Deploy the service; max cost: $0.50", { maxTurns: 5 })
+    yield* llm.push(globStep("goal-cost", 1000))
+    yield* llm.text("never reached")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never stopped", "30 seconds")
+
+    expect(yield* llm.calls).toBe(1)
+    const goal = yield* goals.get(chat.id)
+    expect(goal?.status).toBe("paused")
+    expect(goal?.reason).toBe("budget: $1.00 of $0.50 spent")
+    const trips = yield* budgetTrips()
+    expect(trips.map((trip) => [trip.action, trip.subject])).toEqual([["stop", "goal"]])
+    expect(trips[0]?.detail).toContain("/goal-budget")
+  }),
+)
+
+it.instance("a subagent's spend counts toward the parent goal", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
+    const chat = yield* sessions.create({ title: "Parent goal" })
+    yield* goals.set(chat.id, SessionGoal.parse("Inspect the cache; max cost: $0.50"))
+    yield* llm.push(reply().text("child report").stop().usage({ input: 1000, output: 0 }))
+    yield* llm.text("parent never answers")
+    const msg = yield* user(chat.id, "inspect")
+    yield* addSubtask(chat.id, msg.id)
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the parent never stopped", "30 seconds")
+
+    expect(yield* llm.calls).toBe(1)
+    const children = yield* sessions.children(chat.id)
+    expect(children).toHaveLength(1)
+    expect((yield* spend.totals(children[0]!.id)).cost).toBeCloseTo(1)
+    expect((yield* spend.totals(chat.id)).cost).toBeCloseTo(1)
+    const goal = yield* goals.get(chat.id)
+    expect(goal?.status).toBe("paused")
+    expect(goal?.reason).toBe("budget: $1.00 of $0.50 spent")
+  }),
+)
+
+it.instance("the session budget stops the turn after its current step, then a raise lets it continue", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url, { session: { budget: { max_cost_usd: 0.5 } } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const spend = yield* SessionSpend.Service
+    const chat = yield* sessions.create({ title: "Budgeted" })
+    yield* llm.push(globStep("session-stop", 1000))
+    yield* llm.text("never reached")
+    yield* user(chat.id, "look around")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never stopped", "30 seconds")
+
+    // The step ran to the end, its tool included; the next provider call was never made.
+    expect(yield* llm.calls).toBe(1)
+    const tools = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
+      message.parts.filter((part): part is SessionV1.ToolPart => part.type === "tool"),
+    )
+    expect(tools.map((part) => part.state.status)).toEqual(["completed"])
+    const view = yield* spend.view(chat.id)
+    expect(view).toMatchObject({ exceeded: true, reason: "$1.00 of $0.50 spent", limits: { max_cost_usd: 0.5 } })
+    expect((yield* budgetTrips()).map((trip) => trip.action)).toEqual(["stop"])
+
+    // A new message alone does not re-arm a budget: it stops again without calling the provider.
+    yield* user(chat.id, "keep going")
+    yield* prompt.loop({ sessionID: chat.id })
+    expect(yield* llm.calls).toBe(1)
+
+    // Raised, the same session goes on.
+    const raised = yield* spend.setLimits(chat.id, { max_cost_usd: 5 })
+    expect(raised).toMatchObject({ exceeded: false, override: { max_cost_usd: 5 } })
+    yield* user(chat.id, "now continue")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the raised session never answered", "30 seconds")
+    expect(yield* llm.calls).toBe(2)
+  }),
+)
+
+it.instance("the 80% warning fires once", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url, { session: { budget: { max_tokens: 1000 } } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Warned" })
+    yield* llm.push(globStep("warn-a", 850))
+    yield* llm.push(globStep("warn-b", 50))
+    yield* llm.push(reply().text("done").stop().usage({ input: 10, output: 0 }))
+    yield* user(chat.id, "look around")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "30 seconds")
+
+    expect(yield* llm.calls).toBe(3)
+    const trips = yield* budgetTrips()
+    expect(trips.map((trip) => [trip.action, trip.subject])).toEqual([["warn", "warn"]])
+    expect(trips[0]?.detail).toBe("Session budget 85% used: 850 of 1,000 tokens")
+  }),
+)
+
+it.instance("unknown pricing warns once, and the token budget still stops the turn", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      session: { budget: { max_cost_usd: 1, max_tokens: 1500 } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Unpriced" })
+    yield* llm.push(globStep("unpriced-a", 1000))
+    yield* llm.push(globStep("unpriced-b", 1000))
+    yield* llm.text("never reached")
+    yield* user(chat.id, "look around")
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never stopped", "30 seconds")
+
+    expect(yield* llm.calls).toBe(2)
+    const trips = yield* budgetTrips()
+    // Most recent first.
+    expect(trips.map((trip) => [trip.action, trip.subject])).toEqual([
+      ["stop", "session"],
+      ["warn", "unknown"],
+    ])
+    expect(trips.find((trip) => trip.subject === "unknown")?.detail).toContain("The token limit still applies")
+    expect(trips.find((trip) => trip.action === "stop")?.detail).toContain("2,000 of 1,500 tokens spent")
+  }),
+)
+
+it.instance("with no budget configured or set, a goal never pauses for spend", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => pricedCfg(url))
+    const { chat, goals, prompt } = yield* startGoal("make the tests pass", { maxTurns: 5 })
+    const spend = yield* SessionSpend.Service
+    yield* llm.textMatch(judgeRequest, verdict("done", "the glob ran"))
+    // $40 of spend, well inside the context window so no compaction is involved.
+    yield* llm.push(globStep("unlimited", 20_000))
+    yield* llm.push(reply().text("Ran it.").stop().usage({ input: 20_000, output: 0 }))
+
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
+
+    const goal = yield* goals.get(chat.id)
+    expect(goal?.budget).toBeUndefined()
+    expect({ status: goal?.status, reason: goal?.reason }).toEqual({ status: "done", reason: "the glob ran" })
+    expect((yield* spend.totals(chat.id)).cost).toBeGreaterThan(39)
+    expect(yield* spend.view(chat.id)).toMatchObject({ limits: {}, exceeded: false })
+    expect(yield* budgetTrips()).toEqual([])
+  }),
+)
 
 it.instance("blocked todos stop the Goal before the judge can declare completion", () =>
   Effect.gen(function* () {

@@ -259,6 +259,10 @@ import type {
   ServerSessionSessionPlansResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionBudgetErrors,
+  SessionBudgetResponses,
+  SessionBudgetSetErrors,
+  SessionBudgetSetResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -4350,6 +4354,8 @@ export class Session2 extends HeyApiClient {
       agent?: string
       text?: string
       max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      max_cost_usd?: number
+      max_tokens?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4364,6 +4370,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "agent" },
             { in: "body", key: "text" },
             { in: "body", key: "max_turns" },
+            { in: "body", key: "max_cost_usd" },
+            { in: "body", key: "max_tokens" },
           ],
         },
       ],
@@ -4472,6 +4480,8 @@ export class Session2 extends HeyApiClient {
 
   /**
    * Set goal budget
+   *
+   * Change the goal's turn budget and, optionally, its spend limits. A number sets a limit, null removes it, an absent field is kept.
    */
   public goalBudget<ThrowOnError extends boolean = false>(
     parameters: {
@@ -4479,6 +4489,8 @@ export class Session2 extends HeyApiClient {
       directory?: string
       workspace?: string
       max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      max_cost_usd?: number
+      max_tokens?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4491,12 +4503,85 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "max_turns" },
+            { in: "body", key: "max_cost_usd" },
+            { in: "body", key: "max_tokens" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).post<SessionGoalBudgetResponses, SessionGoalBudgetErrors, ThrowOnError>({
       url: "/session/{sessionID}/goal/budget",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get session budget
+   */
+  public budget<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionBudgetResponses, SessionBudgetErrors, ThrowOnError>({
+      url: "/session/{sessionID}/budget",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set session budget
+   *
+   * Override the configured spend limits for this session. A number sets a limit, null removes the override, an absent field is kept. Nothing is limited unless set.
+   */
+  public budgetSet<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      max_cost_usd?: number
+      max_tokens?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "max_cost_usd" },
+            { in: "body", key: "max_tokens" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionBudgetSetResponses, SessionBudgetSetErrors, ThrowOnError>({
+      url: "/session/{sessionID}/budget",
       ...options,
       ...params,
       headers: {

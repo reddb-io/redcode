@@ -260,6 +260,15 @@ export const RunCommand = effectCmd({
         default: false,
         hidden: true,
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
+      })
+      .option("max-cost", {
+        type: "number",
+        describe:
+          "stop after the step that spends this many dollars (subagents included); exits 1 when reached. No default",
+      })
+      .option("max-tokens", {
+        type: "number",
+        describe: "stop after the step that spends this many tokens (subagents included); exits 1 when reached. No default",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
@@ -859,6 +868,32 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
+        // A budget exists only when asked for: without these flags the session keeps whatever the
+        // configuration says, which by default is nothing.
+        const maxCost = args["max-cost"]
+        const maxTokens = args["max-tokens"]
+        for (const [flag, value] of [
+          ["--max-cost", maxCost],
+          ["--max-tokens", maxTokens],
+        ] as const) {
+          if (value !== undefined && !(Number.isFinite(value) && value > 0)) die(`${flag} must be a positive number`)
+        }
+        if (maxCost !== undefined || maxTokens !== undefined) {
+          const set = await client.session.budgetSet({
+            sessionID,
+            ...(maxCost !== undefined ? { max_cost_usd: maxCost } : {}),
+            ...(maxTokens !== undefined ? { max_tokens: Math.floor(maxTokens) } : {}),
+          })
+          if (set.error) die(`could not set the session budget: ${formatRunError(set.error)}`)
+        }
+        async function reportBudget() {
+          if (maxCost === undefined && maxTokens === undefined) return
+          const view = await client.session.budget({ sessionID }).catch(() => undefined)
+          if (!view?.data?.exceeded) return
+          process.exitCode = 1
+          if (!emit("budget", { budget: view.data })) UI.error(`Budget reached: ${view.data.reason}. The run stopped.`)
+        }
+
         if (!interactive) {
           const events = await client.event.subscribe()
           const completed = loop(client, events).catch((e) => {
@@ -901,6 +936,7 @@ export const RunCommand = effectCmd({
             return
           }
           await finish()
+          await reportBudget()
           return
         }
 
@@ -1041,5 +1077,9 @@ export async function runMini(input: MiniCommandInput) {
     "dangerously-skip-permissions": false,
     dangerouslySkipPermissions: false,
     demo: input.demo ?? false,
+    "max-cost": undefined,
+    maxCost: undefined,
+    "max-tokens": undefined,
+    maxTokens: undefined,
   })
 }
