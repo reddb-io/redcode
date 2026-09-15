@@ -1,5 +1,18 @@
 # opencode
 
+## 0.30.0
+
+### Minor Changes
+
+- 87af685: Design mode detects the project's design system and offers to adopt it. When no `design.system` is configured, `redcode design`, and `design_document` create or refresh in the TUI and V2 sessions, ask once "Use detected design system?" with the detected component roots, global stylesheet, Tailwind version and config, framework and tsconfig aliases, each with its confidence. Monorepos target the application package, and an opened directory that is itself an application wins. Detection only reads files inside the project and never runs project code. Yes writes the `design` section into the project config file that already supplies `design` (keeping other keys, comments and indentation) once the design was created, confirms the configuration now carries it, and generates `.red/DESIGN.md`. No is remembered for the project in user state, and Edit later asks again after a day. `design_document {"action":"detect"}` reports the detection and its evidence without asking. The new `design.browser` setting chooses the browser for review pages (`REDCODE_DESIGN_BROWSER` still wins), `design.application` names the package a design targets by default, and `design` settings now merge key by key, so a global `design.browser` survives a project `design.system`.
+- 3fc370f: Add session monitors for one-shot shell commands and periodic observation of external jobs. Release the chat while work continues, persist status and bounded evidence, resume the originating session with a synthetic result, and inspect or cancel monitors from `/monitors`. Waiting suspends automatic task/goal nudges without consuming provider calls; cancellation suppresses continuation and restart never replays a command.
+
+### Patch Changes
+
+- 9c457a1: Scope OpenTUI's runtime-module rewrite to TUI plugin modules. Host source loaded after a TUI plugin, such as the design store's React scaffold, no longer has bare `from "…"` specifiers rewritten into file URLs from the plugin's install, which on hoisted (Windows) installs sent design builds outside the application and stalled them on an `external_directory` prompt.
+- 9cfacdb: Design system detection no longer remembers "nothing detected" when it ran out of time, and a scan cut short is reported with at most 50% confidence. A design system one session adopted stays with that session until it is saved, so another session's failed design no longer takes it away. `design_document {"action":"detect"}` states that it only reads project files and never asks or writes, and the docs explain how `design.application` combines with `design.system` across config files.
+- 0078f63: Show the MCP OAuth authorization URL in the web and desktop app when the browser cannot be opened, with open and copy actions.
+
 ## 0.29.0
 
 ### Minor Changes
