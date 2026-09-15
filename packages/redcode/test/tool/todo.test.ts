@@ -170,7 +170,139 @@ const call = Effect.fn("TodoToolTest.call")(function* (sessionID: SessionID, tod
   return settled
 })
 
+/** Drops the session's user requests from history, the way compaction leaves a long session. */
+const forgetRequests = Effect.fn("TodoToolTest.forgetRequests")(function* (sessionID: SessionID) {
+  const { db } = yield* Database.Service
+  const messages = yield* db
+    .select()
+    .from(MessageTable)
+    .where(eq(MessageTable.session_id, sessionID))
+    .all()
+    .pipe(Effect.orDie)
+  for (const message of messages) {
+    if ((message.data as { role?: string }).role !== "user") continue
+    yield* db.delete(PartTable).where(eq(PartTable.message_id, message.id)).run().pipe(Effect.orDie)
+    yield* db.delete(MessageTable).where(eq(MessageTable.id, message.id)).run().pipe(Effect.orDie)
+  }
+})
+
+/** A settled, successful bash check recorded in the legacy tables. */
+const verification = Effect.fn("TodoToolTest.verification")(function* (sessionID: SessionID, at: number) {
+  const { db } = yield* Database.Service
+  const messageID = MessageID.ascending()
+  yield* db
+    .insert(MessageTable)
+    .values({
+      id: messageID,
+      session_id: sessionID,
+      data: {
+        role: "assistant",
+        parentID: "msg_user",
+        agent: "build",
+        mode: "build",
+        modelID: "fixture",
+        providerID: "fixture",
+        path: { cwd: "/project", root: "/project" },
+        time: { created: at, completed: at + 1 },
+        cost: 0,
+        tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+      } as never,
+    })
+    .run()
+    .pipe(Effect.orDie)
+  yield* db
+    .insert(PartTable)
+    .values({
+      id: PartID.ascending(),
+      session_id: sessionID,
+      message_id: messageID,
+      data: {
+        type: "tool",
+        tool: "bash",
+        callID: `bash_${at}`,
+        state: {
+          status: "completed",
+          input: { command: "bun test retries" },
+          output: "2 pass",
+          title: "bun test retries",
+          metadata: { exit: 0 },
+          time: { start: at, end: at + 1 },
+        },
+      } as never,
+    })
+    .run()
+    .pipe(Effect.orDie)
+  return `bash_${at}`
+})
+
 describe("tool.todowrite (legacy runtime)", () => {
+  it.instance("updates an existing task, re-sending its requirement, after its request left the history", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* seed()
+      const created = yield* call(
+        sessionID,
+        [{ content: "Verify retries", status: "pending", priority: "high", requirement }],
+        20,
+      )
+      if (!("output" in created)) throw new Error(`task creation failed: ${created.error}`)
+      const task = created.output.metadata.todos[0]!
+      yield* forgetRequests(sessionID)
+      // The stored source was validated when the task was created; it is not checked again.
+      const updated = yield* call(
+        sessionID,
+        [{ id: task.id, revision: task.revision, status: "in_progress", requirement }],
+        30,
+      )
+      if (!("output" in updated)) throw new Error(`update refused: ${updated.error}`)
+      expect(updated.output.metadata.todos[0]).toMatchObject({
+        id: task.id,
+        status: "in_progress",
+        source: task.source,
+      })
+      // A requirement that is new still has to quote a request that exists now.
+      const invented = yield* call(
+        sessionID,
+        [{ content: "Invented work", status: "pending", priority: "high", requirement: "never said this" }],
+        40,
+      )
+      if (!("error" in invented)) throw new Error("expected an invented requirement to be refused")
+      expect(invented.error).toContain("must quote a real user message")
+    }),
+  )
+
+  it.instance("completes an existing task with fresh evidence after its request left the history", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* seed()
+      const created = yield* call(
+        sessionID,
+        [{ content: "Verify retries", status: "pending", priority: "high", requirement }],
+        20,
+      )
+      if (!("output" in created)) throw new Error(`task creation failed: ${created.error}`)
+      const task = created.output.metadata.todos[0]!
+      yield* forgetRequests(sessionID)
+      const callID = yield* verification(sessionID, 30)
+      const done = yield* call(
+        sessionID,
+        [
+          {
+            id: task.id,
+            revision: task.revision,
+            status: "completed",
+            evidence: { callID, explanation: "The retry suite passes" },
+          },
+        ],
+        40,
+      )
+      if (!("output" in done)) throw new Error(`completion refused: ${done.error}`)
+      expect(done.output.metadata.todos[0]).toMatchObject({
+        id: task.id,
+        status: "completed",
+        evidence: { callID, tool: "bash" },
+      })
+    }),
+  )
+
   it.instance("blocks a task after two genuine refusals recorded through the v1 error formatting", () =>
     Effect.gen(function* () {
       const sessionID = yield* seed()
