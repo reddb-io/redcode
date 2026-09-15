@@ -57,6 +57,7 @@ import { TestLLMServer } from "../lib/llm-server"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { LocationServiceMap } from "@reddb-io/redcode-core/location-services"
 import { ToolSearch } from "@/session/tool-search"
+import { unknownToolMessage } from "@/tool/invalid"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import {
@@ -358,7 +359,7 @@ describe("tool_search in the legacy loop", () => {
         const names = toolNames(body)
         for (const name of mcpNames()) expect(names).toContain(name)
         // Design tools are still deferred for build without a Design context, but no MCP server is.
-        expect(toolDef(body, "tool_search").function.description).not.toContain("linear (")
+        expect(systemText(body)).not.toContain("linear (")
         expect(systemText(body)).not.toContain("tools for linear")
       }),
     60_000,
@@ -396,13 +397,13 @@ describe("tool_search in the legacy loop", () => {
         const names = toolNames(body)
         expect(names.filter((name) => name.startsWith("github_") || name.startsWith("slack_"))).toEqual([])
         expect(JSON.stringify(body.tools)).not.toContain("issue_number")
-        const description: string = toolDef(body, "tool_search").function.description
-        expect(description).toContain("github (46): ")
-        expect(description).toContain("issue_read")
-        expect(description).toContain("slack (8): ")
-        expect(systemText(body)).toContain(
-          "Additional tools for design, github, slack are available through tool_search.",
-        )
+        // The description is static; the index lives in the system context baseline.
+        expect(toolDef(body, "tool_search").function.description).toBe(ToolSearch.DESCRIPTION)
+        const system = systemText(body)
+        expect(system).toContain("github (46): ")
+        expect(system).toContain("issue_read")
+        expect(system).toContain("slack (8): ")
+        expect(system).toContain("Additional tools for design, github, slack are available through tool_search.")
         // Native tools stay loaded.
         for (const name of ["read", "glob", "grep", "bash"]) expect(names).toContain(name)
       }),
@@ -488,51 +489,74 @@ describe("tool_search in the legacy loop", () => {
       Effect.gen(function* () {
         yield* useServers(["github", "linear", "slack", "filesystem", "playwright"])
         const s = yield* setup()
+        // Linear first, then GitHub: activation order, not name order, decides where each lands.
         yield* s.say("first")
-        yield* s.llm.tool("tool_search", { select: ["github_issue_read"] })
+        yield* s.llm.tool("tool_search", { select: ["linear_linear_search_issues"] })
         yield* s.llm.text("loaded")
         yield* s.loop()
         yield* s.say("second")
         yield* s.llm.text("plain")
         yield* s.loop()
         yield* s.say("third")
-        yield* s.llm.tool("tool_search", { select: ["slack_slack_post_message"] })
+        yield* s.llm.tool("tool_search", { select: ["github_issue_read"] })
         yield* s.llm.text("loaded again")
         yield* s.loop()
         const bodies = yield* s.bodies()
         const loaded = bodies.map((body) => toolNames(body).filter((name) => mcpNames().includes(name)))
         expect(loaded).toEqual([
           [],
-          ["github_issue_read"],
-          ["github_issue_read"],
-          ["github_issue_read"],
-          ["github_issue_read", "slack_slack_post_message"],
+          ["linear_linear_search_issues"],
+          ["linear_linear_search_issues"],
+          ["linear_linear_search_issues"],
+          ["linear_linear_search_issues", "github_issue_read"],
         ])
-        for (let i = 1; i < loaded.length; i++) for (const name of loaded[i - 1]) expect(loaded[i]).toContain(name)
-        const description = toolDef(bodies[0], "tool_search").function.description
-        for (const body of bodies) expect(toolDef(body, "tool_search").function.description).toBe(description)
+        // Loaded tools trail every other tool, so each load only appends to the tools block.
+        for (const body of bodies) {
+          const names = toolNames(body)
+          const count = loaded[bodies.indexOf(body)].length
+          expect(names.slice(names.length - count)).toEqual(loaded[bodies.indexOf(body)])
+        }
+        for (const body of bodies)
+          expect(toolDef(body, "tool_search").function.description).toBe(ToolSearch.DESCRIPTION)
+        for (let i = 1; i < bodies.length; i++) {
+          const before = JSON.stringify(bodies[i - 1].tools)
+          expect(JSON.stringify(bodies[i].tools).startsWith(before.slice(0, -1))).toBe(true)
+        }
         const prefix = bodies.slice(1).map((body, i) => preservedPrefix(bodies[i], body))
-        // Steps that load nothing only append; steps that load a tool keep the tools that sort
-        // before it. The ratios are printed for the PR's cache report.
         console.log("tool_search preserved prefix", prefix.map((p) => (p * 100).toFixed(1) + "%").join(" "))
-        // The same requests with MCP tools moved after every other tool, as an append-friendly order
-        // would send them; measured only, the order itself is not this change's to make.
-        const mcpLast = (body: Body) => ({
-          ...body,
-          tools: [
-            ...(body.tools ?? []).filter((t: any) => !mcpNames().includes(t.function.name)),
-            ...(body.tools ?? []).filter((t: any) => mcpNames().includes(t.function.name)),
-          ],
-        })
-        console.log(
-          "tool_search preserved prefix with MCP tools last",
-          bodies
-            .slice(1)
-            .map((body, i) => (preservedPrefix(mcpLast(bodies[i]), mcpLast(body)) * 100).toFixed(1) + "%")
-            .join(" "),
-        )
-        expect(prefix[1]).toBeGreaterThan(0.95)
-        expect(prefix[2]).toBeGreaterThan(0.95)
+        // A load appends to the tools block, which providers cache ahead of system and messages, so
+        // what follows the new tool is re-read: the whole tools block and nothing after it survives.
+        for (let i = 0; i < prefix.length; i++)
+          expect(prefix[i]).toBeGreaterThan(loaded[i + 1].length > loaded[i].length ? 0.6 : 0.95)
+      }),
+    60_000,
+  )
+
+  it.instance(
+    "a server connecting mid-session keeps the tools block and the baseline and arrives as one update",
+    () =>
+      Effect.gen(function* () {
+        yield* useServers(["github"])
+        const s = yield* setup()
+        yield* s.say("first")
+        yield* s.llm.text("one")
+        yield* s.loop()
+        yield* useServers(["github", "linear"])
+        yield* s.say("second")
+        yield* s.llm.text("two")
+        yield* s.loop()
+        const [before, after] = yield* s.bodies()
+        expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools))
+        expect(systemText(after)).toBe(systemText(before))
+        expect(systemText(before)).not.toContain("linear (5)")
+        const update = (after.messages as any[])
+          .filter((m) => m.role === "user")
+          .map((m) => JSON.stringify(m.content))
+          .filter((text) => text.includes("<system_update>"))
+        expect(update.length).toBe(1)
+        expect(update[0]).toContain("linear (5): ")
+        const prefix = preservedPrefix(before, after)
+        console.log("tool_search mid-session connect preserved prefix", (prefix * 100).toFixed(1) + "%")
       }),
     60_000,
   )
@@ -589,7 +613,7 @@ describe("tool_search in the legacy loop", () => {
         yield* s.loop()
         const [before, after] = yield* s.bodies()
         expect(toolNames(before).filter((name) => name.startsWith("design_"))).toEqual([])
-        expect(toolDef(before, "tool_search").function.description).toContain("design (")
+        expect(systemText(before)).toContain("design (")
         expect(systemText(before)).toContain("Additional tools for design are available through tool_search.")
         expect(toolNames(after)).toContain("design_document")
         expect(toolNames(after)).not.toContain("tool_search")
@@ -644,6 +668,18 @@ describe("tool_search ranking", () => {
     console.log("tool_search ranking", JSON.stringify(rows))
     expect(rows.filter((row) => row.rank > 0).length).toBeGreaterThanOrEqual(9)
     expect(rows.filter((row) => row.rank === 1).length).toBeGreaterThanOrEqual(8)
+  })
+
+  test("an unknown tool name points at tool_search select when tools are deferred", () => {
+    const active = ["read", "glob", "tool_search"]
+    const deferred = entries.map((entry) => entry.name)
+    const message = unknownToolMessage("github_get_issue", active, { deferred })
+    expect(message).toContain("Closest: github_")
+    expect(message).toMatch(/Load one with tool_search \{"select": \["github_[a-z_]+"\]\}\./)
+    expect(Buffer.byteLength(message)).toBeLessThanOrEqual(300)
+    const plain = unknownToolMessage("gloob", active, { deferred })
+    expect(plain).toContain("glob")
+    expect(unknownToolMessage("github_get_issue", active)).not.toContain("tool_search {")
   })
 
   test("search results stay compact", () => {

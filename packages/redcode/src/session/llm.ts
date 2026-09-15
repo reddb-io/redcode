@@ -315,7 +315,9 @@ const live: Layer.Layer<
               input: JSON.stringify({
                 tool: failed.toolCall.toolName,
                 error: NoSuchToolError.isInstance(failed.error)
-                  ? unknownToolMessage(failed.toolCall.toolName, Object.keys(prepared.tools))
+                  ? unknownToolMessage(failed.toolCall.toolName, ToolSearch.activeNames(prepared.tools), {
+                      deferred: ToolSearch.deferredNames(prepared.tools),
+                    })
                   : failed.error.message,
               }),
               toolName: "invalid",

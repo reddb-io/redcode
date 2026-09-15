@@ -17,6 +17,7 @@ import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import type { OperationHookBridge } from "@/operation-hook-bridge"
+import { ToolSearch } from "../tool-search"
 
 const USER_AGENT = `redcode/${InstallationVersion}`
 
@@ -199,7 +200,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   return {
     system,
     messages,
-    tools: orderTools({ tools }),
+    tools: orderTools({ tools, activation: ToolSearch.activationOrder(tools) }),
     params,
     messageTransformOptions: options,
     headers: {
@@ -268,14 +269,17 @@ const byCodePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
  */
 export function orderTools<T extends Tool>(input: ToolOrderInput<T>): Record<string, T> {
   const activation = new Map((input.activation ?? []).map((name, index) => [name, index]))
-  const prefixes = (input.serverOrder ?? []).map((server, index) => ({ prefix: `${McpCatalog.toolName(server, "")}`, index }))
+  const prefixes = (input.serverOrder ?? []).map((server, index) => ({
+    prefix: `${McpCatalog.toolName(server, "")}`,
+    index,
+  }))
   const server = (name: string) =>
     prefixes
       .filter((item) => name.startsWith(item.prefix))
-      .reduce<{ prefix: string; index: number } | undefined>(
-        (best, item) => (!best || item.prefix.length > best.prefix.length ? item : best),
-        undefined,
-      )?.index ?? prefixes.length
+      .reduce<
+        { prefix: string; index: number } | undefined
+      >((best, item) => (!best || item.prefix.length > best.prefix.length ? item : best), undefined)?.index ??
+    prefixes.length
   const block = (name: string, item: T) => {
     if (activation.has(name)) return ToolBlock.activated
     if (name === TOOL_SEARCH) return ToolBlock.search
