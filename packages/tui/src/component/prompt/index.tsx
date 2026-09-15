@@ -1144,6 +1144,18 @@ export function Prompt(props: PromptProps) {
       })
       setStore("mode", "normal")
     } else if (
+      /^\/(compact|summarize)\s+\S/.test(inputText) &&
+      !sync.data.command.some((x) => x.name === inputText.slice(1).split(/\s/)[0])
+    ) {
+      move.startSubmit()
+      // Palette slash commands carry no arguments, so typed `/compact <focus>` is read here.
+      void sdk.client.session.summarize({
+        sessionID,
+        providerID: selectedModel.providerID,
+        modelID: selectedModel.modelID,
+        focus: inputText.replace(/^\/\w+\s+/, "").trim(),
+      })
+    } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {

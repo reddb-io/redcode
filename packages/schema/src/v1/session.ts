@@ -200,6 +200,17 @@ export const CompactionPart = Schema.Struct({
   tail_start_id: Schema.optional(MessageID),
   /** Estimated context size before and after the compaction, for the divider shown to people. */
   tokens: Schema.optional(Schema.Struct({ before: NonNegativeInt, after: NonNegativeInt })),
+  /** What the person asked the summary to focus on, from `/compact <focus>`. */
+  focus: Schema.optional(Schema.String),
+  /** Estimated tokens of old tool output trimmed before this compaction. */
+  trimmed: Schema.optional(NonNegativeInt),
+  /** Deferred tools loaded through tool_search before the compaction, still loaded after it. */
+  tools: Schema.optional(
+    Schema.Struct({
+      loaded: Schema.Array(Schema.String),
+      mcpDeferred: Schema.optional(Schema.Boolean),
+    }),
+  ),
 }).annotate({ identifier: "CompactionPart" })
 export type CompactionPart = Types.DeepMutable<Schema.Schema.Type<typeof CompactionPart>>
 

@@ -1942,7 +1942,7 @@ const scenarios: Scenario[] = [
     .at((ctx) => ({
       path: route("/session/{sessionID}/summarize", { sessionID: ctx.state.id }),
       headers: ctx.headers(),
-      body: { providerID: "test", modelID: "test-model", auto: false },
+      body: { providerID: "test", modelID: "test-model", auto: false, focus: "the failing tests" },
     }))
     .jsonEffect(
       200,
@@ -1953,6 +1953,12 @@ const scenarios: Scenario[] = [
           check(
             messages.some((message) => message.info.role === "assistant" && message.info.summary === true),
             "summarize should create a summary assistant message",
+          )
+          check(
+            messages.some((message) =>
+              message.parts.some((part) => part.type === "compaction" && part.focus === "the failing tests"),
+            ),
+            "summarize should store the focus on the compaction part",
           )
           yield* ctx.llmWait(1)
         }),
