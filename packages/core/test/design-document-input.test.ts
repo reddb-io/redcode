@@ -12,6 +12,8 @@ test("Design document keeps every operation and its payload through decoding", (
     { action: "update", id: "design_fixture", input: { questions: ["Which theme?"], entry: "src/main.tsx" } },
     { action: "reopen", id: "design_fixture" },
     { action: "refresh", id: "design_fixture" },
+    { action: "detect" },
+    { action: "detect", input: { application: "apps/web" } },
   ]
   inputs.forEach((input) => expect(input).toEqual(Schema.decodeUnknownSync(DesignDocumentTool.Input)(input)))
 })

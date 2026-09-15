@@ -37559,6 +37559,12 @@
         "properties": {
           "system": {
             "$ref": "#/components/schemas/ConfigV2DesignSystem"
+          },
+          "application": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -40651,6 +40657,9 @@
                     "enum": ["-Infinity"]
                   }
                 ]
+              },
+              "pending": {
+                "type": "boolean"
               }
             },
             "required": ["seq", "at", "type", "id", "text", "notes"],
@@ -41552,6 +41561,50 @@
         "required": ["id", "designID", "parent", "name", "created", "files", "document"],
         "additionalProperties": false
       },
+      "DesignVariantOperation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["delete", "rename", "reorder", "merge", "split"]
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "maxItems": 20
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "order": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            },
+            "maxItems": 20
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": ["kind", "variants"],
+        "additionalProperties": false
+      },
       "DesignParamContext": {
         "type": "object",
         "properties": {
@@ -41609,6 +41662,9 @@
       "DesignFeedback": {
         "type": "object",
         "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DesignVariantOperation"
+          },
           "params": {
             "$ref": "#/components/schemas/DesignParamContext"
           },

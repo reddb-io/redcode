@@ -25,7 +25,10 @@ export async function run(args: {
   const selectedModel = args.model ? DesignTerminal.model(args.model) : undefined
   const directory = path.resolve(args.directory ?? process.cwd())
   // Asked before the server opens the location, so an adopted design system is read with its config.
-  const { browser } = await DesignProposalPrompt.prompt(directory)
+  // An attached server may run elsewhere: its config is not this machine's to write, so it is not asked.
+  const browser = args.attach
+    ? await DesignProposalPrompt.browser(directory)
+    : (await DesignProposalPrompt.prompt(directory)).browser
   const server = args.attach ? undefined : await DesignServer.start()
   const baseUrl = args.attach ?? server!.url
   const raw = process.stdin.isRaw

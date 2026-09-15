@@ -32,9 +32,12 @@ application package in a monorepo), `redcode design` first asks
 `Use detected design system? [y]es / [e]dit later / [n]o` with the summary and
 each field's confidence. Yes writes the `design` section into the project config,
 preserving other keys and comments, and generates `.red/DESIGN.md`; No is
-remembered for the project in user state; Edit later (or Ctrl+C) asks again after
-a day. `design_document` create and refresh ask the same question through the
-question dialog. Detection only reads files; it never runs project code.
+remembered for the project in user state; Edit later (Ctrl+C or end of input)
+asks again after a day. With `--attach` the server may run elsewhere, so the
+prompt is skipped. `design_document` create and refresh ask the same question
+through the question dialog and write the configuration only after the design was
+created; `design_document {"action":"detect"}` reports the detection without
+asking. Detection only reads files inside the project; it never runs project code.
 
 Messages steer at provider boundaries. `/queue message` waits until current work
 would otherwise become idle. `/stop` or Ctrl+C interrupts execution without

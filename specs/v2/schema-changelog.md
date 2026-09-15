@@ -893,12 +893,14 @@ Affected schema:
 
 - Add optional `design.application` to configuration (V2 and V1): the project-relative application package a design targets by default; `design.system` paths are relative to it.
 - Add optional `design.browser` to configuration (V2 and V1): `"default"`, a browser name or an executable path for Design review pages.
-- No synchronized event, database, public HTTP API route, or `Design.Info` schema changes. Generated client and SDK types pick up the configuration fields.
+- `design` configuration sections now merge key by key across documents (`browser` independently of `system` and its `application`) instead of the most specific section replacing the whole block, matching the legacy deep merge.
+- `design_document` accepts `{"action":"detect"}` (optional `input.application`); the V2 tool's output is the document list or, for detect, a text report.
+- No synchronized event, database, public HTTP API route, or `Design.Info` schema changes. Generated client and SDK types and `packages/sdk/openapi.json` pick up the configuration fields.
 
 Change:
 
 - Detect a design system statically (component roots, global stylesheet, Tailwind version and config, framework, tsconfig aliases, target application in monorepos) with per-field confidence and evidence.
-- Ask once, through the question tool in `design_document` create/refresh (both runtimes) and a prompt in `redcode design`, whether to adopt it; Yes writes `design` into the project config with minimal JSONC edits and generates `.red/DESIGN.md`; No and Edit later are recorded in user state, never in config.
+- Ask once per project (concurrent sessions share the question), through the question tool in `design_document` create/refresh (both runtimes) and a prompt in `redcode design` (not with `--attach`), whether to adopt it. Yes applies the system to the operation, then writes `design` into the project file that supplies the effective `design` section with minimal JSONC edits once the operation succeeded, verifies the effective configuration carries it, and generates `.red/DESIGN.md`; No and Edit later are recorded in user state under a lock, never in config. A project with nothing detected is not rescanned for ten minutes unless its top-level files change.
 - `REDCODE_DESIGN_BROWSER` keeps precedence over `design.browser`.
 
 Compatibility:

@@ -26,7 +26,6 @@ import { DesignPlaybooks } from "../design/playbooks"
 import { LocationMutation } from "../location-mutation"
 import { Location } from "../location"
 import { Global } from "../global"
-import { ConfigDesign } from "../config/design"
 import { DesignProposal } from "../design/proposal"
 
 /** The proposal outcome travels with the returned document in its manifest status, rendered by both runtimes. */
@@ -47,40 +46,29 @@ const layer = Layer.effectDiscard(
     const location = yield* Location.Service
     const global = yield* Global.Service
 
+    const state = path.join(global.state, DesignProposal.STATE)
     // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
-    const propose = (context: Tool.Context, application?: string) =>
-      Effect.gen(function* () {
-        const outcome = yield* DesignProposal.offer({
-          directory: location.directory,
-          application,
-          state: path.join(global.state, DesignProposal.STATE),
-          configured: (yield* store.configured())?.system !== undefined,
-          ask: (request) =>
-            questions
-              .ask({
-                sessionID: context.sessionID,
-                tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
-                questions: [request],
-              })
-              .pipe(
-                Effect.map((answers) => answers[0]?.[0]),
-                // A dismissed question is "not now": the design goes on without the system.
-                Effect.catch(() => Effect.succeed(undefined)),
-              ),
-        })
-        if (outcome.status === "adopted")
-          yield* store.adopt(
-            Schema.decodeUnknownSync(ConfigDesign.Info)({
-              system: outcome.proposal.system,
-              ...(outcome.proposal.application !== "." ? { application: outcome.proposal.application } : {}),
-            }),
-          )
-        return DesignProposal.report(outcome, location.directory)
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.succeed(`Design system: could not adopt the detected design system: ${String(error)}.`),
-        ),
-      )
+    const proposal = (context: Tool.Context, application?: string) =>
+      Effect.map(store.configured(), (design) => ({
+        directory: location.directory,
+        application,
+        state,
+        global: global.config,
+        configured: design?.system !== undefined,
+        adopt: store.adopt,
+        ask: (request: ReturnType<typeof DesignProposal.question>) =>
+          questions
+            .ask({
+              sessionID: context.sessionID,
+              tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+              questions: [request],
+            })
+            .pipe(
+              Effect.map((answers) => answers[0]?.[0]),
+              // A dismissed question is "not now": the design goes on without the system.
+              Effect.catch(() => Effect.succeed(undefined)),
+            ),
+      }))
 
     const allow = (action: string, context: Tool.Context) =>
       permissions
@@ -297,26 +285,42 @@ const layer = Layer.effectDiscard(
         design_document: Tool.make({
           description: DesignDocumentTool.description,
           input: DesignDocumentTool.Input,
-          output: Schema.Array(Design.Info),
+          // Documents, or the detection report of {"action":"detect"}.
+          output: Schema.Union([Schema.Array(Design.Info), Schema.String]),
           toModelOutput: ({ input, output }) => [
             {
               type: "text",
-              text: output
-                .map(
-                  (document) =>
-                    `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`,
-                )
-                .join("\n\n"),
+              text:
+                typeof output === "string"
+                  ? output
+                  : output
+                      .map(
+                        (document) =>
+                          `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`,
+                      )
+                      .join("\n\n"),
             },
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_document", context)
               if (input.action === "list") return yield* store.list(context.sessionID)
+              if (input.action === "detect")
+                return yield* Effect.promise(() =>
+                  DesignProposal.detection({
+                    directory: location.directory,
+                    application: input.input?.application,
+                    global: global.config,
+                    state,
+                  }),
+                )
               yield* allow("design_edit", context)
               if (input.action === "create") {
-                const report = yield* propose(context, input.input.application)
-                const document = withReport(yield* store.create(context.sessionID, input.input), report)
+                const created = yield* DesignProposal.around(
+                  yield* proposal(context, input.input.application),
+                  store.create(context.sessionID, input.input),
+                )
+                const document = withReport(created.value, created.report)
                 if (context.agent !== "design")
                   yield* events.publish(SessionEvent.AgentSwitched, {
                     sessionID: context.sessionID,
@@ -326,11 +330,14 @@ const layer = Layer.effectDiscard(
                   })
                 return [document]
               }
-              yield* owned(input.id, context)
+              const current = yield* owned(input.id, context)
               if (input.action === "reopen") return [yield* store.reopen(input.id)]
               if (input.action === "refresh") {
-                const report = yield* propose(context)
-                return [withReport(yield* store.refresh(input.id), report)]
+                const refreshed = yield* DesignProposal.around(
+                  yield* proposal(context, DesignStore.applicationOf(current)),
+                  store.refresh(input.id),
+                )
+                return [withReport(refreshed.value, refreshed.report)]
               }
               return [yield* store.update(input.id, input.input)]
             }).pipe(Effect.catchTag("Design.Error", fail)),

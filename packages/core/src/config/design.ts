@@ -40,3 +40,31 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
       'Browser that opens Design review pages: "default" for the system browser, an app name, or an executable path. Equivalent to REDCODE_DESIGN_BROWSER, which wins when both are set. Default: Chrome or Chromium when installed, else the system browser.',
   }),
 }) {}
+
+/** The `design` section in effect: what the layered configuration documents say together. */
+export interface Effective {
+  readonly system?: System
+  readonly application?: string
+  readonly browser?: string
+}
+
+/**
+ * Merges `design` sections from lowest to highest precedence, key by key, as the legacy
+ * configuration does with its deep merge: `browser` comes from the most specific document that
+ * sets it, and `system` from the most specific one that sets it, together with that document's
+ * `application` (paths are relative to it). A project that declares its system therefore keeps a
+ * global `browser`.
+ */
+export function merge<S>(
+  sections: readonly ({ readonly system?: S; readonly application?: string; readonly browser?: string } | undefined)[],
+) {
+  const system = sections.findLast((section) => section?.system !== undefined)
+  const application = system ? system.application : sections.findLast((section) => section?.application)?.application
+  const browser = sections.findLast((section) => section?.browser !== undefined)?.browser
+  if (!system && application === undefined && browser === undefined) return undefined
+  return {
+    ...(system ? { system: system.system as S } : {}),
+    ...(application !== undefined ? { application } : {}),
+    ...(browser !== undefined ? { browser } : {}),
+  }
+}

@@ -25,7 +25,6 @@ import { Session } from "@/session/session"
 import { SessionGoal } from "@/session/goal"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@reddb-io/redcode-core/global"
-import { ConfigDesign } from "@reddb-io/redcode-core/config/design"
 import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
 import path from "node:path"
 
@@ -194,57 +193,58 @@ export const DesignTools = Effect.gen(function* () {
                   )
                   .join("\n\n"),
               )
-            yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
-            // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
-            const propose = (application?: string) =>
-              Effect.gen(function* () {
-                const directory = (yield* InstanceState.context).directory
-                const outcome = yield* DesignProposal.offer({
-                  directory,
-                  application,
-                  state: path.join(Global.Path.state, DesignProposal.STATE),
-                  configured: (yield* store.configured())?.system !== undefined,
-                  ask: (request) =>
-                    questions
-                      .ask({
-                        sessionID: ctx.sessionID,
-                        tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-                        questions: [request],
-                      })
-                      .pipe(
-                        Effect.map((answers) => answers[0]?.[0]),
-                        // A dismissed question is "not now": the design goes on without the system.
-                        Effect.catch(() => Effect.succeed(undefined)),
-                      ),
-                })
-                if (outcome.status === "adopted")
-                  yield* store.adopt(
-                    Schema.decodeUnknownSync(ConfigDesign.Info)({
-                      system: outcome.proposal.system,
-                      ...(outcome.proposal.application !== "." ? { application: outcome.proposal.application } : {}),
-                    }),
-                  )
-                return DesignProposal.report(outcome, directory)
-              }).pipe(
-                Effect.catch((error) =>
-                  Effect.succeed(`Design system: could not adopt the detected design system: ${String(error)}.`),
+            const directory = (yield* InstanceState.context).directory
+            const state = path.join(Global.make().state, DesignProposal.STATE)
+            const global = Global.make().config
+            if (input.action === "detect")
+              return result(
+                yield* Effect.promise(() =>
+                  DesignProposal.detection({ directory, application: input.input?.application, global, state }),
                 ),
               )
+            yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
+            // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
+            const proposal = (application?: string) =>
+              Effect.map(store.configured(), (design) => ({
+                directory,
+                application,
+                state,
+                global,
+                configured: design?.system !== undefined,
+                adopt: store.adopt,
+                ask: (request: ReturnType<typeof DesignProposal.question>) =>
+                  questions
+                    .ask({
+                      sessionID: ctx.sessionID,
+                      tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                      questions: [request],
+                    })
+                    .pipe(
+                      Effect.map((answers) => answers[0]?.[0]),
+                      // A dismissed question is "not now": the design goes on without the system.
+                      Effect.catch(() => Effect.succeed(undefined)),
+                    ),
+              }))
             const reported = (document: Design.Info, report: string) =>
               report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
             if (input.action === "create") {
-              const report = yield* propose(input.input.application)
-              return result(describe(reported(yield* store.create(ctx.sessionID, input.input), report)))
+              const created = yield* DesignProposal.around(
+                yield* proposal(input.input.application),
+                store.create(ctx.sessionID, input.input),
+              )
+              return result(describe(reported(created.value, created.report)))
             }
-            yield* store.get(input.id, ctx.sessionID)
-            const report = input.action === "refresh" ? yield* propose() : ""
+            const current = yield* store.get(input.id, ctx.sessionID)
+            if (input.action === "refresh") {
+              const refreshed = yield* DesignProposal.around(
+                yield* proposal(DesignStore.applicationOf(current)),
+                store.refresh(input.id),
+              )
+              return result(describe(reported(refreshed.value, refreshed.report)))
+            }
             const document =
-              input.action === "update"
-                ? yield* store.update(input.id, input.input)
-                : input.action === "reopen"
-                  ? yield* store.reopen(input.id)
-                  : yield* store.refresh(input.id)
-            return result(describe(reported(document, report)))
+              input.action === "update" ? yield* store.update(input.id, input.input) : yield* store.reopen(input.id)
+            return result(describe(document))
           }),
         ),
     }),
