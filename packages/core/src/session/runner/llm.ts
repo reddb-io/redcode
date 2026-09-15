@@ -5,10 +5,18 @@ import {
   LLMEvent,
   Message,
   SystemPart,
+  TransportReason,
   isContextOverflowFailure,
   type ProviderErrorEvent,
 } from "@reddb-io/redcode-llm"
-import { Cause, DateTime, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
+import { Cause, Clock, DateTime, Duration, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
+import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
+import { Flag } from "../../flag/flag"
+import { HumanWait } from "../human-wait"
+import { LoopGuard } from "../loop-guard"
+import { SessionRetry } from "../retry"
+import { SessionStall } from "../stall"
+import { ToolDeadline } from "../tool-deadline"
 import { AgentV2 } from "../../agent"
 import { Config } from "../../config"
 import { Database } from "../../database/database"
@@ -196,6 +204,14 @@ const layer = Layer.effect(
       | { readonly _tag: "ContinueAfterCompaction"; readonly step: number }
       // Overflow compaction completed; rebuild once through the path without overflow recovery.
       | { readonly _tag: "ContinueAfterOverflowCompaction"; readonly step: number }
+      // A retryable provider failure before any local tool ran; wait, then replay the same step.
+      | {
+          readonly _tag: "RetryProvider"
+          readonly step: number
+          readonly attempt: number
+          readonly failure: LLMError
+          readonly message: string
+        }
 
     class TurnTransitionError extends Error {
       constructor(readonly transition: TurnTransition) {
@@ -206,6 +222,166 @@ const layer = Layer.effect(
     const continueAfterCompaction = (step: number) => new TurnTransitionError({ _tag: "ContinueAfterCompaction", step })
     const continueAfterOverflowCompaction = (step: number) =>
       new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step })
+
+    // Session status, published like the legacy runtime's `SessionStatus.set` so clients see busy,
+    // retry and idle for v2 sessions too. Live, not durable: legacy status is not durable either.
+    const busy = new Set<SessionSchema.ID>()
+    const setBusy = (
+      sessionID: SessionSchema.ID,
+      status: { readonly phase: "preparing" | "thinking" | "writing" | "tool"; readonly tool?: string; readonly step: number },
+    ) =>
+      Effect.gen(function* () {
+        busy.add(sessionID)
+        yield* events.publish(SessionStatusEvent.Status, {
+          sessionID,
+          status: { type: "busy", ...status, since: yield* Clock.currentTimeMillis },
+        })
+      })
+    const setIdle = (sessionID: SessionSchema.ID) =>
+      Effect.suspend(() =>
+        busy.delete(sessionID)
+          ? events
+              .publish(SessionStatusEvent.Status, { sessionID, status: { type: "idle" } })
+              .pipe(Effect.andThen(events.publish(SessionStatusEvent.Idle, { sessionID })), Effect.ignore)
+          : Effect.void,
+      )
+
+    const waitToRetry = Effect.fnUntraced(function* (
+      sessionID: SessionSchema.ID,
+      transition: Extract<TurnTransition, { readonly _tag: "RetryProvider" }>,
+    ) {
+      const wait = SessionRetry.delayLLM(transition.attempt, transition.failure)
+      busy.add(sessionID)
+      yield* events.publish(SessionStatusEvent.Status, {
+        sessionID,
+        status: {
+          type: "retry",
+          attempt: transition.attempt,
+          message: transition.message,
+          next: (yield* Clock.currentTimeMillis) + wait,
+        },
+      })
+      yield* Effect.logWarning("Retrying provider turn", { sessionID, attempt: transition.attempt, wait })
+      yield* Effect.sleep(Duration.millis(wait))
+    })
+
+    const recordGuard = (input: {
+      readonly sessionID: SessionSchema.ID
+      readonly guard: string
+      readonly action: "warn" | "correct" | "stop"
+      readonly subject?: string
+      readonly detail: string
+    }) =>
+      Effect.gen(function* () {
+        yield* db
+          .insert(SessionGuardTripTable)
+          .values({
+            id: crypto.randomUUID(),
+            session_id: input.sessionID,
+            guard: input.guard,
+            action: input.action,
+            subject: input.subject,
+            detail: input.detail,
+          })
+          .run()
+          .pipe(Effect.orDie)
+        yield* events.publish(SessionEvent.Guard.Tripped, {
+          sessionID: input.sessionID,
+          timestamp: yield* DateTime.now,
+          guard: input.guard,
+          action: input.action,
+          ...(input.subject === undefined ? {} : { subject: input.subject }),
+          detail: input.detail,
+        })
+      })
+
+    const pauseGoal = (sessionID: SessionSchema.ID, reason: string) =>
+      Effect.gen(function* () {
+        const goal = yield* goals.get(sessionID).pipe(Effect.orDie)
+        if (goal?.status === "active" || goal?.status === "waiting")
+          yield* goals.save(goal, { ...goal, status: "paused", reason }).pipe(Effect.orDie)
+      })
+
+    // The legacy loop guard over projected v2 history: same tool, same arguments, same result.
+    const guardLoop = Effect.fn("SessionRunner.guardLoop")(function* (
+      sessionID: SessionSchema.ID,
+      permissions: PermissionV2.Ruleset | undefined,
+      tool: string,
+      input: unknown,
+    ) {
+      // `doom_loop: allow` is how people already say "let it repeat"; keep meaning that.
+      if (PermissionV2.evaluate("doom_loop", tool, permissions ?? []).effect === "allow")
+        return { type: "ok" } as LoopGuard.Decision
+      const messages = yield* getContext(sessionID)
+      const last = messages.findLastIndex((message) => message.type === "user")
+      const parts = messages.slice(last + 1).flatMap((message): LoopGuard.Part[] =>
+        message.type !== "assistant"
+          ? []
+          : message.content.flatMap((item): LoopGuard.Part[] => {
+              if (item.type !== "tool" || item.provider?.executed === true) return []
+              if (item.state.status === "completed")
+                return [
+                  {
+                    type: "tool",
+                    tool: item.name,
+                    state: {
+                      status: "completed",
+                      input: item.state.input,
+                      output: JSON.stringify([item.state.content, item.state.structured]),
+                    },
+                  },
+                ]
+              if (item.state.status === "error")
+                return [
+                  {
+                    type: "tool",
+                    tool: item.name,
+                    state: { status: "error", input: item.state.input, error: item.state.error.message },
+                  },
+                ]
+              return []
+            }),
+      )
+      const decision = LoopGuard.assess({ parts, next: { tool, input }, limits: LoopGuard.LIMITS })
+      if (decision.type === "ok") return decision
+      yield* recordGuard({
+        sessionID,
+        guard: "loop",
+        action: decision.type === "stop" ? "stop" : "correct",
+        subject: tool,
+        detail: decision.message,
+      })
+      yield* Effect.logWarning("model is repeating itself", { sessionID, tool, streak: decision.streak })
+      return decision
+    })
+
+    // The legacy tool deadline: a wedged tool becomes an ordinary tool failure, minus human wait time.
+    const settleBounded = (
+      sessionID: SessionSchema.ID,
+      tool: string,
+      callID: string,
+      settle: Effect.Effect<ToolRegistry.Settlement, ToolOutputStore.Error>,
+    ): Effect.Effect<ToolRegistry.Settlement, ToolOutputStore.Error> => {
+      const ms = ToolDeadline.deadlineMs({ tool })
+      if (ms === undefined) return settle
+      const expired = ToolDeadline.message({ tool, ms })
+      return Effect.suspend(() => {
+        HumanWait.claim(sessionID, callID)
+        return ToolDeadline.guard(() => settle, {
+          tool,
+          ms,
+          waitedMs: () => HumanWait.waited(sessionID, callID),
+          onExpire: recordGuard({ sessionID, guard: "tool_timeout", action: "stop", subject: tool, detail: expired }),
+        })
+      }).pipe(
+        Effect.catchDefect((defect) =>
+          defect instanceof Error && defect.message === expired
+            ? Effect.succeed<ToolRegistry.Settlement>({ result: { type: "error", value: expired } })
+            : Effect.die(defect),
+        ),
+        Effect.ensuring(Effect.sync(() => HumanWait.forget(sessionID, callID))),
+      )
+    }
 
     const loadSystemContext = (agent: AgentV2.Selection, sessionID: SessionSchema.ID) =>
       Effect.all(
@@ -230,6 +406,7 @@ const layer = Layer.effect(
       promotion: SessionInput.Delivery | undefined,
       step: number,
       recoverOverflow?: typeof compaction.compactAfterOverflow,
+      attempt = 1,
     ) {
       const session = yield* getSession(sessionID)
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
@@ -297,6 +474,46 @@ const layer = Layer.effect(
           failed: false,
           tokens: 0,
         }
+      yield* setBusy(session.id, { phase: "preparing", step: currentStep })
+      // Stall watchdog: silence with no local tool in flight is a stall; unattended runs end it.
+      let lastEventAt = yield* Clock.currentTimeMillis
+      let activeTools = 0
+      let loopStop: string | undefined
+      const stallLimits = SessionStall.limits(undefined, { attended: SessionStall.attended(Flag.REDCODE_CLIENT) })
+      const watchdog = Effect.gen(function* () {
+        let warned = false
+        while (true) {
+          yield* Effect.sleep(Duration.millis(SessionStall.pollMs(stallLimits)))
+          const decision = SessionStall.decide({
+            quietMs: (yield* Clock.currentTimeMillis) - lastEventAt,
+            activeToolCount: activeTools,
+            permissionPending: false,
+            limits: stallLimits,
+          })
+          if (decision.type === "working") {
+            warned = false
+            continue
+          }
+          if (decision.type === "warn") {
+            if (!warned)
+              yield* recordGuard({
+                sessionID: session.id,
+                guard: "stall",
+                action: "warn",
+                detail: SessionStall.warning(decision.quietMs, stallLimits),
+              })
+            warned = true
+            continue
+          }
+          yield* recordGuard({ sessionID: session.id, guard: "stall", action: "stop", detail: `stopped: ${decision.reason}` })
+          yield* pauseGoal(session.id, `stalled: ${decision.reason}`)
+          return yield* new LLMError({
+            module: "SessionRunner",
+            method: "stall",
+            reason: new TransportReason({ message: `stopped: ${decision.reason}` }),
+          })
+        }
+      })
       const startSnapshot = yield* snapshots.capture()
       const publisher = createLLMEventPublisher(events, {
         sessionID: session.id,
@@ -318,6 +535,7 @@ const layer = Layer.effect(
       const providerStream = llm.stream(request).pipe(
         Stream.runForEach((event) =>
           Effect.gen(function* () {
+            lastEventAt = yield* Clock.currentTimeMillis
             if (overflowFailure || publisher.hasProviderError()) return
             // Preserve received usage even if cancellation wins while publication waits for a sibling tool.
             if (event.type === "step-finish" && !reportedTokens) reportedTokens = usageTokens(event.usage)
@@ -345,15 +563,28 @@ const layer = Layer.effect(
                     tool_name: HookV2.toolName(event.name),
                     tool_input: event.input,
                   })
-                  const settlement =
-                    !pre.continue || pre.decision === "deny"
-                      ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
-                      : yield* toolMaterialization.settle({
-                          sessionID: session.id,
-                          agent: agent.id,
-                          assistantMessageID,
-                          call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
-                        })
+                  const denied = !pre.continue || pre.decision === "deny"
+                  // Asked before the call runs: a correction reaches the model as this tool's result.
+                  const loop = denied
+                    ? undefined
+                    : yield* guardLoop(session.id, agent.info?.permissions, event.name, pre.updatedInput ?? event.input)
+                  if (loop?.type === "stop") loopStop ??= loop.summary
+                  if (!denied && loop?.type === "ok") yield* setBusy(session.id, { phase: "tool", tool: event.name, step: currentStep })
+                  const settlement = denied
+                    ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
+                    : loop && loop.type !== "ok"
+                      ? { result: { type: "error" as const, value: loop.message } }
+                      : yield* settleBounded(
+                          session.id,
+                          event.name,
+                          event.id,
+                          toolMaterialization.settle({
+                            sessionID: session.id,
+                            agent: agent.id,
+                            assistantMessageID,
+                            call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
+                          }),
+                        )
                   yield* hooks.run({
                     event: settlement.result.type === "error" ? "PostToolUseFailure" : "PostToolUse",
                     matcher: HookV2.toolName(event.name),
@@ -384,7 +615,11 @@ const layer = Layer.effect(
               completionTools.push(execute)
               return
             }
-            yield* execute.pipe(FiberSet.run(toolFibers))
+            activeTools++
+            yield* execute.pipe(
+              Effect.ensuring(Effect.sync(() => activeTools--)),
+              FiberSet.run(toolFibers),
+            )
           }),
         ),
         Effect.ensuring(withPublication(publisher.flush())),
@@ -392,7 +627,7 @@ const layer = Layer.effect(
 
       return yield* Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
-          const stream = yield* restore(providerStream).pipe(Effect.exit)
+          const stream = yield* restore(Effect.raceFirst(providerStream, watchdog)).pipe(Effect.exit)
           const failure =
             stream._tag === "Failure" ? Option.getOrUndefined(Cause.findErrorOption(stream.cause)) : undefined
           if (
@@ -404,7 +639,19 @@ const layer = Layer.effect(
             return yield* Effect.die(continueAfterOverflowCompaction(currentStep))
           if (overflowFailure) yield* publish(overflowFailure)
           const llmFailure = failure instanceof LLMError ? failure : undefined
-          if (llmFailure && !publisher.hasProviderError()) {
+          // Legacy retry policy: bounded, never for context overflow, never once a local tool ran.
+          const retry =
+            llmFailure &&
+            llmFailure.method !== "stall" &&
+            attempt <= SessionRetry.RETRY_MAX_RETRIES &&
+            !needsContinuation &&
+            completionTools.length === 0 &&
+            stream._tag === "Failure" &&
+            !Cause.hasInterrupts(stream.cause)
+              ? SessionRetry.retryableLLM(llmFailure)
+              : undefined
+          // Nothing streamed yet: a retry leaves no failed assistant behind.
+          if (llmFailure && !publisher.hasProviderError() && !(retry && !publisher.hasAssistantStarted())) {
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
             yield* withPublication(publisher.failAssistant(llmFailure.reason.message))
           }
@@ -472,6 +719,16 @@ const layer = Layer.effect(
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           if (stream._tag === "Failure") {
+            if (llmFailure && retry)
+              return yield* Effect.die(
+                new TurnTransitionError({
+                  _tag: "RetryProvider",
+                  step: currentStep,
+                  attempt,
+                  failure: llmFailure,
+                  message: retry.message,
+                }),
+              )
             if (goalID)
               yield* goals
                 .settle(sessionID, { goalID, tokens: 0, failed: true, interrupted: Cause.hasInterrupts(stream.cause) })
@@ -498,12 +755,14 @@ const layer = Layer.effect(
               })
             }
           }
+          // A loop the correction did not break ends the turn, and pauses an active goal with the reason.
+          if (loopStop) yield* pauseGoal(sessionID, loopStop)
           return {
             goalStopped: false,
             goalID,
             failed: publisher.hasProviderError(),
             tokens: 0,
-            needsContinuation: !publisher.hasProviderError() && needsContinuation,
+            needsContinuation: !publisher.hasProviderError() && needsContinuation && loopStop === undefined,
             todoEligible:
               !publisher.hasProviderError() &&
               stepSettlement?.finish === "stop" &&
@@ -518,6 +777,7 @@ const layer = Layer.effect(
       sessionID: SessionSchema.ID,
       promotion: SessionInput.Delivery | undefined,
       step: number,
+      attempt?: number,
     ) => Effect.Effect<
       {
         readonly needsContinuation: boolean
@@ -531,11 +791,20 @@ const layer = Layer.effect(
       RunError
     >
 
-    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step) {
-      return yield* runTurnAttempt(sessionID, promotion, step).pipe(
+    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, attempt) {
+      return yield* runTurnAttempt(sessionID, promotion, step, undefined, attempt).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
+            if (defect.transition._tag === "RetryProvider") {
+              yield* waitToRetry(sessionID, defect.transition)
+              return yield* runAfterOverflowCompaction(
+                sessionID,
+                undefined,
+                defect.transition.step,
+                defect.transition.attempt + 1,
+              )
+            }
             if (defect.transition._tag === "ContinueAfterOverflowCompaction")
               return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
             yield* Effect.yieldNow
@@ -545,11 +814,15 @@ const layer = Layer.effect(
       )
     })
 
-    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step) {
-      return yield* runTurnAttempt(sessionID, promotion, step, compaction.compactAfterOverflow).pipe(
+    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, attempt) {
+      return yield* runTurnAttempt(sessionID, promotion, step, compaction.compactAfterOverflow, attempt).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
+            if (defect.transition._tag === "RetryProvider") {
+              yield* waitToRetry(sessionID, defect.transition)
+              return yield* runTurn(sessionID, undefined, defect.transition.step, defect.transition.attempt + 1)
+            }
             yield* Effect.yieldNow
             if (defect.transition._tag === "ContinueAfterOverflowCompaction")
               return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step)
@@ -676,6 +949,7 @@ const layer = Layer.effect(
       }).pipe(
         Effect.ensuring(completion.discard(input.sessionID)),
         Effect.ensuring(compaction.discard(input.sessionID)),
+        Effect.ensuring(setIdle(input.sessionID)),
         Effect.onError((cause) =>
           runGoal
             ? goals
