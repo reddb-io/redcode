@@ -7,7 +7,7 @@ import { Watcher } from "@reddb-io/redcode-core/filesystem/watcher"
 import { InstanceState } from "@/effect/instance-state"
 import { Patch } from "../patch"
 import { Transaction } from "../patch/transaction"
-import { createTwoFilesPatch, diffLines } from "diff"
+import { createTwoFilesPatch, diffArrays, diffLines } from "diff"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "@/lsp/lsp"
@@ -29,8 +29,10 @@ interface Content {
 /** One path's state in the in-memory overlay the whole patch is staged against. */
 interface Entry {
   readonly path: string
-  /** Where writes land: the resolved symlink target when the file already exists. */
+  /** Where writes land: the path with every symlink resolved (for a new file, through its nearest existing parent). */
   readonly commitPath: string
+  /** Where a delete lands: the resolved parent directory plus the entry's own name. */
+  readonly location: string
   readonly original?: Transaction.Original & { readonly content: Content }
   /** `null` when the path does not exist after the hunks staged so far. */
   next: Content | null
@@ -44,9 +46,41 @@ interface Change {
   readonly before: string
   readonly after: string
   readonly bom: boolean
+  /** Previous content of an existing file this change overwrites (an Add File or a move destination). */
+  readonly replaces?: string
 }
 
 const verificationFailed = (message: string) => Effect.fail(new Error(`apply_patch verification failed: ${message}`))
+
+/**
+ * Re-applies the original line endings to an LF-normalized update. Lines the patch kept retain their own
+ * ending; lines it added use the file's dominant ending.
+ */
+function restoreLineEndings(original: string, updated: string) {
+  const parts = original.split("\n")
+  const endings = parts.map((part, index) => (index === parts.length - 1 ? "" : part.endsWith("\r") ? "\r\n" : "\n"))
+  const crlf = endings.filter((ending) => ending === "\r\n").length
+  if (crlf === 0) return updated
+  const dominant = crlf > endings.filter((ending) => ending === "\n").length ? "\r\n" : "\n"
+  const lines = parts.map((part, index) => (endings[index] === "\r\n" ? part.slice(0, -1) : part))
+  const next = updated.split("\n")
+  let oldIndex = 0
+  let newIndex = 0
+  let output = ""
+  for (const change of diffArrays(lines, next)) {
+    for (const value of change.value) {
+      if (change.removed) {
+        oldIndex++
+        continue
+      }
+      const ending = newIndex === next.length - 1 ? "" : change.added ? dominant : endings[oldIndex] || dominant
+      output += value + ending
+      if (!change.added) oldIndex++
+      newIndex++
+    }
+  }
+  return output
+}
 
 function applyChunks(filePath: string, chunks: Patch.UpdateFileChunk[], current: Content): Content {
   const crlf = current.text.includes("\r\n")
@@ -56,7 +90,7 @@ function applyChunks(filePath: string, chunks: Patch.UpdateFileChunk[], current:
     text.length > 0 && !text.endsWith("\n") && update.content.endsWith("\n")
       ? update.content.slice(0, -1)
       : update.content
-  return { text: crlf ? next.replaceAll("\n", "\r\n") : next, bom: update.bom }
+  return { text: crlf ? restoreLineEndings(current.text, next) : next, bom: update.bom }
 }
 
 export const ApplyPatchTool = Tool.define(
@@ -93,25 +127,65 @@ export const ApplyPatchTool = Tool.define(
       const instance = yield* InstanceState.context
       const relative = (file: string) => path.relative(instance.worktree, file).replaceAll("\\", "/")
 
+      // Symlinks are resolved before any check, so a link cannot carry a write outside the
+      // project or into Git metadata without the same guard and approval as the real path.
+      const realPath = (file: string) => afs.realPath(file).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const resolveTarget = (file: string) =>
+        Effect.gen(function* () {
+          const rest: string[] = []
+          let current = file
+          while (true) {
+            const real = yield* realPath(current)
+            if (real !== undefined) return path.join(real, ...rest)
+            const parent = path.dirname(current)
+            if (parent === current) return file
+            rest.unshift(path.basename(current))
+            current = parent
+          }
+        })
+      const realDirectory = (yield* realPath(instance.directory)) ?? instance.directory
+      const realWorktree = instance.worktree === "/" ? "/" : ((yield* realPath(instance.worktree)) ?? instance.worktree)
+      // Express a resolved path through the instance's own spelling when it lies inside it.
+      const logical = (resolved: string) => {
+        if (FSUtil.contains(realDirectory, resolved)) {
+          return path.join(instance.directory, path.relative(realDirectory, resolved))
+        }
+        if (realWorktree !== "/" && FSUtil.contains(realWorktree, resolved)) {
+          return path.join(instance.worktree, path.relative(realWorktree, resolved))
+        }
+        return resolved
+      }
+      const guard = (resolved: string) =>
+        Effect.gen(function* () {
+          yield* RepositoryGuard.assertWrite(resolved).pipe(Effect.orDie)
+          yield* assertExternalDirectoryEffect(ctx, logical(resolved))
+        })
+
       // Stage: apply every hunk to an in-memory overlay. Nothing touches disk here.
       const entries = new Map<string, Entry>()
+      const claims = new Map<string, string>()
       // Move destination -> the path its content originally came from.
       const origins = new Map<string, string>()
-
-      const guard = (file: string) =>
-        Effect.gen(function* () {
-          yield* RepositoryGuard.assertWrite(file).pipe(Effect.orDie)
-          yield* assertExternalDirectoryEffect(ctx, file)
-        })
 
       const load = (file: string) =>
         Effect.gen(function* () {
           const hit = entries.get(file)
           if (hit) return hit
+          const commitPath = yield* resolveTarget(file)
+          const location = path.join(yield* resolveTarget(path.dirname(file)), path.basename(file))
+          for (const target of new Set([commitPath, location])) yield* guard(target)
+          const claimed = claims.get(commitPath)
+          if (claimed !== undefined) {
+            return yield* verificationFailed(
+              `${relative(file)} and ${relative(claimed)} resolve to the same file (${commitPath}); patch it through one path`,
+            )
+          }
+          claims.set(commitPath, file)
+
           const info = yield* afs.stat(file).pipe(Effect.catch(() => Effect.succeed(undefined)))
           if (info && info.type !== "File") return yield* verificationFailed(`${file} is not a file`)
           if (!info) {
-            const entry: Entry = { path: file, commitPath: file, next: null, kind: "add" }
+            const entry: Entry = { path: file, commitPath, location, next: null, kind: "add" }
             entries.set(file, entry)
             return entry
           }
@@ -119,11 +193,12 @@ export const ApplyPatchTool = Tool.define(
             .readFile(file)
             .pipe(Effect.catch((error) => verificationFailed(`Failed to read ${file}: ${error.message}`)))
           const content = Bom.split(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes))
-          const commitPath = yield* afs.realPath(file).pipe(Effect.catch(() => Effect.succeed(file)))
+          const link = yield* afs.readLink(file).pipe(Effect.catch(() => Effect.succeed(undefined)))
           const entry: Entry = {
             path: file,
             commitPath,
-            original: { bytes, mode: info.mode, content },
+            location,
+            original: { bytes, mode: info.mode, link, content },
             next: content,
             kind: "update",
           }
@@ -133,7 +208,6 @@ export const ApplyPatchTool = Tool.define(
 
       for (const hunk of hunks) {
         const filePath = path.resolve(instance.directory, hunk.path)
-        yield* guard(filePath)
         const entry = yield* load(filePath)
 
         switch (hunk.type) {
@@ -166,7 +240,6 @@ export const ApplyPatchTool = Tool.define(
               entry.next = next
               break
             }
-            yield* guard(movePath)
             const destination = yield* load(movePath)
             destination.next = next
             destination.kind = "update"
@@ -201,14 +274,15 @@ export const ApplyPatchTool = Tool.define(
       for (const entry of entries.values()) {
         const destination = moves.get(entry.path)
         if (destination) {
-          const next = entries.get(destination)!.next!
+          const target = entries.get(destination)!
           changes.push({
             type: "move",
             filePath: entry.path,
             movePath: destination,
             before: entry.original!.content.text,
-            after: next.text,
-            bom: next.bom,
+            after: target.next!.text,
+            bom: target.next!.bom,
+            replaces: target.original?.content.text,
           })
           continue
         }
@@ -228,14 +302,23 @@ export const ApplyPatchTool = Tool.define(
         changes.push({
           type: entry.kind,
           filePath: entry.path,
-          before: entry.kind === "add" ? "" : (entry.original?.content.text ?? ""),
+          before: entry.original?.content.text ?? "",
           after: entry.next.text,
           bom: entry.next.bom,
+          replaces: entry.kind === "add" ? entry.original?.content.text : undefined,
         })
       }
 
+      const REPLACED = "existing file (replaced)"
       const files = changes.map((change) => {
-        const diff = trimDiff(createTwoFilesPatch(change.filePath, change.filePath, change.before, change.after))
+        let diff = trimDiff(
+          change.type === "add" && change.replaces !== undefined
+            ? createTwoFilesPatch(change.filePath, change.filePath, change.before, change.after, REPLACED)
+            : createTwoFilesPatch(change.filePath, change.filePath, change.before, change.after),
+        )
+        if (change.type === "move" && change.replaces !== undefined) {
+          diff += `\n${trimDiff(createTwoFilesPatch(change.movePath!, change.movePath!, change.replaces, change.after, REPLACED))}`
+        }
         let additions = 0
         let deletions = 0
         if (change.type === "delete") {
@@ -254,12 +337,21 @@ export const ApplyPatchTool = Tool.define(
           additions,
           deletions,
           ...(change.movePath ? { movePath: change.movePath } : {}),
+          ...(change.replaces !== undefined ? { replaced: true } : {}),
         }
       })
       const totalDiff = files.map((file) => file.patch + "\n").join("")
 
-      // Approve every path the patch touches, move destinations included, before any write.
-      const relativePaths = [...entries.keys()].map(relative)
+      // Approve every path the patch touches, move destinations and symlink targets included, before any write.
+      const relativePaths = [
+        ...new Set(
+          [...entries.values()].flatMap((entry) => [
+            relative(entry.path),
+            relative(logical(entry.commitPath)),
+            relative(logical(entry.location)),
+          ]),
+        ),
+      ]
       yield* ctx.ask({
         permission: "edit",
         patterns: relativePaths,
@@ -273,7 +365,9 @@ export const ApplyPatchTool = Tool.define(
 
       // Commit: atomic per file, rolled back as a whole on failure.
       for (const entry of entries.values()) {
-        yield* RepositoryGuard.assertWrite(entry.path).pipe(Effect.orDie)
+        for (const target of new Set([entry.commitPath, entry.location])) {
+          yield* RepositoryGuard.assertWrite(target).pipe(Effect.orDie)
+        }
       }
       const encoder = new TextEncoder()
       const plan: Transaction.Plan = {
@@ -290,11 +384,21 @@ export const ApplyPatchTool = Tool.define(
         ),
         deletes: [...entries.values()].flatMap((entry) =>
           !entry.next && entry.original
-            ? [{ path: entry.path, original: { bytes: entry.original.bytes, mode: entry.original.mode } }]
+            ? [
+                {
+                  path: entry.location,
+                  original: { bytes: entry.original.bytes, mode: entry.original.mode, link: entry.original.link },
+                },
+              ]
             : [],
         ),
       }
-      const display = new Map([...entries.values()].map((entry) => [entry.commitPath, entry.path]))
+      const display = new Map(
+        [...entries.values()].flatMap((entry) => [
+          [entry.commitPath, entry.path] as const,
+          [entry.location, entry.path] as const,
+        ]),
+      )
       const shown = (file: string) => relative(display.get(file) ?? file)
       const list = (items: ReadonlyArray<string>) => (items.length ? items.map(shown).join(", ") : "none")
 
@@ -325,6 +429,8 @@ export const ApplyPatchTool = Tool.define(
         return yield* Effect.failCause(committed.cause)
       }
 
+      // The patch is on disk from here on: follow-up problems are warnings, not failures.
+      const warnings: string[] = []
       const updates: Array<{ file: string; event: "add" | "change" | "unlink" }> = []
       for (const change of changes) {
         switch (change.type) {
@@ -345,7 +451,13 @@ export const ApplyPatchTool = Tool.define(
         if (change.type === "delete") continue
         const edited = change.movePath ?? change.filePath
         if (yield* format.file(edited)) {
-          yield* Bom.syncFile(afs, edited, change.bom)
+          const synced = yield* Effect.exit(Bom.syncFile(afs, edited, change.bom))
+          if (Exit.isFailure(synced)) {
+            const cause = Cause.squash(synced.cause)
+            warnings.push(
+              `Warning: ${relative(edited)} was patched, but restoring its byte order mark after formatting failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            )
+          }
         }
         yield* events.publish(FileSystem.Event.Edited, { file: edited })
       }
@@ -363,12 +475,17 @@ export const ApplyPatchTool = Tool.define(
       const diagnostics = yield* lsp.diagnostics()
 
       const summaryLines = changes.map((change) => {
-        if (change.type === "add") return `A ${relative(change.filePath)}`
+        const replaced = change.replaces !== undefined ? "replaced existing file" : undefined
+        if (change.type === "add") return `A ${relative(change.filePath)}${replaced ? ` (${replaced})` : ""}`
         if (change.type === "delete") return `D ${relative(change.filePath)}`
-        if (change.type === "move") return `M ${relative(change.movePath!)} (moved from ${relative(change.filePath)})`
+        if (change.type === "move") {
+          const notes = [`moved from ${relative(change.filePath)}`, replaced].filter(Boolean).join(", ")
+          return `M ${relative(change.movePath!)} (${notes})`
+        }
         return `M ${relative(change.filePath)}`
       })
       let output = `Success. Updated the following files:\n${summaryLines.join("\n")}`
+      if (warnings.length) output += `\n\n${warnings.join("\n")}`
 
       for (const target of written) {
         const block = LSP.Diagnostic.report(target, diagnostics[FSUtil.normalizePath(target)] ?? [])

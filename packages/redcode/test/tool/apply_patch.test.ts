@@ -849,3 +849,233 @@ describe("tool.apply_patch transactional commit", () => {
     }),
   )
 })
+
+const posixOnly = process.platform === "win32"
+
+const wrapFs = (hooks: {
+  fail?: (method: string, target: string) => boolean
+  afterWriteFile?: (target: string) => Promise<void>
+}) =>
+  Effect.gen(function* () {
+    const real = yield* FSUtil.Service
+    const guard = (method: string, target: string) =>
+      hooks.fail?.(method, target)
+        ? Effect.fail(
+            systemError({
+              _tag: "Unknown",
+              module: "FileSystem",
+              method,
+              pathOrDescriptor: target,
+              description: "injected failure",
+            }),
+          )
+        : Effect.void
+    return FSUtil.Service.of({
+      ...real,
+      writeFile: (target, data, options) =>
+        guard("writeFile", target).pipe(
+          Effect.andThen(real.writeFile(target, data, options)),
+          Effect.andThen(Effect.promise(() => hooks.afterWriteFile?.(target) ?? Promise.resolve())),
+        ),
+      rename: (from, to) => guard("rename", to).pipe(Effect.andThen(real.rename(from, to))),
+      remove: (target, options) => guard("remove", target).pipe(Effect.andThen(real.remove(target, options))),
+    })
+  })
+
+describe("tool.apply_patch review hardening", () => {
+  it.instance("symlinks cannot carry a write outside the project without approval", () =>
+    Effect.gen(function* () {
+      if (posixOnly) return
+      const test = yield* TestInstance
+      const outside = yield* Effect.promise(() => tmpdir())
+      try {
+        const hosts = path.join(outside.path, "hosts")
+        yield* Effect.promise(() => fs.symlink(outside.path, path.join(test.directory, "link")))
+        const cases = [
+          "*** Update File: link/hosts\n@@\n-h\n+H",
+          "*** Add File: link/new.txt\n+new",
+          "*** Update File: local.txt\n*** Move to: link/moved.txt\n@@\n-l\n+L",
+          "*** Update File: link/hosts\n*** Move to: local2.txt\n@@\n-h\n+H",
+          "*** Delete File: link/hosts",
+        ]
+        for (const body of cases) {
+          yield* writeText(hosts, "h\n")
+          yield* writeText(path.join(test.directory, "local.txt"), "l\n")
+          const asked: string[] = []
+          const ctx: ToolCtx = {
+            ...baseCtx,
+            ask: (input) => {
+              asked.push(input.permission)
+              return input.permission === "external_directory"
+                ? Effect.die(new Error("external_directory denied"))
+                : Effect.void
+            },
+          }
+          yield* expectFailure(
+            execute({ patchText: `*** Begin Patch\n${body}\n*** End Patch` }, ctx),
+            "external_directory denied",
+          )
+          expect(asked).toContain("external_directory")
+          expect(asked).not.toContain("edit")
+          expect(yield* readText(hosts)).toBe("h\n")
+          expect(yield* exists(path.join(outside.path, "new.txt"))).toBe(false)
+          expect(yield* exists(path.join(outside.path, "moved.txt"))).toBe(false)
+          expect(yield* readText(path.join(test.directory, "local.txt"))).toBe("l\n")
+          expect(yield* exists(path.join(test.directory, "local2.txt"))).toBe(false)
+        }
+      } finally {
+        yield* Effect.promise(() => outside[Symbol.asyncDispose]())
+      }
+    }),
+  )
+
+  it.instance(
+    "a symlink into Git metadata is blocked by the repository guard",
+    () =>
+      inTaskWorktree(
+        Effect.gen(function* () {
+          if (posixOnly) return
+          const test = yield* TestInstance
+          const { ctx } = makeCtx()
+          const gitFile = path.join(test.directory, ".git")
+          const before = yield* readText(gitFile)
+          yield* Effect.promise(() => fs.symlink(gitFile, path.join(test.directory, "cfg")))
+
+          yield* expectFailure(
+            execute({ patchText: "*** Begin Patch\n*** Update File: cfg\n@@\n+injected\n*** End Patch" }, ctx),
+            "Git metadata",
+          )
+          expect(yield* readText(gitFile)).toBe(before)
+        }),
+      ),
+    { git: true },
+  )
+
+  it.instance("rejects two patch paths that resolve to the same file", () =>
+    Effect.gen(function* () {
+      if (posixOnly) return
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const real = path.join(test.directory, "real.txt")
+      yield* writeText(real, "one\ntwo\n")
+      yield* Effect.promise(() => fs.symlink(real, path.join(test.directory, "alias.txt")))
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: real.txt\n@@\n-one\n+ONE\n*** Update File: alias.txt\n@@\n-two\n+TWO\n*** End Patch"
+
+      yield* expectFailure(execute({ patchText }, ctx), "resolve to the same file")
+      expect(yield* readText(real)).toBe("one\ntwo\n")
+    }),
+  )
+
+  it.instance("creates the temp file with the target's restrictive mode", () =>
+    Effect.gen(function* () {
+      if (posixOnly) return
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const secret = path.join(test.directory, "secret.txt")
+      yield* writeText(secret, "token=a\n")
+      yield* Effect.promise(() => fs.chmod(secret, 0o600))
+
+      const modes: number[] = []
+      const watched = yield* wrapFs({
+        afterWriteFile: async (target) => {
+          if (target.includes("redcode-tmp")) modes.push((await fs.stat(target)).mode & 0o777)
+        },
+      })
+      yield* execute(
+        { patchText: "*** Begin Patch\n*** Update File: secret.txt\n@@\n-token=a\n+token=b\n*** End Patch" },
+        ctx,
+      ).pipe(Effect.provideService(FSUtil.Service, watched))
+
+      expect(modes).toEqual([0o600])
+      expect((yield* Effect.promise(() => fs.stat(secret))).mode & 0o777).toBe(0o600)
+      expect(yield* readText(secret)).toBe("token=b\n")
+    }),
+  )
+
+  it.instance("keeps each untouched line's ending in a mixed line ending file", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const target = path.join(test.directory, "mixed.txt")
+      yield* writeText(target, "a\r\nb\nc\r\nd\r\n")
+
+      yield* execute({ patchText: "*** Begin Patch\n*** Update File: mixed.txt\n@@\n-c\n+C\n+C2\n*** End Patch" }, ctx)
+      expect(yield* readText(target)).toBe("a\r\nb\nC\r\nC2\r\nd\r\n")
+    }),
+  )
+
+  it.instance("rollback restores a deleted symlink as a symlink", () =>
+    Effect.gen(function* () {
+      if (posixOnly) return
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const real = path.join(test.directory, "real.txt")
+      const link = path.join(test.directory, "link.txt")
+      const other = path.join(test.directory, "other.txt")
+      yield* writeText(real, "r\n")
+      yield* writeText(other, "o\n")
+      yield* Effect.promise(() => fs.symlink(real, link))
+
+      const broken = yield* wrapFs({ fail: (method, target) => method === "remove" && target === other })
+      yield* expectFailure(
+        execute(
+          { patchText: "*** Begin Patch\n*** Delete File: link.txt\n*** Delete File: other.txt\n*** End Patch" },
+          ctx,
+        ).pipe(Effect.provideService(FSUtil.Service, broken)),
+        "link.txt",
+      )
+      expect((yield* Effect.promise(() => fs.lstat(link))).isSymbolicLink()).toBe(true)
+      expect(yield* Effect.promise(() => fs.readlink(link))).toBe(real)
+      expect(yield* readText(other)).toBe("o\n")
+    }),
+  )
+
+  it.instance("rolls back when the filesystem refuses a write during commit", () =>
+    Effect.gen(function* () {
+      if (posixOnly || process.getuid?.() === 0) return
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const a = path.join(test.directory, "a.txt")
+      const locked = path.join(test.directory, "locked")
+      yield* writeText(a, "a\n")
+      yield* makeDir(locked)
+      yield* Effect.promise(() => fs.chmod(locked, 0o555))
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+A\n*** Add File: locked/new.txt\n+new\n*** End Patch"
+
+      yield* expectFailure(execute({ patchText }, ctx), "No files were changed. Rolled back:").pipe(
+        Effect.ensuring(Effect.promise(() => fs.chmod(locked, 0o755))),
+      )
+      expect(yield* readText(a)).toBe("a\n")
+      expect(yield* Effect.promise(() => fs.readdir(locked))).toEqual([])
+      const leftovers = yield* Effect.promise(() => fs.readdir(test.directory))
+      expect(leftovers.filter((name) => name.includes("redcode-tmp"))).toEqual([])
+    }),
+  )
+
+  it.instance("shows replaced destinations in the permission diff", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx, calls } = makeCtx()
+      yield* writeText(path.join(test.directory, "taken.txt"), "old taken\n")
+      yield* writeText(path.join(test.directory, "source.txt"), "moving\n")
+      yield* writeText(path.join(test.directory, "dest.txt"), "old dest\n")
+
+      const patchText =
+        "*** Begin Patch\n*** Add File: taken.txt\n+new taken\n*** Update File: source.txt\n*** Move to: dest.txt\n@@\n-moving\n+moved\n*** End Patch"
+
+      const result = yield* execute({ patchText }, ctx)
+      const [added, moved] = calls[0].metadata.files
+      expect(added.patch).toContain("existing file (replaced)")
+      expect(added.patch).toContain("-old taken")
+      expect(moved.type).toBe("move")
+      expect(moved.patch).toContain("existing file (replaced)")
+      expect(moved.patch).toContain("-old dest")
+      expect(result.output).toContain("replaced existing file")
+      expect(yield* readText(path.join(test.directory, "dest.txt"))).toBe("moved\n")
+    }),
+  )
+})
