@@ -4,6 +4,7 @@ import { $ } from "bun"
 import path from "path"
 import { rm } from "node:fs/promises"
 import { Script } from "@reddb-io/redcode-script"
+import { publishRelease } from "./publish-registry"
 
 const product = "redcode"
 const packageName = "@reddb-io/redcode"
@@ -16,14 +17,15 @@ async function published(name: string, version: string) {
   return (await $`npm view ${`${name}@${version}`} version`.quiet().nothrow()).exitCode === 0
 }
 
-async function packAndPublish(target: string, name: string, version: string) {
+async function pack(target: string) {
   if (process.platform !== "win32") await $`chmod -R 755 .`.cwd(target)
   await $`bun pm pack`.cwd(target)
-  if (packOnly) return
-  if (await published(name, version)) {
-    console.log(`already published ${name}@${version}`)
-    return
-  }
+}
+
+// Called by publishRelease only after `npm view` missed this version. An E409 from npm here is
+// treated as already published there, so rerunning a failed release job is safe.
+async function packAndPublish(target: string, name: string) {
+  await pack(target)
   const tarball = Array.from(new Bun.Glob("*.tgz").scanSync({ cwd: target })).at(0)
   if (!tarball) throw new Error(`${name} did not produce a tarball`)
   await $`npm publish ${tarball} --access public --provenance --tag ${Script.channel}`.cwd(target)
@@ -102,5 +104,23 @@ await Bun.file(path.join(meta, "package.json")).write(
   ),
 )
 
-await Promise.all(manifests.map((item) => packAndPublish(item.dir, item.package.name, item.package.version)))
-await packAndPublish(meta, packageName, Script.version)
+const platforms = manifests.map((item) => ({
+  name: item.package.name,
+  version: item.package.version,
+  publish: () => packAndPublish(item.dir, item.package.name),
+}))
+const main = { name: packageName, version: Script.version, publish: () => packAndPublish(meta, packageName) }
+
+if (packOnly) {
+  for (const item of [...manifests.map((entry) => entry.dir), meta]) await pack(item)
+} else {
+  await publishRelease(
+    { platforms, main },
+    {
+      published,
+      sleep: (ms) => Bun.sleep(ms),
+      now: () => Date.now(),
+      log: (message) => console.log(message),
+    },
+  )
+}
