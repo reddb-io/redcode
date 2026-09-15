@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { NonNegativeInt, PositiveInt, type DeepMutable } from "../../schema"
 import { ConfigDesign } from "../../config/design"
 import { ConfigExperimental } from "../../config/experimental"
+import { ConfigModels } from "../../config/models"
 import { ConfigReference } from "../../config/reference"
 import { ConfigAgentV1 } from "./agent"
 import { ConfigAttachmentV1 } from "./attachment"
@@ -172,6 +173,9 @@ export const Info = Schema.Struct({
   ),
   design: Schema.optional(ConfigDesign.Info).annotate({
     description: "Design mode: the project's design system reused by previews",
+  }),
+  models: Schema.optional(ConfigModels.Info).annotate({
+    description: "Models catalog sources, for networks that block the public catalog endpoints",
   }),
   experimental: Schema.optional(
     Schema.Struct({

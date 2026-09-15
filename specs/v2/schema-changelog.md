@@ -1,5 +1,10 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Configure Models Catalog Sources
+
+- Add optional `models.sources` (array of URL strings) to the current and V1 configuration schemas; the V1 migration carries it through unchanged. The models catalog tries `REDCODE_MODELS_URL`, then `models.sources`, then `https://models.opencode.ai/api.json` and `https://models.dev/api.json`. A URL without a `.json` path gets `/api.json` appended. Only the global configuration (the user config directory, `REDCODE_CONFIG_DIR`, `REDCODE_CONFIG`, `REDCODE_CONFIG_CONTENT`) is read, because the catalog cache is shared by every project. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
+- Add no route, migration or durable-event version. `models-dev.refreshed` is now published only when the fetched catalog differs from the cache. The catalog cache is one `models.json` file with a `models-state.json` sidecar (last source, fetch time, per-source backoff), replacing the per-URL `models-<hash>.json` files.
+
 ## 2026-09-15: Configure Tool Search
 
 - Add optional `experimental.tool_search` to the configuration schema: `enabled` (`"auto"` | `true` | `false`, default `"auto"`) and `threshold` (positive integer, estimated tokens of MCP tool schemas, default 3000). Legacy runtime only: with `"auto"` the legacy loop defers MCP tools above the threshold (never in code mode) and `design_*` tools outside a Design context behind the `tool_search` tool (`query`, `select`, `limit`); `true` always defers MCP tools. The V2 core runner does not read it yet. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).

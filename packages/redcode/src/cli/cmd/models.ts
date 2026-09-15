@@ -33,6 +33,25 @@ export const ModelsCommand = effectCmd({
     const provider = yield* Provider.Service
     const providers = yield* provider.list()
 
+    if (args.verbose) {
+      // stderr, so `models --verbose` output stays parseable.
+      const status = yield* ModelsDev.Service.use((s) => s.status())
+      const age =
+        status.fetchedAt === undefined
+          ? ""
+          : `, fetched ${Math.round((Date.now() - status.fetchedAt) / 60_000)} min ago`
+      process.stderr.write(
+        `Models catalog: ${status.origin}${status.origin === "cache" && status.source ? ` from ${status.source}` : ""}${status.origin === "cache" ? age : ""}${EOL}`,
+      )
+      for (const source of status.sources) {
+        const blocked =
+          source.blockedUntil !== undefined && source.blockedUntil > Date.now()
+            ? ` blocked (${source.reason}) until ${new Date(source.blockedUntil).toISOString()}`
+            : ""
+        process.stderr.write(`  source ${source.url}${blocked}${EOL}`)
+      }
+    }
+
     const print = (providerID: ProviderV2.ID, verbose?: boolean) => {
       const p = providers[providerID]
       const sorted = Object.entries(p.models).sort(([a], [b]) => a.localeCompare(b))

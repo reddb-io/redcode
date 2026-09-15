@@ -80,6 +80,7 @@ describe("ModelsDevPlugin", () => {
             },
           } satisfies Record<string, ModelsDev.Provider>),
         refresh: () => Effect.void,
+        status: () => Effect.succeed({ origin: "file" as const, sources: [] }),
       })
 
       yield* ModelsDevPlugin.effect(

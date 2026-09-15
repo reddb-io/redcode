@@ -2078,6 +2078,7 @@ export type Config = {
     reserved?: number
   }
   design?: ConfigV2Design
+  models?: ConfigV2Models
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -4078,6 +4079,10 @@ export type ConfigV2Design = {
   system?: ConfigV2DesignSystem
   application?: string
   browser?: string
+}
+
+export type ConfigV2Models = {
+  sources?: Array<string>
 }
 
 export type PolicyEffect = "allow" | "deny"
