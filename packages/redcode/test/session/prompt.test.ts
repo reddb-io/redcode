@@ -5723,7 +5723,7 @@ it.instance(
   60_000,
 )
 
-it.instance(
+unix(
   "a shell monitor parks the goal and resumes once with synthetic evidence",
   () =>
     Effect.gen(function* () {
@@ -5768,31 +5768,205 @@ it.instance(
   60000,
 )
 
-it.instance(
-  "stopping the session cancels its monitor without resuming the goal",
+unix(
+  "Esc stops the turn but not its monitor, and the result waits for the parked goal instead of resuming it",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const { chat, goals, prompt, sessions } = yield* startGoal("wait for a service", { maxTurns: 5 })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const monitors = yield* MonitorRuntime.Service
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      yield* llm.tool("bash", {
+        command: "test -f service-ready && printf ready",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, success_contains: "ready", deadline_ms: 30000 },
+      })
+      yield* llm.text("Waiting.")
+      yield* prompt.loop({ sessionID: chat.id })
+      yield* prompt.cancel(chat.id)
+      expect((yield* goals.get(chat.id))?.status).toBe("paused")
+      expect((yield* monitors.list(chat.id))[0]?.status).toBe("running")
+
+      const calls = yield* llm.calls
+      yield* writeText(path.join(dir, "service-ready"), "ready")
+      yield* pollWithTimeout(
+        monitors.list(chat.id).pipe(Effect.map((list) => (list[0]?.delivery === "delivered" ? true : undefined))),
+        "the monitor result was never admitted",
+        "30 seconds",
+      )
+      // Admitted for later, not answered now: the paused goal waits for the person.
+      yield* Effect.sleep("500 millis")
+      expect(yield* llm.calls).toBe(calls)
+      expect(
+        (yield* sessions.messages({ sessionID: chat.id })).some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text.includes("A monitor finished.")),
+        ),
+      ).toBe(true)
+
+      // The next time the person writes, the model reads the result it missed.
+      yield* llm.textMatch((hit) => body(hit).includes("A monitor finished."), "The service is ready.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "where are we?" }] }),
+        "the next turn never ended",
+        "30 seconds",
+      )
+      yield* pollWithTimeout(
+        sessions.messages({ sessionID: chat.id }).pipe(
+          Effect.map((messages) =>
+            messages.some((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
+            )
+              ? true
+              : undefined,
+          ),
+        ),
+        "the admitted result never reached the model",
+        "30 seconds",
+      )
+    }),
+  60000,
+)
+
+unix(
+  "deleting the session cancels its monitor",
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig(providerCfg)
-      const { chat, prompt, sessions } = yield* startGoal("wait for a service", { maxTurns: 5 })
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const jobs = yield* BackgroundJob.Service
+      const chat = yield* sessions.create({ title: "Monitor owner" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* llm.tool("bash", {
+        command: "false",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, deadline_ms: 30000 },
+      })
+      yield* llm.text("Waiting.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "watch it" }] }),
+        "the turn never ended",
+        "30 seconds",
+      )
+      const [monitor] = yield* monitors.list(chat.id)
+      expect(monitor?.status).toBe("running")
+      yield* prompt.cancel(chat.id)
+      expect((yield* jobs.get(monitor!.id))?.status).toBe("running")
+      yield* sessions.remove(chat.id)
+      yield* pollWithTimeout(
+        jobs.get(monitor!.id).pipe(Effect.map((job) => (job?.status === "cancelled" ? true : undefined))),
+        "deleting the session left its monitor running",
+        "30 seconds",
+      )
+    }),
+  60000,
+)
+
+unix(
+  "a monitor result that arrives during the user's turn waits until that turn ends",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const chat = yield* sessions.create({ title: "Result during a turn" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const gate = defer<void>()
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      yield* llm.tool("bash", {
+        command: "test -f deployed && printf deployed",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, success_contains: "deployed", deadline_ms: 30000 },
+      })
+      yield* llm.textMatch(
+        (hit) => body(hit).includes("monitor_result") && !body(hit).includes("second question"),
+        "Watching the deploy.",
+      )
+      yield* llm.pushMatch(
+        (hit) => body(hit).includes("second question") && !body(hit).includes("A monitor finished."),
+        reply().wait(gate.promise).text("Answering the second question.").stop(),
+      )
+      yield* llm.textMatch((hit) => body(hit).includes("A monitor finished."), "The deploy finished.")
+
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "watch the deploy" }] }),
+        "the first turn never ended",
+        "30 seconds",
+      )
+      const turn = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "second question" }] })
+        .pipe(Effect.forkChild)
+      yield* pollWithTimeout(
+        llm.hits.pipe(
+          Effect.map((hits) => (hits.some((hit) => body(hit).includes("second question")) ? true : undefined)),
+        ),
+        "the user's turn never reached the model",
+        "30 seconds",
+      )
+      yield* writeText(path.join(dir, "deployed"), "")
+      yield* pollWithTimeout(
+        monitors.list(chat.id).pipe(Effect.map((list) => (list[0]?.delivery === "delivered" ? true : undefined))),
+        "the monitor result was never admitted",
+        "30 seconds",
+      )
+      gate.resolve()
+      yield* awaitWithTimeout(Fiber.join(turn), "the user's turn never ended", "30 seconds")
+      yield* pollWithTimeout(
+        sessions.messages({ sessionID: chat.id }).pipe(
+          Effect.map((messages) =>
+            messages.some((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "The deploy finished."),
+            )
+              ? true
+              : undefined,
+          ),
+        ),
+        "the result was never answered",
+        "30 seconds",
+      )
+      const texts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
+        message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+      )
+      const answered = texts.indexOf("Answering the second question.")
+      const result = texts.findIndex((text) => text.includes("A monitor finished."))
+      expect(answered).toBeGreaterThanOrEqual(0)
+      expect(result).toBeGreaterThan(answered)
+      expect(texts.indexOf("The deploy finished.")).toBeGreaterThan(result)
+    }),
+  60000,
+)
+
+unix(
+  "a long-lived one-shot monitor does not hold the goal judge back",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const { chat, prompt, sessions } = yield* startGoal("start the dev server", { maxTurns: 5 })
       yield* sessions.setPermission({
         sessionID: chat.id,
         permission: [{ permission: "*", pattern: "*", action: "allow" }],
       })
       const monitors = yield* MonitorRuntime.Service
       yield* llm.tool("bash", {
-        command: "false",
-        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, deadline_ms: 30000 },
+        command: "sleep 20",
+        monitor: { mode: "once", wait_ms: 0, deadline_ms: 86_400_000 },
       })
-      yield* llm.text("Waiting.")
-      yield* prompt.loop({ sessionID: chat.id })
-      yield* prompt.cancel(chat.id)
-      expect((yield* monitors.list(chat.id))[0]).toMatchObject({ status: "cancelled", delivery: "suppressed" })
-      expect(yield* llm.calls).toBe(2)
-      expect(
-        (yield* sessions.messages({ sessionID: chat.id })).some((message) =>
-          message.parts.some((part) => part.type === "text" && part.text.includes("A monitor finished.")),
-        ),
-      ).toBe(false)
+      yield* llm.text("The dev server is running.")
+      yield* llm.textMatch(judgeRequest, verdict("done", "the dev server was started"))
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
+      expect((yield* llm.inputs).filter((body) => judgeRequest({ body }))).toHaveLength(1)
+      const [monitor] = yield* monitors.list(chat.id)
+      expect(monitor?.status).toBe("running")
+      yield* monitors.cancel(chat.id, monitor!.id)
     }),
   60000,
 )
@@ -5869,7 +6043,7 @@ unix(
   60000,
 )
 
-it.instance(
+unix(
   "a prompt queued during a turn that starts a monitor still runs when that turn ends",
   () =>
     Effect.gen(function* () {

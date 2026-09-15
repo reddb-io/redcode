@@ -1322,3 +1322,40 @@ describe("tool.shell polling guard", () => {
     }),
   )
 })
+
+describe("tool.shell monitors", () => {
+  it.live("shows a monitor's mode, interval and deadline in the permission prompt", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
+      // This context has no session continuation, so the call stops right after asking.
+      yield* runIn(
+        tmp,
+        fail(
+          {
+            command: "gh pr checks 12",
+            monitor: { mode: "poll", interval_ms: 60_000, deadline_ms: 3_600_000, failure_contains: "fail" },
+          },
+          capture(requests),
+        ),
+      )
+      expect(requests.find((request) => request.permission === "bash")?.metadata).toMatchObject({
+        command: "gh pr checks 12",
+        monitor: 'poll every 1m, for up to 1h, fail on "fail"',
+      })
+    }),
+  )
+
+  it.live("refuses to poll a command that creates work, before asking", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
+      const err = yield* runIn(
+        tmp,
+        fail({ command: "gh pr create --fill", monitor: { mode: "poll", interval_ms: 60_000 } }, capture(requests)),
+      )
+      expect(err.message).toContain("Not started: a poll monitor runs its command again")
+      expect(requests).toHaveLength(0)
+    }),
+  )
+})

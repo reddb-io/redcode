@@ -1,5 +1,12 @@
 # V2 Schema Changelog
 
+## 2026-09-14: Track Session Monitors
+
+- Add the `session_monitor` table (migration `20260915002032_session_monitors`): `id`, `session_id` (deleted with its session), `owner` (the runtime running the monitor, `pid:process-start-time:uuid`, so another live runtime on the same database is never mistaken for a crashed one) and `data` (`Monitor.Info` as JSON), indexed by session.
+- Add `Monitor.Options` (`mode` `once` | `poll`, optional `wait_ms`, `deadline_ms`, `interval_ms`, `success_contains`, `failure_contains`), `Monitor.Evidence`, `Monitor.Process` (`pid`, `started`: the detached process group last spawned, identified by its start time) and `Monitor.Info` (`status` `running` | `succeeded` | `failed` | `timed_out` | `cancelled` | `interrupted`, `delivery` `pending` | `observed` | `delivered` | `failed` | `suppressed`, optional `process` and `interruptedBy`).
+- Add `GET /experimental/session/:sessionID/monitors` (`experimental.monitors.list`) and `POST /experimental/session/:sessionID/monitors/:monitorID/cancel` (`experimental.monitors.cancel`, `null` when the monitor is not in that session). Add optional `monitor` (`Monitor.Options`) to the legacy `bash` tool input and the `monitor` tool (`Monitor.Control`: `list` | `get` | `wait` | `cancel`). Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`).
+- A monitor's completion is admitted to the `session_input` inbox with `delivery: "queue"`. Legacy runtime only: the V2 core `bash` tool has neither `monitor` nor the sleep-polling guard yet.
+
 ## 2026-09-14: Request Variant Operations Through Design Feedback
 
 - Add optional `pending` to the `user` entry of `Design.FeedEvent` (`GET /api/session/:sessionID/design/feed`): `true` when the entry comes from `session.next.prompt.admitted` (admitted, not yet delivered into a turn), absent when it comes from `session.next.prompted`. The review page counts a variant operation as taken up by the agent only once its entry arrives without `pending`. The legacy host (`GET /design/session/:sessionID/feed`) writes the user message at admission, so it marks the entry `pending` until `message.promoted` (Prompt Promotion) arrives and then repeats it without the flag; its whole-transcript replay reads the pending rows of the `session_input` inbox.

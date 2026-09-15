@@ -1,6 +1,7 @@
 export * as Monitor from "./monitor"
 
-import { and, eq } from "drizzle-orm"
+import { readFileSync } from "node:fs"
+import { and, eq, sql } from "drizzle-orm"
 import { Cause, Clock, Context, Effect, Layer, Scope, Semaphore } from "effect"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { BackgroundJob } from "./background-job"
@@ -17,7 +18,11 @@ export type Start = {
   command: string
   workdir: string
   options: Monitor.Options
-  run: Effect.Effect<Monitor.Evidence>
+  /**
+   * One observation. Call `track` with the pid of a detached process group it spawns, so a runtime
+   * that restarts after a crash can reap that group instead of leaving it running unowned.
+   */
+  run: (track: (pid: number) => Effect.Effect<void>) => Effect.Effect<Monitor.Evidence>
   notify: (info: Monitor.Info) => Effect.Effect<void | boolean>
 }
 
@@ -32,12 +37,75 @@ export class Service extends Context.Service<
   }
 >()("@redcode/Monitor") {}
 
+/**
+ * A process as `/proc` identifies it: its start time (clock ticks since boot) and its process group.
+ * Linux only. Elsewhere nothing cheap tells a live process from an unrelated one that reused its pid,
+ * so nothing is recorded there and nothing is ever killed.
+ */
+export function processInfo(pid: number): { started: string; group: number } | undefined {
+  if (process.platform !== "linux" || !Number.isInteger(pid) || pid <= 0) return undefined
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+    // The command name is parenthesised and may contain spaces; fields are counted after it.
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+    const started = fields[19]
+    const group = Number(fields[2])
+    return started ? { started, group } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Owners of the monitor runtimes alive in this process. */
+const live = new Set<string>()
+const self = `${process.pid}:${processInfo(process.pid)?.started ?? ""}`
+
+/**
+ * Whether the runtime that owns a row may still be running its monitors. Owners are
+ * `pid:start-time:uuid`: another process is alive while that pid still has that start time (or,
+ * without `/proc`, while the pid exists); this process knows its own runtimes directly.
+ */
+export function ownerAlive(owner: string) {
+  if (live.has(owner)) return true
+  const [pid, started, id] = owner.split(":")
+  if (!pid || started === undefined || !id) return false
+  if (`${pid}:${started}` === self) return false
+  if (process.platform === "linux") return started !== "" && processInfo(Number(pid))?.started === started
+  try {
+    process.kill(Number(pid), 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM"
+  }
+}
+
+/** Kill an interrupted monitor's detached process group, only when it is provably the process recorded. */
+export function reap(recorded: Monitor.Process | undefined) {
+  if (!recorded) return false
+  const current = processInfo(recorded.pid)
+  if (!current || current.started !== recorded.started || current.group !== recorded.pid) return false
+  try {
+    process.kill(-recorded.pid, "SIGKILL")
+    return true
+  } catch {
+    return false
+  }
+}
+
+const running = sql`json_extract(${MonitorTable.data}, '$.status') = 'running'`
+
 export const make = Effect.gen(function* () {
   const database = yield* Database.Service
   const jobs = yield* BackgroundJob.Service
   const scope = yield* Scope.Scope
   const lock = yield* Semaphore.make(1)
-  const owner = crypto.randomUUID()
+  const owner = `${self}:${crypto.randomUUID()}`
+  live.add(owner)
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      live.delete(owner)
+    }),
+  )
 
   const save = (info: Monitor.Info) =>
     database.db
@@ -49,15 +117,30 @@ export const make = Effect.gen(function* () {
 
   const recover = Effect.fn("Monitor.recover")(function* (row: typeof MonitorTable.$inferSelect) {
     if (row.data.status !== "running") return row.data
-    if (row.owner === owner && (yield* jobs.get(row.id))?.status === "running") return row.data
+    // Our own rows settle through their job's exit; a live runtime's rows are not ours to judge.
+    if (row.owner === owner || ownerAlive(row.owner)) return row.data
     // A durable identity is not a durable process handle. Never repeat a command during recovery.
-    return {
+    const interrupted: Monitor.Info = {
       ...row.data,
-      status: "interrupted" as const,
-      delivery: "suppressed" as const,
+      status: "interrupted",
+      delivery: "suppressed",
+      updated: yield* Clock.currentTimeMillis,
+      interruptedBy: owner,
       error:
         "Execution ownership was lost. Inspect the external operation before explicitly starting a new observation.",
     }
+    yield* database.db
+      .update(MonitorTable)
+      .set({ data: interrupted })
+      .where(and(eq(MonitorTable.id, row.id), eq(MonitorTable.owner, row.owner), running))
+      .run()
+      .pipe(Effect.orDie)
+    if (reap(row.data.process))
+      yield* Effect.logWarning("reaped the process group of an interrupted monitor", {
+        id: row.id,
+        pid: row.data.process?.pid,
+      })
+    return interrupted
   })
 
   const get = Effect.fn("Monitor.get")(function* (sessionID: string, id: string) {
@@ -90,6 +173,10 @@ export const make = Effect.gen(function* () {
     yield* jobs.cancel(id)
     return yield* get(sessionID, id)
   })
+
+  // After a crash nothing else would look at these rows again: settle them, and reap what they left.
+  const orphaned = yield* database.db.select().from(MonitorTable).where(running).all().pipe(Effect.orDie)
+  yield* Effect.forEach(orphaned, recover, { discard: true })
 
   const start = (input: Start) =>
     Effect.uninterruptibleMask((restore) =>
@@ -128,9 +215,16 @@ export const make = Effect.gen(function* () {
               .run()
               .pipe(Effect.orDie)
             let current = initial
+            const track = (pid: number) =>
+              Effect.gen(function* () {
+                const found = processInfo(pid)
+                if (!found) return
+                current = { ...current, process: { pid, started: found.started } }
+                yield* save(current)
+              })
             const run = Effect.gen(function* () {
               while (true) {
-                const evidence = yield* input.run
+                const evidence = yield* input.run(track)
                 const now = yield* Clock.currentTimeMillis
                 const failed =
                   input.options.failure_contains !== undefined &&
@@ -156,10 +250,10 @@ export const make = Effect.gen(function* () {
                 }
                 yield* save(current)
                 if (current.status !== "running") return
-                yield* Effect.sleep(input.options.interval_ms ?? 10_000)
+                yield* Effect.sleep(input.options.interval_ms ?? Monitor.DEFAULT_INTERVAL_MS)
               }
             }).pipe(
-              Effect.timeoutOption(input.options.deadline_ms ?? 3_600_000),
+              Effect.timeoutOption(Monitor.deadline(input.options)),
               Effect.flatMap((result) =>
                 result._tag === "None"
                   ? Effect.sync(() => {

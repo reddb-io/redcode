@@ -12,19 +12,20 @@ export const MonitorTool = Tool.define(
       parameters: Monitor.Control,
       execute: (input: typeof Monitor.Control.Type, context: Tool.Context) =>
         Effect.gen(function* () {
-          if (input.action !== "list" && !input.id) return yield* Effect.die(new Error("Monitor id is required."))
+          const title = `Monitors: ${input.action}`
+          if (input.action === "list")
+            return { title, metadata: {}, output: Monitor.renderList(yield* monitors.list(context.sessionID)) }
+          if (!input.id) return yield* Effect.die(new Error("Monitor id is required."))
           const result =
-            input.action === "list"
-              ? yield* monitors.list(context.sessionID)
-              : input.action === "get"
-                ? yield* monitors.get(context.sessionID, input.id!)
-                : input.action === "wait"
-                  ? yield* monitors.wait(context.sessionID, input.id!, input.wait_ms ?? 1_000)
-                  : yield* monitors.cancel(context.sessionID, input.id!)
+            input.action === "get"
+              ? yield* monitors.get(context.sessionID, input.id)
+              : input.action === "wait"
+                ? yield* monitors.wait(context.sessionID, input.id, input.wait_ms ?? 1_000)
+                : yield* monitors.cancel(context.sessionID, input.id)
           return {
-            title: `Monitors: ${input.action}`,
+            title,
             metadata: {},
-            output: JSON.stringify(result ?? { error: "Monitor not found in this session." }),
+            output: result ? Monitor.render(result) : JSON.stringify({ error: "Monitor not found in this session." }),
           }
         }),
     }
