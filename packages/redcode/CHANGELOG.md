@@ -1,5 +1,11 @@
 # opencode
 
+## 0.31.2
+
+### Patch Changes
+
+- 73dcaa8: Make the release publish step safe to rerun while npm registry reads lag: an E409 republish conflict counts as already published, platform packages must be visible before `@reddb-io/redcode` is published, and the smoke step waits for every package and names the ones still missing.
+
 ## 0.31.1
 
 ### Patch Changes
