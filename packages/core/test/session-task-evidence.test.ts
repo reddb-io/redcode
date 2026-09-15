@@ -218,6 +218,42 @@ it.effect("reopens stale completion after a failed later edit and keeps its evid
   }),
 )
 
+it.effect("reopens and updates a task whose quoted request is no longer in the session history", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    yield* result("bash", "passing", 20)
+    const todos = yield* SessionTodo.Service
+    const done = (yield* todos.update({
+      sessionID,
+      todos: [{ ...task, status: "completed", evidence: { callID: "passing", explanation: "Retries verified" } }],
+    }))[0]
+    expect(done.source).toMatchObject({ type: "request", id: "msg_request_10" })
+    // Compaction or a partial projection leaves the request out of the facts the store reads. The
+    // stored source was validated when the task was created; it must not fail every later review,
+    // which runs before each provider step and used to turn this into a 500 for every prompt.
+    const database = yield* Database.Service
+    yield* database.db
+      .delete(SessionMessageTable)
+      .where(eq(SessionMessageTable.id, SessionMessage.ID.make("msg_request_10")))
+      .run()
+      .pipe(Effect.orDie)
+    yield* result("edit", "later-edit", 30)
+    const reviewed = yield* todos.review(sessionID)
+    expect(reviewed[0]).toMatchObject({ id: done.id, status: "in_progress", source: done.source })
+    const updated = yield* todos.update({
+      sessionID,
+      todos: [{ id: reviewed[0].id, revision: reviewed[0].revision, status: "pending" }],
+    })
+    expect(updated[0]).toMatchObject({ id: done.id, status: "in_progress", source: done.source })
+    // A new requirement is still checked against the history that exists now.
+    const invented = yield* todos
+      .update({ sessionID, todos: [{ content: "Invented", status: "pending", requirement: "never said this" }] })
+      .pipe(Effect.flip)
+    expect(invented.message).toContain("must quote a real user message")
+  }),
+)
+
 it.effect("disambiguates reused provider call IDs by message and detects a later mutation with that same call ID", () =>
   Effect.gen(function* () {
     yield* setup

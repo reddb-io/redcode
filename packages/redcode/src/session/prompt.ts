@@ -196,6 +196,18 @@ const layer = Layer.effect(
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
     const { db } = database
+    // Task review is bookkeeping around a turn. A list the store refuses to reconcile keeps its stored
+    // state for this step instead of failing the prompt: it runs before every provider step, so a
+    // failure here would fail every prompt in the session.
+    const reviewTodos = (sessionID: SessionID) =>
+      todos.review(sessionID).pipe(
+        Effect.catchTag("SessionTodo.Error", (error) =>
+          Effect.logWarning("task review failed; keeping the stored task list", {
+            "session.id": sessionID,
+            error: error.message,
+          }).pipe(Effect.andThen(todos.get(sessionID))),
+        ),
+      )
     const ops = Effect.fn("SessionPrompt.ops")(function* (sessionID: SessionID) {
       // Cancels seen when this step's tools started. A result arriving after a later cancel (Esc, a
       // stall) stays pending for the person's next message instead of starting a turn on its own.
@@ -1575,7 +1587,7 @@ const layer = Layer.effect(
               break
             }
             if (!lastAssistant.error && todoContinuations < 7) {
-              const tracked = yield* todos.review(sessionID).pipe(Effect.orDie)
+              const tracked = yield* reviewTodos(sessionID)
               const reminder = SessionTodo.reminder(tracked)
               const agent = reminder ? yield* agents.get(lastUser.agent) : undefined
               const disabled = agent
@@ -1750,7 +1762,7 @@ const layer = Layer.effect(
           // One review per step. The list rides the last user message rather than the system
           // prompt: state that changes on every todowrite would otherwise invalidate the
           // provider's cached prefix for the whole request that follows.
-          const tracked = todowrite ? (reviewed ?? (yield* todos.review(sessionID).pipe(Effect.orDie))) : undefined
+          const tracked = todowrite ? (reviewed ?? (yield* reviewTodos(sessionID))) : undefined
           reviewed = undefined
           const reminder = yield* SessionReminders.apply({ messages: msgs, agent, session, todos: tracked }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),

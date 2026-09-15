@@ -112,7 +112,10 @@ const make = Effect.gen(function* () {
                       created: request.created,
                     }
                   : undefined)
+              // Only a source this update supplies is checked against the history. A stored one was checked
+              // when the task was created, and its request may since have left the history (compaction).
               if (
+                !before?.source &&
                 source?.type === "request" &&
                 !observed.requests.some((entry) => entry.id === source.id && entry.text.includes(source.quote))
               )

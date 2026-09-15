@@ -33,7 +33,12 @@ import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { Session } from "@/session/session"
-import { SessionContextEpochTable, SessionInputTable, SessionMessageTable } from "@reddb-io/redcode-core/session/sql"
+import {
+  SessionContextEpochTable,
+  SessionInputTable,
+  SessionMessageTable,
+  TodoTable,
+} from "@reddb-io/redcode-core/session/sql"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -637,6 +642,58 @@ it.instance("loop continues a natural stop while persisted todos are unfinished"
     expect(JSON.stringify((yield* llm.hits)[0]?.body)).toContain("Complete only verified work")
     expect(JSON.stringify((yield* llm.hits)[1]?.body)).toContain("unfinished todo items")
     expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "final" }))
+  }),
+)
+
+it.instance("a completed task whose request left the history does not fail the prompt", () =>
+  Effect.gen(function* () {
+    // The review before each provider step reopens stale completions. It used to re-validate the
+    // task's stored request against the history and die when compaction had removed it, which
+    // failed every prompt in the session with "Unexpected server error".
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const todos = yield* Todo.Service
+    const { db } = yield* Database.Service
+    const chat = yield* sessions.create({ title: "Compacted" })
+    yield* db
+      .insert(TodoTable)
+      .values({
+        session_id: chat.id,
+        position: 0,
+        task_id: "todo_compacted",
+        revision: 1,
+        content: "Implement retries",
+        status: "completed",
+        priority: "high",
+        details: {
+          source: { type: "request", id: "msg_compacted_away", quote: "Implement retries", created: 1 },
+          criterion: "Retries are verified",
+          evidence: {
+            callID: "call_compacted_away",
+            messageID: "msg_compacted_result",
+            tool: "bash",
+            hash: "gone",
+            observed: 2,
+            explanation: "Tests passed",
+          },
+        },
+      })
+      .run()
+      .pipe(Effect.orDie)
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "keep going" }],
+    })
+    yield* llm.text("done")
+
+    const result = yield* prompt.loop({ sessionID: chat.id })
+
+    expect(result.info.role).toBe("assistant")
+    expect(result.parts).toContainEqual(expect.objectContaining({ type: "text" }))
+    expect(yield* todos.get(chat.id)).toMatchObject([{ id: "todo_compacted", status: "in_progress" }])
   }),
 )
 
