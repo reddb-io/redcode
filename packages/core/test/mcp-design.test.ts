@@ -36,10 +36,10 @@ it.live(
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
       const tools = yield* registry.materialize()
-      expect(tools.definitions.map((tool) => tool.name)).toContain("mcp_fixture_create_image")
+      expect(tools.definitions.map((tool) => tool.name)).toContain("fixture_create_image")
       expect(tools.media).toEqual([
         {
-          name: "mcp_fixture_create_image",
+          name: "fixture_create_image",
           capability: { operations: ["generate"], formats: ["image/png"], transparency: true },
         },
       ])

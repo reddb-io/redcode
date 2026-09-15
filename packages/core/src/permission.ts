@@ -12,6 +12,7 @@ import { SessionStore } from "./session/store"
 import { Wildcard } from "./util/wildcard"
 import { PermissionSaved } from "./permission/saved"
 import { HookV2 } from "./hook"
+import { HumanWait } from "./session/human-wait"
 
 export { Effect, Rule, Ruleset } from "@reddb-io/redcode-schema/permission"
 const missingAgentPermissions: Permission.Ruleset = [{ action: "*", resource: "*", effect: "deny" }]
@@ -220,10 +221,15 @@ const layer = Layer.effect(
           }
           if (result.effect === "allow") return
           const item = yield* create(request(input), input.agent)
+          // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
+          const source = input.source as { readonly type?: string; readonly callID?: string } | undefined
+          const waiting =
+            source?.type === "tool" && source.callID ? HumanWait.start(input.sessionID, source.callID) : undefined
           return yield* restore(Deferred.await(item.deferred)).pipe(
             EffectRuntime.catchTag("PermissionV2.DeclinedError", (error) => EffectRuntime.die(error)),
             EffectRuntime.ensuring(
               EffectRuntime.sync(() => {
+                waiting?.()
                 pending.delete(item.request.id)
               }),
             ),

@@ -8,6 +8,14 @@ import { Location } from "../location"
 import { ExternalTools } from "./external"
 import type { ToolSpec } from "@reddb-io/redcode-plugin/v2/effect"
 
+/**
+ * The registry key for one MCP tool: `<server>_<tool>`, each part sanitized. Matches the legacy
+ * runtime (`McpCatalog.toolName`). Before this, v2 registered `mcp_<server>_<tool>`; permission
+ * rules written against that prefix must drop it.
+ */
+export const toolKey = (server: string, tool: string) =>
+  server.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + tool.replace(/[^a-zA-Z0-9_-]/g, "_")
+
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* Config.Service
@@ -69,7 +77,9 @@ const layer = Layer.effectDiscard(
           yield* tools.register(
             Object.fromEntries(
               listed.tools.map((tool) => [
-                `mcp_${name}_${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, "_"),
+                // The legacy runtime's key (`<server>_<tool>`, each part sanitized), so permission
+                // rules, hooks and transcripts name an MCP tool the same way in both runtimes.
+                toolKey(name, tool.name),
                 {
                   description: tool.description ?? tool.name,
                   inputSchema: tool.inputSchema,

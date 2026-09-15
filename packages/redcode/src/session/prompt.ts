@@ -35,11 +35,7 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
 
-/** Surfaces where a person is present to read a warning and stop the turn themselves. */
-function attendedClient(client: string) {
-  // ACP clients (Zed and other editors) have a person at the keyboard too.
-  return client === "tui" || client === "app" || client === "desktop" || client === "acp"
-}
+const attendedClient = SessionStall.attended
 import { ToolRegistry } from "@/tool/registry"
 import { MCP } from "../mcp"
 import { LSP } from "@/lsp/lsp"

@@ -5,6 +5,7 @@ import { Context, Deferred, Effect, Layer, Schema } from "effect"
 import { Question } from "@reddb-io/redcode-schema/question"
 import { EventV2 } from "./event"
 import { SessionSchema } from "./session/schema"
+import { HumanWait } from "./session/human-wait"
 
 export const ID = Question.ID
 export type ID = typeof ID.Type
@@ -100,10 +101,13 @@ const layer = Layer.effect(
           const deferred = yield* Deferred.make<ReadonlyArray<Answer>, RejectedError>()
           const request: Request = { id, ...input }
           pending.set(id, { request, deferred })
+          // A tool waiting on this answer is not a wedged tool: its deadline must not run meanwhile.
+          const waiting = input.tool?.callID ? HumanWait.start(input.sessionID, input.tool.callID) : undefined
           return yield* events.publish(Event.Asked, request).pipe(
             Effect.andThen(restore(Deferred.await(deferred))),
             Effect.ensuring(
               Effect.suspend(() => {
+                waiting?.()
                 const item = pending.get(id)
                 if (!item) return Effect.void
                 pending.delete(id)
