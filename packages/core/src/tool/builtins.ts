@@ -16,6 +16,7 @@ import { WebSearchTool } from "./websearch"
 import { WriteTool } from "./write"
 import { DesignTools } from "./design"
 import { GoalTools } from "./goal"
+import { MonitorTool } from "./monitor"
 import { PlanTools } from "./plan"
 
 /**
@@ -49,6 +50,7 @@ export const node = makeLocationNode({
     WriteTool.node,
     DesignTools.node,
     GoalTools.node,
+    MonitorTool.node,
     PlanTools.node,
   ],
 })

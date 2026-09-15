@@ -985,6 +985,34 @@ export function refusal(detection: Detection, workdir?: string) {
   return lines.join("\n")
 }
 
+/**
+ * The refusal for a runtime that has the `monitor` tool but not bash monitors (the v2 core bash
+ * tool): a native probe is offered, because `monitor` can run one, but the command-poll suggestion
+ * is not, because starting one needs bash's own `monitor` parameter, which v2 does not have.
+ */
+export function probeRefusal(detection: Detection, workdir?: string) {
+  const held = detection.waitMs !== undefined ? ` for up to ${duration(detection.waitMs)}` : ""
+  const lines = [
+    detection.kind === "loop"
+      ? `Not run: this command waits by sleeping in a polling loop, which would block the turn${held}.`
+      : detection.kind === "watch"
+        ? "Not run: this command watches a job until it ends, which blocks the turn for as long as the job runs."
+        : `Not run: this command sleeps${held}, which blocks the turn. Sleeps shorter than ${duration(LONG_SLEEP_MS)} are allowed.`,
+    "Wait with a native monitor probe instead. It checks the same condition in the background every interval_ms without a shell, releases the turn, and resumes this session with the result once the condition holds or deadline_ms passes.",
+  ]
+  if (detection.before)
+    lines.push(`Run the part before the wait first, as its own bash call without any sleep: ${detection.before}`)
+  lines.push("Retry with this monitor tool call:", probeCall(detection.probe!, workdir))
+  if (detection.after)
+    lines.push(
+      `When the monitor reports success, run what came after the wait as its own bash call: ${detection.after}`,
+    )
+  lines.push(
+    "After starting the monitor, end your response or do independent work. Do not sleep, do not call monitor wait repeatedly, and do not start the same monitor twice.",
+  )
+  return lines.join("\n")
+}
+
 /** Under the long-sleep threshold: five tries five seconds apart. */
 const BOUNDED_TRIES = 5
 const BOUNDED_SLEEP_S = 5
