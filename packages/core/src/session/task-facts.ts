@@ -421,7 +421,19 @@ const make = Effect.gen(function* () {
           })
         : [],
     )
-    if (rows.length) return { requests, results }
+    // A legacy session keeps its conversation in MessageTable/PartTable and still gains projected
+    // rows here (a context update, an agent switch), so both stores are read and merged; a v2
+    // session simply has no legacy rows. Returning early on any projected row emptied the legacy
+    // requests and results for the rest of the session.
+    const legacy = yield* loadLegacy(sessionID, directory)
+    const requestIDs = new Set<string>(requests.map((entry) => entry.id))
+    const resultIDs = new Set(results.map((entry) => `${entry.messageID}:${entry.callID}`))
+    return {
+      requests: [...requests, ...legacy.requests.filter((entry) => !requestIDs.has(entry.id))],
+      results: [...results, ...legacy.results.filter((entry) => !resultIDs.has(`${entry.messageID}:${entry.callID}`))],
+    }
+  })
+  const loadLegacy = Effect.fnUntraced(function* (sessionID: SessionSchema.ID, directory: string | undefined) {
     const legacy = yield* db
       .select()
       .from(MessageTable)

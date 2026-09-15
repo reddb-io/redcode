@@ -6038,15 +6038,17 @@ unix(
         "30 seconds",
       )
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the admitted result never reached the model",
         "30 seconds",
       )
@@ -6145,15 +6147,17 @@ unix(
       gate.resolve()
       yield* awaitWithTimeout(Fiber.join(turn), "the user's turn never ended", "30 seconds")
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The deploy finished."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The deploy finished."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the result was never answered",
         "30 seconds",
       )
@@ -6211,7 +6215,10 @@ unix(
       })
       // A stand-in for `gh run view`: in progress until the test writes the finished status.
       const gh = path.join(dir, "gh")
-      yield* writeText(gh, `#!/bin/sh\ncat "$(dirname "$0")/run-status" 2>/dev/null || echo '{"status":"in_progress"}'\n`)
+      yield* writeText(
+        gh,
+        `#!/bin/sh\ncat "$(dirname "$0")/run-status" 2>/dev/null || echo '{"status":"in_progress"}'\n`,
+      )
       yield* Effect.promise(() => import("fs/promises").then((fs) => fs.chmod(gh, 0o755)))
       const polling = `for i in $(seq 1 60); do sleep 1; STATUS=$(./gh run view 42 --json status -q .status); case "$STATUS" in completed) break;; esac; done`
       const retry = JSON.parse(ShellPolling.call(ShellPolling.detect(polling)!.suggestion!))
@@ -6248,17 +6255,19 @@ unix(
 
       yield* writeText(path.join(dir, "run-status"), `{"status":"completed","conclusion":"success"}\n`)
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some(
-              (message) =>
-                message.info.role === "assistant" &&
-                message.parts.some((part) => part.type === "text" && part.text === "Run 42 completed successfully."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some(
+                (message) =>
+                  message.info.role === "assistant" &&
+                  message.parts.some((part) => part.type === "text" && part.text === "Run 42 completed successfully."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the monitor never resumed the session",
         "30 seconds",
       )
@@ -6311,7 +6320,9 @@ unix(
       yield* awaitWithTimeout(Fiber.join(turn), "the turn never ended", "30 seconds")
 
       const texts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
-        message.info.role === "assistant" ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) : [],
+        message.info.role === "assistant"
+          ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          : [],
       )
       expect(texts).toContain("Handled the follow-up.")
       expect((yield* monitors.list(chat.id))[0]?.status).toBe("running")
@@ -6362,15 +6373,17 @@ unix(
         "30 seconds",
       )
       yield* pollWithTimeout(
-        sessions.messages({ sessionID: chat.id }).pipe(
-          Effect.map((messages) =>
-            messages.some((message) =>
-              message.parts.some((part) => part.type === "text" && part.text === "The build finished."),
-            )
-              ? true
-              : undefined,
+        sessions
+          .messages({ sessionID: chat.id })
+          .pipe(
+            Effect.map((messages) =>
+              messages.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "The build finished."),
+              )
+                ? true
+                : undefined,
+            ),
           ),
-        ),
         "the pending result never reached the model",
         "30 seconds",
       )
@@ -6403,7 +6416,10 @@ unix(
         "30 seconds",
       )
       const now = Date.now()
-      yield* goals.set(chat.id, SessionGoal.paused(SessionGoal.parse("ship the release", { now }), "paused by the person", now))
+      yield* goals.set(
+        chat.id,
+        SessionGoal.paused(SessionGoal.parse("ship the release", { now }), "paused by the person", now),
+      )
       const calls = yield* llm.calls
       yield* writeText(path.join(dir, "released"), "")
       yield* pollWithTimeout(
@@ -6415,4 +6431,41 @@ unix(
       expect(yield* llm.calls).toBe(calls)
     }),
   60000,
+)
+
+it.instance("todowrite accepts how small models quote a Portuguese request in a fresh session", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 10 } } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const todos = yield* Todo.Service
+    const chat = yield* sessions.create({ title: "Fresh" })
+    const request =
+      "Corrija a validação do formulário de cadastro e adicione testes para o campo “e-mail”.\nDepois rode   os testes."
+    const create = (content: string, extra: object = {}) => ({ content, status: "pending", priority: "high", ...extra })
+    yield* llm.tool("todowrite", {
+      todos: [
+        create("Corrigir validação", { requirement: "Corrija a validação do formulário de cadastro" }),
+        create("Testes do e-mail", { requirement: 'testes para o campo "e-mail". Depois rode os testes.' }),
+        create("Validar tudo", { requirement: "Fix the signup form validation" }),
+        create("Rodar testes"),
+      ],
+    })
+    yield* llm.tool("todowrite", { todos: [{ content: "Rodar testes", status: "in_progress", priority: "high" }] })
+    yield* llm.tool("todowrite", { todos: [{ content: "Corrigir validação", status: "completed", priority: "high" }] })
+    yield* llm.text("done")
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: request }] })
+    const parts = (yield* sessions.messages({ sessionID: chat.id }))
+      .flatMap((message) => message.parts)
+      .filter((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "todowrite")
+    const [created, updated, completed] = parts.map((part) => (part.state.status === "error" ? part.state.error : "ok"))
+    expect(created).toBe("ok")
+    expect(updated).toBe("ok")
+    // A completion with no verification behind it is still refused.
+    expect(completed).toContain("Completion evidence refused")
+    const stored = yield* todos.get(chat.id)
+    expect(stored.map((task) => task.source?.id).every((id) => id === stored[0].source?.id)).toBe(true)
+    expect(stored.find((task) => task.content === "Validar tudo")?.criterion).toBe("Fix the signup form validation")
+    expect(stored.find((task) => task.content === "Corrigir validação")?.status).not.toBe("completed")
+  }),
 )

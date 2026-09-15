@@ -266,7 +266,7 @@ describe("tool.todowrite (legacy runtime)", () => {
         40,
       )
       if (!("error" in invented)) throw new Error("expected an invented requirement to be refused")
-      expect(invented.error).toContain("must quote a real user message")
+      expect(invented.error).toContain(SessionTodoStore.QUOTE_MISMATCH)
     }),
   )
 
