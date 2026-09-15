@@ -886,10 +886,7 @@ const layer = Layer.effect(
         : { ineffective: 0 }
       if (input.auto) input.onMeasured?.(effective)
       if (JSON.stringify(next) !== JSON.stringify(guard))
-        yield* session.setMetadata({
-          sessionID: input.sessionID,
-          metadata: CompactionGuard.toMetadata(current.metadata, next),
-        })
+        yield* session.updateMetadata(input.sessionID, (metadata) => CompactionGuard.toMetadata(metadata, next))
       const paused = input.auto && CompactionGuard.isPaused(next, prepared.latestRequestID)
       yield* Effect.logInfo("compacted", {
         "session.id": input.sessionID,

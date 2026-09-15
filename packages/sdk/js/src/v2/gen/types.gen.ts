@@ -2213,6 +2213,7 @@ export type Model = {
       read: number
       write: number
     }
+    unknown?: boolean
     tiers?: Array<{
       input: number
       output: number
@@ -2744,6 +2745,43 @@ export type SessionGoal = {
   updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
 }
 
+export type SessionGoalSetResult = {
+  id: string
+  objective: string
+  contract: {
+    outcome?: string
+    verification?: string
+    constraints?: string
+    boundaries?: string
+    stop_when?: string
+  }
+  stopAfter?: "design" | "plan" | "build"
+  gates: Array<string>
+  status: "active" | "paused" | "blocked" | "done" | "dropped"
+  reason?: string
+  turns: {
+    used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    max: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  budget?: SpendLimits
+  spendStart?: SpendTotals
+  judged?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  last?: {
+    verdict: "done" | "continue" | "blocked" | "wait"
+    reason: string
+    at: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  judgeFailures: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  claimed?: {
+    evidence: string
+    at: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  boot?: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  warnings?: Array<string>
+}
+
 export type SessionBudget = {
   limits: SpendLimits
   override: SpendLimits
@@ -2754,6 +2792,10 @@ export type SessionBudget = {
    */
   unknown: boolean
   reason: string
+  /**
+   * Whether a message a person sends counts the budget afresh (this session's override, else config)
+   */
+  reset_on_message: boolean
 }
 
 export type TextPartInput = {
@@ -11198,9 +11240,9 @@ export type SessionGoalSetError = SessionGoalSetErrors[keyof SessionGoalSetError
 
 export type SessionGoalSetResponses = {
   /**
-   * The goal, active
+   * The goal, active, with any lines that were not understood
    */
-  200: SessionGoal
+  200: SessionGoalSetResult
 }
 
 export type SessionGoalSetResponse = SessionGoalSetResponses[keyof SessionGoalSetResponses]
@@ -11310,6 +11352,7 @@ export type SessionGoalDropResponse = SessionGoalDropResponses[keyof SessionGoal
 export type SessionGoalBudgetData = {
   body?: {
     max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    reset_on_message?: boolean
     max_cost_usd?: number
     max_tokens?: number
   }
@@ -11381,6 +11424,7 @@ export type SessionBudgetResponse = SessionBudgetResponses[keyof SessionBudgetRe
 
 export type SessionBudgetSetData = {
   body?: {
+    reset_on_message?: boolean
     max_cost_usd?: number
     max_tokens?: number
   }

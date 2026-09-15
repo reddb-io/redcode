@@ -43,7 +43,7 @@ import {
   SummarizePayload,
   UpdatePayload,
 } from "../groups/session"
-import { PermissionNotFoundError } from "../errors"
+import { InvalidRequestError, PermissionNotFoundError } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -266,12 +266,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       if (!text) return yield* new HttpApiError.BadRequest()
       const cfg = yield* config.get()
       const agent = ctx.payload.agent ?? (yield* goalAgent(ctx.params.sessionID))
-      const goal = SessionGoal.parse(text, {
+      const { goal, warnings } = SessionGoal.parseWithWarnings(text, {
         maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns,
         stopAfter: agent === "design" ? "design" : agent === "plan" ? "plan" : "build",
         // Only what the person asked for: a goal has no spend limit by default.
         budget: SessionBudget.limitsOf({ max_cost_usd: ctx.payload.max_cost_usd, max_tokens: ctx.payload.max_tokens }),
       })
+      if (!goal.objective) return yield* new InvalidRequestError({ message: SessionGoal.NEEDS_OBJECTIVE, field: "text" })
       yield* goals.set(ctx.params.sessionID, goal)
       // The goal's first turn is the objective itself, as the user's message: the loop takes it
       // from there. Forked into the server's scope — not the request's, which closes with the
@@ -291,7 +292,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           Effect.catchCause((cause) => Effect.logError("goal could not start", { cause })),
           Effect.forkIn(scope, { startImmediately: true }),
         )
-      return (yield* goals.get(ctx.params.sessionID)) ?? goal
+      return { ...((yield* goals.get(ctx.params.sessionID)) ?? goal), ...(warnings.length ? { warnings } : {}) }
     })
 
     const goalPause = Effect.fn("SessionHttpApi.goalPause")(function* (ctx: { params: { sessionID: SessionID } }) {
@@ -308,7 +309,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const goal = yield* goals.get(ctx.params.sessionID)
       if (!goal) return null
       if (goal.status === "done" || goal.status === "dropped") return yield* new HttpApiError.BadRequest()
-      const next = SessionGoal.resumed(goal, Date.now(), yield* spend.totals(ctx.params.sessionID))
+      const sessionBudget = yield* spend.view(ctx.params.sessionID)
+      const next = SessionGoal.resumed(goal, Date.now(), yield* spend.totals(ctx.params.sessionID), sessionBudget)
       yield* goals.set(ctx.params.sessionID, next)
       if (next.status !== "active") return next
       const agent = yield* goalAgent(ctx.params.sessionID)

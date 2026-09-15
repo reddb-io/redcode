@@ -109,7 +109,6 @@ import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
 import { SessionBudget } from "./budget"
-import { SessionSpend } from "./spend"
 import { errorMessage } from "@/util/error"
 
 // @ts-ignore
@@ -205,7 +204,6 @@ const layer = Layer.effect(
     const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
-    const spend = yield* SessionSpend.Service
     const { db } = database
     // Task review is bookkeeping around a turn. A list the store refuses to reconcile keeps its stored
     // state for this step instead of failing the prompt: it runs before every provider step, so a
@@ -1909,6 +1907,28 @@ const layer = Layer.effect(
             time: { created: Date.now() },
             sessionID,
           }
+          // A reached spend budget ends the turn before another provider step. The reason goes in
+          // the transcript as a notice the model never receives; no empty assistant row is left.
+          const refused = yield* goals.admit({
+            sessionID,
+            messageID: lastUser.id,
+            human: SessionBudget.human(msgs, lastUser.id),
+          })
+          if (refused) {
+            msg.finish = "stop"
+            msg.time.completed = Date.now()
+            yield* sessions.updateMessage(msg)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              messageID: msg.id,
+              sessionID,
+              type: "text",
+              text: refused,
+              synthetic: true,
+              ignored: true,
+            })
+            break
+          }
           yield* sessions.updateMessage(msg)
 
           const finalizeInterruptedAssistant = Effect.gen(function* () {
@@ -1930,15 +1950,7 @@ const layer = Layer.effect(
               // Already incremented for this iteration, so this is the 1-based step number.
               model,
               step,
-              // A reached session budget ends the turn here, after the step that reached it.
-              beforeAttempt: () =>
-                spend
-                  .admit({ sessionID, messageID: lastUser.id, human: SessionBudget.human(msgs, lastUser.id) })
-                  .pipe(
-                    Effect.flatMap((denied) =>
-                      denied ? goals.pause(sessionID, denied).pipe(Effect.as(false)) : goals.beginTurn(sessionID),
-                    ),
-                  ),
+              beforeAttempt: () => goals.beginTurn(sessionID),
               onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
@@ -2482,7 +2494,6 @@ export const node = LayerNode.make({
     Database.node,
     MonitorRuntime.node,
     Todo.node,
-    SessionSpend.node,
   ],
 })
 

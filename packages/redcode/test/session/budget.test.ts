@@ -56,12 +56,43 @@ describe("limits, read and changed", () => {
   })
 
   test("costs and token counts parse from what a person types", () => {
-    expect(SessionBudget.parseCost("$2.50")).toBe(2.5)
-    expect(SessionBudget.parseCost("3 usd")).toBe(3)
-    expect(SessionBudget.parseCost("free")).toBeUndefined()
-    expect(SessionBudget.parseTokens("500k")).toBe(500_000)
-    expect(SessionBudget.parseTokens("1.5m tokens")).toBe(1_500_000)
-    expect(SessionBudget.parseTokens("0")).toBeUndefined()
+    expect(SessionBudget.parseCost("$2.50")).toEqual({ ok: true, value: 2.5 })
+    expect(SessionBudget.parseCost("3 usd")).toEqual({ ok: true, value: 3 })
+    expect(SessionBudget.parseCost("free").ok).toBe(false)
+    expect(SessionBudget.parseTokens("500k")).toEqual({ ok: true, value: 500_000 })
+    expect(SessionBudget.parseTokens("1.5m tokens")).toEqual({ ok: true, value: 1_500_000 })
+    expect(SessionBudget.parseTokens("0").ok).toBe(false)
+  })
+
+  test("a decimal comma is a decimal, three digits after a comma are thousands, and mixed separators are refused", () => {
+    expect(SessionBudget.parseCost("2,50")).toEqual({ ok: true, value: 2.5 })
+    expect(SessionBudget.parseCost("$2,5")).toEqual({ ok: true, value: 2.5 })
+    expect(SessionBudget.parseCost("1,000")).toEqual({ ok: true, value: 1000 })
+    expect(SessionBudget.parseCost("12,345.50")).toEqual({ ok: true, value: 12345.5 })
+    expect(SessionBudget.parseTokens("1,5m")).toEqual({ ok: true, value: 1_500_000 })
+    expect(SessionBudget.parseTokens("20,000 tokens")).toEqual({ ok: true, value: 20_000 })
+    const mixed = SessionBudget.parseCost("1.000,50")
+    expect(mixed.ok).toBe(false)
+    if (!mixed.ok) expect(mixed.error).toContain("use a dot for decimals")
+    expect(SessionBudget.parseCost("2,5,0").ok).toBe(false)
+    expect(SessionBudget.parseTokens("12,5000").ok).toBe(false)
+  })
+
+  test("fork metadata drops spend and the goal's start, and keeps every limit", () => {
+    expect(
+      SessionBudget.forkMetadata({
+        spend: { cost: 3, tokens: 30, unpriced: 0 },
+        budget: { max_cost_usd: 5 },
+        goal: { objective: "x", budget: { max_tokens: 10 }, spendStart: { cost: 1, tokens: 1, unpriced: 0 } },
+      }),
+    ).toEqual({ budget: { max_cost_usd: 5 }, goal: { objective: "x", budget: { max_tokens: 10 } } })
+  })
+
+  test("an override keeps reset_on_message alongside the limits and removes it with null", () => {
+    const set = SessionBudget.updateOverride({ max_cost_usd: 2 }, { reset_on_message: true })
+    expect(set).toEqual({ max_cost_usd: 2, reset_on_message: true })
+    expect(SessionBudget.overrideOf(set)).toEqual({ limits: { max_cost_usd: 2 }, reset_on_message: true })
+    expect(SessionBudget.updateOverride(set, { reset_on_message: null, max_cost_usd: null })).toBeUndefined()
   })
 
   test("a message is a person's when it has non-synthetic text", () => {

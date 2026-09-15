@@ -1,7 +1,10 @@
 /**
  * Spend limits as the TUI shows and edits them. Budgets are opt-in: every line here renders only
- * when the person set a limit, and nothing is suggested when none is.
+ * when the person set a limit, and nothing is suggested when none is. Typed amounts are read by
+ * the shared parser in core, so `$2,50` means the same here as on the server.
  */
+
+import { BudgetParse } from "@reddb-io/redcode-core/session/budget-parse"
 
 export interface Limits {
   readonly max_cost_usd?: number
@@ -60,6 +63,13 @@ export function lines(limits: Limits, spent: Totals): string[] {
   return out
 }
 
+/** "$2.00, 500,000 tokens": just the limits, for a confirmation. */
+export const describeLimits = (limits: Limits) =>
+  [
+    ...(limits.max_cost_usd !== undefined ? [money(limits.max_cost_usd)] : []),
+    ...(limits.max_tokens !== undefined ? [`${count(limits.max_tokens)} tokens`] : []),
+  ].join(", ")
+
 export interface SidebarBudget {
   readonly session: string[]
   readonly goal: string[]
@@ -67,7 +77,8 @@ export interface SidebarBudget {
 
 /**
  * What the sidebar shows under "$ spent": the session budget (configuration merged with the
- * session's own override) and the goal budget, each only when a limit exists.
+ * session's own override) and the goal budget, each only when a limit exists. Budget spend
+ * includes subagents, compaction, titles and the goal judge, which "$ spent" does not.
  */
 export function sidebar(input: { metadata: unknown; configured: unknown; child: boolean }): SidebarBudget {
   const metadata = record(input.metadata)
@@ -87,38 +98,7 @@ export function sidebar(input: { metadata: unknown; configured: unknown; child: 
   }
 }
 
-/** "$5", "5.50", "200k tokens", "$5 200k", "off" — what `/budget` and `/goal-budget` accept. */
-export function parse(text: string): { max_cost_usd?: number | null; max_tokens?: number | null; max_turns?: number } | undefined {
-  const input = text.trim().toLowerCase()
-  if (!input) return undefined
-  if (input === "off" || input === "none") return { max_cost_usd: null, max_tokens: null }
-  const out: { max_cost_usd?: number | null; max_tokens?: number | null; max_turns?: number } = {}
-  const words = input.replace(/,/g, "").split(/\s+/)
-  for (let index = 0; index < words.length; index++) {
-    const word = words[index]!
-    const next = words[index + 1]
-    const tokens = /^(\d+(?:\.\d+)?)([km])?$/.exec(word)
-    if (word.startsWith("$") || word.endsWith("usd")) {
-      const value = positive(Number(word.replace(/^\$/, "").replace(/usd$/, "")))
-      if (value === undefined) return undefined
-      out.max_cost_usd = value
-    } else if (tokens && (tokens[2] || next?.startsWith("token"))) {
-      const scale = tokens[2] === "m" ? 1_000_000 : tokens[2] === "k" ? 1_000 : 1
-      const value = positive(Math.floor(Number(tokens[1]) * scale))
-      if (value === undefined) return undefined
-      out.max_tokens = value
-      if (next?.startsWith("token")) index++
-    } else if (tokens && next?.startsWith("turn")) {
-      const value = Number(tokens[1])
-      if (!Number.isSafeInteger(value) || value < 1) return undefined
-      out.max_turns = value
-      index++
-    } else if (/^\d+$/.test(word) && words.length === 1) {
-      // A bare whole number keeps meaning turns in /goal-budget; callers without turns reject it.
-      out.max_turns = Number(word)
-    } else return undefined
-  }
-  return Object.keys(out).length ? out : undefined
-}
+/** What `/budget` and `/goal-budget` accept; see `BudgetParse.parseLimits`. */
+export const parse = BudgetParse.parseLimits
 
 export * as Budget from "./budget"

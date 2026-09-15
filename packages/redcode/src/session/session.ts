@@ -42,7 +42,8 @@ import { SessionID, MessageID, PartID } from "./schema"
 
 import type { Provider } from "@/provider/provider"
 import { Global } from "@reddb-io/redcode-core/global"
-import { Effect, Layer, Option, Context, Schema, Types } from "effect"
+import { Effect, Layer, Option, Context, Schema, Semaphore, Types } from "effect"
+import { SessionBudget } from "./budget"
 import { NonNegativeInt, optional } from "@reddb-io/redcode-core/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
@@ -462,6 +463,15 @@ export interface Interface {
   /** Marks the session as compacting since `time`, or clears the mark when `time` is omitted. */
   readonly setCompacting: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
   readonly setMetadata: (input: typeof SetMetadataInput.Type) => Effect.Effect<void>
+  /**
+   * Read-modify-write of the session's metadata against a fresh read, one writer per session at a
+   * time. Writers that change one key (the goal, the spend ledger, compaction) use this so they
+   * never write back another writer's stale copy.
+   */
+  readonly updateMetadata: (
+    sessionID: SessionID,
+    fn: (metadata: Record<string, unknown>) => Record<string, unknown>,
+  ) => Effect.Effect<Record<string, unknown>>
   readonly setAgentModel: (input: {
     sessionID: SessionID
     agent: string
@@ -731,7 +741,8 @@ const layer: Layer.Layer<
         path: sessionPath(ctx.worktree, ctx.directory),
         workspaceID: original.workspaceID,
         title,
-        metadata: structuredClone(original.metadata),
+        // A fork starts its own spend: the limits carry over, what the original spent does not.
+        metadata: SessionBudget.forkMetadata(structuredClone(original.metadata)),
       })
       const msgs = yield* messages({ sessionID: input.sessionID })
       // An admitted prompt that has not been promoted is not history yet: copied as a plain
@@ -803,9 +814,33 @@ const layer: Layer.Layer<
       yield* patch(input.sessionID, { time: { compacting: input.time } }).pipe(Effect.orDie)
     })
 
+    // One lock per session for every metadata write: a whole replacement waits for a key update in
+    // flight, and a key update always starts from what the last writer left.
+    const metadataLocks = new Map<SessionID, Semaphore.Semaphore>()
+    const metadataLock = (sessionID: SessionID) => {
+      let lock = metadataLocks.get(sessionID)
+      if (!lock) {
+        lock = Semaphore.makeUnsafe(1)
+        metadataLocks.set(sessionID, lock)
+      }
+      return lock
+    }
+
     const setMetadata = Effect.fn("Session.setMetadata")(function* (input: typeof SetMetadataInput.Type) {
-      yield* patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie)
+      yield* metadataLock(input.sessionID).withPermits(1)(
+        patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie),
+      )
     })
+
+    const updateMetadata: Interface["updateMetadata"] = (sessionID, fn) =>
+      metadataLock(sessionID).withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* get(sessionID).pipe(Effect.orDie)
+          const next = fn({ ...current.metadata })
+          yield* patch(sessionID, { metadata: next, time: { updated: Date.now() } }).pipe(Effect.orDie)
+          return next
+        }),
+      )
 
     const setAgentModel = Effect.fn("Session.setAgentModel")(function* (input: {
       sessionID: SessionID
@@ -959,6 +994,7 @@ const layer: Layer.Layer<
       setArchived,
       setCompacting,
       setMetadata,
+      updateMetadata,
       setAgentModel,
       setPermission,
       setRevert,

@@ -92,20 +92,31 @@ const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate" | "max_cos
  * sentence is still a goal, just one the judge has less to hold it to. `max cost: $2` and
  * `max tokens: 500k` set a spend budget; they are the person's, and never reach the contract.
  */
-export function parse(
-  text: string,
-  options?: {
-    maxTurns?: number
-    now?: number
-    id?: string
-    stopAfter?: "design" | "plan" | "build"
-    budget?: SessionBudget.Limits
-  },
-): Goal {
+export function parse(text: string, options?: ParseOptions): Goal {
+  return parseWithWarnings(text, options).goal
+}
+
+export interface ParseOptions {
+  readonly maxTurns?: number
+  readonly now?: number
+  readonly id?: string
+  readonly stopAfter?: "design" | "plan" | "build"
+  readonly budget?: SessionBudget.Limits
+}
+
+/**
+ * `parse`, plus what could not be read. A spend line that does not parse stays in the objective,
+ * word for word, and a warning says so: a limit is never silently dropped. A goal that is nothing
+ * but spend lines has an empty objective, which callers refuse.
+ */
+export function parseWithWarnings(text: string, options?: ParseOptions): { goal: Goal; warnings: string[] } {
   const objective: string[] = []
   const contract: Record<string, string> = {}
   const gates: string[] = []
   const budget: { max_cost_usd?: number; max_tokens?: number } = {}
+  const warnings: string[] = []
+  const unread: string[] = []
+  let spendLines = 0
   const pieces = text
     .split(
       /\n|;(?=\s*(?:verify|verification|outcome|done when|success|constraints?|boundaries|boundary|scope|max[\s_-]?cost(?:[\s_-]?usd)?|max[\s_-]?tokens|stop[\s_-]?when|stop|escalate|gates?)\s*:)/i,
@@ -121,19 +132,24 @@ export function parse(
     const value = piece.replace(field[0], "").trim()
     if (!value) continue
     if (field[1] === "gate") gates.push(value)
-    else if (field[1] === "max_cost_usd") {
-      const cost = SessionBudget.parseCost(value)
-      if (cost !== undefined) budget.max_cost_usd = cost
-    } else if (field[1] === "max_tokens") {
-      const tokens = SessionBudget.parseTokens(value)
-      if (tokens !== undefined) budget.max_tokens = tokens
+    else if (field[1] === "max_cost_usd" || field[1] === "max_tokens") {
+      spendLines++
+      const read = field[1] === "max_cost_usd" ? SessionBudget.parseCost(value) : SessionBudget.parseTokens(value)
+      if (read.ok) budget[field[1]] = read.value
+      else {
+        unread.push(piece)
+        warnings.push(`"${piece}" was not set as a spend limit (${read.error}); it was kept in the objective`)
+      }
     } else contract[field[1]] = contract[field[1]] ? `${contract[field[1]]}; ${value}` : value
   }
   const limits = SessionBudget.merge(budget, options?.budget)
   const now = options?.now ?? Date.now()
-  return {
+  const stated = objective.join(" ").trim() || contract.outcome
+  const goal: Goal = {
     id: options?.id ?? `goal_${now.toString(36)}`,
-    objective: objective.join(" ").trim() || contract.outcome || text.trim(),
+    // Spend lines are never an objective on their own: without anything else, the objective is
+    // empty and the goal is refused.
+    objective: stated ? [stated, ...unread].join(" ").trim() : spendLines > 0 ? "" : text.trim(),
     contract,
     stopAfter: options?.stopAfter,
     gates,
@@ -144,7 +160,10 @@ export function parse(
     created: now,
     updated: now,
   }
+  return { goal, warnings }
 }
+
+export const NEEDS_OBJECTIVE = "goal needs an objective: spend limits alone are not a goal"
 
 /** A goal read back from metadata written by any version of this module, or nothing. */
 export function fromMetadata(metadata: Record<string, unknown> | undefined): Goal | undefined {
@@ -480,10 +499,21 @@ export function spendStatus(goal: Goal, total: SessionBudget.Totals): SessionBud
   return SessionBudget.check(goal.budget, SessionBudget.since(total, goal.spendStart))
 }
 
-export function resumed(goal: Goal, now: number, total?: SessionBudget.Totals): Goal {
+/**
+ * Resuming, decided before anything runs: a goal stays paused while its turns, its own spend
+ * budget or the session's spend budget are used up, so it is never reported active only to pause
+ * again at its first step.
+ */
+export function resumed(
+  goal: Goal,
+  now: number,
+  total?: SessionBudget.Totals,
+  session?: { readonly exceeded: boolean; readonly reason: string },
+): Goal {
   if (goal.turns.used >= goal.turns.max) return paused(goal, budgetReason(goal), now)
   const spend = total ? spendStatus(goal, total) : undefined
   if (spend?.exceeded) return paused(goal, SessionBudget.pauseReason(spend), now)
+  if (session?.exceeded) return paused(goal, `${BUDGET_PAUSE}${session.reason}`, now)
   return { ...goal, status: "active", reason: undefined, judgeFailures: 0, boot: BOOT, updated: now }
 }
 

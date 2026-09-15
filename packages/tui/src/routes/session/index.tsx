@@ -662,12 +662,14 @@ export function Session() {
           .goalSet({ sessionID: route.sessionID, text: text.trim(), agent: local.agent.current()?.name })
           .catch(() => undefined)
         const goal = result?.data
+        const limits = Budget.limitsOf(goal?.budget)
+        const refusal = (result?.error as { message?: string } | undefined)?.message
         toast.show({
-          variant: goal ? "success" : "warning",
+          variant: goal && !goal.warnings?.length ? "success" : "warning",
           message: goal
-            ? `Goal set · ${goal.turns.max} turns${Budget.hasLimits(Budget.limitsOf(goal.budget)) ? ` · budget ${Budget.lines(Budget.limitsOf(goal.budget), { cost: 0, tokens: 0, unpriced: 0 }).map((line) => line.replace(/^.* of /, "")).join(", ")}` : ""}. Ctrl+C pauses it; /goal-resume continues.`
-            : "Could not set the goal.",
-          duration: 4000,
+            ? `Goal set · ${goal.turns.max} turns${Budget.hasLimits(limits) ? ` · budget ${Budget.describeLimits(limits)}` : ""}. Ctrl+C pauses it; /goal-resume continues.${goal.warnings?.length ? ` ${goal.warnings.join(" ")}` : ""}`
+            : `Could not set the goal${refusal ? `: ${refusal}` : "."}`,
+          duration: goal?.warnings?.length ? 8000 : 4000,
         })
       },
     },
@@ -703,11 +705,15 @@ export function Session() {
         })
         if (!text?.trim()) return
         const change = Budget.parse(text)
-        if (!change || change.max_turns !== undefined) {
-          toast.show({ variant: "warning", message: "Enter an amount such as $5, 200k tokens, or off.", duration: 3000 })
+        if (!change.ok || change.value.max_turns !== undefined) {
+          toast.show({
+            variant: "warning",
+            message: change.ok ? "Turns belong to /goal-budget; enter an amount such as $5, 200k tokens, or off." : change.error,
+            duration: 4000,
+          })
           return
         }
-        const { max_turns: _turns, ...limits } = change
+        const { max_turns: _turns, ...limits } = change.value
         const result = await sdk.client.session
           // The route takes null to remove a limit ("off"); the generated client drops null from the type.
           .budgetSet({ sessionID: route.sessionID, ...(limits as { max_cost_usd?: number; max_tokens?: number }) })

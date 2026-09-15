@@ -8,6 +8,7 @@
  */
 
 import { BUDGET_PAUSE } from "@reddb-io/redcode-core/session/loop-marker"
+import { BudgetParse } from "@reddb-io/redcode-core/session/budget-parse"
 import { Schema } from "effect"
 
 /** The share of a limit at which the person is warned, once. */
@@ -144,20 +145,56 @@ export const pauseReason = (status: Status) => `${BUDGET_PAUSE}${status.reason}`
 export const warningKey = (scope: string, limits: Limits) =>
   `${scope}:${limits.max_cost_usd ?? "-"}:${limits.max_tokens ?? "-"}`
 
-/** "$5", "5", "5.50 usd" → 5, 5, 5.5. */
-export function parseCost(text: string): number | undefined {
-  const cleaned = text.trim().replace(/^\$/, "").replace(/\s*usd$/i, "").replace(/,/g, "")
-  if (!/^\d+(\.\d+)?$/.test(cleaned)) return undefined
-  return bound(Number(cleaned))
+/** "$5", "2,50", "1,000 usd": the shared separator rules; see `BudgetParse`. */
+export const parseCost = BudgetParse.parseCost
+
+/** "500k", "1,5m tokens", "20,000": the shared separator rules; see `BudgetParse`. */
+export const parseTokens = BudgetParse.parseTokens
+
+/** A per-session override: limits, and whether a person's message re-arms them. */
+export interface Override {
+  readonly limits: Limits
+  readonly reset_on_message?: boolean
 }
 
-/** "500k", "1.5m tokens", "20,000" → 500000, 1500000, 20000. */
-export function parseTokens(text: string): number | undefined {
-  const match = /^(\d+(?:\.\d+)?)\s*([km])?\s*(?:tokens?)?$/i.exec(text.trim().replace(/,/g, ""))
-  if (!match) return undefined
-  const scale = match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2]?.toLowerCase() === "k" ? 1_000 : 1
-  const value = bound(Number(match[1]) * scale)
-  return value === undefined ? undefined : Math.floor(value)
+export function overrideOf(raw: unknown): Override {
+  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
+  return {
+    limits: limitsOf(value),
+    ...(typeof value.reset_on_message === "boolean" ? { reset_on_message: value.reset_on_message } : {}),
+  }
+}
+
+/** The override after a change; `undefined` when nothing is left to store. */
+export function updateOverride(
+  raw: unknown,
+  change: { max_cost_usd?: number | null; max_tokens?: number | null; reset_on_message?: boolean | null },
+): Record<string, unknown> | undefined {
+  const current = overrideOf(raw)
+  const limits = update(current.limits, change)
+  const reset =
+    change.reset_on_message === null
+      ? undefined
+      : change.reset_on_message !== undefined
+        ? change.reset_on_message
+        : current.reset_on_message
+  const next = { ...limits, ...(reset !== undefined ? { reset_on_message: reset } : {}) }
+  return Object.keys(next).length ? next : undefined
+}
+
+/**
+ * Metadata for a fork: its spend starts at zero, and a goal it carries counts from the fork, so
+ * the running totals and the goal's start are dropped. Limits — the session's and the goal's — stay.
+ */
+export function forkMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!metadata) return metadata
+  const { [SPEND_KEY]: _spend, ...rest } = metadata
+  const goal = rest["goal"]
+  if (goal && typeof goal === "object" && "spendStart" in goal) {
+    const { spendStart: _start, ...kept } = goal as Record<string, unknown>
+    return { ...rest, goal: kept }
+  }
+  return rest
 }
 
 /**
@@ -198,9 +235,15 @@ export const View = Schema.Struct({
   exceeded: Schema.Boolean,
   unknown: Schema.Boolean.annotate({ description: "A cost limit is set and some spend has no known price" }),
   reason: Schema.String,
+  reset_on_message: Schema.Boolean.annotate({
+    description: "Whether a message a person sends counts the budget afresh (this session's override, else config)",
+  }),
 }).annotate({ identifier: "SessionBudget" })
 
 export const UpdatePayload = Schema.Struct({
+  reset_on_message: Schema.optional(Schema.NullOr(Schema.Boolean)).annotate({
+    description: "Count the budget afresh from each message a person sends; null removes the override",
+  }),
   max_cost_usd: Schema.optional(Schema.NullOr(Positive)).annotate({
     description: "Dollars this session may spend; null removes the override",
   }),

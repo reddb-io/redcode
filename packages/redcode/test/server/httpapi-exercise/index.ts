@@ -1591,6 +1591,43 @@ const scenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .post("/session/{sessionID}/budget", "session.budget.set.clear")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Budget clear session" })
+        yield* ctx.sessionMetadata(session.id, { budget: { max_cost_usd: 5, max_tokens: 100 } })
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/budget", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { max_cost_usd: null },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(
+          isRecord(body) && isRecord(body.override) && body.override.max_cost_usd === undefined,
+          "null should remove the cost limit",
+        )
+        check(isRecord(body) && isRecord(body.override) && body.override.max_tokens === 100, "null keeps the other limit")
+        const stored = yield* ctx.sessionGet(ctx.state.id)
+        const budget = stored?.metadata?.["budget"]
+        check(isRecord(budget) && budget.max_cost_usd === undefined, "the stored override should drop the cost limit")
+      }),
+    ),
+  http.protected
+    .post("/session/{sessionID}/goal", "session.goal.set.spendOnly")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Spend-only goal session" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { text: "max cost: $2; max tokens: 500k" },
+    }))
+    .status(400),
+  http.protected
     .get("/session/{sessionID}/diff", "session.diff")
     .seeded((ctx) => ctx.session({ title: "Diff session" }))
     .at((ctx) => ({ path: route("/session/{sessionID}/diff", { sessionID: ctx.state.id }), headers: ctx.headers() }))

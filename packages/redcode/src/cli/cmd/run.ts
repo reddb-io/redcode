@@ -886,12 +886,21 @@ export const RunCommand = effectCmd({
           })
           if (set.error) die(`could not set the session budget: ${formatRunError(set.error)}`)
         }
+        // Whatever set the limit — these flags, the configuration, the session, a goal — a run a
+        // budget stopped did not finish, so it exits 1. Without any limit nothing here fires.
         async function reportBudget() {
-          if (maxCost === undefined && maxTokens === undefined) return
-          const view = await client.session.budget({ sessionID }).catch(() => undefined)
-          if (!view?.data?.exceeded) return
+          const [view, goal] = await Promise.all([
+            client.session.budget({ sessionID }).catch(() => undefined),
+            client.session.goal({ sessionID }).catch(() => undefined),
+          ])
+          const goalReason =
+            goal?.data?.status === "paused" && goal.data.reason?.startsWith("budget: ")
+              ? goal.data.reason.slice("budget: ".length)
+              : undefined
+          if (!view?.data?.exceeded && goalReason === undefined) return
           process.exitCode = 1
-          if (!emit("budget", { budget: view.data })) UI.error(`Budget reached: ${view.data.reason}. The run stopped.`)
+          const reason = view?.data?.exceeded ? `Budget reached: ${view.data.reason}` : `Goal budget reached: ${goalReason}`
+          if (!emit("budget", { budget: view?.data, goal: goal?.data })) UI.error(`${reason}. The run stopped.`)
         }
 
         if (!interactive) {

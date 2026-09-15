@@ -56,8 +56,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
       <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
       <text fg={theme().textMuted}>{money.format(cost())} spent</text>
-      <For each={budget().session}>{(line) => <text fg={theme().textMuted}>budget {line}</text>}</For>
-      <For each={budget().goal}>{(line) => <text fg={theme().textMuted}>goal budget {line}</text>}</For>
+      {/* Budget spend counts subagents, compaction and judging too, so it can exceed "$ spent". */}
+      <For each={budget().session}>{(line) => <text fg={theme().textMuted}>budget (with subagents) {line}</text>}</For>
+      <For each={budget().goal}>{(line) => <text fg={theme().textMuted}>goal budget (with subagents) {line}</text>}</For>
       <Show when={pace().latency !== undefined}>
         <text fg={theme().textMuted}>{Throughput.formatLatency(pace().latency!)} latency</text>
       </Show>
