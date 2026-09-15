@@ -43,6 +43,7 @@ import {
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ToolSearch } from "../../src/session/tool-search"
+import { anthropicToolsMissing } from "../lib/llm-server"
 import { CompactionPolicy } from "@reddb-io/redcode-core/session/compaction-policy"
 import { Token } from "@/util/token"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -7398,7 +7399,7 @@ type SeedTool = { tool: string; input: Record<string, unknown>; output: string; 
 /** Writes a finished turn straight into history: the person's text, then an answer with tool results. */
 const seedTurn = Effect.fn("test.seedTurn")(function* (
   sessionID: SessionID,
-  input: { user: string; answer?: string; tools?: SeedTool[]; tokens?: number },
+  input: { user: string; answer?: string; tools?: SeedTool[]; tokens?: number; completed?: number },
 ) {
   const sessions = yield* Session.Service
   const { directory } = yield* TestInstance
@@ -7423,7 +7424,7 @@ const seedTurn = Effect.fn("test.seedTurn")(function* (
     modelID: ref.modelID,
     providerID: ref.providerID,
     parentID: user.id,
-    time: { created: Date.now(), completed: Date.now() },
+    time: { created: input.completed ?? Date.now(), completed: input.completed ?? Date.now() },
     finish: "stop",
   }
   yield* sessions.updateMessage(assistant)
@@ -7537,39 +7538,167 @@ it.instance(
       expect(hits).toHaveLength(1)
       expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(0)
       const placeholder = CompactionPolicy.trimPlaceholder({ tokens: Token.estimate(output), tool: "glob" })
-      expect(placeholder).toBe("[tool output trimmed: 15000 tokens from glob. Read it again if you still need it.]")
+      expect(placeholder).toBe(
+        "[tool output trimmed: 15000 tokens from glob. If you still need it, find it with session_history instead of running the tool again.]",
+      )
       // Oldest first, and only as much as the context needed.
       expect(requestText(hits[0]!).split(placeholder.slice(0, 40)).length - 1).toBe(2)
     }),
   60_000,
 )
 
+/** The test model served through a real provider SDK against the fake server. */
+function sdkCfg(
+  url: string,
+  npm: "@ai-sdk/openai" | "@ai-sdk/anthropic",
+  limit: { context: number; output: number },
+  extra?: Partial<ConfigV1.Info>,
+) {
+  const base = limitCfg(url, limit)
+  return {
+    ...base,
+    ...extra,
+    provider: {
+      ...base.provider,
+      test: { ...base.provider.test, npm, options: { ...base.provider.test.options, apiKey: "test" } },
+    },
+  }
+}
+
+const inputOf = (hit: { body: Record<string, unknown> }) => (Array.isArray(hit.body.input) ? hit.body.input : [])
+const toolsOf = (hit: { body: Record<string, unknown> }) => (Array.isArray(hit.body.tools) ? hit.body.tools : [])
+
 it.instance(
-  "the summary request reuses the conversation's cached prefix and caps its output",
+  "an idle trim, then a summary request whose prefix is the last request exactly",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 100_000, output: 32_000 }))
-      const { chat, prompt } = yield* startChat("Find the config files.")
+      const { llm } = yield* useServerConfig((url) => sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Idle trim" })
+      const output = "x".repeat(60_000)
+      yield* seedTurn(chat.id, {
+        user: "look around",
+        tools: [1, 2, 3].map((index) => ({ tool: "glob", input: { pattern: `*.${index}` }, output })),
+      })
+      yield* seedTurn(chat.id, { user: "and then", answer: "noted" })
+      // Near the band (80% of the 68k usable window) and idle past the provider's cache lifetime.
+      const idle = Date.now() - 10 * 60_000
+      yield* seedTurn(chat.id, { user: "keep going", answer: "going", tokens: 60_000, completed: idle })
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
       yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
       yield* llm.text("Summary.")
-      yield* llm.text("Found none.")
-      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+      yield* llm.text("done")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
 
       const hits = yield* llm.hits
       expect(hits).toHaveLength(3)
       const [step, summarize] = [hits[0]!, hits[1]!]
-      expect(Array.isArray(step.body.tools) && step.body.tools.length).toBeGreaterThan(0)
-      expect(summarize.body.tools).toEqual(step.body.tools)
+      // The idle trim ran before the step, with no summary of its own.
+      expect(JSON.stringify(step.body).split("[tool output trimmed:").length - 1).toBe(2)
+      // Over the threshold the one remaining output was not trimmed: that would have broken the prefix.
+      const before = inputOf(step)
+      expect(before.length).toBeGreaterThan(0)
+      expect(inputOf(summarize).slice(0, before.length)).toEqual(before)
+      expect(toolsOf(summarize)).toEqual(toolsOf(step))
+      expect(toolsOf(step).length).toBeGreaterThan(0)
       expect(summarize.body.tool_choice).toBe("none")
-      const before = messagesOf(step)
-      const after = messagesOf(summarize)
-      expect(after[0]).toEqual(before[0])
-      expect(after[1]).toEqual(before[1])
-      expect(JSON.stringify(after.at(-1))).toContain("Create a structured checkpoint")
-      expect(summarize.body.max_tokens).toBe(16_000)
+      expect(summarize.body.max_output_tokens).toBe(16_000)
+      expect(JSON.stringify(inputOf(summarize).at(-1))).toContain("Create a structured checkpoint")
+      expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(1)
     }),
-  60_000,
+  90_000,
 )
+
+it.instance(
+  "an Anthropic summary request keeps the tools its history's tool blocks need",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) =>
+        sdkCfg(url, "@ai-sdk/anthropic", { context: 100_000, output: 32_000 }),
+      )
+      const { chat, prompt, sessions } = yield* startChat("Find the config files.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
+      yield* llm.text("Summary.")
+      yield* llm.text("Found none.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(3)
+      const [step, summarize] = [hits[0]!, hits[1]!]
+      expect(anthropicToolsMissing(summarize.body)).toBe(false)
+      expect(JSON.stringify(summarize.body.messages)).toContain('"tool_use"')
+      expect(toolsOf(summarize).map((tool) => (tool as { name: string }).name)).toEqual(
+        toolsOf(step).map((tool) => (tool as { name: string }).name),
+      )
+      expect(summarize.body.tool_choice).toBeUndefined()
+      const [summary] = summaries(yield* sessions.messages({ sessionID: chat.id }))
+      expect(summary?.info.role === "assistant" && summary.info.error).toBeFalsy()
+      // The fake refuses what the real API refuses: the same history without tools.
+      const refused = yield* Effect.promise(() =>
+        fetch(`${llm.url}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...summarize.body, tools: undefined }),
+        }),
+      )
+      expect(refused.status).toBe(400)
+    }),
+  90_000,
+)
+
+it.instance(
+  "a refused cached summary request falls back to the rewritten history",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }))
+      const { chat, prompt, sessions } = yield* startChat("Find the config files.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
+      yield* llm.error(400, { error: { message: "too many tokens in the request", type: "invalid_request_error" } })
+      yield* llm.text("Summary.")
+      yield* llm.text("Found none.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(4)
+      expect(toolsOf(hits[1]!).length).toBeGreaterThan(0)
+      expect(toolsOf(hits[2]!)).toHaveLength(0)
+      expect(JSON.stringify(hits[2]!.body)).toContain("<conversation>")
+      const [summary] = summaries(yield* sessions.messages({ sessionID: chat.id }))
+      expect(summary?.info.role === "assistant" && summary.info.error).toBeFalsy()
+    }),
+  90_000,
+)
+
+for (const failure of ["stall", "server error"] as const) {
+  it.instance(
+    `a folded summary that meets a ${failure} reports it instead of history too large`,
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => ({
+          ...windowCfg(url, 8_000),
+          experimental: { aux_timeout: 1_500 },
+        }))
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Fold failure" })
+        for (const index of [0, 1, 2, 3, 4, 5])
+          yield* seedTurn(chat.id, { user: `part ${index}`, answer: words(1_500, `fold${index}`) })
+        if (failure === "stall") yield* llm.hang
+        else yield* llm.error(500, { error: { message: "upstream exploded" } })
+        const all = yield* compactNow(chat.id)
+
+        const [summary] = summaries(all)
+        const error = summary?.info.role === "assistant" ? summary.info.error : undefined
+        expect(error).toBeDefined()
+        const text = JSON.stringify(error)
+        expect(text).not.toContain("too large to compact")
+        if (failure === "stall") expect(text).toContain("Compacting the conversation got no answer")
+        else expect(error?.name).not.toBe("ContextOverflowError")
+        expect((yield* sessions.get(chat.id)).time.compacting).toBeUndefined()
+      }),
+    60_000,
+  )
+}
 
 it.instance(
   "a history larger than the summarizer folds in windows and halves a rejected one",
@@ -7625,10 +7754,11 @@ it.instance("the summary ends with anchors built from the history", () =>
       "- #17",
       "abc1234def",
       "docs/relatório.md",
-      "- go on",
       "session_history",
     ])
       expect(text).toContain(expected)
+    // The last turn stays in context verbatim, so the anchors do not quote it again.
+    expect(text).not.toContain("- go on")
   }),
 )
 

@@ -1,6 +1,12 @@
 /**
- * Durable state of the v2 compaction guard, kept in the session's metadata under the same key and
- * in a shape the legacy guard also reads, so a restarted runtime does not start the cycle over.
+ * Durable state of the v2 compaction guard, kept in the session's metadata under the same key as
+ * legacy, so a restarted runtime does not start the cycle over.
+ *
+ * The shapes overlap but are not identical: both write `ineffective` and `paused: { after, at }`,
+ * where `after` is the user request the pause holds until. Legacy also writes `turn` (the turn a run
+ * of ineffective compactions belongs to, since a goal continuation is a new turn of the same
+ * request); v2 writes `request` instead, because its guard counts per request and resets per run in
+ * memory. Each side ignores the other's extra field, and a pause written by either holds in both.
  */
 import { eq, sql } from "drizzle-orm"
 import { Effect } from "effect"

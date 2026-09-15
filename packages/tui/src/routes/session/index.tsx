@@ -1671,12 +1671,9 @@ export function Session() {
 }
 
 /** The compaction divider says how much it freed, when the server recorded it. */
-export function compactionTitle(
-  part: { tokens?: { before: number; after: number }; trimmed?: number } | undefined,
-) {
-  const trimmed = part?.trimmed ? ` · trimmed ${Locale.number(part.trimmed)} tokens` : ""
-  if (!part?.tokens) return ` Compaction${trimmed} `
-  return ` Compaction · ${Locale.number(part.tokens.before)} → ${Locale.number(part.tokens.after)} tokens${trimmed} `
+export function compactionTitle(part: { tokens?: { before: number; after: number } } | undefined) {
+  if (!part?.tokens) return " Compaction "
+  return ` Compaction · ${Locale.number(part.tokens.before)} → ${Locale.number(part.tokens.after)} tokens `
 }
 
 function UserMessage(props: {

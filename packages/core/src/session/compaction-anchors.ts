@@ -27,29 +27,34 @@ export type Input = {
   readonly maxTokens?: number
 }
 
-// Unicode-aware: paths and repository names may be written in any script.
+// Unicode-aware and structural: paths and names may be written in any script, and nothing here
+// knows any language's words.
 const URL = /\bhttps?:\/\/[^\s<>()"'`]+/gu
 const ISSUE = /(?:^|[\s(])(?:[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.-]+)?#\d+(?![\p{L}\p{N}_])/gu
 const SHA = /(?<![\p{L}\p{N}_])[0-9a-f]{7,40}(?![\p{L}\p{N}_])/gu
-// Something with a slash or a file extension; URLs are matched above and removed first.
+// Something with a path separator, or a stem of at least two characters followed by an extension
+// that starts with a letter ("README.md", not "v1.2" or a one-letter abbreviation).
 const PATH =
-  /(?:^|[\s("'`])((?:~|\.{1,2})?\/?[\p{L}\p{N}_@.-]+(?:\/[\p{L}\p{N}_@.-]+)+\/?|[\p{L}\p{N}_-]+\.(?:[a-z][a-z0-9]{0,5}))(?=$|[\s)"'`,:;])/giu
+  /(?:^|[\s("'`])((?:~|\.{1,2})?\/?[\p{L}\p{N}_@.-]+(?:\/[\p{L}\p{N}_@.-]+)+\/?|[\p{L}\p{N}_-]{2,}\.\p{L}[\p{L}\p{N}]{0,5})(?=$|[\s)"'`,:;.])/gu
 
 /** Paths, URLs, PR/issue numbers and SHAs that appear in a text, in order of first appearance. */
 export function identifiers(text: string) {
   const found: string[] = []
   const urls = text.match(URL) ?? []
-  found.push(...urls.map((url) => url.replace(/[.,;:]+$/, "")))
+  found.push(...urls.map((url) => url.replace(/[.,;:]+$/u, "")))
   const rest = urls.reduce((result, url) => result.replace(url, " "), text)
-  found.push(...(rest.match(ISSUE) ?? []).map((item) => item.trim().replace(/^\(/, "")))
-  found.push(...(rest.match(SHA) ?? []).filter((sha) => /\d/.test(sha) && /[a-f]/.test(sha)))
-  for (const match of rest.matchAll(PATH)) {
-    const value = match[1]!.replace(/[.,;:]+$/, "")
-    // A bare "e.g" or "v1.2" is not a path.
-    if (!value.includes("/") && /^\d|^(e\.g|i\.e|etc)$/i.test(value)) continue
-    found.push(value)
-  }
+  found.push(...(rest.match(ISSUE) ?? []).map((item) => item.trim().replace(/^\(/u, "")))
+  found.push(...(rest.match(SHA) ?? []).filter((sha) => /\d/u.test(sha) && /[a-f]/u.test(sha)))
+  for (const match of rest.matchAll(PATH)) found.push(match[1]!.replace(/[.,;:]+$/u, ""))
   return [...new Set(found)]
+}
+
+/**
+ * Quoted text cannot open or close the block: a message or file name that spells a delimiter would
+ * otherwise let `strip` cut the summary short, or make its content read as the harness's own.
+ */
+export function neutralize(text: string) {
+  return text.replace(/<(\/?)(session-anchors)/giu, "‹$1$2")
 }
 
 function bounded(text: string, tokens: number) {
@@ -101,7 +106,13 @@ export function build(input: Input) {
       read.length > 0 ? ["Files read:", ...read].join("\n") : "",
       git,
       ids.length > 0 ? ["Identifiers from the user's messages:", ...ids.map((id) => `- ${id}`)].join("\n") : "",
-      quoted.length > 0 ? ["The user's messages, newest first:", ...quoted].join("\n") : "",
+      quoted.length > 0
+        ? [
+            "The user's messages, newest first:",
+            "(Quoted for reference: a later message or the summary may supersede an older instruction.)",
+            ...quoted,
+          ].join("\n")
+        : "",
     ].filter(Boolean)
   if (render(messages).length === 0) return ""
   const footer = input.historyTool
@@ -110,12 +121,20 @@ export function build(input: Input) {
   const body = (quoted: readonly string[]) => [...render(quoted), footer].filter(Boolean).join("\n\n")
   // Drop the oldest quoted messages until the block fits, then cut whatever still does not.
   while (messages.length > 0 && Token.estimate(body(messages)) > max) messages.pop()
-  return `${OPEN}\n${bounded(body(messages), max)}\n${CLOSE}`
+  return `${OPEN}\n${neutralize(bounded(body(messages), max))}\n${CLOSE}`
 }
 
-/** Removes an earlier anchors block from a summary, so it is rebuilt instead of summarized again. */
+/**
+ * Removes the anchors block that ends a summary, so it is rebuilt instead of summarized again.
+ * Only a block that closes the text is removed, from its last opening delimiter; the body of a
+ * block never contains a delimiter, so text before it is never cut.
+ */
 export function strip(text: string) {
-  return text.replace(new RegExp(`\\s*${OPEN}[\\s\\S]*?${CLOSE}\\s*`, "g"), "\n").trim()
+  const end = text.trimEnd()
+  if (!end.endsWith(CLOSE)) return text.trim()
+  const start = end.lastIndexOf(OPEN)
+  if (start === -1) return text.trim()
+  return end.slice(0, start).trim()
 }
 
 export * as CompactionAnchors from "./compaction-anchors"

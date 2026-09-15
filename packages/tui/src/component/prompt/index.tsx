@@ -1149,12 +1149,19 @@ export function Prompt(props: PromptProps) {
     ) {
       move.startSubmit()
       // Palette slash commands carry no arguments, so typed `/compact <focus>` is read here.
-      void sdk.client.session.summarize({
-        sessionID,
-        providerID: selectedModel.providerID,
-        modelID: selectedModel.modelID,
-        focus: inputText.replace(/^\/\w+\s+/, "").trim(),
-      })
+      const failed = () =>
+        toast.show({ variant: "error", message: "The session could not be compacted", duration: 5000 })
+      void sdk.client.session
+        .summarize({
+          sessionID,
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+          focus: inputText.replace(/^\/\w+\s+/, "").trim(),
+        })
+        .then((result) => {
+          if (result.error) failed()
+        })
+        .catch(failed)
     } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))

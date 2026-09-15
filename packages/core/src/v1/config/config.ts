@@ -158,7 +158,8 @@ export const Info = Schema.Struct({
         description: "Prepare compaction summaries in the background near the context limit (default: true)",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable pruning of old tool outputs (default: false)",
+        description:
+          "Trim old tool outputs outside the kept tail before compacting, when that alone frees enough room or the provider cache has expired (default: true). A trim is permanent; the model can still find the output with session_history.",
       }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:
