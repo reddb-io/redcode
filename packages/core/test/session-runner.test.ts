@@ -43,6 +43,7 @@ import { ApplicationTools } from "@reddb-io/redcode-core/tool/application-tools"
 import { AgentV2 } from "@reddb-io/redcode-core/agent"
 import { Config } from "@reddb-io/redcode-core/config"
 import { ConfigCompaction } from "@reddb-io/redcode-core/config/compaction"
+import { ConfigExperimental } from "@reddb-io/redcode-core/config/experimental"
 import { Tool } from "@reddb-io/redcode-core/tool/tool"
 import {
   SessionContextEpochTable,
@@ -222,11 +223,13 @@ const skillGuidance = Layer.mock(SkillGuidance.Service, {
     ),
 })
 const referenceGuidance = Layer.mock(ReferenceGuidance.Service, { load: () => Effect.succeed(SystemContext.empty) })
+/** `experimental` config the next turn reads; tests that set it restore it with `withExperimental`. */
+let experimentalConfig: ConfigExperimental.Experimental | undefined
 const config = Layer.succeed(
   Config.Service,
   Config.Service.of({
     entries: () =>
-      Effect.succeed([
+      Effect.sync(() => [
         new Config.Document({
           type: "document",
           info: new Config.Info({
@@ -234,11 +237,26 @@ const config = Layer.succeed(
               buffer: 3_000,
               keep: new ConfigCompaction.Keep({ tokens: 1_000 }),
             }),
+            ...(experimentalConfig ? { experimental: experimentalConfig } : {}),
           }),
         }),
       ]),
   }),
 )
+const withExperimental = <A, E, R>(
+  fields: ConstructorParameters<typeof ConfigExperimental.Experimental>[0],
+  body: Effect.Effect<A, E, R>,
+) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      experimentalConfig = new ConfigExperimental.Experimental(fields)
+    }),
+    () => body,
+    () =>
+      Effect.sync(() => {
+        experimentalConfig = undefined
+      }),
+  )
 const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
   [Snapshot.node, Snapshot.noopLayer],
   [LayerNodePlatform.llmClient, client],
@@ -1294,7 +1312,9 @@ describe("SessionRunnerLLM", () => {
       expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
       expect(context[0]).toMatchObject({
         type: "compaction",
-        summary: expect.stringMatching(/^## Objective\n- Preserve the task\n\n<session-anchors>\n[\s\S]*Earlier question/),
+        summary: expect.stringMatching(
+          /^## Objective\n- Preserve the task\n\n<session-anchors>\n[\s\S]*Earlier question/,
+        ),
       })
 
       requests.length = 0
@@ -1405,7 +1425,10 @@ describe("SessionRunnerLLM", () => {
       expect(userTexts(requests[1])[0]).toContain("## Objective")
       expect(userTexts(requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow\n")
       expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "compaction", summary: expect.stringMatching(/^## Objective\n- Recover overflow(\n\n<session-anchors>|$)/) },
+        {
+          type: "compaction",
+          summary: expect.stringMatching(/^## Objective\n- Recover overflow(\n\n<session-anchors>|$)/),
+        },
         { type: "assistant", finish: "stop" },
       ])
       yield* replaySessionProjection(sessionID)
@@ -4142,9 +4165,7 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       yield* goals.start(sessionID, { objective: "Stop repeating yourself", maxTurns: 20 })
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Loop" }), resume: false })
       requests.length = 0
-      responses = Array.from({ length: 8 }, (_, index) =>
-        toolCallTurn(`call-loop-${index}`, "echo", { text: "same" }),
-      )
+      responses = Array.from({ length: 8 }, (_, index) => toolCallTurn(`call-loop-${index}`, "echo", { text: "same" }))
 
       yield* session.resume(sessionID)
 
@@ -4195,6 +4216,62 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       )
       expect(yield* guardTrips).toEqual([["tool_timeout", "stop"]])
     }),
+  )
+
+  it.effect("lets identical tool calls run when experimental.loop_guard is false", () =>
+    withExperimental(
+      { loop_guard: false },
+      Effect.gen(function* () {
+        yield* setup
+        yield* clearGuardTrips
+        const session = yield* SessionV2.Service
+        executions.length = 0
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Repeat freely" }), resume: false })
+        responses = [
+          ...Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-free-${index}`, "echo", { text: "same" })),
+          [],
+        ]
+
+        yield* session.resume(sessionID)
+
+        expect(executions).toEqual(Array.from({ length: 6 }, () => "same"))
+        expect(yield* guardTrips).toEqual([])
+      }),
+    ),
+  )
+
+  it.effect("fails a wedged tool at the configured experimental.tool_timeout", () =>
+    withExperimental(
+      { tool_timeout: 5_000 },
+      Effect.gen(function* () {
+        yield* setup
+        yield* clearGuardTrips
+        const session = yield* SessionV2.Service
+        const applicationTools = yield* ApplicationTools.Service
+        const started = yield* Deferred.make<void>()
+        yield* applicationTools.register({
+          stuck: Tool.make({
+            description: "Never returns",
+            input: Schema.Struct({}),
+            output: Schema.Struct({}),
+            execute: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+        })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Call the stuck tool" }), resume: false })
+        responses = [toolCallTurn("call-stuck", "stuck", {}), []]
+
+        const fiber = yield* session.resume(sessionID).pipe(Effect.forkChild)
+        yield* Deferred.await(started)
+        yield* TestClock.adjust(Duration.millis(6_000))
+        yield* Fiber.join(fiber)
+
+        const states = toolStates(yield* session.context(sessionID))
+        expect(states[0]?.status === "error" && states[0].error.message).toBe(
+          ToolDeadline.message({ tool: "stuck", ms: 5_000 }),
+        )
+        expect(yield* guardTrips).toEqual([["tool_timeout", "stop"]])
+      }),
+    ),
   )
 
   it.effect("does not charge a tool's deadline for time spent waiting on a person", () =>

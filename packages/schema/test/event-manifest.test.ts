@@ -13,10 +13,19 @@ describe("public event manifest", () => {
     const all: string[] = EventManifest.Definitions.map((definition) => definition.type)
     expect(new Set(server).size).toBe(server.length)
     expect(new Set(all).size).toBe(all.length)
-    for (const type of ["message.updated", "message.removed", "message.promoted", "session.next.prompt.admitted"]) {
+    for (const type of [
+      "message.updated",
+      "message.removed",
+      "message.promoted",
+      "session.next.prompt.admitted",
+      "session.status",
+    ]) {
       expect(server).toContain(type)
       expect(all).toContain(type)
     }
+    // The deprecated idle event stays off the v2 protocol; `session.status` idle replaces it.
+    expect(server).not.toContain("session.idle")
+    expect(all).toContain("session.idle")
     expect(SessionV1.Event.Definitions).toEqual([
       SessionV1.Event.Created,
       SessionV1.Event.Updated,

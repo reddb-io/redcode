@@ -235,7 +235,11 @@ const layer = Layer.effect(
     const busy = new Set<SessionSchema.ID>()
     const setBusy = (
       sessionID: SessionSchema.ID,
-      status: { readonly phase: "preparing" | "thinking" | "writing" | "tool"; readonly tool?: string; readonly step: number },
+      status: {
+        readonly phase: "preparing" | "thinking" | "writing" | "tool"
+        readonly tool?: string
+        readonly step: number
+      },
     ) =>
       Effect.gen(function* () {
         busy.add(sessionID)
@@ -316,7 +320,10 @@ const layer = Layer.effect(
       permissions: PermissionV2.Ruleset | undefined,
       tool: string,
       input: unknown,
+      limits: LoopGuard.Limits | undefined,
     ) {
+      // `experimental.loop_guard: false` turns the guard off, as in legacy.
+      if (!limits) return { type: "ok" } as LoopGuard.Decision
       // `doom_loop: allow` is how people already say "let it repeat"; keep meaning that.
       if (PermissionV2.evaluate("doom_loop", tool, permissions ?? []).effect === "allow")
         return { type: "ok" } as LoopGuard.Decision
@@ -351,7 +358,7 @@ const layer = Layer.effect(
               return []
             }),
       )
-      const decision = LoopGuard.assess({ parts, next: { tool, input }, limits: LoopGuard.LIMITS })
+      const decision = LoopGuard.assess({ parts, next: { tool, input }, limits })
       if (decision.type === "ok") return decision
       yield* recordGuard({
         sessionID,
@@ -370,8 +377,9 @@ const layer = Layer.effect(
       tool: string,
       callID: string,
       settle: Effect.Effect<ToolRegistry.Settlement, ToolOutputStore.Error>,
+      configured: number | false | undefined,
     ): Effect.Effect<ToolRegistry.Settlement, ToolOutputStore.Error> => {
-      const ms = ToolDeadline.deadlineMs({ tool })
+      const ms = ToolDeadline.deadlineMs({ tool, configured })
       if (ms === undefined) return settle
       const expired = ToolDeadline.message({ tool, ms })
       return Effect.suspend(() => {
@@ -490,7 +498,12 @@ const layer = Layer.effect(
       let lastEventAt = yield* Clock.currentTimeMillis
       let activeTools = 0
       let loopStop: string | undefined
-      const stallLimits = SessionStall.limits(undefined, { attended: SessionStall.attended(Flag.REDCODE_CLIENT) })
+      // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
+      const experimental = Config.latest(yield* config.entries(), "experimental")
+      const loopLimits = LoopGuard.limits(experimental?.loop_guard)
+      const stallLimits = SessionStall.limits(experimental?.turn_stall, {
+        attended: SessionStall.attended(Flag.REDCODE_CLIENT),
+      })
       const watchdog = Effect.gen(function* () {
         let warned = false
         while (true) {
@@ -516,7 +529,12 @@ const layer = Layer.effect(
             warned = true
             continue
           }
-          yield* recordGuard({ sessionID: session.id, guard: "stall", action: "stop", detail: `stopped: ${decision.reason}` })
+          yield* recordGuard({
+            sessionID: session.id,
+            guard: "stall",
+            action: "stop",
+            detail: `stopped: ${decision.reason}`,
+          })
           yield* pauseGoal(session.id, `stalled: ${decision.reason}`)
           return yield* new LLMError({
             module: "SessionRunner",
@@ -578,9 +596,16 @@ const layer = Layer.effect(
                   // Asked before the call runs: a correction reaches the model as this tool's result.
                   const loop = denied
                     ? undefined
-                    : yield* guardLoop(session.id, agent.info?.permissions, event.name, pre.updatedInput ?? event.input)
+                    : yield* guardLoop(
+                        session.id,
+                        agent.info?.permissions,
+                        event.name,
+                        pre.updatedInput ?? event.input,
+                        loopLimits,
+                      )
                   if (loop?.type === "stop") loopStop ??= loop.summary
-                  if (!denied && loop?.type === "ok") yield* setBusy(session.id, { phase: "tool", tool: event.name, step: currentStep })
+                  if (!denied && loop?.type === "ok")
+                    yield* setBusy(session.id, { phase: "tool", tool: event.name, step: currentStep })
                   const settlement = denied
                     ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
                     : loop && loop.type !== "ok"
@@ -595,6 +620,7 @@ const layer = Layer.effect(
                             assistantMessageID,
                             call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
                           }),
+                          experimental?.tool_timeout,
                         )
                   yield* hooks.run({
                     event: settlement.result.type === "error" ? "PostToolUseFailure" : "PostToolUse",
@@ -736,8 +762,7 @@ const layer = Layer.effect(
               }),
             )
           }
-          if (publisher.hasProviderError())
-            yield* withPublication(publisher.failUnsettledTools(ToolInterrupted.RESULT))
+          if (publisher.hasProviderError()) yield* withPublication(publisher.failUnsettledTools(ToolInterrupted.RESULT))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           if (stream._tag === "Failure") {
@@ -832,7 +857,12 @@ const layer = Layer.effect(
             if (defect.transition._tag === "ContinueAfterOverflowCompaction")
               return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
             yield* Effect.yieldNow
-            return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step, defect.transition.retry)
+            return yield* runAfterOverflowCompaction(
+              sessionID,
+              undefined,
+              defect.transition.step,
+              defect.transition.retry,
+            )
           }),
         ),
       )
