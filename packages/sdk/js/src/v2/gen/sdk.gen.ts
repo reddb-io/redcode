@@ -4489,9 +4489,9 @@ export class Session2 extends HeyApiClient {
       directory?: string
       workspace?: string
       max_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-      reset_on_message?: boolean
-      max_cost_usd?: number
-      max_tokens?: number
+      reset_on_message?: boolean | null
+      max_cost_usd?: number | null
+      max_tokens?: number | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4563,9 +4563,9 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       workspace?: string
-      reset_on_message?: boolean
-      max_cost_usd?: number
-      max_tokens?: number
+      reset_on_message?: boolean | null
+      max_cost_usd?: number | null
+      max_tokens?: number | null
     },
     options?: Options<never, ThrowOnError>,
   ) {

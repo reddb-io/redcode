@@ -139,6 +139,20 @@ function matchLegacyOpenApi(input: Record<string, unknown>) {
             : operation.requestBody.content?.["application/json"]?.schema?.properties
           if (properties?.id) properties.id = { anyOf: [properties.id, { type: "null" }] }
         }
+        if ((path === "/session/{sessionID}/budget" || path === "/session/{sessionID}/goal/budget") && method === "post") {
+          // A spend limit is removed by sending null (Schema.NullOr), so clients must be able to
+          // send it: re-add the null the strip above removed.
+          const ref = operation.requestBody.content?.["application/json"]?.schema?.$ref?.replace(
+            "#/components/schemas/",
+            "",
+          )
+          const properties = ref
+            ? spec.components?.schemas?.[ref]?.properties
+            : operation.requestBody.content?.["application/json"]?.schema?.properties
+          for (const key of ["max_cost_usd", "max_tokens", "reset_on_message"]) {
+            if (properties?.[key]) properties[key] = nullable(properties[key])
+          }
+        }
       }
       for (const response of Object.values(operation.responses ?? {})) {
         for (const content of Object.values(response.content ?? {})) {
