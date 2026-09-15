@@ -56,7 +56,12 @@ import type {
 } from "@reddb-io/redcode-sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { TOOL_SEARCH_TOOLS, toolSearchSummary, webSearchProviderLabel } from "../../util/tool-display"
+import {
+  TOOL_SEARCH_TOOLS,
+  toolSearchComplete,
+  toolSearchSummary,
+  webSearchProviderLabel,
+} from "../../util/tool-display"
 import { Dynamic, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -2758,7 +2763,7 @@ function ToolSearch(props: ToolProps) {
     <InlineTool
       icon="◇"
       pending="Searching tools…"
-      complete={summary().query ?? (props.part.state.status === "completed" ? true : undefined)}
+      complete={toolSearchComplete(props.part.state.status, summary().query)}
       part={props.part}
     >
       Tool search<Show when={summary().query}> "{summary().query}"</Show>

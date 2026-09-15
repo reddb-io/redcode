@@ -40,6 +40,15 @@ export function toolSearchSummary(input: Record<string, unknown>, metadata: Reco
   return { query: query || undefined, loaded }
 }
 
+/**
+ * When the tool search row stops showing "Searching tools…": once there is a query to show, or the
+ * search has finished either way (a failed search renders its error instead).
+ */
+export function toolSearchComplete(status: string, query: string | undefined) {
+  if (query) return true
+  return status === "completed" || status === "error"
+}
+
 export function toolDisplayMetadata(state: unknown): Record<string, unknown> {
   if (!state || typeof state !== "object" || Array.isArray(state)) return {}
   if (!("status" in state) || state.status === "pending") return {}

@@ -53,11 +53,10 @@ function mechanism(model: Provider.Model, nativeLlm: boolean): Mode | undefined 
 
 /**
  * The explicit allowlist `auto` uses; the models catalog has no tool search capability to read.
- * A bracketed variant suffix such as `[1m]` names the same model with a larger context window
- * (a request header, not a different model), so it is supported like its base id.
+ * An id outside it (a bracketed variant such as `[1m]` included) stays off unless forced.
  */
 export function supported(model: Pick<Provider.Model, "providerID" | "api">, mode: Mode) {
-  const id = model.api.id.replace(/\[[^\]]*\]$/, "")
+  const id = model.api.id
   if (mode === "anthropic")
     return (
       model.providerID === "anthropic" &&
@@ -237,8 +236,9 @@ const parse = (text: string) => {
  * because neither provider accepts a search call whose result cannot be replayed. A kept result is
  * narrowed to the tools this request still sends: Anthropic answers 400 to a `tool_reference` it
  * cannot resolve, and OpenAI (with `store: false`) would re-send the stored definition of a tool
- * that has since been removed or denied. A search left with nothing is dropped. Search calls are
- * provider-executed tool calls; their results pair with them by id.
+ * that has since been removed or denied. A search that found nothing is kept; one whose loaded
+ * tools are all gone is dropped. Search calls are provider-executed tool calls; their results pair
+ * with them by id.
  */
 export function history(
   messages: ModelMessage[],
@@ -266,6 +266,9 @@ export function history(
         drop.add(part.toolCallId)
         continue
       }
+      // A search that found nothing stays as the provider saw it; only one whose every loaded
+      // tool is gone is dropped.
+      if (loadedNames(part.output.value).length === 0) continue
       const kept = keepLoaded(part.output.value, (name) => available.has(name))
       if (kept === undefined) drop.add(part.toolCallId)
       else if (JSON.stringify(kept) !== JSON.stringify(part.output.value)) narrowed.set(part.toolCallId, kept)
@@ -363,17 +366,20 @@ export function replayOutput(output: string): unknown {
   return parsed
 }
 
+const MISSING_REFERENCE = /Tool reference '[^']*' not found in available tools/i
+
 // Only errors about the search feature itself: its tool types, the deferral flag and its parameter
-// paths, a reference the provider cannot resolve, or an OpenAI `tool_search`/`namespace` tool type.
-// Generic words (a beta, "namespace", "tool type") also appear in unrelated 400s, such as a
-// long-context beta the account lacks, which a retry without search would not fix.
+// paths, a reference the provider cannot resolve, or OpenAI refusing the `tool_search`/`namespace`
+// tool type value. Generic words (a beta, "namespace", "tool type", a bare `tool_search`, which is
+// also our client-side tool's name) appear in unrelated 400s that a retry without search would not
+// fix.
 const REJECTIONS = [
   /tool_search_tool_(?:bm25|regex)/i,
-  /Tool reference '[^']*' not found in available tools/i,
+  MISSING_REFERENCE,
   /defer_loading/i,
   /tool_reference/i,
   /tools\[\d+\]\.(?:namespace|tools)\b/i,
-  /['"](?:tool_search|namespace)['"]/,
+  /Invalid value: ['"](?:tool_search|namespace)['"]/,
 ]
 
 const failure = (error: unknown): { status?: number; text: string } | undefined => {
@@ -390,6 +396,15 @@ const failure = (error: unknown): { status?: number; text: string } | undefined 
 export function isRejection(error: unknown) {
   const info = failure(error)
   return info?.status === 400 && REJECTIONS.some((pattern) => pattern.test(info.text))
+}
+
+/**
+ * A reference the provider cannot resolve comes from this Session's history, not from missing
+ * support: retry without native search, but do not turn it off for the model.
+ */
+export function isMissingReference(error: unknown) {
+  const info = failure(error)
+  return info?.status === 400 && MISSING_REFERENCE.test(info.text)
 }
 
 export * as NativeToolSearch from "./native-tool-search"

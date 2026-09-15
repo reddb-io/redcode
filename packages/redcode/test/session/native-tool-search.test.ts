@@ -77,16 +77,10 @@ describe("NativeToolSearch.detect", () => {
     off("azure", "gpt-5.4", "@ai-sdk/azure")
   })
 
-  test("a [1m] context variant is the same model and follows its base id", () => {
-    expect(NativeToolSearch.detect({ model: model("anthropic", "claude-sonnet-4-5[1m]", "@ai-sdk/anthropic") })).toBe(
-      "anthropic",
-    )
-    expect(NativeToolSearch.detect({ model: model("anthropic", "claude-opus-5[1m]", "@ai-sdk/anthropic") })).toBe(
-      "anthropic",
-    )
-    expect(
-      NativeToolSearch.detect({ model: model("anthropic", "claude-sonnet-4-20250514[1m]", "@ai-sdk/anthropic") }),
-    ).toBeUndefined()
+  test("an id outside the allowlist, such as a [1m] variant, stays off unless forced", () => {
+    const variant = model("anthropic", "claude-sonnet-4-5[1m]", "@ai-sdk/anthropic")
+    expect(NativeToolSearch.detect({ model: variant })).toBeUndefined()
+    expect(NativeToolSearch.detect({ model: variant, config: { native: true } })).toBe("anthropic")
   })
 
   test("OpenAI needs the AI SDK runtime; Anthropic works on both", () => {
@@ -282,6 +276,35 @@ describe("NativeToolSearch.history", () => {
     const messages = history(search("s1", "tool_search_tool_bm25"))
     expect(NativeToolSearch.history(messages, undefined, available)).toEqual([messages[0]!])
     expect(NativeToolSearch.history(messages, "openai", available)).toEqual([messages[0]!])
+  })
+
+  test("keeps a search that found nothing, as the provider saw it", () => {
+    const messages = history([
+      { type: "tool-call", toolCallId: "s1", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
+      { type: "tool-result", toolCallId: "s1", toolName: "tool_search_tool_bm25", output: { type: "json", value: [] } },
+      { type: "tool-call", toolCallId: "t1", toolName: "tool_search", input: {}, providerExecuted: true },
+      {
+        type: "tool-result",
+        toolCallId: "t1",
+        toolName: "tool_search",
+        output: { type: "json", value: { tools: [] } },
+      },
+    ])
+    expect(NativeToolSearch.history(messages, "anthropic", available)[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: "s1", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
+        {
+          type: "tool-result",
+          toolCallId: "s1",
+          toolName: "tool_search_tool_bm25",
+          output: { type: "json", value: [] },
+        },
+      ],
+    })
+    expect((NativeToolSearch.history(messages, "openai", available)[1] as { content: unknown[] }).content).toHaveLength(
+      2,
+    )
   })
 
   test("narrows Anthropic references to tools still sent and drops a search left with none", () => {
@@ -503,6 +526,35 @@ describe("NativeToolSearch.isRejection", () => {
     )
     expect(NativeToolSearch.isRejection(apiError(500, "tool_search overloaded"))).toBe(false)
     expect(NativeToolSearch.isRejection(new Error("tool_search"))).toBe(false)
+  })
+
+  test("errors about the client-side tool_search function are not rejections", () => {
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"Invalid \'tools[4].name\': duplicate function name \'tool_search\'."}}'),
+      ),
+    ).toBe(false)
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"tools.3.custom.input_schema: invalid schema for tool \\"tool_search\\""}}'),
+      ),
+    ).toBe(false)
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"Invalid value: \'tool_search\'. Supported values are: \'function\'."}}'),
+      ),
+    ).toBe(true)
+  })
+
+  test("a missing tool reference is a history problem, not missing support", () => {
+    const missing = apiError(400, '{"error":{"message":"Tool reference \'github_gone\' not found in available tools"}}')
+    expect(NativeToolSearch.isRejection(missing)).toBe(true)
+    expect(NativeToolSearch.isMissingReference(missing)).toBe(true)
+    expect(
+      NativeToolSearch.isMissingReference(
+        apiError(400, '{"error":{"message":"Input tag \'tool_search_tool_bm25_20251119\' found"}}'),
+      ),
+    ).toBe(false)
   })
 
   test("the native runtime's invalid request error", () => {
