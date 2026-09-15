@@ -312,6 +312,35 @@ export const Info = Schema.Struct({
           }),
         }),
       ).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." }),
+      code_mode: Schema.optional(
+        Schema.Struct({
+          enabled: Schema.optional(Schema.Literals(["off", "auto", "on"])).annotate({
+            description:
+              'Replace direct MCP tools with the execute tool, which runs a confined script that calls them: "off" never, "on" always, "auto" only for models matched by `models` and only when MCP tool schemas exceed `threshold` (default: "off"). REDCODE_EXPERIMENTAL_CODE_MODE=true forces it on.',
+          }),
+          models: Schema.optional(Schema.Array(Schema.String)).annotate({
+            description:
+              'Models allowed in "auto" mode, as wildcard patterns matched against "provider/model" and the bare model ID, e.g. ["anthropic/*", "gpt-5*"]. Without it, "auto" enables nothing.',
+          }),
+          threshold: Schema.optional(PositiveInt).annotate({
+            description: 'Estimated tokens of MCP tool schemas above which "auto" enables code mode (default: 6000)',
+          }),
+          max_tool_calls: Schema.optional(PositiveInt).annotate({
+            description: "Tool calls one script may make before it is stopped (default: 50)",
+          }),
+          timeout_ms: Schema.optional(PositiveInt).annotate({
+            description:
+              "Milliseconds one script may run, not counting time spent waiting on a permission prompt (default: 120000)",
+          }),
+          max_output_bytes: Schema.optional(PositiveInt).annotate({
+            description:
+              "Bytes of script result and logs kept before the result is cut; the usual tool output truncation still applies below it (default: 1000000)",
+          }),
+        }),
+      ).annotate({
+        description:
+          "Code mode: MCP tools (and read-only native tools under tools.redcode) called from a confined script.",
+      }),
       turn_stall: Schema.optional(
         Schema.Union([
           Schema.Literal(false),

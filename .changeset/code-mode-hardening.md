@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Harden code mode. Calls a script makes now go through the same per-call policy as direct calls: PreExecute hooks, the loop guard, the tool deadline and permission asks. Scripts are limited to 50 tool calls, 120 s and 1 MB of output by default, their output is truncated through the tool output store, and attachments follow the direct path's MIME allowlist and size cap. Inputs to MCP tools are validated against the server's JSON Schema in both modes. Permission prompts from a script name the tool path with an args preview. Parallel asks for one tool are queued, and a rejection returns the results of completed calls. The catalog ranks read tools and tools already used first. Search returns compact matches. Syntax errors include line, column and a code frame, and flat tool names suggest the dotted path. Scripts can call `read`, `glob`, `grep` and `webfetch` under `tools.redcode`. `experimental.code_mode` (`enabled`: `off` | `auto` | `on`, `models`, `threshold`, `max_tool_calls`, `timeout_ms`, `max_output_bytes`) gates it per model. Code mode stays off by default.

@@ -126,6 +126,8 @@ export const supportedSyntaxMessage =
 
 export class InterpreterRuntimeError extends Error {
   readonly node?: AstNode
+  /** Source position for errors raised before an AST exists (parse failures); `node.loc` wins otherwise. */
+  location?: { readonly line: number; readonly column: number; readonly frame?: string }
   errorName: string = "Error"
 
   constructor(

@@ -9,7 +9,7 @@ import {
   outputTypeScript,
 } from "./tool-schema.js"
 import { isDefinition as isToolDefinition, type Definition } from "./tool.js"
-import { rank } from "./search.js"
+import { rank, tokenize } from "./search.js"
 import {
   SandboxDate,
   SandboxMap,
@@ -94,11 +94,19 @@ const SearchInput = Schema.Struct({
   limit: Schema.optionalKey(PositiveInt),
   offset: Schema.optionalKey(NonNegativeInt),
 })
-const SearchItem = Schema.Struct({
+/** A keyword match: enough to choose a tool, not to call it blind. */
+const SearchMatch = Schema.Struct({
+  path: Schema.String,
+  description: Schema.String,
+  params: Schema.Array(Schema.String),
+})
+/** An exact path lookup: the full callable signature. */
+const SearchLookup = Schema.Struct({
   path: Schema.String,
   description: Schema.String,
   signature: Schema.String,
 })
+const SearchItem = Schema.Union([SearchLookup, SearchMatch])
 const SearchOutput = Schema.Struct({
   items: Schema.Array(SearchItem),
   remaining: NonNegativeInt,
@@ -355,6 +363,38 @@ export type SearchEntry = {
   readonly namespace: string
   /** Lowercased path + description + input property names/descriptions, for substring matching. */
   readonly searchText: string
+  /** Input property names, optional ones suffixed with `?`, for compact search matches. */
+  readonly params: ReadonlyArray<string>
+}
+
+const oneLine = (text: string, max = 160) => {
+  const line = text.split("\n", 1)[0]!.trim()
+  return line.length > max ? line.slice(0, max - 1) + "…" : line
+}
+
+/** Verbs that read state without changing it; such tools are the usual first step of a script. */
+const READ_VERBS = new Set(["read", "list", "get", "search", "find", "query", "view", "show", "describe", "lookup"])
+
+/** Whether a tool path names a read-style operation (`issue_read`, `list_issues`, `getMe`). */
+export const isReadStyle = (path: string): boolean => {
+  const local = path.slice(path.lastIndexOf(".") + 1)
+  return tokenize(local).some((token) => READ_VERBS.has(token))
+}
+
+/**
+ * Suggestions for a path the model spelled flat (`tools.github_issue_read`) or half-flat
+ * (`tools.github.github_issue_read`) when a described tool matches once underscores stand for dots.
+ */
+const flatNameSuggestions = <R>(tools: HostTools<R>, path: ReadonlyArray<string>): Array<string> => {
+  const flat = path.join("_")
+  const last = path[path.length - 1] ?? ""
+  return definitions(tools)
+    .map((entry) => entry.path)
+    .filter((candidate) => {
+      const joined = candidate.split(".").join("_")
+      return joined === flat || (path.length > 1 && joined === last)
+    })
+    .map((candidate) => `Did you mean ${toolExpression(candidate)}? Tool paths use dots between namespace and tool.`)
 }
 
 const makeSearchTool = (searchIndex: ReadonlyArray<SearchEntry>): Definition => ({
@@ -393,10 +433,19 @@ const makeSearchTool = (searchIndex: ReadonlyArray<SearchEntry>): Definition => 
               })),
               query,
             ).map(({ value }) => value)
-      const items = ranked.slice(offset, offset + (request.limit ?? defaultSearchLimit)).map(({ description }) => ({
-        ...description,
-        path: toolExpression(description.path),
-      }))
+      // Matches stay compact (one-line description, parameter names); only an exact path lookup
+      // pays for the full signature, so a broad search does not flood the script's result.
+      const items = ranked
+        .slice(offset, offset + (request.limit ?? defaultSearchLimit))
+        .map(({ description, params }) =>
+          exact !== undefined
+            ? { ...description, path: toolExpression(description.path) }
+            : {
+                path: toolExpression(description.path),
+                description: oneLine(description.description),
+                params: [...params],
+              },
+        )
       const remaining = Math.max(0, ranked.length - offset - items.length)
       return {
         items,
@@ -427,6 +476,7 @@ const toSearchEntry = <R>(path: string, definition: Definition<R>, description: 
   ]
     .join("\n")
     .toLowerCase(),
+  params: inputProperties(definition).map(({ name, required }) => (required ? name : `${name}?`)),
 })
 
 /** The runtime search index over every described tool. Search is always registered. */
@@ -450,7 +500,11 @@ export const assertValidTools = <R>(tools: HostTools<R>): void => {
  * namespace. Namespace stub lines are never budgeted: every namespace appears with its
  * tool count even at budget 0.
  */
-export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBudget): DiscoveryPlan => {
+export const prepare = <R>(
+  tools: HostTools<R>,
+  catalogBudget = defaultCatalogBudget,
+  recent: ReadonlyArray<string> = [],
+): DiscoveryPlan => {
   if (!Number.isSafeInteger(catalogBudget) || catalogBudget < 0) {
     throw new RangeError("discovery.catalogBudget must be a non-negative safe integer")
   }
@@ -472,12 +526,18 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
   // next-cheapest line against the shared budget; a namespace whose next line does not
   // fit is done - the others keep going - so every namespace gets some representation
   // before any namespace gets everything.
+  // Within a namespace, likely-useful tools go first: read-style tools, then tools this session
+  // already used, then the cheapest lines. Cost alone would hide common reads behind tiny setters.
+  const recentPaths = new Set(recent)
+  const priority = (tool: ToolDescription) => (isReadStyle(tool.path) ? 2 : 0) + (recentPaths.has(tool.path) ? 1 : 0)
   const selections = ordered.map(([namespace, group]) => ({
     namespace,
     picked: new Set<ToolDescription>(),
     queue: [...group].sort(
       (left, right) =>
-        estimateTokens(catalogLine(left)) - estimateTokens(catalogLine(right)) || left.path.localeCompare(right.path),
+        priority(right) - priority(left) ||
+        estimateTokens(catalogLine(left)) - estimateTokens(catalogLine(right)) ||
+        left.path.localeCompare(right.path),
     ),
   }))
   let used = 0
@@ -533,8 +593,9 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
               "3. Return only the fields you need from structured results; narrow unknown results before reading fields, and avoid returning large raw payloads.",
             ]
           : [
-              '1. If needed, discover tools: `return await tools.$codemode.search({ query: "<intent + key nouns>" })`.',
-              "2. In the next execution, copy a returned path exactly, call it, and return only the needed fields.",
+              '1. If needed, discover tools: `return await tools.$codemode.search({ query: "<intent + key nouns>" })`. Matches list the path, a one-line description and parameter names (`?` marks optional ones).',
+              '2. For the full signature, search the exact path: `tools.$codemode.search({ query: "tools.<namespace>.<tool>" })`.',
+              "3. In the next execution, copy a returned path exactly, call it, and return only the needed fields.",
             ]),
       ]
 
@@ -593,7 +654,11 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
       for (const tool of group) if (picked.has(tool)) toolSection.push(catalogLine(tool))
     }
     if (!complete) {
-      toolSection.push("", "Search returns complete callable signatures:", `- ${searchDescription.signature}`)
+      toolSection.push(
+        "",
+        "Search returns compact matches (path, description, parameter names); an exact path query returns the full callable signature:",
+        `- ${searchDescription.signature}`,
+      )
     }
   }
 
@@ -622,6 +687,7 @@ const namespaceKeys = <R>(tools: HostTools<R>, path: ReadonlyArray<string>): Rea
       !Object.hasOwn(value, segment)
     ) {
       throw new ToolRuntimeError("UnknownTool", `Unknown tool namespace '${path.join(".")}'.`, [
+        ...flatNameSuggestions(tools, path),
         "Object.keys(tools) lists the available namespaces; tools.$codemode.search({ query }) finds described tools.",
       ])
     }
@@ -642,6 +708,7 @@ const resolve = <R>(tools: HostTools<R>, path: ReadonlyArray<string>): HostTool<
       !Object.hasOwn(value, segment)
     ) {
       throw new ToolRuntimeError("UnknownTool", `Unknown tool '${path.join(".")}'.`, [
+        ...flatNameSuggestions(tools, path),
         "Use tools.$codemode.search({ query }) to find available described tools.",
       ])
     }

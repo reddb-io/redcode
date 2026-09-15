@@ -508,12 +508,23 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
+            // A call made from a code mode script names its script path and a bounded args preview.
+            const meta = props.request.metadata ?? {}
+            const script =
+              typeof meta["script"] === "object" && meta["script"] !== null
+                ? (meta["script"] as Record<string, unknown>)
+                : undefined
+            const scriptTool = typeof script?.["tool"] === "string" ? script["tool"] : undefined
+            const scriptArgs = typeof script?.["args"] === "string" ? script["args"] : undefined
             return {
               icon: "⚙",
-              title: `Call tool ${permission}`,
+              title: scriptTool ? `Call tool ${scriptTool} from a script` : `Call tool ${permission}`,
               body: (
                 <box paddingLeft={1}>
                   <text fg={theme.textMuted}>{"Tool: " + permission}</text>
+                  <Show when={scriptArgs}>
+                    <text fg={theme.textMuted}>{"Args: " + scriptArgs}</text>
+                  </Show>
                 </box>
               ),
             }

@@ -63,6 +63,7 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { MCP } from "@/mcp"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { McpCatalog } from "@/mcp/catalog"
+import { CodeModeGate } from "./code-mode-gate"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return (
@@ -92,6 +93,8 @@ export interface Interface {
     modelID: ModelV2.ID
     agent: Agent.Info
     permission?: PermissionV1.Ruleset
+    /** Script tool paths this session already used, ranked earlier in the code mode catalog. */
+    recent?: readonly string[]
   }) => Effect.Effect<Tool.Def[]>
 }
 
@@ -127,8 +130,28 @@ const layer = Layer.effect(
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
-    const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
-    const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
+    const sessions = yield* Session.Service
+    // Loaded on first use only: the confined interpreter pulls in the TypeScript compiler.
+    const codeMode = yield* Effect.cached(
+      Effect.gen(function* () {
+        const module = yield* Effect.promise(() => import("./code-mode"))
+        return { module, tool: yield* Tool.init(yield* module.CodeModeTool) }
+      }).pipe(
+        Effect.provideService(MCP.Service, mcp),
+        Effect.provideService(Agent.Service, agents),
+        Effect.provideService(Session.Service, sessions),
+        Effect.provideService(Plugin.Service, plugin),
+        Effect.provideService(ToolOutputBridge.Service, outputs),
+        Effect.provideService(Config.Service, config),
+      ),
+    )
+    const codeModeConfig = Effect.fn("ToolRegistry.codeModeConfig")(function* () {
+      return (yield* config.get()).experimental?.code_mode
+    })
+    // Whether `execute` can exist at all; whether a given request gets it is decided per model.
+    const codeModePossible = Effect.fn("ToolRegistry.codeModePossible")(function* () {
+      return flags.experimentalCodeMode || ((yield* codeModeConfig())?.enabled ?? "off") !== "off"
+    })
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -237,7 +260,6 @@ const layer = Layer.effect(
           plan: Tool.init(plan),
           worktree: Tool.init(worktree),
           goal_complete: Tool.init(goalComplete),
-          ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
 
         return {
@@ -258,7 +280,6 @@ const layer = Layer.effect(
             tool.search,
             tool.skill,
             tool.patch,
-            ...(tool.execute ? [tool.execute] : []),
             tool.lsp,
             tool.plan,
             tool.worktree,
@@ -274,7 +295,8 @@ const layer = Layer.effect(
 
     const all: Interface["all"] = Effect.fn("ToolRegistry.all")(function* () {
       const s = yield* InstanceState.get(state)
-      return [...s.builtin, ...s.custom] as Tool.Def[]
+      const execute = (yield* codeModePossible()) ? [(yield* codeMode).tool as Tool.Def] : []
+      return [...s.builtin, ...execute, ...s.custom] as Tool.Def[]
     })
 
     const ids: Interface["ids"] = Effect.fn("ToolRegistry.ids")(function* () {
@@ -296,15 +318,35 @@ const layer = Layer.effect(
       return ["Available agent types and the tools they have access to:", description].join("\n")
     })
 
+    /** The catalog `execute` carries for this request, or nothing when the gate keeps code mode off. */
     const describeCodeMode = Effect.fn("ToolRegistry.describeCodeMode")(function* (input: {
       agent: Agent.Info
       permission?: PermissionV1.Ruleset
+      providerID: ProviderV2.ID
+      modelID: ModelV2.ID
+      natives: readonly Tool.Def[]
+      recent?: readonly string[]
     }) {
-      if (!codeMode) return
       const ruleset = Permission.merge(input.agent.permission, input.permission ?? [])
       const tools = Permission.visibleTools(yield* mcp.tools(), ruleset)
       if (Object.keys(tools).length === 0) return
-      return codeMode.describeCatalog(tools, Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize))
+      const on = CodeModeGate.enabled({
+        flag: flags.experimentalCodeMode,
+        config: yield* codeModeConfig(),
+        providerID: input.providerID,
+        modelID: input.modelID,
+        mcpTools: tools,
+      })
+      if (!on) return
+      const hidden = Permission.disabled(
+        input.natives.map((tool) => tool.id),
+        ruleset,
+      )
+      return (yield* codeMode).module.describeCatalog(
+        tools,
+        Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize),
+        { natives: input.natives.filter((tool) => !hidden.has(tool.id)), recent: input.recent },
+      )
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
@@ -321,10 +363,13 @@ const layer = Layer.effect(
         return true
       })
 
-      const codeModeDescription = filtered.some((tool) => tool.id === "execute")
-        ? yield* describeCodeMode(input)
+      const codeModeDescription = filtered.some((tool) => tool.id === CodeModeGate.TOOL_ID)
+        ? yield* describeCodeMode({
+            ...input,
+            natives: filtered.filter((tool) => CodeModeGate.SCRIPT_NATIVE_TOOLS.has(tool.id)),
+          })
         : undefined
-      const visible = filtered.filter((tool) => tool.id !== "execute" || codeModeDescription)
+      const visible = filtered.filter((tool) => tool.id !== CodeModeGate.TOOL_ID || codeModeDescription)
 
       return yield* Effect.forEach(
         visible,

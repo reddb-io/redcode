@@ -347,11 +347,24 @@ describe("JSDoc signatures in catalogs and search results", () => {
     )
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("search failed")
-    return result.value as { items: Array<{ path: string; signature: string }>; remaining: number }
+    return result.value as {
+      items: Array<{ path: string; description: string; signature?: string; params?: Array<string> }>
+      remaining: number
+    }
   }
 
-  test("a raw JSON Schema (MCP-style) tool's result signature carries field JSDoc and tags", async () => {
+  test("a keyword match is compact: one-line description and parameter names, no signature", async () => {
     const { items } = await search("list issues repository")
+    const item = items.find(({ path }) => path === "tools.github.list_issues")!
+    expect(item).toStrictEqual({
+      path: "tools.github.list_issues",
+      description: "List issues in a repository",
+      params: ["owner", "after?", "perPage?", "labels?", "state?"],
+    })
+  })
+
+  test("a raw JSON Schema (MCP-style) tool's exact-path lookup signature carries field JSDoc and tags", async () => {
+    const { items } = await search("tools.github.list_issues")
     const item = items.find(({ path }) => path === "tools.github.list_issues")!
     expect(item.signature).toBe(
       [
@@ -377,8 +390,8 @@ describe("JSDoc signatures in catalogs and search results", () => {
     )
   })
 
-  test("an annotated Effect Schema tool's result signature carries field JSDoc (exact-path lookup too)", async () => {
-    for (const query of ["look up order", "tools.orders.lookup"]) {
+  test("an annotated Effect Schema tool's exact-path lookup signature carries field JSDoc", async () => {
+    for (const query of ["orders.lookup", "tools.orders.lookup"]) {
       const { items } = await search(query)
       const item = items.find(({ path }) => path === "tools.orders.lookup")!
       expect(item.signature).toBe(
@@ -398,10 +411,10 @@ describe("JSDoc signatures in catalogs and search results", () => {
 
   test("the inline catalog uses the same JSDoc signatures", async () => {
     const instructions = runtime.instructions()
-    const github = (await search("list issues repository")).items.find(
+    const github = (await search("tools.github.list_issues")).items.find(
       ({ path }) => path === "tools.github.list_issues",
     )!
-    const orders = (await search("look up order")).items.find(({ path }) => path === "tools.orders.lookup")!
+    const orders = (await search("tools.orders.lookup")).items.find(({ path }) => path === "tools.orders.lookup")!
     expect(instructions).toContain(`  - ${github.signature} // List issues in a repository`)
     expect(instructions).toContain(`  - ${orders.signature} // Look up an order`)
     expect(instructions).toContain("/** Repository owner */")
@@ -435,15 +448,23 @@ describe("non-identifier tool paths", () => {
     expect(instructions).not.toContain("tools.context7.resolve_library_id")
   })
 
-  test("search results return callable bracket-notation paths and signatures", async () => {
+  test("search matches return callable bracket-notation paths; the exact lookup returns the signature", async () => {
     const result = await Effect.runPromise(
-      runtime.execute(`return await tools.$codemode.search({ query: "resolve library" })`),
+      runtime.execute(`
+        const hit = await tools.$codemode.search({ query: "resolve library" })
+        const full = await tools.$codemode.search({ query: hit.items[0].path })
+        return { hit, full }
+      `),
     )
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("search failed")
 
-    const value = result.value as { items: Array<{ path: string; signature: string }> }
-    expect(value.items[0]?.path).toBe('tools.context7["resolve-library-id"]')
-    expect(value.items[0]?.signature).toContain('tools.context7["resolve-library-id"](input: {')
+    const value = result.value as {
+      hit: { items: Array<{ path: string; params: Array<string> }> }
+      full: { items: Array<{ path: string; signature: string }> }
+    }
+    expect(value.hit.items[0]?.path).toBe('tools.context7["resolve-library-id"]')
+    expect(value.hit.items[0]?.params).toStrictEqual(["query", "libraryName"])
+    expect(value.full.items[0]?.signature).toContain('tools.context7["resolve-library-id"](input: {')
   })
 })

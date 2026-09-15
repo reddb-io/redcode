@@ -523,12 +523,23 @@ describe("CodeMode public contract", () => {
     // A fully inlined catalog does not advertise search in the instructions...
     expect(runtime.instructions()).not.toMatch(/\$codemode/)
 
-    // ...but the search tool stays registered, so a speculative call still works with the
-    // same signature as the inline catalog.
+    // ...but the search tool stays registered, so a speculative call still works: a compact match,
+    // and the same signature as the inline catalog on an exact lookup.
     const result = await Effect.runPromise(runtime.execute(`return await tools.$codemode.search({ query: "order" })`))
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.value).toStrictEqual({
+        items: [{ path: "tools.orders.lookup", description: "Look up an order by ID", params: ["id"] }],
+        remaining: 0,
+        next: null,
+      })
+    }
+    const exact = await Effect.runPromise(
+      runtime.execute(`return await tools.$codemode.search({ query: "tools.orders.lookup" })`),
+    )
+    expect(exact.ok).toBe(true)
+    if (exact.ok) {
+      expect(exact.value).toStrictEqual({
         items: [
           {
             path: "tools.orders.lookup",
@@ -573,7 +584,7 @@ describe("CodeMode public contract", () => {
           {
             path: 'tools.context7["resolve-library-id"]',
             description: "Resolve a library ID",
-            signature: 'tools.context7["resolve-library-id"](input: {\n  libraryName: string,\n}): Promise<string>',
+            params: ["libraryName"],
           },
         ],
         remaining: 0,
@@ -591,7 +602,17 @@ describe("CodeMode public contract", () => {
       runtime.execute(`return await tools.$codemode.search({ query: 'tools.context7["resolve-library-id"]' })`),
     )
     expect(exact.ok).toBe(true)
-    if (exact.ok) expect(exact.value).toMatchObject({ remaining: 0, next: null })
+    if (exact.ok)
+      expect(exact.value).toMatchObject({
+        items: [
+          {
+            path: 'tools.context7["resolve-library-id"]',
+            signature: 'tools.context7["resolve-library-id"](input: {\n  libraryName: string,\n}): Promise<string>',
+          },
+        ],
+        remaining: 0,
+        next: null,
+      })
   })
 
   test("instructions use markdown sections with placeholder-only call forms", () => {
@@ -674,7 +695,7 @@ describe("CodeMode public contract", () => {
     expect(instructions).not.toMatch(/\$codemode/)
   })
 
-  test("uses one ranked search returning complete definitions for large catalogs", async () => {
+  test("uses one ranked search returning compact matches for large catalogs", async () => {
     const upload = Tool.make({
       description: "Upload one readable local file to the current Discord thread",
       input: Schema.Struct({ path: Schema.String }),
@@ -714,12 +735,12 @@ describe("CodeMode public contract", () => {
         {
           path: "tools.thread.uploadFile",
           description: "Upload one readable local file to the current Discord thread",
-          signature: "tools.thread.uploadFile(input: {\n  path: string,\n}): Promise<{\n  sent: boolean,\n}>",
+          params: ["path"],
         },
         {
           path: "tools.thread.generateImage",
           description: "Generate an image and upload it to the current Discord thread",
-          signature: "tools.thread.generateImage(input: {\n  prompt: string,\n}): Promise<{\n  sent: boolean,\n}>",
+          params: ["prompt"],
         },
       ],
       remaining: 0,

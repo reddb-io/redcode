@@ -45,6 +45,34 @@ export type Context<M extends Metadata = Metadata> = {
   ask(input: Omit<PermissionV1.Request, "id" | "sessionID" | "tool"> & { force?: boolean }): Effect.Effect<void>
   /** What the permission rules say about a request, without asking anyone; absent where the rules are not known. */
   evaluate?(permission: string, pattern: string): "allow" | "ask" | "deny"
+  /** Present when the runtime lets this tool make tool calls of its own (code mode's `execute`). */
+  nested?: Nested
+}
+
+/** A tool call made from inside another tool, such as a code mode script. */
+export type NestedCall<A> = {
+  /** The tool ID hooks, the loop guard and the deadline see, e.g. `github_issue_read` or `read`. */
+  readonly tool: string
+  readonly args: Record<string, unknown>
+  /**
+   * Makes the call with the arguments PreExecute hooks decided, under a context of its own: a
+   * `parent/N` call ID, an abort signal the call's deadline controls, and a `metadata` that never
+   * rewrites the parent's part.
+   */
+  readonly run: (input: { readonly args: Record<string, unknown>; readonly ctx: Context }) => Effect.Effect<A, unknown>
+}
+
+export type NativeTool = Pick<Def, "id" | "description" | "parameters" | "jsonSchema" | "execute">
+
+export interface Nested {
+  /**
+   * Runs one call through the same per-call policy as a direct call: `tool.execute.before`,
+   * PreExecute hooks (which may rewrite or refuse the arguments), the loop guard, and the tool
+   * deadline with permission waits deducted. PostExecute hooks see its outcome.
+   */
+  readonly call: <A>(input: NestedCall<A>) => Effect.Effect<A, unknown>
+  /** The read-only native tools a script may call this step, already filtered by permission rules. */
+  readonly natives: ReadonlyArray<NativeTool>
 }
 
 export interface ExecuteResult<M extends Metadata = Metadata> {
