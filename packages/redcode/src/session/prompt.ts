@@ -1828,9 +1828,11 @@ const layer = Layer.effect(
             const designContext =
               toolSearch?.enabled === false ||
               agent.name === "design" ||
+              // The store dies on a database error, so only a cause-level catch sees it; failing
+              // open keeps the design tools loaded rather than hiding them on an unreadable store.
               (yield* design.use(DesignStore.Service.use((store) => store.list(sessionID))).pipe(
                 Effect.map((documents) => documents.length > 0),
-                Effect.orElseSucceed(() => true),
+                Effect.catchCause(() => Effect.succeed(true)),
               ))
             const tools = yield* SessionTools.resolve({
               agent,
@@ -1843,6 +1845,7 @@ const layer = Layer.effect(
               publishEvent: events.publish,
               toolTimeout: (yield* config.get()).experimental?.tool_timeout,
               toolSearch,
+              userTools: lastUser.tools,
               designContext,
               recordGuard: guards.record,
               ...(lastUser.format?.type === "json_schema"

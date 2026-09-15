@@ -662,6 +662,54 @@ describe("session.llm-native.request", () => {
     }),
   )
 
+  it.effect("dispatches a tool that is not advertised, such as a deferred tool called by name", () =>
+    Effect.gen(function* () {
+      const ran: string[] = []
+      const make = (name: string) =>
+        ({
+          description: `${name} tool`,
+          inputSchema: jsonSchema({ type: "object" }),
+          execute: async () => {
+            ran.push(name)
+            return { output: `ran ${name}` }
+          },
+        }) satisfies Tool
+      const sent: unknown[] = []
+      const llmClient = {
+        prepare: () => Effect.die("unused"),
+        stream: (request: { tools: unknown }) => {
+          sent.push(request.tools)
+          return Stream.fromIterable([
+            LLMEvent.toolCall({ id: "call-1", name: "github_get_me", input: {} }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ])
+        },
+        generate: () => Effect.die("unused"),
+      } as unknown as LLMClientShape
+      const native = LLMNativeRuntime.stream({
+        model: baseModel,
+        provider: providerInfo,
+        auth: undefined,
+        llmClient,
+        messages: [],
+        tools: { read: make("read"), tool_search: make("tool_search"), github_get_me: make("github_get_me") },
+        advertise: ["read", "tool_search"],
+        headers: {},
+        abort: new AbortController().signal,
+      })
+      if (native.type === "unsupported") throw new Error(native.reason)
+      const events: LLMEvent[] = []
+      yield* native.stream.pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
+      const advertised = JSON.stringify(sent[0])
+      expect(advertised).toContain("tool_search")
+      expect(advertised).not.toContain("github_get_me")
+      expect(ran).toEqual(["github_get_me"])
+      const result = events.find((event) => event.type === "tool-result")
+      expect(JSON.stringify(result)).toContain("ran github_get_me")
+      expect(JSON.stringify(result)).not.toContain("Unknown tool")
+    }),
+  )
+
   it.effect("compiles through the native OpenAI Responses route", () =>
     expectOpenAIResponsesRequest({
       history: [storedSession.user("hello")],

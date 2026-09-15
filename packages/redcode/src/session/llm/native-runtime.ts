@@ -33,6 +33,11 @@ type StreamInput = {
   readonly llmClient: LLMClientShape
   readonly messages: ModelMessage[]
   readonly tools: Record<string, Tool>
+  /**
+   * Tool names to send to the provider. Every tool in `tools` stays dispatchable, so a deferred
+   * tool the model calls by name still runs, as on the AI SDK path. Omitted, all are sent.
+   */
+  readonly advertise?: ReadonlyArray<string>
   readonly toolChoice?: "auto" | "required" | "none"
   readonly temperature?: number
   readonly topP?: number
@@ -87,6 +92,10 @@ export function stream(input: StreamInput): StreamResult {
   // — if a field ever needs to differ between the two surfaces, the
   // translation belongs here, not split across both packages.
   const tools = nativeTools(input.tools, input)
+  const advertise = input.advertise ? new Set(input.advertise) : undefined
+  const advertised = advertise
+    ? Object.fromEntries(Object.entries(tools).filter(([name]) => advertise.has(name)))
+    : tools
   const request = LLMNative.request({
     model: input.model,
     apiKey: current.apiKey,
@@ -108,7 +117,7 @@ export function stream(input: StreamInput): StreamResult {
         const provider = input.llmClient
           .stream(
             LLMRequest.update(request, {
-              tools: [...request.tools, ...toDefinitions(tools)],
+              tools: [...request.tools, ...toDefinitions(advertised)],
             }),
           )
           .pipe(
