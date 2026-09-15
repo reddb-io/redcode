@@ -536,6 +536,19 @@ export const {
           break
         }
 
+        // A waiting prompt was turned into a steer, or sent back to the queue.
+        case "session.next.prompt.delivery": {
+          const { messageID, delivery } = event.properties
+          if (delivery === "steer") setStore("prompt_steer", messageID, true)
+          else if (store.prompt_steer[messageID])
+            setStore(
+              produce((draft) => {
+                delete draft.prompt_steer[messageID]
+              }),
+            )
+          break
+        }
+
         case "message.promoted": {
           const { sessionID, messageID } = event.properties
           if (!store.prompt_steer[messageID]) break

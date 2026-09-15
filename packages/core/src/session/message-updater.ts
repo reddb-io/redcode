@@ -137,6 +137,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
         )
       },
       "session.next.prompt.admitted": () => Effect.void,
+      "session.next.prompt.delivery": () => Effect.void,
       // Diagnostics about the run, not part of the conversation: counted elsewhere, nothing to
       // project into a message here.
       "session.next.guard.tripped": () => Effect.void,

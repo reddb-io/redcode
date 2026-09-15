@@ -415,6 +415,13 @@ const layer = Layer.effectDiscard(
         })
       }),
     )
+    yield* events.project(SessionEvent.PromptDeliveryChanged, (event) =>
+      SessionInput.projectDeliveryChanged(db, {
+        id: event.data.messageID,
+        sessionID: event.data.sessionID,
+        delivery: event.data.delivery,
+      }),
+    )
     yield* events.project(SessionEvent.ContextUpdated, (event) => run(db, event))
     yield* events.project(SessionEvent.Synthetic, (event) => run(db, event))
     yield* events.project(SessionEvent.Shell.Started, (event) => run(db, event))

@@ -61,6 +61,11 @@ export type ScenarioContext = {
   project: () => Effect.Effect<Project.Info>
   message: (sessionID: SessionID, input?: { text?: string }) => Effect.Effect<MessageSeed>
   messages: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts[]>
+  /** A prompt waiting in the session inbox: stored as a user message and admitted, never promoted. */
+  admitPrompt: (
+    sessionID: SessionID,
+    input?: { text?: string; delivery?: "steer" | "queue" },
+  ) => Effect.Effect<MessageSeed>
   todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<ReadonlyArray<SessionTodo.Info>>
   sessionMetadata: (sessionID: SessionID, metadata: Record<string, unknown>) => Effect.Effect<void>
   worktree: (input?: { name?: string }) => Effect.Effect<Worktree.Info>

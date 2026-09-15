@@ -137,6 +137,86 @@ const replayEvents = (session: SessionV2.ID, id: SessionMessage.ID, opts: { prom
 const pending = (filter?: { readonly delivery?: SessionInput.Delivery; readonly cutoffSeq?: number }) =>
   Database.Service.use(({ db }) => SessionInput.listPending(db, sessionID, filter))
 
+const setDelivery = (id: SessionMessage.ID, delivery: SessionInput.Delivery, session = sessionID) =>
+  Effect.gen(function* () {
+    const { db } = yield* Database.Service
+    const events = yield* EventV2.Service
+    return yield* SessionInput.setDelivery(db, events, { sessionID: session, id, delivery })
+  })
+
+describe("SessionInput delivery changes", () => {
+  it.effect("turns a pending queued prompt into a steer and back", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const { db } = yield* Database.Service
+      const id = SessionMessage.ID.create()
+      const admitted = yield* admit(id, "hello", "queue")
+
+      const steered = yield* setDelivery(id, "steer")
+      expect(steered?.delivery).toBe("steer")
+      // Only the delivery changes: the prompt keeps its place in the inbox.
+      expect(steered?.admittedSeq).toBe(admitted.admittedSeq)
+      expect((yield* SessionInput.find(db, id))?.delivery).toBe("steer")
+      expect((yield* pending({ delivery: "steer" })).map((row) => row.id)).toEqual([id])
+      expect(yield* pending({ delivery: "queue" })).toEqual([])
+
+      const requeued = yield* setDelivery(id, "queue")
+      expect(requeued?.delivery).toBe("queue")
+      expect((yield* pending({ delivery: "queue" })).map((row) => row.id)).toEqual([id])
+    }),
+  )
+
+  it.effect("asking for the delivery it already has publishes nothing", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.create()
+      yield* admit(id, "hello", "queue")
+      const before = yield* EventV2.latestSequence((yield* Database.Service).db, sessionID)
+      expect((yield* setDelivery(id, "queue"))?.delivery).toBe("queue")
+      expect(yield* EventV2.latestSequence((yield* Database.Service).db, sessionID)).toBe(before)
+      expect(events).toBeDefined()
+    }),
+  )
+
+  it.effect("refuses a promoted prompt, an unknown one and another session's", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const { db } = yield* Database.Service
+      const id = SessionMessage.ID.create()
+      yield* admit(id, "hello", "queue")
+      yield* publishUser(id)
+      yield* publishPromoted(id)
+
+      expect(yield* setDelivery(id, "steer")).toBeUndefined()
+      // The promoted row is left exactly as it was promoted.
+      expect((yield* SessionInput.find(db, id))?.delivery).toBe("queue")
+      expect(yield* setDelivery(SessionMessage.ID.create(), "steer")).toBeUndefined()
+
+      const other = SessionV2.ID.make("ses_input_other_session")
+      yield* setupSession(other)
+      const pendingID = SessionMessage.ID.create()
+      yield* admit(pendingID, "hello", "queue")
+      expect(yield* setDelivery(pendingID, "steer", other)).toBeUndefined()
+      expect((yield* SessionInput.find(db, pendingID))?.delivery).toBe("queue")
+    }),
+  )
+
+  it.effect("a removed prompt cannot be steered", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const { db } = yield* Database.Service
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.create()
+      yield* admit(id, "hello", "queue")
+      yield* publishUser(id)
+      yield* events.publish(SessionV1.Event.MessageRemoved, { sessionID, messageID: SessionV1.MessageID.make(id) })
+      expect(yield* setDelivery(id, "steer")).toBeUndefined()
+      expect(yield* SessionInput.find(db, id)).toBeUndefined()
+    }),
+  )
+})
+
 describe("SessionInput legacy promotion", () => {
   it.effect("promotes a pending row only through the durable message.promoted event", () =>
     Effect.gen(function* () {

@@ -137,6 +137,17 @@ export const PromptAdmitted = Event.define({
 })
 export type PromptAdmitted = typeof PromptAdmitted.Type
 
+/**
+ * The delivery of an admitted prompt changed before its promotion: a queued prompt was turned
+ * into a steer, or back. Only a still-pending prompt can change; a promoted or removed one cannot.
+ */
+export const PromptDeliveryChanged = Event.define({
+  type: "session.next.prompt.delivery",
+  ...options,
+  schema: { ...Base, messageID: SessionMessage.ID, delivery: Delivery },
+})
+export type PromptDeliveryChanged = typeof PromptDeliveryChanged.Type
+
 export namespace Turn {
   /**
    * Live event fired once per turn, before any step runs. Marks the start of
@@ -643,6 +654,7 @@ export const DurableDefinitions = Event.inventory(
   Moved,
   Prompted,
   PromptAdmitted,
+  PromptDeliveryChanged,
   ContextUpdated,
   Synthetic,
   Shell.Started,
@@ -675,6 +687,7 @@ export const Definitions = Event.inventory(
   Moved,
   Prompted,
   PromptAdmitted,
+  PromptDeliveryChanged,
   ContextUpdated,
   Synthetic,
   Shell.Started,

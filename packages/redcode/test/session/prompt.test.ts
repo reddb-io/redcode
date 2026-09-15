@@ -1987,6 +1987,97 @@ unix(
 )
 
 unix(
+  "a queued prompt turned into a steer lands in the next provider request",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Convert",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("after the tool")
+      yield* llm.text("converted answered")
+
+      const first = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      // Queued while the tool is held: without the conversion it would wait for the turn to end.
+      const id = MessageID.ascending()
+      const queued = yield* prompt
+        .prompt({
+          sessionID: chat.id,
+          messageID: id,
+          agent: "build",
+          model: ref,
+          delivery: "queue",
+          parts: [{ type: "text", text: "converted-prompt" }],
+        })
+        .pipe(Effect.forkChild)
+      yield* pollWithTimeout(
+        admittedRow(id).pipe(Effect.map((row) => (row ? (true as const) : undefined))),
+        "queued prompt never admitted",
+      )
+      expect((yield* admittedRow(id))?.delivery).toBe("queue")
+
+      expect((yield* prompt.setDelivery({ sessionID: chat.id, messageID: id, delivery: "steer" }))?.delivery).toBe(
+        "steer",
+      )
+      expect((yield* admittedRow(id))?.promotedSeq).toBeUndefined()
+
+      yield* held.release
+      yield* awaitWithTimeout(Fiber.join(first), "first prompt never resolved", "20 seconds")
+      yield* awaitWithTimeout(Fiber.join(queued), "converted prompt never resolved", "20 seconds")
+
+      // The tool-result request is the next step boundary: the converted prompt is already in it,
+      // instead of waiting for the turn to end.
+      const hits = yield* llm.hits
+      expect(JSON.stringify(messagesOf(hits[0]!))).not.toContain("converted-prompt")
+      expect(JSON.stringify(messagesOf(hits[1]!))).toContain("converted-prompt")
+      const row = yield* admittedRow(id)
+      expect(row?.delivery).toBe("steer")
+      expect(row?.promotedSeq).toBeGreaterThan(row?.admittedSeq ?? Infinity)
+    }),
+  30_000,
+)
+
+unix(
+  "a prompt that is no longer pending cannot change delivery",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Not pending" })
+      yield* llm.text("answered")
+
+      const id = MessageID.ascending()
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        messageID: id,
+        agent: "build",
+        model: ref,
+        parts: [{ type: "text", text: "hello" }],
+      })
+      // Promoted by the turn it started, so there is nothing left to steer.
+      expect((yield* admittedRow(id))?.promotedSeq).toBeGreaterThan(-1)
+      expect(yield* prompt.setDelivery({ sessionID: chat.id, messageID: id, delivery: "queue" })).toBeUndefined()
+      expect(
+        yield* prompt.setDelivery({ sessionID: chat.id, messageID: MessageID.ascending(), delivery: "steer" }),
+      ).toBeUndefined()
+    }),
+  20_000,
+)
+
+unix(
   "queued prompts wait for the turn to end, then are promoted one at a time in admission order",
   () =>
     Effect.gen(function* () {
