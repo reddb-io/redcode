@@ -193,6 +193,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           },
         }
       }),
+    evaluate: (key, pattern) =>
+      Permission.evaluate(key, pattern, Permission.merge(input.agent.permission, input.session.permission ?? [])).action,
     ask: (req) =>
       // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
       // deadline rather than counted against it.

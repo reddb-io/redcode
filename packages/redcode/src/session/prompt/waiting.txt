@@ -6,5 +6,5 @@ To wait on an endpoint, a file or a process, call the monitor tool with action "
 - Health returns 200: {"action":"probe","probe":{"type":"http","url":"http://localhost:3000/health"},"interval_ms":2000,"deadline_ms":120000}
 - A JSON value: {"action":"probe","probe":{"type":"http","url":"https://api.example.com/jobs/42","json_path":"$.state","equals":"done"},"interval_ms":30000}
 - A file was generated: {"action":"probe","probe":{"type":"file","path":"dist/report.json","state":"exists"}}
-- A process ended: {"action":"probe","probe":{"type":"process","name":"vite build","state":"exited"}}
+- A process ended: {"action":"probe","probe":{"type":"process","name":"vite build","match":"cmdline","state":"exited"}}
 Then end your response or do independent work. This session resumes automatically with the result when the monitor completes.

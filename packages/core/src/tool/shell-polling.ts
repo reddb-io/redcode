@@ -766,17 +766,51 @@ export function nativeProbe(check: string): Monitor.Probe | undefined {
     return { type: "file", path, state: negated ? "missing" : "exists" }
   }
   if (name === "pgrep") {
+    // pgrep takes a regular expression, and bare `pgrep X` matches any process name containing X. Only a plain
+    // literal with `-f` (a command line containing it) or `-x` (exactly that name) means what a probe checks.
     const names = args.filter((arg) => !arg.startsWith("-"))
-    if (names.length !== 1 || !args.every((arg) => !arg.startsWith("-") || arg === "-f" || arg === "-x")) return undefined
-    return { type: "process", name: names[0]!, state: negated ? "exited" : "running" }
+    const flags = args.filter((arg) => arg.startsWith("-"))
+    if (names.length !== 1 || flags.length !== 1 || !/^[A-Za-z0-9_ /:@=,-]+$/.test(names[0]!)) return undefined
+    const state = negated ? "exited" : "running"
+    if (flags[0] === "-f") return { type: "process", name: names[0]!, match: "cmdline", state }
+    if (flags[0] === "-x") return { type: "process", name: names[0]!, state }
+    return undefined
   }
   return undefined
 }
 
-function withProbe(detection: Detection | undefined): Detection | undefined {
+function invert(probe: Monitor.Probe): Monitor.Probe | undefined {
+  if (probe.type === "process") return { ...probe, state: probe.state === "running" ? "exited" : "running" }
+  if (probe.type === "file" && probe.state !== "changed" && probe.min_size === undefined)
+    return { ...probe, state: probe.state === "exists" ? "missing" : "exists" }
+  // An http probe has no "down" state to wait for.
+  return undefined
+}
+
+/**
+ * The probe for the one `until`/`while` loop in a command, keeping what the loop waits for: `until X` and
+ * `while ! X` are done once X holds, `while X` and `until ! X` once it no longer does. Undefined when the
+ * condition is compound, does not map onto a probe, or cannot be inverted.
+ */
+export function loopProbe(command: string): Monitor.Probe | undefined {
+  const masked = mask(command)
+  const wrapped = unwrap(command, masked)
+  if (wrapped) return loopProbe(wrapped.inner)
+  const list = loops(masked)
+  const loop = list[0]
+  if (list.length !== 1 || !loop || loop.keyword === "for") return undefined
+  const condition = trimTail(command.slice(loop.start + loop.keyword.length, loop.doAt))
+  if (!condition || /&&|\|\||[;\n]/.test(mask(condition))) return undefined
+  const bang = /^!\s+(.+)$/.exec(condition)
+  const probe = nativeProbe(bang ? bang[1]! : condition)
+  if (!probe) return undefined
+  return (loop.keyword === "until") !== Boolean(bang) ? probe : invert(probe)
+}
+
+function withProbe(detection: Detection | undefined, command: string): Detection | undefined {
   const suggestion = detection?.suggestion
-  if (!detection || !suggestion || suggestion.monitor.mode !== "poll") return detection
-  const probe = nativeProbe(suggestion.command)
+  if (!detection || detection.kind !== "loop" || !suggestion || suggestion.monitor.mode !== "poll") return detection
+  const probe = loopProbe(command)
   if (!probe) return detection
   return {
     ...detection,
@@ -798,7 +832,7 @@ export function probeCall(suggestion: ProbeSuggestion, workdir?: string) {
 }
 
 export function detect(command: string): Detection | undefined {
-  return withProbe(find(command))
+  return withProbe(find(command), command)
 }
 
 function find(command: string): Detection | undefined {

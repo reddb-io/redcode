@@ -13,6 +13,7 @@ import { BackgroundJob } from "./background-job"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { MonitorTable } from "./monitor.sql"
+import { SafeRegex } from "./safe-regex"
 
 export { Info, Evidence, Options } from "@reddb-io/redcode-schema/monitor"
 
@@ -26,6 +27,8 @@ export type Start = {
   options: Monitor.Options
   /** Set for a native probe monitor; `run` evaluates it and reports `evidence.probe`. */
   probe?: Monitor.Probe
+  /** The longest one attempt may take; the last attempt starts at least this long before the deadline. */
+  attemptTimeoutMs?: number
   /**
    * One observation. Call `track` with the pid of a detached process group it spawns, so a runtime
    * that restarts after a crash can stop that group, or at least name it, instead of forgetting it.
@@ -230,6 +233,34 @@ export function settle(
   }
 }
 
+/** Consecutive regular-expression timeouts after which a monitor fails instead of polling a pattern that cannot finish. */
+export const REGEX_TIMEOUT_LIMIT = 3
+
+/** Runs a command poll's regular expressions in the worker, and notes any that could not finish. */
+const regexOutcomes = (options: Monitor.Options, evidence: Monitor.Evidence) =>
+  Effect.promise(async () => {
+    const outcomes: { success?: Monitor.RegexOutcome; failure?: Monitor.RegexOutcome } = {}
+    const errors: string[] = []
+    if (evidence.probe)
+      return { outcomes, errors, timedOut: evidence.probe.error?.includes(SafeRegex.TIMEOUT_ERROR) === true }
+    const text = evidence.output.slice(-Monitor.REGEX_INPUT_CHARS)
+    let timedOut = false
+    for (const key of ["failure", "success"] as const) {
+      const source = key === "success" ? options.success_regex : options.failure_regex
+      if (source === undefined) continue
+      const outcome = await SafeRegex.exec(source, text)
+      if ("timedOut" in outcome) {
+        timedOut = true
+        errors.push(`${key}_regex ${SafeRegex.TIMEOUT_ERROR} after ${SafeRegex.MATCH_TIMEOUT_MS} ms`)
+        outcomes[key] = outcome
+      } else if ("error" in outcome) {
+        errors.push(`${key}_regex could not run: ${outcome.error}`)
+        outcomes[key] = { match: undefined }
+      } else outcomes[key] = outcome
+    }
+    return { outcomes, errors, timedOut }
+  })
+
 const running = sql`json_extract(${MonitorTable.data}, '$.status') = 'running'`
 
 export const make = Effect.gen(function* () {
@@ -390,13 +421,25 @@ export const make = Effect.gen(function* () {
               })
             /** The first attempt's normalized output, which `until: "changed"` compares against. */
             let baseline: string | undefined
+            /** Attempts in a row whose regular expression timed out. */
+            let timeouts = 0
             const run = Effect.gen(function* () {
               const initial = Monitor.initialDelay(input.options, jitter.random)
               if (initial > 0) yield* Effect.sleep(initial)
               while (true) {
-                const evidence = yield* input.run(track)
+                const observed = yield* input.run(track)
+                const regex = yield* regexOutcomes(input.options, observed)
+                timeouts = regex.timedOut ? timeouts + 1 : 0
+                const evidence: Monitor.Evidence =
+                  regex.errors.length > 0 ? { ...observed, error: regex.errors.join("; ") } : observed
                 const now = yield* Clock.currentTimeMillis
-                const decided = Monitor.verdict(input.options, evidence, baseline)
+                const decided =
+                  timeouts >= REGEX_TIMEOUT_LIMIT
+                    ? {
+                        status: "failed" as const,
+                        matched: `the regular expression timed out ${timeouts} times in a row`,
+                      }
+                    : Monitor.verdict(input.options, evidence, baseline, regex.outcomes)
                 if (baseline === undefined && !evidence.probe) baseline = Monitor.normalizeOutput(evidence.output)
                 current = {
                   ...current,
@@ -413,7 +456,12 @@ export const make = Effect.gen(function* () {
                 }
                 yield* save(current)
                 if (current.status !== "running") return
-                const delay = Monitor.nextDelay(input.options, (yield* Clock.currentTimeMillis) - initialInfo.created, jitter.random)
+                const delay = Monitor.nextDelay(
+                  input.options,
+                  (yield* Clock.currentTimeMillis) - initialInfo.created,
+                  jitter.random,
+                  input.attemptTimeoutMs,
+                )
                 // No attempt fits before the deadline: wait for it, so the monitor times out as before.
                 if (delay === undefined) return yield* Effect.never
                 yield* Effect.sleep(delay)
