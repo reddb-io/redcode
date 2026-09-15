@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+import { TextareaRenderable } from "@opentui/core"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createBindingLookup } from "@opentui/keymap/extras"
 import { testRender, useRenderer } from "@opentui/solid"
@@ -135,6 +136,53 @@ test("mode-less bindings stay active when opencode mode changes", async () => {
         "model.list": 0,
       },
     })
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("shift+return runs input.steer while return still submits and no newline is inserted", async () => {
+  const calls: string[] = []
+  let textarea: TextareaRenderable | undefined
+
+  function Harness() {
+    const renderer = useRenderer()
+    const keymap = createDefaultOpenTuiKeymap(renderer)
+    const config = createResolvedKeymapConfig()
+    const offKeymap = registerOpencodeKeymap(keymap, renderer, config)
+    let offSteer = () => {}
+    onCleanup(() => {
+      offSteer()
+      offKeymap()
+    })
+
+    return (
+      <OpencodeKeymapProvider keymap={keymap}>
+        <textarea
+          initialValue="draft"
+          onSubmit={() => calls.push("submit")}
+          ref={(r: TextareaRenderable) => {
+            textarea = r
+            r.focus()
+            offSteer = keymap.registerLayer({
+              target: r,
+              priority: 1,
+              commands: [{ name: "input.steer", run: () => void calls.push("steer") }],
+              bindings: config.keybinds.gather("prompt.steer", ["input.steer"]),
+            })
+          }}
+        />
+      </OpencodeKeymapProvider>
+    )
+  }
+
+  const app = await testRender(() => <Harness />, { kittyKeyboard: true })
+  try {
+    await app.renderOnce()
+    app.mockInput.pressEnter({ shift: true })
+    app.mockInput.pressEnter()
+    expect(calls).toEqual(["steer", "submit"])
+    expect(textarea?.plainText).toBe("draft")
   } finally {
     app.renderer.destroy()
   }
