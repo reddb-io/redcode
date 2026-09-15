@@ -96,17 +96,14 @@ const make = Effect.gen(function* () {
                 })
               const requirement = item.requirement?.trim()
               const requests = observed.requests.toSorted((a, b) => b.created - a.created)
-              const quoted = requests.find((entry) => (requirement ? quotes(entry.text, requirement) : !entry.pending))
-              // A requirement that paraphrases, translates or retypes the request still names work the
-              // user asked for. The latest real request becomes the source, verbatim, and the model's
-              // wording is kept as the criterion; the completion gate is unchanged, since it hangs on
-              // the source.
-              const paraphrased = requirement && !quoted ? requests.find((entry) => !entry.pending) : undefined
+              const latest = requests.find((entry) => !entry.pending)
+              const quoted = requirement ? requests.find((entry) => quotes(entry.text, requirement)) : latest
+              // A quote never decides whether an update is accepted: the user may write in any language
+              // and the model may paraphrase or translate. A requirement that quotes no request is
+              // attached to the latest real request, verbatim, and the model's wording is kept as the
+              // criterion; the completion gate is unchanged, since it hangs on real verification.
+              const paraphrased = requirement && !quoted ? latest : undefined
               const request = quoted ?? paraphrased
-              if (requirement && !input.origin && !before?.source && !request)
-                return yield* new SessionTodo.Error({
-                  message: `${QUOTE_MISMATCH} no user message is recorded in this session to quote yet. Create the task without requirement, e.g. {"todos":[{"content":"${content.replaceAll('"', "'").slice(0, 60)}","status":"pending","priority":"high","criterion":"<observable result>"}]}`,
-                })
               const source =
                 before?.source ??
                 (input.origin
@@ -121,20 +118,11 @@ const make = Effect.gen(function* () {
                       ...(paraphrased && requirement ? { paraphrase: requirement } : {}),
                     }
                   : undefined)
-              // Only a source this update supplies is checked against the history. A stored one was checked
-              // when the task was created, and its request may since have left the history (compaction).
-              if (
-                !before?.source &&
-                source?.type === "request" &&
-                !observed.requests.some((entry) => entry.id === source.id && quotes(entry.text, source.quote))
-              )
-                return yield* new SessionTodo.Error({
-                  message: `${QUOTE_MISMATCH} the source request ${source.id} no longer contains the quote. Omit requirement; the latest request is attached for you.`,
-                })
               const criterion =
                 item.criterion?.trim() ||
                 before?.criterion ||
-                (paraphrased && !before?.source ? requirement : undefined) ||
+                // With no request to attach at all, the requirement still says what the task must show.
+                (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
                 (source ? content : undefined)
               // A task that is already complete keeps its stored evidence when re-sent without new
               // evidence; review() is what reopens it when later edits made that evidence stale.
@@ -181,23 +169,21 @@ const make = Effect.gen(function* () {
                   ? `completion evidence could not be verified after ${attempts + 1} attempts: ${resolved.error}`
                   : undefined
               const proof = resolved && "proof" in resolved ? resolved : undefined
-              const scopeChange = item.scopeChange
-                ? observed.requests.find(
-                    (entry) =>
-                      entry.id === item.scopeChange?.messageID &&
-                      item.scopeChange.quote.trim() &&
-                      quotes(entry.text, item.scopeChange.quote),
-                  )
-                : undefined
-              if (
-                item.status === "cancelled" &&
-                source &&
-                before?.status !== "cancelled" &&
-                (!scopeChange || scopeChange.created <= source.created)
-              )
+              // A scope change follows the same policy as a requirement: a quote of a real user message
+              // links it, anything else is attached to the latest real request with the model's words
+              // kept as the paraphrase. What it cannot do without is the concrete reason checked above.
+              const changeQuote = item.scopeChange?.quote.trim()
+              const changeLinked =
+                item.scopeChange && changeQuote
+                  ? observed.requests.find(
+                      (entry) =>
+                        !entry.pending && entry.id === item.scopeChange?.messageID && quotes(entry.text, changeQuote),
+                    )
+                  : undefined
+              const changeRequest = changeLinked ?? (item.scopeChange ? latest : undefined)
+              if (item.status === "cancelled" && source && before?.status !== "cancelled" && !item.scopeChange)
                 return yield* new SessionTodo.Error({
-                  message:
-                    "Cancellation requires scopeChange quoting a later user instruction that removed this requirement",
+                  message: `${SCOPE_CHANGE_REQUIRED} include scopeChange naming the user message that removed this work, e.g. {"scopeChange":{"messageID":"<user message id>","quote":"<the instruction, quoted or paraphrased>"},"reason":"<concrete reason>"}`,
                 })
               return {
                 id:
@@ -227,13 +213,20 @@ const make = Effect.gen(function* () {
                       },
                     }
                   : {}),
-                ...(scopeChange && item.scopeChange
+                ...(item.scopeChange
                   ? {
-                      scopeChange: {
-                        messageID: scopeChange.id,
-                        quote: item.scopeChange.quote,
-                        created: scopeChange.created,
-                      },
+                      scopeChange: changeRequest
+                        ? {
+                            messageID: changeRequest.id,
+                            quote: changeLinked ? changeQuote! : changeRequest.text,
+                            created: changeRequest.created,
+                            ...(!changeLinked && changeQuote ? { paraphrase: changeQuote } : {}),
+                          }
+                        : {
+                            messageID: item.scopeChange.messageID,
+                            quote: changeQuote ?? "",
+                            ...(changeQuote ? { paraphrase: changeQuote } : {}),
+                          },
                     }
                   : before?.scopeChange
                     ? { scopeChange: before.scopeChange }
@@ -416,20 +409,45 @@ export const REFUSED = "Completion evidence refused:"
  * matter of resending the right shape, so it never counts toward blocking a task.
  */
 export const NEEDS_EXPLANATION = "Completion evidence needs an explanation:"
-/** Prefix of a requirement that cannot be tied to any user request. */
+/**
+ * Prefix of a refusal older builds issued when a requirement quoted no user request. No longer issued:
+ * a quote only links a source. Kept so refusals recorded before still classify.
+ */
 export const QUOTE_MISMATCH = "Task requirement does not match a user request:"
+/** Prefix of a cancellation that names no user scope change at all. */
+export const SCOPE_CHANGE_REQUIRED = "Cancellation requires a scope change:"
 
-/** Text as a quote is compared: accents, case, quote marks, punctuation and whitespace ignored. */
+/**
+ * Text as a quote is compared for linking: Unicode-normalised, case, quote marks, punctuation and
+ * whitespace ignored. A miss only means the source is attached another way, never a refusal.
+ */
 const quoteForm = (text: string) =>
   text
-    .normalize("NFKD")
-    .replace(/\p{M}+/gu, "")
+    .normalize("NFKC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
 
-/** A fragment too short to identify a request: under three words and twelve characters. */
-const trivial = (fragment: string) => fragment.split(" ").length < 3 && fragment.length < 12
+/** Scripts written without spaces between words, where each character bounds a word. */
+const DENSE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u
+const DENSE_ALL = new RegExp(DENSE.source, "gu")
+
+/**
+ * A fragment too short to identify a request: under three words and twelve characters, counting each
+ * character of a script written without spaces as a word.
+ */
+const trivial = (fragment: string) =>
+  fragment.split(" ").length + (fragment.match(DENSE_ALL)?.length ?? 0) < 3 && fragment.length < 12
+
+/** Where `fragment` occurs in `padded` from `at` as whole words; a dense-script edge needs no space. */
+function wordAt(padded: string, fragment: string, at: number) {
+  for (let found = padded.indexOf(fragment, at); found !== -1; found = padded.indexOf(fragment, found + 1)) {
+    const start = padded[found - 1] === " " || DENSE.test(fragment[0]!)
+    const end = padded[found + fragment.length] === " " || DENSE.test(fragment.at(-1)!)
+    if (start && end) return found
+  }
+  return -1
+}
 
 /**
  * Whether `quote` quotes `text`. Retyping a request changes whitespace, quote marks, accents and
@@ -449,9 +467,9 @@ export function quotes(text: string, quote: string) {
   let at = 0
   for (const fragment of fragments) {
     if (trivial(fragment)) return false
-    const found = padded.indexOf(` ${fragment} `, at)
+    const found = wordAt(padded, fragment, at)
     if (found === -1) return false
-    at = found + fragment.length + 1
+    at = found + fragment.length
   }
   return true
 }
@@ -468,6 +486,7 @@ export function refusalKind(message: string) {
     return "revision"
   if (message.startsWith("Unknown task")) return "unknown-task"
   if (message.startsWith("Multiple tasks match") || message.startsWith("Duplicate task update")) return "ambiguous"
+  if (message.startsWith(SCOPE_CHANGE_REQUIRED)) return "scope-change"
   if (message.includes("requires a concrete reason") || message.startsWith("Cancellation requires")) return "reason"
   return "other"
 }

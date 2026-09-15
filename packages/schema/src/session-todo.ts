@@ -54,7 +54,10 @@ export const Input = Schema.Struct({
   ...tracking,
   planKey: optional(Schema.String),
   requirement: optional(
-    Schema.String.annotate({ description: "Exact quote from the user request covered by this task" }),
+    Schema.String.annotate({
+      description:
+        "Quote from the user request covered by this task; a paraphrase or translation is kept as the criterion and linked to the latest request",
+    }),
   ),
   criterion: optional(Schema.String.annotate({ description: "Observable acceptance condition for this task" })),
   evidence: optional(
@@ -63,7 +66,12 @@ export const Input = Schema.Struct({
         "Successful tool result proving completion, with an explanation. When omitted, only a verification result (successful bash or shell check, design_preview or design_export) newer than the last edit is selected",
     }),
   ),
-  scopeChange: optional(Schema.Struct({ messageID: Schema.String, quote: Schema.String })),
+  scopeChange: optional(
+    Schema.Struct({ messageID: Schema.String, quote: Schema.String }).annotate({
+      description:
+        "The user message that removed this work; a quote that matches no message is linked to the latest request",
+    }),
+  ),
   // Content and priority are required to create a task; an update addressed by id keeps the stored values.
   content: optional(
     Schema.String.check(Schema.isMinLength(1)).annotate({
@@ -104,7 +112,13 @@ export const Info = Schema.Struct({
   criterion: optional(Schema.String),
   evidence: optional(Evidence),
   scopeChange: optional(
-    Schema.Struct({ messageID: Schema.String, quote: Schema.String, created: optional(Schema.Finite) }),
+    Schema.Struct({
+      messageID: Schema.String,
+      quote: Schema.String,
+      created: optional(Schema.Finite),
+      /** The model's words when they quoted no user message and the latest request was attached instead. */
+      paraphrase: optional(Schema.String),
+    }),
   ),
   content: Schema.String.annotate({ description: "Brief description of the task" }),
   status: Schema.String.annotate({

@@ -259,14 +259,17 @@ describe("tool.todowrite (legacy runtime)", () => {
         status: "in_progress",
         source: task.source,
       })
-      // A requirement that is new still has to quote a request that exists now.
-      const invented = yield* call(
+      // With no request left to link, a new requirement is still accepted and kept as the criterion.
+      const unlinked = yield* call(
         sessionID,
-        [{ content: "Invented work", status: "pending", priority: "high", requirement: "never said this" }],
+        [{ content: "Unlinked work", status: "pending", priority: "high", requirement: "never said this" }],
         40,
       )
-      if (!("error" in invented)) throw new Error("expected an invented requirement to be refused")
-      expect(invented.error).toContain(SessionTodoStore.QUOTE_MISMATCH)
+      if (!("output" in unlinked)) throw new Error(`unlinked requirement refused: ${unlinked.error}`)
+      const stored = unlinked.output.metadata.todos.find((entry) => entry.content === "Unlinked work")
+      expect(stored).toMatchObject({ criterion: "never said this" })
+      expect(stored?.source).toBeUndefined()
+      expect(unlinked.output.output).toContain("kept as the criterion")
     }),
   )
 
