@@ -8595,16 +8595,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Delivery changed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean",
-                  "description": "Delivery changed"
-                }
-              }
-            }
+          "204": {
+            "description": "Delivery changed"
           },
           "400": {
             "description": "BadRequest | InvalidRequestError",

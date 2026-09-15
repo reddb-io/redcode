@@ -11733,7 +11733,7 @@ export type SessionPromptDeliveryResponses = {
   /**
    * Delivery changed
    */
-  200: boolean
+  204: void
 }
 
 export type SessionPromptDeliveryResponse = SessionPromptDeliveryResponses[keyof SessionPromptDeliveryResponses]
