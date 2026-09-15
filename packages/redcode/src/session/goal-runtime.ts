@@ -232,8 +232,11 @@ const layer = Layer.effect(
         const sessionID = input.session.id
         const now = Date.now()
 
+        // Monitors are not counted here: the turn loop decides which of them hold judging back
+        // (`Monitor.parks`), so a long-lived dev server does not keep a goal waiting for a day.
         const running = (yield* jobs.list()).filter(
-          (job) => job.status === "running" && job.metadata?.["parentSessionId"] === sessionID,
+          (job) =>
+            job.status === "running" && job.type !== "monitor" && job.metadata?.["parentSessionId"] === sessionID,
         )
         const background = running.map((job) => String(job.metadata?.["description"] ?? job.id))
 

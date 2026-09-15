@@ -328,13 +328,18 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
 
             if (permission === "bash") {
               const command = typeof data.command === "string" ? data.command : ""
+              // A monitor keeps running after approval: say how often and for how long.
+              const monitor = typeof data.monitor === "string" ? data.monitor : ""
               return {
                 icon: "#",
-                title: "Shell command",
+                title: monitor ? "Shell monitor" : "Shell command",
                 body: (
                   <Show when={command}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={1} flexDirection="column">
                       <text fg={theme.text}>{"$ " + command}</text>
+                      <Show when={monitor}>
+                        <text fg={theme.textMuted}>{"Monitor: " + monitor}</text>
+                      </Show>
                     </box>
                   </Show>
                 ),

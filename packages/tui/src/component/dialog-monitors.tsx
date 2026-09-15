@@ -5,7 +5,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { DialogAlert } from "../ui/dialog-alert"
 import { useToast } from "../ui/toast"
-import type { Monitor } from "@reddb-io/redcode-schema/monitor"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
 
 export function DialogMonitors(props: { sessionID: string }) {
   const sdk = useSDK()
@@ -46,16 +46,20 @@ export function DialogMonitors(props: { sessionID: string }) {
         onSelect={async (option) => {
           if (option.value === "back") return dialog.replace(() => <DialogMonitors {...props} />)
           if (option.value === "result") {
+            // Command output is untrusted: its tail only, with terminal escapes and control characters removed.
+            const shown = Monitor.bounded(info)
             await DialogAlert.show(
               dialog,
               `Monitor ${info.status}`,
-              [
-                info.error,
-                info.evidence?.output ?? "No result yet.",
-                info.evidence?.outputPath ? `Full output: ${info.evidence.outputPath}` : undefined,
-              ]
-                .filter(Boolean)
-                .join("\n\n"),
+              Monitor.printable(
+                [
+                  shown.error,
+                  shown.evidence?.output ?? "No result yet.",
+                  shown.evidence?.outputPath ? `Full output: ${shown.evidence.outputPath}` : undefined,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              ),
             )
             dialog.replace(() => <DialogMonitors {...props} />)
             return

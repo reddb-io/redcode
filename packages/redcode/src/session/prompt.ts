@@ -83,6 +83,7 @@ import {
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { MonitorRuntime } from "@/background/monitor"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -194,13 +195,11 @@ const layer = Layer.effect(
     const goals = yield* GoalRuntime.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* (sessionID: SessionID) {
-      const generation = yield* state.generation(sessionID)
-      // Whether a goal drove the turn that may start a monitor. When the runtime parks that goal
-      // later (loop guard, stall, step ceiling, a failed turn, /goal pause), it waits for the
-      // person, so a monitor finishing afterwards must not pick the session back up on its own.
+      // Whether a goal drove the turn that may start a monitor. When that goal is parked later
+      // (Esc, loop guard, stall, step ceiling, a failed turn, /goal pause), it waits for the person,
+      // so a monitor finishing afterwards must not start a turn on its own.
       const driven = (yield* goals.get(sessionID))?.status === "active"
-      const live = Effect.gen(function* () {
-        if ((yield* state.generation(sessionID)) !== generation) return false
+      const wake = Effect.gen(function* () {
         if (!driven) return true
         const goal = yield* goals.get(sessionID)
         return goal === undefined || goal.status === "active" || goal.status === "done"
@@ -211,17 +210,17 @@ const layer = Layer.effect(
         prompt: (input: PromptInput) => prompt(input).pipe(Effect.catch(Effect.die)),
         notify: (input: PromptInput) =>
           Effect.gen(function* () {
-            if (input.sessionID !== sessionID || !(yield* live)) return false
-            // Admitted like any prompt, never written straight into history: the drain promotes it
-            // at its next safe boundary, so a result arriving mid-turn cannot split a provider turn.
-            yield* prompt({ ...input, noReply: true }).pipe(Effect.orDie)
+            if (input.sessionID !== sessionID) return false
+            // Always admitted, never written straight into history, and queued rather than steered:
+            // it is promoted only where the session would otherwise go idle, so a result never lands
+            // inside a turn the user started, and a parked goal still reads it once it resumes.
+            yield* prompt({ ...input, delivery: "queue", noReply: true }).pipe(Effect.orDie)
+            if (!(yield* wake)) return true
             yield* Effect.gen(function* () {
-              if (!(yield* live)) return
               yield* loop({ sessionID })
               // Joining a drain past its last promotion boundary returns without promoting the row
-              // admitted above. Wake once more while anything is still pending, unless a stop since
-              // invalidated this advisory wake.
-              if (!(yield* live)) return
+              // admitted above. Wake once more while anything is still pending.
+              if (!(yield* wake)) return
               if ((yield* SessionInput.listPending(db, sessionID)).length > 0) yield* loop({ sessionID })
             }).pipe(Effect.forkIn(scope))
             return true
@@ -1563,7 +1562,9 @@ const layer = Layer.effect(
             // should spend provider calls while an external observation is outstanding.
             // The session still goes idle through promotion, so a prompt queued meanwhile runs now
             // instead of waiting for the monitor.
-            if ((yield* monitors.list(sessionID)).some((monitor) => monitor.status === "running")) {
+            // Only monitors waiting on a condition that ends park; a dev server started with a day-long
+            // deadline does not hold the goal back for a day.
+            if ((yield* monitors.list(sessionID)).some(Monitor.parks)) {
               if (yield* promoteAtIdle(sessionID)) {
                 restart()
                 continue

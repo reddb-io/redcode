@@ -4098,6 +4098,11 @@ export type MonitorEvidence = {
   outputPath?: string
 }
 
+export type MonitorProcess = {
+  pid: number
+  started: string
+}
+
 export type MonitorInfo = {
   id: string
   sessionID: string
@@ -4112,6 +4117,8 @@ export type MonitorInfo = {
   evidence?: MonitorEvidence
   error?: string
   delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  process?: MonitorProcess
+  interruptedBy?: string
 }
 
 export type ProjectDirectories = Array<{
