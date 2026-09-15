@@ -13,6 +13,7 @@ import { Agent as AgentSvc } from "@/agent/agent"
 import { Config } from "@/config/config"
 import { MCP } from "@/mcp"
 import { OperationHookBridge } from "@/operation-hook-bridge"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import type { Provider } from "@/provider/provider"
@@ -105,6 +106,7 @@ const hookCalls: string[] = []
 const harness = (registered: Tool.Def[]) =>
   Layer.mergeAll(
     LayerNode.compile(LayerNode.group([ToolOutputBridge.node, FSUtil.node])),
+    RuntimeFlags.layer(),
     Layer.succeed(
       OperationHookBridge.Service,
       OperationHookBridge.Service.of({
