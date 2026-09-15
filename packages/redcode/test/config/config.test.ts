@@ -870,6 +870,50 @@ Test agent prompt`,
   }),
 )
 
+test("config load never asks npm to add packages the directory does not declare", async () => {
+  const installs: { dir: string; add: string[] }[] = []
+  const recordingNpm = Layer.mock(Npm.Service)({
+    install: (dir, input) =>
+      Effect.sync(() => {
+        installs.push({ dir, add: input?.add.map((pkg) => pkg.name) ?? [] })
+      }),
+  })
+
+  await provideTmpdirInstance(
+    (directory) =>
+      Effect.gen(function* () {
+        // `.opencode` has no package.json, `.redcode` declares its own dependency.
+        yield* FSUtil.use.writeWithDirs(path.join(directory, ".opencode", "agent", "a.md"), "Agent prompt")
+        yield* FSUtil.use.writeWithDirs(
+          path.join(directory, ".redcode", "package.json"),
+          JSON.stringify({ dependencies: { "left-pad": "1.3.0" } }),
+        )
+        const svc = yield* Config.Service
+        yield* svc.get()
+        yield* svc.waitForDependencies()
+      }),
+    { git: true },
+  ).pipe(
+    Effect.scoped,
+    Effect.provide(
+      Layer.mergeAll(
+        LayerNode.compile(LayerNode.group([Config.node, FSUtil.node, Env.node, CrossSpawnSpawner.node]), [
+          [Auth.node, AuthTest.empty],
+          [Account.node, AccountTest.empty],
+          [Npm.node, recordingNpm],
+          [httpClient, Layer.succeed(HttpClient.HttpClient, unexpectedHttp)],
+        ]),
+        testInstanceStoreLayer,
+      ),
+    ),
+    Effect.runPromise,
+  )
+
+  expect(installs.flatMap((call) => call.add)).toEqual([])
+  expect(installs.some((call) => call.dir.endsWith(".opencode"))).toBe(false)
+  expect(installs.some((call) => call.dir.endsWith(".redcode"))).toBe(true)
+})
+
 it.instance("agent markdown permission config preserves user key order", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance

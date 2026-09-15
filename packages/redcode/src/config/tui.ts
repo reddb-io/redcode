@@ -16,7 +16,6 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { CurrentWorkingDirectory } from "./tui-cwd"
 import { ConfigPlugin } from "@/config/plugin"
 import { TuiKeybind } from "@reddb-io/redcode-tui/config/keybind"
-import { InstallationLocal, InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { makeRuntime } from "@reddb-io/redcode-core/effect/runtime"
 import { Filesystem } from "@/util/filesystem"
 import { ConfigVariable } from "@/config/variable"
@@ -234,20 +233,16 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const directory = yield* CurrentWorkingDirectory
     const npm = yield* Npm.Service
+    const afs = yield* FSUtil.Service
     const data = yield* loadState({ directory })
     const deps = yield* Effect.forEach(
       data.dirs,
       (dir) =>
-        npm
-          .install(dir, {
-            add: [
-              {
-                name: "@reddb-io/redcode-plugin",
-                version: InstallationLocal ? undefined : InstallationVersion,
-              },
-            ],
-          })
-          .pipe(Effect.forkScoped),
+        // Only install what the directory itself declares; the plugin types package is not published.
+        afs.existsSafe(path.join(dir, "package.json")).pipe(
+          Effect.flatMap((hasManifest) => (hasManifest ? npm.install(dir) : Effect.void)),
+          Effect.forkScoped,
+        ),
       {
         concurrency: "unbounded",
       },
