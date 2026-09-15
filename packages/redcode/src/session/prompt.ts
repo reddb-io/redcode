@@ -1328,6 +1328,10 @@ const layer = Layer.effect(
         // last step carried besides history, which every request after a compaction carries again.
         let ineffectiveCompactions = 0
         let overhead = 0
+        // The last request's system prompt and tools, which a cached summary request repeats, and
+        // the finished step whose context trimming old tool output already brought under the band.
+        let lastRequest: { system: string[]; tools: Record<string, AITool> } | undefined
+        let relieved: string | undefined
         const measured = (effective: boolean) => {
           ineffectiveCompactions = effective ? 0 : ineffectiveCompactions + 1
         }
@@ -1796,6 +1800,7 @@ const layer = Layer.effect(
               overflow: task.overflow,
               overhead,
               onMeasured: measured,
+              request: lastRequest,
             })
             if (result === "paused") {
               yield* stopCompacting("paused")
@@ -1809,14 +1814,22 @@ const layer = Layer.effect(
             continue
           }
 
-          if (
-            lastFinished &&
-            lastFinished.summary !== true &&
-            (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
-          ) {
+          if (lastFinished && lastFinished.summary !== true && relieved !== lastFinished.id) {
+            // Trimming old tool output comes first: when it frees enough, no summary is needed.
+            const relief = yield* compaction.relieve({
+              sessionID,
+              model,
+              tokens: lastFinished.tokens,
+              at: lastFinished.time.completed,
+              overhead,
+            })
+            if (relief === "fits") {
+              relieved = lastFinished.id
+              continue
+            }
             // Held back, the step still runs: over the threshold is not over the limit, and a
             // request the provider refuses ends the turn below with one notice.
-            if (!(yield* compactionHold(msgs))) {
+            if (relief === "compact" && !(yield* compactionHold(msgs))) {
               yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
               continue
             }
@@ -1830,6 +1843,7 @@ const layer = Layer.effect(
               auto: true,
               tokens: lastFinished.tokens,
               model,
+              request: lastRequest,
             })
 
           const agent = yield* agents.get(lastUser.agent)
@@ -2077,6 +2091,7 @@ const layer = Layer.effect(
                   ]),
                 ),
               )
+            lastRequest = { system, tools }
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -2131,6 +2146,20 @@ const layer = Layer.effect(
               return "break" as const
             }
             if (result === "compact") {
+              // A finished step that crossed the threshold may only need old tool output trimmed.
+              if (
+                handle.message.finish &&
+                (yield* compaction.relieve({
+                  sessionID,
+                  model,
+                  tokens: handle.message.tokens,
+                  at: handle.message.time.completed,
+                  overhead,
+                })) === "fits"
+              ) {
+                relieved = handle.message.id
+                return "continue" as const
+              }
               const hold = yield* compactionHold(msgs)
               if (hold) {
                 // A finished step only crossed the threshold; the next step decides again.
@@ -2160,7 +2189,9 @@ const layer = Layer.effect(
           continue
         }
 
-        yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
+        // Old tool output is no longer pruned here: right after a request the provider's cache is
+        // still warm, and trimming would throw it away. It is trimmed before the next compaction,
+        // or once the session has idled past the cache's lifetime.
         return yield* lastAssistant(sessionID)
       },
     )

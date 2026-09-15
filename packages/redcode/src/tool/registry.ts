@@ -23,6 +23,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
+import { SessionHistoryTool } from "./session-history"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@reddb-io/redcode-plugin"
@@ -154,6 +155,7 @@ const layer = Layer.effect(
     const codeModePossible = Effect.fn("ToolRegistry.codeModePossible")(function* () {
       return flags.experimentalCodeMode || ((yield* codeModeConfig())?.enabled ?? "off") !== "off"
     })
+    const history = yield* SessionHistoryTool
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -262,6 +264,7 @@ const layer = Layer.effect(
           plan: Tool.init(plan),
           worktree: Tool.init(worktree),
           goal_complete: Tool.init(goalComplete),
+          session_history: Tool.init(history),
         })
 
         return {
@@ -282,6 +285,8 @@ const layer = Layer.effect(
             tool.search,
             tool.skill,
             tool.patch,
+            // Read-only: searches this session's compacted-away messages.
+            tool.session_history,
             tool.lsp,
             tool.plan,
             tool.worktree,

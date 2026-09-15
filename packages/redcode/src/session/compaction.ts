@@ -9,7 +9,7 @@ import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
 import { LLM } from "./llm"
-import { LLMEvent } from "@reddb-io/redcode-llm"
+import { LLMEvent, isContextOverflowFailure } from "@reddb-io/redcode-llm"
 import { AuxDeadline } from "./aux-deadline"
 import { SessionGuardLog } from "./guard-log"
 import { Agent } from "@/agent/agent"
@@ -27,12 +27,20 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import {
+  SUMMARY_TEMPLATE,
   buildPrompt,
   elideMiddle,
   forkPreparation,
   summaryError,
   systemPrompt,
 } from "@reddb-io/redcode-core/session/compaction"
+import { CompactionPolicy } from "@reddb-io/redcode-core/session/compaction-policy"
+import { CompactionAnchors } from "@reddb-io/redcode-core/session/compaction-anchors"
+import { ProviderTransform } from "@/provider/transform"
+import { ToolSearch } from "./tool-search"
+import type { Tool as AITool } from "ai"
+import fs from "fs"
+import path from "path"
 import { CompactionGuard } from "./compaction-guard"
 import { createHash } from "crypto"
 import { ToolOutputBridge } from "@/tool/output-bridge"
@@ -45,12 +53,88 @@ import { OperationHookBridge } from "@/operation-hook-bridge"
 
 export const Event = SessionCompactionEvent
 
-export const PRUNE_MINIMUM = 20_000
-export const PRUNE_PROTECT = 40_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
-const MIN_PRESERVE_RECENT_TOKENS = 2_000
-const MAX_PRESERVE_RECENT_TOKENS = 15_000
+/** A fold window smaller than this cannot hold a useful piece of history next to the summary. */
+const MIN_FOLD_WINDOW = 1_000
+/** Share of the usable window the anchors block may take. */
+const ANCHORS_SHARE = 0.05
+
+/**
+ * Providers whose prompt cache reuses any matching prefix, so a summary request that repeats the
+ * conversation's system prompt, tools and messages pays for little more than its instruction.
+ */
+export function prefixCacheable(model: Provider.Model) {
+  return /anthropic|openai|deepseek/i.test(`${model.api.npm} ${model.providerID}`)
+}
+
+const CACHED_SUMMARY_INSTRUCTION = `The conversation above is about to be replaced by a summary. Do not continue the work and do not call tools: write the summary now.
+If the conversation begins with a summary of earlier work, that summary is discarded after this, so carry forward everything in it that still applies; where later messages conflict with it, the later messages win.`
+
+/** The person's own words in a user message. */
+function userText(message: SessionV1.WithParts) {
+  return message.parts
+    .filter((part): part is SessionV1.TextPart => part.type === "text" && !part.synthetic && !part.ignored)
+    .map((part) => part.text)
+    .join("\n")
+}
+
+/** Files the history read and changed, relative to the worktree when inside it. */
+function fileOperations(messages: readonly SessionV1.WithParts[], root: string) {
+  const relative = (file: string) => {
+    const inside = path.relative(root, file)
+    return inside && !inside.startsWith("..") && !path.isAbsolute(inside) ? inside : file
+  }
+  return messages.flatMap((message) =>
+    message.parts.flatMap((part): CompactionAnchors.FileOperation[] => {
+      if (part.type !== "tool" || part.state.status !== "completed") return []
+      const input = part.state.input as Record<string, unknown>
+      const file = typeof input.filePath === "string" ? relative(input.filePath) : undefined
+      if (part.tool === "read" && file) return [{ path: file, kind: "read" }]
+      if ((part.tool === "edit" || part.tool === "write") && file) return [{ path: file, kind: "modified" }]
+      const changed = part.state.metadata?.files
+      if (part.tool === "apply_patch" && Array.isArray(changed))
+        return changed.flatMap((item: { filePath?: unknown; movePath?: unknown }) =>
+          typeof (item.movePath ?? item.filePath) === "string"
+            ? [{ path: relative(String(item.movePath ?? item.filePath)), kind: "modified" as const }]
+            : [],
+        )
+      return []
+    }),
+  )
+}
+
+/** Branch and HEAD from the git directory, when it can be read without running git. */
+function gitState(root: string) {
+  try {
+    let dir = path.join(root, ".git")
+    if (fs.statSync(dir).isFile()) {
+      const pointer = /gitdir:\s*(.+)/.exec(fs.readFileSync(dir, "utf8"))
+      if (!pointer) return undefined
+      dir = path.resolve(root, pointer[1]!.trim())
+    }
+    const head = fs.readFileSync(path.join(dir, "HEAD"), "utf8").trim()
+    const ref = /^ref:\s*(.+)$/.exec(head)?.[1]
+    if (!ref) return { head: head.slice(0, 12) }
+    const branch = ref.replace(/^refs\/heads\//, "")
+    const common = fs.existsSync(path.join(dir, "commondir"))
+      ? path.resolve(dir, fs.readFileSync(path.join(dir, "commondir"), "utf8").trim())
+      : dir
+    for (const base of [dir, common]) {
+      const file = path.join(base, ref)
+      if (fs.existsSync(file)) return { branch, head: fs.readFileSync(file, "utf8").trim().slice(0, 12) }
+    }
+    return { branch }
+  } catch {
+    return undefined
+  }
+}
+
+/** The conversation's tools, advertised the same way but never run: a summary calls nothing. */
+function inert(tools: Record<string, AITool>) {
+  return Object.fromEntries(Object.entries(tools).map(([name, item]) => [name, { ...item, execute: undefined }]))
+}
+
 type Turn = {
   start: number
   end: number
@@ -94,7 +178,7 @@ const serialize = (message: SessionV1.WithParts) => {
           (item) => `[Attached ${item.mime}: ${item.filename ?? "file"}]`,
         )
         const output = part.state.time.compacted
-          ? "[Old tool result content cleared]"
+          ? CompactionPolicy.trimPlaceholder({ tokens: Token.estimate(part.state.output), tool: part.tool })
           : truncate([part.state.output, ...attachments].join("\n"))
         return [call, `[Tool result]: ${output}`]
       }
@@ -157,15 +241,18 @@ function completedCompactions(messages: SessionV1.WithParts[]) {
     if (!msg.info.summary || !msg.info.finish || msg.info.error) return []
     const userIndex = users.get(msg.info.parentID)
     if (userIndex === undefined) return []
-    return [{ userIndex, assistantIndex, summary: summaryText(msg) }]
+    // The anchors are rebuilt from the history every time, never summarized again.
+    const summary = summaryText(msg)
+    return [{ userIndex, assistantIndex, summary: summary && (CompactionAnchors.strip(summary) || undefined) }]
   })
 }
 
-function preserveRecentBudget(input: { cfg: ConfigV1.Info; model: Provider.Model }) {
-  return (
-    input.cfg.compaction?.preserve_recent_tokens ??
-    Math.min(MAX_PRESERVE_RECENT_TOKENS, Math.max(MIN_PRESERVE_RECENT_TOKENS, Math.floor(usable(input) * 0.25)))
-  )
+/** Tokens kept verbatim: a tenth of the usable window, clamped to [8k, 60k], unless configured. */
+export function preserveRecentBudget(input: { cfg: ConfigV1.Info; model: Provider.Model }) {
+  return CompactionPolicy.tailBudget({
+    usable: usable(input),
+    configured: input.cfg.compaction?.preserve_recent_tokens,
+  })
 }
 
 function turns(messages: SessionV1.WithParts[]) {
@@ -221,7 +308,14 @@ type ProcessInput = {
   overhead?: number
   /** Told, for an automatic compaction that committed, whether it freed enough room. */
   onMeasured?: (effective: boolean) => void
+  /**
+   * The system prompt and tools of the conversation's last request. With a provider that caches
+   * prefixes, the summary request repeats them so it reuses the cached conversation.
+   */
+  request?: { system: string[]; tools: Record<string, AITool> }
 }
+
+export type Relief = "fits" | "compact" | "none"
 
 /**
  * Whether the conversation was still working when it was compacted, so the model has to be told
@@ -261,6 +355,19 @@ export interface Interface {
     model: Provider.Model
   }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
+  /**
+   * Called before an automatic compaction would start. Trims old tool output when the context is
+   * over the threshold, or near it once the provider's cache has expired: `fits` means that was
+   * enough and no summary is needed, `compact` that a compaction still is.
+   */
+  readonly relieve: (input: {
+    sessionID: SessionID
+    model: Provider.Model
+    tokens: SessionV1.Assistant["tokens"]
+    /** When the last request finished, to tell whether the provider's cache is still warm. */
+    at?: number
+    overhead?: number
+  }) => Effect.Effect<Relief>
   /** `paused` means the summary was committed and automatic compaction is now paused. */
   readonly process: (input: ProcessInput) => Effect.Effect<"continue" | "stop" | "paused">
   readonly prepare: (
@@ -273,6 +380,8 @@ export interface Interface {
     model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
     auto: boolean
     overflow?: boolean
+    /** What the person asked the summary to focus on. */
+    focus?: string
   }) => Effect.Effect<void>
 }
 
@@ -384,6 +493,14 @@ const layer = Layer.effect(
         break
       }
 
+      // Everything fits the budget: still keep the last full turn verbatim and summarize the turns
+      // before it, instead of summarizing it all. A single turn has nothing before it and is
+      // summarized whole. Messages are the unit, and a tool call and its result live in one
+      // assistant message, so no cut here separates them.
+      if (keep?.start === 0) {
+        const last = all.at(-1)!
+        if (last.start > 0) keep = { start: last.start, id: last.id }
+      }
       if (!keep || keep.start === 0) return { head: input.messages, tail_start_id: undefined }
       return {
         head: input.messages.slice(0, keep.start),
@@ -391,52 +508,112 @@ const layer = Layer.effect(
       }
     })
 
-    // goes backwards through parts until there are PRUNE_PROTECT tokens worth of tool
-    // calls, then erases output of older tool calls to free context space
-    const prune = Effect.fn("SessionCompaction.prune")(function* (input: { sessionID: SessionID }) {
+    const visible = (sessionID: SessionID) =>
+      MessageV2.filterCompactedEffect(sessionID).pipe(Effect.provideService(Database.Service, database), Effect.orDie)
+
+    /**
+     * Replaces old tool output with a placeholder that says how much was trimmed and that the model
+     * can read it again, oldest first. Output in the last two turns, or within the kept tail's
+     * budget counted back from the end, is never trimmed; neither is a trim that would free less
+     * than PRUNE_MINIMUM_SAVINGS, which is not worth rewriting the cached prefix for. With `need`,
+     * trimming stops once that much is freed. Returns the estimated tokens freed.
+     */
+    const trim = Effect.fn("SessionCompaction.trim")(function* (input: {
+      sessionID: SessionID
+      model: Provider.Model
+      messages: SessionV1.WithParts[]
+      need?: number
+    }) {
       const cfg = yield* config.get()
-      if (!cfg.compaction?.prune) return
-      yield* Effect.logInfo("pruning")
-
-      const msgs = yield* session
-        .messages({ sessionID: input.sessionID })
-        .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
-      if (!msgs) return
-
-      let total = 0
-      let pruned = 0
-      const toPrune: SessionV1.ToolPart[] = []
+      if (cfg.compaction?.prune === false) return 0
+      const budget = preserveRecentBudget({ cfg, model: input.model })
+      const candidates: Array<{ part: SessionV1.ToolPart; tokens: number }> = []
       let turns = 0
-
-      loop: for (let msgIndex = msgs.length - 1; msgIndex >= 0; msgIndex--) {
-        const msg = msgs[msgIndex]
-        if (msg.info.role === "user") turns++
-        if (turns < 2) continue
-        if (msg.info.role === "assistant" && msg.info.summary) break loop
-        for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
-          const part = msg.parts[partIndex]
-          if (part.type !== "tool") continue
-          if (part.state.status !== "completed") continue
-          if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
-          if (part.state.time.compacted) break loop
-          const estimate = Token.estimate(part.state.output)
-          total += estimate
-          if (total <= PRUNE_PROTECT) continue
-          pruned += estimate
-          toPrune.push(part)
-        }
-      }
-
-      yield* Effect.logInfo("found", { pruned, total })
-      if (pruned > PRUNE_MINIMUM) {
-        for (const part of toPrune) {
-          if (part.state.status === "completed") {
-            part.state.time.compacted = Date.now()
-            yield* session.updatePart(part)
+      let kept = 0
+      let exhausted = false
+      loop: for (let index = input.messages.length - 1; index >= 0; index--) {
+        const message = input.messages[index]!
+        if (message.info.role === "user" && !message.parts.some((part) => part.type === "compaction")) turns++
+        if (message.info.role === "assistant" && message.info.summary) break loop
+        if (message.info.role !== "assistant" || turns < CompactionPolicy.PRUNE_PROTECTED_TURNS) continue
+        for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex--) {
+          const part = message.parts[partIndex]!
+          if (part.type !== "tool" || part.state.status !== "completed") continue
+          if (PRUNE_PROTECTED_TOOLS.includes(part.tool) || part.state.time.compacted) continue
+          const tokens = Token.estimate(part.state.output)
+          if (!exhausted && kept + tokens <= budget) {
+            kept += tokens
+            continue
           }
+          exhausted = true
+          candidates.push({ part, tokens })
         }
-        yield* Effect.logInfo("pruned", { count: toPrune.length })
       }
+      const available = candidates.reduce((total, item) => total + item.tokens, 0)
+      if (available < CompactionPolicy.PRUNE_MINIMUM_SAVINGS) return 0
+      const need = Math.max(CompactionPolicy.PRUNE_MINIMUM_SAVINGS, input.need ?? Infinity)
+      const now = Date.now()
+      let freed = 0
+      let count = 0
+      for (const { part, tokens } of candidates.reverse()) {
+        if (freed >= need) break
+        if (part.state.status !== "completed") continue
+        part.state.time.compacted = now
+        yield* session.updatePart(part)
+        freed += tokens - Token.estimate(CompactionPolicy.trimPlaceholder({ tokens, tool: part.tool }))
+        count++
+      }
+      yield* Effect.logInfo("trimmed old tool output", { "session.id": input.sessionID, freed, count })
+      return Math.max(0, freed)
+    })
+
+    const prune = Effect.fn("SessionCompaction.prune")(function* (input: { sessionID: SessionID }) {
+      const messages = yield* visible(input.sessionID).pipe(
+        Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)),
+      )
+      const user = messages?.findLast((message) => message.info.role === "user")?.info
+      if (!messages || user?.role !== "user") return
+      const model = yield* provider.getModel(user.model.providerID, user.model.modelID).pipe(Effect.orDie)
+      yield* trim({ sessionID: input.sessionID, model, messages })
+    })
+
+    // Tokens trimmed ahead of a compaction that has not committed yet, recorded on its part.
+    const trims = new Map<SessionID, number>()
+
+    const relieve = Effect.fn("SessionCompaction.relieve")(function* (input: {
+      sessionID: SessionID
+      model: Provider.Model
+      tokens: SessionV1.Assistant["tokens"]
+      at?: number
+      overhead?: number
+    }) {
+      const cfg = yield* config.get()
+      const room = usable({ cfg, model: input.model, outputTokenMax: flags.outputTokenMax })
+      const over = overflow({ cfg, tokens: input.tokens, model: input.model, outputTokenMax: flags.outputTokenMax })
+      const count =
+        input.tokens.total ||
+        input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
+      const target = Math.floor(room * CompactionGuard.EFFECTIVE_RATIO)
+      // Over the threshold the cached prefix is lost to the summary anyway. Below it, trimming is
+      // only worth it once the provider has already dropped the cache and the context is near full.
+      const cold =
+        !over &&
+        cfg.compaction?.auto !== false &&
+        room > 0 &&
+        count >= target &&
+        CompactionPolicy.cacheCold({ lastRequestAt: input.at, now: Date.now() })
+      if (!over && !cold) return "none" as const
+      const messages = yield* visible(input.sessionID)
+      const overhead = input.overhead || (yield* reportedOverhead(messages, input.model))
+      const before = overhead + (yield* estimate({ messages, model: input.model }))
+      const freed = yield* trim({ sessionID: input.sessionID, model: input.model, messages, need: before - target })
+      if (freed === 0) return over ? ("compact" as const) : ("none" as const)
+      const after = overhead + (yield* estimate({ messages: yield* visible(input.sessionID), model: input.model }))
+      const fits = CompactionGuard.isEffective({ after, usable: room })
+      yield* Effect.logInfo("relieved context by trimming", { "session.id": input.sessionID, before, after, fits })
+      if (fits || !over) return fits ? ("fits" as const) : ("none" as const)
+      trims.set(input.sessionID, (trims.get(input.sessionID) ?? 0) + freed)
+      return "compact" as const
     })
 
     const build = Effect.fn("SessionCompaction.build")(function* (input: ProcessInput) {
@@ -535,18 +712,77 @@ const layer = Layer.effect(
       ;(compacting as { prompt: string | undefined }).prompt = compactingFinal.prompt
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
-      const nextPrompt =
+      const pieces = msgs.map(serialize).filter(Boolean)
+      const conversation = pieces.join("\n\n")
+      const focus = compactionPart?.focus
+      const focusText = focus
+        ? `Focus: ${focus}\nGive what this focus names the most detail in the summary; keep the rest brief.`
+        : undefined
+      const nextPrompt = [
         compacting.prompt ??
-        [
-          buildPrompt({
-            previousSummary,
-            context: [conversation],
-          }),
-          ...compacting.context,
-        ]
+          [
+            buildPrompt({
+              previousSummary,
+              context: [conversation],
+            }),
+            ...compacting.context,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        focusText,
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+      const summaryOutput = CompactionPolicy.summaryMaxTokens(
+        ProviderTransform.maxOutputTokens(model, flags.outputTokenMax),
+      )
+      const inputLimit = model.limit.input || model.limit.context
+
+      // With a prefix-caching provider the summary request repeats the conversation's own system
+      // prompt, tools and messages, and asks for the summary in a final user message: the provider
+      // then serves the conversation from its cache instead of reading a rewritten copy of it.
+      const conversationModel = agent.model
+        ? yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+        : model
+      const cached = yield* Effect.gen(function* () {
+        if (!input.request || input.overflow || compacting.prompt || !prefixCacheable(model)) return undefined
+        if (conversationModel.id !== model.id || conversationModel.providerID !== model.providerID) return undefined
+        const modelMessages = yield* MessageV2.toModelMessagesEffect(history, model)
+        const instruction = [systemPrompt, CACHED_SUMMARY_INSTRUCTION, focusText, SUMMARY_TEMPLATE]
           .filter(Boolean)
           .join("\n\n")
+        const size =
+          Token.estimate(input.request.system.join("\n")) +
+          Token.estimate(
+            JSON.stringify(
+              Object.entries(input.request.tools).map(([name, item]) => [
+                name,
+                item.description,
+                (item.inputSchema as { jsonSchema?: unknown } | undefined)?.jsonSchema,
+              ]),
+            ),
+          ) +
+          Token.estimate(JSON.stringify(modelMessages)) +
+          Token.estimate(instruction)
+        if (inputLimit > 0 && size + summaryOutput > inputLimit) return undefined
+        return {
+          user: userMessage,
+          agent: yield* agents.get(userMessage.agent),
+          sessionID: input.sessionID,
+          system: input.request.system,
+          tools: inert(input.request.tools),
+          toolChoice: "none",
+          model,
+          maxOutputTokens: summaryOutput,
+          messages: [...modelMessages, { role: "user", content: [{ type: "text", text: instruction }] }],
+        } satisfies LLM.StreamInput
+      })
+      // History larger than the summarizer can read at once is folded in windows.
+      const fold =
+        !cached &&
+        !compacting.prompt &&
+        inputLimit > 0 &&
+        Token.estimate(systemPrompt) + Token.estimate(nextPrompt) + summaryOutput > inputLimit
       return {
         userMessage,
         compactionPart,
@@ -560,13 +796,25 @@ const layer = Layer.effect(
         turnID: turnOf(session_),
         previousSummary,
         conversation,
-        stream: {
+        // What the summary must be smaller than: the cached request reads the whole history.
+        source: cached
+          ? history.map(serialize).filter(Boolean).join("\n\n")
+          : [previousSummary, conversation].filter(Boolean).join("\n\n"),
+        cached: cached !== undefined,
+        fold,
+        pieces,
+        focusText,
+        summaryOutput,
+        // Every message up to now, for the anchors.
+        everything: session_,
+        stream: cached ?? {
           user: userMessage,
           agent,
           sessionID: input.sessionID,
           tools: {},
           system: [systemPrompt],
           model,
+          maxOutputTokens: summaryOutput,
           messages: [
             {
               role: "user",
@@ -635,6 +883,8 @@ const layer = Layer.effect(
       const prefix = input.messages.map((message) => JSON.stringify(message))
       const task = Effect.gen(function* () {
         const prepared = yield* build(input)
+        // A history that needs folding is summarized when the compaction actually runs.
+        if (prepared.fold) return
         const events = yield* llm.stream(prepared.stream).pipe(
           Stream.runCollect,
           Effect.map((events) => Array.from(events)),
@@ -652,7 +902,7 @@ const layer = Layer.effect(
         if (
           summaryError({
             summary: text,
-            source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
+            source: prepared.source,
             finish: events.findLast(LLMEvent.is.finish)?.reason,
           })
         )
@@ -671,6 +921,81 @@ const layer = Layer.effect(
         agent: input.messages.findLast((message) => message.info.role === "user")?.info.agent ?? "",
         fiber,
       })
+    })
+
+    /**
+     * Summarizes a history too large for one summarizer request: each window of history folds into
+     * the running summary. A window the provider rejects as too large is halved and tried again.
+     * Returns the last window's request and events, which the processor replays into the summary
+     * message, or nothing when the history cannot be folded.
+     */
+    const foldHistory = Effect.fnUntraced(function* (prepared: Prepared, sessionID: SessionID) {
+      const limit = prepared.model.limit.input || prepared.model.limit.context
+      const fixed =
+        Token.estimate(systemPrompt) +
+        Token.estimate(buildPrompt({ previousSummary: " ", context: [] })) +
+        Token.estimate(prepared.focusText ?? "") +
+        prepared.summaryOutput
+      // A margin for the estimate: it counts characters, the provider counts tokens.
+      let window = Math.floor((limit - fixed) * 0.9)
+      let running = prepared.previousSummary
+      let remaining = prepared.pieces
+      let last: { stream: LLM.StreamInput; events: LLMEvent[] } | undefined
+      while (remaining.length > 0) {
+        const budget = window - Token.estimate(running ?? "")
+        if (budget < MIN_FOLD_WINDOW) return undefined
+        const chunk: string[] = []
+        let used = 0
+        for (const piece of remaining) {
+          const size = Token.estimate(piece)
+          if (chunk.length > 0 && used + size > budget) break
+          chunk.push(size > budget ? elideMiddle(piece, budget) : piece)
+          used += Math.min(size, budget)
+        }
+        const stream: LLM.StreamInput = {
+          ...prepared.stream,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: [buildPrompt({ previousSummary: running, context: [chunk.join("\n\n")] }), prepared.focusText]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                },
+              ],
+            },
+          ],
+        }
+        const outcome = yield* llm.stream(stream).pipe(
+          Stream.runCollect,
+          Effect.map((events) => ({ events: Array.from(events), error: undefined as unknown })),
+          Effect.catch((error: unknown) => Effect.succeed({ events: [] as LLMEvent[], error })),
+        )
+        const rejected = outcome.error ?? outcome.events.find(LLMEvent.is.providerError)
+        if (rejected !== undefined) {
+          const overflowed =
+            isContextOverflowFailure(rejected) ||
+            SessionV1.ContextOverflowError.isInstance(
+              MessageV2.fromError(rejected, { providerID: prepared.model.providerID, modelID: prepared.model.id }),
+            )
+          if (!overflowed) return undefined
+          window = Math.floor(window / 2)
+          yield* Effect.logInfo("compaction window rejected; halving", { "session.id": sessionID, window })
+          continue
+        }
+        const text = outcome.events
+          .filter(LLMEvent.is.textDelta)
+          .map((event) => event.text)
+          .join("")
+        const finish = outcome.events.findLast(LLMEvent.is.finish)?.reason
+        if (finish !== "stop" || !text.trim()) return undefined
+        running = text
+        remaining = remaining.slice(chunk.length)
+        last = { stream, events: outcome.events }
+      }
+      return last
     })
 
     // The session reads as compacting for exactly as long as this runs, failures included: the TUI
@@ -751,6 +1076,15 @@ const layer = Layer.effect(
         },
       }
       yield* session.updateMessage(msg)
+      const folded = !candidate && prepared.fold ? yield* foldHistory(prepared, input.sessionID) : undefined
+      if (!candidate && prepared.fold && !folded) {
+        msg.error = new SessionV1.ContextOverflowError({
+          message: "Conversation history too large to compact - exceeds model context limit",
+        }).toObject()
+        msg.finish = "error"
+        yield* session.updateMessage(msg)
+        return "stop"
+      }
       const processor = yield* processors.create({
         assistantMessage: msg,
         sessionID: input.sessionID,
@@ -762,7 +1096,7 @@ const layer = Layer.effect(
       // not happen is reported as itself rather than as silence.
       const compactionMs = AuxDeadline.deadlineMs("compaction", (yield* config.get()).experimental?.aux_timeout)
       const result = yield* processor
-        .process({ ...prepared.stream, user: prepared.userMessage }, candidate?.events)
+        .process({ ...(folded?.stream ?? prepared.stream), user: prepared.userMessage }, candidate?.events ?? folded?.events)
         .pipe(
           compactionMs === undefined
             ? (self) => self
@@ -811,7 +1145,7 @@ const layer = Layer.effect(
       // history made mostly of one large request.
       const error = summaryError({
         summary: summaryText(checkpoint) ?? "",
-        source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
+        source: prepared.source,
         finish: processor.message.finish,
       })
       if (error) {
@@ -832,6 +1166,30 @@ const layer = Layer.effect(
           text: `\n\n<latest-user-request>\n${bounded}\n</latest-user-request>`,
         })
       }
+
+      // Facts built by code, not by the model, so they survive every compaction verbatim.
+      const anchors = CompactionAnchors.build({
+        userMessages: prepared.everything.filter(isRealRequest).map(userText),
+        files: fileOperations(prepared.everything, ctx.directory),
+        git: gitState(ctx.worktree),
+        historyTool: true,
+        maxTokens: Math.min(
+          CompactionAnchors.MAX_TOKENS,
+          Math.floor(
+            usable({ cfg: yield* config.get(), model: prepared.model, outputTokenMax: flags.outputTokenMax }) *
+              ANCHORS_SHARE,
+          ),
+        ),
+      })
+      if (anchors)
+        yield* session.updatePart({
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: `\n\n${anchors}`,
+        })
 
       if (
         prepared.compactionPart &&
@@ -860,11 +1218,17 @@ const layer = Layer.effect(
       )
       const after =
         overhead + (yield* estimate({ messages: visible, model: userModel })) + Token.estimate(CompactionGuard.CONTINUE)
+      const trimmed = trims.get(input.sessionID)
+      trims.delete(input.sessionID)
+      // The tools tool_search loaded stay loaded: the next step reads them from this part.
+      const carried = ToolSearch.carried(input.messages)
       if (prepared.compactionPart) {
         yield* session.updatePart({
           ...prepared.compactionPart,
           ...(prepared.selected.tail_start_id ? { tail_start_id: prepared.selected.tail_start_id } : {}),
           tokens: { before, after },
+          ...(trimmed ? { trimmed } : {}),
+          ...(carried.loaded.length > 0 || carried.mcpDeferred ? { tools: carried } : {}),
         })
       }
 
@@ -1005,6 +1369,7 @@ const layer = Layer.effect(
       model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
       auto: boolean
       overflow?: boolean
+      focus?: string
     }) {
       const msg = yield* session.updateMessage({
         id: MessageID.ascending(),
@@ -1021,12 +1386,14 @@ const layer = Layer.effect(
         type: "compaction",
         auto: input.auto,
         overflow: input.overflow,
+        ...(input.focus?.trim() ? { focus: input.focus.trim() } : {}),
       })
     })
 
     return Service.of({
       isOverflow,
       prune,
+      relieve,
       process: processCompaction,
       prepare,
       discard,

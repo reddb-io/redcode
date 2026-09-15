@@ -18,6 +18,8 @@ import {
 
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
+import { trimPlaceholder } from "@reddb-io/redcode-core/session/compaction-policy"
+import { Token } from "@/util/token"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -297,7 +299,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           toolNames.add(part.tool)
           if (part.state.status === "completed") {
             const outputText = part.state.time.compacted
-              ? "[Old tool result content cleared]"
+              ? trimPlaceholder({ tokens: Token.estimate(part.state.output), tool: part.tool })
               : truncateToolOutput(part.state.output, options?.toolOutputMaxChars)
             const attachments = part.state.time.compacted || options?.stripMedia ? [] : (part.state.attachments ?? [])
 

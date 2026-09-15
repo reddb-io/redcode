@@ -42,6 +42,9 @@ import {
 } from "@reddb-io/redcode-core/session/sql"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
+import { ToolSearch } from "../../src/session/tool-search"
+import { CompactionPolicy } from "@reddb-io/redcode-core/session/compaction-policy"
+import { Token } from "@/util/token"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { SessionCompaction } from "../../src/session/compaction"
 import { CompactionGuard } from "../../src/session/compaction-guard"
@@ -7368,5 +7371,307 @@ const editor = testEffect(makeHttp({ client: "acp" }))
 editor.instance("an ACP editor session is attended and gets no wrap-up reminder", () =>
   Effect.gen(function* () {
     expect(yield* wrapUpRun()).toBe(0)
+  }),
+)
+
+// ---------------------------------------------------------------------------------------------
+// Compaction in large windows, and control over it
+// ---------------------------------------------------------------------------------------------
+
+/** The test model with a chosen context and output limit. */
+function limitCfg(url: string, limit: { context: number; output: number }, compaction?: ConfigV1.Info["compaction"]) {
+  const base = windowCfg(url, limit.context, compaction)
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      test: {
+        ...base.provider.test,
+        models: { "test-model": { ...base.provider.test.models["test-model"], limit } },
+      },
+    },
+  }
+}
+
+type SeedTool = { tool: string; input: Record<string, unknown>; output: string; metadata?: Record<string, unknown> }
+
+/** Writes a finished turn straight into history: the person's text, then an answer with tool results. */
+const seedTurn = Effect.fn("test.seedTurn")(function* (
+  sessionID: SessionID,
+  input: { user: string; answer?: string; tools?: SeedTool[]; tokens?: number },
+) {
+  const sessions = yield* Session.Service
+  const { directory } = yield* TestInstance
+  const user = yield* sessions.updateMessage({
+    id: MessageID.ascending(),
+    role: "user",
+    sessionID,
+    agent: "build",
+    model: ref,
+    time: { created: Date.now() },
+  })
+  yield* sessions.updatePart({ id: PartID.ascending(), messageID: user.id, sessionID, type: "text", text: input.user })
+  const assistant: SessionV1.Assistant = {
+    id: MessageID.ascending(),
+    role: "assistant",
+    sessionID,
+    mode: "build",
+    agent: "build",
+    path: { cwd: directory, root: directory },
+    cost: 0,
+    tokens: { output: 10, input: input.tokens ?? 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    modelID: ref.modelID,
+    providerID: ref.providerID,
+    parentID: user.id,
+    time: { created: Date.now(), completed: Date.now() },
+    finish: "stop",
+  }
+  yield* sessions.updateMessage(assistant)
+  for (const item of input.tools ?? [])
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: assistant.id,
+      sessionID,
+      type: "tool",
+      callID: crypto.randomUUID(),
+      tool: item.tool,
+      state: {
+        status: "completed",
+        input: item.input,
+        output: item.output,
+        title: item.tool,
+        metadata: item.metadata ?? {},
+        time: { start: Date.now(), end: Date.now() },
+      },
+    })
+  if (input.answer)
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: assistant.id,
+      sessionID,
+      type: "text",
+      text: input.answer,
+    })
+  return { user, assistant }
+})
+
+/** Runs a manual compaction over the seeded history and returns the session's messages. */
+const compactNow = Effect.fn("test.compactNow")(function* (sessionID: SessionID, focus?: string) {
+  const compaction = yield* SessionCompaction.Service
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  yield* compaction.create({ sessionID, agent: "build", model: ref, auto: false, focus })
+  yield* awaitWithTimeout(prompt.loop({ sessionID }), "the compaction never finished", "60 seconds")
+  return yield* sessions.messages({ sessionID })
+})
+
+const compactionPartOf = (messages: SessionV1.WithParts[]) =>
+  messages.flatMap((message) => message.parts).findLast((part) => part.type === "compaction")
+
+const words = (tokens: number, tag = "word") => `${tag} `.repeat(Math.ceil((tokens * 4) / (tag.length + 1)))
+
+it.instance(
+  "compaction keeps a tenth of a large window verbatim",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 400_000, output: 1_000 }))
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Large window" })
+      for (const index of Array.from({ length: 12 }, (_, i) => i))
+        yield* seedTurn(chat.id, { user: `step ${index}`, answer: words(5_000, `turn${index}`) })
+      yield* llm.text("Summary of the early turns.")
+      const all = yield* compactNow(chat.id)
+
+      const part = compactionPartOf(all)
+      expect(part?.type === "compaction" && part.tail_start_id).toBeTruthy()
+      const start = all.findIndex((message) => part?.type === "compaction" && message.info.id === part.tail_start_id)
+      const kept = all
+        .slice(start)
+        .filter((message) => !message.info.id.startsWith(part!.messageID) && !summaries([message]).length)
+        .flatMap((message) => message.parts)
+        .reduce((total, item) => total + (item.type === "text" ? Token.estimate(item.text) : 0), 0)
+      // A tenth of the 399k usable window: well over the old 15k ceiling, under the 60k one.
+      expect(kept).toBeGreaterThan(30_000)
+      expect(kept).toBeLessThanOrEqual(40_000)
+    }),
+  60_000,
+)
+
+it.instance("compaction keeps the last turn verbatim when everything fits", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 400_000, output: 1_000 }))
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Short" })
+    yield* seedTurn(chat.id, { user: "first question", answer: "first answer" })
+    yield* seedTurn(chat.id, { user: "second question", answer: "second answer" })
+    const last = yield* seedTurn(chat.id, { user: "third question", answer: "third answer" })
+    yield* llm.text("Summary.")
+    const all = yield* compactNow(chat.id)
+
+    const part = compactionPartOf(all)
+    expect(part?.type === "compaction" && part.tail_start_id).toBe(last.user.id)
+    expect(JSON.stringify((yield* llm.hits)[0]!.body)).not.toContain("third question")
+  }),
+)
+
+it.instance(
+  "trimming old tool output that frees enough skips the summary",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 100_000, output: 1_000 }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Prune only" })
+      const output = "x".repeat(60_000)
+      yield* seedTurn(chat.id, {
+        user: "look around",
+        tools: [1, 2, 3].map((index) => ({ tool: "glob", input: { pattern: `*.${index}` }, output })),
+      })
+      yield* seedTurn(chat.id, { user: "and then", answer: "noted" })
+      yield* seedTurn(chat.id, { user: "keep going", answer: "going", tokens: 99_500 })
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+      yield* llm.text("done")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(1)
+      expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(0)
+      const placeholder = CompactionPolicy.trimPlaceholder({ tokens: Token.estimate(output), tool: "glob" })
+      expect(placeholder).toBe("[tool output trimmed: 15000 tokens from glob. Read it again if you still need it.]")
+      // Oldest first, and only as much as the context needed.
+      expect(requestText(hits[0]!).split(placeholder.slice(0, 40)).length - 1).toBe(2)
+    }),
+  60_000,
+)
+
+it.instance(
+  "the summary request reuses the conversation's cached prefix and caps its output",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 100_000, output: 32_000 }))
+      const { chat, prompt } = yield* startChat("Find the config files.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
+      yield* llm.text("Summary.")
+      yield* llm.text("Found none.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(3)
+      const [step, summarize] = [hits[0]!, hits[1]!]
+      expect(Array.isArray(step.body.tools) && step.body.tools.length).toBeGreaterThan(0)
+      expect(summarize.body.tools).toEqual(step.body.tools)
+      expect(summarize.body.tool_choice).toBe("none")
+      const before = messagesOf(step)
+      const after = messagesOf(summarize)
+      expect(after[0]).toEqual(before[0])
+      expect(after[1]).toEqual(before[1])
+      expect(JSON.stringify(after.at(-1))).toContain("Create a structured checkpoint")
+      expect(summarize.body.max_tokens).toBe(16_000)
+    }),
+  60_000,
+)
+
+it.instance(
+  "a history larger than the summarizer folds in windows and halves a rejected one",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Fold" })
+      for (const index of [0, 1, 2, 3, 4, 5])
+        yield* seedTurn(chat.id, { user: `part ${index}`, answer: words(1_500, `fold${index}`) })
+      yield* llm.error(413, overflow413)
+      for (const index of [1, 2, 3, 4, 5, 6, 7, 8]) yield* llm.text(`Fold summary ${index}.`)
+      const all = yield* compactNow(chat.id)
+
+      const hits = yield* llm.hits
+      const [summary] = summaries(all)
+      expect(summary?.info.role === "assistant" && summary.info.error).toBeFalsy()
+      expect(hits.length).toBeGreaterThanOrEqual(3)
+      expect(JSON.stringify(hits[1]!.body).length).toBeLessThan(JSON.stringify(hits[0]!.body).length * 0.75)
+      // Each window folds into the running summary.
+      expect(JSON.stringify(hits[2]!.body)).toContain("Fold summary 1.")
+      expect(JSON.stringify(summary?.parts)).toContain(`Fold summary ${hits.length - 1}.`)
+    }),
+  60_000,
+)
+
+it.instance("the summary ends with anchors built from the history", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 400_000, output: 1_000 }))
+    const { directory } = yield* TestInstance
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Anchors" })
+    const file = path.join(directory, "src/app/main.ts")
+    yield* seedTurn(chat.id, {
+      user: "Fix src/app/main.ts per https://github.com/o/r/pull/42 and #17 after abc1234def",
+      tools: [
+        { tool: "read", input: { filePath: file }, output: "code" },
+        { tool: "read", input: { filePath: file }, output: "code" },
+        { tool: "edit", input: { filePath: file }, output: "edited" },
+      ],
+    })
+    yield* seedTurn(chat.id, { user: "Corrija também docs/relatório.md", answer: "feito" })
+    yield* seedTurn(chat.id, { user: "go on", answer: "ok" })
+    yield* llm.text("Summary.")
+    const all = yield* compactNow(chat.id)
+
+    const text = JSON.stringify(summaries(all)[0]?.parts)
+    for (const expected of [
+      "<session-anchors>",
+      "Files modified:\\n- src/app/main.ts (1×)",
+      "Files read:\\n- src/app/main.ts (2×)",
+      "https://github.com/o/r/pull/42",
+      "- #17",
+      "abc1234def",
+      "docs/relatório.md",
+      "- go on",
+      "session_history",
+    ])
+      expect(text).toContain(expected)
+  }),
+)
+
+it.instance("tools loaded through tool_search stay loaded after a compaction", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 400_000, output: 1_000 }))
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Loaded tools" })
+    yield* seedTurn(chat.id, {
+      user: "read the issue",
+      tools: [
+        {
+          tool: ToolSearch.TOOL_ID,
+          input: { query: "read issue" },
+          output: "Loaded 1 tool",
+          metadata: { loaded: ["github_issue_read"], notFound: [], mcpDeferred: true },
+        },
+      ],
+    })
+    yield* seedTurn(chat.id, { user: "and comment", answer: "done" })
+    yield* seedTurn(chat.id, { user: "thanks", answer: "welcome" })
+    yield* llm.text("Summary.")
+    const all = yield* compactNow(chat.id)
+
+    const visible = MessageV2.filterCompacted([...all].reverse())
+    expect(visible.some((message) => message.parts.some((part) => part.type === "tool"))).toBe(false)
+    expect(ToolSearch.loadedFromHistory(visible, new Set(["github_issue_read"]))).toEqual(["github_issue_read"])
+    expect(ToolSearch.trippedInHistory(visible)).toBe(true)
+  }),
+)
+
+it.instance("/compact with a focus puts it in the summary prompt", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => limitCfg(url, { context: 400_000, output: 1_000 }))
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Focus" })
+    yield* seedTurn(chat.id, { user: "debug the login", answer: "looking" })
+    yield* seedTurn(chat.id, { user: "and the flaky auth test", answer: "found it" })
+    yield* llm.text("Summary.")
+    const all = yield* compactNow(chat.id, "the flaky auth test")
+
+    expect(requestText((yield* llm.hits)[0]!)).toContain("Focus: the flaky auth test")
+    const part = compactionPartOf(all)
+    expect(part?.type === "compaction" && part.focus).toBe("the flaky auth test")
   }),
 )
