@@ -6,6 +6,7 @@ import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
 import { AgentAttachment, FileAttachment } from "@reddb-io/redcode-core/session/prompt"
 import { toLLMMessages } from "@reddb-io/redcode-core/session/runner/to-llm-message"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { DateTime } from "effect"
 
@@ -232,7 +233,20 @@ Recent work
       model,
     )
 
-    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool"])
+    // Unsettled local calls still get a result: providers reject a tool call without one.
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool", "tool", "tool"])
+    for (const [index, id] of [
+      [1, "pending"],
+      [2, "running"],
+    ] as const)
+      expect(messages[index]?.content).toEqual([
+        {
+          type: "tool-result",
+          id,
+          name: "read",
+          result: { type: "error", value: { error: { type: "unknown", message: ToolInterrupted.RESULT } } },
+        },
+      ])
     expect(messages[0]?.content).toEqual([
       { type: "text", text: "Checking" },
       { type: "reasoning", text: "Think", providerMetadata: { anthropic: { signature: "sig_1" } } },
@@ -280,7 +294,7 @@ Recent work
         },
       },
     ])
-    expect(messages[1]?.content).toEqual([
+    expect(messages[3]?.content).toEqual([
       {
         type: "tool-result",
         id: "completed",

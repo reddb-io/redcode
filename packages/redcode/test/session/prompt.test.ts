@@ -3,6 +3,7 @@ import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -1136,6 +1137,173 @@ it.instance("loop exits without an LLM request for interrupted orphan tool calls
     expect(result.info.id).toBe(seeded.assistant.id)
     expect(yield* llm.hits).toHaveLength(0)
   }),
+)
+
+// Every tool call in a request needs exactly one result and every result a call: Anthropic and
+// OpenAI both reject the request otherwise.
+const toolPairing = (body: Record<string, unknown>) => {
+  const list = (Array.isArray(body.messages) ? body.messages : []) as Array<Record<string, any>>
+  const calls = list.flatMap((msg) =>
+    msg.role === "assistant" ? ((msg.tool_calls ?? []) as Array<{ id: string }>).map((call) => call.id) : [],
+  )
+  const results = list.flatMap((msg) => (msg.role === "tool" ? [msg.tool_call_id as string] : []))
+  const content = (id: string) => JSON.stringify(list.find((msg) => msg.role === "tool" && msg.tool_call_id === id))
+  return { calls: calls.toSorted(), results: results.toSorted(), content }
+}
+const noteCount = (body: Record<string, unknown>) =>
+  JSON.stringify(body).split("The previous turn was cancelled or interrupted before it finished.").length - 1
+
+const seedBrokenTurn = Effect.fn("test.seedBrokenTurn")(function* (
+  sessionID: SessionID,
+  input: { error?: SessionV1.Assistant["error"]; completed: boolean; tool: SessionV1.ToolPart["state"] },
+) {
+  const sessions = yield* Session.Service
+  const first = yield* user(sessionID, "do the thing")
+  const assistant = yield* sessions.updateMessage({
+    id: MessageID.ascending(),
+    role: "assistant",
+    parentID: first.id,
+    sessionID,
+    mode: "build",
+    agent: "build",
+    cost: 0,
+    path: { cwd: "/tmp", root: "/tmp" },
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    modelID: ref.modelID,
+    providerID: ref.providerID,
+    time: input.completed ? { created: Date.now(), completed: Date.now() } : { created: Date.now() },
+    ...(input.error ? { error: input.error } : {}),
+  } satisfies SessionV1.Assistant)
+  const part = yield* sessions.updatePart({
+    id: PartID.ascending(),
+    messageID: assistant.id,
+    sessionID,
+    type: "tool",
+    callID: "call-left-behind",
+    tool: "bash",
+    state: input.tool,
+  })
+  yield* user(sessionID, "go on")
+  return { assistant, part }
+})
+
+it.instance("after a user cancel the next request closes the call as cancelled and notes it once", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Cancelled turn" })
+    yield* seedBrokenTurn(chat.id, {
+      completed: true,
+      error: new SessionV1.AbortedError({ message: "Aborted" }).toObject(),
+      tool: {
+        status: "error",
+        input: { command: "npm publish" },
+        error: "Tool execution aborted",
+        metadata: { interrupted: true, output: "partial-line-before-cancel" },
+        time: { start: 1, end: 2 },
+      },
+    })
+    yield* llm.text("checked")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const body = (yield* llm.inputs).at(-1)!
+    const pairing = toolPairing(body)
+    expect(pairing.calls).toEqual(["call-left-behind"])
+    expect(pairing.results).toEqual(pairing.calls)
+    expect(pairing.content("call-left-behind")).toContain(ToolInterrupted.RESULT)
+    expect(pairing.content("call-left-behind")).toContain("partial-line-before-cancel")
+    expect(noteCount(body)).toBe(1)
+  }),
+)
+
+it.instance("a turn left open by a dead process is repaired on load and noted once", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Crashed turn" })
+    const { part } = yield* seedBrokenTurn(chat.id, {
+      completed: false,
+      tool: { status: "running", input: { command: "make deploy" }, time: { start: 1 } },
+    })
+    yield* llm.text("checked")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const stored = yield* sessions.getPart({ sessionID: chat.id, messageID: part.messageID, partID: part.id })
+    expect(stored?.type === "tool" && stored.state.status).toBe("error")
+    expect(stored?.type === "tool" && stored.state.status === "error" && stored.state.metadata?.interrupted).toBe(true)
+    const body = (yield* llm.inputs).at(-1)!
+    const pairing = toolPairing(body)
+    expect(pairing.calls).toEqual(["call-left-behind"])
+    expect(pairing.results).toEqual(pairing.calls)
+    expect(pairing.content("call-left-behind")).toContain(ToolInterrupted.RESULT)
+    expect(noteCount(body)).toBe(1)
+  }),
+)
+
+it.instance("a provider error after a tool ran keeps that result in history without a cancel note", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Provider error turn" })
+    yield* seedBrokenTurn(chat.id, {
+      completed: true,
+      error: new SessionV1.APIError({ message: "overloaded", isRetryable: false }).toObject() as SessionV1.APIError,
+      tool: {
+        status: "completed",
+        input: { command: "git push" },
+        output: "pushed-to-origin",
+        title: "bash",
+        metadata: {},
+        time: { start: 1, end: 2 },
+      },
+    })
+    yield* llm.text("checked")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const body = (yield* llm.inputs).at(-1)!
+    const pairing = toolPairing(body)
+    expect(pairing.calls).toEqual(["call-left-behind"])
+    expect(pairing.results).toEqual(pairing.calls)
+    expect(pairing.content("call-left-behind")).toContain("pushed-to-origin")
+    expect(noteCount(body)).toBe(0)
+  }),
+)
+
+unix(
+  "Esc during a running tool leaves a paired result and one cancel note on the next turn",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Esc mid tool",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      const first = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run it" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* toolRunning(chat.id)
+      yield* prompt.cancel(chat.id)
+      yield* Fiber.await(first)
+
+      yield* llm.text("checked")
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "again" }] })
+      const body = (yield* llm.inputs).at(-1)!
+      const pairing = toolPairing(body)
+      expect(pairing.calls).toHaveLength(1)
+      expect(pairing.results).toEqual(pairing.calls)
+      expect(pairing.content(pairing.calls[0]!)).toMatch(/aborted|cancelled or interrupted/i)
+      expect(noteCount(body)).toBe(1)
+    }),
+  30_000,
 )
 
 it.instance("loop calls LLM and returns assistant message", () =>

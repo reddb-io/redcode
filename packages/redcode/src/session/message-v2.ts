@@ -17,6 +17,7 @@ import {
 } from "@reddb-io/redcode-core/v1/session"
 
 import { NamedError } from "@reddb-io/redcode-core/util/error"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -245,12 +246,15 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
       const differentModel = `${model.providerID}/${model.id}` !== `${msg.info.providerID}/${msg.info.modelID}`
       const media: Array<{ mime: string; url: string; filename?: string }> = []
 
+      // A failed step is dropped, unless a tool in it already ran: dropping that would hide a side
+      // effect that happened, and the model would run it again.
       if (
         msg.info.error &&
         !(
           AbortedError.isInstance(msg.info.error) &&
           msg.parts.some((part) => part.type !== "step-start" && part.type !== "reasoning")
-        )
+        ) &&
+        !msg.parts.some((part) => part.type === "tool" && part.state.status !== "pending")
       ) {
         continue
       }
@@ -323,28 +327,20 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             })
           }
           if (part.state.status === "error") {
-            const output = part.state.metadata?.interrupted === true ? part.state.metadata.output : undefined
-            if (typeof output === "string") {
-              assistantMessage.parts.push({
-                type: ("tool-" + part.tool) as `tool-${string}`,
-                state: "output-available",
-                toolCallId: part.callID,
-                input: part.state.input,
-                output,
-                ...(part.metadata?.providerExecuted ? { providerExecuted: true } : {}),
-                ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
-              })
-            } else {
-              assistantMessage.parts.push({
-                type: ("tool-" + part.tool) as `tool-${string}`,
-                state: "output-error",
-                toolCallId: part.callID,
-                input: part.state.input,
-                errorText: part.state.error,
-                ...(part.metadata?.providerExecuted ? { providerExecuted: true } : {}),
-                ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
-              })
-            }
+            // A call stopped by a cancel says so, with what it printed, rather than passing that
+            // partial output off as a finished result.
+            assistantMessage.parts.push({
+              type: ("tool-" + part.tool) as `tool-${string}`,
+              state: "output-error",
+              toolCallId: part.callID,
+              input: part.state.input,
+              errorText:
+                part.state.metadata?.interrupted === true
+                  ? ToolInterrupted.result(part.state.metadata.output)
+                  : part.state.error,
+              ...(part.metadata?.providerExecuted ? { providerExecuted: true } : {}),
+              ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
+            })
           }
           // Handle pending/running tool calls to prevent dangling tool_use blocks
           // Anthropic/Claude APIs require every tool_use to have a corresponding tool_result
@@ -354,7 +350,9 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
               state: "output-error",
               toolCallId: part.callID,
               input: part.state.input,
-              errorText: "[Tool execution was interrupted]",
+              errorText: ToolInterrupted.result(
+                part.state.status === "running" ? part.state.metadata?.output : undefined,
+              ),
               ...(part.metadata?.providerExecuted ? { providerExecuted: true } : {}),
               ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
             })

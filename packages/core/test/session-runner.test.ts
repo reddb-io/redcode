@@ -29,6 +29,7 @@ import { ContextSnapshotDecodeError } from "@reddb-io/redcode-core/session/error
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
@@ -2809,7 +2810,7 @@ describe("SessionRunnerLLM", () => {
             {
               type: "tool",
               id: "call-interrupted",
-              state: { status: "error", error: { type: "unknown", message: "Tool execution interrupted" } },
+              state: { status: "error", error: { type: "unknown", message: ToolInterrupted.RESULT } },
             },
           ],
         },
@@ -3293,7 +3294,7 @@ describe("SessionRunnerLLM", () => {
             {
               type: "tool",
               id: "call-declined",
-              state: { status: "error", error: { message: "Tool execution interrupted" } },
+              state: { status: "error", error: { message: ToolInterrupted.RESULT } },
             },
           ],
         },
@@ -3398,7 +3399,7 @@ describe("SessionRunnerLLM", () => {
             {
               type: "tool",
               id: "call-question",
-              state: { status: "error", error: { type: "unknown", message: "Tool execution interrupted" } },
+              state: { status: "error", error: { type: "unknown", message: ToolInterrupted.RESULT } },
             },
           ],
         },
@@ -3470,7 +3471,7 @@ describe("SessionRunnerLLM", () => {
             {
               type: "tool",
               id: "call-before-interrupt",
-              state: { status: "error", error: { type: "unknown", message: "Tool execution interrupted" } },
+              state: { status: "error", error: { type: "unknown", message: ToolInterrupted.RESULT } },
             },
           ],
         },
@@ -3487,6 +3488,47 @@ describe("SessionRunnerLLM", () => {
       response = []
       yield* session.resume(sessionID)
       expect(requests[0]?.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
+    }),
+  )
+
+  it.effect("the prompt after an interrupted tool turn pairs the call and notes the cancel once", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Interrupt then continue" }), resume: false })
+      executions.length = 0
+      toolExecutionGate = yield* Deferred.make<void>()
+      responseStream = Stream.concat(
+        Stream.fromIterable([
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "call-cancelled", name: "echo", input: { text: "blocked" } }),
+        ]),
+        Stream.never,
+      )
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      while (executions.length === 0) yield* Effect.yieldNow
+      yield* session.interrupt(sessionID)
+      toolExecutionGate = undefined
+      yield* Fiber.await(run)
+
+      requests.length = 0
+      responseStream = undefined
+      response = []
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Carry on" }), resume: false })
+      yield* session.resume(sessionID)
+
+      const messages = requests[0]?.messages ?? []
+      const calls = messages.flatMap((message) =>
+        message.content.flatMap((part) => (part.type === "tool-call" ? [part.id] : [])),
+      )
+      const results = messages.flatMap((message) =>
+        message.content.flatMap((part) => (part.type === "tool-result" ? [part.id] : [])),
+      )
+      expect(calls).toEqual(["call-cancelled"])
+      expect(results).toEqual(calls)
+      const text = JSON.stringify(messages)
+      expect(text).toContain(ToolInterrupted.RESULT)
+      expect(text.split("The previous turn was cancelled or interrupted before it finished.").length - 1).toBe(1)
     }),
   )
 
@@ -3542,7 +3584,7 @@ describe("SessionRunnerLLM", () => {
             {
               type: "tool",
               id: "call-await-interrupt",
-              state: { status: "error", error: { type: "unknown", message: "Tool execution interrupted" } },
+              state: { status: "error", error: { type: "unknown", message: ToolInterrupted.RESULT } },
             },
           ],
         },

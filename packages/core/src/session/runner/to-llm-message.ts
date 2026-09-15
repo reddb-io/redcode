@@ -8,6 +8,7 @@ import {
   type ProviderMetadata,
 } from "@reddb-io/redcode-llm"
 import { SessionMessage } from "../message"
+import { ToolInterrupted } from "../tool-interrupted"
 import type { FileAttachment } from "../prompt"
 
 const media = (file: FileAttachment): ContentPart => ({
@@ -65,6 +66,16 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
       providerMetadata,
     })
   }
+  // The runner closes these before a turn; a history that reaches here unrepaired still pairs
+  // every call with a result, because providers reject a call without one.
+  return ToolResultPart.make({
+    id: tool.id,
+    name: tool.name,
+    result: { error: { type: "unknown", message: ToolInterrupted.RESULT } },
+    resultType: "error",
+    providerExecuted: tool.provider?.executed,
+    providerMetadata,
+  })
 }
 
 const assistant = (message: SessionMessage.Assistant, model: Model) => {

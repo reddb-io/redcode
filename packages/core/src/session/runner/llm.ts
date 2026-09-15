@@ -36,6 +36,7 @@ import { SessionInput } from "../input"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionMessage } from "../message"
+import { ToolInterrupted } from "../tool-interrupted"
 import { SessionTodo } from "../todo"
 import { SessionGoal } from "../goal"
 import { SessionGoalCompletion } from "../goal-completion"
@@ -50,6 +51,21 @@ import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { HookV2 } from "../../hook"
+
+/** The latest user message follows a turn that was cancelled or cut off with tool calls unsettled. */
+const followsInterruptedTurn = (context: readonly SessionMessage.Message[]) => {
+  const index = context.findLastIndex((message) => message.type === "user")
+  if (index < 0) return false
+  const previous = context.slice(0, index).findLast((message) => message.type === "assistant")
+  if (previous?.type !== "assistant") return false
+  return (
+    previous.error?.message === "Provider turn interrupted" ||
+    previous.content.some(
+      (item) =>
+        item.type === "tool" && item.state.status === "error" && item.state.error.message === ToolInterrupted.RESULT,
+    )
+  )
+}
 
 /**
  * Runs one durable coding-agent Session until it settles.
@@ -154,7 +170,7 @@ const layer = Layer.effect(
             timestamp: yield* DateTime.now,
             assistantMessageID: message.id,
             callID: tool.id,
-            error: { type: "unknown", message: "Tool execution interrupted" },
+            error: { type: "unknown", message: ToolInterrupted.RESULT },
             provider: {
               executed: tool.provider?.executed === true,
               ...(tool.provider?.metadata === undefined ? {} : { metadata: tool.provider.metadata }),
@@ -258,7 +274,13 @@ const layer = Layer.effect(
           )
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
-        messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
+        messages: [
+          ...toLLMMessages(context, model),
+          ...(followsInterruptedTurn(context)
+            ? [Message.user(`<system-reminder>\n${ToolInterrupted.NOTE}\n</system-reminder>`)]
+            : []),
+          ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
+        ],
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })
@@ -407,7 +429,7 @@ const layer = Layer.effect(
           if (goalID) yield* goals.recordUsage(sessionID, goalID, tokens)
           if (settled._tag === "Failure" && isUserDeclined(settled.cause)) {
             yield* FiberSet.clear(toolFibers)
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(ToolInterrupted.RESULT))
             return yield* Effect.interrupt
           }
           if (
@@ -415,7 +437,7 @@ const layer = Layer.effect(
             (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
           ) {
             yield* FiberSet.clear(toolFibers)
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(ToolInterrupted.RESULT))
             if (publisher.hasActiveAssistant())
               yield* withPublication(publisher.failAssistant("Provider turn interrupted"))
           }
@@ -446,7 +468,7 @@ const layer = Layer.effect(
             )
           }
           if (publisher.hasProviderError())
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(ToolInterrupted.RESULT))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           if (stream._tag === "Failure") {

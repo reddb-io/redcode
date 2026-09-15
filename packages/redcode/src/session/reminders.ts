@@ -14,6 +14,7 @@ import { MessageID, PartID } from "./schema"
 import { Session } from "./session"
 import { SessionGoal } from "./goal"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Todo } from "./todo"
 import { ProviderTransform } from "@/provider/transform"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
@@ -57,6 +58,23 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
           ),
         }
       : undefined
+
+  // A turn that follows a cancelled or interrupted one hears about it here, not in history: the
+  // tool calls that turn left behind read as cancelled, and the model is told to check before
+  // repeating a side effect. Recomputed each step, so it never lands in the cached prefix.
+  {
+    const index = input.messages.findLastIndex((msg) => msg.info.role === "user")
+    const previous = input.messages.slice(0, index).findLast((msg) => msg.info.role === "assistant")
+    if (previous?.info.role === "assistant" && previous.info.error?.name === "MessageAbortedError")
+      trailing.parts.push({
+        id: PartID.ascending(),
+        messageID: trailing.info.id,
+        sessionID: trailing.info.sessionID,
+        type: "text",
+        synthetic: true,
+        text: ToolInterrupted.NOTE,
+      })
+  }
 
   // The goal is re-rendered from the session record on every step, so compaction can drop every
   // earlier copy and the model still reads the objective as it was set — and the turn it is on.
