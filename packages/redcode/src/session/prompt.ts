@@ -1750,7 +1750,7 @@ const layer = Layer.effect(
           // provider's cached prefix for the whole request that follows.
           const tracked = todowrite ? (reviewed ?? (yield* todos.review(sessionID).pipe(Effect.orDie))) : undefined
           reviewed = undefined
-          msgs = yield* SessionReminders.apply({ messages: msgs, agent, session, todos: tracked }).pipe(
+          const reminder = yield* SessionReminders.apply({ messages: msgs, agent, session, todos: tracked }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
@@ -1885,7 +1885,7 @@ const layer = Layer.effect(
               Effect.orDie,
             )
             const modelMsgs = yield* MessageV2.toModelMessagesEffect(
-              SessionContext.interleave(msgs, updates, lastUser),
+              [...SessionContext.interleave(msgs, updates, lastUser), ...(reminder ? [reminder] : [])],
               model,
             )
             const system = [

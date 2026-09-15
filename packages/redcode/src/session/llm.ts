@@ -6,7 +6,8 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
-import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import { NoSuchToolError, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import { unknownToolMessage } from "@/tool/invalid"
 import type { LLMEvent } from "@reddb-io/redcode-llm"
 import { LLMClient } from "@reddb-io/redcode-llm/route"
 import type { LLMClientService } from "@reddb-io/redcode-llm/route"
@@ -309,7 +310,9 @@ const live: Layer.Layer<
               ...failed.toolCall,
               input: JSON.stringify({
                 tool: failed.toolCall.toolName,
-                error: failed.error.message,
+                error: NoSuchToolError.isInstance(failed.error)
+                  ? unknownToolMessage(failed.toolCall.toolName, Object.keys(prepared.tools))
+                  : failed.error.message,
               }),
               toolName: "invalid",
             }

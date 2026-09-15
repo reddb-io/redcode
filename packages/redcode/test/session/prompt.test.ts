@@ -633,7 +633,7 @@ it.instance("loop continues a natural stop while persisted todos are unfinished"
   }),
 )
 
-it.instance("todo state rides the last user message so a todowrite leaves the system prompt untouched", () =>
+it.instance("todo state rides the trailing reminder so a todowrite leaves the system prompt untouched", () =>
   Effect.gen(function* () {
     // The task list used to be rendered into the system prompt on every step. A todowrite then
     // rewrote the prompt's tail and the provider's cached prefix was lost for the request after it.
@@ -675,13 +675,94 @@ it.instance("todo state rides the last user message so a todowrite leaves the sy
     // The static guidance stays in the system prompt; the live state does not.
     expect(JSON.stringify(before)).toContain("Complete only verified work")
     expect(JSON.stringify(before)).not.toContain("No tracked tasks yet")
-    // The list itself now travels with the last user message of that request.
+    // The list itself now travels in the trailing reminder of that request.
     const lastUser = messagesOf(hits[1]!).findLast((message) => message.role === "user")
     expect(JSON.stringify(lastUser)).toContain("Current task state from storage: 0/1 completed")
     expect(JSON.stringify(lastUser)).toContain("verify the result")
     expect(JSON.stringify(messagesOf(hits[0]!).findLast((message) => message.role === "user"))).toContain(
       "No tracked tasks yet",
     )
+  }),
+)
+
+it.instance("per-step reminders trail the request so earlier turns stay byte-identical across steps and turns", () =>
+  Effect.gen(function* () {
+    // The todo reminder used to be appended to the last real user message. On the next turn that
+    // message is history without it, so everything from it onward was re-billed every turn.
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const say = (text: string) =>
+      prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text }] })
+
+    yield* say("find the config")
+    yield* llm.tool("glob", { pattern: "*.json" })
+    yield* llm.text("working")
+    yield* prompt.loop({ sessionID: chat.id })
+    yield* say("next question")
+    yield* llm.text("answer")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const bodies = (yield* llm.hits).map((hit) => hit.body)
+    expect(bodies.length).toBe(3)
+    type Message = { role: string; content: unknown }
+    const messagesOf = (body: Record<string, unknown>) => (body.messages as Message[]) ?? []
+    // Provider cache order: tools, then messages (system first).
+    const canon = (body: Record<string, unknown>, drop = 0) =>
+      JSON.stringify(body.tools ?? []) +
+      messagesOf(body)
+        .slice(0, messagesOf(body).length - drop)
+        .map((message) => JSON.stringify(message))
+        .join("")
+
+    for (const body of bodies) {
+      const messages = messagesOf(body)
+      // The reminder is the last message, and no real user prompt carries it.
+      expect(JSON.stringify(messages.at(-1))).toContain("No tracked tasks yet")
+      for (const message of messages.slice(0, -1)) expect(JSON.stringify(message)).not.toContain("No tracked tasks yet")
+    }
+    expect(JSON.stringify(messagesOf(bodies[2]!))).toContain("find the config")
+
+    for (let i = 1; i < bodies.length; i++) {
+      const previous = bodies[i - 1]!
+      const next = canon(bodies[i]!)
+      // Everything the previous request sent except its trailing reminder is a byte prefix of the next.
+      expect(next.startsWith(canon(previous, 1))).toBe(true)
+      const full = canon(previous)
+      let common = 0
+      while (common < full.length && full[common] === next[common]) common++
+      const reminder = JSON.stringify(messagesOf(previous).at(-1)).length
+      expect(common).toBeGreaterThanOrEqual(full.length - reminder)
+    }
+  }),
+)
+
+it.instance("an unknown tool call gets a short answer naming the closest tools", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "find files" }],
+    })
+    yield* llm.tool("gloob", { pattern: "*.json" })
+    yield* llm.text("ack")
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const hits = yield* llm.hits
+    expect(hits.length).toBe(2)
+    const messages = (hits[1]!.body.messages as Array<{ role: string; content: unknown }>) ?? []
+    const result = messages.findLast((message) => message.role === "tool")
+    const content = typeof result?.content === "string" ? result.content : JSON.stringify(result?.content)
+    expect(content).toContain("Unknown tool 'gloob'")
+    expect(content).toContain("glob")
+    expect(content).not.toContain("Available tools:")
+    expect(Buffer.byteLength(content)).toBeLessThan(300)
   }),
 )
 
@@ -1558,12 +1639,13 @@ unix(
       expect(two.info.id).toBe(one.info.id)
 
       // The steer became visible at the boundary after the tool: the tool-result request is the
-      // first one that carries it, as its last user message.
+      // first one that carries it, as its last user message before the trailing reminder.
       const hits = yield* llm.hits
       expect(hits).toHaveLength(2)
       expect(JSON.stringify(messagesOf(hits[0]!))).not.toContain("and also this")
-      expect(messagesOf(hits[1]!).at(-1)?.role).toBe("user")
-      expect(JSON.stringify(messagesOf(hits[1]!).at(-1))).toContain("and also this")
+      expect(messagesOf(hits[1]!).at(-2)?.role).toBe("user")
+      expect(JSON.stringify(messagesOf(hits[1]!).at(-2))).toContain("and also this")
+      expect(JSON.stringify(messagesOf(hits[1]!).at(-1))).toContain("No tracked tasks yet")
       const row = yield* admittedRow(id)
       expect(row?.delivery).toBe("steer")
       expect(row?.promotedSeq).toBeGreaterThan(row?.admittedSeq ?? Infinity)
@@ -1972,7 +2054,8 @@ it.instance(
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
 
       const hits = yield* llm.hits
-      const reminders = hits.map((hit) => JSON.stringify(messagesOf(hit).at(-1)).includes("unfinished todo items"))
+      // The continuation is the last user message before the trailing per-step reminder.
+      const reminders = hits.map((hit) => JSON.stringify(messagesOf(hit).at(-2)).includes("unfinished todo items"))
       expect(hits).toHaveLength(17)
       expect(reminders.slice(2, 9)).toEqual(Array(7).fill(true))
       expect(JSON.stringify(messagesOf(hits[9]!))).toContain("queued-after-limit")
@@ -3191,14 +3274,12 @@ it.instance("prompt submitted during an active run is included in the next LLM i
     expect(inputs).toHaveLength(2)
     const messages = inputs.at(-1)?.messages
     if (!Array.isArray(messages)) throw new Error("expected LLM messages")
-    // The prompt text leads; the task-state reminder rides behind it instead of in the system prompt.
-    expect(messages.at(-1)).toEqual({
-      role: "user",
-      content: [
-        { type: "text", text: "second" },
-        { type: "text", text: SessionTodo.context([]) },
-      ],
-    })
+    // The prompt text leads; the task-state reminder follows as its own trailing message, so the
+    // prompt's bytes do not change when it becomes history on the next turn.
+    expect(messages.slice(-2)).toEqual([
+      { role: "user", content: "second" },
+      { role: "user", content: SessionTodo.context([]) },
+    ])
   }),
 )
 

@@ -198,7 +198,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   return {
     system,
     messages,
-    tools: Object.fromEntries(Object.entries(tools).toSorted(([a], [b]) => a.localeCompare(b))),
+    tools: orderTools(tools),
     params,
     messageTransformOptions: options,
     headers: {
@@ -228,6 +228,29 @@ function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission"
     Permission.merge(input.agent.permission, input.permission ?? []),
   )
   return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
+}
+
+const MCP_RESOURCE_TOOLS = new Set(["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"])
+
+/**
+ * Tool order is part of the provider's cached prefix, so it must only ever grow at the end.
+ * Native tools come first, sorted by name so the set does not depend on what else is loaded;
+ * MCP resource tools follow; MCP tools (AI SDK `dynamic` tools) come last in the order the MCP
+ * service lists them: servers as they connected, tools as each server returned them. A server
+ * that connects mid-session appends its tools instead of interleaving them by name.
+ */
+export function orderTools<T extends Tool>(tools: Record<string, T>): Record<string, T> {
+  const rank = ([name, item]: [string, T]) =>
+    (item as { type?: string }).type === "dynamic" ? 2 : MCP_RESOURCE_TOOLS.has(name) ? 1 : 0
+  return Object.fromEntries(
+    Object.entries(tools)
+      .map((entry, index) => ({ entry, index, rank: rank(entry) }))
+      .toSorted(
+        (a, b) =>
+          a.rank - b.rank || (a.rank === 2 ? a.index - b.index : a.entry[0].localeCompare(b.entry[0])),
+      )
+      .map((item) => item.entry),
+  )
 }
 
 export function hasToolCalls(messages: ModelMessage[]): boolean {
