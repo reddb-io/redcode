@@ -126,7 +126,13 @@ const live: Layer.Layer<
       // runs without it). History keeps only search parts the request can replay, and a deferred
       // tool the history calls stays advertised when the client-side search is in use.
       const search = allowNativeSearch ? NativeToolSearch.modeOf(prepared.tools, input.model) : undefined
-      const messages = NativeToolSearch.history(prepared.messages, search)
+      // A retry after a rejection sends tool_search, so the deferred tool hint must name it.
+      const fallback = !allowNativeSearch && ToolSearch.nativeOf(prepared.tools) !== undefined
+      const messages = NativeToolSearch.history(
+        fallback ? NativeToolSearch.clientHint(prepared.messages) : prepared.messages,
+        search,
+        new Set(Object.keys(prepared.tools)),
+      )
       const nativeSearch = search ? NativeToolSearch.aiSdk(prepared.tools, search) : undefined
       const called = NativeToolSearch.called(messages)
       const activeTools = nativeSearch?.active ?? [
@@ -419,9 +425,10 @@ const live: Layer.Layer<
                   })()
             if (!result.search) return events
 
-            // A provider or proxy that does not know the search tool, deferral or its beta answers
-            // 400 before streaming anything. Retry this request once with client-side tool_search
-            // and keep it off for this model for the rest of the process.
+            // A provider or proxy that does not know the search tool or its deferral answers 400
+            // before streaming anything. Retry this request once with client-side tool_search, and
+            // keep native search off for this model for the rest of the process only once that
+            // retry gets an answer: if it fails too, the 400 was not about native search.
             let started = false
             return events.pipe(
               Stream.tap(() =>
@@ -432,15 +439,24 @@ const live: Layer.Layer<
               Stream.catchCause((cause) => {
                 const error = Cause.squash(cause)
                 if (started || !NativeToolSearch.isRejection(error)) return Stream.failCause(cause)
-                NativeToolSearch.reject(input.model)
+                let remembered = false
+                const retry = attempt(input, false).pipe(
+                  Stream.tap(() =>
+                    Effect.sync(() => {
+                      if (remembered) return
+                      remembered = true
+                      NativeToolSearch.reject(input.model)
+                    }),
+                  ),
+                )
                 return Stream.unwrap(
-                  Effect.logWarning("provider rejected native tool search; falling back to tool_search", {
+                  Effect.logWarning("provider rejected native tool search; retrying with tool_search", {
                     providerID: input.model.providerID,
                     modelID: input.model.id,
                     "session.id": input.sessionID,
                     mode: result.search,
                     error: error instanceof Error ? error.message : String(error),
-                  }).pipe(Effect.as(attempt(input, false))),
+                  }).pipe(Effect.as(retry)),
                 )
               }),
             )

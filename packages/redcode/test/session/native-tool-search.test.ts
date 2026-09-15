@@ -14,6 +14,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import type { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import type { Provider } from "@/provider/provider"
 import { LLMNativeRuntime } from "@/session/llm/native-runtime"
+import { LLMNative } from "@/session/llm/native-request"
 import { NativeToolSearch } from "@/session/native-tool-search"
 import { ToolSearch } from "@/session/tool-search"
 
@@ -58,6 +59,33 @@ describe("NativeToolSearch.detect", () => {
         model: model("openrouter", "anthropic/claude-sonnet-4.5", "@openrouter/ai-sdk-provider"),
         config: { native: true },
       }),
+    ).toBeUndefined()
+  })
+
+  test("auto stays off for older models, other hosts and other variants", () => {
+    const off = (providerID: string, id: string, npm: string) =>
+      expect(NativeToolSearch.detect({ model: model(providerID, id, npm) })).toBeUndefined()
+    off("anthropic", "claude-3-5-sonnet-20241022", "@ai-sdk/anthropic")
+    off("anthropic", "claude-3-5-sonnet", "@ai-sdk/anthropic")
+    off("anthropic", "claude-sonnet-4-20250514", "@ai-sdk/anthropic")
+    off("anthropic", "claude-opus-4-1-20250805", "@ai-sdk/anthropic")
+    off("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "@ai-sdk/amazon-bedrock")
+    off("google-vertex-anthropic", "claude-sonnet-4-5@20250929", "@ai-sdk/google-vertex/anthropic")
+    off("openai", "gpt-5-codex", "@ai-sdk/openai")
+    off("openai", "gpt-5.3-codex", "@ai-sdk/openai")
+    off("openai", "o3", "@ai-sdk/openai")
+    off("azure", "gpt-5.4", "@ai-sdk/azure")
+  })
+
+  test("a [1m] context variant is the same model and follows its base id", () => {
+    expect(NativeToolSearch.detect({ model: model("anthropic", "claude-sonnet-4-5[1m]", "@ai-sdk/anthropic") })).toBe(
+      "anthropic",
+    )
+    expect(NativeToolSearch.detect({ model: model("anthropic", "claude-opus-5[1m]", "@ai-sdk/anthropic") })).toBe(
+      "anthropic",
+    )
+    expect(
+      NativeToolSearch.detect({ model: model("anthropic", "claude-sonnet-4-20250514[1m]", "@ai-sdk/anthropic") }),
     ).toBeUndefined()
   })
 
@@ -179,6 +207,54 @@ describe("native LLM runtime", () => {
     expect(prepared.body.tools[2]).toMatchObject({ defer_loading: true })
     expect(prepared.body.tools[2]!.cache_control).toBeUndefined()
   })
+
+  test("the trailing-reminder breakpoint never lands on a provider-executed search", async () => {
+    const request = LLMNative.request({
+      model: {
+        ...anthropic,
+        api: { id: "claude-sonnet-4-5", npm: "@ai-sdk/anthropic", url: "https://api.anthropic.com/v1" },
+        limit: { context: 200_000, output: 8_000 },
+        headers: {},
+      } as unknown as Provider.Model,
+      apiKey: "test",
+      messages: [
+        { role: "user", content: "Read issue 7." },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Looking." },
+            {
+              type: "tool-call",
+              toolCallId: "srvtoolu_1",
+              toolName: "tool_search_tool_bm25",
+              input: { query: "issue" },
+              providerExecuted: true,
+            },
+            {
+              type: "tool-result",
+              toolCallId: "srvtoolu_1",
+              toolName: "tool_search_tool_bm25",
+              output: { type: "json", value: [{ type: "tool_reference", toolName: "github_issue_read" }] },
+              providerExecuted: true,
+            } as never,
+          ],
+        },
+        { role: "user", content: [{ type: "text", text: "<system-reminder>\nNo tasks.\n</system-reminder>" }] },
+      ],
+    })
+    const prepared = await Effect.runPromise(
+      LLMClient.prepare<{ messages: Array<{ role: string; content: Array<Record<string, unknown>> }> }>(request).pipe(
+        Effect.provide(
+          LLMClient.layer.pipe(Layer.provide(RequestExecutor.layer.pipe(Layer.provide(FetchHttpClient.layer)))),
+        ),
+      ),
+    )
+    const assistant = prepared.body.messages[1]!.content
+    expect(assistant.map((block) => block.type)).toEqual(["text", "server_tool_use", "tool_search_tool_result"])
+    expect(assistant[0]!.cache_control).toEqual({ type: "ephemeral" })
+    expect(assistant[1]!.cache_control).toBeUndefined()
+    expect(assistant[2]!.cache_control).toBeUndefined()
+  })
 })
 
 describe("NativeToolSearch.history", () => {
@@ -195,16 +271,83 @@ describe("NativeToolSearch.history", () => {
     { role: "user", content: "Read issue 7." },
     { role: "assistant", content } as ModelMessage,
   ]
+  const available = new Set(["read", "github_issue_read"])
 
   test("keeps the current mode's searches", () => {
     const messages = history([...(search("s1", "tool_search_tool_bm25") as never[]), { type: "text", text: "ok" }])
-    expect(NativeToolSearch.history(messages, "anthropic")).toBe(messages)
+    expect(NativeToolSearch.history(messages, "anthropic", available)).toBe(messages)
   })
 
   test("drops searches when native search is off or the mode differs, and empty assistant messages", () => {
     const messages = history(search("s1", "tool_search_tool_bm25"))
-    expect(NativeToolSearch.history(messages, undefined)).toEqual([messages[0]!])
-    expect(NativeToolSearch.history(messages, "openai")).toEqual([messages[0]!])
+    expect(NativeToolSearch.history(messages, undefined, available)).toEqual([messages[0]!])
+    expect(NativeToolSearch.history(messages, "openai", available)).toEqual([messages[0]!])
+  })
+
+  test("narrows Anthropic references to tools still sent and drops a search left with none", () => {
+    const messages = history([
+      { type: "tool-call", toolCallId: "s1", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
+      {
+        type: "tool-result",
+        toolCallId: "s1",
+        toolName: "tool_search_tool_bm25",
+        output: {
+          type: "json",
+          value: [
+            { type: "tool_reference", toolName: "github_issue_read" },
+            { type: "tool_reference", toolName: "github_gone" },
+          ],
+        },
+      },
+      { type: "tool-call", toolCallId: "s2", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
+      {
+        type: "tool-result",
+        toolCallId: "s2",
+        toolName: "tool_search_tool_bm25",
+        output: { type: "json", value: [{ type: "tool_reference", toolName: "github_gone" }] },
+      },
+    ])
+    expect(NativeToolSearch.history(messages, "anthropic", available)[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: "s1", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
+        {
+          type: "tool-result",
+          toolCallId: "s1",
+          toolName: "tool_search_tool_bm25",
+          output: { type: "json", value: [{ type: "tool_reference", toolName: "github_issue_read" }] },
+        },
+      ],
+    })
+  })
+
+  test("narrows OpenAI loaded functions and namespaces to tools still sent", () => {
+    const fn = (name: string) => ({ type: "function", name })
+    const messages = history([
+      { type: "tool-call", toolCallId: "t1", toolName: "tool_search", input: {}, providerExecuted: true },
+      {
+        type: "tool-result",
+        toolCallId: "t1",
+        toolName: "tool_search",
+        output: {
+          type: "json",
+          value: {
+            tools: [
+              { type: "namespace", name: "github", tools: [fn("github_issue_read"), fn("github_denied")] },
+              { type: "namespace", name: "gone", tools: [fn("gone_tool")] },
+              fn("read"),
+            ],
+          },
+        },
+      },
+    ])
+    const result = NativeToolSearch.history(messages, "openai", available)[1] as {
+      content: Array<{ output?: unknown }>
+    }
+    expect(result.content[1]!.output).toEqual({
+      type: "json",
+      value: { tools: [{ type: "namespace", name: "github", tools: [fn("github_issue_read")] }, fn("read")] },
+    })
   })
 
   test("drops a failed or unanswered search", () => {
@@ -218,7 +361,7 @@ describe("NativeToolSearch.history", () => {
       },
       { type: "text", text: "kept" },
     ])
-    expect(NativeToolSearch.history(failed, "anthropic")[1]).toEqual({
+    expect(NativeToolSearch.history(failed, "anthropic", available)[1]).toEqual({
       role: "assistant",
       content: [{ type: "text", text: "kept" }],
     })
@@ -226,7 +369,7 @@ describe("NativeToolSearch.history", () => {
       { type: "tool-call", toolCallId: "s2", toolName: "tool_search_tool_bm25", input: {}, providerExecuted: true },
       { type: "text", text: "kept" },
     ])
-    expect(NativeToolSearch.history(unanswered, "anthropic")[1]).toEqual({
+    expect(NativeToolSearch.history(unanswered, "anthropic", available)[1]).toEqual({
       role: "assistant",
       content: [{ type: "text", text: "kept" }],
     })
@@ -236,7 +379,21 @@ describe("NativeToolSearch.history", () => {
     const messages = history([
       { type: "tool-call", toolCallId: "c1", toolName: "tool_search", input: { query: "issue" } },
     ] as never)
-    expect(NativeToolSearch.history(messages, undefined)).toBe(messages)
+    expect(NativeToolSearch.history(messages, undefined, available)).toBe(messages)
+  })
+
+  test("clientHint rewrites the native index lead for a fallback request", () => {
+    const entries = [{ name: "github_issue_read", namespace: "github", description: "", schema: {} }]
+    const native = ToolSearch.indexText(entries, true)
+    const [system, wrapped] = NativeToolSearch.clientHint([
+      { role: "system", content: native },
+      { role: "user", content: [{ type: "text", text: `<system-reminder>${native}</system-reminder>` }] },
+    ])
+    expect(system!.content).toContain("Additional tools for github are available through tool_search. Example:")
+    expect(system!.content).toContain('{"select": ["github_<name>"]}')
+    expect(system!.content).toContain("<deferred_tools>")
+    expect(JSON.stringify(wrapped)).not.toContain("Find them with your tool search tool")
+    expect(ToolSearch.clientIndexLead(ToolSearch.indexText(entries))).toBe(ToolSearch.indexText(entries))
   })
 })
 
@@ -267,6 +424,21 @@ describe("NativeToolSearch persistence", () => {
       ),
     )
     expect([...names].toSorted()).toEqual(["github_issue_read", "linear_get_issue", "slack_post"])
+  })
+
+  test("referenced ignores OpenAI namespace names and unparsable output", () => {
+    const names = NativeToolSearch.referenced(
+      messages(
+        part(
+          "tool_search",
+          JSON.stringify({
+            tools: [{ type: "namespace", name: "github", tools: [{ type: "function", name: "github_issue_read" }] }],
+          }),
+        ),
+        part("tool_search_tool_bm25", "not json"),
+      ),
+    )
+    expect([...names]).toEqual(["github_issue_read"])
   })
 
   test("a natively loaded tool stays deferred after it is called", () => {
@@ -307,6 +479,28 @@ describe("NativeToolSearch.isRejection", () => {
       NativeToolSearch.isRejection(apiError(400, '{"error":{"message":"Unknown parameter: defer_loading"}}')),
     ).toBe(true)
     expect(NativeToolSearch.isRejection(apiError(400, '{"error":{"message":"prompt is too long"}}'))).toBe(false)
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"Tool reference \'github_issue_read\' not found in available tools"}}'),
+      ),
+    ).toBe(true)
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"Invalid value: \'namespace\'.","param":"tools[3].type"}}'),
+      ),
+    ).toBe(true)
+    // Unrelated 400s that share generic words with the old pattern.
+    expect(
+      NativeToolSearch.isRejection(
+        apiError(400, '{"error":{"message":"The long context beta is not yet available for this subscription."}}'),
+      ),
+    ).toBe(false)
+    expect(
+      NativeToolSearch.isRejection(apiError(400, '{"error":{"message":"anthropic-beta: unknown beta context-1m"}}')),
+    ).toBe(false)
+    expect(NativeToolSearch.isRejection(apiError(400, '{"error":{"message":"Invalid tool type in tools.0"}}'))).toBe(
+      false,
+    )
     expect(NativeToolSearch.isRejection(apiError(500, "tool_search overloaded"))).toBe(false)
     expect(NativeToolSearch.isRejection(new Error("tool_search"))).toBe(false)
   })
