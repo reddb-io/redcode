@@ -37,7 +37,13 @@ export const make = <A, E = never, R = never>(
       // HTTP request the client cancels, the lookup exits interrupted and, with the default
       // infinite TTL, every later caller would replay that interruption (HTTP 499) until the
       // instance is disposed. An interrupted lookup is not a result: expire it immediately.
-      timeToLive: (exit) => (Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause) ? Duration.zero : Duration.infinity),
+      // A failed init (a config read that hit a transient error) is kept briefly rather than until
+      // dispose, so the next requests after a short pause try again instead of failing forever.
+      timeToLive: (exit) => {
+        if (Exit.isSuccess(exit)) return Duration.infinity
+        if (Cause.hasInterruptsOnly(exit.cause)) return Duration.zero
+        return FAILED_LOOKUP_TTL
+      },
     })
 
     const off = registerDisposer((directory) => Effect.runPromise(ScopedCache.invalidate(cache, directory)))
@@ -53,6 +59,7 @@ export const make = <A, E = never, R = never>(
 // interruption. They were not cancelled themselves, so run the lookup again (bounded, in case
 // the interruption comes from the cache itself being closed).
 const INTERRUPTED_LOOKUP_RETRIES = 3
+const FAILED_LOOKUP_TTL = Duration.seconds(5)
 
 export const get = <A, E, R>(self: InstanceState<A, E, R>) =>
   Effect.gen(function* () {
@@ -61,6 +68,12 @@ export const get = <A, E, R>(self: InstanceState<A, E, R>) =>
       const exit = yield* Effect.exit(ScopedCache.get(self.cache, key))
       if (Exit.isSuccess(exit)) return exit.value
       if (attempt >= INTERRUPTED_LOOKUP_RETRIES || !Cause.hasInterruptsOnly(exit.cause)) return yield* exit
+      // Retry only an interruption that belonged to another caller. When this fiber is the one
+      // being interrupted, end here: by interruptor id when it is known, and otherwise at the
+      // interruption point below.
+      const fiberId = yield* Effect.fiberId
+      if (Cause.interruptors(exit.cause).has(fiberId)) return yield* exit
+      yield* Effect.yieldNow
     }
   })
 

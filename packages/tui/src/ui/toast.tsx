@@ -93,6 +93,11 @@ export function ToastProvider(props: ParentProps) {
   return <ctx.Provider value={value}>{props.children}</ctx.Provider>
 }
 
+/** For contexts that can also run without a toast provider, such as sync in tests. */
+export function useToastOptional() {
+  return useContext(ctx)
+}
+
 export function useToast() {
   const value = useContext(ctx)
   if (!value) {

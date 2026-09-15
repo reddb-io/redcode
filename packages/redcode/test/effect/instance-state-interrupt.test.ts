@@ -1,7 +1,7 @@
 import { expect } from "bun:test"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
-import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { provideInstanceEffect, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -55,5 +55,25 @@ it.live("InstanceState serves callers that were waiting on an interrupted lookup
 
     const exit = yield* Fiber.await(waiter).pipe(Effect.timeout("5 seconds"))
     expect(Exit.isSuccess(exit)).toBe(true)
+  }),
+)
+
+it.live("InstanceState ends a waiter whose own fiber is interrupted and leaves the lookup running", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const { state, started, gate, counter } = yield* gatedState
+    const first = yield* InstanceState.get(state).pipe(provideInstanceEffect(dir), Effect.forkChild)
+    yield* Deferred.await(started)
+    const waiter = yield* InstanceState.get(state).pipe(provideInstanceEffect(dir), Effect.forkChild)
+    yield* Effect.yieldNow
+
+    yield* Fiber.interrupt(waiter).pipe(Effect.timeout("5 seconds"))
+    const waiterExit = yield* Fiber.await(waiter)
+    expect(Exit.isFailure(waiterExit) && Cause.hasInterruptsOnly(waiterExit.cause)).toBe(true)
+
+    yield* Deferred.succeed(gate, undefined)
+    const value = yield* Fiber.join(first).pipe(Effect.timeout("5 seconds"))
+    expect(value.run).toBe(1)
+    expect(counter.runs).toBe(1)
   }),
 )

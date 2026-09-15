@@ -35,6 +35,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     const handlers = new Set<(event: GlobalEvent) => void>()
     const reconnects = new Set<() => void>()
+    /** Has the event stream ever connected; it stays true across later drops. */
     let connected = false
     const markConnected = () => {
       connected = true
@@ -105,11 +106,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           // replay. Anything that arrived in the gap — a permission request, the status going
           // idle — leaves the client waiting on something that already happened, which is how a
           // session ends up spinning with everything the user types piling up behind it.
-          let connected = false
+          let streamOpen = false
           for await (const event of events.stream) {
             if (ctrl.signal.aborted) break
-            if (!connected) {
-              connected = true
+            if (!streamOpen) {
+              streamOpen = true
               // The SDK stream is lazy: obtaining its iterator does not establish a
               // subscription. A received event is the barrier before reading snapshots.
               markConnected()
@@ -164,7 +165,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       },
       directory: props.directory,
       event: emitter,
-      /** Whether the event stream has delivered its first event (or the in-process source subscribed). */
+      /** Has the event stream ever delivered an event (or the in-process source subscribed). */
       get connected() {
         return connected
       },

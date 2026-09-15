@@ -32,13 +32,37 @@ import { batch, createEffect, onCleanup, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
+import { useToastOptional } from "../ui/toast"
 
-/** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
-const BOOTSTRAP_SETTLE_MS = 100
-/** How long startup waits for the event stream before reading snapshots without it. */
-const STREAM_CONNECT_GRACE_MS = 3000
-const BOOTSTRAP_RECOVERY_LIMIT = 5
-const CATALOG_RETRY_MS = [250, 750, 2000]
+export type SyncTiming = {
+  /** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
+  settleMs: number
+  /**
+   * How long startup waits for the event stream before reading snapshots without it. The server
+   * sends `server.connected` as the first stream event as soon as the instance is loaded, so this
+   * only matters when the stream cannot connect at all.
+   */
+  streamGraceMs: number
+  /** Background attempts after a failed run before the TUI reports degraded data. */
+  recoveryLimit: number
+  recoveryBaseMs: number
+  recoveryMaxMs: number
+  /** Delays between attempts of one read that answered with a transient status. */
+  retryMs: number[]
+  /** Spreads retries so clients recovering from the same server event do not land together. */
+  jitter: (ms: number) => number
+}
+
+export const defaultSyncTiming: SyncTiming = {
+  settleMs: 100,
+  streamGraceMs: 1500,
+  recoveryLimit: 5,
+  recoveryBaseMs: 1000,
+  recoveryMaxMs: 30_000,
+  retryMs: [250, 750, 2000],
+  jitter: (ms) => Math.round(ms * (0.7 + Math.random() * 0.6)),
+}
+
 /** Statuses that mean "not now" rather than "no": cancelled sibling reads, reloading instances. */
 const TRANSIENT_STATUS = new Set([408, 425, 429, 499, 502, 503, 504])
 
@@ -88,12 +112,16 @@ export const {
   provider: SyncProvider,
 } = createSimpleContext({
   name: "Sync",
-  init: () => {
+  init: (props: { timing?: Partial<SyncTiming> }) => {
+    const timing: SyncTiming = { ...defaultSyncTiming, ...props.timing }
+    const toast = useToastOptional()
     const startup = useTuiStartup()
     const kv = useKV()
     const permission = usePermission()
     const [store, setStore] = createStore<{
       status: "loading" | "partial" | "complete"
+      /** Parts the server could not deliver after every retry; empty when the data is whole. */
+      degraded: ("bootstrap" | "commands")[]
       provider: Provider[]
       provider_default: Record<string, string>
       provider_next: ProviderListResponse
@@ -149,6 +177,7 @@ export const {
       provider_auth: {},
       config: {},
       status: "loading",
+      degraded: [],
       agent: [],
       permission: {},
       question: {},
@@ -202,6 +231,7 @@ export const {
       bootstrapTrailing?.resolve()
       bootstrapTrailing = undefined
       if (bootstrapRecovery) clearTimeout(bootstrapRecovery)
+      cancelCommandRetry()
       refreshingSessions?.abort.abort()
       for (const tracker of hydratingSessions.values()) tracker.abort.abort()
       hydratingSessions.clear()
@@ -642,25 +672,33 @@ export const {
     // slowest reads (`/agent`, `/command`) over and over, and the server answered every cancelled
     // read with 499. A run for the same workspace now finishes; every trigger that arrives while it
     // is in flight collapses into one trailing run, started once triggers stop for a moment.
+    type TrailingBootstrap = {
+      fatal: boolean
+      /** A failed run handed its fatality over: this run now decides whether startup failed. */
+      inheritedFatal: boolean
+      timer: ReturnType<typeof setTimeout> | undefined
+      promise: Promise<void>
+      resolve: () => void
+      reject: (error: unknown) => void
+    }
     let bootstrapRun: { workspace: string | undefined; promise: Promise<void> } | undefined
-    let bootstrapTrailing:
-      | {
-          fatal: boolean
-          timer: ReturnType<typeof setTimeout> | undefined
-          promise: Promise<void>
-          resolve: () => void
-          reject: (error: unknown) => void
-        }
-      | undefined
+    let bootstrapTrailing: TrailingBootstrap | undefined
     let bootstrapFailures = 0
     let bootstrapRecovery: ReturnType<typeof setTimeout> | undefined
+    type CommandRetry = { timer: ReturnType<typeof setTimeout> | undefined; abort: AbortController }
+    let commandRetry: CommandRetry | undefined
+    let commandFailures = 0
 
     function bootstrap(input: { fatal?: boolean } = {}): Promise<void> {
       const fatal = input.fatal ?? true
       if (disposed) return Promise.resolve()
       if (bootstrapRun && bootstrapRun.workspace !== project.workspace.current()) {
         // A different workspace: the in-flight reads are for the wrong instance, supersede them.
-        return startBootstrap(fatal)
+        // The superseding run also stands in for a re-sync queued for the old workspace.
+        const trailing = takeTrailingBootstrap()
+        const promise = startBootstrap(trailing ? trailingFatal(trailing, fatal) : fatal)
+        if (trailing) promise.then(trailing.resolve, trailing.reject)
+        return promise
       }
       if (!bootstrapRun && !bootstrapTrailing) return startBootstrap(fatal)
       if (!bootstrapTrailing) {
@@ -670,13 +708,27 @@ export const {
           resolve = done
           reject = fail
         })
-        bootstrapTrailing = { fatal, timer: undefined, promise, resolve, reject }
+        // Triggers that ignore the result (events, reconnects) must not surface a rejection.
+        promise.catch(() => {})
+        bootstrapTrailing = { fatal, inheritedFatal: false, timer: undefined, promise, resolve, reject }
       } else {
         bootstrapTrailing.fatal = bootstrapTrailing.fatal && fatal
       }
       // Settling after the in-flight run: another trigger restarts the quiet period.
       if (!bootstrapRun) armTrailingBootstrap()
       return bootstrapTrailing.promise
+    }
+
+    function trailingFatal(trailing: TrailingBootstrap, fatal = trailing.fatal) {
+      return (trailing.fatal && fatal) || trailing.inheritedFatal
+    }
+
+    function takeTrailingBootstrap() {
+      const trailing = bootstrapTrailing
+      if (!trailing) return
+      if (trailing.timer) clearTimeout(trailing.timer)
+      bootstrapTrailing = undefined
+      return trailing
     }
 
     function armTrailingBootstrap() {
@@ -687,8 +739,8 @@ export const {
         if (bootstrapTrailing !== trailing) return
         bootstrapTrailing = undefined
         if (disposed) return trailing.resolve()
-        startBootstrap(trailing.fatal).then(trailing.resolve, trailing.reject)
-      }, BOOTSTRAP_SETTLE_MS)
+        startBootstrap(trailingFatal(trailing)).then(trailing.resolve, trailing.reject)
+      }, timing.settleMs)
     }
 
     function startBootstrap(fatal: boolean) {
@@ -708,14 +760,82 @@ export const {
     // Agents and commands are what a user sees missing first. A read the server could not answer
     // yet (499 from a cancelled sibling, 503 while an instance reloads) is retried a few times
     // before the run is given up, and a run given up schedules a background recovery run.
+    function backoff(failures: number) {
+      return timing.jitter(Math.min(timing.recoveryBaseMs * 2 ** failures, timing.recoveryMaxMs))
+    }
+
+    // Out of attempts: say so instead of looking healthy with agents or commands missing.
+    function markDegraded(part: "bootstrap" | "commands") {
+      if (disposed || store.degraded.includes(part)) return
+      setStore("degraded", [...store.degraded, part])
+      toast?.show({
+        variant: "warning",
+        title: "Server data incomplete",
+        message:
+          part === "commands"
+            ? "Commands could not be loaded from the server. Restart redcode to retry."
+            : "Agents, providers or config could not be loaded from the server. Restart redcode to retry.",
+        duration: 10_000,
+      })
+    }
+
+    function clearDegraded(part: "bootstrap" | "commands") {
+      if (!store.degraded.includes(part)) return
+      setStore(
+        "degraded",
+        store.degraded.filter((item) => item !== part),
+      )
+    }
+
     function scheduleBootstrapRecovery() {
-      if (disposed || bootstrapRecovery || bootstrapFailures >= BOOTSTRAP_RECOVERY_LIMIT) return
-      const delay = Math.min(1000 * 2 ** bootstrapFailures, 30_000)
+      if (disposed || bootstrapRecovery) return
+      if (bootstrapFailures >= timing.recoveryLimit) return markDegraded("bootstrap")
+      const delay = backoff(bootstrapFailures)
       bootstrapFailures++
       bootstrapRecovery = setTimeout(() => {
         bootstrapRecovery = undefined
         void bootstrap({ fatal: false }).catch(() => {})
       }, delay)
+    }
+
+    function cancelCommandRetry() {
+      if (!commandRetry) return
+      if (commandRetry.timer) clearTimeout(commandRetry.timer)
+      commandRetry.abort.abort()
+      commandRetry = undefined
+    }
+
+    // Only commands failed: re-read just them. A full bootstrap would discard hydrated sessions.
+    function scheduleCommandRetry(workspace: string | undefined) {
+      if (disposed || commandRetry) return
+      if (commandFailures >= timing.recoveryLimit) return markDegraded("commands")
+      const epoch = generation
+      const retry: CommandRetry = { timer: undefined, abort: new AbortController() }
+      retry.timer = setTimeout(() => {
+        retry.timer = undefined
+        void readCatalog(
+          "commands",
+          () => sdk.client.command.list({ workspace }, { signal: retry.abort.signal }),
+          retry.abort.signal,
+        ).then(
+          (commands) => {
+            if (commandRetry !== retry) return
+            commandRetry = undefined
+            if (disposed || epoch !== generation) return
+            commandFailures = 0
+            setStore("command", reconcile(commands))
+            clearDegraded("commands")
+          },
+          () => {
+            if (commandRetry !== retry) return
+            commandRetry = undefined
+            if (disposed || epoch !== generation) return
+            scheduleCommandRetry(workspace)
+          },
+        )
+      }, backoff(commandFailures))
+      commandFailures++
+      commandRetry = retry
     }
 
     async function readCatalog<T>(
@@ -738,9 +858,9 @@ export const {
             : outcome.error instanceof Error
               ? outcome.error
               : new Error(`${label} failed`)
-        if (attempt >= CATALOG_RETRY_MS.length) throw failure
+        if (attempt >= timing.retryMs.length) throw failure
         if (status !== undefined && !TRANSIENT_STATUS.has(status)) throw failure
-        await abortableDelay(CATALOG_RETRY_MS[attempt], signal)
+        await abortableDelay(timing.jitter(timing.retryMs[attempt]), signal)
       }
     }
 
@@ -752,6 +872,8 @@ export const {
       bootstrapAbort?.abort()
       const abort = new AbortController()
       bootstrapAbort = abort
+      // This run reads commands itself.
+      cancelCommandRetry()
       const current = () => !disposed && epoch === generation
       let commandsFailed = false
       const tracker = {
@@ -815,12 +937,16 @@ export const {
       // Attach a rejection handler immediately while the blocking startup reads are running.
       void secondary.catch(() => {})
       await Promise.all([
-        sdk.client.config.providers({ workspace }, { throwOnError: true, signal: abort.signal }),
-        sdk.client.provider.list({ workspace }, { throwOnError: true, signal: abort.signal }),
+        readCatalog(
+          "provider config",
+          () => sdk.client.config.providers({ workspace }, { signal: abort.signal }),
+          abort.signal,
+        ),
+        readCatalog("providers", () => sdk.client.provider.list({ workspace }, { signal: abort.signal }), abort.signal),
         sdk.client.experimental.capabilities.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
         sdk.client.experimental.console.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
         readCatalog("agents", () => sdk.client.app.agents({ workspace }, { signal: abort.signal }), abort.signal),
-        sdk.client.config.get({ workspace }, { throwOnError: true, signal: abort.signal }),
+        readCatalog("config", () => sdk.client.config.get({ workspace }, { signal: abort.signal }), abort.signal),
         projectPromise,
       ])
         .then(async ([providers, providerList, capabilities, consoleState, agents, config]) => {
@@ -840,9 +966,9 @@ export const {
               )
           }
           batch(() => {
-            setStore("provider", reconcile(providers.data!.providers))
-            setStore("provider_default", reconcile(providers.data!.default))
-            setStore("provider_next", reconcile(providerList.data!))
+            setStore("provider", reconcile(providers.providers))
+            setStore("provider_default", reconcile(providers.default))
+            setStore("provider_next", reconcile(providerList))
             setStore(
               "capabilities",
               "experimentalBackgroundSubagents",
@@ -850,7 +976,7 @@ export const {
             )
             setStore("console_state", reconcile(consoleState?.data ?? emptyConsoleState))
             setStore("agent", reconcile(agents))
-            setStore("config", reconcile(config.data!))
+            setStore("config", reconcile(config))
             if (store.status !== "complete") setStore("status", "partial")
           })
           const [statuses, permissions, questions, sessions] = await secondary
@@ -899,7 +1025,7 @@ export const {
               }
             }),
           )
-          snapshot = undefined
+          if (snapshot === tracker) snapshot = undefined
           if (permission.mode !== "normal") {
             for (const request of Object.values(store.permission).flat()) {
               void sdk.client.permission.reply({ requestID: request.id, reply: "once", workspace }).catch(() => {})
@@ -914,12 +1040,22 @@ export const {
         })
         .then(() => {
           if (!current()) return
-          if (commandsFailed) return scheduleBootstrapRecovery()
+          // A queued re-sync reads everything again; this run's outcome says nothing about it.
+          if (bootstrapTrailing) return
           bootstrapFailures = 0
+          clearDegraded("bootstrap")
+          if (commandsFailed) return scheduleCommandRetry(workspace)
+          commandFailures = 0
         })
         .catch((error) => {
           if (!current()) return
           console.error("tui bootstrap failed", { error: error instanceof Error ? error.message : String(error) })
+          if (bootstrapTrailing) {
+            // Most likely the dispose that queued the re-sync (a 503 while the instance reloads).
+            // Let that run decide, carrying this run's fatality with it.
+            if (input.fatal ?? true) bootstrapTrailing.inheritedFatal = true
+            return
+          }
           if (input.fatal ?? true) return exit(error)
           scheduleBootstrapRecovery()
           throw error
@@ -927,7 +1063,7 @@ export const {
         .finally(() => {
           // A settled run has nothing left to cancel; the next run must not abort its requests.
           if (bootstrapAbort === abort) bootstrapAbort = undefined
-          if (current()) snapshot = undefined
+          if (current() && snapshot === tracker) snapshot = undefined
         })
     }
 
@@ -944,7 +1080,7 @@ export const {
         void bootstrap()
         return true
       }
-      const fallback = setTimeout(start, STREAM_CONNECT_GRACE_MS)
+      const fallback = setTimeout(start, timing.streamGraceMs)
       onCleanup(() => clearTimeout(fallback))
       // The stream dropped and came back, so whatever happened in between was never delivered.
       // Re-read rather than trust a picture assembled from a stream with a hole in it.

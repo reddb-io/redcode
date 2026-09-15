@@ -5,7 +5,7 @@ import { ArgsProvider } from "../../../../src/context/args"
 import { KVProvider, useKV } from "../../../../src/context/kv"
 import { ProjectProvider, useProject } from "../../../../src/context/project"
 import { SDKProvider } from "../../../../src/context/sdk"
-import { SyncProvider, useSync } from "../../../../src/context/sync"
+import { SyncProvider, useSync, type SyncTiming } from "../../../../src/context/sync"
 import { PermissionProvider } from "../../../../src/context/permission"
 import { ExitProvider } from "../../../../src/context/exit"
 import { createEventSource, createFetch, type FetchHandler, directory } from "../../../fixture/tui-sdk"
@@ -26,7 +26,14 @@ export async function mount(
   override?: FetchHandler,
   state?: string,
   children?: () => JSX.Element,
-  input: { continue?: boolean; ready?: "partial" | "complete"; width?: number; height?: number } = {},
+  input: {
+    continue?: boolean
+    ready?: "partial" | "complete"
+    width?: number
+    height?: number
+    timing?: Partial<SyncTiming>
+    exit?: (error?: unknown) => void
+  } = {},
 ) {
   const calls = createFetch(override)
   const events = createEventSource({ buffer: false })
@@ -57,8 +64,8 @@ export async function mount(
             <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
               <PermissionProvider>
                 <ProjectProvider>
-                  <ExitProvider exit={() => {}}>
-                    <SyncProvider>
+                  <ExitProvider exit={input.exit ?? (() => {})}>
+                    <SyncProvider timing={input.timing}>
                       <Probe />
                     </SyncProvider>
                   </ExitProvider>
