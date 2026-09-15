@@ -1040,7 +1040,7 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
                 "type": "string",
               },
               "role": {
-                "maxLength": 500,
+                "maxLength": 200,
                 "minLength": 1,
                 "type": "string",
               },
@@ -1051,7 +1051,7 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
             ],
             "type": "object",
           },
-          "maxItems": 50,
+          "maxItems": 20,
           "type": "array",
         },
         "tweaks": {

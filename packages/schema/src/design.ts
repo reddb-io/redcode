@@ -92,7 +92,7 @@ export interface Scenario extends Schema.Schema.Type<typeof Scenario> {}
  */
 export const Target = Schema.Struct({
   path: Schema.NonEmptyString.check(Schema.isMaxLength(512)),
-  role: Schema.NonEmptyString.check(Schema.isMaxLength(500)),
+  role: Schema.NonEmptyString.check(Schema.isMaxLength(200)),
 }).annotate({ identifier: "Design.Target" })
 export interface Target extends Schema.Schema.Type<typeof Target> {}
 
@@ -152,7 +152,7 @@ export const Update = Schema.Struct({
   decisions: Schema.Array(Decision).pipe(optional),
   questions: Schema.Array(Schema.String).pipe(optional),
   scenarios: Schema.Array(Scenario).pipe(optional),
-  targets: Schema.Array(Target).check(Schema.isMaxLength(50)).pipe(optional),
+  targets: Schema.Array(Target).check(Schema.isMaxLength(20)).pipe(optional),
   designSystem: Schema.String.pipe(optional),
   entry: Schema.String.pipe(optional),
   tweaks: Tweaks.pipe(optional),

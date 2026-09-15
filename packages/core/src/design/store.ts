@@ -204,11 +204,22 @@ const make = Effect.gen(function* () {
         try: () => DesignFiles.relative(input.entry!),
         catch: () => new Design.Error({ code: "invalid", message: "Invalid artifact entry" }),
       })
-    if (input.targets?.some((target) => path.isAbsolute(target.path) || target.path.split(/[\\/]/).includes("..")))
+    const targets = input.targets?.map((target) => ({ ...target, path: target.path.trim().replaceAll("\\", "/") }))
+    if (
+      targets?.some(
+        (target) =>
+          !target.path ||
+          target.path.startsWith("//") ||
+          path.posix.isAbsolute(target.path) ||
+          /^[A-Za-z]:/.test(target.path) ||
+          target.path.split("/").includes(".."),
+      )
+    )
       return yield* new Design.Error({
         code: "invalid",
         message: "Target paths must be relative to the project root and stay inside it",
       })
+    if (targets) input = { ...input, targets }
     yield* Effect.try({
       try: () => DesignParams.validate({ ...document, ...input }),
       catch: (error) =>

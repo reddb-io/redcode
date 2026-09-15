@@ -141,7 +141,7 @@ const layer = Layer.effectDiscard(
                 sessionID: context.sessionID,
                 messageID: SessionMessage.ID.create(),
                 timestamp: yield* DateTime.now,
-                text: `Execute approved plan revision ${approved.revision}. The recorded plan content is in your system context. Preserve its scope and verify the stated criteria.`,
+                text: `Execute approved plan revision ${approved.revision}. The recorded plan content is in your system context. Preserve its scope and verify the stated criteria. If the plan implements an approved Design, follow its implementation contract.`,
               })
               return approved
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message }))),

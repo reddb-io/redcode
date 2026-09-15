@@ -4,7 +4,7 @@ import { Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 
 export const description =
-  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. Edit only the returned root. Persist briefing, decisions, scenarios and targets (the existing product files the design changes, as {path, role} relative to the project root).'
+  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. Edit only the returned root. Persist briefing, decisions, scenarios and targets (existing product files the design changes).'
 
 // Providers need an object at the root. Decode into the discriminated union
 // afterwards so exposing conditional fields does not weaken execution validation.
