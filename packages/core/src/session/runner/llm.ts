@@ -312,7 +312,8 @@ const layer = Layer.effect(
       // `doom_loop: allow` is how people already say "let it repeat"; keep meaning that.
       if (PermissionV2.evaluate("doom_loop", tool, permissions ?? []).effect === "allow")
         return { type: "ok" } as LoopGuard.Decision
-      const messages = yield* getContext(sessionID)
+      // Like legacy: history that cannot be read means no streak, never a failed tool.
+      const messages = yield* getContext(sessionID).pipe(Effect.orElseSucceed(() => []))
       const last = messages.findLastIndex((message) => message.type === "user")
       const parts = messages.slice(last + 1).flatMap((message): LoopGuard.Part[] =>
         message.type !== "assistant"
