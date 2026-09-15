@@ -3,6 +3,7 @@ import { useSDK } from "../context/sdk"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { DialogPrompt } from "../ui/dialog-prompt"
+import { NINE_ROUTER_DEFAULT_URL, normalizeNineRouterURL } from "../util/nine-router"
 
 export function DialogNineRouter(props: {
   baseURL?: string
@@ -11,7 +12,7 @@ export function DialogNineRouter(props: {
   const sdk = useSDK()
   const { theme } = useTheme()
   const [step, setStep] = createSignal<"url" | "key">("url")
-  const [baseURL, setBaseURL] = createSignal(props.baseURL ?? "http://127.0.0.1:20128/v1")
+  const [baseURL, setBaseURL] = createSignal(normalizeNineRouterURL(props.baseURL ?? "") ?? NINE_ROUTER_DEFAULT_URL)
   const [busy, setBusy] = createSignal(false)
   const [status, setStatus] = createSignal("")
   const [error, setError] = createSignal("")
@@ -31,63 +32,29 @@ export function DialogNineRouter(props: {
 
   async function connect(value: string) {
     if (busy()) return
-    if (!value.trim()) {
+    const apiKey = value.trim()
+    if (!apiKey) {
       setError("Enter the API key from your 9Router dashboard.")
       return
     }
     setBusy(true)
     setError("")
-    setStatus("Checking connection and fetching models...")
+    setStatus("Checking connection, fetching models and saving...")
     try {
-      const discovered = await sdk.client.provider.discover(
-        { baseURL: baseURL(), apiKey: value.trim() },
+      // One server call discovers the models, saves configuration and then the key, and reloads.
+      // Once the server has fetched the models it finishes saving even if this dialog is closed.
+      const connected = await sdk.client.provider.nineRouter.connect(
+        { baseURL: baseURL(), apiKey },
         { signal: abort.signal },
       )
       if (abort.signal.aborted) return
-      if (discovered.error) {
-        setError(discovered.error.message)
+      if (connected.error) {
+        setError(connected.error.message)
         return
       }
-      if (!discovered.data) throw new Error("The server did not return a model list.")
-      const existing = await sdk.client.global.config.get({ signal: abort.signal, throwOnError: true })
-      if (abort.signal.aborted) return
-      setStatus("Saving credential...")
-      const auth = await sdk.client.auth.set(
-        {
-          providerID: "9router",
-          auth: { type: "api", key: value.trim() },
-        },
-        { signal: abort.signal },
-      )
-      if (abort.signal.aborted) return
-      if (auth.error) throw new Error("Could not save the API key. Retry to finish connecting.")
-
-      setStatus("Saving provider configuration...")
-      const config = await sdk.client.global.config.update(
-        {
-          config: {
-            provider: {
-              "9router": {
-                npm: "@ai-sdk/openai-compatible",
-                name: "9Router",
-                options: { baseURL: discovered.data.baseURL },
-                models: Object.fromEntries(
-                  discovered.data.models.map((model) => [
-                    model.id,
-                    existing.data.provider?.["9router"]?.models?.[model.id] ? {} : { name: model.name },
-                  ]),
-                ),
-              },
-            },
-          },
-        },
-        { signal: abort.signal },
-      )
-      if (abort.signal.aborted) return
-      if (config.error)
-        throw new Error("API key saved, but provider configuration could not be saved. Retry to finish connecting.")
-      setStatus("Reloading providers...")
-      await props.onConnected(discovered.data.baseURL, abort.signal)
+      if (!connected.data) throw new Error("The server did not return a model list.")
+      setStatus("Checking this project's configuration...")
+      await props.onConnected(connected.data.baseURL, abort.signal)
     } catch (cause) {
       if (!abort.signal.aborted)
         setError(cause instanceof Error ? cause.message : "Could not connect. Check the Redcode server and retry.")
@@ -134,26 +101,18 @@ export function DialogNineRouter(props: {
           title="9Router · API URL"
           value={baseURL()}
           onConfirm={(value) => {
-            const url = URL.parse(value.trim())
-            if (
-              !url ||
-              !["http:", "https:"].includes(url.protocol) ||
-              url.username ||
-              url.password ||
-              url.search ||
-              url.hash
-            ) {
+            const url = normalizeNineRouterURL(value)
+            if (!url) {
               setError("Enter an HTTP or HTTPS API URL without credentials, query or fragment.")
               return
             }
-            if (url.pathname === "/") url.pathname = "/v1"
             setStep("key")
-            setBaseURL(url.toString().replace(/\/+$/, ""))
+            setBaseURL(url)
             setError("")
           }}
           description={() => (
             <box gap={1}>
-              <text fg={theme.textMuted}>Start 9Router, then confirm its API URL (including /v1).</text>
+              <text fg={theme.textMuted}>Start 9Router, then confirm its API URL, such as localhost:20128.</text>
               <text fg={theme.textMuted}>For a remote Redcode server, localhost refers to that server.</text>
               <Show when={error()}>
                 <text fg={theme.error}>{error()}</text>

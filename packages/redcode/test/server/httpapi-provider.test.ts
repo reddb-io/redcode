@@ -6,6 +6,8 @@ import { NodeHttpServer } from "@effect/platform-node"
 import Http from "node:http"
 import { HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import path from "path"
+import fs from "fs/promises"
+import { Global } from "@reddb-io/redcode-core/global"
 import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
 import { markPluginDependenciesReady } from "../fixture/plugin"
@@ -289,13 +291,16 @@ describe("provider HttpApi", () => {
           body: JSON.stringify({ baseURL, apiKey: "catalog-test" }),
         })
         expect(response.status).toBe(200)
-        expect(yield* response.json).toEqual({
-          baseURL,
-          models: [
-            { id: "cc/test-model", name: "cc/test-model" },
-            { id: "coding-combo", name: "Coding" },
-          ],
-        })
+        const body = (yield* response.json) as {
+          baseURL: string
+          models: Array<{ id: string; name: string; limit: { context: number; output: number } }>
+        }
+        expect(body.baseURL).toBe(baseURL)
+        expect(body.models.map((model) => [model.id, model.name])).toEqual([
+          ["cc/test-model", "cc/test-model"],
+          ["coding-combo", "Coding"],
+        ])
+        expect(body.models.every((model) => model.limit.context > 0 && model.limit.output > 0)).toBe(true)
         expect(received).toEqual(["/v1/models"])
         const invalid = yield* request("/provider/discover", {
           method: "POST",
@@ -307,6 +312,81 @@ describe("provider HttpApi", () => {
           message: "Use an HTTP or HTTPS API URL without credentials, query or fragment.",
         })
         expect(received).toEqual(["/v1/models"])
+      }),
+    projectOptions,
+  )
+
+  it.instance(
+    "connects 9Router through the public API with positive model limits and the key outside config",
+    () =>
+      Effect.gen(function* () {
+        const directory = (yield* TestInstance).directory
+        const authFile = path.join(Global.Path.data, "auth.json")
+        const configFiles = (names: string[]) => names.filter((name) => /\.jsonc?$/.test(name))
+        // Connect writes the process-wide global config and credential files; restore them afterwards.
+        yield* Effect.acquireRelease(
+          Effect.promise(async () => {
+            const names = configFiles(await fs.readdir(Global.Path.config).catch(() => []))
+            return {
+              config: await Promise.all(
+                names.map(async (name) => [name, await fs.readFile(path.join(Global.Path.config, name), "utf8")] as const),
+              ),
+              auth: await fs.readFile(authFile, "utf8").catch(() => undefined),
+            }
+          }),
+          (saved) =>
+            Effect.promise(async () => {
+              const kept = new Map(saved.config)
+              for (const name of configFiles(await fs.readdir(Global.Path.config).catch(() => []))) {
+                if (!kept.has(name)) await fs.rm(path.join(Global.Path.config, name), { force: true })
+              }
+              for (const [name, text] of saved.config) await fs.writeFile(path.join(Global.Path.config, name), text)
+              if (saved.auth === undefined) await fs.rm(authFile, { force: true })
+              else await fs.writeFile(authFile, saved.auth)
+            }),
+        )
+        const context = yield* Layer.build(NodeHttpServer.layer(Http.createServer, { host: "127.0.0.1", port: 0 }))
+        const upstream = Context.get(context, HttpServer.HttpServer)
+        yield* upstream.serve(
+          Effect.succeed(
+            HttpServerResponse.jsonUnsafe({
+              data: [{ id: "reported-combo", context_length: 200000, max_output_tokens: 16000 }, { id: "mystery-combo" }],
+            }),
+          ),
+        )
+        const baseURL = `${HttpServer.formatAddress(upstream.address)}/v1`
+        const headers = { "x-opencode-directory": directory, "content-type": "application/json" }
+        const response = yield* request("/provider/9router/connect", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ baseURL, apiKey: "router-test-key" }),
+        })
+        expect(response.status).toBe(200)
+
+        const providers = yield* request("/config/providers", { headers })
+        expect(providers.status).toBe(200)
+        const router = providerByID(yield* providers.json, "providers", "9router")
+        const models = isRecord(router) ? router.models : undefined
+        if (!isRecord(models)) throw new Error("9router provider was not loaded")
+        const limit = (id: string) => {
+          const model = models[id]
+          return isRecord(model) && isRecord(model.limit) ? model.limit : undefined
+        }
+        expect(limit("reported-combo")).toMatchObject({ context: 200000, output: 16000 })
+        expect(Number(limit("mystery-combo")?.context)).toBeGreaterThan(0)
+
+        const savedConfig = (
+          yield* Effect.promise(async () =>
+            Promise.all(
+              configFiles(await fs.readdir(Global.Path.config)).map((name) =>
+                fs.readFile(path.join(Global.Path.config, name), "utf8"),
+              ),
+            ),
+          )
+        ).join("\n")
+        expect(savedConfig).toContain("mystery-combo")
+        expect(savedConfig).not.toContain("router-test-key")
+        expect(yield* Effect.promise(() => fs.readFile(authFile, "utf8"))).toContain("router-test-key")
       }),
     projectOptions,
   )

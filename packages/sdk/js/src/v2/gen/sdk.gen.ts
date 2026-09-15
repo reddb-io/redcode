@@ -161,6 +161,8 @@ import type {
   ProviderDiscoverResponses,
   ProviderListErrors,
   ProviderListResponses,
+  ProviderNineRouterConnectErrors,
+  ProviderNineRouterConnectResponses,
   ProviderOauthAuthorizeErrors,
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
@@ -3422,6 +3424,51 @@ export class Permission extends HeyApiClient {
   }
 }
 
+export class NineRouter extends HeyApiClient {
+  /**
+   * Connect 9Router
+   *
+   * Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.
+   */
+  public connect<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      baseURL?: string
+      apiKey?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "baseURL" },
+            { in: "body", key: "apiKey" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderNineRouterConnectResponses,
+      ProviderNineRouterConnectErrors,
+      ThrowOnError
+    >({
+      url: "/provider/9router/connect",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * Start OAuth authorization
@@ -3614,6 +3661,11 @@ export class Provider extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _nineRouter?: NineRouter
+  get nineRouter(): NineRouter {
+    return (this._nineRouter ??= new NineRouter({ client: this.client }))
   }
 
   private _oauth?: Oauth

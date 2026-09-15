@@ -6,12 +6,15 @@ import { Auth } from "@/auth"
 
 import { mapValues } from "remeda"
 import { Effect, Schema } from "effect"
-import { HttpClient, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { HttpClient, HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { ProviderAuthApiError, ProviderDiscoveryApiError } from "../groups/provider"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
+import { NineRouter } from "@/provider/nine-router"
+import { InstanceStore } from "@/project/instance-store"
+import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 
 function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
   return self.pipe(
@@ -109,12 +112,38 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       return true
     })
 
-    return handlers
-      .handle("discover", (ctx) =>
-        ProviderDiscovery.discover(http, ctx.payload).pipe(
-          Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+    const discover = Effect.fn("ProviderHttpApi.discover")(function* (ctx: {
+      payload: typeof ProviderDiscovery.Input.Type
+    }) {
+      const catalog = ProviderDiscovery.catalogLimits(yield* ModelsDev.Service.use((s) => s.get()))
+      return yield* ProviderDiscovery.discover(http, ctx.payload, { catalog }).pipe(
+        Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+      )
+    })
+
+    const connectNineRouter = Effect.fn("ProviderHttpApi.connectNineRouter")(function* (ctx: {
+      payload: typeof ProviderDiscovery.Input.Type
+    }) {
+      const catalog = ProviderDiscovery.catalogLimits(yield* ModelsDev.Service.use((s) => s.get()))
+      const result = yield* NineRouter.connect({ http, config: cfg, auth: authStore, catalog }, ctx.payload).pipe(
+        Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+      )
+      const store = yield* InstanceStore.Service
+      // Global configuration and a credential changed. Reload every instance once, before the
+      // response is sent, so the client's next reads already include the connection.
+      yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+        disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }).pipe(
+          Effect.provideService(InstanceStore.Service, store),
+          Effect.uninterruptible,
+          Effect.as(response),
         ),
       )
+      return result
+    })
+
+    return handlers
+      .handle("discover", discover)
+      .handle("connectNineRouter", connectNineRouter)
       .handle("list", list)
       .handle("auth", auth)
       .handleRaw("authorize", authorizeRaw)

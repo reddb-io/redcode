@@ -16,6 +16,7 @@ import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { DialogNineRouter } from "./dialog-nine-router"
+import { NINE_ROUTER_ID, nineRouterConnectionProblem } from "../util/nine-router"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -45,10 +46,15 @@ type ProviderOption =
       type: "custom"
     })
 
-export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
+export function providerOptions(
+  list: { id: string; name: string }[],
+  disabled: readonly string[] = [],
+): ProviderOption[] {
   return [
     ...pipe(
-      list.some((provider) => provider.id === "9router") ? list : [...list, { id: "9router", name: "9Router" }],
+      list.some((provider) => provider.id === NINE_ROUTER_ID) || disabled.includes(NINE_ROUTER_ID)
+        ? list
+        : [...list, { id: NINE_ROUTER_ID, name: "9Router" }],
       sortBy(
         (x) => PROVIDER_PRIORITY[x.id] ?? 99,
         (x) => x.name.toLowerCase(),
@@ -117,7 +123,7 @@ export function createDialogProviderOptions() {
 
   const options = createMemo(() => {
     return pipe(
-      providerOptions(sync.data.provider_next.all),
+      providerOptions(sync.data.provider_next.all, sync.data.config.disabled_providers),
       map((provider) => {
         if (provider.type === "custom") {
           return {
@@ -147,34 +153,25 @@ export function createDialogProviderOptions() {
           async onSelect() {
             if (consoleManaged) return
 
-            if (providerID === "9router") {
+            if (providerID === NINE_ROUTER_ID) {
               const configured = sync.data.config.provider?.[providerID]?.options?.baseURL
               return dialog.replace(() => (
                 <DialogNineRouter
                   baseURL={typeof configured === "string" ? configured : undefined}
                   onConnected={async (baseURL, signal) => {
-                    await sdk.client.instance.dispose({}, { throwOnError: true, signal })
+                    // The server reloaded before answering, so these reads include the connection.
+                    // sync.data catches up from the reload event and may still be stale here.
+                    const [config, providers] = await Promise.all([
+                      sdk.client.config.get({}, { throwOnError: true, signal }),
+                      sdk.client.config.providers({}, { throwOnError: true, signal }),
+                    ])
                     if (signal.aborted) return
-                    await sync.bootstrap()
-                    if (signal.aborted) return
-                    const options = sync.data.config.provider?.[providerID]?.options
-                    if (
-                      options?.apiKey ||
-                      (typeof options?.baseURL === "string" && options.baseURL.replace(/\/+$/, "") !== baseURL)
-                    ) {
-                      throw new Error(
-                        "9Router was saved, but an existing provider.options.apiKey or project baseURL overrides this connection. Remove the override from your config to use the saved connection.",
-                      )
-                    }
-                    if (
-                      !sync.data.provider.some(
-                        (provider) => provider.id === providerID && Object.keys(provider.models).length,
-                      )
-                    ) {
-                      throw new Error(
-                        "9Router was saved, but no models are enabled in this project. Check enabled_providers, disabled_providers and model filters in your config.",
-                      )
-                    }
+                    const problem = nineRouterConnectionProblem({
+                      baseURL,
+                      options: config.data.provider?.[providerID]?.options,
+                      providers: providers.data.providers,
+                    })
+                    if (problem) throw new Error(problem)
                     dialog.replace(() => <DialogModel providerID={providerID} />)
                   }}
                 />

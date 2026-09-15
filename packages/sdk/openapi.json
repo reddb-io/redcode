@@ -5192,6 +5192,326 @@
         ]
       }
     },
+    "/provider/discover": {
+      "post": {
+        "tags": ["provider"],
+        "operationId": "provider.discover",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "limit": {
+                            "type": "object",
+                            "properties": {
+                              "context": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["context", "output"],
+                            "additionalProperties": false
+                          },
+                          "estimated": {
+                            "type": "boolean",
+                            "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          }
+                        },
+                        "required": ["id", "name", "limit", "estimated"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["baseURL", "models"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ProviderDiscoveryApiError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProviderDiscoveryApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Check an OpenAI-compatible model catalog from the Redcode server without saving credentials or configuration.",
+        "summary": "Discover compatible provider models",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseURL": {
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "type": "string"
+                  }
+                },
+                "required": ["baseURL", "apiKey"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.discover({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/9router/connect": {
+      "post": {
+        "tags": ["provider"],
+        "operationId": "provider.nineRouter.connect",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "limit": {
+                            "type": "object",
+                            "properties": {
+                              "context": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["context", "output"],
+                            "additionalProperties": false
+                          },
+                          "estimated": {
+                            "type": "boolean",
+                            "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          }
+                        },
+                        "required": ["id", "name", "limit", "estimated"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["baseURL", "models"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ProviderDiscoveryApiError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProviderDiscoveryApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+        "summary": "Connect 9Router",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseURL": {
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "type": "string"
+                  }
+                },
+                "required": ["baseURL", "apiKey"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.nineRouter.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider": {
       "get": {
         "tags": ["provider"],
@@ -7434,11 +7754,11 @@
         ],
         "responses": {
           "200": {
-            "description": "The goal, active",
+            "description": "The goal, active, with any lines that were not understood",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionGoal"
+                  "$ref": "#/components/schemas/SessionGoalSetResult"
                 }
               }
             }
@@ -7451,6 +7771,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
                     },
                     {
                       "$ref": "#/components/schemas/InvalidRequestError"
@@ -7509,6 +7832,14 @@
                       }
                     ],
                     "description": "Turn budget for this goal (default: 20)"
+                  },
+                  "max_cost_usd": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "max_tokens": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
                   }
                 },
                 "required": ["text"],
@@ -7812,6 +8143,7 @@
             }
           }
         },
+        "description": "Change the goal's turn budget and, optionally, its spend limits. A number sets a limit, null removes it, an absent field is kept.",
         "summary": "Set goal budget",
         "requestBody": {
           "content": {
@@ -7841,9 +8173,40 @@
                         "enum": ["Infinity", "-Infinity", "NaN"]
                       }
                     ]
+                  },
+                  "reset_on_message": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "max_cost_usd": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "max_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
-                "required": ["max_turns"],
                 "additionalProperties": false
               }
             }
@@ -7853,6 +8216,193 @@
           {
             "lang": "js",
             "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.session.goalBudget({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/budget": {
+      "get": {
+        "tags": ["session"],
+        "operationId": "session.budget",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session's spend and the limits in force",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBudget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get session budget",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.session.budget({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["session"],
+        "operationId": "session.budgetSet",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session's budget after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBudget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Override the configured spend limits for this session. A number sets a limit, null removes the override, an absent field is kept. Nothing is limited unless set.",
+        "summary": "Set session budget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reset_on_message": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "max_cost_usd": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "max_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.session.budgetSet({\n  ...\n})"
           }
         ]
       }
@@ -27079,6 +27629,9 @@
               },
               "created": {
                 "type": "number"
+              },
+              "paraphrase": {
+                "type": "string"
               }
             },
             "required": ["messageID", "quote"],
@@ -31514,6 +32067,9 @@
           "design": {
             "$ref": "#/components/schemas/ConfigV2Design"
           },
+          "session": {
+            "$ref": "#/components/schemas/ConfigV2Session"
+          },
           "models": {
             "$ref": "#/components/schemas/ConfigV2Models"
           },
@@ -31755,6 +32311,54 @@
                   "threshold": {
                     "type": "integer",
                     "exclusiveMinimum": 0
+                  },
+                  "native": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["auto"]
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ],
+                    "description": "Use the provider's own tool search for deferred tools instead of tool_search: \"auto\" for models known to support it (Anthropic Claude 4.5 and later on the Anthropic API, OpenAI GPT-5.4 and later through the Responses API), true for any Anthropic or OpenAI Responses model, false never (default: \"auto\"). A provider that rejects it falls back to tool_search for the rest of the process."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mcp_validation": {
+                "type": "string",
+                "enum": ["strict", "warn", "off"]
+              },
+              "code_mode": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "string",
+                    "enum": ["off", "auto", "on"]
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "threshold": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "max_tool_calls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "max_output_bytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
                   }
                 },
                 "additionalProperties": false
@@ -31934,6 +32538,9 @@
                 },
                 "required": ["read", "write"],
                 "additionalProperties": false
+              },
+              "unknown": {
+                "type": "boolean"
               },
               "tiers": {
                 "type": "array",
@@ -33152,6 +33759,16 @@
         "required": ["_tag", "requestID", "message"],
         "additionalProperties": false
       },
+      "ProviderDiscoveryApiError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
       "ProviderAuthMethod": {
         "type": "object",
         "properties": {
@@ -33334,6 +33951,37 @@
           }
         }
       },
+      "SpendLimits": {
+        "type": "object",
+        "properties": {
+          "max_cost_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "max_tokens": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpendTotals": {
+        "type": "object",
+        "properties": {
+          "cost": {
+            "type": "number"
+          },
+          "tokens": {
+            "type": "number"
+          },
+          "unpriced": {
+            "type": "number",
+            "description": "Tokens spent on models without pricing"
+          }
+        },
+        "required": ["cost", "tokens", "unpriced"],
+        "additionalProperties": false
+      },
       "SessionGoal": {
         "type": "object",
         "properties": {
@@ -33433,6 +34081,12 @@
             },
             "required": ["used", "max"],
             "additionalProperties": false
+          },
+          "budget": {
+            "$ref": "#/components/schemas/SpendLimits"
+          },
+          "spendStart": {
+            "$ref": "#/components/schemas/SpendTotals"
           },
           "judged": {
             "anyOf": [
@@ -33601,6 +34255,317 @@
           }
         },
         "required": ["id", "objective", "contract", "gates", "status", "turns", "judgeFailures", "created", "updated"],
+        "additionalProperties": false
+      },
+      "SessionGoalSetResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string"
+              },
+              "verification": {
+                "type": "string"
+              },
+              "constraints": {
+                "type": "string"
+              },
+              "boundaries": {
+                "type": "string"
+              },
+              "stop_when": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "stopAfter": {
+            "type": "string",
+            "enum": ["design", "plan", "build"]
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "paused", "blocked", "done", "dropped"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "turns": {
+            "type": "object",
+            "properties": {
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              },
+              "max": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": ["used", "max"],
+            "additionalProperties": false
+          },
+          "budget": {
+            "$ref": "#/components/schemas/SpendLimits"
+          },
+          "spendStart": {
+            "$ref": "#/components/schemas/SpendTotals"
+          },
+          "judged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": ["done", "continue", "blocked", "wait"]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": ["verdict", "reason", "at"],
+            "additionalProperties": false
+          },
+          "judgeFailures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "claimed": {
+            "type": "object",
+            "properties": {
+              "evidence": {
+                "type": "string"
+              },
+              "at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": ["evidence", "at"],
+            "additionalProperties": false
+          },
+          "boot": {
+            "type": "string"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["id", "objective", "contract", "gates", "status", "turns", "judgeFailures", "created", "updated"],
+        "additionalProperties": false
+      },
+      "SessionBudget": {
+        "type": "object",
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/SpendLimits"
+          },
+          "override": {
+            "$ref": "#/components/schemas/SpendLimits"
+          },
+          "spent": {
+            "$ref": "#/components/schemas/SpendTotals"
+          },
+          "exceeded": {
+            "type": "boolean"
+          },
+          "unknown": {
+            "type": "boolean",
+            "description": "A cost limit is set and some spend has no known price"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reset_on_message": {
+            "type": "boolean",
+            "description": "Whether a message a person sends counts the budget afresh (this session's override, else config)"
+          }
+        },
+        "required": ["limits", "override", "spent", "exceeded", "unknown", "reason", "reset_on_message"],
         "additionalProperties": false
       },
       "TextPartInput": {
@@ -37765,6 +38730,32 @@
           },
           "browser": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConfigV2SessionBudget": {
+        "type": "object",
+        "properties": {
+          "max_cost_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "max_tokens": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "reset_on_message": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConfigV2Session": {
+        "type": "object",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/ConfigV2SessionBudget"
           }
         },
         "additionalProperties": false
