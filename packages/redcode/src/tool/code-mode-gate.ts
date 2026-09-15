@@ -47,7 +47,23 @@ export function limits(config?: Config): Limits {
   }
 }
 
-/** Matches `provider/model` or the bare model ID against each wildcard pattern. */
+/**
+ * MCP tools the prompt did not switch off (`user.tools[key] === false`), the same filter a direct
+ * request applies; a script must not reach a tool the request would have dropped.
+ */
+export function switchedOn<T>(
+  tools: Readonly<Record<string, T>>,
+  userTools: Readonly<Record<string, boolean>> | undefined,
+): Record<string, T> {
+  if (!userTools) return { ...tools }
+  return Object.fromEntries(Object.entries(tools).filter(([key]) => userTools[key] !== false))
+}
+
+/**
+ * Matches `provider/model` or the bare model ID against each wildcard pattern. The model ID is
+ * `model.api.id`, which may carry a vendor prefix of its own (OpenRouter's `anthropic/claude-...`),
+ * so `anthropic/*` matches those too.
+ */
 export function modelAllowed(models: readonly string[] | undefined, providerID: string, modelID: string) {
   if (!models || models.length === 0) return false
   const qualified = `${providerID}/${modelID}`

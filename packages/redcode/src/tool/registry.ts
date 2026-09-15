@@ -95,6 +95,8 @@ export interface Interface {
     permission?: PermissionV1.Ruleset
     /** Script tool paths this session already used, ranked earlier in the code mode catalog. */
     recent?: readonly string[]
+    /** The prompt's per-tool switches; MCP and native tools switched off stay out of the code mode catalog. */
+    userTools?: Readonly<Record<string, boolean>>
   }) => Effect.Effect<Tool.Def[]>
 }
 
@@ -326,9 +328,10 @@ const layer = Layer.effect(
       modelID: ModelV2.ID
       natives: readonly Tool.Def[]
       recent?: readonly string[]
+      userTools?: Readonly<Record<string, boolean>>
     }) {
       const ruleset = Permission.merge(input.agent.permission, input.permission ?? [])
-      const tools = Permission.visibleTools(yield* mcp.tools(), ruleset)
+      const tools = CodeModeGate.switchedOn(Permission.visibleTools(yield* mcp.tools(), ruleset), input.userTools)
       if (Object.keys(tools).length === 0) return
       const on = CodeModeGate.enabled({
         flag: flags.experimentalCodeMode,
@@ -345,7 +348,10 @@ const layer = Layer.effect(
       return (yield* codeMode).module.describeCatalog(
         tools,
         Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize),
-        { natives: input.natives.filter((tool) => !hidden.has(tool.id)), recent: input.recent },
+        {
+          natives: input.natives.filter((tool) => !hidden.has(tool.id) && input.userTools?.[tool.id] !== false),
+          recent: input.recent,
+        },
       )
     })
 

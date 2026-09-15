@@ -55,6 +55,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   toolSearch?: ToolSearch.Config
   /** The prompt's per-tool switches (`user.tools`); a tool switched off is never deferred or indexed. */
   userTools?: Record<string, boolean>
+  /** `experimental.mcp_validation`; direct MCP calls warn when unset. */
+  mcpValidation?: "strict" | "warn" | "off"
   /**
    * Whether this step has a Design context (the design agent, or a Session with Design
    * documents). Without one the `design_*` tools are deferred; omitted, they never are.
@@ -217,6 +219,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     get natives() {
       return natives
     },
+    userTools: input.userTools,
     call: (request) =>
       Effect.suspend(() => {
         const parent = options.toolCallId ?? ""
@@ -287,6 +290,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     agent: input.agent,
     permission: input.session.permission,
     recent: scriptToolsUsed(input.messages),
+    userTools: input.userTools,
   })
   {
     const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
@@ -677,10 +681,17 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
-          // The provider only parses the arguments as JSON; the server's schema is the contract.
-          const invalid = JsonSchemaValidate.problems(entry.def.inputSchema, args ?? {})
-          if (invalid.length > 0)
+          // The provider only parses the arguments as JSON; the server's schema is the contract. Servers
+          // publish slightly wrong schemas often enough that direct calls only warn unless told otherwise.
+          const mode = input.mcpValidation ?? "warn"
+          const invalid = mode === "off" ? [] : JsonSchemaValidate.problems(entry.def.inputSchema, args ?? {})
+          if (invalid.length > 0 && mode === "strict")
             throw new Tool.InvalidArgumentsError({ tool: key, detail: JsonSchemaValidate.describe(invalid) })
+          if (invalid.length > 0)
+            yield* Effect.logWarning("MCP tool arguments do not match its input schema; calling it anyway", {
+              tool: key,
+              problems: JsonSchemaValidate.describe(invalid),
+            })
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
             return yield* Effect.promise(() => execute(args, opts))

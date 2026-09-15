@@ -131,8 +131,9 @@ const harness = (registered: Tool.Def[]) =>
   )
 
 const sessionID = SessionID.make("ses_code_mode_policy")
-const resolve = (toolTimeout?: number) =>
+const resolve = (toolTimeout?: number, mcpValidation?: "strict" | "warn" | "off") =>
   SessionTools.resolve({
+    mcpValidation,
     agent: { name: "build", permission: [] } as unknown as Agent.Info,
     model: { providerID: "test", api: { id: "test-model", npm: "@ai-sdk/openai" } } as unknown as Provider.Model,
     session: { id: sessionID, permission: [] } as unknown as Session.Info,
@@ -221,10 +222,10 @@ describe("code mode through SessionTools", () => {
 describe("direct MCP calls validate their input", () => {
   const it = testEffect(harness([readTool]))
 
-  it.live("a call missing a required property fails with the schema path and never reaches the server", () =>
+  it.live("strict: a call missing a required property fails with the schema path and never reaches the server", () =>
     Effect.gen(function* () {
       called.length = 0
-      const tools = yield* resolve()
+      const tools = yield* resolve(undefined, "strict")
       expect(Object.keys(tools)).toContain("gh_issue_read")
       const failed = yield* call(tools.gh_issue_read, {}, "call_direct").pipe(
         Effect.flip,
@@ -236,6 +237,18 @@ describe("direct MCP calls validate their input", () => {
       expect(called).toEqual([])
       const ok = (yield* call(tools.gh_issue_read, { owner: "reddb-io" }, "call_direct_ok")) as { output: string }
       expect(ok.output).toBe("issue")
+    }),
+  )
+
+  it.live("unset (warn) and off: a server with a slightly wrong schema is still called", () =>
+    Effect.gen(function* () {
+      for (const mode of [undefined, "off"] as const) {
+        called.length = 0
+        const tools = yield* resolve(undefined, mode)
+        const out = (yield* call(tools.gh_issue_read, {}, `call_direct_${mode ?? "warn"}`)) as { output: string }
+        expect(out.output).toBe("issue")
+        expect(called).toEqual(["issue_read {}"])
+      }
     }),
   )
 })

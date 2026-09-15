@@ -312,6 +312,10 @@ export const Info = Schema.Struct({
           }),
         }),
       ).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." }),
+      mcp_validation: Schema.optional(Schema.Literals(["strict", "warn", "off"])).annotate({
+        description:
+          'Check MCP tool arguments against the server\'s input schema before calling it: "strict" refuses invalid arguments, "warn" logs them and calls the tool anyway, "off" skips the check. Unset, direct calls warn and code mode scripts are strict; set, both follow it.',
+      }),
       code_mode: Schema.optional(
         Schema.Struct({
           enabled: Schema.optional(Schema.Literals(["off", "auto", "on"])).annotate({
@@ -320,7 +324,7 @@ export const Info = Schema.Struct({
           }),
           models: Schema.optional(Schema.Array(Schema.String)).annotate({
             description:
-              'Models allowed in "auto" mode, as wildcard patterns matched against "provider/model" and the bare model ID, e.g. ["anthropic/*", "gpt-5*"]. Without it, "auto" enables nothing.',
+              'Models allowed in "auto" mode, as wildcard patterns matched against "<provider>/<model api id>" and the bare model API ID (`model.api.id`), e.g. ["anthropic/*", "gpt-5*"]. The API ID can carry its own vendor prefix: "anthropic/*" also matches OpenRouter\'s "anthropic/..." models. Without it, "auto" enables nothing.',
           }),
           threshold: Schema.optional(PositiveInt).annotate({
             description: 'Estimated tokens of MCP tool schemas above which "auto" enables code mode (default: 6000)',

@@ -1997,6 +1997,7 @@ const layer = Layer.effect(
               promptOps,
               publishEvent: events.publish,
               toolTimeout: (yield* config.get()).experimental?.tool_timeout,
+              mcpValidation: (yield* config.get()).experimental?.mcp_validation,
               toolSearch,
               userTools: lastUser.tools,
               designContext,

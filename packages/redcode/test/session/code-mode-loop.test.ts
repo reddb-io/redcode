@@ -247,7 +247,7 @@ const it = testEffect(
   ] as const),
 )
 
-const cfg = (url: string, codeMode?: Record<string, unknown>) => ({
+const cfg = (url: string, codeMode?: Record<string, unknown>, experimental: Record<string, unknown> = {}) => ({
   $schema: "https://opencode.ai/config.json",
   provider: {
     test: {
@@ -275,24 +275,33 @@ const cfg = (url: string, codeMode?: Record<string, unknown>) => ({
   model: "test/test-model",
   // Everything allowed, so no permission prompt blocks the loop.
   permission: { "*": "allow" },
-  ...(codeMode ? { experimental: { code_mode: codeMode } } : {}),
+  experimental: { ...experimental, ...(codeMode ? { code_mode: codeMode } : {}) },
 })
 
 type Body = Record<string, any>
 const toolNames = (body: Body): string[] => (body.tools ?? []).map((t: any) => t.function.name)
 
-const setup = (codeMode?: Record<string, unknown>) =>
+const setup = (codeMode?: Record<string, unknown>, experimental?: Record<string, unknown>) =>
   Effect.gen(function* () {
     yield* connect
     const { directory } = yield* TestInstance
     const llm = yield* TestLLMServer
     const fsu = yield* FSUtil.Service
-    yield* fsu.writeWithDirs(path.join(directory, "opencode.json"), JSON.stringify(cfg(llm.url, codeMode)))
+    yield* fsu.writeWithDirs(
+      path.join(directory, "opencode.json"),
+      JSON.stringify(cfg(llm.url, codeMode, experimental)),
+    )
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
     const chat = yield* sessions.create({ title: "Pinned" })
-    const say = (value: string) =>
-      prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: value }] })
+    const say = (value: string, tools?: Record<string, boolean>) =>
+      prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: value }],
+        ...(tools ? { tools } : {}),
+      })
     const loop = () => awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "turn never finished", "60 seconds")
     const bodies = () =>
       llm.hits.pipe(
@@ -374,10 +383,47 @@ describe("code mode in the legacy loop", () => {
   )
 
   it.instance(
-    "in direct mode an MCP call missing required input fails with the schema path and never reaches the server",
+    "a tool the prompt switched off is neither in the script catalog nor callable from a script",
+    () =>
+      Effect.gen(function* () {
+        const s = yield* setup({ enabled: "on" })
+        yield* s.say("list issues", { github_list_issues: false })
+        yield* s.llm.tool("execute", { code: "return await tools.github.list_issues({ owner: 'reddb-io' })" })
+        yield* s.llm.text("cannot")
+        yield* s.loop()
+        const [first] = yield* s.bodies()
+        const execute = (first!.tools as any[]).find((tool) => tool.function.name === "execute")
+        expect(execute.function.description).toContain("tools.github.issue_read(")
+        expect(execute.function.description).not.toContain("list_issues")
+        const part = (yield* s.toolParts()).find((p) => p.tool === "execute")
+        expect(part.state.status).toBe("error")
+        expect(part.state.error).toContain("Unknown tool 'github.list_issues'")
+        expect(calls).toEqual([])
+      }),
+    60_000,
+  )
+
+  it.instance(
+    "in direct mode an invalid MCP call is logged and still made by default",
     () =>
       Effect.gen(function* () {
         const s = yield* setup()
+        yield* s.say("read issue 7")
+        yield* s.llm.tool("github_issue_read", { owner: "reddb-io" })
+        yield* s.llm.text("done")
+        yield* s.loop()
+        const part = (yield* s.toolParts()).find((p) => p.tool === "github_issue_read")
+        expect(part.state.status).toBe("completed")
+        expect(calls).toEqual(['issue_read {"owner":"reddb-io"}'])
+      }),
+    60_000,
+  )
+
+  it.instance(
+    "with mcp_validation strict a direct MCP call missing required input fails with the schema path and never reaches the server",
+    () =>
+      Effect.gen(function* () {
+        const s = yield* setup(undefined, { mcp_validation: "strict" })
         yield* s.say("read issue 7")
         yield* s.llm.tool("github_issue_read", { owner: "reddb-io" })
         yield* s.llm.text("sorry")
