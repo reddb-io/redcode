@@ -33,6 +33,8 @@ import { MessageID } from "@/session/schema"
 export { Parameters } from "./shell/prompt"
 
 const MAX_METADATA_LENGTH = 30_000
+/** Poll monitors allowed to repeat for longer than this are approved every time. */
+const MONITOR_ALWAYS_ASK_MS = 600_000
 const PROGRESS_INTERVAL_MS = 100
 const CWD = new Set(["cd", "chdir", "popd", "pushd", "push-location", "set-location"])
 const FILES = new Set([
@@ -294,11 +296,16 @@ const ask = Effect.fn("ShellTool.ask")(function* (
     })
   }
 
-  if (scan.patterns.size === 0) return
+  // A poll that may repeat for over ten minutes is approved each time, whatever `gh *`-style rule was
+  // saved for one-off commands, and never saved as "always".
+  const force =
+    input.monitor?.mode === "poll" && Monitor.deadline(input.monitor) > MONITOR_ALWAYS_ASK_MS ? true : undefined
+  if (scan.patterns.size === 0 && !force) return
   yield* ctx.ask({
     permission: ShellID.ToolID,
-    patterns: Array.from(scan.patterns),
-    always: Array.from(scan.always),
+    patterns: scan.patterns.size > 0 ? Array.from(scan.patterns) : [input.command],
+    always: force ? [] : Array.from(scan.always),
+    ...(force ? { force } : {}),
     metadata: {
       command: input.command,
       ...monitor,

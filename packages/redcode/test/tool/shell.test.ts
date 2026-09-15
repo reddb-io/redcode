@@ -1339,10 +1339,26 @@ describe("tool.shell monitors", () => {
           capture(requests),
         ),
       )
-      expect(requests.find((request) => request.permission === "bash")?.metadata).toMatchObject({
+      const asked = requests.find((request) => request.permission === "bash") as
+        | (PermissionV1.Request & { force?: boolean })
+        | undefined
+      expect(asked?.metadata).toMatchObject({
         command: "gh pr checks 12",
         monitor: 'poll every 1m, for up to 1h, fail on "fail"',
       })
+      // An hour of repetition is approved every time, never saved as "always".
+      expect(asked?.force).toBe(true)
+      expect(asked?.always).toEqual([])
+
+      const short: typeof requests = []
+      yield* runIn(
+        tmp,
+        fail(
+          { command: "gh pr checks 12", monitor: { mode: "poll", interval_ms: 30_000, deadline_ms: 300_000 } },
+          capture(short),
+        ),
+      )
+      expect((short.find((request) => request.permission === "bash") as { force?: boolean } | undefined)?.force).toBeUndefined()
     }),
   )
 

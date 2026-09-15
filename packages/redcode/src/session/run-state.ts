@@ -9,6 +9,8 @@ import { SessionID } from "./schema"
 import { SessionStatus } from "./status"
 
 export interface Interface {
+  /** Bumped by every cancel (Esc, a stall), so work started before it knows not to start a turn on its own. */
+  readonly generation: (sessionID: SessionID) => Effect.Effect<number>
   readonly assertNotBusy: (sessionID: SessionID) => Effect.Effect<void, Session.BusyError>
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
   readonly ensureRunning: (
@@ -36,6 +38,7 @@ const layer = Layer.effect(
       Effect.fn("SessionRunState.state")(function* () {
         const scope = yield* Scope.Scope
         const runners = new Map<SessionID, Runner.Runner<SessionV1.WithParts>>()
+        const generations = new Map<SessionID, number>()
         yield* Effect.addFinalizer(
           Effect.fnUntraced(function* () {
             yield* Effect.forEach(runners.values(), (runner) => runner.cancel, {
@@ -45,7 +48,7 @@ const layer = Layer.effect(
             runners.clear()
           }),
         )
-        return { runners, scope }
+        return { runners, scope, generations }
       }),
     )
 
@@ -75,8 +78,9 @@ const layer = Layer.effect(
     })
 
     const cancel = Effect.fn("SessionRunState.cancel")(function* (sessionID: SessionID) {
-      yield* cancelBackgroundJobs(background, sessionID)
       const data = yield* InstanceState.get(state)
+      data.generations.set(sessionID, (data.generations.get(sessionID) ?? 0) + 1)
+      yield* cancelBackgroundJobs(background, sessionID)
       const existing = data.runners.get(sessionID)
       if (!existing) {
         yield* status.set(sessionID, { type: "idle" })
@@ -104,7 +108,9 @@ const layer = Layer.effect(
         .pipe(Effect.catchTag("RunnerBusy", () => Effect.fail(busyError(sessionID))))
     })
 
-    return Service.of({ assertNotBusy, cancel, ensureRunning, startShell })
+    const generation = (sessionID: SessionID) =>
+      InstanceState.get(state).pipe(Effect.map((data) => data.generations.get(sessionID) ?? 0))
+    return Service.of({ assertNotBusy, cancel, ensureRunning, startShell, generation })
   }),
 )
 

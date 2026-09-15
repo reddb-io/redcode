@@ -8,8 +8,8 @@
  *
  * This recognises the shape and rebuilds it as the equivalent monitor call, so the refusal can hand
  * a small model the exact retry instead of a lecture. It is text-based on purpose: it only has to
- * recognise a shape, and it never runs anything. Short sleeps, short retry loops and loops that
- * observe nothing stay allowed.
+ * recognise a shape, and it never runs anything. Short sleeps, short or bounded retry loops, and
+ * batch loops that act on each item stay allowed.
  */
 
 import type { Monitor } from "@reddb-io/redcode-schema/monitor"
@@ -18,6 +18,9 @@ import type { Monitor } from "@reddb-io/redcode-schema/monitor"
 export const LONG_SLEEP_MS = 30_000
 const DEFAULT_INTERVAL_MS = 30_000
 const DEFAULT_DEADLINE_MS = 3_600_000
+/** A local readiness wait (`until pg_isready; do sleep 1; done`) is polled briskly and given up on soon. */
+const READINESS_DEADLINE_MS = 120_000
+const READINESS_SLEEP_MS = 5_000
 const MIN_INTERVAL_MS = 1_000
 const MAX_INTERVAL_MS = 3_600_000
 const MAX_DEADLINE_MS = 86_400_000
@@ -86,8 +89,10 @@ export interface Detection {
   readonly kind: "loop" | "sleep" | "watch"
   /** How long the command would have held the turn, when that can be read off it. */
   readonly waitMs?: number
-  /** Commands ahead of the wait, which still have to run on their own. */
+  /** Commands ahead of the wait, which still have to run on their own first. */
   readonly before?: string
+  /** Commands after the wait, which the model has to run once the monitor reports. */
+  readonly after?: string
   readonly suggestion?: Suggestion
 }
 
@@ -142,6 +147,8 @@ function basename(word: string) {
   return word.slice(word.lastIndexOf("/") + 1).toLowerCase()
 }
 
+const DURATION = /^\d+(\.\d+)?[smhd]?$/
+
 /** Tokens standing where a command name goes. */
 function commandWords(masked: string, from = 0, to = masked.length) {
   const list = tokens(masked, from, to)
@@ -155,7 +162,7 @@ function commandWords(masked: string, from = 0, to = masked.length) {
     for (let j = index - 1; j >= 0; j--) {
       const text = list[j]!.text
       if (text === "timeout") return j < index - 1
-      if (!text.startsWith("-") && !/^\d+(\.\d+)?[smhd]?$/.test(text)) break
+      if (!text.startsWith("-") && !DURATION.test(text)) break
     }
     // `STATUS=value cmd`: an assignment prefix keeps the command position.
     return /^[A-Za-z_]\w*=/.test(previous.text) && !/^[A-Za-z_]\w*=/.test(token.text)
@@ -170,6 +177,15 @@ function statementStart(masked: string, at: number) {
     if (SEPARATOR.test(text) || ["do", "then", "else", "elif"].includes(text)) return list[i]!.end
   }
   return 0
+}
+
+/** The duration a `timeout` in front of the command at `at` allows it, if any. */
+function leaderTimeout(masked: string, at: number) {
+  const lead = tokens(masked, statementStart(masked, at), at).map((token) => token.text)
+  const index = lead.indexOf("timeout")
+  if (index < 0) return undefined
+  const limit = lead.slice(index + 1).find((text) => DURATION.test(text))
+  return limit === undefined ? undefined : durationMs(limit, false)
 }
 
 function durationMs(args: string, powershell: boolean) {
@@ -212,8 +228,8 @@ function sleeps(masked: string, from = 0, to = masked.length): Sleep[] {
   })
 }
 
-/** The statement starting at `start`, pipes included, up to the next separator. */
-function statement(text: string, masked: string, start: number) {
+/** Where the statement starting at `start` ends: pipes included, up to the next separator. */
+function statementEnd(masked: string, start: number) {
   let depth = 0
   let double = false
   let end = start
@@ -226,12 +242,15 @@ function statement(text: string, masked: string, start: number) {
       if (depth === 0) break
       depth--
     } else if (depth === 0) {
-      if (ch === ";" || ch === "\n" || ch === "`") break
-      if (ch === "&") break
+      if (ch === ";" || ch === "\n" || ch === "`" || ch === "&") break
       if (ch === "|" && masked[end + 1] === "|") break
     }
   }
-  return text.slice(start, end).trim()
+  return end
+}
+
+function statement(text: string, masked: string, start: number) {
+  return text.slice(start, statementEnd(masked, start)).trim()
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -284,7 +303,7 @@ function iterations(header: string) {
   if (brace) return Math.abs(Number(brace[2]) - Number(brace[1])) + 1
   const cStyle = /\(\(\s*\w+\s*=\s*(\d+)\s*;\s*\w+\s*(<=?)\s*(\d+)/.exec(header)
   if (cStyle) return Number(cStyle[3]) - Number(cStyle[1]) + (cStyle[2] === "<=" ? 1 : 0)
-  const list = /^\s*for\s+\w+\s+in\s+([^;\n]*?)\s*(?:;|\n|\bdo\b)/.exec(header)
+  const list = /^\s*for\s+\w+\s+in\s+([^;\n]*?)\s*(?:;|\n|\bdo\b|$)/.exec(header)
   if (!list || /[$`*?[]/.test(list[1]!)) return undefined
   const items = list[1]!.split(/\s+/).filter(Boolean)
   // `for i in 1..12` is not a bash range, but it is plainly what the model meant.
@@ -316,6 +335,17 @@ function trimTail(text: string) {
   let out = text.trim()
   while (true) {
     const next = out.replace(/(?:;|&&|\|\||\|)\s*$/, "").trim()
+    if (next === out) break
+    out = next
+  }
+  return out || undefined
+}
+
+/** The commands after a wait, without the separator joining them to it. */
+function trimHead(text: string) {
+  let out = text.trim()
+  while (true) {
+    const next = out.replace(/^(?:;|&&|\|\||\||&)\s*/, "").trim()
     if (next === out) break
     out = next
   }
@@ -354,12 +384,35 @@ function build(input: {
   }
 }
 
-function withBefore(detection: Omit<Detection, "before">, text: string | undefined): Detection {
-  return text ? { ...detection, before: text } : detection
+function compact(detection: Detection): Detection {
+  return Object.fromEntries(Object.entries(detection).filter(([, value]) => value !== undefined)) as Detection
 }
 
+/** A `timeout` in front bounds the wait: short enough, it is a step; otherwise it caps the deadline. */
+function bound(detection: Detection | undefined, limit: number | undefined): Detection | undefined {
+  if (!detection || limit === undefined) return detection
+  if (limit < LONG_SLEEP_MS) return undefined
+  const suggestion =
+    detection.suggestion?.monitor.mode === "poll"
+      ? {
+          ...detection.suggestion,
+          monitor: {
+            ...detection.suggestion.monitor,
+            deadline_ms: clamp(
+              Math.min(detection.suggestion.monitor.deadline_ms ?? DEFAULT_DEADLINE_MS, limit),
+              detection.suggestion.monitor.interval_ms ?? MIN_INTERVAL_MS,
+              MAX_DEADLINE_MS,
+            ),
+          },
+        }
+      : detection.suggestion
+  return compact({ ...detection, waitMs: Math.min(detection.waitMs ?? limit, limit), suggestion })
+}
+
+type Loop = { start: number; end: number; keyword: string; doAt: number }
+
 function loops(masked: string) {
-  const out: { start: number; end: number; keyword: string; doAt: number }[] = []
+  const out: Loop[] = []
   for (const word of commandWords(masked)) {
     if (!["for", "while", "until"].includes(word.text)) continue
     const marks = /(?<![\w.\/-])(do|done)(?![\w.\/-])/g
@@ -385,36 +438,55 @@ function loops(masked: string) {
   return out
 }
 
+/**
+ * A batch loop acts on each item (`for c in $(docker ps -q); do docker stop $c; sleep 1; done`,
+ * `while read repo; do gh api repos/$repo; done < list`). Polling repeats the same check against a
+ * fixed target, so a status command that uses the loop variable is not waiting on anything.
+ */
+function batch(header: string, status: string) {
+  if (/^\s*while\s+(?:IFS=\S*\s+)?read\b/.test(header)) return true
+  const variable = /^\s*for\s+(?:\(\(\s*)?(\w+)/.exec(header)?.[1]
+  return variable !== undefined && new RegExp(`\\$\\{?${variable}\\b`).test(status)
+}
+
 function detectLoop(command: string, masked: string): Detection | undefined {
   for (const loop of loops(masked)) {
     const naps = sleeps(masked, loop.start, loop.end)
     if (naps.length === 0) continue
-    const status = commandWords(masked, loop.start, loop.end).find((word) => STATUS.has(basename(word.text)))
+    const header = command.slice(loop.start, loop.doAt)
+    if (/^\s*while\s+(?:IFS=\S*\s+)?read\b/.test(header)) continue
+    // A `for` header only lists the items (`$(docker ps -q)`); what the loop polls is in its body.
+    // A `while`/`until` header is the check itself.
+    const status = commandWords(masked, loop.keyword === "for" ? loop.doAt : loop.start, loop.end)
+      .filter((word) => STATUS.has(basename(word.text)))
+      .find((word) => !batch(header, statement(command, masked, word.start)))
     if (!status) continue
+    const text = statement(command, masked, status.start)
     const interval = naps.every((nap) => nap.ms !== undefined)
       ? naps.reduce((total, nap) => total + nap.ms!, 0)
       : undefined
-    const count = loop.keyword === "for" ? iterations(command.slice(loop.start, loop.doAt + 2)) : undefined
+    const count = loop.keyword === "for" ? iterations(`${header}do`) : undefined
     const waitMs = count !== undefined && interval !== undefined ? count * interval : undefined
     // A short retry (`for i in 1 2 3; do curl … && break; sleep 2; done`) is a step, not a wait.
     if (waitMs !== undefined && waitMs < LONG_SLEEP_MS) continue
     const inHeader = status.start < loop.doAt
     const negated = inHeader && /!\s*$/.test(masked.slice(loop.start, status.start))
-    const success =
-      inHeader && (loop.keyword === "until" || negated) ? undefined : breakCondition(masked.slice(loop.doAt, loop.end))
-    return withBefore(
-      {
-        kind: "loop",
-        ...(waitMs !== undefined && Number.isFinite(waitMs) ? { waitMs } : {}),
-        suggestion: build({
-          command: statement(command, masked, status.start),
-          intervalMs: interval,
-          ...(waitMs !== undefined ? { deadlineMs: waitMs + (interval ?? 0) } : {}),
-          ...(success ? { success } : {}),
-        }),
-      },
-      before(command, masked, loop.start),
-    )
+    const exits = inHeader && (loop.keyword === "until" || negated)
+    // `until pg_isready; do sleep 1; done`: a local readiness wait, polled briskly and given up on soon.
+    const readiness = exits && waitMs === undefined && interval !== undefined && interval <= READINESS_SLEEP_MS
+    const success = exits ? undefined : breakCondition(masked.slice(loop.doAt, loop.end))
+    return compact({
+      kind: "loop",
+      waitMs: waitMs !== undefined && Number.isFinite(waitMs) ? waitMs : undefined,
+      before: before(command, masked, loop.start),
+      after: trimHead(command.slice(loop.end)),
+      suggestion: build({
+        command: text,
+        intervalMs: readiness ? clamp(interval!, MIN_INTERVAL_MS, 2_000) : interval,
+        deadlineMs: readiness ? READINESS_DEADLINE_MS : waitMs !== undefined ? waitMs + (interval ?? 0) : undefined,
+        success,
+      }),
+    })
   }
   return undefined
 }
@@ -422,8 +494,14 @@ function detectLoop(command: string, masked: string): Detection | undefined {
 function detectWatch(command: string, masked: string): Detection | undefined {
   for (const word of commandWords(masked)) {
     const name = basename(word.text)
+    const end = statementEnd(masked, word.start)
+    const common = {
+      kind: "watch" as const,
+      before: before(command, masked, word.start),
+      after: trimHead(command.slice(end)),
+    }
     if (name === "watch") {
-      const parts = statement(command, masked, word.end).split(/\s+/)
+      const parts = command.slice(word.end, end).trim().split(/\s+/)
       let interval = 2_000
       let index = 0
       while (parts[index]?.startsWith("-")) {
@@ -442,13 +520,13 @@ function detectWatch(command: string, masked: string): Detection | undefined {
         .join(" ")
         .replace(/^["']|["']$/g, "")
       if (!observed) continue
-      return withBefore(
-        { kind: "watch", suggestion: build({ command: observed, intervalMs: interval }) },
-        before(command, masked, word.start),
+      return bound(
+        compact({ ...common, suggestion: build({ command: observed, intervalMs: interval }) }),
+        leaderTimeout(masked, word.start),
       )
     }
     if (name !== "gh") continue
-    const text = statement(command, masked, word.start)
+    const text = command.slice(word.start, end).trim()
     const words = text.split(/\s+/)
     const blocking =
       (words[1] === "run" && words[2] === "watch") ||
@@ -456,29 +534,44 @@ function detectWatch(command: string, masked: string): Detection | undefined {
     if (!blocking) continue
     const index = words.findIndex((item) => item === "-i" || item === "--interval")
     const interval = index >= 0 ? Number(words[index + 1]) * 1_000 || undefined : undefined
-    return withBefore(
-      { kind: "watch", suggestion: build({ command: text, intervalMs: interval ?? DEFAULT_INTERVAL_MS }) },
-      before(command, masked, word.start),
+    const limit = leaderTimeout(masked, word.start)
+    // `timeout 20 gh run watch 42` gives up on its own before it becomes a wait.
+    if (limit !== undefined && limit < LONG_SLEEP_MS) continue
+    return bound(
+      compact({ ...common, suggestion: build({ command: text, intervalMs: interval ?? DEFAULT_INTERVAL_MS }) }),
+      limit,
     )
   }
   return undefined
+}
+
+/** A one-shot monitor for the command a sleep was waiting to run. */
+function once(command: string): Suggestion {
+  return { command, monitor: { mode: "once" } }
 }
 
 function detectSleep(command: string, masked: string): Detection | undefined {
   // An unreadable duration (`sleep "$DELAY"`) is only refused inside a polling loop, above.
   const long = sleeps(masked).find((nap) => nap.ms !== undefined && nap.ms >= LONG_SLEEP_MS)
   if (!long) return undefined
+  const common = {
+    kind: "sleep" as const,
+    waitMs: Number.isFinite(long.ms) ? long.ms : undefined,
+    before: before(command, masked, long.start),
+  }
   const status = commandWords(masked, long.end).find((word) => STATUS.has(basename(word.text)))
-  return withBefore(
-    {
-      kind: "sleep",
-      ...(Number.isFinite(long.ms) ? { waitMs: long.ms } : {}),
-      ...(status
-        ? { suggestion: build({ command: statement(command, masked, status.start), intervalMs: long.ms }) }
-        : {}),
-    },
-    before(command, masked, long.start),
-  )
+  if (status) {
+    const end = statementEnd(masked, status.start)
+    return compact({
+      ...common,
+      after: trimHead(command.slice(end)),
+      suggestion: build({ command: command.slice(status.start, end).trim(), intervalMs: long.ms }),
+    })
+  }
+  // `sleep 45 && npm test`: the rest is the real work. Inside a loop there is no single rest to name.
+  const inside = loops(masked).some((loop) => long.start > loop.start && long.start < loop.end)
+  const rest = inside ? undefined : trimHead(command.slice(long.end))
+  return compact({ ...common, suggestion: rest ? once(rest) : undefined })
 }
 
 /** `bash -c '…'` and friends: the script inside the quotes, and where the quoted argument sits. */
@@ -506,10 +599,12 @@ export function detect(command: string): Detection | undefined {
   // The suggestion is built from the script itself, never from a fragment cut out of the quotes.
   const found = detect(wrapped.inner)
   if (found) {
-    const outer = before(command, masked, wrapped.word.start)
-    const setup = [outer, found.before].filter(Boolean).join("\n")
-    const { before: _, ...rest } = found
-    return withBefore(rest, setup || undefined)
+    const setup = [before(command, masked, wrapped.word.start), found.before].filter(Boolean).join("\n")
+    const rest = [found.after, trimHead(command.slice(wrapped.end))].filter(Boolean).join("\n")
+    return bound(
+      compact({ ...found, before: setup || undefined, after: rest || undefined }),
+      leaderTimeout(masked, wrapped.word.start),
+    )
   }
   const blanked =
     masked.slice(0, wrapped.start) +
@@ -520,13 +615,23 @@ export function detect(command: string): Detection | undefined {
 
 /**
  * What a command would change if a poll monitor repeated it. A heuristic over common CLIs, not a
- * classifier: it refuses the obvious cases cheaply; the tool description covers the rest.
+ * classifier: it refuses the obvious cases cheaply, and the tool description covers the rest. It
+ * reads the raw text, quotes included, so `bash -c 'git push'` is caught too.
  */
 const MUTATING: { label: string; pattern: RegExp }[] = [
   {
     label: "creates or changes GitHub state",
     pattern:
-      /\bgh\s+(?:pr\s+(?:create|merge|close|reopen|edit|comment|review|ready)|issue\s+(?:create|close|reopen|edit|comment)|workflow\s+run|run\s+(?:rerun|cancel|delete)|release\s+(?:create|delete|upload|edit)|repo\s+(?:create|delete|fork)|api\s+(?:.*\s)?(?:-X|--method)\s*(?:POST|PUT|PATCH|DELETE))\b/i,
+      /\bgh\s+(?:pr\s+(?:create|merge|close|reopen|edit|comment|review|ready)|issue\s+(?:create|close|reopen|edit|comment)|workflow\s+run|run\s+(?:rerun|cancel|delete)|release\s+(?:create|delete|upload|edit)|repo\s+(?:create|delete|fork))\b/i,
+  },
+  {
+    label: "sends a GitHub API request that changes something",
+    pattern:
+      /\bgh\s+api\b[^\n;&|]*\s(?:-f|-F|--field|--raw-field|--input|-X\s*(?!GET\b)[A-Za-z]+|--method[\s=]+(?!GET\b)[A-Za-z]+)(?=[\s=]|$)/i,
+  },
+  {
+    label: "publishes a package",
+    pattern: /\b(?:npm|pnpm|yarn|bun)\s+publish\b/,
   },
   {
     label: "changes the git repository",
@@ -539,21 +644,22 @@ const MUTATING: { label: string; pattern: RegExp }[] = [
   },
   {
     label: "starts or changes containers",
-    pattern: /\b(?:docker|podman)\s+(?:run|build|push|rm|rmi|stop|kill|start|restart|compose\s+(?:up|down|build|rm|restart|stop))\b/,
+    pattern:
+      /\b(?:docker|podman)\s+(?:run|build|push|rm|rmi|stop|kill|start|restart|compose\s+(?:up|down|build|rm|restart|stop))\b/,
   },
   {
     label: "sends a request that changes something",
-    pattern: /\bcurl\b[^|;&\n]*\s(?:-X\s*(?:POST|PUT|PATCH|DELETE)\b|--request\s+(?:POST|PUT|PATCH|DELETE)\b|-d\b|--data(?:-\w+)?\b|-F\b|--form\b|-T\b|--upload-file\b)/i,
+    pattern:
+      /\bcurl\b[^|;&\n]*\s(?:-X\s*(?:POST|PUT|PATCH|DELETE)\b|--request\s+(?:POST|PUT|PATCH|DELETE)\b|-d\b|--data(?:-\w+)?\b|--json\b|-F\b|--form\b|-T\b|--upload-file\b)/i,
   },
   {
     label: "changes files",
-    pattern: /(?:^|[;&|(]\s*)(?:rm|mv|cp|mkdir|touch|tee|dd|chmod|chown|ln)\s/,
+    pattern: /(?:^|[;&|('"]\s*)(?:rm|mv|cp|mkdir|touch|tee|dd|chmod|chown|ln)\s/,
   },
 ]
 
 export function mutating(command: string) {
-  const masked = mask(command)
-  return MUTATING.find((entry) => entry.pattern.test(masked))?.label
+  return MUTATING.find((entry) => entry.pattern.test(command))?.label
 }
 
 export function mutatingRefusal(label: string) {
@@ -594,13 +700,19 @@ export function refusal(detection: Detection, workdir?: string) {
       : detection.kind === "watch"
         ? "Not run: this command watches a job until it ends, which blocks the turn for as long as the job runs."
         : `Not run: this command sleeps${held}, which blocks the turn. Sleeps shorter than ${duration(LONG_SLEEP_MS)} are allowed.`,
-    "Wait with a bash monitor instead. It runs the status command in the background every interval_ms, releases the turn, and resumes this session with the result once the condition is met: exit code 0 (and success_contains, if set, is in the output), failure_contains is in the output, or deadline_ms passes.",
+    detection.suggestion?.monitor.mode === "once"
+      ? "Run the command as a one-shot bash monitor instead of sleeping in front of it. It starts now in the background, releases the turn, and resumes this session with the result when it exits."
+      : "Wait with a bash monitor instead. It runs the status command in the background every interval_ms, releases the turn, and resumes this session with the result once the condition is met: exit code 0 (and success_contains, if set, is in the output), failure_contains is in the output, or deadline_ms passes.",
   ]
   if (detection.before)
     lines.push(`Run the part before the wait first, as its own bash call without any sleep: ${detection.before}`)
   if (detection.suggestion) {
     lines.push("Retry with this bash call:", call(detection.suggestion, workdir))
-    if (!detection.suggestion.monitor.success_contains && !detection.suggestion.monitor.failure_contains)
+    if (
+      detection.suggestion.monitor.mode === "poll" &&
+      !detection.suggestion.monitor.success_contains &&
+      !detection.suggestion.monitor.failure_contains
+    )
       lines.push(
         "Here exit code 0 means done. If done is shown by text in the output instead, add monitor.success_contains with that text.",
       )
@@ -611,6 +723,10 @@ export function refusal(detection: Detection, workdir?: string) {
       'For a long command of your own (a build, a deploy script), call bash with monitor {"mode":"once"} instead.',
     )
   }
+  if (detection.after)
+    lines.push(
+      `When the monitor reports success, run what came after the wait as its own bash call: ${detection.after}`,
+    )
   lines.push(
     "After starting the monitor, end your response or do independent work. Do not sleep, do not call monitor wait repeatedly, and do not start the same monitor twice.",
   )

@@ -6095,3 +6095,100 @@ unix(
     }),
   60000,
 )
+
+unix(
+  "without a goal, a monitor result after Esc waits for the next message instead of starting a turn",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const chat = yield* sessions.create({ title: "Esc without a goal" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      yield* llm.tool("bash", {
+        command: "test -f built && printf built",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, success_contains: "built", deadline_ms: 30000 },
+      })
+      yield* llm.text("Watching the build.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "watch the build" }] }),
+        "the first turn never ended",
+        "30 seconds",
+      )
+      yield* prompt.cancel(chat.id)
+      const calls = yield* llm.calls
+      yield* writeText(path.join(dir, "built"), "")
+      yield* pollWithTimeout(
+        monitors.list(chat.id).pipe(Effect.map((list) => (list[0]?.delivery === "delivered" ? true : undefined))),
+        "the monitor result was never admitted",
+        "30 seconds",
+      )
+      yield* Effect.sleep("500 millis")
+      expect(yield* llm.calls).toBe(calls)
+
+      yield* llm.textMatch((hit) => body(hit).includes("A monitor finished."), "The build finished.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "status?" }] }),
+        "the next turn never ended",
+        "30 seconds",
+      )
+      yield* pollWithTimeout(
+        sessions.messages({ sessionID: chat.id }).pipe(
+          Effect.map((messages) =>
+            messages.some((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "The build finished."),
+            )
+              ? true
+              : undefined,
+          ),
+        ),
+        "the pending result never reached the model",
+        "30 seconds",
+      )
+    }),
+  60000,
+)
+
+unix(
+  "a goal set and paused after a monitor started keeps the result from starting a turn",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const goals = yield* GoalRuntime.Service
+      const chat = yield* sessions.create({ title: "Goal paused later" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* llm.tool("bash", {
+        command: "test -f released && printf released",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, success_contains: "released", deadline_ms: 30000 },
+      })
+      yield* llm.text("Watching the release.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "watch the release" }] }),
+        "the first turn never ended",
+        "30 seconds",
+      )
+      const now = Date.now()
+      yield* goals.set(chat.id, SessionGoal.paused(SessionGoal.parse("ship the release", { now }), "paused by the person", now))
+      const calls = yield* llm.calls
+      yield* writeText(path.join(dir, "released"), "")
+      yield* pollWithTimeout(
+        monitors.list(chat.id).pipe(Effect.map((list) => (list[0]?.delivery === "delivered" ? true : undefined))),
+        "the monitor result was never admitted",
+        "30 seconds",
+      )
+      yield* Effect.sleep("500 millis")
+      expect(yield* llm.calls).toBe(calls)
+    }),
+  60000,
+)

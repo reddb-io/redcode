@@ -4117,6 +4117,7 @@ export type MonitorInfo = {
   evidence?: MonitorEvidence
   error?: string
   delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  cleanup?: "reaped" | "exited" | "left-running" | "unknown"
   process?: MonitorProcess
   interruptedBy?: string
 }

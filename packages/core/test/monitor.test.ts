@@ -57,7 +57,7 @@ const base = {
 const GONE = "999999999:1:gone"
 
 /** A running row left by a runtime that crashed. */
-const orphan = (sessionID: string, patch: Partial<Monitor.Info> = {}) =>
+const orphan = (sessionID: string, patch: Partial<Monitor.Info> = {}, owner = GONE) =>
   Effect.gen(function* () {
     const database = yield* Database.Service
     const info: Monitor.Info = {
@@ -75,7 +75,7 @@ const orphan = (sessionID: string, patch: Partial<Monitor.Info> = {}) =>
     }
     yield* database.db
       .insert(MonitorTable)
-      .values({ id: info.id, session_id: sessionID, owner: GONE, data: info })
+      .values({ id: info.id, session_id: sessionID, owner, data: info })
       .run()
       .pipe(Effect.orDie)
     return info
@@ -366,9 +366,15 @@ describe("Monitors", () => {
         yield* orphan(sessionID, { process: { pid: leftover, started: Monitor.processInfo(leftover)!.started } })
         // Same pid, different start time: another process that happens to hold the number now.
         yield* orphan(sessionID, { process: { pid: stranger, started: "1" } })
-        yield* Monitor.make
+        const recovered = yield* Monitor.make
         expect(yield* until(() => exited(leftover))).toBe(true)
         expect(exited(stranger)).toBe(false)
+        const [reaped, spared] = [yield* recovered.list(sessionID)].flat().toSorted((a) => (a.process?.pid === leftover ? -1 : 1))
+        // Both outcomes are recorded on the row, with the pid and command to act on.
+        expect(reaped).toMatchObject({ status: "interrupted", cleanup: "reaped" })
+        expect(reaped?.error).toContain(`process group ${leftover} (status) was stopped`)
+        expect(spared).toMatchObject({ status: "interrupted", cleanup: "left-running" })
+        expect(spared?.error).toContain(`${stranger} (status)`)
       } finally {
         for (const pid of [leftover, stranger])
           try {
@@ -402,6 +408,68 @@ describe("Monitors", () => {
       expect(list[0].id).toBe("e")
       expect(list.at(-1).evidence.output).toBe("")
       expect(MonitorSchema.printable("\u001b[31mred\u001b[0m\u0007 [ok]\tdone\n")).toBe("red [ok]\tdone\n")
+    }),
+  )
+
+  it.live("interrupts a running row past its deadline even while its owner's pid looks alive", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      // A live process standing in for an owner that crashed and whose pid is now someone else's.
+      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" })
+      try {
+        const started = Buffer.from(Monitor.processInfo(child.pid!)?.started ?? "").toString("base64url")
+        const owner = `${child.pid}:${started}:stand-in`
+        expect(Monitor.ownerAlive(owner)).toBe(true)
+        const stale = yield* orphan(sessionID, { created: Date.now() - 2 * 3_600_000 }, owner)
+        const fresh = yield* orphan(sessionID, { created: Date.now() }, owner)
+        const monitors = yield* Monitor.make
+        const settled = yield* monitors.get(sessionID, stale.id)
+        expect(settled?.status).toBe("interrupted")
+        expect(settled?.error).toContain("passed its deadline")
+        expect((yield* monitors.get(sessionID, fresh.id))?.status).toBe("running")
+        // A stale row no longer counts as running work.
+        expect((yield* monitors.list(sessionID)).filter(MonitorSchema.parks).map((info) => info.id)).toEqual([
+          fresh.id,
+        ])
+      } finally {
+        child.kill("SIGKILL")
+      }
+    }),
+  )
+
+  it.live("names a process it could not verify, on every platform", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      const left = yield* orphan(sessionID, { command: "bun run dev", process: { pid: 999_999_999, started: "" } })
+      const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+      expect(settled?.status).toBe("interrupted")
+      if (Monitor.identifiable) {
+        expect(settled?.cleanup).toBe("exited")
+      } else {
+        expect(settled?.cleanup).toBe("unknown")
+        expect(settled?.error).toContain("999999999 (bun run dev) may still be running")
+      }
+    }),
+  )
+
+  it.live("reports the rest of a process group whose leader already exited", () =>
+    Effect.gen(function* () {
+      if (process.platform !== "linux") return
+      const sessionID = yield* setup
+      const leader = spawn("sh", ["-c", "sleep 30 & sleep 0.3"], { detached: true, stdio: "ignore" })
+      const pid = leader.pid!
+      try {
+        const started = Monitor.processInfo(pid)!.started
+        yield* Effect.promise(() => new Promise((resolve) => leader.once("exit", resolve)))
+        const left = yield* orphan(sessionID, { command: "./serve.sh", process: { pid, started } })
+        const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+        expect(settled?.cleanup).toBe("left-running")
+        expect(settled?.error).toContain(`The leader of process group ${pid} (./serve.sh) exited`)
+      } finally {
+        try {
+          process.kill(-pid, "SIGKILL")
+        } catch {}
+      }
     }),
   )
 })

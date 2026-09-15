@@ -86,6 +86,8 @@ const layer = Layer.effect(
         if (rule.action === "allow") continue
         needsAsk = true
       }
+      // A forced request asks even where a rule or an earlier approval allows it; a deny still refuses.
+      if (request.force) needsAsk = true
 
       if (!needsAsk) return
 

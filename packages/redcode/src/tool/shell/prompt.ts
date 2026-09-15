@@ -16,7 +16,10 @@ export type Limits = {
 export function parameterSchema() {
   return Schema.Struct({
     command: Schema.String.annotate({ description: "The command to execute" }),
-    monitor: Schema.optional(Monitor.Options).annotate({ description: Monitor.instructions }),
+    monitor: Schema.optional(Monitor.Options).annotate({
+      description:
+        'Run in the background instead of inline: "once" for a long command, "poll" to repeat a read-only status command until a condition holds. See "Waiting for CI, deploys, background jobs and servers" above.',
+    }),
     timeout: Schema.optional(PositiveInt).annotate({ description: "Optional timeout in milliseconds" }),
     workdir: Schema.optional(Schema.String).annotate({
       description: `Existing directory to run the command in. Relative paths resolve from the fixed session directory, never from a previous call. Prefer a verified absolute path. Omit workdir to recover the session directory after a path error; do not repeat or extend the failed path.`,

@@ -19,9 +19,12 @@ import { Skill } from "@/skill"
 import { MCP } from "@/mcp"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 
-/** Every provider prompt ends with how to wait: small models otherwise block turns on sleep loops. */
-export function provider(model: Provider.Model) {
-  return [...base(model), PROMPT_WAITING]
+/**
+ * The provider prompt, ending with how to wait on external work when the agent can run bash: small
+ * models otherwise block turns on sleep loops. An agent without bash is not told about it.
+ */
+export function provider(model: Provider.Model, options: { bash?: boolean } = {}) {
+  return options.bash === false ? base(model) : [...base(model), PROMPT_WAITING]
 }
 
 function base(model: Provider.Model) {
