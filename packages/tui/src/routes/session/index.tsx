@@ -1865,7 +1865,8 @@ const PART_MAPPING = {
 
 type TodoFoldPart = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
 type TodoFoldMessage = { id: string; role: string; error?: unknown; time?: { created?: number; completed?: number } }
-export type TodoFailureRun<P> = { lead: string; count: number; latest: P }
+/** A run of failed todowrite parts: its first part, its size, its latest part and every part in order. */
+export type TodoFailureRun<P> = { lead: string; count: number; latest: P; parts: ReadonlyArray<P> }
 /** A message reduced to what folding reads: its failed todowrite parts, and `null` wherever a run breaks. */
 type TodoFoldSegment<P> = ReadonlyArray<P | null>
 
@@ -1900,7 +1901,7 @@ function todoFoldRuns<P extends TodoFoldPart>(segments: Iterable<TodoFoldSegment
   const close = () => {
     if (run)
       for (const part of run.parts)
-        runs.set(part.id, { lead: run.lead, count: run.parts.length, latest: run.parts.at(-1)! })
+        runs.set(part.id, { lead: run.lead, count: run.parts.length, latest: run.parts.at(-1)!, parts: run.parts })
     run = undefined
   }
   for (const segment of segments)
@@ -1993,6 +1994,27 @@ export function createTodoFold<P extends TodoFoldPart>() {
     )
 }
 
+const todoFailureError = (part: TodoFoldPart) => {
+  const state = part.state as { status: string; error?: unknown } | undefined
+  return typeof state?.error === "string" ? state.error : ""
+}
+
+/** The first line of a failed todowrite's error, cut for a one-line row. */
+export function todoFailureSummary(part: TodoFoldPart, limit = 160) {
+  const line =
+    todoFailureError(part)
+      .trim()
+      .split("\n")[0]
+      ?.replace(/^(\w*Error: )+/, "") ?? ""
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line
+}
+
+/** Every error of a run, numbered, as the expanded row shows and copies them. */
+export function todoFailureErrors(parts: ReadonlyArray<TodoFoldPart>) {
+  const errors = parts.map(todoFailureError)
+  return errors.length > 1 ? errors.map((error, index) => `${index + 1}. ${error}`).join("\n\n") : (errors[0] ?? "")
+}
+
 const TodoFailureRuns = createContext<() => Map<string, TodoFailureRun<TodoFoldPart>>>()
 
 /** Folds the session's failed todowrite runs once for every row below it. */
@@ -2015,7 +2037,7 @@ export function TodoFailureRunsProvider(props: {
  */
 export function TodoFailureRow<P extends TodoFoldPart>(props: {
   part: P
-  row: (props: { failure: string; part: P }) => JSX.Element
+  row: (props: { failure: string; errors: string; part: P }) => JSX.Element
 }) {
   const runs = useContext(TodoFailureRuns)
   const run = createMemo(() => runs?.().get(props.part.id) as TodoFailureRun<P> | undefined)
@@ -2024,7 +2046,12 @@ export function TodoFailureRow<P extends TodoFoldPart>(props: {
       {props.row({
         get failure() {
           const count = run()?.count ?? 1
-          return count > 1 ? `Todo update failed ×${count}` : "Todo update failed"
+          const label = count > 1 ? `Todo update failed ×${count}` : "Todo update failed"
+          const latest = todoFailureSummary(run()?.latest ?? props.part)
+          return latest ? `${label}: ${latest}` : label
+        },
+        get errors() {
+          return todoFailureErrors(run()?.parts ?? [props.part])
         },
         get part() {
           return run()?.latest ?? props.part
@@ -2298,6 +2325,10 @@ function InlineTool(props: {
   children: JSX.Element
   part: ToolPart
   onClick?: () => void
+  /** Replaces the part's own error in the expanded view, e.g. every error of a folded run. */
+  errorText?: string
+  /** Called when the expanded error opens. */
+  onErrorExpand?: () => void
 }) {
   const { theme } = useTheme()
   const ctx = use()
@@ -2341,7 +2372,7 @@ function InlineTool(props: {
       errorColor={theme.error}
       failed={failed()}
       denied={Boolean(denied())}
-      error={error()}
+      error={props.errorText ?? error()}
       errorExpanded={errorExpanded()}
       complete={props.complete}
       pending={props.pending}
@@ -2353,7 +2384,9 @@ function InlineTool(props: {
       onMouseUp={() => {
         if (renderer.getSelection()?.getSelectedText()) return
         if (failed()) {
-          setErrorExpanded((value) => !value)
+          const open = !errorExpanded()
+          setErrorExpanded(open)
+          if (open) props.onErrorExpand?.()
           return
         }
         props.onClick?.()
@@ -2966,6 +2999,15 @@ function ApplyPatch(props: ToolProps) {
 }
 
 function TodoWrite(props: ToolProps) {
+  const clipboard = useClipboard()
+  const toast = useToast()
+  // Opening a failed run copies its errors: the reasons are otherwise easy to lose in a folded row.
+  const copyTodoErrors = (errors: string) => {
+    if (!errors || !clipboard.write) return
+    void Promise.resolve(clipboard.write(errors))
+      .then(() => toast.show({ message: "Todo errors copied to clipboard", variant: "info" }))
+      .catch(() => {})
+  }
   const todos = createMemo(() => parseTodos(props.metadata.todos ?? props.input.todos))
   return (
     <Switch>
@@ -2982,7 +3024,15 @@ function TodoWrite(props: ToolProps) {
         <TodoFailureRow
           part={props.part}
           row={(row) => (
-            <InlineTool icon="⚙" pending="Updating todos…" failure={row.failure} complete={false} part={row.part}>
+            <InlineTool
+              icon="⚙"
+              pending="Updating todos…"
+              failure={row.failure}
+              complete={false}
+              part={row.part}
+              errorText={row.errors}
+              onErrorExpand={() => copyTodoErrors(row.errors)}
+            >
               Updating todos…
             </InlineTool>
           )}
