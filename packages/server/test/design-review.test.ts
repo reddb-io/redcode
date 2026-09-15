@@ -2547,3 +2547,38 @@ test("screens get a switcher that follows in-prototype navigation and notes reco
     await page.close()
   }
 }, 60000)
+
+test("a live reload reopens the reader's screen even when the prototype mounts its screens late", async () => {
+  const current = await published("html")
+  const markup = (label: string) =>
+    `<!doctype html><html lang="en"><body><main id="app"></main><script>setTimeout(() => { document.querySelector("#app").innerHTML = '<section data-design-screen="cart" data-design-label="Cart"><h1 id="cart-title">${label}</h1></section><section data-design-screen="pay" data-design-label="Payment"><h1 id="pay-title">Payment</h1></section>' }, 400)</script></body></html>`
+  await Bun.write(path.join(current.document.root, current.document.entry), markup("Cart"))
+  const first = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Late screens",
+  })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await showsRevision(page, first.id)
+    const frame = page.frameLocator("#preview")
+    const tab = (name: string) => page.locator("#screens").getByRole("tab", { name, exact: true })
+    await tab("Payment").click()
+    await frame.locator("#pay-title").waitFor({ state: "visible" })
+    await Bun.write(path.join(current.document.root, current.document.entry), markup("Basket"))
+    const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+      name: "Renamed cart",
+    })
+    await showsRevision(page, second.id)
+    // The reloaded frame first announces no screens; the restore waits for the late mount.
+    await frame.locator("#cart-title", { hasText: "Basket" }).waitFor({ state: "attached", timeout: 8000 })
+    await frame.locator("#pay-title").waitFor({ state: "visible", timeout: 8000 })
+    await until(async () => (await tab("Payment").getAttribute("aria-selected")) === "true", "restored screen selected")
+    expect(await frame.locator("#cart-title").isVisible()).toBe(false)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)

@@ -6,6 +6,7 @@ import { parseHTML } from "linkedom"
 import { DesignQuality } from "../src/design/quality"
 import { DesignPlaybooks } from "../src/design/playbooks"
 import { DESIGN_INSTRUCTIONS } from "../src/design/instructions"
+import { injectScreens } from "../src/design/renderer"
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), "design-screens-"))
 afterAll(() => rm(temporary, { recursive: true, force: true }))
@@ -30,16 +31,17 @@ describe("DesignQuality.screenProblems", () => {
     ).toEqual([])
   })
 
-  test("names duplicate, invalid, nested and unlabelled screens and dead navigation targets", () => {
-    const found = problems(
-      `<main data-design-variant="a"><div data-design-screen="list" data-design-label="List"><button data-design-go="detail">Open</button><div data-design-screen="inner" data-design-label="Inner"></div></div><div data-design-screen="list" data-design-label="Again"></div><div data-design-screen="bad id"></div><div data-design-screen="nolabel"></div></main><main data-design-variant="b" data-design-screen="root" data-design-label="Root"></main>`,
-    )
-    expect(found).toEqual([
-      'Screen "inner" is nested inside screen "list"; nested screens are ignored. Keep screens one level deep and use params for states inside a screen.',
-      'Screen id "list" is repeated in variant "a"; only the first one is used.',
-      'Screen id "bad id" in variant "a" is invalid: use 1-64 letters, digits, underscores or hyphens. It is never shown.',
+  test("describes what the runtime does with nested, repeated, invalid and misplaced screens", () => {
+    expect(
+      problems(
+        `<main data-design-variant="a"><div data-design-screen="list" data-design-label="List"><button data-design-go="detail">Open</button><div data-design-screen="inner" data-design-label="Inner"></div></div><div data-design-screen="list" data-design-label="Again"></div><div data-design-screen="bad id"></div><div data-design-screen="nolabel"></div></main><main data-design-variant="b" data-design-screen="root" data-design-label="Root"></main>`,
+      ),
+    ).toEqual([
+      'Screen "inner" is inside screen "list", so it is part of that screen rather than a screen of its own. Keep screens one level deep and use params for states inside a screen.',
+      'Screen id "list" is repeated in variant "a"; only the first one is shown and the repeat stays hidden.',
+      'Screen id "bad id" in variant "a" is invalid: use 1-64 letters, digits, underscores or hyphens. It stays hidden.',
       'Screen "nolabel" in variant "a" has no data-design-label; the review shows its id.',
-      'Screen "root" is on a variant root; put screens inside the variant root instead.',
+      'data-design-screen="root" is on a variant root and is ignored; put screens inside the variant root.',
       'data-design-go="detail" in variant "a" names no screen there; the click does nothing.',
     ])
   })
@@ -64,7 +66,38 @@ describe("DesignQuality.screenWarnings", () => {
     expect(await DesignQuality.screenWarnings(react, "react", "src/main.tsx")).toEqual([
       'data-design-go="receipt" names no data-design-screen in the sources; the click does nothing.',
     ])
+    expect(await DesignQuality.mentionsScreens(react)).toBe(true)
     expect(await DesignQuality.screenNotice(path.join(temporary, "missing"), "html", "index.html")).toBe("")
+  })
+
+  test("skips target checks when a screen id is computed and sources without screens entirely", async () => {
+    const computed = path.join(temporary, "computed")
+    await Bun.write(
+      path.join(computed, "src/main.tsx"),
+      `export const Step = (props: { id: string }) => <section data-design-screen={props.id}><button data-design-go="review">Next</button></section>`,
+    )
+    expect(await DesignQuality.screenWarnings(computed, "react", "src/main.tsx")).toEqual([])
+    const plain = path.join(temporary, "plain")
+    await Bun.write(
+      path.join(plain, "src/main.tsx"),
+      `export const App = () => <button data-design-go="nowhere">Go</button>`,
+    )
+    expect(await DesignQuality.screenWarnings(plain, "react", "src/main.tsx")).toEqual([])
+    expect(await DesignQuality.mentionsScreens(plain)).toBe(false)
+  })
+})
+
+describe("injectScreens", () => {
+  test("places the runtime inside head, never before the doctype or inside a header", () => {
+    const withHead = injectScreens(
+      '<!doctype html><html lang="en"><head><title>x</title></head><body><header>Top</header></body></html>',
+    )
+    expect(withHead).toStartWith('<!doctype html><html lang="en"><head><script>(')
+    expect(withHead).toContain("<body><header>Top</header>")
+    expect(injectScreens("<!doctype html><header>Top</header>")).toStartWith("<!doctype html><script>(")
+    expect(injectScreens("<!doctype html><header>Top</header>")).toEndWith("</script><header>Top</header>")
+    expect(injectScreens("<html><body><header>Top</header></body></html>")).toStartWith("<html><script>(")
+    expect(injectScreens("<p>Bare</p>")).toStartWith("<script>(")
   })
 })
 
@@ -77,8 +110,10 @@ describe("screen guidance", () => {
       "Params are live knobs",
       'data-design-go="screen-id"',
       "design.params.on(",
-      "design.state(",
+      'design.state("checkout", { items })',
       "scenario.screen",
+      "including delegated ones",
+      "window.__redcodeDesign",
     ])
       expect(DESIGN_INSTRUCTIONS).toContain(phrase)
     const flow = DesignPlaybooks.render(DesignPlaybooks.find("flow")!)

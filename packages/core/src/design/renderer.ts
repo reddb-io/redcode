@@ -22,14 +22,61 @@ import { DesignRuntime } from "./runtime"
 import { DesignQuality } from "./quality"
 import { screens } from "@reddb-io/redcode-design/screens"
 
-/** Opens a screen through the injected helper; false when the prototype has no such screen. */
-const openScreen = (input: { screen: string; variant?: string }) =>
-  (window as unknown as { design?: { go: (screen: string, variant?: string) => boolean } }).design?.go(
-    input.screen,
-    input.variant,
-  ) === true
-const currentScreen = (variant: string) =>
-  (window as unknown as { design?: { screen: (variant?: string) => string } }).design?.screen(variant) ?? ""
+/**
+ * In-page helpers. Each is serialized on its own, so they reach the runtime through its private handle
+ * (a prototype may define its own window.design) and check every method before calling it.
+ */
+type ScreenHandle = {
+  __redcodeDesign?: {
+    open?: (screen: string, variant?: string) => boolean
+    screens?: () => { id: string; variant: string }[]
+    current?: () => Record<string, string>
+  }
+}
+/** Opens a screen; false when the prototype has no such screen in that variant or on the page. */
+const openScreen = (input: { screen: string; variant?: string }) => {
+  const api = (window as unknown as ScreenHandle).__redcodeDesign
+  return typeof api?.open === "function" && api.open(input.screen, input.variant) === true
+}
+/** True once the runtime lists the screen, in the variant or on the page; screens can mount late. */
+const listsScreen = (input: { screen: string; variant?: string }) => {
+  const api = (window as unknown as ScreenHandle).__redcodeDesign
+  return (
+    typeof api?.screens === "function" &&
+    api
+      .screens()
+      .some(
+        (item) =>
+          item.id === input.screen &&
+          (input.variant === undefined || item.variant === input.variant || item.variant === ""),
+      )
+  )
+}
+const anyScreen = () => {
+  const api = (window as unknown as ScreenHandle).__redcodeDesign
+  return typeof api?.screens === "function" && api.screens().length > 0
+}
+const declaredScreens = () => {
+  const api = (window as unknown as ScreenHandle).__redcodeDesign
+  return typeof api?.screens === "function" ? api.screens() : []
+}
+const currentScreens = () => {
+  const api = (window as unknown as ScreenHandle).__redcodeDesign
+  return typeof api?.current === "function" ? api.current() : {}
+}
+
+/**
+ * Adds the screen runtime to a standalone HTML document: after <head>, else after <html>, else after
+ * the doctype, so it never lands before the doctype or inside a <header>.
+ */
+export function injectScreens(html: string) {
+  const tag = `<script>(${screens.toString()})()</script>`
+  for (const pattern of [/<head(?:\s[^>]*)?>/i, /<html(?:\s[^>]*)?>/i, /<!doctype[^>]*>/i]) {
+    const match = pattern.exec(html)
+    if (match) return html.slice(0, match.index + match[0].length) + tag + html.slice(match.index + match[0].length)
+  }
+  return tag + html
+}
 
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
@@ -127,8 +174,10 @@ const make = Effect.gen(function* () {
         const context = yield* io(() =>
           instance.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" }),
         )
-        // Screens and the design helper run before the prototype's scripts, as in the review page.
-        yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
+        // Screens and the design helper run before the prototype's scripts, as in the review page. A
+        // compare injects them only into the approved prototype, never into the implementation.
+        if (job.input.format !== "compare")
+          yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
         const page = yield* io(() => context.newPage())
         yield* io(() =>
           page.route("**/*", async (route) => {
@@ -228,13 +277,7 @@ const make = Effect.gen(function* () {
         if (job.input.format === "html") {
           const html = yield* io(() => DesignExport.html(root, entry))
           // The exported page keeps working screens without the review page around it.
-          const runtime = `<script>(${screens.toString()})()</script>`
-          yield* io(() =>
-            DesignFiles.atomic(
-              output,
-              /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (head) => head + runtime) : runtime + html,
-            ),
-          )
+          yield* io(() => DesignFiles.atomic(output, injectScreens(html)))
         }
 
         if (job.input.format === "compare") {
@@ -268,8 +311,12 @@ const make = Effect.gen(function* () {
                     await route.fulfill({ status: 404 })
                     return
                   }
+                  const bytes = Buffer.from(await Bun.file(file).bytes())
                   await route.fulfill({
-                    body: Buffer.from(await Bun.file(file).bytes()),
+                    body:
+                      source === root && route.request().resourceType() === "document"
+                        ? injectScreens(bytes.toString("utf8"))
+                        : bytes,
                     contentType: Bun.file(file).type,
                   })
                 }),
@@ -294,6 +341,14 @@ const make = Effect.gen(function* () {
                         ]),
                       ),
                     )
+                  // Only the approved prototype has screens; the implementation reaches the state its own way.
+                  if (scenario?.screen && source === root) {
+                    await page
+                      .waitForFunction(listsScreen, { screen: scenario.screen }, { timeout: 2000 })
+                      .catch(() => undefined)
+                    if (!(await page.evaluate(openScreen, { screen: scenario.screen })))
+                      return `screen ${scenario.screen} does not exist`
+                  }
                   for (const action of scenario?.actions ?? []) {
                     const target = page.locator(action.selector)
                     if (action.action === "click") await target.click({ timeout: 5000 })
@@ -339,6 +394,14 @@ const make = Effect.gen(function* () {
           const declared = new Set<string>()
           const visited = new Set<string>()
           page.on("pageerror", (error) => runtimeErrors.push(error.message))
+          const screensMarked = yield* io(() => DesignQuality.mentionsScreens(root))
+          /** Records the screens a view shows: the variant's own and the page-level ones. */
+          const visit = (variant: string | undefined) =>
+            Effect.gen(function* () {
+              const current = yield* io(() => page.evaluate(currentScreens))
+              for (const scope of new Set([variant ?? "", ""]))
+                if (current[scope]) visited.add(`${scope} ${current[scope]}`)
+            })
           const variants = yield* io(() =>
             page
               .locator("[data-design-variant]")
@@ -432,25 +495,18 @@ const make = Effect.gen(function* () {
             for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
               if (captures.length >= 36) continue
               yield* reset(variant)
-              if (width === 390) {
-                const found = yield* io(() =>
-                  page.evaluate(
-                    (source) => ({
-                      problems: (0, eval)(`(${source})`)(document) as string[],
-                      screens:
-                        (
-                          window as unknown as { design?: { screens: () => { id: string; variant: string }[] } }
-                        ).design?.screens() ?? [],
-                    }),
-                    DesignQuality.screenProblems.toString(),
-                  ),
-                )
-                for (const problem of found.problems)
+              if (width === 390 && screensMarked) {
+                // A framework may mount its screens after load; give it a moment before reading them.
+                yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
+                // Passed as the function itself so it runs on the page's own document, without eval.
+                const problems = yield* io(() => page.evaluate(DesignQuality.screenProblems as () => string[]))
+                for (const problem of problems)
                   if (!findings.includes(`Screens: ${problem}`)) findings.push(`Screens: ${problem}`)
-                for (const screen of found.screens)
-                  if (!variant || screen.variant === variant) declared.add(`${screen.variant} ${screen.id}`)
+                for (const screen of yield* io(() => page.evaluate(declaredScreens)))
+                  if (!variant || screen.variant === variant || screen.variant === "")
+                    declared.add(`${screen.variant} ${screen.id}`)
               }
-              visited.add(`${variant ?? ""} ${yield* io(() => page.evaluate(currentScreen, variant ?? ""))}`)
+              if (screensMarked) yield* visit(variant)
               yield* inspect(width, variant)
               for (const scenario of revision.document.scenarios) {
                 if (
@@ -460,7 +516,7 @@ const make = Effect.gen(function* () {
                 )
                   continue
                 yield* reset(variant)
-                const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
+                let scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
                 // A scenario may observe state on the variant root itself.
                 const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
                 const result = yield* io(async () => {
@@ -479,14 +535,22 @@ const make = Effect.gen(function* () {
                         ]),
                       ),
                     )
-                  if (
-                    scenario.screen &&
-                    !(await page.evaluate(openScreen, {
-                      screen: scenario.screen,
-                      ...(variant ? { variant } : {}),
-                    }))
-                  )
-                    return `screen ${scenario.screen} does not exist${variant ? " in this variant" : ""}`
+                  if (scenario.screen) {
+                    const wanted = { screen: scenario.screen, ...(variant ? { variant } : {}) }
+                    await page.waitForFunction(listsScreen, wanted, { timeout: 2000 }).catch(() => undefined)
+                    if (!(await page.evaluate(openScreen, wanted)))
+                      return `screen ${scenario.screen} does not exist${variant ? " in this variant or on the page" : ""}`
+                    // A page-level screen lives outside the variant root, so its selectors resolve on the page.
+                    const own = await page.evaluate(listsScreen, { screen: scenario.screen, variant: variant ?? "" })
+                    if (
+                      variant &&
+                      own &&
+                      !(await page.evaluate(declaredScreens)).some(
+                        (item) => item.id === scenario.screen && item.variant === variant,
+                      )
+                    )
+                      scope = page.locator("body")
+                  }
                   for (const action of scenario.actions) {
                     if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
                     if (action.action === "fill")
@@ -497,7 +561,7 @@ const make = Effect.gen(function* () {
                   await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
                   return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
                 }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
-                visited.add(`${variant ?? ""} ${yield* io(() => page.evaluate(currentScreen, variant ?? ""))}`)
+                if (screensMarked) yield* visit(variant)
                 const label = `${width}px${variant ? ` · ${variant}` : ""} · ${scenario.name}`
                 if (result !== true)
                   findings.push(`${label}: ${typeof result === "string" ? result : "state does not match"}`)
@@ -516,7 +580,11 @@ const make = Effect.gen(function* () {
           const unvisited = [...declared].filter((key) => !visited.has(key))
           if (unvisited.length)
             findings.push(
-              `Screens never rendered by this audit: ${unvisited.map((key) => key.trim().replace(" ", "/")).join(", ")}. Add a scenario with screen set to each one so its layout and states are inspected.`,
+              `Screens never rendered by this audit: ${unvisited.map((key) => key.trim().replace(" ", "/")).join(", ")}. ${
+                captures.length >= 36
+                  ? "The capture budget was reached, so later scenarios were skipped; audit those screens separately."
+                  : "Add a scenario with screen set to each one so its layout and states are inspected."
+              }`,
             )
           for (const scenario of revision.document.scenarios.filter(
             (scenario) => scenario.variant && !valid.includes(scenario.variant) && !scenario.notApplicable,

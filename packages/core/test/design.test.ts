@@ -383,8 +383,97 @@ describe("Design revisions and review", () => {
         const exported = yield* run("html")
         expect(exported.status).toBe("completed")
         const html = yield* Effect.promise(() => Bun.file(exported.result!).text())
-        expect(html).toContain("__designScreens")
-        expect(html.indexOf("__designScreens")).toBeLessThan(html.indexOf("data-design-screen"))
+        expect(html).toContain("__redcodeDesign")
+        expect(html.indexOf("__redcodeDesign")).toBeLessThan(html.indexOf("data-design-screen"))
+      }),
+    180000,
+  )
+  it.live(
+    "audits page-level screens from every variant, waits for late screens and ignores a prototype design global",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(document.root, document.entry),
+            `<!doctype html><html lang="en"><head><title>Help</title><meta name="viewport" content="width=device-width,initial-scale=1"><script>var design = { tokens: true }</script></head><body><main data-design-variant="a" data-design-label="A"><h1>Direction A</h1></main><main data-design-variant="b" data-design-label="B"><h1>Direction B</h1></main><div id="mount"></div><script>setTimeout(() => { document.querySelector("#mount").innerHTML = '<section data-design-screen="home" data-design-label="Home"><h2>Home</h2></section><section data-design-screen="help" data-design-label="Help"><h2 id="help" data-state="populated">Help</h2></section>' }, 300)</script></body></html>`,
+          ),
+        )
+        yield* store.update(document.id, {
+          scenarios: [
+            { id: "help", name: "Help screen", screen: "help", selector: "#help", state: "populated", actions: [] },
+          ],
+        })
+        const revision = yield* store.publish(document.id, "Late page screens")
+        const job = yield* renderer.start(document.id, { revision: revision.id, format: "audit" })
+        const audit = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(document.id)).find((item) => item.id === job.id)!
+            if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+              return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("120 seconds"))
+        expect(audit.status).toBe("completed")
+        expect(audit.audit?.scenarios.filter((item) => item.includes("Help screen: exercised"))).toHaveLength(6)
+        const findings = audit.audit?.findings ?? []
+        expect(findings.filter((item) => item.includes("does not exist"))).toEqual([])
+        expect(findings.filter((item) => item.startsWith("Screens"))).toEqual([])
+        expect(findings.filter((item) => item.includes("script error"))).toEqual([])
+      }),
+    240000,
+  )
+  it.live(
+    "compares an approved screen with an implementation that gets no screen runtime",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(document.root, document.entry),
+            `<!doctype html><html lang="en"><head><title>Pay</title></head><body><main><section data-design-screen="cart" data-design-label="Cart"><h1>Cart</h1></section><section data-design-screen="pay" data-design-label="Payment"><h1>Payment</h1><button id="submit" onclick="document.querySelector('#result').dataset.state='populated'">Confirm</button><p id="result" data-state="empty">Pending</p></section></main></body></html>`,
+          ),
+        )
+        yield* store.update(document.id, {
+          scenarios: [
+            {
+              id: "pay",
+              name: "Confirm payment",
+              screen: "pay",
+              selector: "#result",
+              state: "populated",
+              actions: [{ action: "click", selector: "#submit" }],
+            },
+          ],
+        })
+        const revision = yield* store.publish(document.id, "Approved screens")
+        // The implementation reports an error if the prototype's runtime leaked into it.
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(document.application, "dist/index.html"),
+            `<!doctype html><html lang="en"><head><title>Pay</title></head><body><main><h1>Payment</h1><button id="submit" onclick="document.querySelector('#result').dataset.state = window.__redcodeDesign ? 'error' : 'populated'">Confirm</button><p id="result" data-state="empty">Pending</p></main></body></html>`,
+          ),
+        )
+        yield* store.approve(document.id, revision.id)
+        const job = yield* renderer.start(document.id, {
+          revision: revision.id,
+          format: "compare",
+          implementation: "dist",
+        })
+        const result = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(document.id)).find((item) => item.id === job.id)!
+            if (current.status !== "running" && current.status !== "queued") return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("90 seconds"))
+        expect(result.error).toBeNull()
+        expect(result.status).toBe("completed")
+        const report = yield* Effect.promise(() => Bun.file(result.result!).text())
+        expect(report.split("<p>Exercised</p>")).toHaveLength(7)
+        expect(report).not.toContain("does not exist")
       }),
     180000,
   )
