@@ -215,7 +215,8 @@ jobs:
   httpapi:
     name: httpapi (linux)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 30
+    # Same ceiling as the other jobs that set Playwright up; a cold browser cache is setup time, not a stall.
+    timeout-minutes: 45
     env:
       REDCODE_WHITEBOARD_DIR: ${{ github.workspace }}/packages/redcode/dist/whiteboard
     defaults:
@@ -227,6 +228,12 @@ jobs:
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
+
+      # The design export scenarios render through Chromium. Without a browser in
+      # PLAYWRIGHT_BROWSERS_PATH the renderer installs one inside the request, which blows past the
+      # 30s scenario limit and fails v2.design.render, v2.design.jobs and v2.design.download.
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
 
       - name: Build whiteboard test assets
         working-directory: packages/redcode
