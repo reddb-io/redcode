@@ -78,6 +78,7 @@ import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/redcode-server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
 import { GoalRuntime } from "@/session/goal-runtime"
+import { SessionSpend } from "@/session/spend"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@reddb-io/redcode-server/api"
@@ -296,6 +297,7 @@ const app = LayerNode.group([
   ProjectCopy.node,
   PtyTicket.node,
   GoalRuntime.node,
+  SessionSpend.node,
   SessionGoal.node,
   SessionPlan.node,
 ])

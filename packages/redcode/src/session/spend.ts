@@ -221,7 +221,7 @@ const layer = Layer.effect(
       const out: Array<{ session: Session.Info; state: State }> = []
       let id: SessionID | undefined = sessionID
       while (id && out.length < MAX_DEPTH && !out.some((item) => item.session.id === id)) {
-        const entry = yield* read(id)
+        const entry: { session: Session.Info; state: State } | undefined = yield* read(id)
         if (!entry) break
         out.push(entry)
         id = entry.session.parentID
