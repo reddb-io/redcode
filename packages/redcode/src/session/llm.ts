@@ -32,6 +32,7 @@ import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { ToolSearch } from "./tool-search"
+import { SessionSpend } from "./spend"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -74,6 +75,7 @@ const live: Layer.Layer<
   | LLMClientService
   | RuntimeFlags.Service
   | OperationHookBridge.Service
+  | SessionSpend.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -86,6 +88,7 @@ const live: Layer.Layer<
     const llmClient = yield* LLMClient.Service
     const flags = yield* RuntimeFlags.Service
     const hooks = yield* OperationHookBridge.Service
+    const spend = yield* SessionSpend.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
       yield* Effect.logInfo("stream", {
@@ -391,6 +394,19 @@ const live: Layer.Layer<
               Stream.flatMap((events) => Stream.fromIterable(events)),
             )
           }),
+        ).pipe(
+          // Every provider call passes here — turns, subagents, compaction, titles, the goal judge — so
+          // this is the one place spend is counted. A step reports its own usage; `finish` repeats the total.
+          Stream.tap((event) =>
+            event.type === "step-finish" && event.usage
+              ? spend.record({
+                  sessionID: input.sessionID,
+                  model: input.model,
+                  usage: event.usage,
+                  metadata: event.providerMetadata,
+                })
+              : Effect.void,
+          ),
         ),
       )
 
@@ -413,6 +429,7 @@ export const node = LayerNode.make({
     llmClient,
     RuntimeFlags.node,
     OperationHookBridge.node,
+    SessionSpend.node,
   ],
 })
 

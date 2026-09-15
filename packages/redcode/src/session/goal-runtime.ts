@@ -15,6 +15,8 @@ import { SessionGoal } from "./goal"
 import { SessionGuardLog } from "./guard-log"
 import type { SessionID } from "./schema"
 import { Session } from "./session"
+import { SessionBudget } from "./budget"
+import { SessionSpend } from "./spend"
 import { Process } from "@/util/process"
 
 /**
@@ -74,6 +76,7 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const guards = yield* SessionGuardLog.Service
     const jobs = yield* BackgroundJob.Service
+    const spend = yield* SessionSpend.Service
 
     const get = Effect.fn("GoalRuntime.get")(function* (sessionID: SessionID) {
       const session = yield* sessions.get(sessionID).pipe(Effect.orElseSucceed(() => undefined))
@@ -81,12 +84,28 @@ const layer = Layer.effect(
     })
 
     const set = Effect.fn("GoalRuntime.set")(function* (sessionID: SessionID, goal: SessionGoal.Goal | undefined) {
+      // A goal's spend counts from when it was set: the session's total at that moment is its zero.
+      const counted = goal && !goal.spendStart ? { ...goal, spendStart: yield* spend.totals(sessionID) } : goal
       const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
       // An active goal always names the process driving it, so a later process can tell it was
       // not the one — and pause rather than pick the loop up on its own.
-      const stamped = goal && goal.status === "active" ? { ...goal, boot: SessionGoal.BOOT } : goal
+      const stamped = counted && counted.status === "active" ? { ...counted, boot: SessionGoal.BOOT } : counted
       yield* sessions.setMetadata({ sessionID, metadata: SessionGoal.toMetadata(session.metadata, stamped) })
     })
+
+    /** The goal's spend against its budget; undefined when the person set none. */
+    const spendStatus = Effect.fn("GoalRuntime.spendStatus")(function* (sessionID: SessionID, goal: SessionGoal.Goal) {
+      if (!goal.budget) return undefined
+      return SessionGoal.spendStatus(goal, yield* spend.totals(sessionID))
+    })
+
+    const budgetNotice = (sessionID: SessionID, status: SessionBudget.Status) =>
+      spend.notify({
+        sessionID,
+        action: "stop",
+        subject: "goal",
+        message: `Goal paused at its budget: ${status.reason}. Raise it with /goal-budget, then /goal-resume.`,
+      })
 
     // Admission only: the budget is spent in `afterTurn`, once per judged turn. This runs before
     // every provider attempt — each tool round-trip, each retry — and used to charge each one, so
@@ -94,8 +113,15 @@ const layer = Layer.effect(
     const beginTurn = Effect.fn("GoalRuntime.beginTurn")(function* (sessionID: SessionID) {
       const goal = yield* get(sessionID)
       if (!goal || goal.status !== "active") return true
-      if (goal.turns.used < goal.turns.max) return true
-      yield* set(sessionID, SessionGoal.paused(goal, SessionGoal.budgetReason(goal), Date.now()))
+      if (goal.turns.used >= goal.turns.max) {
+        yield* set(sessionID, SessionGoal.paused(goal, SessionGoal.budgetReason(goal), Date.now()))
+        return false
+      }
+      // The step that crossed the spend budget has finished; the next one is not started.
+      const status = yield* spendStatus(sessionID, goal)
+      if (!status?.exceeded) return true
+      yield* set(sessionID, SessionGoal.paused(goal, SessionBudget.pauseReason(status), Date.now()))
+      yield* budgetNotice(sessionID, status)
       return false
     })
 
@@ -278,12 +304,15 @@ const layer = Layer.effect(
         // The decision is taken on a record and written back only if that record is still the
         // one stored: `/goal-budget` and `/goal-resume` write the same record from another fiber.
         const record = Effect.fn("GoalRuntime.record")(function* (base: SessionGoal.Goal) {
+          // Read after the judge: its own call is part of what the goal spent.
+          const budget = yield* spendStatus(sessionID, base)
           const decision = SessionGoal.decide({
             goal: base,
             ...(verdict ? { verdict } : {}),
             gates: gateResults,
             waiting: running.length > 0,
             evidence: evidence.length > 0,
+            ...(budget ? { budget } : {}),
           })
           // A failed gate is not a judge failure: the judge was never asked.
           const next = SessionGoal.apply(
@@ -303,6 +332,7 @@ const layer = Layer.effect(
             subject: failed ? "gate" : (verdict?.verdict ?? "unreadable"),
             detail: `${decision.action}: ${decision.reason}`.slice(0, 500),
           })
+          if (budget?.exceeded && decision.action === "stop") yield* budgetNotice(sessionID, budget)
           const text =
             decision.action === "continue"
               ? SessionGoal.continuation(next, failed ? { gate: failed } : { reason: decision.reason })
@@ -337,7 +367,16 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [Session.node, Agent.node, Provider.node, LLM.node, Config.node, SessionGuardLog.node, BackgroundJob.node],
+  deps: [
+    Session.node,
+    Agent.node,
+    Provider.node,
+    LLM.node,
+    Config.node,
+    SessionGuardLog.node,
+    BackgroundJob.node,
+    SessionSpend.node,
+  ],
 })
 
 export * as GoalRuntime from "./goal-runtime"

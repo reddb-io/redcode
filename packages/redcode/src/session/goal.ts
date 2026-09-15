@@ -18,8 +18,9 @@
  * turn, bounded by the step ceiling, the loop guard and the retry policy, not by this budget.
  */
 
-import { COMPACTION_GUARD_PAUSE, LOOP_GUARD_PAUSE } from "@reddb-io/redcode-core/session/loop-marker"
+import { BUDGET_PAUSE, COMPACTION_GUARD_PAUSE, LOOP_GUARD_PAUSE } from "@reddb-io/redcode-core/session/loop-marker"
 import { Schema } from "effect"
+import { SessionBudget } from "./budget"
 
 export const DEFAULT_MAX_TURNS = 20
 export const MAX_JUDGE_FAILURES = 3
@@ -50,6 +51,13 @@ export interface Goal {
   readonly status: Status
   readonly reason?: string
   readonly turns: { readonly used: number; readonly max: number }
+  /**
+   * What the goal may spend, set only by the person. No default: a goal without it is bounded by
+   * its turns alone. Measured from `spendStart`, so earlier work in the session is not charged.
+   */
+  readonly budget?: SessionBudget.Limits
+  /** The session's spend when the goal was set; the goal's spend is everything after it. */
+  readonly spendStart?: SessionBudget.Totals
   /** When the last turn was spent. Evidence for the current turn is everything since. */
   readonly judged?: number
   readonly last?: { readonly verdict: Verdict; readonly reason: string; readonly at: number }
@@ -63,11 +71,13 @@ export interface Goal {
   readonly updated: number
 }
 
-const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate"]> = [
+const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate" | "max_cost_usd" | "max_tokens"]> = [
   [/^(verify|verification)\s*:/i, "verification"],
   [/^(outcome|done when|success)\s*:/i, "outcome"],
   [/^constraints?\s*:/i, "constraints"],
   [/^(boundaries|boundary|scope)\s*:/i, "boundaries"],
+  [/^(max[\s_-]?cost(?:[\s_-]?usd)?)\s*:/i, "max_cost_usd"],
+  [/^(max[\s_-]?tokens)\s*:/i, "max_tokens"],
   [/^(stop[\s_-]?when|stop|escalate)\s*:/i, "stop_when"],
   [/^gates?\s*:/i, "gate"],
 ]
@@ -79,18 +89,26 @@ const FIELDS: ReadonlyArray<readonly [RegExp, keyof Contract | "gate"]> = [
  *   constraints: do not touch the app package; stop when: a test needs a network
  *
  * Whatever carries no field name is the objective. Nothing is required: a goal that is one
- * sentence is still a goal, just one the judge has less to hold it to.
+ * sentence is still a goal, just one the judge has less to hold it to. `max cost: $2` and
+ * `max tokens: 500k` set a spend budget; they are the person's, and never reach the contract.
  */
 export function parse(
   text: string,
-  options?: { maxTurns?: number; now?: number; id?: string; stopAfter?: "design" | "plan" | "build" },
+  options?: {
+    maxTurns?: number
+    now?: number
+    id?: string
+    stopAfter?: "design" | "plan" | "build"
+    budget?: SessionBudget.Limits
+  },
 ): Goal {
   const objective: string[] = []
   const contract: Record<string, string> = {}
   const gates: string[] = []
+  const budget: { max_cost_usd?: number; max_tokens?: number } = {}
   const pieces = text
     .split(
-      /\n|;(?=\s*(?:verify|verification|outcome|done when|success|constraints?|boundaries|boundary|scope|stop[\s_-]?when|stop|escalate|gates?)\s*:)/i,
+      /\n|;(?=\s*(?:verify|verification|outcome|done when|success|constraints?|boundaries|boundary|scope|max[\s_-]?cost(?:[\s_-]?usd)?|max[\s_-]?tokens|stop[\s_-]?when|stop|escalate|gates?)\s*:)/i,
     )
     .map((s) => s.trim())
     .filter(Boolean)
@@ -103,8 +121,15 @@ export function parse(
     const value = piece.replace(field[0], "").trim()
     if (!value) continue
     if (field[1] === "gate") gates.push(value)
-    else contract[field[1]] = contract[field[1]] ? `${contract[field[1]]}; ${value}` : value
+    else if (field[1] === "max_cost_usd") {
+      const cost = SessionBudget.parseCost(value)
+      if (cost !== undefined) budget.max_cost_usd = cost
+    } else if (field[1] === "max_tokens") {
+      const tokens = SessionBudget.parseTokens(value)
+      if (tokens !== undefined) budget.max_tokens = tokens
+    } else contract[field[1]] = contract[field[1]] ? `${contract[field[1]]}; ${value}` : value
   }
+  const limits = SessionBudget.merge(budget, options?.budget)
   const now = options?.now ?? Date.now()
   return {
     id: options?.id ?? `goal_${now.toString(36)}`,
@@ -114,6 +139,7 @@ export function parse(
     gates,
     status: "active",
     turns: { used: 0, max: Math.max(1, options?.maxTurns ?? DEFAULT_MAX_TURNS) },
+    ...(SessionBudget.hasLimits(limits) ? { budget: limits } : {}),
     judgeFailures: 0,
     created: now,
     updated: now,
@@ -143,6 +169,8 @@ export function fromMetadata(metadata: Record<string, unknown> | undefined): Goa
       used: typeof g.turns?.used === "number" ? g.turns.used : 0,
       max: typeof g.turns?.max === "number" && g.turns.max > 0 ? g.turns.max : DEFAULT_MAX_TURNS,
     },
+    ...(SessionBudget.hasLimits(SessionBudget.limitsOf(g.budget)) ? { budget: SessionBudget.limitsOf(g.budget) } : {}),
+    ...(g.spendStart ? { spendStart: SessionBudget.totalsOf(g.spendStart) } : {}),
     ...(typeof g.judged === "number" ? { judged: g.judged } : {}),
     ...(g.last ? { last: g.last } : {}),
     judgeFailures: typeof g.judgeFailures === "number" ? g.judgeFailures : 0,
@@ -270,11 +298,16 @@ export function continuation(goal: Goal, input: { readonly reason?: string; read
             `The last turn stopped at a context compaction: ${input.reason.slice(COMPACTION_GUARD_PAUSE.length)}.`,
             "Re-read the summary and the recent messages first. Keep the context small from here: record progress in the task list, do not re-read large files or outputs you already have, and narrow searches before running them.",
           ]
-        : [
-            input.reason
-              ? `The judge's reason for not accepting the last turn: ${input.reason}`
-              : "The last turn did not complete the goal.",
-          ]),
+        : input.reason?.startsWith(BUDGET_PAUSE)
+          ? [
+              `The goal paused because it reached the spend budget the user set: ${input.reason.slice(BUDGET_PAUSE.length)}.`,
+              "The user has resumed it. Avoid work that repeats what is already done. If what remains will not fit in the budget, say what is left and ask the user whether to raise the budget before going further.",
+            ]
+          : [
+              input.reason
+                ? `The judge's reason for not accepting the last turn: ${input.reason}`
+                : "The last turn did not complete the goal.",
+            ]),
     "Take the next concrete step toward it. Verify as you go and show the evidence. If the goal is complete, call goal_complete with the evidence; if it cannot be reached, say exactly why and stop.",
   ].join("\n")
 }
@@ -300,7 +333,17 @@ export function decide(input: {
   readonly gates?: readonly Gates[]
   readonly waiting?: boolean
   readonly evidence?: boolean
+  /** The goal's spend against its budget, when it has one. */
+  readonly budget?: SessionBudget.Status
 }): Decision {
+  const decision = decideTurn(input)
+  // A reached budget turns more work into a stop; a DONE, a pause or a wait stands.
+  if (input.budget?.exceeded && decision.action === "continue")
+    return { action: "stop", reason: SessionBudget.pauseReason(input.budget), ...(decision.gate ? { gate: decision.gate } : {}) }
+  return decision
+}
+
+function decideTurn(input: Parameters<typeof decide>[0]): Decision {
   const { goal } = input
   const exhausted = goal.turns.used + 1 >= goal.turns.max
   const failed = input.gates?.find((g) => !g.ok)
@@ -401,6 +444,12 @@ export const Info = Schema.Struct({
   status: Schema.Literals(["active", "paused", "blocked", "done", "dropped"]),
   reason: Schema.optional(Schema.String),
   turns: Schema.Struct({ used: Schema.Number, max: Schema.Number }),
+  budget: Schema.optional(SessionBudget.LimitsInfo).annotate({
+    description: "What the goal may spend, set by the user; absent means no spend limit",
+  }),
+  spendStart: Schema.optional(SessionBudget.TotalsInfo).annotate({
+    description: "The session's spend when the goal was set; the goal's spend is the session's total after it",
+  }),
   judged: Schema.optional(Schema.Number),
   last: Schema.optional(
     Schema.Struct({
@@ -425,8 +474,16 @@ export const paused = (goal: Goal, reason: string, now: number): Goal => ({
   reason,
   updated: now,
 })
-export function resumed(goal: Goal, now: number): Goal {
+/** The goal's spend against its budget, or undefined when it has none. */
+export function spendStatus(goal: Goal, total: SessionBudget.Totals): SessionBudget.Status | undefined {
+  if (!goal.budget || !SessionBudget.hasLimits(goal.budget)) return undefined
+  return SessionBudget.check(goal.budget, SessionBudget.since(total, goal.spendStart))
+}
+
+export function resumed(goal: Goal, now: number, total?: SessionBudget.Totals): Goal {
   if (goal.turns.used >= goal.turns.max) return paused(goal, budgetReason(goal), now)
+  const spend = total ? spendStatus(goal, total) : undefined
+  if (spend?.exceeded) return paused(goal, SessionBudget.pauseReason(spend), now)
   return { ...goal, status: "active", reason: undefined, judgeFailures: 0, boot: BOOT, updated: now }
 }
 

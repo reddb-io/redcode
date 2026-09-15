@@ -11,6 +11,8 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionGoal } from "@/session/goal"
 import { GoalRuntime } from "@/session/goal-runtime"
+import { SessionBudget } from "@/session/budget"
+import { SessionSpend } from "@/session/spend"
 import { Config } from "@/config/config"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
@@ -29,7 +31,9 @@ import {
   CommandPayload,
   DiffQuery,
   ForkPayload,
+  GoalBudgetPayload,
   InitPayload,
+  SessionBudgetPayload,
   ListQuery,
   MessagesQuery,
   PermissionResponsePayload,
@@ -54,6 +58,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const shareSvc = yield* SessionShare.Service
     const promptSvc = yield* SessionPrompt.Service
     const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
     const config = yield* Config.Service
     const revertSvc = yield* SessionRevert.Service
     const compactSvc = yield* SessionCompaction.Service
@@ -254,7 +259,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const goalSet = Effect.fn("SessionHttpApi.goalSet")(function* (ctx: {
       params: { sessionID: SessionID }
-      payload: { text: string; max_turns?: number; agent?: string }
+      payload: { text: string; max_turns?: number; agent?: string; max_cost_usd?: number; max_tokens?: number }
     }) {
       yield* requireSession(ctx.params.sessionID)
       const text = ctx.payload.text.trim()
@@ -264,6 +269,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const goal = SessionGoal.parse(text, {
         maxTurns: ctx.payload.max_turns ?? cfg.experimental?.goal?.max_turns,
         stopAfter: agent === "design" ? "design" : agent === "plan" ? "plan" : "build",
+        // Only what the person asked for: a goal has no spend limit by default.
+        budget: SessionBudget.limitsOf({ max_cost_usd: ctx.payload.max_cost_usd, max_tokens: ctx.payload.max_tokens }),
       })
       yield* goals.set(ctx.params.sessionID, goal)
       // The goal's first turn is the objective itself, as the user's message: the loop takes it
@@ -301,7 +308,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const goal = yield* goals.get(ctx.params.sessionID)
       if (!goal) return null
       if (goal.status === "done" || goal.status === "dropped") return yield* new HttpApiError.BadRequest()
-      const next = SessionGoal.resumed(goal, Date.now())
+      const next = SessionGoal.resumed(goal, Date.now(), yield* spend.totals(ctx.params.sessionID))
       yield* goals.set(ctx.params.sessionID, next)
       if (next.status !== "active") return next
       const agent = yield* goalAgent(ctx.params.sessionID)
@@ -340,18 +347,35 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const goalBudget = Effect.fn("SessionHttpApi.goalBudget")(function* (ctx: {
       params: { sessionID: SessionID }
-      payload: { max_turns: number }
+      payload: typeof GoalBudgetPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
       const goal = yield* goals.get(ctx.params.sessionID)
       if (!goal) return null
-      const next = {
-        ...goal,
-        turns: { ...goal.turns, max: Math.max(1, Math.floor(ctx.payload.max_turns)) },
+      const { max_turns } = ctx.payload
+      const budget = SessionBudget.update(goal.budget, ctx.payload)
+      const { budget: _previous, ...rest } = goal
+      const next: SessionGoal.Goal = {
+        ...rest,
+        turns: max_turns === undefined ? goal.turns : { ...goal.turns, max: Math.max(1, Math.floor(max_turns)) },
+        ...(SessionBudget.hasLimits(budget) ? { budget } : {}),
         updated: Date.now(),
       }
       yield* goals.set(ctx.params.sessionID, next)
       return next
+    })
+
+    const budgetGet = Effect.fn("SessionHttpApi.budget")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* spend.view(ctx.params.sessionID)
+    })
+
+    const budgetSet = Effect.fn("SessionHttpApi.budgetSet")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: typeof SessionBudgetPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* spend.setLimits(ctx.params.sessionID, ctx.payload)
     })
 
     const init = Effect.fn("SessionHttpApi.init")(function* (ctx: {
@@ -554,6 +578,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("goalResume", goalResume)
       .handle("goalDrop", goalDrop)
       .handle("goalBudget", goalBudget)
+      .handle("budget", budgetGet)
+      .handle("budgetSet", budgetSet)
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
       .handle("command", command)
