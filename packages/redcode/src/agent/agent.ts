@@ -122,6 +122,8 @@ const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
+          // Sending an environment variable (a token, a key) to a host is never covered by "*": "allow".
+          env: "ask",
           // Design builds execute the project's PostCSS and Tailwind configuration in this process.
           project_tooling: "ask",
           design_exit: "deny",

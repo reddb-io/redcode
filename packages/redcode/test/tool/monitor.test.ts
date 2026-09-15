@@ -3,7 +3,9 @@ import { describe, expect } from "bun:test"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Cause, Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer } from "effect"
+import { Permission } from "@/permission"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { mkdir, symlink } from "fs/promises"
 import path from "path"
 import { Config } from "@/config/config"
@@ -32,6 +34,8 @@ const it = testEffect(
         RuntimeFlags.node,
         MonitorRuntime.node,
         Session.node,
+        Permission.node,
+        EventV2Bridge.node,
       ]),
     ),
     testInstanceStoreLayer,
@@ -177,6 +181,77 @@ describe("tool.monitor probes", () => {
         expect(hits).toBe(0)
       } finally {
         delete process.env.MONITOR_PROBE_DENIED_TOKEN
+      }
+    }),
+  )
+
+  it.live("the env ask reaches a person under the real build rules, even when the config allows everything", () =>
+    Effect.gen(function* () {
+      let hits = 0
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch: () => {
+          hits++
+          return new Response("ok")
+        },
+      })
+      yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)))
+      const secret = `secret-${crypto.randomUUID()}`
+      process.env.MONITOR_PROBE_REAL_TOKEN = secret
+      try {
+        for (const config of [{}, { permission: { "*": "allow" as const } }]) {
+          const tmp = yield* tmpdirScoped({ config })
+          yield* Effect.gen(function* () {
+            const permission = yield* Permission.Service
+            const build = (yield* (yield* Agent.Service).get("build"))!
+            const pattern = `MONITOR_PROBE_REAL_TOKEN@127.0.0.1:${server.port}`
+            // Stock rules ask; a user "*": "allow" would let it through, which is why the ask is forced.
+            expect(Permission.evaluate("env", pattern, build.permission).action).toBe(
+              "permission" in config ? "allow" : "ask",
+            )
+            const context: Tool.Context = {
+              ...capture([]),
+              extra: { promptOps: { notify: () => Effect.void } },
+              ask: (request) =>
+                permission
+                  .ask({ ...request, sessionID: SessionID.make("ses_test"), ruleset: build.permission })
+                  .pipe(Effect.orDie),
+              evaluate: (key, value) => Permission.evaluate(key, value, build.permission).action,
+            }
+            const tool = yield* (yield* MonitorTool).init()
+            const fiber = yield* tool
+              .execute(
+                {
+                  action: "probe",
+                  probe: {
+                    type: "http",
+                    url: `http://127.0.0.1:${server.port}/health`,
+                    headers: { Authorization: "Bearer {env:MONITOR_PROBE_REAL_TOKEN}" },
+                  },
+                  wait_ms: 0,
+                  interval_ms: 1_000,
+                  deadline_ms: 30_000,
+                },
+                context,
+              )
+              .pipe(Effect.exit, Effect.forkChild)
+            let pending: PermissionV1.Request | undefined
+            for (let i = 0; i < 200 && !pending; i++) {
+              pending = (yield* permission.list()).find((request) => request.permission === "env")
+              if (!pending) yield* Effect.sleep("10 millis")
+            }
+            expect(pending).toMatchObject({ permission: "env", patterns: [pattern], always: [pattern] })
+            expect(JSON.stringify(pending)).not.toContain(secret)
+            yield* permission.reply({ requestID: pending!.id, reply: "reject" })
+            const exit = yield* Fiber.join(fiber)
+            expect(Exit.isFailure(exit)).toBe(true)
+          }).pipe(provideInstance(tmp))
+        }
+        yield* Effect.sleep("300 millis")
+        expect(hits).toBe(0)
+      } finally {
+        delete process.env.MONITOR_PROBE_REAL_TOKEN
       }
     }),
   )

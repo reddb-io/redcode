@@ -29,7 +29,19 @@ export type Observation = { output: string; probe: Monitor.ProbeResult }
 
 const clip = (text: string, chars = VALUE_CHARS) => (text.length > chars ? `${text.slice(0, chars)}…` : text)
 
-const ENV_REFERENCE = /\{env:([^}]+)\}/g
+/** Only a plain variable name is a reference; anything else, such as `{env:*}`, is never expanded. */
+const ENV_REFERENCE = /\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g
+
+/**
+ * The `env` permission pattern for sending one variable to one host. Permission patterns treat * and ? as
+ * wildcards with no escape, so a name or host that could widen the grant is refused instead of saved.
+ */
+export function envPermissionPattern(variable: string, host: string) {
+  if (!Monitor.ENV_NAME.test(variable))
+    throw new Error(`Invalid environment variable name: ${JSON.stringify(variable)}`)
+  if (host === "" || /[*?\s]/.test(host)) throw new Error(`Invalid host for an env permission: ${JSON.stringify(host)}`)
+  return `${variable}@${host}`
+}
 
 /** The environment variables a probe's header values reference, each once. */
 export function envNames(headers: Record<string, string> | undefined) {
@@ -105,6 +117,8 @@ export type HttpOptions = {
   fetch?: typeof fetch
   /** Whether the permission rules cover a same-host redirect target; a target they do not cover is not followed. */
   allowRedirect?: (url: URL) => boolean
+  /** The monitor's own regex matcher; the shared one otherwise. */
+  regex?: SafeRegex.Matcher
 }
 
 /**
@@ -144,7 +158,7 @@ export async function http(probe: Monitor.HttpProbe, options: HttpOptions = {}):
         url = next
         continue
       }
-      return await judge(probe, response)
+      return await judge(probe, response, options.regex ?? SafeRegex)
     }
   } catch (error) {
     const message =
@@ -155,7 +169,11 @@ export async function http(probe: Monitor.HttpProbe, options: HttpOptions = {}):
   }
 }
 
-async function judge(probe: Monitor.HttpProbe, response: Response): Promise<Observation> {
+async function judge(
+  probe: Monitor.HttpProbe,
+  response: Response,
+  regex: Pick<SafeRegex.Matcher, "exec">,
+): Promise<Observation> {
   const status = response.status
   const statuses = probe.expect_status === undefined ? undefined : [probe.expect_status].flat()
   const statusOk = statuses ? statuses.includes(status) : status >= 200 && status < 300
@@ -208,7 +226,7 @@ async function judge(probe: Monitor.HttpProbe, response: Response): Promise<Obse
     parts.push(`contains ${JSON.stringify(probe.contains)}`)
   }
   if (probe.regex !== undefined) {
-    const outcome = await SafeRegex.exec(probe.regex, subject.slice(0, Monitor.REGEX_INPUT_CHARS))
+    const outcome = await regex.exec(probe.regex, subject.slice(0, Monitor.REGEX_INPUT_CHARS))
     if ("timedOut" in outcome) {
       const error = `${SafeRegex.TIMEOUT_ERROR} after ${SafeRegex.MATCH_TIMEOUT_MS} ms`
       return { output: `${parts.join(", ")}, ${error}`, probe: { ...result, error } }
@@ -274,6 +292,14 @@ const currentUid = () => (typeof process.getuid === "function" ? process.getuid(
  * on Windows. Zombies count as exited. Undefined when the listing itself failed.
  */
 export function listProcesses(platform: NodeJS.Platform = process.platform): ProcessEntry[] | undefined {
+  const entries = listAll(platform)
+  // A listing that does not show this very process was filtered or cut short (a tasklist user filter that did
+  // not match the account's domain\user form, say). An empty list from it would read as "exited", so it is no
+  // answer at all.
+  return entries?.some((entry) => entry.pid === process.pid) ? entries : undefined
+}
+
+function listAll(platform: NodeJS.Platform): ProcessEntry[] | undefined {
   const uid = currentUid()
   if (platform === "linux") {
     try {
