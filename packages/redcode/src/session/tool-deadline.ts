@@ -21,9 +21,10 @@ export const TOOL_DEADLINE_DEFAULT_MS = 600_000
  * `shell` carries its own deadline and lets the model choose it, so a deliberately long build is a
  * legitimate call rather than a hang. `question` exists to wait for a person. `task` runs a whole
  * child turn, which has its own watchdog — bounding it here would cut a subagent mid-thought and
- * report it as a stuck tool.
+ * report it as a stuck tool. `monitor` waits on an observation and caps its own wait at a minute;
+ * a configured tool timeout below that must not turn a deliberate wait into a wedged tool.
  */
-const UNBOUNDED = new Set(["shell", "bash", "question", "task"])
+const UNBOUNDED = new Set(["shell", "bash", "question", "task", "monitor"])
 
 export function deadlineMs(input: { tool: string; configured?: number | false }): number | undefined {
   if (UNBOUNDED.has(input.tool)) return undefined

@@ -195,30 +195,34 @@ const layer = Layer.effect(
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* (sessionID: SessionID) {
       const generation = yield* state.generation(sessionID)
+      // Whether a goal drove the turn that may start a monitor. When the runtime parks that goal
+      // later (loop guard, stall, step ceiling, a failed turn, /goal pause), it waits for the
+      // person, so a monitor finishing afterwards must not pick the session back up on its own.
+      const driven = (yield* goals.get(sessionID))?.status === "active"
+      const live = Effect.gen(function* () {
+        if ((yield* state.generation(sessionID)) !== generation) return false
+        if (!driven) return true
+        const goal = yield* goals.get(sessionID)
+        return goal === undefined || goal.status === "active" || goal.status === "done"
+      })
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
         resolvePromptParts: (template: string) => resolvePromptParts(template),
         prompt: (input: PromptInput) => prompt(input).pipe(Effect.catch(Effect.die)),
         notify: (input: PromptInput) =>
           Effect.gen(function* () {
-            if (input.sessionID !== sessionID || (yield* state.generation(sessionID)) !== generation) return false
+            if (input.sessionID !== sessionID || !(yield* live)) return false
+            // Admitted like any prompt, never written straight into history: the drain promotes it
+            // at its next safe boundary, so a result arriving mid-turn cannot split a provider turn.
             yield* prompt({ ...input, noReply: true }).pipe(Effect.orDie)
             yield* Effect.gen(function* () {
-              if ((yield* state.generation(input.sessionID)) !== generation) return
-              yield* loop({ sessionID: input.sessionID })
-              if ((yield* state.generation(input.sessionID)) !== generation) return
-              // Joining a drain at its final boundary can miss the newly admitted message.
-              // Recheck after it becomes idle; an explicit stop invalidates this advisory wake.
-              const pending = yield* sessions
-                .findMessage(input.sessionID, (message) => message.info.role === "user")
-                .pipe(Effect.orDie)
-              const answer = yield* lastAssistant(input.sessionID)
-              if (
-                Option.isSome(pending) &&
-                answer.info.role === "assistant" &&
-                answer.info.parentID !== pending.value.info.id
-              )
-                yield* loop({ sessionID: input.sessionID })
+              if (!(yield* live)) return
+              yield* loop({ sessionID })
+              // Joining a drain past its last promotion boundary returns without promoting the row
+              // admitted above. Wake once more while anything is still pending, unless a stop since
+              // invalidated this advisory wake.
+              if (!(yield* live)) return
+              if ((yield* SessionInput.listPending(db, sessionID)).length > 0) yield* loop({ sessionID })
             }).pipe(Effect.forkIn(scope))
             return true
           }),
@@ -1557,7 +1561,15 @@ const layer = Layer.effect(
             }
             // Waiting is a scheduler boundary: neither the todo nudger nor the goal judge
             // should spend provider calls while an external observation is outstanding.
-            if ((yield* monitors.list(sessionID)).some((monitor) => monitor.status === "running")) break
+            // The session still goes idle through promotion, so a prompt queued meanwhile runs now
+            // instead of waiting for the monitor.
+            if ((yield* monitors.list(sessionID)).some((monitor) => monitor.status === "running")) {
+              if (yield* promoteAtIdle(sessionID)) {
+                restart()
+                continue
+              }
+              break
+            }
             if (!lastAssistant.error && todoContinuations < 7) {
               const tracked = yield* todos.review(sessionID).pipe(Effect.orDie)
               const reminder = SessionTodo.reminder(tracked)

@@ -14,6 +14,8 @@ describe("tool deadlines", () => {
     expect(deadlineMs({ tool: "shell" })).toBeUndefined()
     expect(deadlineMs({ tool: "question" })).toBeUndefined()
     expect(deadlineMs({ tool: "task" })).toBeUndefined()
+    // A monitor wait is a deliberate wait, capped by the tool itself, even under a short configured bound.
+    expect(deadlineMs({ tool: "monitor", configured: 5_000 })).toBeUndefined()
   })
 
   test("configuration overrides the default, and false turns it off", () => {
