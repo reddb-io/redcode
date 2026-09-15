@@ -674,6 +674,7 @@ export type Todo = {
     messageID: string
     quote: string
     created?: number
+    paraphrase?: string
   }
   /**
    * Brief description of the task
