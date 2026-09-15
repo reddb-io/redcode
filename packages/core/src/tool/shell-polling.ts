@@ -449,43 +449,165 @@ function batch(header: string, status: string) {
   return variable !== undefined && new RegExp(`\\$\\{?${variable}\\b`).test(status)
 }
 
+/** A header that is always true: the loop only ends through `break`. */
+const FOREVER = /^(?:true|:|\[\s*1\s*\]|\(\(\s*1\s*\)\))$/
+
+function escape(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function uses(text: string, variable: string) {
+  return new RegExp(`\\$\\{?${escape(variable)}\\b`).test(text)
+}
+
+/** A literal test of a shell counter: `[ $n -ge 10 ]`, `[[ "$i" -lt 30 ]]`, `(( i < 30 ))`. */
+function counterTest(variable: string) {
+  const name = escape(variable)
+  return `(?:\\[\\[?\\s*"?\\$\\{?${name}\\}?"?\\s+-(?:lt|le|gt|ge|eq|ne)\\s+"?\\d+"?\\s*\\]\\]?|\\(\\(\\s*\\$?${name}\\s*(?:<=|<|>=|>|==|!=)\\s*\\d+\\s*\\)\\))`
+}
+
+/**
+ * How many rounds a counter bounds the loop to (`n=0; until … || [ $n -ge 20 ]; do …; n=$((n+1)); done`),
+ * when it is incremented in the body and compared with a literal.
+ */
+function counted(command: string, loop: Loop): { variable: string; count: number } | undefined {
+  const body = command.slice(loop.doAt, loop.end)
+  const whole = command.slice(loop.start, loop.end)
+  const increments = body.matchAll(
+    /\b(\w+)=\$\(\(\s*\$?(\w+)\s*\+\s*1\s*\)\)|\(\(\s*(?:(\w+)\s*(?:\+\+|\+=\s*1)|\+\+(\w+))\s*\)\)|\blet\s+["']?(\w+)(?:\+\+|\s*\+=\s*1)/g,
+  )
+  for (const match of increments) {
+    const variable =
+      match[1] !== undefined ? (match[1] === match[2] ? match[1] : undefined) : (match[3] ?? match[4] ?? match[5])
+    if (!variable) continue
+    const name = escape(variable)
+    const test =
+      new RegExp(`\\$\\{?${name}\\}?"?\\s+-(lt|le|gt|ge|eq)\\s+"?(\\d+)`).exec(whole) ??
+      new RegExp(`\\(\\(\\s*\\$?${name}\\s*(<=|<|>=|>|==)\\s*(\\d+)`).exec(whole)
+    if (!test) continue
+    const init = [...command.slice(0, loop.start).matchAll(new RegExp(`(?:^|[\\s;&(])${name}=(\\d+)`, "g"))].at(-1)
+    const inclusive = ["le", "gt", "<=", ">"].includes(test[1]!)
+    return { variable, count: Math.max(Number(test[2]) - Number(init?.[1] ?? 0), 0) + (inclusive ? 1 : 0) }
+  }
+  return undefined
+}
+
+/** The `while`/`until` condition without its counter bound, which a monitor's deadline replaces. */
+function condition(command: string, loop: Loop, counter: string | undefined) {
+  let text = trimTail(command.slice(loop.start + loop.keyword.length, loop.doAt)) ?? ""
+  if (counter) {
+    const test = counterTest(counter)
+    text = text
+      .replace(new RegExp(`\\s*(?:\\|\\||&&)\\s*${test}`), "")
+      .replace(new RegExp(`^${test}\\s*(?:\\|\\||&&)\\s*`), "")
+      .replace(new RegExp(`^${test}$`), "")
+      .trim()
+  }
+  return text && !FOREVER.test(text) ? text : undefined
+}
+
+/** The check that succeeds once a `while` loop would stop: its condition, inverted. */
+function negate(text: string) {
+  if (/&&|\|\||;/.test(text)) return `! { ${text}; }`
+  const bang = /^!\s+(.+)$/.exec(text)
+  if (bang) return bang[1]!
+  const bracket = /^(\[\[?)\s+!\s+([^\]]+?)\s*(\]\]?)$/.exec(text)
+  if (bracket) return `${bracket[1]} ${bracket[2]} ${bracket[3]}`
+  if (/^test\s+!\s+/.test(text)) return text.replace(/^test\s+!\s+/, "test ")
+  return `! ${text}`
+}
+
+/**
+ * The command a loop body breaks on (`grep -q PASSED ci.log && break`, `if [ -f ready ]; then break; fi`).
+ * Counter tests and checks on variables the body sets are skipped: a monitor cannot repeat them alone.
+ */
+function breakCheck(command: string, masked: string, loop: Loop, counter: string | undefined) {
+  const from = loop.doAt + 2
+  const body = masked.slice(from, loop.end)
+  const found: string[] = []
+  for (const match of body.matchAll(/&&\s*break(?![\w-])/g)) {
+    const at = from + match.index
+    const head = masked.slice(from, at)
+    const start = from + Math.max(head.lastIndexOf(";"), head.lastIndexOf("\n")) + 1
+    found.push(
+      command
+        .slice(start, at)
+        .trim()
+        .replace(/^(?:(?:do|then|else|\{)\s+)+/, ""),
+    )
+  }
+  for (const match of body.matchAll(/(?<![\w-])(?:if|elif)\s+([^;\n]+?)\s*[;\n]\s*then\s+break(?![\w-])/g)) {
+    const condition = match[1] ?? ""
+    const start = from + match.index + match[0].indexOf(condition)
+    found.push(command.slice(start, start + condition.length).trim())
+  }
+  const assigned = [...command.slice(loop.doAt, loop.end).matchAll(/(?:^|[\s;&(])([A-Za-z_]\w*)=/g)].map(
+    (match) => match[1] ?? "",
+  )
+  return found.find(
+    (check) => check && !(counter && uses(check, counter)) && !assigned.some((variable) => uses(check, variable)),
+  )
+}
+
 function detectLoop(command: string, masked: string): Detection | undefined {
   for (const loop of loops(masked)) {
     const naps = sleeps(masked, loop.start, loop.end)
     if (naps.length === 0) continue
     const header = command.slice(loop.start, loop.doAt)
     if (/^\s*while\s+(?:IFS=\S*\s+)?read\b/.test(header)) continue
+    const interval = naps.every((nap) => nap.ms !== undefined)
+      ? naps.reduce((total, nap) => total + nap.ms!, 0)
+      : undefined
+    const counter = counted(command, loop)
+    const count = loop.keyword === "for" ? iterations(`${header}do`) : counter?.count
+    const waitMs = count !== undefined && interval !== undefined ? count * interval : undefined
+    // A short retry (`for i in 1 2 3; do curl … && break; sleep 2; done`) is a step, not a wait.
+    if (waitMs !== undefined && waitMs < LONG_SLEEP_MS) continue
     // A `for` header only lists the items (`$(docker ps -q)`); what the loop polls is in its body.
     // A `while`/`until` header is the check itself.
     const status = commandWords(masked, loop.keyword === "for" ? loop.doAt : loop.start, loop.end)
       .filter((word) => STATUS.has(basename(word.text)))
       .find((word) => !batch(header, statement(command, masked, word.start)))
-    if (!status) continue
-    const text = statement(command, masked, status.start)
-    const interval = naps.every((nap) => nap.ms !== undefined)
-      ? naps.reduce((total, nap) => total + nap.ms!, 0)
-      : undefined
-    const count = loop.keyword === "for" ? iterations(`${header}do`) : undefined
-    const waitMs = count !== undefined && interval !== undefined ? count * interval : undefined
-    // A short retry (`for i in 1 2 3; do curl … && break; sleep 2; done`) is a step, not a wait.
-    if (waitMs !== undefined && waitMs < LONG_SLEEP_MS) continue
-    const inHeader = status.start < loop.doAt
-    const negated = inHeader && /!\s*$/.test(masked.slice(loop.start, status.start))
-    const exits = inHeader && (loop.keyword === "until" || negated)
+    const cond = loop.keyword === "for" ? undefined : condition(command, loop, counter?.variable)
+    let check: string | undefined
+    let exits: boolean
+    let success: string | undefined
+    if (status && !(status.start < loop.doAt && cond && !canonical(statement(command, masked, status.start)))) {
+      check = statement(command, masked, status.start)
+      const inHeader = status.start < loop.doAt
+      const negated = inHeader && /!\s*$/.test(masked.slice(loop.start, status.start))
+      exits = inHeader && (loop.keyword === "until" || negated)
+      success = exits ? undefined : breakCondition(masked.slice(loop.doAt, loop.end))
+    } else {
+      // A local check (`until grep -q PASSED ci.log`, `test -f ready && break`): done when it exits 0.
+      check = cond
+        ? loop.keyword === "until"
+          ? cond
+          : negate(cond)
+        : breakCheck(command, masked, loop, counter?.variable)
+      exits = check !== undefined
+      if (status === undefined && loop.keyword === "for") {
+        // A batch loop acts on each item: its check, or else its body, uses the loop variable.
+        const variable = /^\s*for\s+(?:\(\(\s*)?(\w+)/.exec(header)?.[1]
+        const subject = check ?? command.slice(loop.doAt, loop.end)
+        if (variable !== undefined && uses(subject, variable)) continue
+      }
+    }
     // `until pg_isready; do sleep 1; done`: a local readiness wait, polled briskly and given up on soon.
-    const readiness = exits && waitMs === undefined && interval !== undefined && interval <= READINESS_SLEEP_MS
-    const success = exits ? undefined : breakCondition(masked.slice(loop.doAt, loop.end))
+    const readiness = exits && waitMs === undefined && (interval === undefined || interval <= READINESS_SLEEP_MS)
     return compact({
       kind: "loop",
       waitMs: waitMs !== undefined && Number.isFinite(waitMs) ? waitMs : undefined,
       before: before(command, masked, loop.start),
       after: trimHead(command.slice(loop.end)),
-      suggestion: build({
-        command: text,
-        intervalMs: readiness ? clamp(interval!, MIN_INTERVAL_MS, 2_000) : interval,
-        deadlineMs: readiness ? READINESS_DEADLINE_MS : waitMs !== undefined ? waitMs + (interval ?? 0) : undefined,
-        success,
-      }),
+      suggestion: check
+        ? build({
+            command: check,
+            intervalMs: readiness ? clamp(interval ?? 2_000, MIN_INTERVAL_MS, 2_000) : interval,
+            deadlineMs: readiness ? READINESS_DEADLINE_MS : waitMs !== undefined ? waitMs + (interval ?? 0) : undefined,
+            success,
+          })
+        : undefined,
     })
   }
   return undefined

@@ -25,6 +25,8 @@ describe("shell polling guard without monitors", () => {
       `for i in 1..12; do sleep 300; gh run view 123 --json status -q .status | grep -q completed && break; done`,
       `for i in $(seq 1 30); do sleep 60; PENDING=$(gh pr checks 198 | grep -c pending); if [ "$PENDING" -eq 0 ]; then break; fi; done`,
       "until curl -sf http://localhost:3000/health; do sleep 2; done",
+      "until grep -q PASSED ci.log; do sleep 5; done && pnpm deploy",
+      "while pgrep -f 'vite build'; do sleep 2; done",
       "watch -n 10 kubectl get pods",
       "sleep 60",
     ]) {
