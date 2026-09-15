@@ -109,9 +109,10 @@ function userText(message: SessionV1.WithParts) {
 
 /** Files the history read and changed, relative to the worktree when inside it. */
 function fileOperations(messages: readonly SessionV1.WithParts[], root: string) {
+  // Written with "/" on every platform, so the anchors read the same on Windows.
   const relative = (file: string) => {
     const inside = path.relative(root, file)
-    return inside && !inside.startsWith("..") && !path.isAbsolute(inside) ? inside : file
+    return inside && !inside.startsWith("..") && !path.isAbsolute(inside) ? inside.split(path.sep).join("/") : file
   }
   return messages.flatMap((message) =>
     message.parts.flatMap((part): CompactionAnchors.FileOperation[] => {
