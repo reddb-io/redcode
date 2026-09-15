@@ -2870,6 +2870,7 @@ export type DesignsUpdateInput = {
       readonly id: string
       readonly name: string
       readonly variant?: string
+      readonly screen?: string
       readonly selector: string
       readonly state: "loading" | "empty" | "error" | "populated" | "edge"
       readonly actions: ReadonlyArray<{
