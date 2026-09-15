@@ -1,5 +1,16 @@
 # @reddb-io/redcode-server
 
+## 1.18.28
+
+### Patch Changes
+
+- Updated dependencies [4636b64]
+- Updated dependencies [6c299c7]
+  - @reddb-io/redcode-schema@1.21.0
+  - @reddb-io/redcode-core@1.24.0
+  - @reddb-io/redcode-design@0.0.1
+  - @reddb-io/redcode-protocol@1.18.22
+
 ## 1.18.27
 
 ### Patch Changes
