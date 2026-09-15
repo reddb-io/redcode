@@ -70,7 +70,8 @@ function sessionRow(info: SessionV1.SessionInfo): typeof SessionTable.$inferInse
     permission: info.permission ? [...info.permission] : undefined,
     time_created: info.time.created,
     time_updated: info.time.updated,
-    time_compacting: info.time.compacting,
+    // Null, not undefined: an update skips undefined columns, and the mark has to clear.
+    time_compacting: info.time.compacting ?? null,
     time_archived: info.time.archived,
   }
 }

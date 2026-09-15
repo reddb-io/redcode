@@ -12,7 +12,7 @@ import { SessionSchema } from "@reddb-io/redcode-core/session/schema"
 import { it } from "./lib/effect"
 import { adjust } from "effect/testing/TestClock"
 
-const setup = (auto = true, background = true) =>
+const setup = (auto = true, background = true, latest?: string) =>
   Effect.gen(function* () {
     const sessionID = SessionSchema.ID.create()
     const original = SessionMessage.User.make({
@@ -39,7 +39,12 @@ const setup = (auto = true, background = true) =>
     const calls: string[] = []
     const compaction = SessionCompaction.make({
       scope: yield* Scope.Scope,
-      latestUser: () => Effect.succeed(original),
+      latestUser: () =>
+        Effect.succeed(
+          latest === undefined
+            ? original
+            : SessionMessage.User.make({ ...original, id: SessionMessage.ID.make("msg_latest_request"), text: latest }),
+        ),
       config: [
         new Config.Document({
           type: "document",
@@ -221,5 +226,32 @@ it.effect("disabling preparation still allows ordinary automatic compaction", ()
       }),
     ).toBe(true)
     expect(test.calls).toHaveLength(1)
+  }),
+)
+
+it.effect("a huge latest request kept outside the history does not reject the summary", () =>
+  Effect.gen(function* () {
+    // Read from before an earlier checkpoint: the request is carried, not summarized.
+    const test = yield* setup(true, false, `HEAD ${"pasted request ".repeat(3_000)} TAIL`)
+    yield* Deferred.succeed(test.gate, undefined)
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    const ended = test.published.find(Schema.is(Schema.toType(SessionEvent.Compaction.Ended)))
+    expect(ended?.data.recent).toContain("HEAD")
+    expect(ended?.data.recent).toContain("TAIL")
+    expect(ended?.data.recent).toContain("[middle elided:")
+  }),
+)
+
+it.effect("automatic compaction runs at most twice for one request", () =>
+  Effect.gen(function* () {
+    const test = yield* setup(true, false)
+    yield* Deferred.succeed(test.gate, undefined)
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(false)
+    expect(test.calls).toHaveLength(2)
+    // A new run of the same request starts with a fresh allowance.
+    yield* test.compaction.beginTurn(test.input.sessionID)
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
   }),
 )

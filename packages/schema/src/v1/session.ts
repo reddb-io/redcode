@@ -198,6 +198,8 @@ export const CompactionPart = Schema.Struct({
   auto: Schema.Boolean,
   overflow: Schema.optional(Schema.Boolean),
   tail_start_id: Schema.optional(MessageID),
+  /** Estimated context size before and after the compaction, for the divider shown to people. */
+  tokens: Schema.optional(Schema.Struct({ before: Schema.Number, after: Schema.Number })),
 }).annotate({ identifier: "CompactionPart" })
 export type CompactionPart = Types.DeepMutable<Schema.Schema.Type<typeof CompactionPart>>
 

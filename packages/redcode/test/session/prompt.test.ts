@@ -44,6 +44,7 @@ import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { SessionCompaction } from "../../src/session/compaction"
+import { CompactionGuard } from "../../src/session/compaction-guard"
 import { SessionContext } from "../../src/session/context"
 import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
@@ -300,13 +301,23 @@ function makeHttp(input?: {
   mcpTools?: { current: Record<string, MCP.McpTool> }
   processor?: "blocking"
   context?: typeof flakyContext
+  client?: string
 }) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure, input?.mcpTools)],
-    [RuntimeFlags.node, runtimeFlags],
+    [
+      RuntimeFlags.node,
+      input?.client
+        ? RuntimeFlags.layer({
+            experimentalEventSystem: true,
+            experimentalBackgroundSubagents: true,
+            client: input.client,
+          })
+        : runtimeFlags,
+    ],
   ] as const
   if (input?.context) {
     return AppNodeBuilder.build(root, [...replacements, [SessionContext.node, input.context]])
@@ -6057,6 +6068,15 @@ it.instance("a summary prepared in the background is still reused when the epoch
     yield* llm.wait(3)
 
     yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: true })
+    yield* prompt.loop({ sessionID: chat.id })
+    // The turn had already answered, so the compaction does not revive it; the next request runs
+    // under the new baseline.
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "and then?" }],
+    })
     yield* llm.text("continued")
     yield* prompt.loop({ sessionID: chat.id })
 
@@ -6690,5 +6710,337 @@ it.instance("todowrite accepts how small models quote a Portuguese request in a 
     expect(stored.map((task) => task.source?.id).every((id) => id === stored[0].source?.id)).toBe(true)
     expect(stored.find((task) => task.content === "Validar tudo")?.criterion).toBe("Fix the signup form validation")
     expect(stored.find((task) => task.content === "Corrigir validação")?.status).not.toBe("completed")
+  }),
+)
+
+// ---------------------------------------------------------------------------------------------
+// Compaction near the context limit
+// ---------------------------------------------------------------------------------------------
+
+const attended = testEffect(makeHttp({ client: "tui" }))
+
+/** The test model with a small context window: usable is `context - 1000`. */
+function windowCfg(url: string, context: number, compaction?: ConfigV1.Info["compaction"]) {
+  const base = providerCfg(url)
+  return {
+    ...base,
+    ...(compaction ? { compaction } : {}),
+    provider: {
+      ...base.provider,
+      test: {
+        ...base.provider.test,
+        models: { "test-model": { ...base.provider.test.models["test-model"], limit: { context, output: 1_000 } } },
+      },
+    },
+  }
+}
+
+const overflow413 = { error: { message: "request entity too large" } }
+const requestText = (hit: { body: Record<string, unknown> }) => JSON.stringify(messagesOf(hit))
+const summaries = (messages: SessionV1.WithParts[]) =>
+  messages.filter((message) => message.info.role === "assistant" && message.info.summary)
+const startChat = Effect.fn("test.startChat")(function* (text: string) {
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  const chat = yield* sessions.create({ title: "Compaction" })
+  yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text }] })
+  return { chat, prompt, sessions }
+})
+const pasted = (tokens: number) =>
+  `PASTED-HEAD ${"lorem ipsum dolor sit ".repeat(Math.ceil((tokens * 4) / 22))} PASTED-TAIL`
+
+for (const trigger of ["threshold", "overflow"] as const) {
+  it.instance(
+    `a huge pasted request does not block compaction on a ${trigger} trigger`,
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+        const { chat, prompt, sessions } = yield* startChat(pasted(6_500))
+        if (trigger === "threshold") yield* llm.text("Read it.", { usage: { input: 7_200, output: 10 } })
+        else yield* llm.error(413, overflow413)
+        yield* llm.text("Summary of the pasted request.")
+        if (trigger === "overflow") yield* llm.text("Answered the pasted request.")
+        yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+
+        const all = yield* sessions.messages({ sessionID: chat.id })
+        const [summary] = summaries(all)
+        expect(summary?.info.role === "assistant" && summary.info.error).toBeFalsy()
+        const preserved = JSON.stringify(summary?.parts)
+        expect(preserved).toContain("PASTED-HEAD")
+        expect(preserved).toContain("PASTED-TAIL")
+        expect(preserved).toContain("[middle elided:")
+        expect(
+          all.some(
+            (message) => message.info.role === "assistant" && message.info.error?.name === "ContextOverflowError",
+          ),
+        ).toBe(false)
+        expect(yield* llm.hits).toHaveLength(trigger === "threshold" ? 2 : 3)
+      }),
+    60_000,
+  )
+}
+
+it.instance(
+  "automatic compaction runs at most twice per turn and ends the turn with one notice",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000))
+      const events = yield* EventV2Bridge.Service
+      const errors: string[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type === Session.Event.Error.type) errors.push(JSON.stringify(event.data))
+        return Effect.void
+      })
+      const { chat, prompt, sessions } = yield* startChat("Do the work.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-1" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Summary one.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-2" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Summary two.")
+      yield* llm.error(413, overflow413)
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+      yield* off
+
+      const all = yield* sessions.messages({ sessionID: chat.id })
+      expect(summaries(all)).toHaveLength(2)
+      expect(yield* llm.hits).toHaveLength(5)
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toContain("compacted 2 times")
+      const guards = yield* SessionGuardLog.Service
+      expect((yield* guards.recent()).some((trip) => trip.guard === "compaction" && trip.action === "stop")).toBe(true)
+    }),
+  60_000,
+)
+
+it.instance(
+  "two ineffective compactions pause automatic compaction, and the pause survives a restart",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000, { preserve_recent_tokens: 34_000 }))
+      const database = yield* Database.Service
+      const events = yield* EventV2Bridge.Service
+      const errors: string[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type === Session.Event.Error.type) errors.push(JSON.stringify(event.data))
+        return Effect.void
+      })
+      // The preserved request alone keeps the context above the band after every checkpoint.
+      const { chat, prompt, sessions } = yield* startChat(pasted(36_000))
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-1" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Summary one.")
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-2" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Summary two.")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+      yield* off
+
+      expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(2)
+      expect(yield* llm.hits).toHaveLength(4)
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toContain("Automatic compaction is paused")
+      expect(CompactionGuard.fromMetadata((yield* sessions.get(chat.id)).metadata).paused).toBeDefined()
+
+      // A new process, and no new message from the person: over the threshold it keeps working
+      // instead of compacting again.
+      const restarted = yield* Layer.build(
+        AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+          [SessionSummary.node, summary],
+          [LSP.node, lsp],
+          [MCP.node, makeMcp()],
+          [RuntimeFlags.node, runtimeFlags],
+          [Database.node, Layer.succeed(Database.Service, database)],
+          [testLLMServerNode, Layer.succeed(TestLLMServer, llm)],
+        ]),
+      )
+      const again = Context.get(restarted, SessionPrompt.Service)
+      const nudge = yield* sessions.updateMessage({
+        id: MessageID.ascending(),
+        sessionID: chat.id,
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: ref,
+      })
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        sessionID: chat.id,
+        messageID: nudge.id,
+        type: "text",
+        text: "Keep going.",
+        synthetic: true,
+      })
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-3" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Finished without compacting.")
+      yield* awaitWithTimeout(again.loop({ sessionID: chat.id }), "the restarted loop never finished", "30 seconds")
+      expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(2)
+      expect(yield* llm.hits).toHaveLength(6)
+
+      // A message from the person lifts the pause.
+      yield* again.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Now a new request." }],
+      })
+      yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-4" }).usage({ input: 39_500, output: 10 }))
+      yield* llm.text("Summary three.")
+      yield* llm.text("Done with the new request.")
+      yield* awaitWithTimeout(again.loop({ sessionID: chat.id }), "the resumed loop never finished", "60 seconds")
+      expect(summaries(yield* sessions.messages({ sessionID: chat.id }))).toHaveLength(3)
+    }),
+  120_000,
+)
+
+it.instance("a compaction after a final answer does not revive the turn", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+    const { chat, prompt, sessions } = yield* startChat("Say hi.")
+    yield* llm.text(`Hi! ${"Here is a long greeting. ".repeat(20)}`, { usage: { input: 7_200, output: 10 } })
+    yield* llm.text("Summary.")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+
+    expect(yield* llm.hits).toHaveLength(2)
+    const all = yield* sessions.messages({ sessionID: chat.id })
+    expect(summaries(all)).toHaveLength(1)
+    expect(JSON.stringify(all)).not.toContain(CompactionGuard.CONTINUE)
+    expect(JSON.stringify(all)).not.toContain("Continue if you have next steps")
+  }),
+)
+
+it.instance("a compaction in the middle of tool work continues with the explicit continuation", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+    const { chat, prompt, sessions } = yield* startChat("Find the config files.")
+    yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 7_200, output: 10 }))
+    yield* llm.text("Summary.")
+    yield* llm.text("Found none.")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(3)
+    expect(requestText(hits[2]!)).toContain(CompactionGuard.CONTINUE.slice(0, 60))
+    const continuation = (yield* sessions.messages({ sessionID: chat.id })).find((message) =>
+      message.parts.some((part) => part.type === "text" && part.metadata?.compaction_continue === true),
+    )
+    expect(continuation).toBeDefined()
+  }),
+)
+
+it.instance("a queued prompt pending at compaction is handed off instead of a continuation", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+    const { chat, prompt } = yield* startChat("Say hi.")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      noReply: true,
+      delivery: "queue",
+      parts: [{ type: "text", text: "queued-after-compaction" }],
+    })
+    yield* llm.text(`Hi! ${"Here is a long greeting. ".repeat(20)}`, { usage: { input: 7_200, output: 10 } })
+    yield* llm.text("Summary.")
+    yield* llm.text("Queued prompt answered.")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(3)
+    expect(requestText(hits[2]!)).toContain("queued-after-compaction")
+    expect(requestText(hits[2]!)).not.toContain("Continue if you have next steps")
+    expect(requestText(hits[2]!)).not.toContain(CompactionGuard.CONTINUE.slice(0, 60))
+  }),
+)
+
+it.instance("the goal judge grades the real answer, not the compaction summary", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+    const { chat, goals, prompt } = yield* startGoal("Write the report", { maxTurns: 3 })
+    // A verdict that ends the turn on its own; "done" would also need recorded evidence.
+    yield* llm.textMatch(judgeRequest, verdict("blocked", "needs the maintainer's decision"))
+    yield* llm.text(`REAL-ANSWER: ${"the report body. ".repeat(40)}`, { usage: { input: 7_200, output: 10 } })
+    yield* llm.text("SUMMARY-TEXT of the work.")
+    yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the goal loop never finished", "30 seconds")
+
+    const judged = (yield* llm.hits).filter(judgeRequest)
+    expect(judged).toHaveLength(1)
+    expect(JSON.stringify(judged[0]!.body)).toContain("REAL-ANSWER")
+    expect(JSON.stringify(judged[0]!.body)).not.toContain("SUMMARY-TEXT")
+    const goal = yield* goals.get(chat.id)
+    expect(goal?.status).toBe("blocked")
+    expect(goal?.turns.used).toBe(1)
+  }),
+)
+
+for (const outcome of ["success", "failure"] as const) {
+  it.instance(`the session reads as compacting while compaction runs and is cleared after ${outcome}`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+      const events = yield* EventV2Bridge.Service
+      let phase = false
+      let marked = false
+      const off = yield* events.listen((event) => {
+        const data = event.data as {
+          status?: { type: string; phase?: string }
+          info?: { time?: { compacting?: number } }
+        }
+        if (event.type === SessionStatus.Event.Status.type && data.status?.phase === "compacting") phase = true
+        if (event.type === Session.Event.Updated.type && data.info?.time?.compacting) marked = true
+        return Effect.void
+      })
+      const { chat, prompt, sessions } = yield* startChat("Say hi.")
+      yield* llm.text(`Hi! ${"Here is a long greeting. ".repeat(20)}`, { usage: { input: 7_200, output: 10 } })
+      if (outcome === "success") yield* llm.text("Summary.")
+      else yield* llm.fail("summarizer failed")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+      yield* off
+
+      expect(phase).toBe(true)
+      expect(marked).toBe(true)
+      expect((yield* sessions.get(chat.id)).time.compacting).toBeUndefined()
+    }),
+  )
+}
+
+it.instance("an overflow recovered by compaction publishes no session error", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => windowCfg(url, 8_000))
+    const events = yield* EventV2Bridge.Service
+    const errors: unknown[] = []
+    const off = yield* events.listen((event) => {
+      if (event.type === Session.Event.Error.type) errors.push(event.data)
+      return Effect.void
+    })
+    const { chat, prompt } = yield* startChat("Say hi.")
+    yield* llm.error(413, overflow413)
+    yield* llm.text("Summary.")
+    yield* llm.text("Hello there.")
+    const last = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+    yield* off
+
+    expect(errors).toEqual([])
+    expect(last.parts.some((part) => part.type === "text" && part.text === "Hello there.")).toBe(true)
+  }),
+)
+
+const wrapUpRun = Effect.fn("test.wrapUpRun")(function* () {
+  const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000))
+  const { chat, prompt } = yield* startChat("Do the work.")
+  // Usable is 39,000 tokens; both steps leave less than 5% of it.
+  yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-1" }).usage({ input: 37_200, output: 10 }))
+  yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-2" }).usage({ input: 37_300, output: 10 }))
+  yield* llm.text("Wrapped up.")
+  yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "30 seconds")
+  const hits = yield* llm.hits
+  expect(hits).toHaveLength(3)
+  return hits.filter((hit) => requestText(hit).includes(CompactionGuard.WRAP_UP)).length
+})
+
+it.instance("an unattended run is asked to wrap up once near the context limit", () =>
+  Effect.gen(function* () {
+    expect(yield* wrapUpRun()).toBe(1)
+  }),
+)
+
+attended.instance("an attended session gets no wrap-up reminder near the context limit", () =>
+  Effect.gen(function* () {
+    expect(yield* wrapUpRun()).toBe(0)
   }),
 )

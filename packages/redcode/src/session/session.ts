@@ -459,6 +459,8 @@ export interface Interface {
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
   readonly setTitle: (input: { sessionID: SessionID; title: string }) => Effect.Effect<void>
   readonly setArchived: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
+  /** Marks the session as compacting since `time`, or clears the mark when `time` is omitted. */
+  readonly setCompacting: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
   readonly setMetadata: (input: typeof SetMetadataInput.Type) => Effect.Effect<void>
   readonly setAgentModel: (input: {
     sessionID: SessionID
@@ -794,6 +796,13 @@ const layer: Layer.Layer<
       yield* patch(input.sessionID, { time: { archived: input.time } }).pipe(Effect.orDie)
     })
 
+    const setCompacting = Effect.fn("Session.setCompacting")(function* (input: {
+      sessionID: SessionID
+      time?: number
+    }) {
+      yield* patch(input.sessionID, { time: { compacting: input.time } }).pipe(Effect.orDie)
+    })
+
     const setMetadata = Effect.fn("Session.setMetadata")(function* (input: typeof SetMetadataInput.Type) {
       yield* patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie)
     })
@@ -948,6 +957,7 @@ const layer: Layer.Layer<
       get,
       setTitle,
       setArchived,
+      setCompacting,
       setMetadata,
       setAgentModel,
       setPermission,

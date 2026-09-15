@@ -625,6 +625,10 @@ export type CompactionPart = {
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
+  tokens?: {
+    before: number
+    after: number
+  }
 }
 
 export type Part =

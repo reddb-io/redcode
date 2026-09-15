@@ -1,6 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Database } from "@reddb-io/redcode-core/database/database"
-import { SessionGoal } from "./goal"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { Session } from "./session"
@@ -27,7 +26,16 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
-import { buildPrompt, forkPreparation, summaryError, systemPrompt } from "@reddb-io/redcode-core/session/compaction"
+import {
+  buildPrompt,
+  elideMiddle,
+  forkPreparation,
+  summaryError,
+  systemPrompt,
+} from "@reddb-io/redcode-core/session/compaction"
+import { CompactionGuard } from "./compaction-guard"
+import { ToolOutputBridge } from "@/tool/output-bridge"
+import { SessionStatus } from "./status"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionCompactionEvent } from "@reddb-io/redcode-schema/session-compaction-event"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
@@ -185,6 +193,40 @@ type ProcessInput = {
   sessionID: SessionID
   auto: boolean
   overflow?: boolean
+  /** Estimated tokens of what every request carries besides history: the system prompt. */
+  overhead?: number
+}
+
+/**
+ * Whether the conversation was still working when it was compacted, so the model has to be told
+ * to go on. A turn that ended with a final answer stays ended: reviving it cost a provider turn and
+ * invited work nobody asked for.
+ */
+export function midWork(messages: SessionV1.WithParts[], parentID: MessageID, overflow?: boolean) {
+  // The provider refused the request before the step could finish.
+  if (overflow) return true
+  const end = messages.findIndex((message) => message.info.id === parentID)
+  const history = end === -1 ? messages : messages.slice(0, end)
+  const isRequest = (message: SessionV1.WithParts) =>
+    message.info.role === "user" && !message.parts.some((part) => part.type === "compaction")
+  const isAnswer = (message: SessionV1.WithParts) => message.info.role === "assistant" && !message.info.summary
+  const request = history.findLastIndex(isRequest)
+  const answer = history.findLastIndex(isAnswer)
+  if (request === -1 && answer === -1) return false
+  // A request nobody has answered yet: the compaction ran before its first step.
+  if (request > answer) return true
+  const last = history[answer]!
+  if (last.info.role !== "assistant") return false
+  if (last.info.error) return false
+  if (!last.info.finish || ["tool-calls", "unknown"].includes(last.info.finish)) return true
+  // Some providers finish with "stop" on a message that still carries tool calls; the loop keeps
+  // going for those, so the continuation has to as well.
+  return last.parts.some(
+    (part) =>
+      part.type === "tool" &&
+      !part.metadata?.providerExecuted &&
+      !(part.state.status === "error" && part.state.metadata?.interrupted === true),
+  )
 }
 
 export interface Interface {
@@ -193,7 +235,8 @@ export interface Interface {
     model: Provider.Model
   }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
-  readonly process: (input: ProcessInput) => Effect.Effect<"continue" | "stop">
+  /** `paused` means the summary was committed and automatic compaction is now paused. */
+  readonly process: (input: ProcessInput) => Effect.Effect<"continue" | "stop" | "paused">
   readonly prepare: (
     input: ProcessInput & { tokens: SessionV1.Assistant["tokens"]; model: Provider.Model },
   ) => Effect.Effect<void>
@@ -227,6 +270,8 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const hooks = yield* OperationHookBridge.Service
     const flags = yield* RuntimeFlags.Service
+    const outputs = yield* ToolOutputBridge.Service
+    const status = yield* SessionStatus.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
@@ -419,10 +464,16 @@ const layer = Layer.effect(
         latestRequest !== undefined &&
         tailStart >= 0 &&
         retained.slice(tailStart).some((message) => message.info.id === latestRequest.info.id)
-      const preservedRequest =
-        !replay && latestRequest && !inTail
-          ? `\n\n<latest-user-request>\n${serialize(latestRequest)}\n</latest-user-request>`
-          : ""
+      // A pasted request larger than the tail budget cannot ride every later request whole, or the
+      // checkpoint leaves the context as full as it found it. A bounded head and tail stay verbatim
+      // and the full text is saved where the model can read it again.
+      const preservedRequest = yield* Effect.gen(function* () {
+        if (replay || !latestRequest || inTail) return ""
+        const text = serialize(latestRequest)
+        const budget = preserveRecentBudget({ cfg, model })
+        const bounded = Token.estimate(text) <= budget ? text : elideMiddle(text, budget, yield* outputs.retain(text))
+        return `\n\n<latest-user-request>\n${bounded}\n</latest-user-request>`
+      })
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
@@ -461,6 +512,7 @@ const layer = Layer.effect(
         model,
         selected,
         preservedRequest,
+        latestRequestID: latestRequest?.info.id,
         previousSummary,
         conversation,
         stream: {
@@ -556,7 +608,6 @@ const layer = Layer.effect(
           summaryError({
             summary: text,
             source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
-            retained: prepared.preservedRequest,
             finish: events.findLast(LLMEvent.is.finish)?.reason,
           })
         )
@@ -577,7 +628,17 @@ const layer = Layer.effect(
       })
     })
 
+    // The session reads as compacting for exactly as long as this runs, failures included: the TUI
+    // shows "Compacting the conversation" from it instead of a spinner with nothing to say.
     const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: ProcessInput) {
+      yield* session.setCompacting({ sessionID: input.sessionID, time: Date.now() })
+      yield* status.set(input.sessionID, { type: "busy", phase: "compacting", since: Date.now() })
+      return yield* runCompaction(input).pipe(
+        Effect.ensuring(session.setCompacting({ sessionID: input.sessionID }).pipe(Effect.ignore)),
+      )
+    })
+
+    const runCompaction = Effect.fnUntraced(function* (input: ProcessInput) {
       const cached = pending.get(input.sessionID)
       const parent = input.messages.find((message) => message.info.id === input.parentID)
       const candidate =
@@ -649,6 +710,7 @@ const layer = Layer.effect(
         assistantMessage: msg,
         sessionID: input.sessionID,
         model: prepared.model,
+        compacting: true,
       })
       // The turn's watchdog reads the step handle, and this processor is not it, so a provider
       // that stops answering here holds the turn open with nothing to show. A compaction that did
@@ -699,9 +761,11 @@ const layer = Layer.effect(
         Effect.provideService(Database.Service, database),
         Effect.orDie,
       )
+      // Compared against the summarised source only: the preserved latest request is carried
+      // alongside the summary, not produced by it, and counting it rejected every checkpoint of a
+      // history made mostly of one large request.
       const error = summaryError({
         summary: summaryText(checkpoint) ?? "",
-        retained: prepared.preservedRequest,
         source: [prepared.previousSummary, prepared.conversation].filter(Boolean).join("\n\n"),
         finish: processor.message.finish,
       })
@@ -735,7 +799,58 @@ const layer = Layer.effect(
       // The summary becomes a history boundary only after validation and tail persistence.
       yield* session.updateMessage(processor.message)
 
-      if (result === "continue" && input.auto) {
+      // Sized the way the next request will be: the system prompt, everything history now shows,
+      // and the continuation that may follow.
+      const cfg = yield* config.get()
+      const userModel = yield* provider
+        .getModel(prepared.userMessage.model.providerID, prepared.userMessage.model.modelID)
+        .pipe(Effect.orDie)
+      const overhead = input.overhead ?? 0
+      const before = overhead + (yield* estimate({ messages: input.messages, model: userModel }))
+      const visible = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )
+      const after =
+        overhead + (yield* estimate({ messages: visible, model: userModel })) + Token.estimate(CompactionGuard.CONTINUE)
+      if (prepared.compactionPart) {
+        yield* session.updatePart({
+          ...prepared.compactionPart,
+          ...(prepared.selected.tail_start_id ? { tail_start_id: prepared.selected.tail_start_id } : {}),
+          tokens: { before, after },
+        })
+      }
+
+      // Hysteresis: a checkpoint that leaves the next request above the band only buys one more
+      // step before the next compaction, so two in a row pause automatic compaction.
+      const current = yield* session.get(input.sessionID).pipe(Effect.orDie)
+      const guard = CompactionGuard.fromMetadata(current.metadata)
+      const effective = CompactionGuard.isEffective({
+        after,
+        usable: usable({ cfg, model: userModel, outputTokenMax: flags.outputTokenMax }),
+      })
+      const next = input.auto
+        ? CompactionGuard.afterAutomatic(guard, {
+            effective,
+            latestRequestID: prepared.latestRequestID,
+            now: Date.now(),
+          })
+        : { ineffective: 0 }
+      if (JSON.stringify(next) !== JSON.stringify(guard))
+        yield* session.setMetadata({
+          sessionID: input.sessionID,
+          metadata: CompactionGuard.toMetadata(current.metadata, next),
+        })
+      const paused = input.auto && CompactionGuard.isPaused(next, prepared.latestRequestID)
+      yield* Effect.logInfo("compacted", {
+        "session.id": input.sessionID,
+        before,
+        after,
+        effective,
+        paused,
+      })
+
+      if (result === "continue" && input.auto && !paused) {
         if (prepared.replay) {
           const original = prepared.replay.info
           const replayMsg = yield* session.updateMessage({
@@ -767,7 +882,12 @@ const layer = Layer.effect(
           }
         }
 
-        if (!prepared.replay) {
+        // Steers admitted while the summary was written are promoted at the next boundary; the
+        // continuation hands the turn to them rather than letting it end on the summary.
+        const handoff =
+          !prepared.replay &&
+          (yield* SessionInput.listPending(database.db, input.sessionID, { delivery: "steer" })).length > 0
+        if (!prepared.replay && (handoff || midWork(input.messages, input.parentID, input.overflow))) {
           const info = yield* provider.getProvider(prepared.userMessage.model.providerID)
           if (
             (yield* plugin.trigger(
@@ -789,12 +909,8 @@ const layer = Layer.effect(
               { enabled: true },
             )).enabled
           ) {
-            // While a goal is active the goal loop decides what the next turn is; two synthetic
-            // continuations would interleave.
-            const goalActive =
-              SessionGoal.fromMetadata((yield* session.get(input.sessionID).pipe(Effect.orDie)).metadata)?.status ===
-              "active"
-            if (goalActive) return "continue"
+            // Goals follow the same rule: a goal turn cut off mid-work continues and its next real
+            // answer is judged; a goal turn that had already answered is judged on that answer.
             const continueMsg = yield* session.updateMessage({
               id: MessageID.ascending(),
               role: "user",
@@ -807,7 +923,8 @@ const layer = Layer.effect(
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+              CompactionGuard.CONTINUE +
+              (handoff ? `\n\n${CompactionGuard.HANDOFF}` : "")
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
@@ -832,6 +949,7 @@ const layer = Layer.effect(
       if (result === "continue") {
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }
+      if (paused && result === "continue") return "paused" as const
       return result
     })
 
@@ -887,6 +1005,8 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     OperationHookBridge.node,
     RuntimeFlags.node,
+    ToolOutputBridge.node,
+    SessionStatus.node,
   ],
 })
 
