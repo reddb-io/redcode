@@ -33,6 +33,30 @@ import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
 
+/** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
+const BOOTSTRAP_SETTLE_MS = 100
+/** How long startup waits for the event stream before reading snapshots without it. */
+const STREAM_CONNECT_GRACE_MS = 3000
+const BOOTSTRAP_RECOVERY_LIMIT = 5
+const CATALOG_RETRY_MS = [250, 750, 2000]
+/** Statuses that mean "not now" rather than "no": cancelled sibling reads, reloading instances. */
+const TRANSIENT_STATUS = new Set([408, 425, 429, 499, 502, 503, 504])
+
+function abortableDelay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("bootstrap superseded"))
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new Error("bootstrap superseded"))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
   switchableOrgCount: 0,
@@ -174,6 +198,10 @@ export const {
       disposed = true
       generation++
       bootstrapAbort?.abort()
+      if (bootstrapTrailing?.timer) clearTimeout(bootstrapTrailing.timer)
+      bootstrapTrailing?.resolve()
+      bootstrapTrailing = undefined
+      if (bootstrapRecovery) clearTimeout(bootstrapRecovery)
       refreshingSessions?.abort.abort()
       for (const tracker of hydratingSessions.values()) tracker.abort.abort()
       hydratingSessions.clear()
@@ -299,7 +327,8 @@ export const {
           break
         }
         case "server.instance.disposed":
-          void bootstrap()
+          // A re-sync, not startup: a failed read here must not exit the TUI.
+          void bootstrap({ fatal: false }).catch(() => {})
           break
 
         case "models-dev.refreshed":
@@ -608,7 +637,114 @@ export const {
     const exit = useExit()
     const args = useArgs()
 
-    async function bootstrap(input: { fatal?: boolean } = {}) {
+    // Bootstrap triggers arrive in bursts: the first stream connection, `server.instance.disposed`,
+    // stream reconnects, provider dialogs. Aborting the in-flight run for each one cancelled its
+    // slowest reads (`/agent`, `/command`) over and over, and the server answered every cancelled
+    // read with 499. A run for the same workspace now finishes; every trigger that arrives while it
+    // is in flight collapses into one trailing run, started once triggers stop for a moment.
+    let bootstrapRun: { workspace: string | undefined; promise: Promise<void> } | undefined
+    let bootstrapTrailing:
+      | {
+          fatal: boolean
+          timer: ReturnType<typeof setTimeout> | undefined
+          promise: Promise<void>
+          resolve: () => void
+          reject: (error: unknown) => void
+        }
+      | undefined
+    let bootstrapFailures = 0
+    let bootstrapRecovery: ReturnType<typeof setTimeout> | undefined
+
+    function bootstrap(input: { fatal?: boolean } = {}): Promise<void> {
+      const fatal = input.fatal ?? true
+      if (disposed) return Promise.resolve()
+      if (bootstrapRun && bootstrapRun.workspace !== project.workspace.current()) {
+        // A different workspace: the in-flight reads are for the wrong instance, supersede them.
+        return startBootstrap(fatal)
+      }
+      if (!bootstrapRun && !bootstrapTrailing) return startBootstrap(fatal)
+      if (!bootstrapTrailing) {
+        let resolve!: () => void
+        let reject!: (error: unknown) => void
+        const promise = new Promise<void>((done, fail) => {
+          resolve = done
+          reject = fail
+        })
+        bootstrapTrailing = { fatal, timer: undefined, promise, resolve, reject }
+      } else {
+        bootstrapTrailing.fatal = bootstrapTrailing.fatal && fatal
+      }
+      // Settling after the in-flight run: another trigger restarts the quiet period.
+      if (!bootstrapRun) armTrailingBootstrap()
+      return bootstrapTrailing.promise
+    }
+
+    function armTrailingBootstrap() {
+      const trailing = bootstrapTrailing
+      if (!trailing) return
+      if (trailing.timer) clearTimeout(trailing.timer)
+      trailing.timer = setTimeout(() => {
+        if (bootstrapTrailing !== trailing) return
+        bootstrapTrailing = undefined
+        if (disposed) return trailing.resolve()
+        startBootstrap(trailing.fatal).then(trailing.resolve, trailing.reject)
+      }, BOOTSTRAP_SETTLE_MS)
+    }
+
+    function startBootstrap(fatal: boolean) {
+      const promise = runBootstrap({ fatal })
+      const run = { workspace: project.workspace.current(), promise }
+      bootstrapRun = run
+      void promise
+        .catch(() => {})
+        .finally(() => {
+          if (bootstrapRun !== run) return
+          bootstrapRun = undefined
+          armTrailingBootstrap()
+        })
+      return promise
+    }
+
+    // Agents and commands are what a user sees missing first. A read the server could not answer
+    // yet (499 from a cancelled sibling, 503 while an instance reloads) is retried a few times
+    // before the run is given up, and a run given up schedules a background recovery run.
+    function scheduleBootstrapRecovery() {
+      if (disposed || bootstrapRecovery || bootstrapFailures >= BOOTSTRAP_RECOVERY_LIMIT) return
+      const delay = Math.min(1000 * 2 ** bootstrapFailures, 30_000)
+      bootstrapFailures++
+      bootstrapRecovery = setTimeout(() => {
+        bootstrapRecovery = undefined
+        void bootstrap({ fatal: false }).catch(() => {})
+      }, delay)
+    }
+
+    async function readCatalog<T>(
+      label: string,
+      read: () => Promise<{ data?: T; error?: unknown; response?: Response }>,
+      signal: AbortSignal,
+    ): Promise<T> {
+      for (let attempt = 0; ; attempt++) {
+        const outcome = await read().then(
+          (result) => ({ result, error: undefined }),
+          (error: unknown) => ({ result: undefined, error }),
+        )
+        if (signal.aborted) throw new Error(`${label}: bootstrap superseded`)
+        const response = outcome.result?.response
+        if (outcome.result && outcome.result.data !== undefined && response?.ok !== false) return outcome.result.data
+        const status = response?.status
+        const failure =
+          status !== undefined
+            ? new Error(`${label} failed with HTTP ${status}`)
+            : outcome.error instanceof Error
+              ? outcome.error
+              : new Error(`${label} failed`)
+        if (attempt >= CATALOG_RETRY_MS.length) throw failure
+        if (status !== undefined && !TRANSIENT_STATUS.has(status)) throw failure
+        await abortableDelay(CATALOG_RETRY_MS[attempt], signal)
+      }
+    }
+
+    async function runBootstrap(input: { fatal?: boolean } = {}) {
       const epoch = ++generation
       const listEpoch = ++sessionListGeneration
       refreshingSessions?.abort.abort()
@@ -617,6 +753,7 @@ export const {
       const abort = new AbortController()
       bootstrapAbort = abort
       const current = () => !disposed && epoch === generation
+      let commandsFailed = false
       const tracker = {
         sessions: new Set<string>(),
         statuses: new Set<string>(),
@@ -636,9 +773,19 @@ export const {
       const sessionsPromise = projectPromise.then(() => listSessions(abort.signal))
       const refreshPromise = Promise.allSettled(refresh.map((id) => result.session.sync(id, { refresh: true })))
       const optional = Promise.allSettled([
-        sdk.client.command.list({ workspace }, { signal: abort.signal }).then((x) => {
-          if (current()) setStore("command", reconcile(x.data ?? []))
-        }),
+        readCatalog("commands", () => sdk.client.command.list({ workspace }, { signal: abort.signal }), abort.signal).then(
+          (commands) => {
+            if (current()) setStore("command", reconcile(commands))
+          },
+          (error) => {
+            if (!current()) return
+            // Keep whatever commands were loaded before; an empty list would hide them all.
+            console.error("tui bootstrap: commands unavailable", {
+              error: error instanceof Error ? error.message : String(error),
+            })
+            commandsFailed = true
+          },
+        ),
         sdk.client.lsp.status({ workspace }, { signal: abort.signal }).then((x) => {
           if (current()) setStore("lsp", reconcile(x.data ?? []))
         }),
@@ -672,7 +819,7 @@ export const {
         sdk.client.provider.list({ workspace }, { throwOnError: true, signal: abort.signal }),
         sdk.client.experimental.capabilities.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
         sdk.client.experimental.console.get({ workspace }, { signal: abort.signal }).catch(() => undefined),
-        sdk.client.app.agents({ workspace }, { throwOnError: true, signal: abort.signal }),
+        readCatalog("agents", () => sdk.client.app.agents({ workspace }, { signal: abort.signal }), abort.signal),
         sdk.client.config.get({ workspace }, { throwOnError: true, signal: abort.signal }),
         projectPromise,
       ])
@@ -702,7 +849,7 @@ export const {
               capabilities?.data?.backgroundSubagents === true,
             )
             setStore("console_state", reconcile(consoleState?.data ?? emptyConsoleState))
-            setStore("agent", reconcile(agents.data ?? []))
+            setStore("agent", reconcile(agents))
             setStore("config", reconcile(config.data!))
             if (store.status !== "complete") setStore("status", "partial")
           })
@@ -765,22 +912,49 @@ export const {
           await Promise.all([optional, refreshPromise])
           if (current()) setStore("status", "complete")
         })
+        .then(() => {
+          if (!current()) return
+          if (commandsFailed) return scheduleBootstrapRecovery()
+          bootstrapFailures = 0
+        })
         .catch((error) => {
           if (!current()) return
           console.error("tui bootstrap failed", { error: error instanceof Error ? error.message : String(error) })
           if (input.fatal ?? true) return exit(error)
+          scheduleBootstrapRecovery()
           throw error
         })
         .finally(() => {
+          // A settled run has nothing left to cancel; the next run must not abort its requests.
+          if (bootstrapAbort === abort) bootstrapAbort = undefined
           if (current()) snapshot = undefined
         })
     }
 
     onMount(() => {
-      void bootstrap()
+      // Read snapshots once the event stream is live, so nothing that changes them can fall into a
+      // gap between the reads and the subscription. The first connection is therefore the startup
+      // trigger, not a second bootstrap that supersedes the first. If the stream does not connect,
+      // load anyway after a grace period; a later connection then queues one trailing run.
+      let started = false
+      const start = () => {
+        if (started) return false
+        started = true
+        clearTimeout(fallback)
+        void bootstrap()
+        return true
+      }
+      const fallback = setTimeout(start, STREAM_CONNECT_GRACE_MS)
+      onCleanup(() => clearTimeout(fallback))
       // The stream dropped and came back, so whatever happened in between was never delivered.
       // Re-read rather than trust a picture assembled from a stream with a hole in it.
-      onCleanup(sdk.onReconnect(() => void bootstrap({ fatal: false }).catch(() => {})))
+      onCleanup(
+        sdk.onReconnect(() => {
+          if (start()) return
+          void bootstrap({ fatal: false }).catch(() => {})
+        }),
+      )
+      if (sdk.connected) start()
     })
 
     const result = {

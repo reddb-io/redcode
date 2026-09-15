@@ -1,11 +1,25 @@
 import { NamedError } from "@reddb-io/redcode-core/util/error"
 import { ConfigErrorV1 } from "@reddb-io/redcode-core/v1/config/error"
 import { Cause, Effect } from "effect"
-import { HttpRouter, HttpServerError, HttpServerRespondable, HttpServerResponse } from "effect/unstable/http"
+import {
+  HttpRouter,
+  HttpServerError,
+  HttpServerRequest,
+  HttpServerRespondable,
+  HttpServerResponse,
+} from "effect/unstable/http"
 
 // Keep typed HttpApi failures on their declared error path; this boundary only replaces defect-only empty 500s.
 export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect) =>
   effect.pipe(
+    // A client that drops its request (the TUI superseding a read, a closed tab) is routine:
+    // effect answers it with 499. Record it at debug so it never reads as a server failure.
+    Effect.onInterrupt(() =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* Effect.logDebug("request cancelled by client", { method: request.method, url: request.url })
+      }),
+    ),
     Effect.catchCause((cause) => {
       const defect = cause.reasons.filter(Cause.isDieReason).find((reason) => {
         if (HttpServerResponse.isHttpServerResponse(reason.defect)) return false
