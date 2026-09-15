@@ -14,6 +14,11 @@ export const Source = Schema.Struct({
   quote: Schema.String,
   created: Schema.Finite,
   key: optional(Schema.String),
+  /**
+   * The model's requirement when it quoted no request and the latest request was attached instead.
+   * Kept as the task's criterion, it restates the request, so it never explains a check.
+   */
+  paraphrase: optional(Schema.String),
 }).annotate({ identifier: "Todo.Source" })
 export type Source = typeof Source.Type
 
