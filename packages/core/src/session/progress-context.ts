@@ -9,7 +9,7 @@ import { SessionPlan } from "./plan"
 
 export const load = Effect.fn(function* (sessionID: SessionSchema.ID) {
   const todos = yield* SessionTodo.Service
-  const tasks = yield* todos.review(sessionID).pipe(Effect.orDie)
+  const tasks = yield* SessionTodo.reviewOrKeep(todos, sessionID)
   const goals = yield* SessionGoal.Service
   const plans = yield* SessionPlan.Service
   const goal = yield* goals.get(sessionID).pipe(Effect.orDie)

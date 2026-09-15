@@ -218,6 +218,22 @@ it.effect("reopens stale completion after a failed later edit and keeps its evid
   }),
 )
 
+it.effect("a refused task review keeps the stored list and a defect still fails the turn", () =>
+  Effect.gen(function* () {
+    const stored = [{ id: "todo_kept", revision: 1, content: "Kept", status: "completed", priority: "high" }] as never
+    const refused = SessionTodo.reviewOrKeep(
+      { review: () => Effect.fail(new SessionTodo.Error({ message: "refused" })), get: () => Effect.succeed(stored) },
+      sessionID,
+    )
+    expect(yield* refused).toBe(stored)
+    const broken = SessionTodo.reviewOrKeep(
+      { review: () => Effect.die(new Error("database gone")), get: () => Effect.succeed(stored) },
+      sessionID,
+    )
+    expect((yield* Effect.exit(broken))._tag).toBe("Failure")
+  }),
+)
+
 it.effect("reopens and updates a task whose quoted request is no longer in the session history", () =>
   Effect.gen(function* () {
     yield* setup

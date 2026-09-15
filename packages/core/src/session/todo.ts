@@ -60,6 +60,21 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/v2/SessionTodo") {}
 
+/**
+ * The task review a turn runs around its provider steps. Review is bookkeeping: a list the store
+ * refuses to reconcile keeps its stored state instead of failing the turn, since it runs on every step
+ * and a failure would fail every prompt in the session.
+ */
+export const reviewOrKeep = (todos: Pick<Interface, "review" | "get">, sessionID: SessionSchema.ID) =>
+  todos.review(sessionID).pipe(
+    Effect.catchTag("SessionTodo.Error", (error) =>
+      Effect.logWarning("task review failed; keeping the stored task list", {
+        "session.id": sessionID,
+        error: error.message,
+      }).pipe(Effect.andThen(todos.get(sessionID))),
+    ),
+  )
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
