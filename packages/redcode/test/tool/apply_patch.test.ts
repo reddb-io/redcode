@@ -4,6 +4,7 @@ import * as fs from "fs/promises"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
+import { systemError } from "effect/PlatformError"
 import { ApplyPatchTool } from "../../src/tool/apply_patch"
 import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -282,7 +283,7 @@ describe("tool.apply_patch freeform", () => {
     }),
   )
 
-  it.instance("appends trailing newline on update", () =>
+  it.instance("keeps a missing trailing newline on update", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const { ctx } = makeCtx()
@@ -294,9 +295,7 @@ describe("tool.apply_patch freeform", () => {
 
       yield* execute({ patchText }, ctx)
 
-      const contents = yield* readText(target)
-      expect(contents.endsWith("\n")).toBe(true)
-      expect(contents).toBe("first line\nsecond line\n")
+      expect(yield* readText(target)).toBe("first line\nsecond line")
     }),
   )
 
@@ -566,6 +565,287 @@ EOF`
       yield* execute({ patchText }, ctx)
       // Result has ASCII quotes because that's what the patch specifies
       expect(yield* readText(target)).toBe(`He said "hi"\nsome${emDash}dash\nend\n`)
+    }),
+  )
+})
+
+const failingFs = (shouldFail: (method: string, target: string) => boolean) =>
+  Effect.gen(function* () {
+    const real = yield* FSUtil.Service
+    const guard = (method: string, target: string) =>
+      shouldFail(method, target)
+        ? Effect.fail(
+            systemError({
+              _tag: "Unknown",
+              module: "FileSystem",
+              method,
+              pathOrDescriptor: target,
+              description: "injected failure",
+            }),
+          )
+        : Effect.void
+    return FSUtil.Service.of({
+      ...real,
+      writeFile: (target, data, options) =>
+        guard("writeFile", target).pipe(Effect.andThen(real.writeFile(target, data, options))),
+      writeFileString: (target, data, options) =>
+        guard("writeFileString", target).pipe(Effect.andThen(real.writeFileString(target, data, options))),
+      writeWithDirs: (target, content, mode) =>
+        guard("writeWithDirs", target).pipe(Effect.andThen(real.writeWithDirs(target, content, mode))),
+      rename: (from, to) => guard("rename", to).pipe(Effect.andThen(real.rename(from, to))),
+    })
+  })
+
+const exists = (filepath: string) =>
+  Effect.promise(() =>
+    fs.stat(filepath).then(
+      () => true,
+      () => false,
+    ),
+  )
+
+describe("tool.apply_patch transactional commit", () => {
+  it.instance("a failure in a later hunk leaves every file untouched", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const ok = path.join(test.directory, "ok.txt")
+      const source = path.join(test.directory, "source.txt")
+      yield* writeText(ok, "one\n")
+      yield* writeText(source, "s\n")
+      yield* makeDir(path.join(test.directory, "occupied"))
+
+      // The move destination is an existing directory, which only fails once the patch is committed.
+      const patchText =
+        "*** Begin Patch\n*** Update File: ok.txt\n@@\n-one\n+two\n*** Update File: source.txt\n*** Move to: occupied\n@@\n-s\n+S\n*** End Patch"
+
+      yield* expectFailure(execute({ patchText }, ctx), "apply_patch verification failed")
+      expect(yield* readText(ok)).toBe("one\n")
+      expect(yield* readText(source)).toBe("s\n")
+    }),
+  )
+
+  it.instance("applies later hunks on top of earlier hunks for the same file", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx, calls } = makeCtx()
+      const target = path.join(test.directory, "twice.txt")
+      yield* writeText(target, "a\nb\nc\n")
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: twice.txt\n@@\n-a\n+A\n*** Update File: twice.txt\n@@\n-c\n+C\n*** End Patch"
+
+      const result = yield* execute({ patchText }, ctx)
+      expect(yield* readText(target)).toBe("A\nb\nC\n")
+      expect(calls[0].metadata.files).toHaveLength(1)
+      expect(result.metadata.files[0].patch).toContain("+A")
+      expect(result.metadata.files[0].patch).toContain("+C")
+    }),
+  )
+
+  it.instance(
+    "applies move, update and delete in one patch",
+    () =>
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const { ctx, calls } = makeCtx()
+          yield* makeDir(path.join(test.directory, "src"))
+          yield* writeText(path.join(test.directory, "src", "a.txt"), "a1\na2\n")
+          yield* writeText(path.join(test.directory, "keep.txt"), "k\n")
+          yield* writeText(path.join(test.directory, "gone.txt"), "g\n")
+
+          const patchText = [
+            "*** Begin Patch",
+            "*** Update File: src/a.txt",
+            "*** Move to: dst/a.txt",
+            "@@",
+            "-a1",
+            "+A1",
+            "*** Update File: dst/a.txt",
+            "@@",
+            "-a2",
+            "+A2",
+            "*** Update File: keep.txt",
+            "@@",
+            "-k",
+            "+K",
+            "*** Delete File: gone.txt",
+            "*** End Patch",
+          ].join("\n")
+
+          const result = yield* execute({ patchText }, ctx)
+
+          expect(yield* readText(path.join(test.directory, "dst", "a.txt"))).toBe("A1\nA2\n")
+          expect(yield* exists(path.join(test.directory, "src", "a.txt"))).toBe(false)
+          expect(yield* readText(path.join(test.directory, "keep.txt"))).toBe("K\n")
+          expect(yield* exists(path.join(test.directory, "gone.txt"))).toBe(false)
+
+          for (const name of ["dst/a.txt", "src/a.txt", "keep.txt", "gone.txt"]) expect(result.output).toContain(name)
+          expect(calls[0].patterns).toEqual(expect.arrayContaining(["src/a.txt", "dst/a.txt", "keep.txt", "gone.txt"]))
+          expect(result.metadata.files.map((file) => file.type)).toEqual(["move", "update", "delete"])
+          expect(result.metadata.files[0].movePath).toBe(path.join(test.directory, "dst", "a.txt"))
+        }),
+      ),
+    { git: true },
+  )
+
+  it.instance(
+    "rolls back written files when a write fails mid-commit",
+    () =>
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const { ctx } = makeCtx()
+          const a = path.join(test.directory, "a.txt")
+          const b = path.join(test.directory, "b.txt")
+          const c = path.join(test.directory, "c.txt")
+          yield* writeText(a, "a\n")
+          yield* writeText(b, "b\n")
+          yield* writeText(c, "c\n")
+
+          const patchText =
+            "*** Begin Patch\n*** Add File: fresh/deep/x.txt\n+x\n*** Update File: a.txt\n@@\n-a\n+A\n*** Update File: b.txt\n@@\n-b\n+B\n*** Delete File: c.txt\n*** End Patch"
+
+          const broken = yield* failingFs((method, target) => method !== "writeFile" && target === b)
+          yield* expectFailure(
+            execute({ patchText }, ctx).pipe(Effect.provideService(FSUtil.Service, broken)),
+            "Rolled back: fresh/deep/x.txt, a.txt",
+          )
+
+          expect(yield* readText(a)).toBe("a\n")
+          expect(yield* readText(b)).toBe("b\n")
+          expect(yield* readText(c)).toBe("c\n")
+          expect(yield* exists(path.join(test.directory, "fresh"))).toBe(false)
+          const leftovers = yield* Effect.promise(() => fs.readdir(test.directory))
+          expect(leftovers.filter((name) => name.includes("redcode-tmp"))).toEqual([])
+        }),
+      ),
+    { git: true },
+  )
+
+  it.instance(
+    "reports files that could not be rolled back",
+    () =>
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const { ctx } = makeCtx()
+          const a = path.join(test.directory, "a.txt")
+          const b = path.join(test.directory, "b.txt")
+          yield* writeText(a, "a\n")
+          yield* writeText(b, "b\n")
+
+          const patchText =
+            "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+A\n*** Update File: b.txt\n@@\n-b\n+B\n*** End Patch"
+
+          let writesToA = 0
+          const broken = yield* failingFs((method, target) => {
+            if (method === "writeFile") return false
+            if (target === b) return true
+            return target === a && ++writesToA > 1
+          })
+          yield* expectFailure(
+            execute({ patchText }, ctx).pipe(Effect.provideService(FSUtil.Service, broken)),
+            "Rollback failed for: a.txt",
+          )
+          expect(yield* readText(a)).toBe("A\n")
+          expect(yield* readText(b)).toBe("b\n")
+        }),
+      ),
+    { git: true },
+  )
+
+  it.instance(
+    "denying permission for one path writes nothing",
+    () =>
+      inTaskWorktree(
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const a = path.join(test.directory, "a.txt")
+          const b = path.join(test.directory, "b.txt")
+          yield* writeText(a, "a\n")
+          yield* writeText(b, "b\n")
+          const ctx: ToolCtx = {
+            ...baseCtx,
+            ask: (input) =>
+              input.patterns.some((pattern) => pattern.startsWith("protected/"))
+                ? Effect.die(new Error("permission denied for protected/"))
+                : Effect.void,
+          }
+
+          const patchText =
+            "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+A\n*** Update File: b.txt\n*** Move to: protected/b.txt\n@@\n-b\n+B\n*** End Patch"
+
+          yield* expectFailure(execute({ patchText }, ctx), "permission denied")
+          expect(yield* readText(a)).toBe("a\n")
+          expect(yield* readText(b)).toBe("b\n")
+          expect(yield* exists(path.join(test.directory, "protected"))).toBe(false)
+        }),
+      ),
+    { git: true },
+  )
+
+  it.instance("refuses to commit over a file that changed while waiting for permission", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const a = path.join(test.directory, "a.txt")
+      const b = path.join(test.directory, "b.txt")
+      yield* writeText(a, "a\n")
+      yield* writeText(b, "b\n")
+      const ctx: ToolCtx = {
+        ...baseCtx,
+        ask: () => Effect.promise(() => fs.writeFile(b, "someone else\n")),
+      }
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+A\n*** Update File: b.txt\n@@\n-b\n+B\n*** End Patch"
+
+      yield* expectFailure(execute({ patchText }, ctx), "changed on disk")
+      expect(yield* readText(a)).toBe("a\n")
+      expect(yield* readText(b)).toBe("someone else\n")
+    }),
+  )
+
+  it.instance("preserves CRLF line endings and a missing trailing newline", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const crlf = path.join(test.directory, "crlf.txt")
+      const noeol = path.join(test.directory, "noeol.txt")
+      yield* writeText(crlf, "a\r\nb\r\nc\r\n")
+      yield* writeText(noeol, "x\ny")
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: crlf.txt\n@@\n-b\n+B\n+B2\n*** Update File: noeol.txt\n@@\n-y\n+z\n*** End Patch"
+
+      yield* execute({ patchText }, ctx)
+      expect(yield* readText(crlf)).toBe("a\r\nB\r\nB2\r\nc\r\n")
+      expect(yield* readText(noeol)).toBe("x\nz")
+    }),
+  )
+
+  it.instance("keeps file mode and symlinks when replacing files atomically", () =>
+    Effect.gen(function* () {
+      if (process.platform === "win32") return
+      const test = yield* TestInstance
+      const { ctx } = makeCtx()
+      const script = path.join(test.directory, "run.sh")
+      const real = path.join(test.directory, "real.txt")
+      const link = path.join(test.directory, "link.txt")
+      yield* writeText(script, "echo a\n")
+      yield* Effect.promise(() => fs.chmod(script, 0o755))
+      yield* writeText(real, "r\n")
+      yield* Effect.promise(() => fs.symlink(real, link))
+
+      const patchText =
+        "*** Begin Patch\n*** Update File: run.sh\n@@\n-echo a\n+echo b\n*** Update File: link.txt\n@@\n-r\n+R\n*** End Patch"
+
+      yield* execute({ patchText }, ctx)
+      expect(yield* readText(script)).toBe("echo b\n")
+      expect((yield* Effect.promise(() => fs.stat(script))).mode & 0o777).toBe(0o755)
+      expect((yield* Effect.promise(() => fs.lstat(link))).isSymbolicLink()).toBe(true)
+      expect(yield* readText(real)).toBe("R\n")
     }),
   )
 })
