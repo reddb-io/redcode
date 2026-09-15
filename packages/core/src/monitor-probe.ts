@@ -1,0 +1,335 @@
+/**
+ * Native monitor probes: an HTTP endpoint, a file, or a process, observed in-process on every
+ * platform without a shell. Each attempt returns a small `Monitor.ProbeResult` and a one-line
+ * summary; neither ever carries a response body beyond a bounded selected value, nor a header value.
+ * Permission checks belong to the tool that starts the monitor; nothing here asks.
+ */
+export * as MonitorProbe from "./monitor-probe"
+
+import { createHash } from "node:crypto"
+import { readdirSync, readFileSync } from "node:fs"
+import { readFile, stat } from "node:fs/promises"
+import path from "node:path"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
+import { processInfo, probe as runner } from "./monitor"
+
+/** The most of a response body an http probe reads. */
+export const HTTP_MAX_BYTES = 1_048_576
+/** The longest one http attempt may take, redirects included. */
+export const HTTP_TIMEOUT_MS = 10_000
+const MAX_REDIRECTS = 5
+const VALUE_CHARS = 200
+/** Files up to this size are hashed, so a rewrite with the same size and mtime still counts as a change. */
+export const FILE_HASH_BYTES = 1_048_576
+const MAX_PIDS = 10
+
+export type Observation = { output: string; probe: Monitor.ProbeResult }
+
+const clip = (text: string, chars = VALUE_CHARS) => (text.length > chars ? `${text.slice(0, chars)}…` : text)
+
+/** `{env:NAME}` in a header value reads that environment variable, as in the configuration file. */
+export function headerValues(headers: Record<string, string> | undefined, env: Record<string, string | undefined>) {
+  return Object.fromEntries(
+    Object.entries(headers ?? {}).map(([name, value]) => [
+      name,
+      value.replace(/\{env:([^}]+)\}/g, (_, key: string) => env[key] ?? ""),
+    ]),
+  )
+}
+
+async function readBounded(response: Response, max: number) {
+  const reader = response.body?.getReader()
+  if (!reader) return { text: "", truncated: false }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  let truncated = false
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (size + next.value.byteLength > max) {
+      chunks.push(next.value.subarray(0, max - size))
+      size = max
+      truncated = true
+      await reader.cancel().catch(() => {})
+      break
+    }
+    chunks.push(next.value)
+    size += next.value.byteLength
+  }
+  return { text: new TextDecoder().decode(Buffer.concat(chunks)), truncated }
+}
+
+function select(body: unknown, keys: (string | number)[]) {
+  let current: unknown = body
+  for (const key of keys) {
+    if (current === null || typeof current !== "object") return undefined
+    if (typeof key === "number" && !Array.isArray(current)) return undefined
+    if (!Object.hasOwn(current, key)) return undefined
+    current = (current as Record<string | number, unknown>)[key]
+  }
+  return current
+}
+
+function equal(value: unknown, expected: string | number | boolean) {
+  if (typeof value === typeof expected) return value === expected
+  if (value !== null && typeof value === "object") return JSON.stringify(value) === String(expected)
+  return String(value) === String(expected)
+}
+
+/** Where a redirect may be followed: the same host and port, never from https down to http. */
+function sameSite(from: URL, to: URL) {
+  if (from.host !== to.host) return false
+  return from.protocol === to.protocol || (from.protocol === "http:" && to.protocol === "https:")
+}
+
+/**
+ * One http attempt. Uses the runtime's fetch, which honours HTTP_PROXY, HTTPS_PROXY and NO_PROXY like
+ * webfetch does. Redirects are followed only on the same host; any other is reported, not followed.
+ */
+export async function http(
+  probe: Monitor.HttpProbe,
+  options: { timeoutMs?: number; env?: Record<string, string | undefined>; fetch?: typeof fetch } = {},
+): Promise<Observation> {
+  const timeoutMs = options.timeoutMs ?? HTTP_TIMEOUT_MS
+  const doFetch = options.fetch ?? fetch
+  const signal = AbortSignal.timeout(timeoutMs)
+  const headers = headerValues(probe.headers, options.env ?? process.env)
+  const method = probe.method ?? "GET"
+  const first = new URL(probe.url)
+  let url = first
+  try {
+    for (let hop = 0; ; hop++) {
+      const response = await doFetch(url, { method, headers, redirect: "manual", signal })
+      const status = response.status
+      const location = response.headers.get("location")
+      if (status >= 300 && status < 400 && location) {
+        await response.body?.cancel().catch(() => {})
+        const next = new URL(location, url)
+        if (!sameSite(first, next)) {
+          const redirect = `not followed, points at another host: ${next.origin}${next.pathname}`
+          return { output: `HTTP ${status}, redirect ${redirect}`, probe: { matched: false, status, redirect } }
+        }
+        if (hop >= MAX_REDIRECTS)
+          return {
+            output: `HTTP ${status}, too many redirects`,
+            probe: { matched: false, status, error: "too many redirects" },
+          }
+        url = next
+        continue
+      }
+      return await judge(probe, response)
+    }
+  } catch (error) {
+    const message =
+      signal.aborted || (error instanceof Error && error.name === "TimeoutError")
+        ? `no response within ${timeoutMs} ms`
+        : clip(error instanceof Error ? error.message : String(error))
+    return { output: `HTTP request failed: ${message}`, probe: { matched: false, error: message } }
+  }
+}
+
+async function judge(probe: Monitor.HttpProbe, response: Response): Promise<Observation> {
+  const status = response.status
+  const statuses = probe.expect_status === undefined ? undefined : [probe.expect_status].flat()
+  const statusOk = statuses ? statuses.includes(status) : status >= 200 && status < 300
+  const expected = statuses ? statuses.join(" or ") : "2xx"
+  const needsBody =
+    probe.method !== "HEAD" &&
+    (probe.json_path !== undefined ||
+      probe.equals !== undefined ||
+      probe.contains !== undefined ||
+      probe.regex !== undefined)
+  if (!needsBody) {
+    await response.body?.cancel().catch(() => {})
+    return { output: `HTTP ${status} (expected ${expected})`, probe: { matched: statusOk, status } }
+  }
+  const body = await readBounded(response, HTTP_MAX_BYTES)
+  const result: { -readonly [K in keyof Monitor.ProbeResult]: Monitor.ProbeResult[K] } = {
+    matched: false,
+    status,
+    ...(body.truncated ? { truncated: true } : {}),
+  }
+  const parts = [`HTTP ${status} (expected ${expected})`]
+  let subject = body.text
+  if (probe.json_path !== undefined) {
+    if (body.truncated) {
+      const error = `response is larger than ${HTTP_MAX_BYTES} bytes, so json_path cannot be read`
+      return { output: `${parts[0]}, ${error}`, probe: { ...result, error } }
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(body.text)
+    } catch {
+      return { output: `${parts[0]}, body is not JSON`, probe: { ...result, error: "body is not JSON" } }
+    }
+    const selected = select(parsed, Monitor.jsonPath(probe.json_path) ?? [])
+    if (selected === undefined) {
+      parts.push(`${probe.json_path} not found`)
+      return { output: parts.join(", "), probe: result }
+    }
+    const value = clip(JSON.stringify(selected))
+    result.value = value
+    parts.push(`${probe.json_path} = ${value}`)
+    subject = typeof selected === "string" ? selected : JSON.stringify(selected)
+    if (probe.equals !== undefined && !equal(selected, probe.equals)) return { output: parts.join(", "), probe: result }
+  } else if (probe.equals !== undefined && body.text.trim() !== String(probe.equals)) {
+    return { output: `${parts[0]}, body does not equal ${JSON.stringify(probe.equals)}`, probe: result }
+  }
+  if (probe.equals !== undefined) parts.push(`equals ${JSON.stringify(probe.equals)}`)
+  if (probe.contains !== undefined) {
+    if (!subject.includes(probe.contains)) return { output: parts.join(", "), probe: result }
+    parts.push(`contains ${JSON.stringify(probe.contains)}`)
+  }
+  if (probe.regex !== undefined) {
+    const hit = new RegExp(probe.regex).exec(subject.slice(0, Monitor.REGEX_INPUT_CHARS))
+    if (!hit) return { output: parts.join(", "), probe: result }
+    parts.push(`regex matched ${JSON.stringify(clip(hit[0], 80))}`)
+  }
+  return { output: parts.join(", "), probe: { ...result, matched: statusOk } }
+}
+
+export type FileState = { exists: boolean; size?: number; mtime?: number; hash?: string; error?: string }
+
+/** What is at a path now. Symlinks are followed; the caller decides whether their target may be read. */
+export async function observeFile(target: string): Promise<FileState> {
+  try {
+    const info = await stat(target)
+    const hash =
+      info.isFile() && info.size <= FILE_HASH_BYTES
+        ? createHash("sha256")
+            .update(await readFile(target))
+            .digest("hex")
+        : undefined
+    return { exists: true, size: info.size, mtime: info.mtimeMs, ...(hash ? { hash } : {}) }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT" || code === "ENOTDIR") return { exists: false }
+    return { exists: false, error: clip(code ?? String(error)) }
+  }
+}
+
+/** The verdict on a file observation; `first` is the first observation, which `changed` compares against. */
+export function fileResult(probe: Monitor.FileProbe, now: FileState, first: FileState | undefined): Observation {
+  const stats = now.exists
+    ? { exists: true, size: now.size, ...(now.mtime !== undefined ? { mtime: Math.round(now.mtime) } : {}) }
+    : { exists: false }
+  if (now.error)
+    return {
+      output: `file ${probe.path} could not be read: ${now.error}`,
+      probe: { matched: false, ...stats, error: now.error },
+    }
+  const bigEnough = probe.min_size === undefined || (now.exists && (now.size ?? 0) >= probe.min_size)
+  const describe = now.exists ? `file ${probe.path} exists, ${now.size} bytes` : `file ${probe.path} is missing`
+  if (probe.state === "exists") return { output: describe, probe: { matched: now.exists && bigEnough, ...stats } }
+  if (probe.state === "missing") return { output: describe, probe: { matched: !now.exists, ...stats } }
+  const changed =
+    first !== undefined &&
+    (first.exists !== now.exists || first.size !== now.size || first.mtime !== now.mtime || first.hash !== now.hash)
+  return {
+    output: changed ? `${describe}, changed since the first check` : `${describe}, unchanged`,
+    probe: { matched: changed && (now.exists ? bigEnough : probe.min_size === undefined), ...stats },
+  }
+}
+
+export type ProcessEntry = { pid: number; name: string; command: string }
+
+/**
+ * Every live process: `/proc` on Linux, `ps` with LC_ALL=C elsewhere on POSIX, `tasklist` on Windows.
+ * Zombies count as exited. Undefined when the listing itself failed.
+ */
+export function listProcesses(platform: NodeJS.Platform = process.platform): ProcessEntry[] | undefined {
+  if (platform === "linux") {
+    try {
+      return readdirSync("/proc").flatMap((entry) => {
+        if (!/^\d+$/.test(entry)) return []
+        try {
+          const stat = readFileSync(`/proc/${entry}/stat`, "utf8")
+          if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z")) return []
+          const name = stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")"))
+          const command = readFileSync(`/proc/${entry}/cmdline`, "utf8").replaceAll("\0", " ").trim()
+          return [{ pid: Number(entry), name, command }]
+        } catch {
+          return []
+        }
+      })
+    } catch {
+      return undefined
+    }
+  }
+  const options = { encoding: "utf8" as const, timeout: 5_000, env: { ...process.env, LC_ALL: "C" }, windowsHide: true }
+  if (platform === "win32") {
+    const result = runner.spawn("tasklist", ["/FO", "CSV", "/NH"], options)
+    if (result.error || result.status !== 0 || typeof result.stdout !== "string") return undefined
+    return result.stdout.split(/\r?\n/).flatMap((line) => {
+      const match = /^"([^"]*)","(\d+)"/.exec(line)
+      if (!match) return []
+      return [{ pid: Number(match[2]), name: match[1]!.replace(/\.exe$/i, ""), command: match[1]! }]
+    })
+  }
+  const result = runner.spawn("ps", ["-A", "-ww", "-o", "pid=", "-o", "stat=", "-o", "args="], options)
+  if (result.error || result.status !== 0 || typeof result.stdout !== "string") return undefined
+  return result.stdout.split("\n").flatMap((line) => {
+    const match = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(line)
+    if (!match || match[2]!.startsWith("Z")) return []
+    const command = match[3]!.trim()
+    return [{ pid: Number(match[1]), name: path.basename(command.split(/\s+/)[0] ?? ""), command }]
+  })
+}
+
+/**
+ * Whether a process matches a probe name: its name equals the text (case-insensitively on Windows, where
+ * `.exe` is ignored), or its command line contains the text. This runtime's own process never matches.
+ */
+export function matchesName(entry: ProcessEntry, name: string, platform: NodeJS.Platform = process.platform) {
+  if (entry.pid === process.pid) return false
+  if (platform === "win32") {
+    const wanted = name.replace(/\.exe$/i, "").toLowerCase()
+    return entry.name.toLowerCase() === wanted || entry.command.toLowerCase().includes(name.toLowerCase())
+  }
+  return entry.name === name || entry.command.includes(name)
+}
+
+function pidState(pid: number, platform: NodeJS.Platform): "running" | "exited" | "unknown" {
+  if (pid === process.pid) return "running"
+  if (platform === "linux" || platform === "darwin") {
+    const found = processInfo(pid, platform)
+    return found === "unknown" ? "unknown" : found ? "running" : "exited"
+  }
+  try {
+    process.kill(pid, 0)
+    return "running"
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM" ? "running" : "exited"
+  }
+}
+
+export function processCheck(
+  probe: Monitor.ProcessProbe,
+  platform: NodeJS.Platform = process.platform,
+  list: () => ProcessEntry[] | undefined = () => listProcesses(platform),
+): Observation {
+  if (probe.pid !== undefined) {
+    const state = pidState(probe.pid, platform)
+    if (state === "unknown") {
+      const error = "could not tell whether the process runs"
+      return { output: `process ${probe.pid}: ${error}`, probe: { matched: false, error } }
+    }
+    return {
+      output: `process ${probe.pid} ${state === "running" ? "is running" : "is not running"}`,
+      probe: { matched: state === probe.state, pids: state === "running" ? [probe.pid] : [] },
+    }
+  }
+  const entries = list()
+  if (!entries) {
+    const error = "could not list processes"
+    return { output: error, probe: { matched: false, error } }
+  }
+  const pids = entries.filter((entry) => matchesName(entry, probe.name!, platform)).map((entry) => entry.pid)
+  const running = pids.length > 0
+  return {
+    output: running
+      ? `${pids.length} process(es) match ${JSON.stringify(probe.name)}: ${pids.slice(0, MAX_PIDS).join(", ")}`
+      : `no process matches ${JSON.stringify(probe.name)}`,
+    probe: { matched: running === (probe.state === "running"), pids: pids.slice(0, MAX_PIDS) },
+  }
+}

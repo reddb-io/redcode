@@ -1,0 +1,371 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { spawn } from "node:child_process"
+import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { Schema } from "effect"
+import { Monitor } from "@reddb-io/redcode-schema/monitor"
+import { MonitorProbe } from "../src/monitor-probe"
+
+const decodeOptions = Schema.decodeUnknownSync(Monitor.Options)
+const decodeProbe = Schema.decodeUnknownSync(Monitor.Probe)
+
+describe("monitor schema", () => {
+  test("accepts valid probes and conditions", () => {
+    expect(
+      decodeProbe({ type: "http", url: "http://localhost:1/health", json_path: "$.data[0].state", equals: "ok" }),
+    ).toBeDefined()
+    expect(decodeProbe({ type: "file", path: "dist/a.js", state: "changed", min_size: 1 })).toBeDefined()
+    expect(decodeProbe({ type: "process", name: "vite", state: "exited" })).toBeDefined()
+    expect(
+      decodeOptions({
+        mode: "poll",
+        success_regex: "^deployed\\b",
+        failure_regex: "error|fail",
+        until: "changed",
+        jitter: false,
+      }),
+    ).toBeDefined()
+  })
+
+  test("refuses a bad regex, an overlong regex and a bad json_path at input time", () => {
+    expect(() => decodeOptions({ mode: "poll", success_regex: "(unclosed" })).toThrow(/regular expression/i)
+    expect(() => decodeOptions({ mode: "poll", failure_regex: "a".repeat(Monitor.REGEX_MAX_LENGTH + 1) })).toThrow(
+      /at most/,
+    )
+    expect(() => decodeProbe({ type: "http", url: "http://x", regex: "[" })).toThrow(/regular expression/i)
+    for (const json_path of ["$..deep", "$.a[", "a b", "$[x]"])
+      expect(() => decodeProbe({ type: "http", url: "http://x", json_path })).toThrow(/JSON path/)
+    expect(Monitor.jsonPath('$.a["b-c"][2].d')).toEqual(["a", "b-c", 2, "d"])
+    expect(Monitor.jsonPath("status.ready")).toEqual(["status", "ready"])
+  })
+
+  test("reports rules that span fields", () => {
+    expect(Monitor.probeProblem({ type: "http", url: "ftp://x" })).toContain("http://")
+    expect(Monitor.probeProblem({ type: "http", url: "http://x", method: "HEAD", contains: "a" })).toContain("HEAD")
+    expect(Monitor.probeProblem({ type: "process", state: "running" })).toContain("exactly one")
+    expect(Monitor.probeProblem({ type: "process", name: "a", pid: 1, state: "running" })).toContain("exactly one")
+    expect(Monitor.probeProblem({ type: "file", path: "a", state: "missing", min_size: 1 })).toContain("min_size")
+    expect(Monitor.probeProblem({ type: "http", url: "http://x", expect_status: [200, 700] })).toContain("between")
+  })
+
+  test("never renders header values", () => {
+    const info: Monitor.Info = {
+      id: "monitor_1",
+      sessionID: "ses_1",
+      command: "probe: GET http://x",
+      workdir: "/p",
+      options: { mode: "poll" },
+      probe: { type: "http", url: "http://x", headers: { Authorization: "Bearer secret-token" } },
+      status: "running",
+      created: 1,
+      updated: 1,
+      attempts: 0,
+      delivery: "pending",
+    }
+    expect(Monitor.render(info)).not.toContain("secret-token")
+    expect(Monitor.renderList([info])).not.toContain("secret-token")
+    expect(Monitor.render(info)).toContain("Authorization")
+  })
+})
+
+describe("command poll verdicts", () => {
+  const evidence = (output: string, exit = 0): Monitor.Evidence => ({ exit, output, truncated: false })
+
+  test("success and failure regexes, with contains unchanged", () => {
+    const options: Monitor.Options = { mode: "poll", success_regex: "deployed v\\d+", failure_regex: "ERROR \\d+" }
+    expect(Monitor.verdict(options, evidence("pending"), undefined)).toBeUndefined()
+    expect(Monitor.verdict(options, evidence("deployed v12"), undefined)).toEqual({
+      status: "succeeded",
+      matched: 'exit code 0, success_regex matched "deployed v12"',
+    })
+    expect(Monitor.verdict(options, evidence("deployed v12", 1), undefined)).toBeUndefined()
+    expect(Monitor.verdict(options, evidence("ERROR 503", 1), undefined)?.status).toBe("failed")
+    const contains: Monitor.Options = { mode: "poll", success_contains: "ready", failure_contains: "fail" }
+    expect(Monitor.verdict(contains, evidence("ready"), undefined)?.status).toBe("succeeded")
+    expect(Monitor.verdict(contains, evidence("ready but fail"), undefined)?.status).toBe("failed")
+    expect(Monitor.verdict({ mode: "poll" }, evidence("anything"), undefined)?.matched).toBe("exit code 0")
+  })
+
+  test("until changed compares against the first output, ignoring trailing whitespace only", () => {
+    const options: Monitor.Options = { mode: "poll", until: "changed" }
+    const baseline = Monitor.normalizeOutput("state: queued  \n\n")
+    expect(Monitor.verdict(options, evidence("state: queued"), undefined)).toBeUndefined()
+    expect(Monitor.verdict(options, evidence("state: queued\t\n"), baseline)).toBeUndefined()
+    expect(Monitor.verdict(options, evidence(" state: queued"), baseline)?.status).toBe("succeeded")
+    expect(Monitor.verdict(options, evidence("state: running"), baseline)?.matched).toContain("output changed")
+    // The notice naming a saved-output file differs per attempt and is not a change.
+    expect(Monitor.normalizeOutput("...output truncated...\n\nFull output saved to: /tmp/a\n\nstate: queued")).toBe(
+      "state: queued",
+    )
+  })
+})
+
+describe("poll jitter", () => {
+  /** A deterministic random source. */
+  const sequence = (values: number[]) => {
+    let index = 0
+    return () => values[index++ % values.length]!
+  }
+
+  test("spreads five monitors created at the same instant", () => {
+    const options: Monitor.Options = { mode: "poll", interval_ms: 10_000 }
+    const random = sequence([0.05, 0.3, 0.55, 0.8, 0.95])
+    const starts = Array.from({ length: 5 }, () => Monitor.initialDelay(options, random))
+    expect(new Set(starts).size).toBe(5)
+    for (const start of starts) expect(start).toBeGreaterThanOrEqual(0)
+    for (const start of starts) expect(start).toBeLessThan(Monitor.INITIAL_JITTER_MS)
+    const next = Array.from({ length: 5 }, () => Monitor.nextDelay(options, 0, random)!)
+    expect(new Set(next).size).toBe(5)
+  })
+
+  test("jitter off keeps exact intervals and no initial delay", () => {
+    const options: Monitor.Options = { mode: "poll", interval_ms: 5_000, jitter: false }
+    const random = sequence([0, 0.99])
+    expect(Monitor.initialDelay(options, random)).toBe(0)
+    for (const elapsed of [0, 5_000, 10_000]) expect(Monitor.nextDelay(options, elapsed, random)).toBe(5_000)
+    expect(Monitor.schedule(options)).toBe("every 5s")
+    // A one-shot command is never jittered.
+    expect(Monitor.initialDelay({ mode: "once" }, random)).toBe(0)
+  })
+
+  test("keeps the offset within ±10%, 250 ms to 30 s, and never under the 1 s minimum", () => {
+    expect(Monitor.jitterSpread(1_000)).toBe(250)
+    expect(Monitor.jitterSpread(60_000)).toBe(6_000)
+    expect(Monitor.jitterSpread(3_600_000)).toBe(30_000)
+    for (const interval of [1_000, 2_000, 60_000, 3_600_000]) {
+      const options: Monitor.Options = { mode: "poll", interval_ms: interval, deadline_ms: 86_400_000 }
+      const spread = Monitor.jitterSpread(interval)
+      for (const value of [0, 0.25, 0.5, 0.75, 0.999999]) {
+        const delay = Monitor.nextDelay(options, 0, () => value)!
+        expect(delay).toBeGreaterThanOrEqual(Math.max(Monitor.MIN_INTERVAL_MS, interval - spread))
+        expect(delay).toBeLessThanOrEqual(interval + spread)
+      }
+      expect(Monitor.initialDelay(options, () => 0.999999)).toBeLessThan(Math.min(interval, Monitor.INITIAL_JITTER_MS))
+    }
+    expect(Monitor.schedule({ mode: "poll", interval_ms: 60_000 })).toBe("every 1m ±6s")
+    expect(Monitor.schedule({ mode: "poll", interval_ms: 2_000 })).toBe("every 2s ±250ms")
+  })
+
+  test("never schedules an attempt past the deadline, and still checks before it", () => {
+    for (const jitter of [true, false]) {
+      const options: Monitor.Options = { mode: "poll", interval_ms: 10_000, deadline_ms: 35_000, jitter }
+      let elapsed = Monitor.initialDelay(options, () => 0.99)
+      const attempts = [elapsed]
+      while (true) {
+        const delay = Monitor.nextDelay(options, elapsed, () => 0.99)
+        if (delay === undefined) break
+        elapsed += delay
+        attempts.push(elapsed)
+      }
+      for (const at of attempts) expect(at).toBeLessThan(35_000)
+      // The last check lands in the final interval instead of being skipped.
+      expect(attempts.at(-1)!).toBeGreaterThan(25_000)
+    }
+  })
+})
+
+describe("http probe", () => {
+  let server: ReturnType<typeof Bun.serve>
+  let other: ReturnType<typeof Bun.serve>
+  let status = 500
+  let lastAuth: string | null = null
+  const base = () => `http://127.0.0.1:${server.port}`
+
+  beforeAll(() => {
+    other = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("elsewhere") })
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) => {
+        const url = new URL(request.url)
+        lastAuth = request.headers.get("authorization")
+        if (url.pathname === "/health") return new Response("ok", { status })
+        if (url.pathname === "/job") return Response.json({ data: { state: "done", items: [{ n: 3 }] } })
+        if (url.pathname === "/same") return Response.redirect(`${base()}/health`, 302)
+        if (url.pathname === "/away") return Response.redirect(`http://localhost:${other.port}/secret?token=x`, 302)
+        if (url.pathname === "/big") return new Response("x".repeat(MonitorProbe.HTTP_MAX_BYTES + 10) + "needle")
+        if (url.pathname === "/slow") {
+          await Bun.sleep(2_000)
+          return new Response("late")
+        }
+        return new Response("missing", { status: 404 })
+      },
+    })
+  })
+  afterAll(() => {
+    server.stop(true)
+    other.stop(true)
+  })
+
+  test("counts 2xx as up by default and honours expect_status", async () => {
+    status = 500
+    expect((await MonitorProbe.http({ type: "http", url: `${base()}/health` })).probe).toEqual({
+      matched: false,
+      status: 500,
+    })
+    status = 200
+    const up = await MonitorProbe.http({ type: "http", url: `${base()}/health` })
+    expect(up.probe).toEqual({ matched: true, status: 200 })
+    expect(up.output).toBe("HTTP 200 (expected 2xx)")
+    expect(
+      (await MonitorProbe.http({ type: "http", url: `${base()}/nope`, expect_status: [404, 410] })).probe.matched,
+    ).toBe(true)
+  })
+
+  test("follows a redirect on the same host, and reports one to another host without following it", async () => {
+    status = 200
+    expect((await MonitorProbe.http({ type: "http", url: `${base()}/same` })).probe.matched).toBe(true)
+    const away = await MonitorProbe.http({
+      type: "http",
+      url: `${base()}/away`,
+      headers: { Authorization: "Bearer {env:PROBE_TOKEN}" },
+    })
+    expect(away.probe.matched).toBe(false)
+    expect(away.probe.status).toBe(302)
+    expect(away.probe.redirect).toContain("another host")
+    expect(away.probe.redirect).not.toContain("token=")
+  })
+
+  test("resolves {env:NAME} in header values without recording them", async () => {
+    const result = await MonitorProbe.http(
+      { type: "http", url: `${base()}/health`, headers: { Authorization: "Bearer {env:PROBE_TOKEN}" } },
+      { env: { PROBE_TOKEN: "t0ken" } },
+    )
+    expect(lastAuth).toBe("Bearer t0ken")
+    expect(JSON.stringify(result)).not.toContain("t0ken")
+  })
+
+  test("matches json_path with equals, contains and regex", async () => {
+    const url = `${base()}/job`
+    const equals = await MonitorProbe.http({ type: "http", url, json_path: "$.data.state", equals: "done" })
+    expect(equals.probe).toEqual({ matched: true, status: 200, value: '"done"' })
+    expect(equals.output).toContain('$.data.state = "done"')
+    expect(
+      (await MonitorProbe.http({ type: "http", url, json_path: "$.data.items[0].n", equals: "3" })).probe.matched,
+    ).toBe(true)
+    expect(
+      (await MonitorProbe.http({ type: "http", url, json_path: "$.data.state", equals: "queued" })).probe.matched,
+    ).toBe(false)
+    expect((await MonitorProbe.http({ type: "http", url, json_path: "$.data.missing" })).probe.matched).toBe(false)
+    expect((await MonitorProbe.http({ type: "http", url, contains: '"state":"done"' })).probe.matched).toBe(true)
+    expect(
+      (await MonitorProbe.http({ type: "http", url, json_path: "$.data", regex: 'state":"d.ne' })).probe.matched,
+    ).toBe(true)
+  })
+
+  test("reads at most the size cap, so a match past it is not seen", async () => {
+    const result = await MonitorProbe.http({ type: "http", url: `${base()}/big`, regex: "needle" })
+    expect(result.probe).toMatchObject({ matched: false, truncated: true })
+    const json = await MonitorProbe.http({ type: "http", url: `${base()}/big`, json_path: "$.a" })
+    expect(json.probe.error).toContain("larger than")
+  })
+
+  test("gives up on a slow response after the per-attempt timeout", async () => {
+    const started = Date.now()
+    const result = await MonitorProbe.http({ type: "http", url: `${base()}/slow` }, { timeoutMs: 200 })
+    expect(result.probe.matched).toBe(false)
+    expect(result.probe.error).toContain("no response within 200 ms")
+    expect(Date.now() - started).toBeLessThan(1_500)
+  })
+})
+
+describe("file probe", () => {
+  let dir: string
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "monitor-probe-"))
+  })
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  test("exists, missing and min_size", async () => {
+    const file = path.join(dir, "report.json")
+    const exists: Monitor.FileProbe = { type: "file", path: "report.json", state: "exists", min_size: 2 }
+    const missing: Monitor.FileProbe = { type: "file", path: "report.json", state: "missing" }
+    let now = await MonitorProbe.observeFile(file)
+    expect(MonitorProbe.fileResult(exists, now, undefined).probe).toEqual({ matched: false, exists: false })
+    expect(MonitorProbe.fileResult(missing, now, undefined).probe.matched).toBe(true)
+    await writeFile(file, "1")
+    now = await MonitorProbe.observeFile(file)
+    expect(MonitorProbe.fileResult(exists, now, undefined).probe.matched).toBe(false)
+    await writeFile(file, "{}")
+    now = await MonitorProbe.observeFile(file)
+    expect(MonitorProbe.fileResult(exists, now, undefined).probe).toMatchObject({
+      matched: true,
+      exists: true,
+      size: 2,
+    })
+    expect(MonitorProbe.fileResult(missing, now, undefined).probe.matched).toBe(false)
+  })
+
+  test("changed compares against the first observation, content included for small files", async () => {
+    const file = path.join(dir, "out.txt")
+    await writeFile(file, "aaaa")
+    const probe: Monitor.FileProbe = { type: "file", path: "out.txt", state: "changed" }
+    const first = await MonitorProbe.observeFile(file)
+    expect(MonitorProbe.fileResult(probe, first, undefined).probe.matched).toBe(false)
+    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file), first).probe.matched).toBe(false)
+    // Same size and the same mtime: only the hash tells.
+    const { mtime } = await stat(file)
+    await writeFile(file, "bbbb")
+    await utimes(file, mtime, mtime)
+    const rewritten = await MonitorProbe.observeFile(file)
+    expect(MonitorProbe.fileResult(probe, rewritten, first).probe.matched).toBe(true)
+    await rm(file)
+    expect(MonitorProbe.fileResult(probe, await MonitorProbe.observeFile(file), first).probe.matched).toBe(true)
+  })
+})
+
+describe("process probe", () => {
+  test("running and exited by pid, with a spawned child", async () => {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" })
+    try {
+      await Bun.sleep(100)
+      expect(MonitorProbe.processCheck({ type: "process", pid: child.pid!, state: "running" }).probe).toEqual({
+        matched: true,
+        pids: [child.pid!],
+      })
+      child.kill()
+      await new Promise((resolve) => child.once("exit", resolve))
+      let result = MonitorProbe.processCheck({ type: "process", pid: child.pid!, state: "exited" })
+      for (let i = 0; i < 50 && !result.probe.matched; i++) {
+        await Bun.sleep(20)
+        result = MonitorProbe.processCheck({ type: "process", pid: child.pid!, state: "exited" })
+      }
+      expect(result.probe.matched).toBe(true)
+    } finally {
+      child.kill()
+    }
+  })
+
+  // `tasklist` reports image names only, so a command-line marker cannot be seen there.
+  test.skipIf(process.platform === "win32")("running and exited by a command-line name", async () => {
+    const marker = `monitor-probe-marker-${crypto.randomUUID()}`
+    expect(MonitorProbe.processCheck({ type: "process", name: marker, state: "exited" }).probe.matched).toBe(true)
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)", marker], { stdio: "ignore" })
+    try {
+      let running = MonitorProbe.processCheck({ type: "process", name: marker, state: "running" })
+      for (let i = 0; i < 50 && !running.probe.matched; i++) {
+        await Bun.sleep(20)
+        running = MonitorProbe.processCheck({ type: "process", name: marker, state: "running" })
+      }
+      expect(running.probe).toEqual({ matched: true, pids: [child.pid!] })
+    } finally {
+      child.kill()
+    }
+  })
+
+  test("never matches this runtime's own process, and matches names exactly or by command line", () => {
+    const self = { pid: process.pid, name: "bun", command: "bun redcode" }
+    expect(MonitorProbe.matchesName(self, "redcode")).toBe(false)
+    const vite = { pid: 1234, name: "node", command: "node /app/node_modules/.bin/vite build" }
+    expect(MonitorProbe.matchesName(vite, "vite build", "linux")).toBe(true)
+    expect(MonitorProbe.matchesName(vite, "node", "linux")).toBe(true)
+    expect(MonitorProbe.matchesName(vite, "Vite", "linux")).toBe(false)
+    expect(MonitorProbe.matchesName({ pid: 5, name: "Code", command: "Code.exe" }, "code.exe", "win32")).toBe(true)
+    expect(
+      MonitorProbe.processCheck({ type: "process", name: "vite", state: "running" }, "linux", () => undefined).probe,
+    ).toEqual({ matched: false, error: "could not list processes" })
+  })
+})

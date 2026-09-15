@@ -5994,6 +5994,76 @@ unix(
 )
 
 unix(
+  "a native http probe monitor resumes the session with its evidence once the endpoint is up",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      let up = false
+      const service = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch: () => (up ? Response.json({ state: "ready" }) : new Response("starting", { status: 503 })),
+      })
+      yield* Effect.addFinalizer(() => Effect.sync(() => service.stop(true)))
+      const chat = yield* sessions.create({ title: "Probe monitor" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      yield* llm.tool("monitor", {
+        action: "probe",
+        probe: { type: "http", url: `http://127.0.0.1:${service.port}/health`, json_path: "$.state", equals: "ready" },
+        wait_ms: 0,
+        interval_ms: 1000,
+        deadline_ms: 30000,
+      })
+      yield* llm.textMatch(
+        (hit) => body(hit).includes("monitor_result") && !body(hit).includes("A monitor finished."),
+        "Waiting for the service.",
+      )
+      yield* llm.textMatch((hit) => body(hit).includes("A monitor finished."), "The service is ready.")
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "wait for the service" }] }),
+        "the first turn never ended",
+        "30 seconds",
+      )
+      expect((yield* monitors.list(chat.id))[0]).toMatchObject({ status: "running", probe: { type: "http" } })
+      up = true
+      yield* pollWithTimeout(
+        sessions.messages({ sessionID: chat.id }).pipe(
+          Effect.map((messages) =>
+            messages.some((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "The service is ready."),
+            )
+              ? true
+              : undefined,
+          ),
+        ),
+        "the probe result was never answered",
+        "30 seconds",
+      )
+      const delivered = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
+        message.parts.flatMap((part) =>
+          part.type === "text" && part.text.includes("A monitor finished.") ? [part.text] : [],
+        ),
+      )
+      expect(delivered).toHaveLength(1)
+      expect(delivered[0]).toContain('Matched: HTTP 200 (expected 2xx), $.state = "ready", equals "ready"')
+      expect(delivered[0]).toContain('"schedule":"every 1s ±250ms"')
+      expect((yield* monitors.list(chat.id))[0]).toMatchObject({
+        status: "succeeded",
+        delivery: "delivered",
+        evidence: { probe: { matched: true, status: 200, value: '"ready"' } },
+      })
+    }),
+  60000,
+)
+
+unix(
   "Esc stops the turn but not its monitor, and the result waits for the parked goal instead of resuming it",
   () =>
     Effect.gen(function* () {

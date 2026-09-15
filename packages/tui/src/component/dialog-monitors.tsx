@@ -31,7 +31,15 @@ export function DialogMonitors(props: { sessionID: string }) {
         title={`${info.status}: ${info.command}`}
         locked={busy()}
         options={[
-          { title: "View last result", value: "result", description: `${info.attempts} checks · ${info.workdir}` },
+          {
+            title: "View last result",
+            value: "result",
+            description: [
+              `${info.attempts} checks`,
+              ...(info.options.mode === "poll" ? [Monitor.schedule(info.options)] : []),
+              info.probe ? `${info.probe.type} probe` : info.workdir,
+            ].join(" · "),
+          },
           ...(info.status === "running"
             ? [
                 {
@@ -54,6 +62,7 @@ export function DialogMonitors(props: { sessionID: string }) {
               Monitor.printable(
                 [
                   shown.error,
+                  shown.evidence?.matched ? `Matched: ${shown.evidence.matched}` : undefined,
                   shown.evidence?.output ?? "No result yet.",
                   shown.evidence?.outputPath ? `Full output: ${shown.evidence.outputPath}` : undefined,
                 ]
@@ -96,7 +105,7 @@ export function DialogMonitors(props: { sessionID: string }) {
         title: info.command,
         value: info.id,
         description: info.status,
-        footer: `${info.attempts} checks · ${info.options.mode}`,
+        footer: `${info.attempts} checks · ${info.probe ? `${info.probe.type} probe` : info.options.mode}`,
         onSelect: () => details(info),
       }))}
     />
