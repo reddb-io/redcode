@@ -508,6 +508,18 @@ it.instance("default permission includes doom_loop and external_directory as ask
   }),
 )
 
+it.instance("sending an environment variable is asked by default, and never allowed by a native agent's defaults", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(Permission.evaluate("env", "GITHUB_TOKEN@evil.example", build!.permission).action).toBe("ask")
+    for (const agent of (yield* load((svc) => svc.list())).filter((item) => item.native))
+      expect({
+        agent: agent.name,
+        action: Permission.evaluate("env", "GITHUB_TOKEN@evil.example", agent.permission).action,
+      }).not.toEqual({ agent: agent.name, action: "allow" })
+  }),
+)
+
 it.instance("webfetch is allowed by default", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))

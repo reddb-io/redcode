@@ -237,7 +237,7 @@ export function settle(
 export const REGEX_TIMEOUT_LIMIT = 3
 
 /** Runs a command poll's regular expressions in the worker, and notes any that could not finish. */
-const regexOutcomes = (options: Monitor.Options, evidence: Monitor.Evidence) =>
+const regexOutcomes = (matcher: SafeRegex.Matcher, options: Monitor.Options, evidence: Monitor.Evidence) =>
   Effect.promise(async () => {
     const outcomes: { success?: Monitor.RegexOutcome; failure?: Monitor.RegexOutcome } = {}
     const errors: string[] = []
@@ -248,7 +248,7 @@ const regexOutcomes = (options: Monitor.Options, evidence: Monitor.Evidence) =>
     for (const key of ["failure", "success"] as const) {
       const source = key === "success" ? options.success_regex : options.failure_regex
       if (source === undefined) continue
-      const outcome = await SafeRegex.exec(source, text)
+      const outcome = await matcher.exec(source, text)
       if ("timedOut" in outcome) {
         timedOut = true
         errors.push(`${key}_regex ${SafeRegex.TIMEOUT_ERROR} after ${SafeRegex.MATCH_TIMEOUT_MS} ms`)
@@ -423,12 +423,14 @@ export const make = Effect.gen(function* () {
             let baseline: string | undefined
             /** Attempts in a row whose regular expression timed out. */
             let timeouts = 0
+            /** This monitor's own regex worker, so a stuck pattern here never delays another monitor. */
+            const matcher = SafeRegex.create()
             const run = Effect.gen(function* () {
               const initial = Monitor.initialDelay(input.options, jitter.random)
               if (initial > 0) yield* Effect.sleep(initial)
               while (true) {
                 const observed = yield* input.run(track)
-                const regex = yield* regexOutcomes(input.options, observed)
+                const regex = yield* regexOutcomes(matcher, input.options, observed)
                 timeouts = regex.timedOut ? timeouts + 1 : 0
                 const evidence: Monitor.Evidence =
                   regex.errors.length > 0 ? { ...observed, error: regex.errors.join("; ") } : observed
@@ -484,6 +486,7 @@ export const make = Effect.gen(function* () {
                       delivery: Cause.hasInterruptsOnly(exit.cause) ? "suppressed" : "pending",
                       error: Cause.pretty(exit.cause).slice(0, 4_000),
                     }
+                  matcher.close()
                   current = { ...current, updated: yield* Clock.currentTimeMillis }
                   yield* save(current)
                 }),

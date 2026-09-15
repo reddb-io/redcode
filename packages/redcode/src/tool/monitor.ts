@@ -3,6 +3,7 @@ import path from "path"
 import { Effect } from "effect"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { MonitorProbe } from "@reddb-io/redcode-core/monitor-probe"
+import { SafeRegex } from "@reddb-io/redcode-core/safe-regex"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { MonitorRuntime } from "@/background/monitor"
 import { InstanceState } from "@/effect/instance-state"
@@ -119,12 +120,14 @@ export const MonitorTool = Tool.define(
         const host = new URL(probe.url).host
         const variables = MonitorProbe.envNames(probe.headers)
         for (const variable of variables) {
-          const pattern = `${variable}@${host}`
+          // Always asked, even where a rule such as "*": "allow" would let it through: a secret leaving the
+          // machine is never approved by a catch-all. "Always" is kept for this exact variable and host only.
+          const pattern = MonitorProbe.envPermissionPattern(variable, host)
           yield* ctx.ask({
             permission: "env",
             patterns: [pattern],
             always: force ? [] : [pattern],
-            ...(force ? { force } : {}),
+            force: true,
             metadata: { variable, host, url: probe.url, monitor: summary, probe: label },
           })
         }
@@ -138,12 +141,15 @@ export const MonitorTool = Tool.define(
         }
         const timeoutMs = Math.min(MonitorProbe.HTTP_TIMEOUT_MS, interval)
         attemptTimeoutMs = timeoutMs
+        // This monitor's own regex worker; it stops itself when idle.
+        const regex = SafeRegex.create()
         observe = () =>
           Effect.promise(() =>
             MonitorProbe.http(probe, {
               timeoutMs,
               env: Object.fromEntries(variables.map((name) => [name, process.env[name]])),
               allowRedirect,
+              regex,
             }),
           )
       } else if (probe.type === "file") {

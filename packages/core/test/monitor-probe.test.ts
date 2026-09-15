@@ -8,6 +8,7 @@ import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { statSync } from "node:fs"
 import { MonitorProbe } from "../src/monitor-probe"
 import { SafeRegex } from "../src/safe-regex"
+import { probe as processRunner } from "../src/monitor"
 
 const decodeOptions = Schema.decodeUnknownSync(Monitor.Options)
 const decodeProbe = Schema.decodeUnknownSync(Monitor.Probe)
@@ -49,6 +50,26 @@ describe("monitor schema", () => {
     expect(Monitor.probeProblem({ type: "process", name: "a", pid: 1, state: "running" })).toContain("exactly one")
     expect(Monitor.probeProblem({ type: "file", path: "a", state: "missing", min_size: 1 })).toContain("min_size")
     expect(Monitor.probeProblem({ type: "http", url: "http://x", expect_status: [200, 700] })).toContain("between")
+  })
+
+  test("accepts only plain variable names in {env:...}, so a permission pattern can never be a wildcard", () => {
+    const withHeader = (value: string) =>
+      Monitor.probeProblem({ type: "http", url: "https://api.example.com", headers: { Authorization: value } })
+    expect(withHeader("Bearer {env:GITHUB_TOKEN}")).toBeUndefined()
+    expect(withHeader("{env:_A1} {env:B}")).toBeUndefined()
+    for (const value of ["{env:*}", "{env:GITHUB_*}", "{env:A?}", "{env:1ABC}", "{env:A-B}", "{env:}", "{env:A B}"])
+      expect({ value, problem: withHeader(value) }).toEqual({
+        value,
+        problem: expect.stringContaining("letters, digits"),
+      })
+    expect(withHeader("Bearer {env:TOKEN")).toContain("unclosed")
+    expect(Monitor.probeProblem({ type: "http", url: "http://a*b.example.com/health" })).toContain("must not contain")
+    expect(MonitorProbe.envPermissionPattern("GITHUB_TOKEN", "api.example.com")).toBe("GITHUB_TOKEN@api.example.com")
+    expect(() => MonitorProbe.envPermissionPattern("*", "evil.example")).toThrow()
+    expect(() => MonitorProbe.envPermissionPattern("TOKEN", "*.evil.example")).toThrow()
+    // A reference that is not a plain name is never expanded or listed.
+    expect(MonitorProbe.envNames({ A: "{env:*} {env:OK}" })).toEqual(["OK"])
+    expect(MonitorProbe.headerValues({ A: "{env:*}" }, { "*": "secret" })).toEqual({ A: "{env:*}" })
   })
 
   test("never renders header values", () => {
@@ -482,7 +503,74 @@ describe("process probe", () => {
   })
 })
 
+describe("process listings that cannot be verified", () => {
+  const tasklist = (stdout: string) => {
+    const original = processRunner.spawn
+    processRunner.spawn = (() => ({
+      pid: 0,
+      output: [],
+      stdout,
+      stderr: "",
+      status: 0,
+      signal: null,
+    })) as unknown as typeof processRunner.spawn
+    return () => {
+      processRunner.spawn = original
+    }
+  }
+
+  test("a filtered Windows listing without this process is no answer, so exited never succeeds on it", () => {
+    // What tasklist prints when a USERNAME filter matches nothing, for example a domain\user mismatch.
+    const restore = tasklist("INFO: No tasks are running which match the specified criteria.\r\n")
+    try {
+      expect(MonitorProbe.listProcesses("win32")).toBeUndefined()
+      expect(MonitorProbe.processCheck({ type: "process", name: "vite", state: "exited" }, "win32").probe).toEqual({
+        matched: false,
+        error: "could not list processes",
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  test("a Windows listing that shows this process is trusted", () => {
+    const restore = tasklist(
+      `"bun.exe","${process.pid}","Console","1","90,000 K"\r\n"node.exe","4242","Console","1","50,000 K"\r\n`,
+    )
+    try {
+      expect(MonitorProbe.listProcesses("win32")?.map((entry) => entry.pid)).toEqual([process.pid, 4242])
+      expect(MonitorProbe.processCheck({ type: "process", name: "node", state: "running" }, "win32").probe).toEqual({
+        matched: true,
+        pids: [4242],
+      })
+      expect(MonitorProbe.processCheck({ type: "process", name: "vite", state: "exited" }, "win32").probe.matched).toBe(
+        true,
+      )
+    } finally {
+      restore()
+    }
+  })
+})
+
 describe("regular expressions off the main thread", () => {
+  test("one monitor's stuck pattern does not delay another monitor's matches", async () => {
+    const stuck = SafeRegex.create()
+    const other = SafeRegex.create()
+    try {
+      // Long enough that backtracking cannot finish within the timeout on any machine.
+      const slow = stuck.exec("^(a+)+$", `${"a".repeat(64)}!`, 2_000)
+      // Let the stuck match start first.
+      await Bun.sleep(100)
+      const started = Date.now()
+      expect(await other.exec("b+", "aabbb")).toEqual({ match: "bbb" })
+      expect(Date.now() - started).toBeLessThan(1_000)
+      expect(await slow).toEqual({ timedOut: true })
+    } finally {
+      stuck.close()
+      other.close()
+    }
+  })
+
   test("a catastrophic pattern times out while the event loop keeps running, and the next one still works", async () => {
     let ticks = 0
     const timer = setInterval(() => ticks++, 5)

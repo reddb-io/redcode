@@ -104,14 +104,28 @@ export type ProcessProbe = typeof ProcessProbe.Type
 export const Probe = Schema.Union([HttpProbe, FileProbe, ProcessProbe]).annotate({ identifier: "Monitor.Probe" })
 export type Probe = typeof Probe.Type
 
+/** The only environment variable names `{env:NAME}` accepts: never a wildcard, never more than one variable. */
+export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
 /** Rules that span several fields of a probe, which a JSON schema cannot express. */
 export function probeProblem(probe: Probe) {
   if (probe.type === "http") {
     if (!/^https?:\/\//i.test(probe.url)) return "probe.url must start with http:// or https://"
+    let host: string
     try {
-      new URL(probe.url)
+      host = new URL(probe.url).host
     } catch {
       return "probe.url is not a valid URL"
+    }
+    // Permission patterns treat * and ? as wildcards and have no escape, so neither may appear in a host.
+    if (/[*?]/.test(host)) return "probe.url host must not contain * or ?"
+    for (const [header, value] of Object.entries(probe.headers ?? {})) {
+      const references = [...value.matchAll(/\{env:([^}]*)\}/g)]
+      if (references.length !== value.split("{env:").length - 1)
+        return `header ${header} has an unclosed {env:...} reference`
+      const bad = references.find((reference) => !ENV_NAME.test(reference[1]!))
+      if (bad)
+        return `header ${header} references {env:${bad[1]}}: a variable name must be letters, digits and underscores, not starting with a digit`
     }
     const statuses = probe.expect_status === undefined ? [] : [probe.expect_status].flat()
     if (statuses.some((status) => status < 100 || status > 599))
