@@ -18,7 +18,7 @@ export const Info = SessionTodo.Info
 export type Info = typeof Info.Type
 export const Event = SessionTodo.Event
 export const guidance =
-  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically (a shell check only when the task has a criterion or reason to explain it); edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
+  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically (a shell check only when the task has a criterion or reason to explain it); edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request; users write in any language, and a paraphrase or translation is accepted, linked to the latest request and kept as the criterion. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a scopeChange and a concrete reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
 
 export function active(todos: ReadonlyArray<Info>) {
   return todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled")
@@ -116,21 +116,44 @@ export function notes(
   results: ReadonlyArray<Pick<SessionTaskFacts.Result, "callID" | "messageID" | "tool" | "input">> = [],
 ) {
   return incoming.flatMap((item) => {
-    if (item.status !== "completed") return []
     const task = todos.find((entry) => (item.id ? entry.id === item.id : entry.content === item.content?.trim()))
     if (!task) return []
-    if (task.status === "blocked") return [`Task ${task.id} was blocked instead of completed: ${task.reason}`]
+    const linking = linkNotes(item, task)
+    if (item.status !== "completed") return linking
+    if (task.status === "blocked")
+      return [...linking, `Task ${task.id} was blocked instead of completed: ${task.reason}`]
     if (task.status === "completed" && task.evidence && task.evidence.callID !== item.evidence?.callID) {
       const evidence = task.evidence
       const proof = results.find((entry) => entry.callID === evidence.callID && entry.messageID === evidence.messageID)
       const command =
         proof && (proof.tool === "bash" || proof.tool === "shell") ? SessionTaskFacts.command(proof.input) : undefined
       return [
+        ...linking,
         `Evidence for ${task.id} was selected automatically: ${evidence.callID} (${evidence.tool}, message ${evidence.messageID}${command ? `, command: ${command}` : ""}).`,
       ]
     }
-    return []
+    return linking
   })
+}
+
+/** How a requirement or scope change that quoted no user message was linked instead of refused. */
+function linkNotes(item: Input, task: Info) {
+  const requirement = item.requirement?.trim()
+  const change = item.scopeChange?.quote.trim()
+  return [
+    ...(requirement && task.source?.paraphrase === requirement
+      ? [
+          `Requirement for ${task.id} matched no user message; linked to the latest request ${task.source.id} and kept as the criterion.`,
+        ]
+      : requirement && !task.source && task.criterion === requirement
+        ? [`Requirement for ${task.id} has no user message to link yet; kept as the criterion.`]
+        : []),
+    ...(change && task.scopeChange?.paraphrase === change
+      ? [
+          `Scope change for ${task.id} matched no user message; linked to ${task.scopeChange.messageID === item.scopeChange?.messageID ? "" : "the latest request "}${task.scopeChange.messageID} with your text kept as the paraphrase.`,
+        ]
+      : []),
+  ]
 }
 
 /**
@@ -169,6 +192,6 @@ export function context(todos: ReadonlyArray<Info>) {
     ...(active(todos).length > 24
       ? [`${active(todos).length - 24} more unfinished tasks are stored; read the full list before finishing.`]
       : []),
-    "Update a task with its id, revision and the changed fields only. To complete one, run the verifying command after the last edit and cite that result's callID with an explanation, or omit evidence to record the newest verification result automatically; refusals list the candidates inline. Cancellation must cite a later user scope change.",
+    "Update a task with its id, revision and the changed fields only. To complete one, run the verifying command after the last edit and cite that result's callID with an explanation, or omit evidence to record the newest verification result automatically; refusals list the candidates inline. Cancellation needs a scopeChange naming the user instruction and a concrete reason.",
   ].join("\n")
 }

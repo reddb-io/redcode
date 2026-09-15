@@ -16,6 +16,7 @@ import { SnapshotCommand } from "./snapshot"
 import { AgentCommand } from "./agent"
 import { RuntimeCommand } from "./runtime"
 import { StartupCommand } from "./startup"
+import { TodosCommand } from "./todos"
 import { V2Command } from "./v2"
 
 export const DebugCommand = cmd({
@@ -34,6 +35,7 @@ export const DebugCommand = cmd({
       .command(StartupCommand)
       .command(RuntimeCommand)
       .command(AgentCommand)
+      .command(TodosCommand)
       .command(V2Command)
       .command(InfoCommand)
       .command(PathsCommand)

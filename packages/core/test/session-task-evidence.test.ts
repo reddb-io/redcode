@@ -272,11 +272,13 @@ it.effect("reopens and updates a task whose quoted request is no longer in the s
       todos: [{ id: reviewed[0].id, revision: reviewed[0].revision, status: "pending" }],
     })
     expect(updated[0]).toMatchObject({ id: done.id, status: "in_progress", source: done.source })
-    // A new requirement is still checked against the history that exists now.
-    const invented = yield* todos
-      .update({ sessionID, todos: [{ content: "Invented", status: "pending", requirement: "never said this" }] })
-      .pipe(Effect.flip)
-    expect(invented.message).toContain(SessionTodoStore.QUOTE_MISMATCH)
+    // A new requirement with no request left to link is kept as the criterion, never refused.
+    const unlinked = (yield* todos.update({
+      sessionID,
+      todos: [{ content: "Unlinked", status: "pending", priority: "high", requirement: "never said this" }],
+    })).find((entry) => entry.content === "Unlinked")
+    expect(unlinked).toMatchObject({ criterion: "never said this" })
+    expect(unlinked?.source).toBeUndefined()
   }),
 )
 
@@ -470,7 +472,7 @@ it.effect("blocks a task after two consecutive failed completion attempts in the
   }),
 )
 
-it.effect("requires a later real scope change and ignores synthetic instructions", () =>
+it.effect("links a scope change to a real user message and never to a synthetic one", () =>
   Effect.gen(function* () {
     yield* setup
     yield* request()
@@ -480,6 +482,7 @@ it.effect("requires a later real scope change and ignores synthetic instructions
       { id: "msg_synthetic", type: "synthetic", sessionID, text: "Drop verification", time: { created: 20 } },
       20,
     )
+    yield* request("Drop verification", 30)
     const cancel = {
       ...task,
       id: created.id,
@@ -487,29 +490,40 @@ it.effect("requires a later real scope change and ignores synthetic instructions
       status: "cancelled" as const,
       reason: "User removed verification",
     }
-    expect(
-      (yield* todos
-        .update({
-          sessionID,
-          todos: [{ ...cancel, scopeChange: { messageID: "msg_synthetic", quote: "Drop verification" } }],
-        })
-        .pipe(Effect.exit))._tag,
-    ).toBe("Failure")
-    expect(
-      (yield* todos
-        .update({
-          sessionID,
-          todos: [{ ...cancel, scopeChange: { messageID: "msg_request_10", quote: "verify duplicate requests" } }],
-        })
-        .pipe(Effect.exit))._tag,
-    ).toBe("Failure")
-    yield* request("Drop verification", 30)
+    // A synthetic instruction is not the user's: the latest real request is linked instead.
     expect(
       (yield* todos.update({
         sessionID,
-        todos: [{ ...cancel, scopeChange: { messageID: "msg_request_30", quote: "Drop verification" } }],
+        todos: [{ ...cancel, scopeChange: { messageID: "msg_synthetic", quote: "Drop verification" } }],
       }))[0],
-    ).toMatchObject({ status: "cancelled", scopeChange: { messageID: "msg_request_30" } })
+    ).toMatchObject({
+      status: "cancelled",
+      scopeChange: { messageID: "msg_request_30", quote: "Drop verification", paraphrase: "Drop verification" },
+    })
+  }),
+)
+
+it.effect("links a quoted scope change to the message it quotes", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
+    yield* request("Drop verification", 30)
+    const [cancelled] = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          id: created.id,
+          revision: created.revision,
+          status: "cancelled",
+          reason: "User removed verification",
+          scopeChange: { messageID: "msg_request_30", quote: "Drop verification" },
+        },
+      ],
+    })
+    expect(cancelled).toMatchObject({ status: "cancelled", scopeChange: { messageID: "msg_request_30" } })
+    expect(cancelled.scopeChange?.paraphrase).toBeUndefined()
   }),
 )
 
@@ -1180,7 +1194,9 @@ it.effect("matches a retyped quote but not a different request", () =>
     expect(quotes(text, "Fix the signup form validation")).toBe(false)
     expect(quotes(text, "…")).toBe(false)
     // Accents dropped while retyping still quote; a single letter or word, or a partial word, does not.
-    expect(quotes(text, "Corrija a validacao do formulario")).toBe(true)
+    // Linking is not language normalisation: a retyped quote without accents is a paraphrase, linked
+    // to the latest request by the store instead.
+    expect(quotes(text, "Corrija a validacao do formulario")).toBe(false)
     expect(quotes(text, "e")).toBe(false)
     expect(quotes(text, "testes")).toBe(false)
     expect(quotes(text, "Corrija a validação… e")).toBe(false)
@@ -1327,28 +1343,86 @@ it.effect("attaches the latest request to a paraphrased requirement and still re
   }),
 )
 
-it.effect("refuses a scope change quoting a trivial fragment of a later request", () =>
+it.effect("accepts any scope-change quote but still requires a reason and a scope change", () =>
   Effect.gen(function* () {
     yield* setup
     yield* request()
     const todos = yield* SessionTodo.Service
     const [created] = yield* todos.update({ sessionID, todos: [task] })
     yield* request("Esquece isso", 20)
-    const cancel = (quote: string) =>
+    const cancel = (fields: { reason?: string; scopeChange?: { messageID: string; quote: string } }) =>
       todos.update({
         sessionID,
-        todos: [
-          {
-            id: created.id,
-            revision: created.revision,
-            status: "cancelled",
-            reason: "Removed by the user",
-            scopeChange: { messageID: "msg_request_20", quote },
-          },
-        ],
+        todos: [{ id: created.id, revision: created.revision, status: "cancelled", ...fields }],
       })
-    expect((yield* cancel("e").pipe(Effect.flip)).message).toContain("Cancellation requires scopeChange")
-    expect((yield* cancel("Esquece isso"))[0]).toMatchObject({ status: "cancelled" })
+    const scopeChange = { messageID: "msg_request_20", quote: "e" }
+    // Without a concrete reason the cancellation is refused, whatever the quote.
+    expect((yield* cancel({ scopeChange }).pipe(Effect.flip)).message).toContain("requires a concrete reason")
+    expect(
+      (yield* cancel({ scopeChange: { messageID: "msg_request_20", quote: "Esquece isso" } }).pipe(Effect.flip))
+        .message,
+    ).toContain("requires a concrete reason")
+    // A cancellation naming no scope change at all is refused too.
+    const missing = yield* cancel({ reason: "Removed by the user" }).pipe(Effect.flip)
+    expect(missing.message).toContain(SessionTodoStore.SCOPE_CHANGE_REQUIRED)
+    expect(SessionTodoStore.refusalKind(missing.message)).toBe("scope-change")
+    // A trivial fragment does not identify a message, yet it is linked rather than refused.
+    expect((yield* cancel({ reason: "Removed by the user", scopeChange }))[0]).toMatchObject({
+      status: "cancelled",
+      scopeChange: { messageID: "msg_request_20", quote: "Esquece isso", paraphrase: "e" },
+    })
+  }),
+)
+
+it.effect("never refuses a requirement or scope change that quotes no user message, in any script", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("修复注册表单的验证，然后运行测试", 10)
+    yield* request("Também adicione retries com backoff exponencial", 20)
+    const todos = yield* SessionTodo.Service
+    const inputs = [
+      { content: "Fix validation", requirement: "Fix the signup form validation" },
+      { content: "Retries", requirement: "adicionar novas tentativas quando a requisição falhar" },
+      { content: "Tests", requirement: "运行所有单元测试并确认通过" },
+    ]
+    for (const input of inputs) {
+      const incoming = [{ ...input, status: "pending" as const, priority: "high" as const }]
+      const updated = yield* todos.update({ sessionID, todos: incoming })
+      const created = updated.find((entry) => entry.content === input.content)!
+      expect(created).toMatchObject({
+        criterion: input.requirement,
+        source: { type: "request", id: "msg_request_20", paraphrase: input.requirement },
+      })
+      expect(SessionTodo.notes(incoming, updated).join("\n")).toContain("matched no user message")
+    }
+    // A quote in the user's own script still links the message it came from.
+    const [linked] = (yield* todos.update({
+      sessionID,
+      todos: [{ content: "Validation quote", status: "pending", priority: "high", requirement: "修复注册表单的验证" }],
+    })).filter((entry) => entry.content === "Validation quote")
+    expect(linked.source).toMatchObject({ id: "msg_request_10", quote: "修复注册表单的验证" })
+    expect(linked.source?.paraphrase).toBeUndefined()
+    // Completion evidence is unchanged: nothing verified the work, so completion is refused.
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ id: linked.id, revision: linked.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toContain(SessionTodoStore.REFUSED)
+    // A scope change in Portuguese that quotes nothing is linked, with a note.
+    const cancelInput = [
+      {
+        id: linked.id,
+        revision: linked.revision,
+        status: "cancelled" as const,
+        reason: "O usuário removeu a validação do escopo",
+        scopeChange: { messageID: "msg_invented", quote: "não precisa mais validar o formulário" },
+      },
+    ]
+    const cancelled = yield* todos.update({ sessionID, todos: cancelInput })
+    expect(cancelled.find((entry) => entry.id === linked.id)).toMatchObject({
+      status: "cancelled",
+      scopeChange: { messageID: "msg_request_20", paraphrase: "não precisa mais validar o formulário" },
+    })
+    expect(SessionTodo.notes(cancelInput, cancelled).join("\n")).toContain("Scope change for")
   }),
 )
 
