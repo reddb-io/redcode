@@ -126,7 +126,10 @@ export interface Interface {
   readonly getGlobal: () => Effect.Effect<Info>
   readonly getConsoleState: () => Effect.Effect<ConsoleState>
   readonly update: (config: Info) => Effect.Effect<void>
-  readonly updateGlobal: (config: Info) => Effect.Effect<{ info: Info; changed: boolean }>
+  readonly updateGlobal: (
+    config: Info,
+    options?: { remove?: ReadonlyArray<ReadonlyArray<string>> },
+  ) => Effect.Effect<{ info: Info; changed: boolean }>
   readonly invalidate: () => Effect.Effect<void>
   readonly directories: () => Effect.Effect<string[]>
   readonly waitForDependencies: () => Effect.Effect<void>
@@ -700,10 +703,15 @@ const layer = Layer.effect(
       yield* invalidateGlobal
     })
 
-    const updateGlobal = Effect.fn("Config.updateGlobal")(function* (config: Info) {
+    const updateGlobal = Effect.fn("Config.updateGlobal")(function* (
+      config: Info,
+      options: { remove?: ReadonlyArray<ReadonlyArray<string>> } = {},
+    ) {
       const file = globalConfigFile()
       const before = (yield* readConfigFile(file)) ?? "{}"
       const patch = writableGlobal(config)
+      // A patch can only add or replace values, so deletions are listed as key paths.
+      const remove = options.remove ?? []
 
       let next: Info
       let changed: boolean
@@ -712,12 +720,22 @@ const layer = Layer.effect(
         const existing = ConfigParse.jsonc(before, file)
         ConfigParse.schema(ConfigV1.Info, existing, file)
         const merged = mergeDeep(isRecord(existing) ? existing : {}, patch)
+        for (const keys of remove) {
+          const parent = keys
+            .slice(0, -1)
+            .reduce<unknown>((node, key) => (isRecord(node) ? node[key] : undefined), merged)
+          if (isRecord(parent) && keys.length) delete parent[keys[keys.length - 1]]
+        }
         const serialized = JSON.stringify(merged, null, 2)
         changed = serialized !== before
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
         next = merged
       } else {
-        const updated = patchJsonc(before, patch)
+        const updated = remove.reduce(
+          (text, keys) =>
+            applyEdits(text, modify(text, [...keys], undefined, { formattingOptions: { insertSpaces: true, tabSize: 2 } })),
+          patchJsonc(before, patch),
+        )
         next = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(updated, file), file)
         changed = updated !== before
         if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)

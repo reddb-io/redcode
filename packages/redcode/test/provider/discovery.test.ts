@@ -1,4 +1,4 @@
-import { expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ProviderDiscovery } from "../../src/provider/discovery"
@@ -6,26 +6,26 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(FetchHttpClient.layer)
 
+function serve(fetch: (request: Request) => Response | Promise<Response>) {
+  return Effect.acquireRelease(
+    Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch })),
+    (server) => Effect.promise(() => server.stop(true)),
+  )
+}
+
 it.live(
   "times out a model catalog whose response body never finishes",
   () =>
     Effect.gen(function* () {
-      const server = yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          Bun.serve({
-            hostname: "127.0.0.1",
-            port: 0,
-            fetch: () =>
-              new Response(
-                new ReadableStream({
-                  start(controller) {
-                    controller.enqueue(new TextEncoder().encode("{"))
-                  },
-                }),
-              ),
-          }),
-        ),
-        (server) => Effect.promise(() => server.stop(true)),
+      const server = yield* serve(
+        () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("{"))
+              },
+            }),
+          ),
       )
       const http = yield* HttpClient.HttpClient
       const error = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" }).pipe(
@@ -39,37 +39,126 @@ it.live(
 it.effect("discovers routed IDs over HTTP, sends only the supplied key and normalizes the catalog", () =>
   Effect.gen(function* () {
     const requests: Array<{ path: string; auth: string | null }> = []
-    const server = yield* Effect.acquireRelease(
-      Effect.sync(() =>
-        Bun.serve({
-          hostname: "127.0.0.1",
-          port: 0,
-          fetch(request) {
-            requests.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization") })
-            return Response.json({
-              data: [
-                { id: "cc/claude-test", name: "Claude via router" },
-                { id: "premium-coding" },
-                { id: "premium-coding" },
-                { id: "" },
-                { id: "__proto__" },
-              ],
-            })
-          },
-        }),
-      ),
-      (server) => Effect.promise(() => server.stop(true)),
-    )
+    const server = yield* serve((request) => {
+      requests.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization") })
+      return Response.json({
+        data: [
+          { id: "cc/claude-test", name: "Claude via router" },
+          { id: "premium-coding" },
+          { id: "premium-coding" },
+          { id: "" },
+          { id: "__proto__" },
+        ],
+      })
+    })
     const http = yield* HttpClient.HttpClient
     const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1///`, apiKey: " test-key " })
     expect(requests).toEqual([{ path: "/v1/models", auth: "Bearer test-key" }])
     expect(result).toEqual({
       baseURL: `${server.url}v1`,
       models: [
-        { id: "cc/claude-test", name: "Claude via router" },
-        { id: "premium-coding", name: "premium-coding" },
+        { id: "cc/claude-test", name: "Claude via router", limit: ProviderDiscovery.DEFAULT_LIMIT, estimated: true },
+        { id: "premium-coding", name: "premium-coding", limit: ProviderDiscovery.DEFAULT_LIMIT, estimated: true },
       ],
     })
+  }),
+)
+
+it.effect("reads limits from the router, then the catalog with router prefixes stripped", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() =>
+      Response.json({
+        data: [
+          { id: "reported", context_length: 200000, max_output_tokens: 32000 },
+          { id: "alternate", max_context_length: 64000.9, max_output_length: 4096 },
+          { id: "cc/claude-test" },
+          { id: "context-only", context_window: 32000 },
+          { id: "junk", context_length: "big", max_output_tokens: -1 },
+        ],
+      }),
+    )
+    const http = yield* HttpClient.HttpClient
+    const catalog = ProviderDiscovery.catalogLimits({
+      anthropic: { models: { "claude-test": { limit: { context: 200000, output: 64000 } } } },
+    })
+    const result = yield* ProviderDiscovery.discover(
+      http,
+      { baseURL: `${server.url}v1`, apiKey: "test" },
+      { catalog },
+    )
+    expect(Object.fromEntries(result.models.map((model) => [model.id, [model.limit, model.estimated]]))).toEqual({
+      reported: [{ context: 200000, output: 32000 }, false],
+      alternate: [{ context: 64000, output: 4096 }, false],
+      "cc/claude-test": [{ context: 200000, output: 64000 }, false],
+      "context-only": [{ context: 32000, output: 8192 }, true],
+      junk: [ProviderDiscovery.DEFAULT_LIMIT, true],
+    })
+    expect(result.models.every((model) => model.limit.context > 0)).toBe(true)
+  }),
+)
+
+describe("catalogLimits", () => {
+  test("drops leading path segments and ignores entries without a context", () => {
+    const lookup = ProviderDiscovery.catalogLimits({
+      empty: { models: { "claude-test": { limit: { context: 0, output: 0 } } } },
+      anthropic: { models: { "claude-test": { limit: { context: 200000, output: 0 } } } },
+    })
+    expect(lookup("openrouter/anthropic/claude-test")).toEqual({ context: 200000, output: undefined })
+    expect(lookup("unknown/model")).toBeUndefined()
+  })
+})
+
+describe("normalizeBaseURL", () => {
+  test("adds http, strips /models and adds /v1 to a bare root", () => {
+    expect(ProviderDiscovery.normalizeBaseURL("localhost:20128")).toBe("http://localhost:20128/v1")
+    expect(ProviderDiscovery.normalizeBaseURL("127.0.0.1:20128")).toBe("http://127.0.0.1:20128/v1")
+    expect(ProviderDiscovery.normalizeBaseURL("http://127.0.0.1:20128/v1/models/")).toBe("http://127.0.0.1:20128/v1")
+    expect(ProviderDiscovery.normalizeBaseURL("https://router.example/")).toBe("https://router.example/v1")
+    expect(ProviderDiscovery.normalizeBaseURL("https://router.example/api")).toBe("https://router.example/api")
+  })
+})
+
+it.effect("requests the models endpoint for scheme-less, /models and bare-root URLs", () =>
+  Effect.gen(function* () {
+    const paths: string[] = []
+    const server = yield* serve((request) => {
+      paths.push(new URL(request.url).pathname)
+      return Response.json({ data: [{ id: "combo" }] })
+    })
+    const http = yield* HttpClient.HttpClient
+    const expected = `${server.url}v1`
+    for (const baseURL of [server.url.href.replace(/^http:\/\//, ""), `${server.url}v1/models`, server.url.href]) {
+      const result = yield* ProviderDiscovery.discover(http, { baseURL, apiKey: "test" })
+      expect(result.baseURL).toBe(expected)
+    }
+    expect(paths).toEqual(["/v1/models", "/v1/models", "/v1/models"])
+  }),
+)
+
+it.effect("refuses model lists over the byte cap, declared or streamed", () =>
+  Effect.gen(function* () {
+    const big = JSON.stringify({ data: [{ id: "x".repeat(2048) }] })
+    const declared = yield* serve(() => new Response(big, { headers: { "content-type": "application/json" } }))
+    const streamed = yield* serve(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (let index = 0; index < 4; index++) controller.enqueue(new TextEncoder().encode(" ".repeat(600)))
+              controller.close()
+            },
+          }),
+        ),
+    )
+    const http = yield* HttpClient.HttpClient
+    for (const server of [declared, streamed]) {
+      const error = yield* ProviderDiscovery.discover(
+        http,
+        { baseURL: `${server.url}v1`, apiKey: "test" },
+        { maxBytes: 1024 },
+      ).pipe(Effect.flip)
+      expect(error.message).toContain("too large")
+    }
   }),
 )
 
@@ -84,16 +173,7 @@ for (const scenario of [
 ]) {
   it.effect(`reports ${scenario.status} ${scenario.message} without echoing upstream bodies`, () =>
     Effect.gen(function* () {
-      const server = yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          Bun.serve({
-            hostname: "127.0.0.1",
-            port: 0,
-            fetch: () => new Response(scenario.body, { status: scenario.status }),
-          }),
-        ),
-        (server) => Effect.promise(() => server.stop(true)),
-      )
+      const server = yield* serve(() => new Response(scenario.body, { status: scenario.status }))
       const http = yield* HttpClient.HttpClient
       const error = yield* ProviderDiscovery.discover(http, {
         baseURL: `${server.url}v1`,
@@ -120,29 +200,11 @@ it.effect("reports an unreachable endpoint without echoing the key", () =>
 it.effect("does not forward the key when the catalog redirects to another origin", () =>
   Effect.gen(function* () {
     const seen: Array<string | null> = []
-    const other = yield* Effect.acquireRelease(
-      Effect.sync(() =>
-        Bun.serve({
-          hostname: "127.0.0.1",
-          port: 0,
-          fetch(request) {
-            seen.push(request.headers.get("authorization"))
-            return Response.json({ data: [{ id: "redirected" }] })
-          },
-        }),
-      ),
-      (server) => Effect.promise(() => server.stop(true)),
-    )
-    const router = yield* Effect.acquireRelease(
-      Effect.sync(() =>
-        Bun.serve({
-          hostname: "127.0.0.1",
-          port: 0,
-          fetch: () => Response.redirect(`${other.url}v1/models`, 302),
-        }),
-      ),
-      (server) => Effect.promise(() => server.stop(true)),
-    )
+    const other = yield* serve((request) => {
+      seen.push(request.headers.get("authorization"))
+      return Response.json({ data: [{ id: "redirected" }] })
+    })
+    const router = yield* serve(() => Response.redirect(`${other.url}v1/models`, 302))
     const http = yield* HttpClient.HttpClient
     yield* ProviderDiscovery.discover(http, { baseURL: `${router.url}v1`, apiKey: "secret-test-key" }).pipe(
       Effect.ignore,
@@ -155,21 +217,27 @@ it.effect("rejects invalid endpoints and credentials before making requests", ()
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     for (const baseURL of [
-      "garbage",
+      "http://",
+      "ftp://router/v1",
       "file:///tmp/key",
       "http://user:pass@localhost/v1",
       "http://localhost/v1?key=secret",
       "http://localhost/v1#fragment",
     ]) {
       const error = yield* ProviderDiscovery.discover(http, { baseURL, apiKey: "test" }).pipe(Effect.flip)
-      expect(error._tag).toBe("ProviderDiscoveryError")
-      expect(error.message).not.toContain("secret")
+      expect(error.message).toBe("Use an HTTP or HTTPS API URL without credentials, query or fragment.")
     }
-    for (const apiKey of ["", "  ", "key\r\nheader: value"]) {
+    for (const apiKey of ["", "  "]) {
       const error = yield* ProviderDiscovery.discover(http, { baseURL: "http://127.0.0.1:1/v1", apiKey }).pipe(
         Effect.flip,
       )
       expect(error.message).toContain("Enter the API key")
+    }
+    for (const apiKey of ["key\r\nheader: value", "clé-secrète", "key with space"]) {
+      const error = yield* ProviderDiscovery.discover(http, { baseURL: "http://127.0.0.1:1/v1", apiKey }).pipe(
+        Effect.flip,
+      )
+      expect(error.message).toContain("invalid characters")
     }
   }),
 )

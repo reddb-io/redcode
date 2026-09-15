@@ -37,6 +37,10 @@ describe("providerOptions", () => {
     expect(options[0].title).toBe("My Router")
   })
 
+  test("hides 9Router when disabled_providers contains it", () => {
+    expect(providerOptions([], ["9router"]).some((option) => option.value === "9router")).toBe(false)
+  })
+
   test("does not collide with a configured provider named other", () => {
     const values = providerOptions([{ id: "other", name: "Other Provider" }]).map((option) => option.value)
     expect(new Set(values).size).toBe(values.length)

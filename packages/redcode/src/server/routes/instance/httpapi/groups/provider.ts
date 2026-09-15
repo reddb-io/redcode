@@ -53,6 +53,19 @@ export const ProviderApi = HttpApi.make("provider")
               "Check an OpenAI-compatible model catalog from the Redcode server without saving credentials or configuration.",
           }),
         ),
+        HttpApiEndpoint.post("connectNineRouter", `${root}/9router/connect`, {
+          query: WorkspaceRoutingQuery,
+          payload: ProviderDiscovery.Input,
+          success: ProviderDiscovery.Result,
+          error: ProviderDiscoveryApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.nineRouter.connect",
+            summary: "Connect 9Router",
+            description:
+              "Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+          }),
+        ),
         HttpApiEndpoint.get("list", root, {
           query: WorkspaceRoutingQuery,
           success: described(Provider.ListResult, "List of providers"),

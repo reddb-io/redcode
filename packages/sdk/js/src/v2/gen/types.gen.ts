@@ -10389,11 +10389,65 @@ export type ProviderDiscoverResponses = {
     models: Array<{
       id: string
       name: string
+      limit: {
+        context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        output: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      /**
+       * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
+       */
+      estimated: boolean
     }>
   }
 }
 
 export type ProviderDiscoverResponse = ProviderDiscoverResponses[keyof ProviderDiscoverResponses]
+
+export type ProviderNineRouterConnectData = {
+  body?: {
+    baseURL: string
+    apiKey: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/9router/connect"
+}
+
+export type ProviderNineRouterConnectErrors = {
+  /**
+   * ProviderDiscoveryApiError | InvalidRequestError
+   */
+  400: ProviderDiscoveryApiError | InvalidRequestError
+}
+
+export type ProviderNineRouterConnectError = ProviderNineRouterConnectErrors[keyof ProviderNineRouterConnectErrors]
+
+export type ProviderNineRouterConnectResponses = {
+  /**
+   * Success
+   */
+  200: {
+    baseURL: string
+    models: Array<{
+      id: string
+      name: string
+      limit: {
+        context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        output: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      /**
+       * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
+       */
+      estimated: boolean
+    }>
+  }
+}
+
+export type ProviderNineRouterConnectResponse =
+  ProviderNineRouterConnectResponses[keyof ProviderNineRouterConnectResponses]
 
 export type ProviderListData = {
   body?: never
