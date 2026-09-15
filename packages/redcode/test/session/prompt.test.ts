@@ -1725,7 +1725,8 @@ const heldTool = (dir: string) => {
   const flag = path.join(dir, "release-tool")
   return {
     input: {
-      command: `until [ -e "${flag}" ]; do sleep 0.05; done; echo released`,
+      // Bounded under the polling guard's 30 s threshold, so the shell tool runs it instead of refusing an open-ended wait.
+      command: `timeout 25 sh -c 'until [ -e "${flag}" ]; do sleep 0.05; done; echo released'`,
       timeout: 30_000,
       workdir: path.resolve(dir),
     },
