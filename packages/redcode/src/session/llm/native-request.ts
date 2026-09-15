@@ -181,18 +181,28 @@ export const model = (input: Provider.Model | RequestInput, headers?: Record<str
 
 // The default cache policy marks the latest user message, which is the trailing per-step
 // reminder when there is one: a write never read. Mark the last stable message instead.
+// Anthropic rejects cache_control on thinking/redacted blocks and on empty text, so only these can
+// carry the breakpoint; walk back through parts and messages to the latest one that qualifies.
+const cacheable = (part: Message["content"][number]) => {
+  if (part.type === "text") return part.text.length > 0
+  return part.type === "tool-call" || part.type === "tool-result" || part.type === "media"
+}
+
 const stableBreakpoint = (list: ReadonlyArray<Message>) => {
-  const index = list.length - 2
-  const target = list[index]
-  if (!target || target.content.length === 0) return list
-  const text = target.content.findLastIndex((part) => part.type === "text")
-  const at = text >= 0 ? text : target.content.length - 1
-  const next = list.slice()
-  next[index] = Message.make({
-    ...target,
-    content: target.content.map((part, i) => (i === at ? { ...part, cache: new CacheHint({ type: "ephemeral" }) } : part)),
-  } as never)
-  return next
+  for (let index = list.length - 2; index >= 0; index--) {
+    const target = list[index]!
+    const at = target.content.findLastIndex(cacheable)
+    if (at < 0) continue
+    const next = list.slice()
+    next[index] = Message.make({
+      ...target,
+      content: target.content.map((part, i) =>
+        i === at ? { ...part, cache: new CacheHint({ type: "ephemeral" }) } : part,
+      ),
+    } as never)
+    return next
+  }
+  return list
 }
 
 export const request = (input: RequestInput) => {

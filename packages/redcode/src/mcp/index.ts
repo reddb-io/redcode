@@ -725,6 +725,9 @@ const layer = Layer.effect(
               delete s.status[key]
               delete s.enabled[key]
               delete s.configured[key]
+              // Removed, not just disconnected: give up the slot so a later re-add appends its tools
+              // at the end instead of landing in the middle of the cached prefix.
+              s.order = s.order.filter((name) => name !== key)
               yield* events.publish(ToolsChanged, { server: key }).pipe(Effect.ignore)
               return
             }

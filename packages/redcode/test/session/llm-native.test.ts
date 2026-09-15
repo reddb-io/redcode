@@ -475,6 +475,68 @@ describe("session.llm-native.request", () => {
     ).toMatchObject({ type: "supported", apiKey: "test-anthropic-key" })
   })
 
+  describe("trailing reminder cache breakpoint", () => {
+    const anthropicModel = {
+      ...baseModel,
+      providerID: ProviderV2.ID.make("anthropic"),
+      api: { ...baseModel.api, id: "claude-sonnet-4-5", npm: "@ai-sdk/anthropic", url: "https://api.anthropic.com/v1" },
+    }
+    const reminder: ModelMessage = {
+      role: "user",
+      content: [{ type: "text", text: "<system-reminder>\nNo tracked tasks yet.\n</system-reminder>" }],
+    }
+    type Block = { type: string; text?: string; cache_control?: unknown }
+    const marked = (history: ModelMessage[]) =>
+      Effect.runPromise(
+        LLMClient.prepare<{ messages: Array<{ role: string; content: Block[] }> }>(
+          LLMNative.request({ model: anthropicModel, apiKey: "test-anthropic-key", messages: history }),
+        ),
+      ).then((prepared) =>
+        prepared.body.messages.flatMap((message, index) =>
+          message.content.filter((block) => block.cache_control).map((block) => ({ index, block })),
+        ),
+      )
+
+    test("skips a trailing reasoning part and marks the text before it", async () => {
+      const result = await marked([
+        { role: "user", content: "Find the config." },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Looking." },
+            { type: "reasoning", text: "thinking about globs" },
+          ],
+        },
+        reminder,
+      ])
+      expect(result).toEqual([{ index: 1, block: expect.objectContaining({ type: "text", text: "Looking." }) }])
+    })
+
+    test("skips an empty text part and falls back to the previous message when nothing qualifies", async () => {
+      const empty = await marked([
+        { role: "user", content: "Find the config." },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Done." },
+            { type: "text", text: "" },
+          ],
+        },
+        reminder,
+      ])
+      expect(empty).toEqual([{ index: 1, block: expect.objectContaining({ type: "text", text: "Done." }) }])
+
+      const onlyReasoning = await marked([
+        { role: "user", content: "Find the config." },
+        { role: "assistant", content: [{ type: "reasoning", text: "thinking" }] },
+        reminder,
+      ])
+      expect(onlyReasoning).toEqual([
+        { index: 0, block: expect.objectContaining({ type: "text", text: "Find the config." }) },
+      ])
+    })
+  })
+
   test("prefers console provider api key over stored opencode auth", () => {
     expect(
       LLMNativeRuntime.status({
