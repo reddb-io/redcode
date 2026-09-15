@@ -6146,7 +6146,7 @@ unix(
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
       const monitors = yield* MonitorRuntime.Service
-      const { ShellPolling } = yield* Effect.promise(() => import("../../src/tool/shell/polling"))
+      const { ShellPolling } = yield* Effect.promise(() => import("@reddb-io/redcode-core/tool/shell-polling"))
       const chat = yield* sessions.create({ title: "Polling refusal" })
       yield* sessions.setPermission({
         sessionID: chat.id,

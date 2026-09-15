@@ -733,4 +733,54 @@ export function refusal(detection: Detection, workdir?: string) {
   return lines.join("\n")
 }
 
-export * as ShellPolling from "./polling"
+/** Under the long-sleep threshold: five tries five seconds apart. */
+const BOUNDED_TRIES = 5
+const BOUNDED_SLEEP_S = 5
+
+/** A retry loop that gives up within 25 s, so the guard lets it run. */
+export function boundedWait(suggestion: Suggestion) {
+  const success = suggestion.monitor.mode === "poll" ? suggestion.monitor.success_contains : undefined
+  const check = success ? `${suggestion.command} | grep -q '${success.replaceAll("'", "'\\''")}'` : suggestion.command
+  const tries = Array.from({ length: BOUNDED_TRIES }, (_, index) => index + 1).join(" ")
+  return `for i in ${tries}; do ${check} && break; sleep ${BOUNDED_SLEEP_S}; done`
+}
+
+/**
+ * The refusal for a runtime with no monitors (the v2 core bash tool): nothing would resume the
+ * session after a background wait, so it offers a single check now or a bounded wait instead.
+ */
+export function boundedRefusal(detection: Detection, workdir?: string) {
+  const held = detection.waitMs !== undefined ? ` for up to ${duration(detection.waitMs)}` : ""
+  const lines = [
+    detection.kind === "loop"
+      ? `Not run: this command waits by sleeping in a polling loop, which would block the turn${held}.`
+      : detection.kind === "watch"
+        ? "Not run: this command watches a job until it ends, which blocks the turn for as long as the job runs."
+        : `Not run: this command sleeps${held}, which blocks the turn. Sleeps shorter than ${duration(LONG_SLEEP_MS)} are allowed.`,
+    "Long waits are not supported in this mode: there is no background monitor, so nothing would resume this session when the wait ends.",
+  ]
+  if (detection.before)
+    lines.push(`Run the part before the wait first, as its own bash call without any sleep: ${detection.before}`)
+  const suggestion = detection.suggestion
+  if (suggestion?.monitor.mode === "once") {
+    lines.push(
+      "Run the command now, without sleeping in front of it:",
+      JSON.stringify({ command: suggestion.command, ...(workdir ? { workdir } : {}) }),
+    )
+  } else {
+    const check = suggestion ?? EXAMPLES[0]
+    lines.push(
+      suggestion
+        ? "Instead, run the check once now with this bash call, report the status, and ask the user whether to check again later:"
+        : "Instead, run a status check once now, report the status, and ask the user whether to check again later. For example:",
+      JSON.stringify({ command: check.command, ...(workdir ? { workdir } : {}) }),
+      `If it should be ready within seconds, use a single bounded wait under ${duration(LONG_SLEEP_MS)} instead:`,
+      JSON.stringify({ command: boundedWait(check), ...(workdir ? { workdir } : {}) }),
+    )
+  }
+  if (detection.after) lines.push(`Once the check reports success, run what came after the wait as its own bash call: ${detection.after}`)
+  lines.push("Do not retry with a longer sleep or a larger timeout.")
+  return lines.join("\n")
+}
+
+export * as ShellPolling from "./shell-polling"

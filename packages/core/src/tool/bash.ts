@@ -14,6 +14,7 @@ import { PermissionV2 } from "../permission"
 import { PositiveInt } from "../schema"
 import { ShellWorkdir } from "../shell-workdir"
 import { ToolRegistry } from "./registry"
+import { ShellPolling } from "./shell-polling"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -109,7 +110,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
-          description: `Execute one shell command string with the host user's filesystem, process, and network authority. The active Location is the default working directory. Relative workdir values resolve from that Location. External workdir values require external_directory approval; best-effort command-argument path warnings are advisory only. Timeout values are milliseconds (default: ${DEFAULT_TIMEOUT_MS}; maximum: ${MAX_TIMEOUT_MS}). Uses the configured shell when set; otherwise uses /bin/sh on POSIX and COMSPEC or cmd.exe on Windows.`,
+          description: `Execute one shell command string with the host user's filesystem, process, and network authority. The active Location is the default working directory. Relative workdir values resolve from that Location. External workdir values require external_directory approval; best-effort command-argument path warnings are advisory only. Timeout values are milliseconds (default: ${DEFAULT_TIMEOUT_MS}; maximum: ${MAX_TIMEOUT_MS}). Uses the configured shell when set; otherwise uses /bin/sh on POSIX and COMSPEC or cmd.exe on Windows. Never wait on CI, a deploy or a server with sleep loops or sleeps of ${ShellPolling.LONG_SLEEP_MS / 1_000}s or more: they are refused without running. Check once and report the status, or use a single bounded wait under ${ShellPolling.LONG_SLEEP_MS / 1_000}s.`,
           input: Input,
           output: Output,
           structured: StructuredOutput,
@@ -124,6 +125,13 @@ const layer = Layer.effectDiscard(
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
+              // A sleep polling loop holds the whole turn and nothing here can wait in the background.
+              // Refused before anything resolves, asks or runs, with a check-once or bounded retry.
+              const polling = ShellPolling.detect(input.command)
+              if (polling)
+                return yield* Effect.fail(
+                  new ToolFailure({ message: ShellPolling.boundedRefusal(polling, input.workdir) }),
+                )
               const source = {
                 type: "tool" as const,
                 messageID: context.assistantMessageID,
@@ -205,9 +213,11 @@ const layer = Layer.effectDiscard(
                 (error) =>
                   new ToolFailure({
                     message:
-                      error instanceof ShellWorkdir.Invalid || error instanceof RepositoryGuard.Violation
+                      error instanceof ToolFailure
                         ? error.message
-                        : `Unable to execute command: ${input.command}`,
+                        : error instanceof ShellWorkdir.Invalid || error instanceof RepositoryGuard.Violation
+                          ? error.message
+                          : `Unable to execute command: ${input.command}`,
                   }),
               ),
             ),

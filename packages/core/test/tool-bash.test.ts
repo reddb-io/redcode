@@ -180,6 +180,39 @@ describe("BashTool", () => {
     ),
   )
 
+  it.live("refuses sleep polling loops before asking or running, and lets a short retry loop run", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withTool(tmp.path, (registry) =>
+          Effect.gen(function* () {
+            for (const command of [
+              `for i in 1..12; do sleep 300; gh run view 123 --json status -q .status | grep -q completed && break; done`,
+              `for i in $(seq 1 30); do sleep 60; PENDING=$(gh pr checks 198 | grep -c pending); if [ "$PENDING" -eq 0 ]; then break; fi; done`,
+            ]) {
+              const settled = yield* settleTool(registry, call({ command }))
+              const { type, value } = settled.result as { type: string; value: unknown }
+              const text = String(value)
+              expect(type).toBe("error")
+              expect(text).toContain("Not run: this command waits by sleeping in a polling loop")
+              expect(text).toContain("Long waits are not supported in this mode")
+              expect(text).not.toContain('"monitor"')
+            }
+            expect(runs).toEqual([])
+            expect(assertions).toEqual([])
+
+            const retry = `for i in 1 2 3; do curl -fsS https://api.example.com && break; sleep 2; done`
+            expect((yield* settleTool(registry, call({ command: retry }))).result).toMatchObject({ type: "content" })
+            expect(runs).toMatchObject([{ command: retry }])
+            expect(assertions).toMatchObject([{ action: "bash", resources: [retry] }])
+          }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("resolves a relative workdir from the active Location", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -398,7 +431,7 @@ describe("BashTool", () => {
       (tmp) => {
         reset()
         runFailure = new AppProcess.AppProcessError({ command: "sleep", cause: new Error("Timed out") })
-        return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "sleep 60", timeout: 10 }))).pipe(
+        return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "sleep 5", timeout: 10 }))).pipe(
           Effect.andThen((settled) =>
             Effect.sync(() => {
               expect(settled.output?.content[1]).toMatchObject({
