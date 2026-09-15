@@ -202,6 +202,63 @@ describe("SessionInput delivery changes", () => {
     }),
   )
 
+  it.effect("replaying a delivery change is idempotent, before and after the promotion", () =>
+    Effect.gen(function* () {
+      const replica = SessionV2.ID.make("ses_input_replay_delivery")
+      yield* setupSession(replica)
+      const { db } = yield* Database.Service
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.create()
+      const created = Date.now()
+      // A replica rebuilding its projection replays the change that happened while the prompt was
+      // waiting, and then one that lands after the promotion, which it can no longer apply.
+      const serialized = [
+        {
+          type: versioned(SessionEvent.PromptAdmitted),
+          data: { messageID: id, sessionID: replica, timestamp: created, prompt: { text: "replayed" }, delivery: "queue" },
+        },
+        {
+          type: versioned(SessionEvent.PromptDeliveryChanged),
+          data: { messageID: id, sessionID: replica, timestamp: created + 1, delivery: "steer" },
+        },
+        {
+          type: versioned(SessionV1.Event.MessageUpdated),
+          data: { sessionID: replica, info: userInfo(id, replica, created) },
+        },
+        { type: versioned(SessionV1.Event.MessagePromoted), data: { sessionID: replica, messageID: id } },
+        {
+          type: versioned(SessionEvent.PromptDeliveryChanged),
+          data: { messageID: id, sessionID: replica, timestamp: created + 2, delivery: "queue" },
+        },
+      ].map((event, seq) => ({ id: EventV2.ID.create(), seq, aggregateID: replica, ...event }))
+
+      yield* events.replayAll(serialized)
+      const stored = yield* SessionInput.find(db, id)
+      expect(stored?.delivery).toBe("steer")
+      expect(stored?.promotedSeq).toBe(3)
+    }),
+  )
+
+  it.effect("projecting a delivery change leaves a missing or promoted row alone", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const { db } = yield* Database.Service
+      // No row at all: nothing to change, and nothing to fail over.
+      yield* SessionInput.projectDeliveryChanged(db, {
+        id: SessionMessage.ID.create(),
+        sessionID,
+        delivery: "steer",
+      })
+
+      const id = SessionMessage.ID.create()
+      yield* admit(id, "hello", "queue")
+      yield* publishUser(id)
+      yield* publishPromoted(id)
+      yield* SessionInput.projectDeliveryChanged(db, { id, sessionID, delivery: "steer" })
+      expect((yield* SessionInput.find(db, id))?.delivery).toBe("queue")
+    }),
+  )
+
   it.effect("a removed prompt cannot be steered", () =>
     Effect.gen(function* () {
       yield* setup

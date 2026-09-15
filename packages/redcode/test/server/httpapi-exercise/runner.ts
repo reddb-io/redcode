@@ -183,20 +183,47 @@ function withContext<A, E>(
             run(modules.Session.Service.use((svc) => svc.messages({ sessionID }).pipe(Effect.orDie))),
           admitPrompt: (sessionID, input) =>
             Effect.gen(function* () {
-              const seed = yield* base.message(sessionID, { text: input?.text })
+              const info: SessionV1.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: "build",
+                model: {
+                  providerID: ProviderV2.ID.make(input?.model?.providerID ?? ProviderV2.ID.opencode),
+                  modelID: ModelV2.ID.make(input?.model?.modelID ?? "test"),
+                },
+              }
+              const part: SessionV1.TextPart = {
+                id: PartID.ascending(),
+                sessionID,
+                messageID: info.id,
+                type: "text",
+                text: input?.text ?? "hello",
+              }
+              // Admitted before the message rows exist, the order the loop relies on: an inbox row
+              // added after them would be a lifecycle conflict.
               yield* run(
                 Effect.gen(function* () {
                   const { db } = yield* Database.Service
                   const events = yield* EventV2Bridge.Service
                   yield* SessionInput.admit(db, events, {
-                    id: SessionMessage.ID.make(seed.info.id),
+                    id: SessionMessage.ID.make(info.id),
                     sessionID,
-                    prompt: Prompt.fromUserMessage({ text: seed.part.text }),
+                    prompt: Prompt.fromUserMessage({ text: part.text }),
                     delivery: input?.delivery ?? "queue",
                   })
                 }),
               )
-              return seed
+              yield* run(
+                modules.Session.Service.use((svc) =>
+                  Effect.gen(function* () {
+                    yield* svc.updateMessage(info)
+                    yield* svc.updatePart(part)
+                  }),
+                ),
+              )
+              return { info, part }
             }),
           todos: (sessionID, todos) =>
             run(modules.Todo.Service.use((svc) => svc.update({ sessionID, todos }).pipe(Effect.orDie))),

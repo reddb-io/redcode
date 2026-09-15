@@ -131,12 +131,18 @@ export function pendingAssistantIndex(messages: readonly PendingMessageLike[], s
 export function latestQueuedPrompt(input: {
   messages: readonly PendingMessageLike[]
   statusType: string | undefined
-  isSteer: (messageID: string) => boolean
+  /**
+   * Whether this prompt is known not to be waiting in the queue any more: already steered, or
+   * already promoted. Position in the transcript cannot answer that on its own — promotion
+   * re-stamps the message to now, so a prompt the loop has just taken up still sits after the open
+   * assistant message, and steering it again would only earn a 404.
+   */
+  settled: (messageID: string) => boolean
 }) {
   const pending = pendingAssistantIndex(input.messages, input.statusType)
   if (pending === undefined) return undefined
   const queued = input.messages.findLast(
-    (message, index) => index > pending && message.role === "user" && !input.isSteer(message.id),
+    (message, index) => index > pending && message.role === "user" && !input.settled(message.id),
   )
   return queued?.id
 }

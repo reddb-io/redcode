@@ -460,7 +460,7 @@ export const SessionApi = HttpApi.make("session")
           params: { sessionID: SessionID, messageID: MessageID },
           query: WorkspaceRoutingQuery,
           payload: PromptDeliveryPayload,
-          success: described(Schema.Boolean, "Delivery changed"),
+          success: described(HttpApiSchema.NoContent, "Delivery changed"),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
