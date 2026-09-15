@@ -1,6 +1,6 @@
 import path from "path"
-import { Cause, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Cause, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema, Stream } from "effect"
+import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 import { type ParseError, parse as parseJsonc } from "jsonc-parser"
 import { ModelsDev } from "@reddb-io/redcode-schema/models-dev"
 import { Global } from "./global"
@@ -168,9 +168,28 @@ const BLOCKED_STATUS = new Set([401, 403, 407, 451])
 const BLOCKED_ERROR = /proxy|certificate|cert_|self[- ]signed|tls|ssl|unable to (get|verify)/i
 /** Backoff after the first, second and later consecutive blocked attempts. */
 const BACKOFF = [Duration.hours(1), Duration.hours(6), Duration.hours(24)]
+const MAX_BACKOFF = Duration.toMillis(BACKOFF[BACKOFF.length - 1])
 
 export function backoff(failures: number) {
   return Duration.toMillis(BACKOFF[Math.min(Math.max(failures, 1), BACKOFF.length) - 1])
+}
+
+/**
+ * Classifies a request failure from the messages and codes of the error and its causes only, never
+ * from stack frames (a path such as `.../tls-socket.js` in a stack must not look like a TLS block).
+ */
+export function classifyError(error: unknown): { blocked: boolean; reason: string } {
+  const parts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+    const record = current as Record<string, unknown>
+    if (typeof record.message === "string" && record.message) parts.push(record.message)
+    if (typeof record.code === "string" && record.code) parts.push(record.code)
+    current = record.cause ?? (typeof record.reason === "object" ? record.reason : undefined)
+  }
+  if (typeof error === "string") parts.push(error)
+  const reason = parts[0]?.split("\n")[0]?.trim() || "request failed"
+  return { blocked: parts.some((part) => BLOCKED_ERROR.test(part)), reason }
 }
 
 interface SourceState {
@@ -182,19 +201,63 @@ interface SourceState {
 interface State {
   source?: string
   fetchedAt?: number
+  /** Set once the per-URL `models-<hash>.json` caches of earlier versions have been removed. */
+  legacyCacheRemoved?: boolean
   sources: Record<string, SourceState>
+}
+
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value)
+
+/**
+ * Decodes the persisted state, dropping malformed source entries and capping `blockedUntil` at
+ * now + 24h so a clock that was wrong when the state was written cannot block a source for longer.
+ */
+export function decodeState(value: unknown, now = Date.now()): State {
+  const input =
+    typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+  const sources: Record<string, SourceState> = {}
+  const rawSources = input.sources
+  if (typeof rawSources === "object" && rawSources !== null && !Array.isArray(rawSources)) {
+    for (const [url, entry] of Object.entries(rawSources)) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue
+      const record = entry as Record<string, unknown>
+      if (!finite(record.failures) || record.failures < 0) continue
+      if (record.blockedUntil !== undefined && !finite(record.blockedUntil)) continue
+      if (record.reason !== undefined && typeof record.reason !== "string") continue
+      sources[url] = {
+        failures: Math.floor(record.failures),
+        blockedUntil: record.blockedUntil === undefined ? undefined : Math.min(record.blockedUntil, now + MAX_BACKOFF),
+        reason: record.reason,
+      }
+    }
+  }
+  return {
+    source: typeof input.source === "string" ? input.source : undefined,
+    fetchedAt: finite(input.fetchedAt) ? input.fetchedAt : undefined,
+    legacyCacheRemoved: input.legacyCacheRemoved === true ? true : undefined,
+    sources,
+  }
+}
+
+/** Applies `{env:VAR}` substitution the way the config loader does. */
+function substituteEnv(text: string) {
+  return text.replace(/\{env:([^}]+)\}/g, (_, name: string) => process.env[name] || "")
 }
 
 type Outcome =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly blocked: boolean; readonly reason: string }
 
+const TOO_LARGE = Symbol("models-catalog-too-large")
+
 const CONFIG_NAMES = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
 
 function configuredSources(text: string | undefined): string[] | undefined {
   if (!text) return undefined
   const errors: ParseError[] = []
-  const value = parseJsonc(text, errors, { allowTrailingComma: true }) as { models?: { sources?: unknown } } | undefined
+  const value = parseJsonc(substituteEnv(text), errors, { allowTrailingComma: true }) as
+    | { models?: { sources?: unknown } }
+    | undefined
   if (errors.length) return undefined
   const sources = value?.models?.sources
   if (!Array.isArray(sources)) return undefined
@@ -245,16 +308,40 @@ const layer = Layer.effect(
     })
 
     const readState = fs.readJson(statePath).pipe(
-      Effect.map((value): State => {
-        const state = value as Partial<State> | undefined
-        return {
-          source: typeof state?.source === "string" ? state.source : undefined,
-          fetchedAt: typeof state?.fetchedAt === "number" ? state.fetchedAt : undefined,
-          sources: typeof state?.sources === "object" && state.sources !== null ? state.sources : {},
-        }
-      }),
+      Effect.map((value) => decodeState(value)),
       Effect.catch(() => Effect.succeed<State>({ sources: {} })),
     )
+
+    // Earlier versions cached each REDCODE_MODELS_URL in its own `models-<sha1>.json`.
+    const removeLegacyCaches = fs.readDirectoryEntries(Global.Path.cache).pipe(
+      Effect.flatMap((entries) =>
+        Effect.forEach(
+          entries.filter((entry) => /^models-[0-9a-f]{40}\.json$/.test(entry.name)),
+          (entry) => fs.remove(path.join(Global.Path.cache, entry.name), { force: true }).pipe(Effect.ignore),
+          { discard: true },
+        ),
+      ),
+      Effect.ignore,
+    )
+
+    // Reads at most MAX_BYTES of the body; undefined when the response is larger.
+    const readCapped = (res: HttpClientResponse.HttpClientResponse) => {
+      const length = Number(res.headers["content-length"])
+      if (Number.isFinite(length) && length > ModelsSnapshot.MAX_BYTES) return Effect.succeed(undefined)
+      return res.stream.pipe(
+        Stream.runFoldEffect(
+          () => ({ size: 0, chunks: [] as Uint8Array[] }),
+          (acc, chunk) => {
+            acc.size += chunk.byteLength
+            if (acc.size > ModelsSnapshot.MAX_BYTES) return Effect.fail(TOO_LARGE)
+            acc.chunks.push(chunk)
+            return Effect.succeed(acc)
+          },
+        ),
+        Effect.map((acc): string | undefined => Buffer.concat(acc.chunks).toString("utf8")),
+        Effect.catch((error) => (error === TOO_LARGE ? Effect.succeed(undefined) : Effect.fail(error))),
+      )
+    }
 
     const writeAtomic = (target: string, text: string) => {
       const tempfile = `${target}.${process.pid}.${Date.now()}.tmp`
@@ -273,26 +360,34 @@ const layer = Layer.effect(
         Effect.flatMap((res): Effect.Effect<Outcome, unknown> => {
           if (res.status < 200 || res.status >= 300)
             return Effect.succeed({ ok: false, blocked: BLOCKED_STATUS.has(res.status), reason: `HTTP ${res.status}` })
-          return res.text.pipe(
-            Effect.map(
-              (text): Outcome =>
-                ModelsSnapshot.parseCatalog(text)
-                  ? { ok: true, text }
-                  : // A 200 that is not a catalog is a captive portal or a proxy block page.
-                    { ok: false, blocked: true, reason: "response is not a models catalog" },
-            ),
+          return readCapped(res).pipe(
+            Effect.flatMap((text): Effect.Effect<Outcome> => {
+              // Too large is a failed fetch, not a network policy.
+              if (text === undefined)
+                return Effect.succeed({
+                  ok: false,
+                  blocked: false,
+                  reason: `response larger than ${ModelsSnapshot.MAX_BYTES} bytes`,
+                })
+              const sanitized = ModelsSnapshot.sanitizeCatalog(text)
+              // A 200 that is not a JSON object of providers is a captive portal or a proxy block page.
+              if (!sanitized)
+                return Effect.succeed({ ok: false, blocked: true, reason: "response is not a models catalog" })
+              const dropped = sanitized.droppedProviders + sanitized.droppedModels
+              return (
+                dropped > 0
+                  ? Effect.logDebug("Dropped invalid models catalog entries", {
+                      source: url,
+                      providers: sanitized.droppedProviders,
+                      models: sanitized.droppedModels,
+                    })
+                  : Effect.void
+              ).pipe(Effect.as<Outcome>({ ok: true, text: ModelsSnapshot.catalogText(text, sanitized) }))
+            }),
           )
         }),
         Effect.timeout("30 seconds"),
-        Effect.catchCause((cause) => {
-          const message = Cause.pretty(cause)
-          const reason =
-            message
-              .split("\n")
-              .find((line) => line.trim())
-              ?.trim() ?? "request failed"
-          return Effect.succeed<Outcome>({ ok: false, blocked: BLOCKED_ERROR.test(message), reason })
-        }),
+        Effect.catchCause((cause) => Effect.succeed<Outcome>({ ok: false, ...classifyError(Cause.squash(cause)) })),
       )
 
     // Tries every source that is not backing off (all of them when forced) and records the outcome.
@@ -301,6 +396,10 @@ const layer = Layer.effect(
       const list = yield* sources
       const state = yield* readState
       const now = Date.now()
+      if (!state.legacyCacheRemoved) {
+        yield* removeLegacyCaches
+        state.legacyCacheRemoved = true
+      }
       let text: string | undefined
       for (const url of list) {
         const previous = state.sources[url]

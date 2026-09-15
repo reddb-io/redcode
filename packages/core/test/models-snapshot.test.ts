@@ -43,6 +43,50 @@ const localFetch = ((input: string | URL | Request, init?: RequestInit) => {
   return fetch(url.startsWith(base) ? url : `${base}/unexpected`, init)
 }) as typeof fetch
 
+describe("ModelsSnapshot partial catalogs and optional builds", () => {
+  test("sanitizeCatalog drops invalid providers and models and keeps the rest", () => {
+    const text = JSON.stringify({
+      ...catalog,
+      noId: { name: "x", models: {} },
+      noModels: { id: "noModels" },
+      acme2: { id: "acme2", models: { good: { id: "good" }, bad: 7, alsoBad: { name: "no id" } } },
+    })
+    const sanitized = ModelsSnapshot.sanitizeCatalog(text)
+    expect(Object.keys(sanitized!.catalog).sort()).toEqual(["acme", "acme2"])
+    expect(sanitized!.droppedProviders).toBe(2)
+    expect(sanitized!.droppedModels).toBe(2)
+    expect(JSON.parse(ModelsSnapshot.catalogText(text, sanitized!)).acme2.models).toEqual({ good: { id: "good" } })
+    expect(ModelsSnapshot.sanitizeCatalog(JSON.stringify({ a: { name: "no id" } }))).toBeUndefined()
+  })
+
+  test("an optional build embeds an empty catalog with a warning when nothing is reachable", async () => {
+    routes.clear()
+    const lines: string[] = []
+    const text = await ModelsSnapshot.loadForBuild({
+      file: path.join(dir, "missing.json"),
+      optional: true,
+      fetch: localFetch,
+      attempts: 1,
+      log: (line) => lines.push(line),
+    })
+    expect(text).toBe("{}")
+    expect(lines.join("\n")).toContain("::warning::")
+  })
+
+  test("an optional build with a missing cache file still fetches", async () => {
+    routes.clear()
+    routes.set("/opencode/api.json", { status: 200, body: JSON.stringify(catalog) })
+    const text = await ModelsSnapshot.loadForBuild({
+      file: path.join(dir, "missing.json"),
+      optional: true,
+      fetch: localFetch,
+      attempts: 1,
+      log: () => {},
+    })
+    expect(JSON.parse(text)).toEqual(catalog)
+  })
+})
+
 describe("ModelsSnapshot", () => {
   test("parseCatalog refuses block pages, error bodies and empty catalogs", () => {
     expect(ModelsSnapshot.parseCatalog(JSON.stringify(catalog))).toEqual(catalog)

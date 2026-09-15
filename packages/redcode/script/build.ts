@@ -241,9 +241,15 @@ for (const item of targets) {
         .quiet()
         .nothrow()
       await fs.promises.rm(home, { recursive: true, force: true })
-      if (catalog.exitCode !== 0 || !catalog.stderr.toString().includes("Models catalog: snapshot"))
+      if (catalog.exitCode !== 0) throw new Error(`models command failed: ${catalog.stderr.toString().slice(-2000)}`)
+      if (generated.modelsData === "{}") {
+        // Only reachable with REDCODE_MODELS_SNAPSHOT=optional, which generate.ts already warned about.
+        console.log("Smoke test skipped: this build embeds an empty models catalog")
+      } else if (!catalog.stderr.toString().includes("Models catalog: snapshot")) {
         throw new Error(`embedded models catalog missing: ${catalog.stderr.toString().slice(-2000)}`)
-      console.log("Smoke test passed: embedded models catalog")
+      } else {
+        console.log("Smoke test passed: embedded models catalog")
+      }
     } catch (e) {
       console.error(`Smoke test failed for ${name}:`, e)
       process.exit(1)
