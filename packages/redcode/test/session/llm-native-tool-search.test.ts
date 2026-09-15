@@ -406,18 +406,26 @@ describe("session.llm native tool search", () => {
             ),
           textTurn,
         )
+        const hint = ToolSearch.indexText(
+          [{ name: "github_issue_read", namespace: "github", description: "Read an issue", schema: {} }],
+          true,
+        )
         const exit = yield* stream({
           user: userFor(resolved),
           sessionID,
           model: resolved,
           agent,
-          system: ["You are helpful."],
+          system: ["You are helpful.", hint],
           messages: [{ role: "user", content: "Read issue 7." }],
           tools: sessionTools({ mode: "anthropic" }),
         }).pipe(Effect.exit)
 
         expect(Exit.isSuccess(exit)).toBe(true)
         const [rejected, retried] = server.bodies.map((item) => item.body)
+        // The retry sends tool_search, so the deferred tool hint names it instead of a search tool.
+        expect(JSON.stringify(rejected!.system)).toContain("Find them with your tool search tool")
+        expect(JSON.stringify(retried!.system)).not.toContain("Find them with your tool search tool")
+        expect(JSON.stringify(retried!.system)).toContain("are available through tool_search")
         expect(toolNames(rejected!)).toContain("tool_search_tool_bm25")
         expect(toolNames(retried!)).toContain("tool_search")
         expect(toolNames(retried!)).not.toContain("tool_search_tool_bm25")
@@ -460,6 +468,227 @@ describe("session.llm native tool search", () => {
         expect(NativeToolSearch.isRejected(resolved)).toBe(false)
       }),
     { config: anthropicConfig },
+  )
+
+  const rejection = (message: string) => () =>
+    new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message } }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    })
+  const user: ModelMessage = { role: "user", content: "Read issue 7." }
+  const anthropicSearch = (id: string, names: string[]) => [
+    {
+      type: "tool-call",
+      toolCallId: id,
+      toolName: "tool_search_tool_bm25",
+      input: { query: "issue" },
+      providerExecuted: true,
+    },
+    {
+      type: "tool-result",
+      toolCallId: id,
+      toolName: "tool_search_tool_bm25",
+      output: { type: "json", value: names.map((name) => ({ type: "tool_reference", toolName: name })) },
+    },
+  ]
+
+  it.instance(
+    "anthropic: narrows tool references to the tools still sent and drops a search left with none",
+    () =>
+      Effect.gen(function* () {
+        const resolved = yield* getModel("anthropic", "claude-sonnet-4-5")
+        server.queue.push(textTurn)
+        yield* stream({
+          user: userFor(resolved),
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are helpful."],
+          messages: [
+            user,
+            {
+              role: "assistant",
+              content: [
+                ...anthropicSearch("srvtoolu_1", ["github_issue_read", "github_disconnected_tool"]),
+                ...anthropicSearch("srvtoolu_2", ["github_disconnected_tool"]),
+                { type: "text", text: "Found it." },
+              ],
+            } as ModelMessage,
+          ],
+          tools: sessionTools({ mode: "anthropic" }),
+        })
+
+        const { body } = server.bodies[0]!
+        const assistant = (body.messages as Array<{ role: string; content: Array<Record<string, any>> }>).find(
+          (message) => message.role === "assistant",
+        )!
+        expect(assistant.content.filter((block) => block.type === "server_tool_use").map((block) => block.id)).toEqual([
+          "srvtoolu_1",
+        ])
+        expect(assistant.content.find((block) => block.type === "tool_search_tool_result")!.content).toEqual({
+          type: "tool_search_tool_search_result",
+          tool_references: [{ type: "tool_reference", tool_name: "github_issue_read" }],
+        })
+        expect(JSON.stringify(body)).not.toContain("github_disconnected_tool")
+      }),
+    { config: anthropicConfig },
+  )
+
+  it.instance(
+    "falls back to tool_search on Anthropic's missing tool reference 400",
+    () =>
+      Effect.gen(function* () {
+        const resolved = yield* getModel("anthropic", "claude-sonnet-4-5")
+        server.queue.push(rejection("Tool reference 'github_issue_read' not found in available tools"), textTurn)
+        const exit = yield* stream({
+          user: userFor(resolved),
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are helpful."],
+          messages: [user],
+          tools: sessionTools({ mode: "anthropic" }),
+        }).pipe(Effect.exit)
+        expect(Exit.isSuccess(exit)).toBe(true)
+        expect(server.bodies).toHaveLength(2)
+        expect(toolNames(server.bodies[1]!.body)).toContain("tool_search")
+        expect(NativeToolSearch.isRejected(resolved)).toBe(true)
+      }),
+    { config: anthropicConfig },
+  )
+
+  it.instance(
+    "does not remember a rejection when the tool_search retry fails too",
+    () =>
+      Effect.gen(function* () {
+        const resolved = yield* getModel("anthropic", "claude-sonnet-4-5")
+        server.queue.push(
+          rejection("tools.16: Input tag 'tool_search_tool_bm25_20251119' found using 'type'"),
+          () =>
+            new Response(JSON.stringify({ type: "error", error: { type: "api_error", message: "boom" } }), {
+              status: 500,
+            }),
+        )
+        const exit = yield* stream({
+          user: userFor(resolved),
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are helpful."],
+          messages: [user],
+          tools: sessionTools({ mode: "anthropic" }),
+        }).pipe(Effect.exit)
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(server.bodies).toHaveLength(2)
+        expect(NativeToolSearch.isRejected(resolved)).toBe(false)
+      }),
+    { config: anthropicConfig },
+  )
+
+  it.instance(
+    "openai store:false: replays the search output narrowed to the tools still sent",
+    () =>
+      Effect.gen(function* () {
+        const resolved = yield* getModel("openai", "gpt-5.4")
+        server.queue.push(() => new Response("{}", { status: 500 }))
+        const fn = (name: string) => ({ type: "function", name, description: name, parameters: { type: "object" } })
+        yield* stream({
+          user: userFor(resolved),
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are helpful."],
+          messages: [
+            user,
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "tsc_1",
+                  toolName: "tool_search",
+                  input: { arguments: { paths: ["github"] }, call_id: null },
+                  providerExecuted: true,
+                },
+                {
+                  type: "tool-result",
+                  toolCallId: "tsc_1",
+                  toolName: "tool_search",
+                  output: {
+                    type: "json",
+                    value: {
+                      tools: [
+                        {
+                          type: "namespace",
+                          name: "github",
+                          description: "Tools from github.",
+                          tools: [fn("github_issue_read"), fn("github_denied_tool")],
+                        },
+                        { type: "namespace", name: "gone", description: "Tools from gone.", tools: [fn("gone_tool")] },
+                      ],
+                    },
+                  },
+                },
+                { type: "tool-call", toolCallId: "call_2", toolName: "github_issue_read", input: { issue_number: 7 } },
+              ],
+            } as ModelMessage,
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolCallId: "call_2",
+                  toolName: "github_issue_read",
+                  output: { type: "text", value: "Issue 7: open" },
+                },
+              ],
+            },
+          ],
+          tools: sessionTools({ mode: "openai" }),
+        }).pipe(Effect.exit)
+
+        const { body } = server.bodies[0]!
+        expect(body.store).toBe(false)
+        const items = body.input as Array<Record<string, any>>
+        expect(items.find((item) => item.type === "tool_search_call")).toBeDefined()
+        expect(items.find((item) => item.type === "tool_search_output")!.tools).toEqual([
+          { type: "namespace", name: "github", description: "Tools from github.", tools: [fn("github_issue_read")] },
+        ])
+        expect(JSON.stringify(body)).not.toContain("github_denied_tool")
+        expect(JSON.stringify(body)).not.toContain("gone_tool")
+      }),
+    { config: openaiConfig },
+  )
+
+  it.instance(
+    "switching from Anthropic-native to OpenAI-native drops the Anthropic search from history",
+    () =>
+      Effect.gen(function* () {
+        const resolved = yield* getModel("openai", "gpt-5.4")
+        server.queue.push(() => new Response("{}", { status: 500 }))
+        yield* stream({
+          user: userFor(resolved),
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are helpful."],
+          messages: [
+            user,
+            {
+              role: "assistant",
+              content: [...anthropicSearch("srvtoolu_1", ["github_issue_read"]), { type: "text", text: "Found it." }],
+            } as ModelMessage,
+          ],
+          tools: sessionTools({ mode: "openai" }),
+        }).pipe(Effect.exit)
+
+        const { body } = server.bodies[0]!
+        expect(JSON.stringify(body.input)).not.toContain("tool_search_tool_bm25")
+        expect(JSON.stringify(body.input)).not.toContain("tool_reference")
+        expect(JSON.stringify(body.input)).toContain("Found it.")
+        expect(body.tools).toContainEqual({ type: "tool_search" })
+      }),
+    { config: openaiConfig },
   )
 
   it.instance(

@@ -183,9 +183,12 @@ export const model = (input: Provider.Model | RequestInput, headers?: Record<str
 // reminder when there is one: a write never read. Mark the last stable message instead.
 // Anthropic rejects cache_control on thinking/redacted blocks and on empty text, so only these can
 // carry the breakpoint; walk back through parts and messages to the latest one that qualifies.
+// Provider-executed parts (a server tool call and its inline result) are lowered without a
+// breakpoint, so a hint placed there would silently cache nothing.
 const cacheable = (part: Message["content"][number]) => {
   if (part.type === "text") return part.text.length > 0
-  return part.type === "tool-call" || part.type === "tool-result" || part.type === "media"
+  if (part.type === "tool-call" || part.type === "tool-result") return part.providerExecuted !== true
+  return part.type === "media"
 }
 
 const stableBreakpoint = (list: ReadonlyArray<Message>) => {

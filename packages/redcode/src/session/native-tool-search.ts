@@ -51,9 +51,13 @@ function mechanism(model: Provider.Model, nativeLlm: boolean): Mode | undefined 
   return undefined
 }
 
-/** The explicit allowlist `auto` uses; the models catalog has no tool search capability to read. */
+/**
+ * The explicit allowlist `auto` uses; the models catalog has no tool search capability to read.
+ * A bracketed variant suffix such as `[1m]` names the same model with a larger context window
+ * (a request header, not a different model), so it is supported like its base id.
+ */
 export function supported(model: Pick<Provider.Model, "providerID" | "api">, mode: Mode) {
-  const id = model.api.id
+  const id = model.api.id.replace(/\[[^\]]*\]$/, "")
   if (mode === "anthropic")
     return (
       model.providerID === "anthropic" &&
@@ -162,13 +166,85 @@ export function isSearchPart(tool: string, providerExecuted: boolean | undefined
   return providerExecuted === true && (NAMES.anthropic.has(tool) || NAMES.openai.has(tool))
 }
 
+// ---------------------------------------------------------------- search results
+// A search result is stored and replayed in one of three shapes: the AI SDK's Anthropic shape
+// (`[{ type: "tool_reference", toolName }]`), Anthropic's wire block content
+// (`{ tool_references: [{ tool_name }] }`), or OpenAI's `{ tools: [function | namespace] }`, whose
+// namespaces nest their functions.
+
+const referenceName = (reference: unknown) => {
+  if (!isRecord(reference)) return undefined
+  const name = reference.toolName ?? reference.tool_name
+  return typeof name === "string" ? name : undefined
+}
+
+/** OpenAI's loaded tool entries kept by `keep`, namespaces reduced to their kept functions. */
+function keepTools(tools: readonly unknown[], keep: (name: string) => boolean): unknown[] {
+  return tools.flatMap((item) => {
+    if (!isRecord(item)) return []
+    if (item.type === "namespace") {
+      const inner = Array.isArray(item.tools) ? keepTools(item.tools, keep) : []
+      return inner.length > 0 ? [{ ...item, tools: inner }] : []
+    }
+    return typeof item.name === "string" && keep(item.name) ? [item] : []
+  })
+}
+
+/** The result with only the tools `keep` accepts; `undefined` when nothing is left. */
+function keepLoaded(value: unknown, keep: (name: string) => boolean): unknown {
+  if (Array.isArray(value)) {
+    const kept = value.filter((reference) => {
+      const name = referenceName(reference)
+      return name !== undefined && keep(name)
+    })
+    return kept.length > 0 ? kept : undefined
+  }
+  if (isRecord(value) && Array.isArray(value.tool_references)) {
+    const kept = value.tool_references.filter((reference) => {
+      const name = referenceName(reference)
+      return name !== undefined && keep(name)
+    })
+    return kept.length > 0 ? { ...value, tool_references: kept } : undefined
+  }
+  if (isRecord(value) && Array.isArray(value.tools)) {
+    const kept = keepTools(value.tools, keep)
+    return kept.length > 0 ? { ...value, tools: kept } : undefined
+  }
+  return undefined
+}
+
+/** The tool names a search result loaded (never namespace names). */
+export function loadedNames(value: unknown) {
+  const names: string[] = []
+  keepLoaded(value, (name) => {
+    names.push(name)
+    return true
+  })
+  return names
+}
+
+const parse = (text: string) => {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * History for a step: native search parts from another mode (or all of them when native search is
- * off) are dropped, and so is any search that failed or was interrupted, because neither provider
- * accepts a search call whose result cannot be replayed. Search calls are provider-executed tool
- * calls; their results pair with them by id.
+ * History for a step. Native search parts from another mode (or all of them when native search is
+ * off) are dropped, and so is any search that failed, was interrupted, or has no JSON result,
+ * because neither provider accepts a search call whose result cannot be replayed. A kept result is
+ * narrowed to the tools this request still sends: Anthropic answers 400 to a `tool_reference` it
+ * cannot resolve, and OpenAI (with `store: false`) would re-send the stored definition of a tool
+ * that has since been removed or denied. A search left with nothing is dropped. Search calls are
+ * provider-executed tool calls; their results pair with them by id.
  */
-export function history(messages: ModelMessage[], mode: Mode | undefined): ModelMessage[] {
+export function history(
+  messages: ModelMessage[],
+  mode: Mode | undefined,
+  available: ReadonlySet<string>,
+): ModelMessage[] {
   const searches = new Map<string, string>()
   for (const message of messages) {
     if (message.role !== "assistant" || typeof message.content === "string") continue
@@ -179,23 +255,46 @@ export function history(messages: ModelMessage[], mode: Mode | undefined): Model
   if (searches.size === 0) return messages
   const drop = new Set<string>()
   for (const [id, name] of searches) if (!mode || !NAMES[mode].has(name)) drop.add(id)
+  const narrowed = new Map<string, unknown>()
   const answered = new Set<string>()
   for (const message of messages) {
     if (message.role !== "assistant" || typeof message.content === "string") continue
     for (const part of message.content) {
       if (part.type !== "tool-result" || !searches.has(part.toolCallId)) continue
       answered.add(part.toolCallId)
-      if (part.output.type.startsWith("error")) drop.add(part.toolCallId)
+      if (part.output.type !== "json") {
+        drop.add(part.toolCallId)
+        continue
+      }
+      const kept = keepLoaded(part.output.value, (name) => available.has(name))
+      if (kept === undefined) drop.add(part.toolCallId)
+      else if (JSON.stringify(kept) !== JSON.stringify(part.output.value)) narrowed.set(part.toolCallId, kept)
     }
   }
   for (const id of searches.keys()) if (!answered.has(id)) drop.add(id)
-  if (drop.size === 0) return messages
-  return messages.flatMap((message) => {
+  if (drop.size === 0 && narrowed.size === 0) return messages
+  return messages.flatMap((message): ModelMessage[] => {
     if (message.role !== "assistant" || typeof message.content === "string") return [message]
-    const content = message.content.filter(
-      (part) => !((part.type === "tool-call" || part.type === "tool-result") && drop.has(part.toolCallId)),
-    )
-    if (content.length === message.content.length) return [message]
+    type Part = (typeof message.content)[number]
+    let changed = false
+    const content: Part[] = []
+    for (const part of message.content) {
+      if (part.type !== "tool-call" && part.type !== "tool-result") {
+        content.push(part)
+        continue
+      }
+      if (drop.has(part.toolCallId)) {
+        changed = true
+        continue
+      }
+      if (part.type === "tool-result" && narrowed.has(part.toolCallId)) {
+        changed = true
+        content.push({ ...part, output: { type: "json", value: narrowed.get(part.toolCallId) as never } })
+        continue
+      }
+      content.push(part)
+    }
+    if (!changed) return [message]
     return content.length === 0 ? [] : [{ ...message, content }]
   })
 }
@@ -209,7 +308,28 @@ export function called(messages: readonly ModelMessage[]) {
   return names
 }
 
-const REFERENCE = /"(?:toolName|tool_name|name)"\s*:\s*"([^"]+)"/g
+/**
+ * The retry after a rejection sends the client-side `tool_search`, so the deferred tool index in
+ * the system context must say so rather than point at a provider search tool.
+ */
+export function clientHint(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((message) => {
+    if (typeof message.content === "string") {
+      const content = ToolSearch.clientIndexLead(message.content)
+      return content === message.content ? message : ({ ...message, content } as ModelMessage)
+    }
+    if (message.role === "tool") return message
+    let changed = false
+    const content = message.content.map((part) => {
+      if (part.type !== "text") return part
+      const text = ToolSearch.clientIndexLead(part.text)
+      if (text === part.text) return part
+      changed = true
+      return { ...part, text }
+    })
+    return changed ? ({ ...message, content } as ModelMessage) : message
+  })
+}
 
 /**
  * Tools a native search loaded in this Session. Calling one does not move it out of the deferred
@@ -222,7 +342,7 @@ export function referenced(messages: readonly SessionV1.WithParts[]) {
     for (const part of message.parts) {
       if (part.type !== "tool" || part.state.status !== "completed") continue
       if (!isSearchPart(part.tool, part.metadata?.providerExecuted === true)) continue
-      for (const match of part.state.output.matchAll(REFERENCE)) names.add(match[1]!)
+      for (const name of loadedNames(parse(part.state.output))) names.add(name)
     }
   return names
 }
@@ -233,24 +353,28 @@ export function referenced(messages: readonly SessionV1.WithParts[]) {
  * native runtime stored as the wire block content is converted.
  */
 export function replayOutput(output: string): unknown {
-  const parsed = (() => {
-    try {
-      return JSON.parse(output) as unknown
-    } catch {
-      return undefined
-    }
-  })()
+  const parsed = parse(output)
   if (parsed === undefined) return output
   if (isRecord(parsed) && Array.isArray(parsed.tool_references))
-    return parsed.tool_references.flatMap((reference) =>
-      isRecord(reference) && typeof reference.tool_name === "string"
-        ? [{ type: "tool_reference", toolName: reference.tool_name }]
-        : [],
-    )
+    return parsed.tool_references.flatMap((reference) => {
+      const name = referenceName(reference)
+      return name === undefined ? [] : [{ type: "tool_reference", toolName: name }]
+    })
   return parsed
 }
 
-const REJECTION = /tool[_ ]search|defer_loading|tool_reference|namespace|tool type|input tag|beta/i
+// Only errors about the search feature itself: its tool types, the deferral flag and its parameter
+// paths, a reference the provider cannot resolve, or an OpenAI `tool_search`/`namespace` tool type.
+// Generic words (a beta, "namespace", "tool type") also appear in unrelated 400s, such as a
+// long-context beta the account lacks, which a retry without search would not fix.
+const REJECTIONS = [
+  /tool_search_tool_(?:bm25|regex)/i,
+  /Tool reference '[^']*' not found in available tools/i,
+  /defer_loading/i,
+  /tool_reference/i,
+  /tools\[\d+\]\.(?:namespace|tools)\b/i,
+  /['"](?:tool_search|namespace)['"]/,
+]
 
 const failure = (error: unknown): { status?: number; text: string } | undefined => {
   if (APICallError.isInstance(error))
@@ -262,10 +386,10 @@ const failure = (error: unknown): { status?: number; text: string } | undefined 
   return undefined
 }
 
-/** A 400 that names the search tool, deferral or a beta: the provider does not support native search. */
+/** A 400 about the search feature: the provider (or this history) cannot use native search. */
 export function isRejection(error: unknown) {
   const info = failure(error)
-  return info?.status === 400 && REJECTION.test(info.text)
+  return info?.status === 400 && REJECTIONS.some((pattern) => pattern.test(info.text))
 }
 
 export * as NativeToolSearch from "./native-tool-search"

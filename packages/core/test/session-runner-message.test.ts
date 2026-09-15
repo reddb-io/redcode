@@ -513,3 +513,90 @@ Recent work
     ])
   })
 })
+
+describe("toLLMMessages provider-native tool search", () => {
+  test("strips a legacy native search, which only replays next to a search tool this runner never sends", () => {
+    const search = (name: string, callID: string) =>
+      SessionMessage.AssistantTool.make({
+        type: "tool",
+        id: callID,
+        name,
+        provider: { executed: true },
+        state: SessionMessage.ToolStateCompleted.make({
+          status: "completed",
+          input: { query: "issue" },
+          content: [{ type: "text", text: '[{"type":"tool_reference","toolName":"github_issue_read"}]' }],
+          structured: {},
+        }),
+        time: { created, completed: created },
+      })
+    const messages = toLLMMessages(
+      [
+        SessionMessage.Assistant.make({
+          id: id("native-search"),
+          type: "assistant",
+          agent: "build",
+          model: { id: ModelV2.ID.make("model"), providerID: ProviderV2.ID.make("provider") },
+          content: [
+            SessionMessage.AssistantText.make({ type: "text", id: "text", text: "Searching" }),
+            search("tool_search_tool_bm25", "srvtoolu_1"),
+            search("tool_search", "ts_1"),
+            SessionMessage.AssistantTool.make({
+              type: "tool",
+              id: "toolu_2",
+              name: "github_issue_read",
+              state: SessionMessage.ToolStateCompleted.make({
+                status: "completed",
+                input: { issue_number: 7 },
+                content: [{ type: "text", text: "Issue 7: open" }],
+                structured: {},
+              }),
+              time: { created, completed: created },
+            }),
+          ],
+          time: { created, completed: created },
+        }),
+      ],
+      model,
+    )
+
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool"])
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: "Searching" },
+      { type: "tool-call", id: "toolu_2", name: "github_issue_read", input: { issue_number: 7 } },
+    ])
+    expect(messages[1]?.content).toMatchObject([{ type: "tool-result", id: "toolu_2", name: "github_issue_read" }])
+  })
+
+  test("keeps a client-side tool_search call, which the model executed through the loop", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.Assistant.make({
+          id: id("client-search"),
+          type: "assistant",
+          agent: "build",
+          model: { id: ModelV2.ID.make("model"), providerID: ProviderV2.ID.make("provider") },
+          content: [
+            SessionMessage.AssistantTool.make({
+              type: "tool",
+              id: "call_1",
+              name: "tool_search",
+              state: SessionMessage.ToolStateCompleted.make({
+                status: "completed",
+                input: { query: "issue" },
+                content: [{ type: "text", text: "Loaded 1 tool" }],
+                structured: {},
+              }),
+              time: { created, completed: created },
+            }),
+          ],
+          time: { created, completed: created },
+        }),
+      ],
+      model,
+    )
+    expect(messages[0]?.content).toEqual([
+      { type: "tool-call", id: "call_1", name: "tool_search", input: { query: "issue" } },
+    ])
+  })
+})

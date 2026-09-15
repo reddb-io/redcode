@@ -2755,7 +2755,12 @@ function WebFetch(props: ToolProps) {
 function ToolSearch(props: ToolProps) {
   const summary = createMemo(() => toolSearchSummary(props.input, props.metadata, props.output))
   return (
-    <InlineTool icon="◇" pending="Searching tools…" complete={true} part={props.part}>
+    <InlineTool
+      icon="◇"
+      pending="Searching tools…"
+      complete={summary().query ?? (props.part.state.status === "completed" ? true : undefined)}
+      part={props.part}
+    >
       Tool search<Show when={summary().query}> "{summary().query}"</Show>
       <Show when={summary().loaded !== undefined}> ({summary().loaded} loaded)</Show>
     </InlineTool>

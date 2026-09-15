@@ -169,12 +169,30 @@ export const DESCRIPTION = [
 ].join("\n")
 
 /** The durable system context text: which categories are deferred, one example, and the index. */
+const nativeLead = (namespaces: string) =>
+  `Additional tools for ${namespaces} are available but not loaded. Find them with your tool search tool, which matches tool names, descriptions and parameters and loads the matches; a tool's full name is <namespace>_<name>.`
+
+const clientLead = (namespaces: string, example: string) =>
+  `Additional tools for ${namespaces} are available through ${TOOL_ID}. Example: ${TOOL_ID} {"query": "list open issues"} or ${TOOL_ID} {"select": ["${example}"]}.`
+
+const NATIVE_LEAD = new RegExp(
+  nativeLead("(.+?)")
+    .replace(/[.*+?^${}()|[\]\\]/g, (char) => "\\" + char)
+    .replace("\\(\\.\\+\\?\\)", "(.+?)"),
+  "g",
+)
+
+/** The native index lead line rewritten for the client-side tool, for a request that falls back. */
+export function clientIndexLead(text: string) {
+  return text.replace(NATIVE_LEAD, (_match, namespaces: string) =>
+    clientLead(namespaces, `${namespaces.split(", ")[0]}_<name>`),
+  )
+}
+
 export function indexText(entries: readonly Entry[], native = false) {
   const namespaces = groups(entries).map(([namespace]) => namespace)
   return [
-    native
-      ? `Additional tools for ${namespaces.join(", ")} are available but not loaded. Find them with your tool search tool, which matches tool names, descriptions and parameters and loads the matches; a tool's full name is <namespace>_<name>.`
-      : `Additional tools for ${namespaces.join(", ")} are available through ${TOOL_ID}. Example: ${TOOL_ID} {"query": "list open issues"} or ${TOOL_ID} {"select": ["${entries[0]!.name}"]}.`,
+    native ? nativeLead(namespaces.join(", ")) : clientLead(namespaces.join(", "), entries[0]!.name),
     "<deferred_tools>",
     index(entries),
     "</deferred_tools>",

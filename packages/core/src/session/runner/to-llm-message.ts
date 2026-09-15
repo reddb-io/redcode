@@ -78,6 +78,13 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
   })
 }
 
+// Provider-native tool search (the legacy loop's `tool_search_tool_bm25` on Anthropic and hosted
+// `tool_search` on OpenAI) only replays next to its search tool, which this runner never sends; a
+// search replayed without it is a 400. The tools it loaded are ordinary calls and stay.
+const NATIVE_TOOL_SEARCH = new Set(["tool_search_tool_bm25", "tool_search_tool_regex", "tool_search"])
+const isNativeToolSearch = (item: SessionMessage.AssistantTool) =>
+  item.provider?.executed === true && NATIVE_TOOL_SEARCH.has(item.name)
+
 const assistant = (message: SessionMessage.Assistant, model: Model) => {
   const sameModel =
     String(message.model.providerID) === String(model.provider) && String(message.model.id) === String(model.id)
@@ -96,6 +103,7 @@ const assistant = (message: SessionMessage.Assistant, model: Model) => {
         : item.text.length > 0
           ? [{ type: "text", text: item.text }]
           : []
+    if (isNativeToolSearch(item)) return []
     const call = toolCall(item, reuseProviderMetadata ? item.provider?.metadata : undefined)
     if (item.provider?.executed !== true) return [call]
     const result = toolResult(
