@@ -55,15 +55,29 @@ export function annotations() {
   })
   // Element references. A note names its element three ways: a selector verified to resolve to exactly
   // that element within the variant root it lives in (else the document), an absolute XPath, and a label
-  // with the containers around it, so the agent can find it in the prototype source.
+  // with the containers around it, so the agent can find it in the prototype source. A click inside a
+  // shadow root arrives retargeted to its host, and a nested iframe is another document this script does
+  // not run in, so both are addressed by their host element.
+  const LIMITS = { target: 1000, xpath: 2000, peers: 50, findings: 30 }
+  /** Collapses whitespace and cuts by code point, so a surrogate pair is never split. */
   const flat = (value: string | null | undefined, limit: number) => {
     const text = (value ?? "").replace(/\s+/g, " ").trim()
-    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
+    const chars = [...text]
+    return chars.length > limit ? `${chars.slice(0, limit - 1).join("")}…` : text
   }
   const textOf = (target: Element) => (target instanceof HTMLElement ? target.innerText : target.textContent) ?? ""
   const elementText = (target: Element) => {
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLTextAreaElement
+    ) {
+      // Payment fields, secrets and local file paths never leave the frame.
+      const autocomplete = (target.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/)
+      if (autocomplete.some((token) => token.startsWith("cc-"))) return ""
+    }
     if (target instanceof HTMLInputElement) {
-      if (target.type === "password" || target.type === "hidden") return ""
+      if (target.type === "password" || target.type === "hidden" || target.type === "file") return ""
       if (target.type === "checkbox" || target.type === "radio") return target.checked ? "checked" : "unchecked"
       return flat(target.value, 240)
     }
@@ -72,8 +86,7 @@ export function annotations() {
     if (target instanceof HTMLTextAreaElement) return flat(target.value, 240)
     return flat(textOf(target), 240)
   }
-  const attribute = (name: string, value: string) =>
-    `[${name}="${value.replace(/["\\]/g, "\\$&").replace(/\n/g, "\\a ")}"]`
+  const attribute = (name: string, value: string) => `[${name}="${CSS.escape(value)}"]`
   /** The selected variant root holding the element; other elements are addressed in the whole document. */
   const scopeOf = (target: Element): ParentNode => {
     if (!state.variant) return document
@@ -91,65 +104,71 @@ export function annotations() {
       return false
     }
   }
-  /** Selectors built from the element's own stable attributes, most specific first. */
-  const own = (target: Element) => {
+  const typeIndex = (node: Element) =>
+    node.parentElement
+      ? [...node.parentElement.children].filter((child) => child.localName === node.localName).indexOf(node) + 1
+      : 1
+  /** One path step; a repeated data-design-id (list rows) keeps its key and adds the position. */
+  const step = (node: Element) => {
+    const design = node.getAttribute("data-design-id")
+    return `${CSS.escape(node.localName)}${design ? attribute("data-design-id", design) : ""}:nth-of-type(${typeIndex(node)})`
+  }
+  /**
+   * Keys that survive a revision, most stable first. A data-design-id leads because framework ids
+   * (React useId, Radix, Headless UI) are unique on one render but change on the next.
+   */
+  const keys = (target: Element) => {
     const tag = CSS.escape(target.localName)
     const found: string[] = []
-    if (target.id) found.push(`#${CSS.escape(target.id)}`)
     const design = target.getAttribute("data-design-id")
     if (design) found.push(attribute("data-design-id", design))
-    for (const name of [
-      "data-testid",
-      "name",
-      "aria-label",
-      "placeholder",
-      "for",
-      "title",
-      "alt",
-      "href",
-      "role",
-      "type",
-    ]) {
+    if (target.id) found.push(`#${CSS.escape(target.id)}`)
+    for (const name of ["data-testid", "name", "aria-label", "for", "role", "type"]) {
       const value = target.getAttribute(name)
       if (value && value.length <= 80) found.push(`${tag}${attribute(name, value)}`)
     }
     const type = target.getAttribute("type")
     const name = target.getAttribute("name")
     if (type && name) found.push(`${tag}${attribute("type", type)}${attribute("name", name)}`)
-    found.push(tag)
+    if (design) found.push(step(target))
     return found
   }
-  const fullPath = (target: Element) => {
-    if (!document.body.contains(target)) return target.localName
+  /** Visible copy a note often asks to change, so it ranks after structural paths. */
+  const copy = (target: Element) => {
+    const tag = CSS.escape(target.localName)
+    return ["placeholder", "title", "alt", "href"].flatMap((name) => {
+      const value = target.getAttribute(name)
+      return value && value.length <= 80 ? [`${tag}${attribute(name, value)}`] : []
+    })
+  }
+  const bodyPath = (target: Element) => {
+    if (target === document.body || !document.body.contains(target)) return target.localName
     const steps: string[] = []
-    for (let node = target; node !== document.body && node.parentElement; node = node.parentElement)
-      steps.unshift(`${CSS.escape(node.localName)}:nth-child(${[...node.parentElement.children].indexOf(node) + 1})`)
+    for (let node: Element = target; node !== document.body && node.parentElement; node = node.parentElement)
+      steps.unshift(step(node))
     return ["body", ...steps].join(" > ")
   }
   const selector = (target: Element) => {
     const scope = scopeOf(target)
-    const direct = own(target).find((query) => resolves(query, scope, target))
+    const budget = LIMITS.target - (state.variant ? `variant:${state.variant} `.length : 0)
+    const fits = (query: string) => query.length <= budget && resolves(query, scope, target)
+    const own = keys(target)
+    const direct = own.find(fits)
     if (direct) return direct
     // The nearest ancestor that is unique on its own anchors a short path down to the element.
     const steps: string[] = []
-    for (let node = target; node.parentElement; node = node.parentElement) {
+    for (let node: Element = target; node.parentElement; node = node.parentElement) {
       const parent: Element = node.parentElement
-      const tag = node.localName
-      const index = [...parent.children].filter((child) => child.localName === tag).indexOf(node) + 1
-      steps.unshift(`${CSS.escape(tag)}:nth-of-type(${index})`)
+      steps.unshift(step(node))
       if (parent === scope || parent === document.body || parent === document.documentElement) break
-      const anchor = own(parent)
-        .filter((query) => query !== CSS.escape(parent.localName))
-        .find((query) => resolves(query, scope, parent))
+      const anchor = keys(parent).find((query) => resolves(query, scope, parent))
       if (!anchor) continue
-      const candidate = [...own(target).map((query) => `${anchor} ${query}`), `${anchor} > ${steps.join(" > ")}`].find(
-        (query) => resolves(query, scope, target),
-      )
-      if (candidate) return candidate
+      const anchored = [...own.map((query) => `${anchor} ${query}`), `${anchor} > ${steps.join(" > ")}`].find(fits)
+      if (anchored) return anchored
     }
-    const relative = steps.join(" > ")
-    if (scope !== document && relative && resolves(relative, scope, target)) return relative
-    return fullPath(target)
+    const fallback = [...copy(target), CSS.escape(target.localName), bodyPath(target)].find(fits)
+    // A locator cut to fit would point elsewhere; an element too deep to address is reported as the page.
+    return fallback ?? "page"
   }
   const xpath = (target: Element) => {
     const steps: string[] = []
@@ -160,11 +179,12 @@ export function annotations() {
           ? current.localName
           : `*[local-name()="${current.localName}"]`
       const same = current.parentElement
-        ? [...current.parentElement.children].filter((child) => child.localName === current.localName)
-        : [current]
-      steps.unshift(same.length > 1 ? `${name}[${same.indexOf(current) + 1}]` : name)
+        ? [...current.parentElement.children].filter((child) => child.localName === current.localName).length
+        : 1
+      steps.unshift(same > 1 ? `${name}[${typeIndex(current)}]` : name)
     }
-    return `/${steps.join("/")}`
+    const path = `/${steps.join("/")}`
+    return path.length <= LIMITS.xpath ? path : ""
   }
   const referenced = (target: Element) =>
     (target.getAttribute("aria-labelledby") ?? "")
@@ -180,9 +200,9 @@ export function annotations() {
       control && "labels" in target && target.labels
         ? [...(target.labels as NodeListOf<HTMLLabelElement>)]
             .map((node) => {
-              const copy = node.cloneNode(true) as Element
-              copy.querySelectorAll("input, select, textarea").forEach((child) => child.remove())
-              return copy.textContent ?? ""
+              const clone = node.cloneNode(true) as Element
+              clone.querySelectorAll("input, select, textarea").forEach((child) => child.remove())
+              return clone.textContent ?? ""
             })
             .join(" ")
         : ""
@@ -201,16 +221,18 @@ export function annotations() {
       40,
     )
   }
-  const kindOf = (target: Element, named: boolean) => {
+  const kindOf = (target: Element) => {
     const tag = target.localName
     const type = tag === "input" ? (target.getAttribute("type") || "text").toLowerCase() : ""
     const role = target.getAttribute("role")
-    const name = target.getAttribute("name")
-    return `${tag}${type ? `[type=${flat(type, 20)}]` : ""}${role ? `[role=${flat(role, 20)}]` : ""}${!named && name ? `[name=${flat(name, 30)}]` : ""}`
+    const design = target.getAttribute("data-design-id")
+    return `${tag}${type ? `[type=${flat(type, 20)}]` : ""}${role ? `[role=${flat(role, 20)}]` : ""}${design ? `[data-design-id="${flat(design, 40)}"]` : ""}`
   }
-  const baseLabel = (target: Element) => {
+  const baseLabel = (target: Element, kind = kindOf(target)) => {
     const name = nameOf(target)
-    return name ? `${kindOf(target, true)} "${name}"` : kindOf(target, false)
+    if (name) return `${kind} "${name}"`
+    const field = target.getAttribute("name")
+    return field ? `${kind}[name="${flat(field, 30)}"]` : kind
   }
   const CONTAINERS =
     "form, fieldset, dialog, [role=dialog], table, section, article, nav, aside, header, footer, main, [data-design-id], [data-design-variant]"
@@ -227,7 +249,11 @@ export function annotations() {
       30,
     )
     const design = container.getAttribute("data-design-id")
-    const key = design ? `[data-design-id=${flat(design, 40)}]` : container.id ? `#${flat(container.id, 40)}` : ""
+    const key = design
+      ? `[data-design-id="${flat(design, 40)}"]`
+      : container.id
+        ? `[id="${flat(container.id, 40)}"]`
+        : ""
     return `${container.localName}${key}${name ? ` "${name}"` : ""}`
   }
   /** Containers around the element, nearest first; a variant root is named by the target prefix instead. */
@@ -237,32 +263,66 @@ export function annotations() {
       if (!node.hasAttribute("data-design-variant")) found.push(node)
     return found
   }
+  /** The column a cell starts in, counting the spans of the cells before it. */
+  const columnOf = (cell: HTMLTableCellElement) =>
+    [...(cell.parentElement as HTMLTableRowElement).cells]
+      .slice(0, cell.cellIndex)
+      .reduce((total, item) => total + item.colSpan, 0)
+  const cellAt = (row: HTMLTableRowElement, column: number) => {
+    let start = 0
+    for (const cell of row.cells) {
+      if (column < start + cell.colSpan) return cell
+      start += cell.colSpan
+    }
+    return undefined
+  }
   const context = (target: Element) => {
     const parts = containers(target).slice(0, 3).reverse().map(describe)
     const cell = target.closest("td, th")
     if (cell instanceof HTMLTableCellElement && cell.parentElement instanceof HTMLTableRowElement) {
       const row = cell.parentElement
+      // table.rows and row.cells never include a nested table's rows or cells.
       const table = cell.closest("table")
-      const head = table?.tHead?.rows[0] ?? (table?.rows[0] !== row ? table?.rows[0] : undefined)
-      const column = head?.cells[cell.cellIndex]
-      const header = row.querySelector("th") ?? row.cells[0]
-      if (header && header !== cell) parts.push(`row "${flat(textOf(header), 30)}"`)
-      if (column && column !== cell) parts.push(`column "${flat(textOf(column), 30)}"`)
+      const first = table?.rows[0]
+      const head =
+        table?.tHead?.rows[0] ??
+        (first && [...first.cells].every((item) => item.localName === "th") ? first : undefined)
+      if (row !== head) {
+        const header = [...row.cells].find((item) => item.localName === "th") ?? row.cells[0]
+        if (header && header !== cell) parts.push(`row "${flat(textOf(header), 30)}"`)
+        const column = head ? cellAt(head, columnOf(cell)) : undefined
+        if (column) parts.push(`column "${flat(textOf(column), 30)}"`)
+      }
     }
     return flat(parts.join(" > "), 240)
   }
   const label = (target: Element) => {
-    const base = baseLabel(target)
+    const kind = kindOf(target)
+    const base = baseLabel(target, kind)
     const container = target.parentElement?.closest(CONTAINERS)
-    const group = container ?? document.body
-    // Other variants are hidden, so only rendered elements compete for the same label.
-    const peers = [...group.getElementsByTagName(target.localName)].filter(
-      (node) => node === target || node.getClientRects().length > 0,
-    )
-    if (peers.length < 2 || !peers.some((node) => node !== target && baseLabel(node) === base)) return flat(base, 120)
-    const noun = target.localName === "a" ? "links" : `${target.localName}${/s$/.test(target.localName) ? "es" : "s"}`
+    // Other variants are hidden, so only rendered elements compete for the same label. Names are only
+    // computed for peers of the same kind, and the scan stops once enough peers settle the position.
+    let total = 0
+    let index = 0
+    let compared = 0
+    let ambiguous = false
+    let more = false
+    for (const node of (container ?? document.body).getElementsByTagName(target.localName)) {
+      if (node !== target && node.getClientRects().length === 0) continue
+      if (total >= LIMITS.peers && index) {
+        more = true
+        break
+      }
+      total++
+      if (node === target) index = total
+      else if (!ambiguous && compared < LIMITS.peers && kindOf(node) === kind) {
+        compared++
+        ambiguous = baseLabel(node, kind) === base
+      }
+    }
+    if (!ambiguous) return flat(base, 120)
     const where = container && !container.hasAttribute("data-design-variant") ? ` in ${describe(container)}` : ""
-    return flat(`${base} (${peers.indexOf(target) + 1} of ${peers.length} ${noun}${where})`, 120)
+    return flat(`${base} (${index} of ${total}${more ? "+" : ""} <${target.localName}>${where})`, 120)
   }
   const reference = (target: Element) => ({
     target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
@@ -282,9 +342,15 @@ export function annotations() {
     const query = target.slice(prefix?.[0].length ?? 0)
     if (!query || query === "page" || query === "diagram") return undefined
     try {
-      // A selector is unique within the variant root it was captured in; older targets were document-wide.
-      const root = prefix ? variants().find((node) => node.dataset.designVariant === prefix[1]) : undefined
-      return root?.querySelector(query) ?? document.querySelector(query) ?? undefined
+      if (!prefix) return document.querySelector(query) ?? undefined
+      // A selector is unique within the variant root it was captured in. Older targets were document-wide,
+      // so a match outside every variant still counts, but never one inside another variant.
+      const root = variants().find((node) => node.dataset.designVariant === prefix[1])
+      return (
+        root?.querySelector(query) ??
+        [...document.querySelectorAll(query)].find((node) => !node.closest("[data-design-variant]")) ??
+        undefined
+      )
     } catch {
       return undefined
     }
@@ -451,20 +517,19 @@ export function annotations() {
     true,
   )
   const audit = () => {
-    const findings = [...document.querySelectorAll("button, input, select, textarea, h1, h2, p")].flatMap((element) => {
-      const box = element.getBoundingClientRect()
-      if (!box.width || !box.height) return []
-      if (box.right > innerWidth + 1 || box.left < -1)
-        return [
-          {
-            ...reference(element),
-            tag: element.tagName.toLowerCase(),
-            severity: "warn",
-            text: "Element extends beyond the viewport",
-          },
-        ]
-      return []
-    })
+    // Overflow is measured first and only the reported elements are described, which is the costly part.
+    const findings = [...document.querySelectorAll("button, input, select, textarea, h1, h2, p")]
+      .filter((element) => {
+        const box = element.getBoundingClientRect()
+        return !!box.width && !!box.height && (box.right > innerWidth + 1 || box.left < -1)
+      })
+      .slice(0, LIMITS.findings)
+      .map((element) => ({
+        ...reference(element),
+        tag: element.tagName.toLowerCase(),
+        severity: "warn",
+        text: "Element extends beyond the viewport",
+      }))
     parent.postMessage({ type: "design:layout", findings }, "*")
   }
   void document.fonts.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(audit)))
