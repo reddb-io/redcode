@@ -54,10 +54,13 @@ const featureDefinitions = Event.inventory(
   ...Question.Event.Definitions,
 )
 
+// `session.status` is shared transitional: both runtimes publish busy, retry and idle, and v2
+// clients need it to show what a session is doing. The deprecated `session.idle` stays V1-only.
 export const ServerDefinitions = Event.inventory(
   ...foundationDefinitions,
   ...featureDefinitions,
   ...SessionTodo.Event.Definitions,
+  SessionStatusEvent.Status,
 )
 
 export const Definitions = Event.inventory(
