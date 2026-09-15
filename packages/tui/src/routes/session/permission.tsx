@@ -327,9 +327,16 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             }
 
             if (permission === "bash") {
-              const command = typeof data.command === "string" ? data.command : ""
-              // A monitor keeps running after approval: say how often and for how long.
-              const monitor = typeof data.monitor === "string" ? data.monitor : ""
+              const metadata = props.request.metadata ?? {}
+              const command =
+                typeof data.command === "string"
+                  ? data.command
+                  : typeof metadata.command === "string"
+                    ? metadata.command
+                    : ""
+              // A monitor keeps running after approval: say how often and for how long. The summary is
+              // on the request; the tool input carries the raw options.
+              const monitor = typeof metadata.monitor === "string" ? metadata.monitor : ""
               return {
                 icon: "#",
                 title: monitor ? "Shell monitor" : "Shell command",
@@ -486,7 +493,12 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               title="Permission required"
               header={header()}
               body={current.body}
-              options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
+              options={
+                // Nothing to remember: a request with no patterns to save (a long poll monitor) is approved each time.
+                props.request.always.length > 0
+                  ? { once: "Allow once", always: "Allow always", reject: "Reject" }
+                  : { once: "Allow once", reject: "Reject" }
+              }
               escapeKey="reject"
               fullscreen
               onSelect={(option) => {
