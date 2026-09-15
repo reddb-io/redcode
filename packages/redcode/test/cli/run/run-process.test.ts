@@ -46,7 +46,8 @@ describe("opencode run (non-interactive subprocess)", () => {
         yield* llm.text("never reached")
 
         const result = yield* opencode.run("spend", {
-          extraArgs: ["--max-cost", "0.5", "--dangerously-skip-permissions"],
+          // A titled session makes no title request, so every provider call is the turn's.
+          extraArgs: ["--max-cost", "0.5", "--title", "Budgeted run", "--dangerously-skip-permissions"],
           env: { REDCODE_CONFIG_CONTENT: JSON.stringify(priced) },
         })
 
