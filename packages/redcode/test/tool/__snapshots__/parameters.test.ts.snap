@@ -1003,6 +1003,9 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
                 },
                 "type": "object",
               },
+              "screen": {
+                "type": "string",
+              },
               "selector": {
                 "type": "string",
               },

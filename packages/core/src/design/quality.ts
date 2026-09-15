@@ -178,7 +178,8 @@ export async function screenWarnings(root: string, engine: Design.Info["engine"]
   const text = (
     await Promise.all(
       sources
-        .filter((name) => !name.split("/").includes("node_modules"))
+        // Glob results use the platform separator, so Windows paths arrive with backslashes.
+        .filter((name) => !name.split(/[\\/]/).includes("node_modules"))
         .slice(0, 200)
         .map((name) =>
           Bun.file(`${root}/${name}`)
