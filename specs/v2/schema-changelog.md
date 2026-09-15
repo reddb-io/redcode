@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Provider-Native Tool Search
+
+- Add optional `experimental.tool_search.native` (`"auto"` | `true` | `false`, default `"auto"`) to the configuration schema. Legacy runtime only: `"auto"` uses the provider's tool search for deferred tools on allowlisted models (Anthropic API Claude 4.5 and later via `@ai-sdk/anthropic`; OpenAI GPT-5.4 and later via `@ai-sdk/openai` on the AI SDK runtime), `true` on any model of those packages, `false` never. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
+- Add optional `deferLoading` to `LLM.ToolDefinition` in `@reddb-io/redcode-llm`, honoured by Anthropic Messages when `providerOptions.anthropic.toolSearch` is `"bm25"` or `"regex"`; the protocol also parses and replays `tool_search_tool_result` blocks.
+- No route, migration or durable-event change. A native search persists as a provider-executed tool part named `tool_search_tool_bm25` (Anthropic) or `tool_search` (OpenAI) whose output is the provider result as JSON; a tool it loaded stays deferred when called.
+
 ## 2026-09-15: Opt-In Spend Budgets For Goals And Sessions
 
 - Add optional `session` to the current and V1 configuration schemas (`ConfigV2.Session`), carried through the V1 migration unchanged. It holds `budget` (`ConfigV2.SessionBudget`): optional `max_cost_usd` and `max_tokens` (positive finite numbers) and optional `reset_on_message` (boolean, default false). None of these has a default, so nothing is limited unless set. A configured budget binds top-level sessions only, because a subagent's spend already counts toward its parent.

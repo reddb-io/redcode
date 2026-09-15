@@ -1,5 +1,34 @@
 import { describe, expect, test } from "bun:test"
-import { toolDisplayMetadata, webSearchProviderLabel } from "../../src/util/tool-display"
+import { toolDisplayMetadata, toolSearchSummary, webSearchProviderLabel } from "../../src/util/tool-display"
+
+describe("toolSearchSummary", () => {
+  test("client-side tool_search", () => {
+    expect(toolSearchSummary({ query: "open issues" }, { loaded: ["a", "b"] })).toEqual({
+      query: "open issues",
+      loaded: 2,
+    })
+    expect(toolSearchSummary({ select: ["github_issue_read"] }, {})).toEqual({
+      query: "github_issue_read",
+      loaded: undefined,
+    })
+  })
+
+  test("Anthropic tool search, in the AI SDK and the wire shape", () => {
+    expect(
+      toolSearchSummary({ query: "issue" }, {}, JSON.stringify([{ type: "tool_reference", toolName: "x" }])),
+    ).toEqual({ query: "issue", loaded: 1 })
+    expect(
+      toolSearchSummary({ pattern: "issue.*" }, {}, JSON.stringify({ tool_references: [{ tool_name: "x" }, {}] })),
+    ).toEqual({ query: "issue.*", loaded: 2 })
+  })
+
+  test("OpenAI hosted tool search", () => {
+    expect(
+      toolSearchSummary({ arguments: { paths: ["github"] } }, {}, JSON.stringify({ tools: [{ type: "namespace" }] })),
+    ).toEqual({ query: "github", loaded: 1 })
+    expect(toolSearchSummary({}, {}, "not json")).toEqual({ query: undefined, loaded: undefined })
+  })
+})
 
 describe("webSearchProviderLabel", () => {
   test("labels known providers", () => {

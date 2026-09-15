@@ -26,6 +26,8 @@ const PARAMS_SHOWN = 8
 export type Config = {
   readonly enabled?: "auto" | boolean
   readonly threshold?: number
+  /** Provider-native tool search where supported; see `NativeToolSearch.detect`. */
+  readonly native?: "auto" | boolean
 }
 
 export type Entry = {
@@ -40,8 +42,16 @@ export type Entry = {
 const DEFERRED = Symbol.for("redcode.tool-search.deferred")
 const ACTIVATED = Symbol.for("redcode.tool-search.activated")
 const INDEX = Symbol.for("redcode.tool-search.index")
+const NATIVE = Symbol.for("redcode.tool-search.native")
 
-type Marked = AITool & { [DEFERRED]?: true; [ACTIVATED]?: number; [INDEX]?: string }
+type NativeMode = "anthropic" | "openai"
+type Marked = AITool & {
+  /** The namespace, or `true` when none was given. */
+  [DEFERRED]?: string | true
+  [ACTIVATED]?: number
+  [INDEX]?: string
+  [NATIVE]?: NativeMode
+}
 
 /** The namespace a flat MCP tool key belongs to; the longest matching server name wins. */
 export function namespaceOf(key: string, servers: readonly string[]) {
@@ -109,13 +119,18 @@ export function trippedInHistory(messages: readonly SessionV1.WithParts[]) {
  * `tool_search` loaded. Ordered by when the loading part started, not by array position, because
  * history is not chronological after a compaction.
  */
-export function loadedFromHistory(messages: readonly SessionV1.WithParts[], names: ReadonlySet<string>) {
+export function loadedFromHistory(
+  messages: readonly SessionV1.WithParts[],
+  names: ReadonlySet<string>,
+  /** Tools a provider-native search loaded: calling one leaves it deferred. */
+  natively?: ReadonlySet<string>,
+) {
   const seen: Array<{ name: string; at: number; order: number }> = []
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.type !== "tool") continue
       const at = "time" in part.state ? part.state.time.start : message.info.time.created
-      if (names.has(part.tool)) seen.push({ name: part.tool, at, order: seen.length })
+      if (names.has(part.tool) && !natively?.has(part.tool)) seen.push({ name: part.tool, at, order: seen.length })
       if (part.tool !== TOOL_ID || part.state.status !== "completed") continue
       const listed = part.state.metadata?.loaded
       if (!Array.isArray(listed)) continue
@@ -154,10 +169,12 @@ export const DESCRIPTION = [
 ].join("\n")
 
 /** The durable system context text: which categories are deferred, one example, and the index. */
-export function indexText(entries: readonly Entry[]) {
+export function indexText(entries: readonly Entry[], native = false) {
   const namespaces = groups(entries).map(([namespace]) => namespace)
   return [
-    `Additional tools for ${namespaces.join(", ")} are available through ${TOOL_ID}. Example: ${TOOL_ID} {"query": "list open issues"} or ${TOOL_ID} {"select": ["${entries[0]!.name}"]}.`,
+    native
+      ? `Additional tools for ${namespaces.join(", ")} are available but not loaded. Find them with your tool search tool, which matches tool names, descriptions and parameters and loads the matches; a tool's full name is <namespace>_<name>.`
+      : `Additional tools for ${namespaces.join(", ")} are available through ${TOOL_ID}. Example: ${TOOL_ID} {"query": "list open issues"} or ${TOOL_ID} {"select": ["${entries[0]!.name}"]}.`,
     "<deferred_tools>",
     index(entries),
     "</deferred_tools>",
@@ -277,8 +294,23 @@ export function run(
   }
 }
 
-export function markDeferred(item: AITool): AITool {
-  return { ...item, [DEFERRED]: true } as Marked
+export function markDeferred(item: AITool, namespace?: string): AITool {
+  return { ...item, [DEFERRED]: namespace ?? true } as Marked
+}
+
+/** The namespace a deferred tool was marked with. */
+export function deferredNamespace(item: AITool | undefined) {
+  const value = (item as Marked | undefined)?.[DEFERRED]
+  return typeof value === "string" ? value : undefined
+}
+
+/** Marks the `tool_search` entry with the provider-native search mode this step uses. */
+export function withNative(item: AITool, mode: NativeMode | undefined): AITool {
+  return mode ? ({ ...item, [NATIVE]: mode } as Marked) : item
+}
+
+export function nativeOf(tools: Record<string, AITool>) {
+  return (tools[TOOL_ID] as Marked | undefined)?.[NATIVE]
 }
 
 /** A deferred tool that has been loaded; `rank` is its position in the Session's activation order. */
@@ -291,7 +323,7 @@ export function withIndex(item: AITool, text: string): AITool {
 }
 
 export function isDeferred(item: AITool | undefined) {
-  return (item as Marked | undefined)?.[DEFERRED] === true
+  return (item as Marked | undefined)?.[DEFERRED] !== undefined
 }
 
 export function activation(item: AITool | undefined) {

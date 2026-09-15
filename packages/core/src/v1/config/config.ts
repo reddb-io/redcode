@@ -310,6 +310,10 @@ export const Info = Schema.Struct({
           threshold: Schema.optional(PositiveInt).annotate({
             description: "Estimated tokens of MCP tool schemas above which MCP tools are deferred (default: 3000)",
           }),
+          native: Schema.optional(Schema.Union([Schema.Literal("auto"), Schema.Boolean])).annotate({
+            description:
+              'Use the provider\'s own tool search for deferred tools instead of tool_search: "auto" for models known to support it (Anthropic Claude 4.5 and later on the Anthropic API, OpenAI GPT-5.4 and later through the Responses API), true for any Anthropic or OpenAI Responses model, false never (default: "auto"). A provider that rejects it falls back to tool_search for the rest of the process.',
+          }),
         }),
       ).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." }),
       mcp_validation: Schema.optional(Schema.Literals(["strict", "warn", "off"])).annotate({

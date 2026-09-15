@@ -34,6 +34,7 @@ import type { SessionGuardLog } from "./guard-log"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { ToolSearch } from "./tool-search"
+import { NativeToolSearch } from "./native-tool-search"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -609,43 +610,57 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           })
     if (deferred.length === 0) return withAllOperationHooks()
 
+    // With provider-native search every deferred definition is sent flagged and the provider loads
+    // matches itself, so a tool it loaded stays deferred even once called.
+    const native = NativeToolSearch.detect({
+      model: input.model,
+      config: input.toolSearch,
+      nativeLlm: flags.experimentalNativeLlm,
+    })
     const activated = new Map(
-      ToolSearch.loadedFromHistory(input.messages, new Set(deferred.map((entry) => entry.name))).map(
-        (name, rank) => [name, rank] as const,
-      ),
+      ToolSearch.loadedFromHistory(
+        input.messages,
+        new Set(deferred.map((entry) => entry.name)),
+        native ? NativeToolSearch.referenced(input.messages) : undefined,
+      ).map((name, rank) => [name, rank] as const),
     )
     const pending = new Set(deferred.filter((entry) => !activated.has(entry.name)).map((entry) => entry.name))
     // Present whenever anything is deferrable, even once all of it is loaded: removing the tool
     // later would rewrite the advertised prefix. Its description is static; the index rides the
     // system context.
     tools[ToolSearch.TOOL_ID] = ToolSearch.withIndex(
-      tool({
-        description: ToolSearch.DESCRIPTION,
-        inputSchema: jsonSchema(
-          ProviderTransform.schema(input.model, structuredClone(ToolSearch.InputSchema) as never),
-        ),
-        execute(args, opts) {
-          return run.promise(
-            Effect.gen(function* () {
-              const active = new Set(
-                Object.keys(tools).filter((name) => !pending.has(name) && input.userTools?.[name] !== false),
-              )
-              const output = ToolSearch.run(deferred, active, toRecord(args))
-              yield* plugin.trigger(
-                "tool.execute.after",
-                { tool: ToolSearch.TOOL_ID, sessionID: input.session.id, callID: opts.toolCallId, args },
-                output,
-              )
-              if (opts.abortSignal?.aborted) yield* input.processor.completeToolCall(opts.toolCallId, output)
-              return output
-            }),
-          )
-        },
-      }),
-      ToolSearch.indexText(deferred),
+      ToolSearch.withNative(
+        tool({
+          description: ToolSearch.DESCRIPTION,
+          inputSchema: jsonSchema(
+            ProviderTransform.schema(input.model, structuredClone(ToolSearch.InputSchema) as never),
+          ),
+          execute(args, opts) {
+            return run.promise(
+              Effect.gen(function* () {
+                const active = new Set(
+                  Object.keys(tools).filter((name) => !pending.has(name) && input.userTools?.[name] !== false),
+                )
+                const output = ToolSearch.run(deferred, active, toRecord(args))
+                yield* plugin.trigger(
+                  "tool.execute.after",
+                  { tool: ToolSearch.TOOL_ID, sessionID: input.session.id, callID: opts.toolCallId, args },
+                  output,
+                )
+                if (opts.abortSignal?.aborted) yield* input.processor.completeToolCall(opts.toolCallId, output)
+                return output
+              }),
+            )
+          },
+        }),
+        native,
+      ),
+      ToolSearch.indexText(deferred, native !== undefined),
     )
     const wrapped = withAllOperationHooks()
-    for (const name of pending) if (wrapped[name]) wrapped[name] = ToolSearch.markDeferred(wrapped[name])
+    const namespaces = new Map(deferred.map((entry) => [entry.name, entry.namespace]))
+    for (const name of pending)
+      if (wrapped[name]) wrapped[name] = ToolSearch.markDeferred(wrapped[name], namespaces.get(name))
     for (const [name, rank] of activated)
       if (wrapped[name]) wrapped[name] = ToolSearch.markActivated(wrapped[name], rank)
     return wrapped

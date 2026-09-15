@@ -89,6 +89,7 @@ const AnthropicServerToolResultType = Schema.Literals([
   "web_search_tool_result",
   "code_execution_tool_result",
   "web_fetch_tool_result",
+  "tool_search_tool_result",
 ])
 type AnthropicServerToolResultType = Schema.Schema.Type<typeof AnthropicServerToolResultType>
 
@@ -140,8 +141,23 @@ const AnthropicTool = Schema.Struct({
   description: Schema.String,
   input_schema: JsonObject,
   cache_control: Schema.optional(AnthropicCacheControl),
+  defer_loading: Schema.optional(Schema.Boolean),
 })
 type AnthropicTool = Schema.Schema.Type<typeof AnthropicTool>
+
+// The server-side tool search tool. It is never deferred itself, which also satisfies the API's
+// rule that at least one tool loads up front.
+export const TOOL_SEARCH_TOOLS = {
+  bm25: { type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" },
+  regex: { type: "tool_search_tool_regex_20251119", name: "tool_search_tool_regex" },
+} as const
+export type ToolSearchVariant = keyof typeof TOOL_SEARCH_TOOLS
+const TOOL_SEARCH_NAMES: ReadonlySet<string> = new Set(Object.values(TOOL_SEARCH_TOOLS).map((tool) => tool.name))
+
+const AnthropicToolSearchTool = Schema.Struct({
+  type: Schema.Literals([TOOL_SEARCH_TOOLS.bm25.type, TOOL_SEARCH_TOOLS.regex.type]),
+  name: Schema.String,
+})
 
 const AnthropicToolChoice = Schema.Union([
   Schema.Struct({ type: Schema.Literals(["auto", "any"]) }),
@@ -157,7 +173,7 @@ const AnthropicBodyFields = {
   model: Schema.String,
   system: optionalArray(AnthropicTextBlock),
   messages: Schema.Array(AnthropicMessage),
-  tools: optionalArray(AnthropicTool),
+  tools: optionalArray(Schema.Union([AnthropicTool, AnthropicToolSearchTool])),
   tool_choice: Schema.optional(AnthropicToolChoice),
   stream: Schema.Literal(true),
   max_tokens: Schema.Number,
@@ -224,6 +240,8 @@ interface ParserState {
   readonly tools: ToolStream.State<number>
   readonly usage?: Usage
   readonly lifecycle: Lifecycle.State
+  /** Server tool names by `server_tool_use` id, for result blocks one type serves several tools. */
+  readonly serverTools?: Readonly<Record<string, string>>
 }
 
 const invalid = ProviderShared.invalidRequest
@@ -258,12 +276,43 @@ const signatureFromMetadata = (metadata: ProviderMetadata | undefined): string |
   return typeof anthropic.signature === "string" ? anthropic.signature : undefined
 }
 
-const lowerTool = (breakpoints: Cache.Breakpoints, tool: ToolDefinition, inputSchema: JsonSchema): AnthropicTool => ({
-  name: tool.name,
-  description: tool.description,
-  input_schema: inputSchema,
-  cache_control: cacheControl(breakpoints, tool.cache),
-})
+// With tool search on, a deferred tool is sent with `defer_loading` and never with a breakpoint:
+// the API rejects `cache_control` on it, and it is outside the cached prefix anyway. Without tool
+// search the flag is dropped, so the model still sees the tool.
+const lowerTool = (
+  breakpoints: Cache.Breakpoints,
+  tool: ToolDefinition,
+  inputSchema: JsonSchema,
+  toolSearch: boolean,
+): AnthropicTool => {
+  const deferred = toolSearch && tool.deferLoading === true
+  return {
+    name: tool.name,
+    description: tool.description,
+    input_schema: inputSchema,
+    cache_control: deferred ? undefined : cacheControl(breakpoints, tool.cache),
+    defer_loading: deferred ? true : undefined,
+  }
+}
+
+const toolSearchVariant = (request: LLMRequest): ToolSearchVariant | undefined => {
+  const value = request.providerOptions?.anthropic?.toolSearch
+  return value === "bm25" || value === "regex" ? value : undefined
+}
+
+// Session history may carry a tool search result in the AI SDK's shape (an array of
+// `{ type: "tool_reference", toolName }`) or as the wire block content; both lower to the wire.
+const toolSearchResultContent = (value: unknown) => {
+  if (!Array.isArray(value)) return value
+  return {
+    type: "tool_search_tool_search_result",
+    tool_references: value.flatMap((reference) => {
+      if (!ProviderShared.isRecord(reference)) return []
+      const name = reference.toolName ?? reference.tool_name
+      return typeof name === "string" ? [{ type: "tool_reference", tool_name: name }] : []
+    }),
+  }
+}
 
 const lowerToolChoice = (toolChoice: NonNullable<LLMRequest["toolChoice"]>) =>
   ProviderShared.matchToolChoice("Anthropic Messages", toolChoice, {
@@ -294,6 +343,7 @@ const serverToolResultType = (name: string): AnthropicServerToolResultType | und
   if (name === "web_search") return "web_search_tool_result"
   if (name === "code_execution") return "code_execution_tool_result"
   if (name === "web_fetch") return "web_fetch_tool_result"
+  if (TOOL_SEARCH_NAMES.has(name)) return "tool_search_tool_result"
   return undefined
 }
 
@@ -301,7 +351,9 @@ const lowerServerToolResult = Effect.fn("AnthropicMessages.lowerServerToolResult
   const wireType = serverToolResultType(part.name)
   if (!wireType)
     return yield* invalid(`Anthropic Messages does not know how to round-trip server tool result for ${part.name}`)
-  return { type: wireType, tool_use_id: part.id, content: part.result.value } satisfies AnthropicServerToolResultBlock
+  const content =
+    wireType === "tool_search_tool_result" ? toolSearchResultContent(part.result.value) : part.result.value
+  return { type: wireType, tool_use_id: part.id, content } satisfies AnthropicServerToolResultBlock
 })
 
 const lowerImage = Effect.fn("AnthropicMessages.lowerImage")(function* (part: MediaPart) {
@@ -512,16 +564,21 @@ const fromRequest = Effect.fn("AnthropicMessages.fromRequest")(function* (reques
   // messages. Tools live highest in the cache hierarchy, so when callers
   // over-mark we keep their tool hints and shed the message-tail ones first.
   const breakpoints = Cache.newBreakpoints(ANTHROPIC_BREAKPOINT_CAP)
+  const search = toolSearchVariant(request)
   const tools =
     request.tools.length === 0 || request.toolChoice?.type === "none"
       ? undefined
-      : request.tools.map((tool) =>
-          lowerTool(
-            breakpoints,
-            tool,
-            ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility),
+      : [
+          ...(search ? [TOOL_SEARCH_TOOLS[search]] : []),
+          ...request.tools.map((tool) =>
+            lowerTool(
+              breakpoints,
+              tool,
+              ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility),
+              search !== undefined,
+            ),
           ),
-        )
+        ]
   const system =
     request.system.length === 0
       ? undefined
@@ -625,11 +682,15 @@ const SERVER_TOOL_RESULT_NAMES: Record<AnthropicServerToolResultType, string> = 
   web_search_tool_result: "web_search",
   code_execution_tool_result: "code_execution",
   web_fetch_tool_result: "web_fetch",
+  tool_search_tool_result: TOOL_SEARCH_TOOLS.bm25.name,
 }
 
 const isServerToolResultType = (type: string): type is AnthropicServerToolResultType => type in SERVER_TOOL_RESULT_NAMES
 
-const serverToolResultEvent = (block: NonNullable<AnthropicEvent["content_block"]>): LLMEvent | undefined => {
+const serverToolResultEvent = (
+  state: ParserState,
+  block: NonNullable<AnthropicEvent["content_block"]>,
+): LLMEvent | undefined => {
   if (!block.type || !isServerToolResultType(block.type)) return undefined
   const errorPayload =
     typeof block.content === "object" && block.content !== null && "type" in block.content
@@ -638,7 +699,7 @@ const serverToolResultEvent = (block: NonNullable<AnthropicEvent["content_block"
   const isError = errorPayload.endsWith("_tool_result_error")
   return LLMEvent.toolResult({
     id: block.tool_use_id ?? "",
-    name: SERVER_TOOL_RESULT_NAMES[block.type],
+    name: state.serverTools?.[block.tool_use_id ?? ""] ?? SERVER_TOOL_RESULT_NAMES[block.type],
     result: isError ? { type: "error", value: block.content } : { type: "json", value: block.content },
     providerExecuted: true,
     providerMetadata: anthropicMetadata({ blockType: block.type }),
@@ -670,6 +731,10 @@ const onContentBlockStart = (state: ParserState, event: AnthropicEvent): StepRes
           name: block.name ?? "",
           providerExecuted: block.type === "server_tool_use",
         }),
+        serverTools:
+          block.type === "server_tool_use" && block.id && block.name
+            ? { ...state.serverTools, [block.id]: block.name }
+            : state.serverTools,
       },
       [...events, LLMEvent.toolInputStart({ id: block.id ?? String(event.index), name: block.name ?? "" })],
     ]
@@ -694,7 +759,7 @@ const onContentBlockStart = (state: ParserState, event: AnthropicEvent): StepRes
     ]
   }
 
-  const result = serverToolResultEvent(block)
+  const result = serverToolResultEvent(state, block)
   if (!result) return [state, NO_EVENTS]
   const events: LLMEvent[] = []
   return [{ ...state, lifecycle: Lifecycle.stepStart(state.lifecycle, events) }, [...events, result]]

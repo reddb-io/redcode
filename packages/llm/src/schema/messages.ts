@@ -229,6 +229,12 @@ export class ToolDefinition extends Schema.Class<ToolDefinition>("LLM.ToolDefini
   inputSchema: JsonSchema,
   outputSchema: Schema.optional(JsonSchema),
   cache: Schema.optional(CacheHint),
+  /**
+   * Leave the definition out of the model's context until a provider-side tool search loads it.
+   * Honoured only by protocols with native tool search enabled on the request (Anthropic Messages
+   * with `providerOptions.anthropic.toolSearch`); elsewhere the tool is sent as usual.
+   */
+  deferLoading: Schema.optional(Schema.Boolean),
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   native: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }) {}

@@ -2157,6 +2157,10 @@ export type Config = {
        */
       enabled?: "auto" | boolean
       threshold?: number
+      /**
+       * Use the provider's own tool search for deferred tools instead of tool_search: "auto" for models known to support it (Anthropic Claude 4.5 and later on the Anthropic API, OpenAI GPT-5.4 and later through the Responses API), true for any Anthropic or OpenAI Responses model, false never (default: "auto"). A provider that rejects it falls back to tool_search for the rest of the process.
+       */
+      native?: "auto" | boolean
     }
     mcp_validation?: "strict" | "warn" | "off"
     code_mode?: {
