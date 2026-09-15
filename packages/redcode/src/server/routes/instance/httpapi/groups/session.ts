@@ -68,6 +68,9 @@ export const SummarizePayload = Schema.Struct({
   providerID: ProviderV2.ID,
   modelID: ModelV2.ID,
   auto: Schema.optional(Schema.Boolean),
+  focus: Schema.optional(Schema.String).annotate({
+    description: "Instructions for what the summary should focus on",
+  }),
 })
 export const GoalSetPayload = Schema.Struct({
   agent: Schema.String.pipe(Schema.optional),

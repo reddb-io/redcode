@@ -629,6 +629,12 @@ export type CompactionPart = {
     before: number
     after: number
   }
+  focus?: string
+  trimmed?: number
+  tools?: {
+    loaded: Array<string>
+    mcpDeferred?: boolean
+  }
 }
 
 export type Part =
@@ -11148,6 +11154,7 @@ export type SessionSummarizeData = {
     providerID: string
     modelID: string
     auto?: boolean
+    focus?: string
   }
   path: {
     sessionID: string

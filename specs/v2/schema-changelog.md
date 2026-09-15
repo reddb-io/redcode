@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Focus, Trims And Loaded Tools On A Compaction
+
+- Add optional `focus` (string) to `SummarizePayload` (`POST /session/{sessionID}/summarize`): instructions for what the summary should focus on, typed as `/compact <focus>` in the TUI. It is stored on the created `CompactionPart` and included in the summary prompt.
+- Add optional fields to `CompactionPart`, returned wherever message parts are (the V1 session message routes and `message.part.updated`): `focus` (string, as above); `trimmed` (non-negative integer, estimated tokens of old tool output trimmed before the compaction); `tools` (`loaded`: tool names loaded through `tool_search`, optional `mcpDeferred` boolean), restored after the compaction so loaded tools stay loaded. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `openapi.json` and `js/src/v2/gen`).
+- Add no route, migration or durable-event version; stored parts and requests without these fields decode as before. `--preview` for `/compact` is not implemented.
+
 ## 2026-09-15: Provider-Native Tool Search
 
 - Add optional `experimental.tool_search.native` (`"auto"` | `true` | `false`, default `"auto"`) to the configuration schema. Legacy runtime only: `"auto"` uses the provider's tool search for deferred tools on allowlisted models (Anthropic API Claude 4.5 and later via `@ai-sdk/anthropic`; OpenAI GPT-5.4 and later via `@ai-sdk/openai` on the AI SDK runtime), `true` on any model of those packages, `false` never. Regenerated the V2 client (`bun run generate` in `packages/client`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
