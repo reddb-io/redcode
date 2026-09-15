@@ -18,6 +18,8 @@ export function readMcpBrowserOpenFailed(event: { type: string; properties?: unk
   if (!properties || typeof properties !== "object") return
   const { mcpName, url } = properties as Record<string, unknown>
   if (typeof mcpName !== "string" || typeof url !== "string" || !url) return
+  // The URL comes from an MCP server and ends up in openExternal; only web authorization pages qualify.
+  if (!URL.canParse(url) || !["http:", "https:"].includes(new URL(url).protocol)) return
   return { mcpName, url } satisfies McpBrowserOpenFailed
 }
 

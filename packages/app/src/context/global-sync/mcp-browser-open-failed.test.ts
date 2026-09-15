@@ -20,6 +20,13 @@ describe("mcp.browser.open.failed", () => {
     )
   })
 
+  test("ignores URLs that are not web authorization pages", () => {
+    for (const value of ["javascript:alert(1)", "file:///etc/passwd", "vscode://x", "not a url"])
+      expect(
+        readMcpBrowserOpenFailed({ type: "mcp.browser.open.failed", properties: { mcpName: "linear", url: value } }),
+      ).toBe(undefined)
+  })
+
   test("shows the URL in a persistent toast with open and copy actions", () => {
     const opened: string[] = []
     const copied: string[] = []
