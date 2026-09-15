@@ -112,21 +112,23 @@ exports[`opencode CLI help-text snapshots every documented command emits stable 
 debugging and troubleshooting tools
 
 Commands:
-  redcode debug config        show resolved configuration
-  redcode debug guards        how often the turn guards intervened, and on what
-  redcode debug lsp           LSP debugging utilities
-  redcode debug rg            ripgrep debugging utilities
-  redcode debug file          file system debugging utilities
-  redcode debug scrap         list all known projects
-  redcode debug skill         list all available skills
-  redcode debug snapshot      snapshot debugging utilities
-  redcode debug startup       print startup timing
-  redcode debug runtime       show the booted runtime composition
-  redcode debug agent <name>  show agent configuration details
-  redcode debug v2            debug v2 catalog and built-in plugins
-  redcode debug info          show debug information
-  redcode debug paths         show global paths (data, config, cache, state)
-  redcode debug wait          wait indefinitely (for debugging)
+  redcode debug config             show resolved configuration
+  redcode debug guards             how often the turn guards intervened, and on what
+  redcode debug lsp                LSP debugging utilities
+  redcode debug rg                 ripgrep debugging utilities
+  redcode debug file               file system debugging utilities
+  redcode debug scrap              list all known projects
+  redcode debug skill              list all available skills
+  redcode debug snapshot           snapshot debugging utilities
+  redcode debug startup            print startup timing
+  redcode debug runtime            show the booted runtime composition
+  redcode debug agent <name>       show agent configuration details
+  redcode debug todos [sessionID]  show a session's tasks, their sources and evidence, and recent
+                                   todowrite errors
+  redcode debug v2                 debug v2 catalog and built-in plugins
+  redcode debug info               show debug information
+  redcode debug paths              show global paths (data, config, cache, state)
+  redcode debug wait               wait indefinitely (for debugging)
 
 Options:
   -h, --help        show help                                                              [boolean]
