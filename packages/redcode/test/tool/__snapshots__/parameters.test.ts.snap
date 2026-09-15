@@ -1031,6 +1031,29 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
           },
           "type": "array",
         },
+        "targets": {
+          "items": {
+            "properties": {
+              "path": {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string",
+              },
+              "role": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "path",
+              "role",
+            ],
+            "type": "object",
+          },
+          "maxItems": 50,
+          "type": "array",
+        },
         "tweaks": {
           "patternProperties": {
             "^--[a-zA-Z][a-zA-Z0-9-]*$": {
