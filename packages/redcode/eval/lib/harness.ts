@@ -74,8 +74,25 @@ export interface Budget {
   readonly ms?: number
 }
 
+/**
+ * Something that happens after the previous turn settled, in order: MCP servers change (a
+ * mid-session connect is a system context update), the session is compacted, the user speaks.
+ */
+export interface Turn {
+  readonly mcp?: readonly FakeServer[]
+  readonly compact?: boolean
+  readonly prompt?: string
+}
+
 export interface Spec {
   readonly prompt: string
+  /** Follow-up turns after the first prompt, all within the same budget. */
+  readonly turns?: readonly Turn[]
+  /**
+   * A known harness bug this eval reproduces, e.g. "#253". The eval is expected to fail until the
+   * fix lands; bun then reports the unexpected pass so the marker gets removed.
+   */
+  readonly knownFailure?: string
   /** A directory under eval/fixtures, or an absolute path, copied into the temp workspace. */
   readonly fixture?: string
   readonly files?: Readonly<Record<string, string>>
@@ -468,28 +485,64 @@ export function run<A>(input: {
         crash = undefined
         budgetExceeded = true
       } else {
-        yield* prompt.prompt({ sessionID: chat.id, agent, noReply: true, parts: [{ type: "text", text: spec.prompt }] })
-        const exit = yield* prompt.loop({ sessionID: chat.id }).pipe(
-          Effect.timeoutOrElse({
-            duration: Math.max(1, deadline - Date.now()),
-            orElse: () => Effect.sync(() => void (timedOut = true)),
-          }),
-          Effect.exit,
-        )
-        if (Exit.isFailure(exit)) crash = `the session loop died: ${Cause.pretty(exit.cause).split("\n").slice(0, 3).join(" ")}`
-        // A monitor releases the turn and resumes the session later: the run ends when nothing is
-        // left running or waiting to be delivered, and the session has been idle twice in a row.
-        let quiet = 0
-        while (!crash && !timedOut && quiet < 2) {
-          if (Date.now() > deadline) {
-            timedOut = true
-            break
+        const drive = Effect.gen(function* () {
+          const exit = yield* prompt.loop({ sessionID: chat.id }).pipe(
+            Effect.timeoutOrElse({
+              duration: Math.max(1, deadline - Date.now()),
+              orElse: () => Effect.sync(() => void (timedOut = true)),
+            }),
+            Effect.exit,
+          )
+          if (Exit.isFailure(exit))
+            crash = `the session loop died: ${Cause.pretty(exit.cause).split("\n").slice(0, 3).join(" ")}`
+          // A monitor releases the turn and resumes the session later: the turn ends when nothing
+          // is left running or waiting to be delivered, and the session has been idle twice in a row.
+          let quiet = 0
+          while (!crash && !timedOut && quiet < 2) {
+            if (Date.now() > deadline) {
+              timedOut = true
+              break
+            }
+            const list = yield* monitors.list(chat.id)
+            const waiting = list.some(
+              (item) => item.status === "running" || item.delivery === "pending" || item.delivery === "observed",
+            )
+            const idle = (yield* status.get(chat.id)).type === "idle"
+            quiet = !waiting && idle ? quiet + 1 : 0
+            yield* Effect.sleep("100 millis")
           }
-          const list = yield* monitors.list(chat.id)
-          const waiting = list.some((item) => item.status === "running" || item.delivery === "pending" || item.delivery === "observed")
-          const idle = (yield* status.get(chat.id)).type === "idle"
-          quiet = !waiting && idle ? quiet + 1 : 0
-          yield* Effect.sleep("100 millis")
+        })
+        const say = (text: string) =>
+          prompt.prompt({ sessionID: chat.id, agent, noReply: true, parts: [{ type: "text", text }] }).pipe(
+            Effect.exit,
+            Effect.map((exit) => {
+              if (Exit.isFailure(exit)) crash = `the prompt was refused: ${Cause.pretty(exit.cause).split("\n")[0]}`
+            }),
+          )
+        yield* say(spec.prompt)
+        if (!crash) yield* drive
+        const compaction = yield* SessionCompaction.Service
+        const modelID = scripted ? "scripted/replay" : options.model
+        const slash = modelID.indexOf("/")
+        for (const turn of spec.turns ?? []) {
+          if (crash || timedOut) break
+          if (turn.mcp) {
+            for (const server of turn.mcp) connected.push(yield* Effect.promise(() => EvalMcp.connect(server)))
+            active.servers = [...connected]
+          }
+          if (turn.compact) {
+            yield* compaction.create({
+              sessionID: chat.id,
+              agent,
+              model: { providerID: modelID.slice(0, slash) as never, modelID: modelID.slice(slash + 1) as never },
+              auto: false,
+            })
+            yield* drive
+          }
+          if (turn.prompt && !crash && !timedOut) {
+            yield* say(turn.prompt)
+            if (!crash) yield* drive
+          }
         }
         if (timedOut) yield* prompt.cancel(chat.id)
       }

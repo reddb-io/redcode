@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "compacted-evidence",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": {
+            "todos": [
+              {
+                "content": "Fix src/sum.sh",
+                "status": "in_progress",
+                "priority": "high",
+                "requirement": "Fix src/sum.sh so `sh test.sh` passes",
+                "criterion": "sh test.sh prints PASS"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 6000, "output": 80 }
+    },
+    {
+      "tools": [{ "name": "read", "input": { "filePath": "{{workspace}}/src/sum.sh" } }],
+      "usage": { "input": 6200, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "edit",
+          "input": { "filePath": "{{workspace}}/src/sum.sh", "oldString": "$(( $1 - $2 ))", "newString": "$(( $1 + $2 ))" }
+        }
+      ],
+      "usage": { "input": 6400, "output": 50 }
+    },
+    {
+      "tools": [{ "name": "bash", "input": { "command": "sh test.sh", "description": "Verify the fix" } }],
+      "usage": { "input": 6600, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "todowrite",
+          "input": { "todos": [{ "id": "{{todo.0.id}}", "revision": "{{todo.0.revision}}", "status": "completed" }] }
+        }
+      ],
+      "usage": { "input": 6800, "output": 40 }
+    },
+    {
+      "text": "Fixed src/sum.sh; `sh test.sh` prints PASS.",
+      "usage": { "input": 7000, "output": 20 }
+    },
+    {
+      "text": "## Summary\nsrc/sum.sh subtracted; it now adds and `sh test.sh` passes. The task \"Fix src/sum.sh\" is completed with the test run as evidence.",
+      "usage": { "input": 7200, "output": 60 }
+    },
+    {
+      "text": "Nothing is left: the sum.sh task is complete and verified.",
+      "usage": { "input": 3000, "output": 20 }
+    }
+  ]
+}
