@@ -307,22 +307,34 @@ With [9Router](https://github.com/decolua/9router) running and an account or com
 its dashboard:
 
 1. Open `/connect` and choose **9Router**.
-2. Confirm the API URL. The default is `http://127.0.0.1:20128/v1`; change it for another host or port.
+2. Confirm the API URL. The default is `http://127.0.0.1:20128/v1`. `localhost:20128`, a bare host
+   (which gets `/v1`) and a URL ending in `/models` are accepted too.
 3. Paste the API key from your 9Router dashboard.
 4. Choose a discovered model. You can switch again with `/models`.
 
-Redcode checks access to `/models`, stores the key in its credential store, and merges the
-provider and discovered models into the server's global configuration. Existing model settings
-are preserved. No manual JSON editing or restart is needed. This checks catalog access; it does
-not send a paid generation request or guarantee every upstream account has quota.
+The Redcode server checks access to `/models`, saves the provider and discovered models to its
+global configuration, then stores the key in its credential store (never in configuration), and
+reloads. No manual JSON editing or restart is needed. This checks catalog access; it does not send
+a paid generation request or guarantee every upstream account has quota. Once the server has fetched
+the model list, closing the dialog does not stop it from saving.
+
+Model limits come from the router's `/models` response when it reports them, otherwise from the
+models catalog entry for the same ID without the router prefix (`cc/claude-...` matches
+`claude-...`). A model neither describes gets a conservative guess of 128,000 context and 8,192
+output tokens so compaction keeps working; set `limit` on the model in your config to change it.
 
 For `redcode attach`, the API URL is reached **from the Redcode server**: `localhost` means that
 server, not the terminal's computer. Connection errors explain whether the address is unreachable,
 the key was refused, or no models are available. Configure an account or combo in 9Router and retry
-if its model list is empty. Run `/connect` → **9Router** again to import newly added models.
+if its model list is empty.
+
+Run `/connect` → **9Router** again to import newly added models. Models it added earlier that the
+router no longer lists are removed, unless you customized them with any setting besides `name` and
+`limit`. Settings you changed on listed models are kept.
 
 Project configuration still takes precedence over global configuration. If an existing API-key
 override, endpoint override or provider/model filter prevents activation, Redcode reports it.
+Adding `9router` to `disabled_providers` hides it from `/connect`.
 
 ## Modes
 

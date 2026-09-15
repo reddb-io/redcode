@@ -9,7 +9,13 @@ import { tmpdir } from "../fixture/fixture"
 import { eventSource } from "../fixture/tui-sdk"
 import { wait } from "../cli/cmd/tui/sync-fixture"
 
-async function mountWizard(root: string, url: string, onConnected: () => Promise<void>) {
+const CONNECT = "/provider/9router/connect"
+const connectedResult = {
+  baseURL: "http://localhost:20128/v1",
+  models: [{ id: "combo", name: "Combo", limit: { context: 128000, output: 8192 }, estimated: true }],
+}
+
+async function mountWizard(root: string, url: string, onConnected: (baseURL: string) => Promise<void>) {
   function Open() {
     const dialog = useDialog()
     onMount(() => dialog.replace(() => <DialogNineRouter onConnected={onConnected} />))
@@ -33,110 +39,98 @@ async function mountWizard(root: string, url: string, onConnected: () => Promise
   }
 }
 
-test("9Router wizard discovers models and saves globally without putting the key in config", async () => {
+test("9Router wizard normalizes the URL and connects through one server call", async () => {
   await using tmp = await tmpdir()
   const requests: Array<{ path: string; body: unknown }> = []
-  const connected: boolean[] = []
+  const connected: string[] = []
   await using server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       const path = new URL(request.url).pathname
-      const body = request.method === "GET" ? undefined : await request.json()
-      requests.push({ path, body })
-      if (path === "/provider/discover")
-        return Response.json({
-          baseURL: "http://127.0.0.1:20128/v1",
-          models: [
-            { id: "cc/model", name: "Claude" },
-            { id: "combo", name: "Combo" },
-          ],
-        })
-      if (path === "/global/config" && request.method === "GET")
-        return Response.json({
-          provider: {
-            "9router": { models: { "cc/model": { name: "My Claude", limit: { context: 10000, output: 1000 } } } },
-            other: { name: "Keep me" },
-          },
-        })
+      requests.push({ path, body: request.method === "GET" ? undefined : await request.json() })
+      if (path === CONNECT) return Response.json(connectedResult)
       return Response.json({})
     },
   })
-  const wizard = await mountWizard(tmp.path, server.url.href, async () => {
-    connected.push(true)
+  const wizard = await mountWizard(tmp.path, server.url.href, async (baseURL) => {
+    connected.push(baseURL)
   })
   try {
-    await wizard.input("http://127.0.0.1:20128")
-    await wizard.input("test-key")
+    await wizard.input("localhost:20128")
+    await wizard.input(" test-key ")
     await wait(() => connected.length === 1)
-    expect(requests.map((request) => request.path)).toEqual([
-      "/provider/discover",
-      "/global/config",
-      "/auth/9router",
-      "/global/config",
-    ])
-    expect(requests[0].body).toEqual({ baseURL: "http://127.0.0.1:20128/v1", apiKey: "test-key" })
-    expect(requests[2].body).toEqual({ type: "api", key: "test-key" })
-    expect(requests[3].body).toEqual({
-      provider: {
-        "9router": {
-          name: "9Router",
-          npm: "@ai-sdk/openai-compatible",
-          options: { baseURL: "http://127.0.0.1:20128/v1" },
-          models: { "cc/model": {}, combo: { name: "Combo" } },
-        },
-      },
-    })
-    expect(JSON.stringify(requests[3].body)).not.toContain("test-key")
+    expect(requests).toEqual([{ path: CONNECT, body: { baseURL: "http://localhost:20128/v1", apiKey: "test-key" } }])
+    expect(connected).toEqual(["http://localhost:20128/v1"])
   } finally {
     wizard.app.renderer.destroy()
   }
 })
 
-test("a refused key leaves configuration untouched and lets the user retry", async () => {
+test("an invalid URL or refused key sends nothing further and lets the user retry", async () => {
   await using tmp = await tmpdir()
   const paths: string[] = []
-  const connected: boolean[] = []
+  const connected: string[] = []
   await using server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       const path = new URL(request.url).pathname
       paths.push(path)
-      if (path === "/provider/discover") {
+      if (path === CONNECT) {
         const body = await request.json()
         if (body.apiKey === "bad")
           return Response.json({ message: "The provider refused this API key." }, { status: 400 })
-        return Response.json({ baseURL: "http://127.0.0.1:20128/v1", models: [{ id: "combo", name: "Combo" }] })
+        return Response.json(connectedResult)
       }
       return Response.json({})
     },
   })
-  const wizard = await mountWizard(tmp.path, server.url.href, async () => {
-    connected.push(true)
+  const wizard = await mountWizard(tmp.path, server.url.href, async (baseURL) => {
+    connected.push(baseURL)
   })
   try {
-    await wizard.input("invalid")
+    await wizard.input("ftp://router")
+    expect(wizard.app.captureCharFrame()).toContain("Enter an HTTP or HTTPS API URL")
     expect(paths).toEqual([])
-    await wizard.input("http://127.0.0.1:20128/v1")
+    await wizard.input("http://127.0.0.1:20128/v1/models")
     await wizard.input("bad")
     await wait(() => paths.length === 1 && wizard.app.renderer.currentFocusedEditor instanceof TextareaRenderable)
     await wizard.app.renderOnce()
     expect(wizard.app.captureCharFrame()).toContain("refused this API key")
-    expect(paths).toEqual(["/provider/discover"])
+    expect(connected).toEqual([])
     await wizard.input("good")
     await wait(() => connected.length === 1)
-    expect(paths.filter((path) => path === "/auth/9router")).toHaveLength(1)
+    expect(paths).toEqual([CONNECT, CONNECT])
   } finally {
     wizard.app.renderer.destroy()
   }
 })
 
-test("busy setup blocks duplicate submits and cancel prevents credential writes", async () => {
+test("a problem found after connecting is shown in the wizard", async () => {
+  await using tmp = await tmpdir()
+  await using server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json(connectedResult),
+  })
+  const wizard = await mountWizard(tmp.path, server.url.href, async () => {
+    throw new Error("Project override found")
+  })
+  try {
+    await wizard.input("http://127.0.0.1:20128/v1")
+    await wizard.input("test-key")
+    await wait(() => wizard.app.captureCharFrame().includes("Project override found"))
+  } finally {
+    wizard.app.renderer.destroy()
+  }
+})
+
+test("busy setup blocks duplicate submits and cancel does not report a connection", async () => {
   await using tmp = await tmpdir()
   const gate = Promise.withResolvers<Response>()
   const paths: string[] = []
-  const connected: boolean[] = []
+  const connected: string[] = []
   await using server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -145,8 +139,8 @@ test("busy setup blocks duplicate submits and cancel prevents credential writes"
       return gate.promise
     },
   })
-  const wizard = await mountWizard(tmp.path, server.url.href, async () => {
-    connected.push(true)
+  const wizard = await mountWizard(tmp.path, server.url.href, async (baseURL) => {
+    connected.push(baseURL)
   })
   try {
     await wizard.input("http://127.0.0.1:20128/v1")
@@ -155,9 +149,9 @@ test("busy setup blocks duplicate submits and cancel prevents credential writes"
     wizard.app.mockInput.pressEnter()
     wizard.app.mockInput.pressEnter()
     wizard.app.mockInput.pressEscape()
-    gate.resolve(Response.json({ baseURL: "http://127.0.0.1:20128/v1", models: [{ id: "combo", name: "Combo" }] }))
+    gate.resolve(Response.json(connectedResult))
     await wizard.app.renderOnce()
-    expect(paths).toEqual(["/provider/discover"])
+    expect(paths).toEqual([CONNECT])
     expect(connected).toEqual([])
     expect(wizard.app.captureCharFrame()).not.toContain("9Router · API key")
   } finally {

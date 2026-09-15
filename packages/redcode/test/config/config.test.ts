@@ -501,6 +501,45 @@ it.effect("updates global config and omits empty shell key in jsonc", () =>
   ),
 )
 
+it.effect("removes listed global config paths in json and keeps their siblings", () =>
+  withGlobalConfig(
+    { config: { provider: { "9router": { models: { gone: { name: "Gone" }, kept: { name: "Kept" } } } } } },
+    ({ dir }) =>
+      Effect.gen(function* () {
+        yield* Config.use.updateGlobal(
+          { model: "test/model" },
+          { remove: [["provider", "9router", "models", "gone"], ["provider", "missing", "models", "gone"]] },
+        )
+
+        const written = yield* FSUtil.use.readJson(path.join(dir, "opencode.json"))
+        expect(written).toMatchObject({ model: "test/model", provider: { "9router": { models: { kept: { name: "Kept" } } } } })
+        expect(JSON.stringify(written)).not.toContain('"gone"')
+      }),
+  ),
+)
+
+it.effect("removes listed global config paths in jsonc and keeps their siblings", () =>
+  withGlobalConfig(
+    {
+      config: { provider: { "9router": { models: { gone: { name: "Gone" }, kept: { name: "Kept" } } } } },
+      name: "opencode.jsonc",
+    },
+    ({ dir }) =>
+      Effect.gen(function* () {
+        yield* Config.use.updateGlobal({ model: "test/model" }, { remove: [["provider", "9router", "models", "gone"]] })
+
+        const file = path.join(dir, "opencode.jsonc")
+        const parsed = ConfigParse.schema(
+          ConfigV1.Info,
+          ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file),
+          file,
+        )
+        expect(parsed.model).toBe("test/model")
+        expect(Object.keys(parsed.provider?.["9router"]?.models ?? {})).toEqual(["kept"])
+      }),
+  ),
+)
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {
