@@ -106,6 +106,40 @@ describe("code mode input validation", () => {
     ])
   })
 
+  test("server regular expressions are never run, and oversized schemas are not compiled", () => {
+    // A catastrophic pattern: with it compiled, this input would hang the event loop.
+    const evil = { type: "object", properties: { name: { type: "string", pattern: "^(a+)+$" } }, required: ["name"] }
+    const started = Date.now()
+    expect(JsonSchemaValidate.problems(evil, { name: "a".repeat(40) + "!" })).toEqual([])
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(JsonSchemaValidate.problems(evil, {})).toEqual([{ path: "input.name", message: "is required" }])
+    // A property literally named "pattern" keeps its schema.
+    expect(
+      JsonSchemaValidate.problems(
+        { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] },
+        { pattern: 1 },
+      ),
+    ).toEqual([{ path: "input.pattern", message: "must be string" }])
+    // patternProperties plus a closed object fails open instead of refusing matching keys.
+    expect(
+      JsonSchemaValidate.problems(
+        { type: "object", patternProperties: { "^x-": { type: "string" } }, additionalProperties: false },
+        { "x-trace": "1" },
+      ),
+    ).toEqual([])
+    const huge = {
+      type: "object",
+      required: ["id"],
+      properties: Object.fromEntries(
+        Array.from({ length: 4000 }, (_, i) => [`field_${i}`, { type: "string", description: "d".repeat(80) }]),
+      ),
+    }
+    expect(JSON.stringify(huge).length).toBeGreaterThan(JsonSchemaValidate.MAX_SCHEMA_BYTES)
+    const before = JsonSchemaValidate.compileCount()
+    expect(JsonSchemaValidate.problems(huge, {})).toEqual([])
+    expect(JsonSchemaValidate.compileCount()).toBe(before)
+  })
+
   test("the validator reports types and fails open on a schema it cannot compile", () => {
     expect(JsonSchemaValidate.problems({ type: "object", properties: { n: { type: "integer" } } }, { n: "1" })).toEqual(
       [{ path: "input.n", message: "must be integer" }],
@@ -131,7 +165,7 @@ describe("code mode limits", () => {
   test("a script stops at 50 tool calls by default", async () => {
     const { seen, tools } = counter()
     const tool = await build(tools)
-    const error = await failure(tool.execute({ code: "for (let i = 0; i < 60; i++) await tools.a.tool({})" }, ctx))
+    const error = await failure(tool.execute({ code: "for (let i = 0; i < 60; i++) await tools.a.tool({ i })" }, ctx))
     expect(error.message).toContain("tool-call limit of 50")
     expect(seen.count).toBe(50)
   })
@@ -139,9 +173,63 @@ describe("code mode limits", () => {
   test("max_tool_calls is configurable", async () => {
     const { seen, tools } = counter()
     const tool = await build(tools, { codeMode: { max_tool_calls: 3 } })
-    const error = await failure(tool.execute({ code: "for (let i = 0; i < 10; i++) await tools.a.tool({})" }, ctx))
+    const error = await failure(tool.execute({ code: "for (let i = 0; i < 10; i++) await tools.a.tool({ i })" }, ctx))
     expect(error.message).toContain("tool-call limit of 3")
     expect(seen.count).toBe(3)
+  })
+
+  test("the third identical call in one script fails; different inputs are fine", async () => {
+    const { seen, tools } = counter()
+    const tool = await build(tools)
+    const out = await Effect.runPromise(
+      tool.execute(
+        {
+          code: `
+            await tools.a.tool({ q: 1, r: 2 })
+            await tools.a.tool({ r: 2, q: 1 })
+            await tools.a.tool({ q: 3 })
+            try { await tools.a.tool({ q: 1, r: 2 }) } catch (e) { return e.message }
+          `,
+        },
+        ctx,
+      ),
+    )
+    expect(out.output).toContain("tools.a.tool was already called 2 times with this exact input in this script")
+    expect(seen.count).toBe(3)
+  })
+
+  test("while one call waits on a prompt, other running work still counts against timeout_ms", async () => {
+    const tool = await build(
+      { a_ask: mcpTool("ask", () => text("asked")), a_hang: mcpTool("hang", () => new Promise(() => {})) },
+      { codeMode: { timeout_ms: 300 } },
+    )
+    const slowAsk: Tool.Context = {
+      ...ctx,
+      ask: (req) => (req.permission === "a_ask" ? Effect.sleep("3 seconds") : Effect.void),
+    }
+    const started = Date.now()
+    const error = await failure(
+      tool.execute({ code: "return await Promise.all([tools.a.ask({}), tools.a.hang({})])" }, slowAsk),
+    )
+    expect(error.message).toContain("Execution timed out after 300ms")
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  test("a timeout aborts the signal of calls still in flight", async () => {
+    const signals: AbortSignal[] = []
+    const hang: MCP.McpTool = {
+      def: { name: "hang", description: "hang", inputSchema: { type: "object", properties: {} } } as MCPToolDef,
+      client: {
+        callTool: (_params: unknown, _schema: unknown, options: { signal: AbortSignal }) => {
+          signals.push(options.signal)
+          return new Promise(() => {})
+        },
+      } as unknown as MCP.McpTool["client"],
+    }
+    const tool = await build({ a_hang: hang }, { codeMode: { timeout_ms: 200 } })
+    await failure(tool.execute({ code: "return await tools.a.hang({})" }, ctx))
+    expect(signals).toHaveLength(1)
+    expect(signals[0]!.aborted).toBe(true)
   })
 
   test("timeout_ms stops a script that never finishes", async () => {
@@ -242,7 +330,7 @@ describe("code mode permission UX", () => {
     const out = await Effect.runPromise(
       tool.execute(
         {
-          code: "const r = await Promise.all([tools.a.one({}), tools.a.one({}), tools.a.one({}), tools.a.two({})]); return r.join('')",
+          code: "const r = await Promise.all([tools.a.one({ n: 1 }), tools.a.one({ n: 2 }), tools.a.one({ n: 3 }), tools.a.two({})]); return r.join('')",
         },
         { ...ctx, ask },
       ),
@@ -276,6 +364,27 @@ describe("code mode permission UX", () => {
     )
     expect(out.output).toContain('Completed calls before the rejection:\n- tools.a.first: {"id":7}')
   })
+
+  test("after one rejection, asks still queued in the script are refused without prompting", async () => {
+    const called: string[] = []
+    let prompts = 0
+    const tool = await build({ a_one: mcpTool("one", (args) => (called.push(String(args.n)), text("1"))) })
+    const reject: Tool.Context["ask"] = () =>
+      Effect.gen(function* () {
+        prompts++
+        yield* Effect.sleep("30 millis")
+        return yield* Effect.die(new PermissionV1.RejectedError())
+      })
+    const out = await Effect.runPromise(
+      tool.execute(
+        { code: "return await Promise.all([tools.a.one({ n: 1 }), tools.a.one({ n: 2 }), tools.a.one({ n: 3 })])" },
+        { ...ctx, ask: reject },
+      ),
+    )
+    expect(prompts).toBe(1)
+    expect(called).toEqual([])
+    expect(out.metadata.rejected).toBe(true)
+  })
 })
 
 describe("code mode per-call policy and native tools", () => {
@@ -286,22 +395,67 @@ describe("code mode per-call policy and native tools", () => {
     execute: (args: any) => Effect.succeed({ title: "notes.txt", output: `body of ${args.filePath}`, metadata: {} }),
   }
 
-  function nestedCtx(decide: (request: Tool.NestedCall<unknown>) => "run" | Error) {
+  function nestedCtx(
+    decide: (request: Tool.NestedCall<unknown>) => "run" | Error | Record<string, unknown>,
+    userTools?: Record<string, boolean>,
+  ) {
     const requests: Array<{ tool: string; args: Record<string, unknown> }> = []
     let n = 0
     const nested: Tool.Nested = {
       natives: [readTool],
+      userTools,
       call: (request) =>
         Effect.suspend(() => {
           requests.push({ tool: request.tool, args: request.args })
           const decision = decide(request as Tool.NestedCall<unknown>)
           if (decision instanceof Error) return Effect.fail(decision)
           n++
-          return request.run({ args: request.args, ctx: { ...ctx, callID: `${ctx.callID}/${n}` } })
+          // A record stands for a PreExecute hook rewriting the arguments.
+          const args = decision === "run" ? request.args : decision
+          return request.run({ args, ctx: { ...ctx, callID: `${ctx.callID}/${n}` } })
         }),
     }
     return { requests, ctx: { ...ctx, nested } satisfies Tool.Context }
   }
+
+  test("a tool the prompt switched off is not in the script and cannot be called", async () => {
+    const called: string[] = []
+    const tool = await build({
+      github_issue_read: mcpTool("issue_read", () => text("issue")),
+      github_issue_write: mcpTool("issue_write", () => (called.push("write"), text("written"))),
+    })
+    const { ctx: policyCtx } = nestedCtx(() => "run", { github_issue_write: false })
+    const keys = await Effect.runPromise(tool.execute({ code: "return Object.keys(tools.github)" }, policyCtx))
+    expect(JSON.parse(keys.output)).toEqual(["issue_read"])
+    const error = await failure(tool.execute({ code: "return await tools.github.issue_write({})" }, policyCtx))
+    expect(error.message).toContain("Unknown tool 'github.issue_write'")
+    expect(called).toEqual([])
+  })
+
+  test("script inputs are validated after PreExecute hooks rewrote them", async () => {
+    const seen: unknown[] = []
+    const tool = await build({
+      gh_issue_read: mcpTool("issue_read", (args) => (seen.push(args), text("issue")), issueSchema),
+    })
+    const { ctx: policyCtx } = nestedCtx(() => ({ owner: "hook-supplied" }))
+    const out = await Effect.runPromise(tool.execute({ code: "return await tools.gh.issue_read({})" }, policyCtx))
+    expect(out.output).toBe("issue")
+    expect(seen).toEqual([{ owner: "hook-supplied" }])
+  })
+
+  test("a native tool schema is compiled once, not per call", async () => {
+    const tool = await build({})
+    const { ctx: policyCtx } = nestedCtx(() => "run")
+    await Effect.runPromise(tool.execute({ code: "return await tools.redcode.read({ filePath: 'a' })" }, policyCtx))
+    const before = JsonSchemaValidate.compileCount()
+    await Effect.runPromise(
+      tool.execute(
+        { code: "await tools.redcode.read({ filePath: 'b' }); return await tools.redcode.read({ filePath: 'c' })" },
+        policyCtx,
+      ),
+    )
+    expect(JsonSchemaValidate.compileCount()).toBe(before)
+  })
 
   test("every nested MCP and native call goes through the session's per-call policy", async () => {
     const tool = await build({ gh_issue_read: mcpTool("issue_read", () => text("issue")) })
@@ -348,7 +502,8 @@ describe("code mode per-call policy and native tools", () => {
       ),
     )
     expect(out.output).toContain("Invalid input for tools.redcode.read: input.filePath is required")
-    expect(requests).toEqual([])
+    // Validation runs inside the policy, after hooks could rewrite the arguments, and before the tool.
+    expect(requests).toEqual([{ tool: "read", args: { path: "x" } }])
   })
 
   test("the catalog lists native read tools under tools.redcode", () => {

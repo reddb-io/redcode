@@ -2158,6 +2158,7 @@ export type Config = {
       enabled?: "auto" | boolean
       threshold?: number
     }
+    mcp_validation?: "strict" | "warn" | "off"
     code_mode?: {
       enabled?: "off" | "auto" | "on"
       models?: Array<string>

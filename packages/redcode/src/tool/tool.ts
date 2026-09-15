@@ -73,6 +73,8 @@ export interface Nested {
   readonly call: <A>(input: NestedCall<A>) => Effect.Effect<A, unknown>
   /** The read-only native tools a script may call this step, already filtered by permission rules. */
   readonly natives: ReadonlyArray<NativeTool>
+  /** The prompt's per-tool switches (`user.tools`); a tool switched off must not be callable from a script. */
+  readonly userTools?: Readonly<Record<string, boolean>>
 }
 
 export interface ExecuteResult<M extends Metadata = Metadata> {

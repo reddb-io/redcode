@@ -193,8 +193,29 @@ function toolTree(
   return tree
 }
 
-const nativeSchema = (native: Tool.NativeTool) =>
-  ToolJsonSchema.fromTool({ ...native, execute: native.execute } as Tool.Def) as Record<string, unknown>
+// One schema object per native tool, so the validator compiles it once (it caches by identity).
+const nativeSchemas = new WeakMap<Tool.NativeTool, Record<string, unknown>>()
+const nativeSchema = (native: Tool.NativeTool) => {
+  const cached = nativeSchemas.get(native)
+  if (cached) return cached
+  const schema = ToolJsonSchema.fromTool(native as Tool.Def) as Record<string, unknown>
+  nativeSchemas.set(native, schema)
+  return schema
+}
+
+/** JSON with sorted keys, so `{a, b}` and `{b, a}` count as the same input. */
+const stableJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`
+  if (value !== null && typeof value === "object")
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`
+  return JSON.stringify(value) ?? "null"
+}
+
+/** Identical calls (same tool, same input) one script may make; the next one fails. */
+export const MAX_IDENTICAL_CALLS = 2
 
 const preview = (value: unknown, max: number) => {
   let text: string
@@ -253,11 +274,27 @@ export const CodeModeTool = Tool.define(
         const agent = yield* agents.get(ctx.agent)
         const session = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
         const ruleset = Permission.merge(agent.permission, session.permission ?? [])
-        const mcpTools = Permission.visibleTools(yield* mcp.tools(), ruleset)
+        // The same filters a direct request applies: permission rules and the prompt's tool switches.
+        const userTools = ctx.nested?.userTools
+        const mcpTools = CodeModeGate.switchedOn(Permission.visibleTools(yield* mcp.tools(), ruleset), userTools)
         const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
         const catalog = [...groupByServer(mcpTools, servers).values()].flat()
-        const natives = ctx.nested?.natives ?? []
-        const limits = CodeModeGate.limits((yield* config.get()).experimental?.code_mode)
+        const natives = (ctx.nested?.natives ?? []).filter((native) => userTools?.[native.id] !== false)
+        const experimental = (yield* config.get()).experimental
+        const limits = CodeModeGate.limits(experimental?.code_mode)
+        // Scripts get a catchable error they can fix, so they validate strictly unless configured otherwise.
+        const validation = experimental?.mcp_validation ?? "strict"
+
+        // Ends every call still in flight once the script is over (timeout, cancel or return), so no
+        // write lands after the model has been told how the script ended.
+        const scriptAbort = new AbortController()
+        const signalFor = (child: Tool.Context) => AbortSignal.any([child.abort, scriptAbort.signal])
+        // Calls in flight and how many of them are waiting on a person; the timeout pauses only
+        // while every in-flight call is blocked on a prompt.
+        let inFlight = 0
+        let blocked = 0
+        const identical = new Map<string, number>()
+        let rejectedRun: unknown
 
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
@@ -280,23 +317,34 @@ export const CodeModeTool = Tool.define(
               askQueues.set(req.permission, queue)
               // Waiting behind another prompt is waiting on the person too.
               const stops = waiting.map((callID) => HumanWait.start(ctx.sessionID, callID))
-              return queue
-                .withPermit(
-                  base({
-                    ...req,
-                    metadata: {
-                      ...req.metadata,
-                      script: { tool: script.tool, args: preview(script.args, ARGS_PREVIEW_CHARS) },
-                    },
+              blocked++
+              // Once the user rejected one call in this script, the asks still queued are refused
+              // without prompting again: the answer to "go on" is already known.
+              const prompt = Effect.suspend(() =>
+                rejectedRun !== undefined
+                  ? Effect.die(rejectedRun)
+                  : base({
+                      ...req,
+                      metadata: {
+                        ...req.metadata,
+                        script: { tool: script.tool, args: preview(script.args, ARGS_PREVIEW_CHARS) },
+                      },
+                    }).pipe(
+                      Effect.catchCause((cause) => {
+                        const error = Cause.squash(cause)
+                        if (isRejection(error)) rejectedRun ??= error
+                        return Effect.failCause(cause)
+                      }),
+                    ),
+              )
+              return queue.withPermit(prompt).pipe(
+                Effect.ensuring(
+                  Effect.sync(() => {
+                    blocked--
+                    for (const stop of stops) stop()
                   }),
-                )
-                .pipe(
-                  Effect.ensuring(
-                    Effect.sync(() => {
-                      for (const stop of stops) stop()
-                    }),
-                  ),
-                )
+                ),
+              )
             })
 
         let fallbackCalls = 0
@@ -315,67 +363,109 @@ export const CodeModeTool = Tool.define(
           })
         }
 
-        const settle = (path: string) => (effect: Effect.Effect<unknown, unknown>) =>
-          effect.pipe(
-            Effect.tap((value) => Effect.sync(() => completed.push({ path, value }))),
-            Effect.catchCause((cause) => {
-              if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
-              const error = Cause.squash(cause)
-              const message = error instanceof Error ? error.message : String(error)
-              if (isRejection(error)) rejections.push({ path, message })
-              return Effect.fail(toolError(message, error))
-            }),
-          )
+        /**
+         * Tracks one call as in flight, refuses the third identical call in this script, and turns
+         * whatever ends the call into a catchable error (recording permission rejections).
+         */
+        const settle = (path: string, input: unknown, call: Effect.Effect<unknown, unknown>) =>
+          Effect.suspend(() => {
+            const key = `${path} ${stableJson(input)}`
+            const seen = (identical.get(key) ?? 0) + 1
+            identical.set(key, seen)
+            if (seen > MAX_IDENTICAL_CALLS)
+              return Effect.fail(
+                toolError(
+                  `tools.${path} was already called ${MAX_IDENTICAL_CALLS} times with this exact input in this script; reuse the earlier result instead of calling it again.`,
+                ),
+              )
+            inFlight++
+            return call.pipe(
+              Effect.ensuring(Effect.sync(() => void inFlight--)),
+              Effect.tap((value) => Effect.sync(() => completed.push({ path, value }))),
+              Effect.catchCause((cause) => {
+                if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
+                const error = Cause.squash(cause)
+                const message = error instanceof Error ? error.message : String(error)
+                if (isRejection(error)) rejections.push({ path, message })
+                return Effect.fail(toolError(message, error))
+              }),
+            )
+          })
 
-        const invalidInput = (path: string, schema: unknown, input: unknown) => {
-          const problems = JsonSchemaValidate.problems(schema, input)
-          if (problems.length === 0) return undefined
-          return toolError(`Invalid input for tools.${path}: ${JsonSchemaValidate.describe(problems)}`)
-        }
+        /** Checks the arguments a call will really run with: after PreExecute hooks rewrote them. */
+        const validate = (path: string, schema: unknown, args: unknown, mode: JsonSchemaValidate.Mode) =>
+          Effect.gen(function* () {
+            if (mode === "off") return
+            const problems = JsonSchemaValidate.problems(schema, args)
+            if (problems.length === 0) return
+            const detail = `Invalid input for tools.${path}: ${JsonSchemaValidate.describe(problems)}`
+            if (mode === "strict") return yield* Effect.fail(toolError(detail))
+            yield* Effect.logWarning("script tool arguments do not match the input schema; calling it anyway", {
+              tool: path,
+              problems: JsonSchemaValidate.describe(problems),
+            })
+          })
 
         const callTool = (entry: CatalogEntry) => (input: unknown) => {
           const args = (input ?? {}) as Record<string, unknown>
-          const invalid = invalidInput(entry.path, entry.tool.def.inputSchema, args)
-          if (invalid) return Effect.fail(invalid)
-          return policy({
-            tool: entry.key,
+          return settle(
+            entry.path,
             args,
-            run: ({ args, ctx: child }) =>
-              Effect.gen(function* () {
-                const ask = queuedAsk(child.ask, [ctx.callID ?? "", child.callID ?? ""], { tool: entry.path, args })
-                yield* ask({ permission: entry.key, metadata: {}, patterns: ["*"], always: ["*"] })
-                const result = yield* callMcp(entry, args, child.abort).pipe(
-                  Effect.withSpan("Tool.execute", {
-                    attributes: {
-                      "tool.name": entry.key,
-                      "tool.call_id": child.callID ?? "",
-                      "session.id": ctx.sessionID,
-                      "message.id": ctx.messageID,
-                    },
-                  }),
-                )
-                yield* plugin.trigger(
-                  "tool.execute.after",
-                  { tool: entry.key, sessionID: ctx.sessionID, callID: child.callID, args },
-                  result,
-                )
-                return projectMcpResult(result, (attachment) => void attachments.push(attachment))
-              }),
-          }).pipe(settle(entry.path))
+            policy({
+              tool: entry.key,
+              args,
+              run: ({ args, ctx: child }) =>
+                Effect.gen(function* () {
+                  yield* validate(entry.path, entry.tool.def.inputSchema, args, validation)
+                  const ask = queuedAsk(child.ask, [ctx.callID ?? "", child.callID ?? ""], {
+                    tool: entry.path,
+                    args,
+                  })
+                  yield* ask({ permission: entry.key, metadata: {}, patterns: ["*"], always: ["*"] })
+                  const result = yield* callMcp(entry, args, signalFor(child)).pipe(
+                    Effect.withSpan("Tool.execute", {
+                      attributes: {
+                        "tool.name": entry.key,
+                        "tool.call_id": child.callID ?? "",
+                        "session.id": ctx.sessionID,
+                        "message.id": ctx.messageID,
+                      },
+                    }),
+                  )
+                  yield* plugin.trigger(
+                    "tool.execute.after",
+                    { tool: entry.key, sessionID: ctx.sessionID, callID: child.callID, args },
+                    result,
+                  )
+                  return projectMcpResult(result, (attachment) => void attachments.push(attachment))
+                }),
+            }),
+          )
         }
 
         const callNative = (native: Tool.NativeTool) => (input: unknown) => {
           const path = `${NATIVE_NAMESPACE}.${native.id}`
           const args = (input ?? {}) as Record<string, unknown>
-          const invalid = invalidInput(path, nativeSchema(native), args)
-          if (invalid) return Effect.fail(invalid)
-          return policy({
-            tool: native.id,
+          return settle(
+            path,
             args,
-            run: ({ args, ctx: child }) =>
-              Effect.gen(function* () {
+            policy({
+              tool: native.id,
+              args,
+              run: ({ args, ctx: child }) => runNative(native, path, args, child),
+            }),
+          )
+        }
+
+        const runNative = (native: Tool.NativeTool, path: string, args: Record<string, unknown>, child: Tool.Context) =>
+          Effect.gen(function* () {
+            // Native schemas are redcode's own, so they are always enforced.
+            yield* validate(path, nativeSchema(native), args, "strict")
+            {
+              {
                 const result = yield* native.execute(args, {
                   ...child,
+                  abort: signalFor(child),
                   ask: queuedAsk(child.ask, [ctx.callID ?? "", child.callID ?? ""], { tool: path, args }),
                 })
                 yield* plugin.trigger(
@@ -393,9 +483,9 @@ export const CodeModeTool = Tool.define(
                 const index = calls.findLastIndex((call) => call.tool === path && call.status === "running")
                 if (index >= 0 && result.title) calls[index] = { ...calls[index]!, title: result.title }
                 return result.output
-              }),
-          }).pipe(settle(path))
-        }
+              }
+            }
+          })
 
         const runtime = CodeMode.make({
           tools: toolTree(catalog, natives, callTool, callNative),
@@ -432,12 +522,19 @@ export const CodeModeTool = Tool.define(
           error: { kind: "ExecutionFailure", message: "Execution cancelled." },
           toolCalls: calls.map((call) => ({ name: call.tool })),
         })
-        // Wall time minus time spent on permission prompts, the same way the tool deadline counts.
+        // Script time runs whenever the script can make progress. It pauses only while every call in
+        // flight is blocked on a person; one open prompt next to other running work pauses nothing,
+        // so `Promise.all([promptingCall, ...work])` stays bounded.
         const timeout: Effect.Effect<CodeMode.Result> = Effect.gen(function* () {
-          const started = Date.now()
-          const waited = () => (ctx.callID ? HumanWait.waited(ctx.sessionID, ctx.callID) : 0)
-          const step = Duration.millis(Math.max(1, Math.min(limits.timeoutMs, 100)))
-          while (Date.now() - started - waited() < limits.timeoutMs) yield* Effect.sleep(step)
+          let spent = 0
+          let last = Date.now()
+          const step = Duration.millis(Math.max(1, Math.min(limits.timeoutMs, 50)))
+          while (spent < limits.timeoutMs) {
+            yield* Effect.sleep(step)
+            const now = Date.now()
+            if (!(inFlight > 0 && blocked >= inFlight)) spent += now - last
+            last = now
+          }
           return {
             ok: false,
             error: {
@@ -452,7 +549,7 @@ export const CodeModeTool = Tool.define(
           runtime.execute(params.code),
           abort.pipe(Effect.map(cancelled)),
           timeout,
-        ])
+        ]).pipe(Effect.ensuring(Effect.sync(() => scriptAbort.abort(new Error("The script ended.")))))
         const logs = result.logs ?? []
         const withLogs = (text: string) => {
           if (logs.length === 0) return text
