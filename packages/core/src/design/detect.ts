@@ -1,13 +1,15 @@
 export * as DesignDetect from "./detect"
 
 import path from "node:path"
-import { lstat } from "node:fs/promises"
+import { lstat, readdir, realpath } from "node:fs/promises"
 import { parse } from "jsonc-parser"
 
 /**
  * Proposes a `design.system` configuration from the project's files. Reads are static: package.json,
  * tsconfig, components.json and stylesheets are parsed as text and no project code (tailwind.config.*,
- * postcss.config.*, vite.config.*) is ever loaded or executed.
+ * postcss.config.*, vite.config.*) is ever loaded or executed. Every read is confined to the project by
+ * its canonical path, so a symlinked directory or file leading elsewhere is ignored, and every walk is
+ * bounded in entries, depth and time.
  */
 
 export interface Field {
@@ -44,10 +46,26 @@ export interface Proposal {
   readonly confidence: number
 }
 
+export interface Options {
+  /** A design's application, relative to the project; detection then skips package selection. */
+  readonly application?: string
+  /** Time budget for the whole detection, in milliseconds. */
+  readonly budget?: number
+}
+
 type Dependencies = Record<string, string>
 type Manifest = { readonly name?: string; readonly dependencies: Dependencies; readonly workspaces: readonly string[] }
 
 const TEXT_LIMIT = 256 * 1024
+/** Directory entries one component-root scan looks at, skipped ones included. */
+const COMPONENT_ENTRIES = 2000
+const COMPONENT_DEPTH = 8
+/** Directory entries and depth the workspace package walk looks at. */
+const WORKSPACE_ENTRIES = 5000
+const WORKSPACE_DEPTH = 4
+const CANDIDATES = 40
+const CONCURRENCY = 4
+const BUDGET = 3000
 const COMPONENT_ROOTS = ["src/components", "src/design-system", "src/ui", "components", "app/components"]
 const MONOREPO_ROOTS = ["packages/ui/src", "packages/design-system/src"]
 const CSS_DIRECTORIES = ["", "src/", "app/", "src/app/", "src/styles/", "styles/", "src/assets/", "assets/css/"]
@@ -60,25 +78,30 @@ const COMPONENT_FILE = /\.(?:tsx|jsx|vue|svelte)$/
 const posix = (file: string) => file.split(path.sep).join("/")
 const clean = (file: string) => path.posix.normalize(posix(file)).replace(/^\.\//, "").replace(/\/+$/, "") || "."
 const percent = (value: number) => `${Math.round(value * 100)}%`
+const escapes = (relative: string) =>
+  path.posix.isAbsolute(relative) || /^[a-zA-Z]:/.test(relative) || relative === ".." || relative.startsWith("../")
+const within = (root: string, real: string) => real === root || real.startsWith(root + path.sep)
 
-async function kind(file: string) {
-  // A symlink could lead outside the project; detection never follows one.
+/** The kind of an entry whose canonical path stays inside root; symlinks are never followed. */
+async function kind(root: string, file: string) {
   const info = await lstat(file).catch(() => undefined)
   if (!info || info.isSymbolicLink()) return undefined
+  // lstat only sees the last component: a symlinked parent directory is caught by the canonical path.
+  const real = await realpath(file).catch(() => undefined)
+  if (!real || !within(root, real)) return undefined
   return info.isDirectory() ? "directory" : info.isFile() ? "file" : undefined
 }
 
-async function text(file: string) {
-  if ((await kind(file)) !== "file") return undefined
-  const bytes = await Bun.file(file)
+async function text(root: string, file: string) {
+  if ((await kind(root, file)) !== "file") return undefined
+  return Bun.file(file)
     .slice(0, TEXT_LIMIT)
     .text()
     .catch(() => undefined)
-  return bytes
 }
 
-async function json(file: string): Promise<unknown> {
-  const content = await text(file)
+async function json(root: string, file: string): Promise<unknown> {
+  const content = await text(root, file)
   if (content === undefined) return undefined
   return parse(content, [], { allowTrailingComma: true })
 }
@@ -88,8 +111,23 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 const strings = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 
-async function manifest(directory: string): Promise<Manifest | undefined> {
-  const value = record(await json(path.join(directory, "package.json")))
+/** The canonical project root, or undefined when it does not exist. */
+const canonical = (directory: string) => realpath(directory).catch(() => undefined)
+
+/**
+ * A project-relative application directory, normalized, when it exists inside the project by its
+ * canonical path; undefined for an absolute path, a `..` escape or a symlink leading elsewhere.
+ */
+export async function contained(directory: string, application: string) {
+  const root = await canonical(directory)
+  if (!root) return undefined
+  const named = clean(application)
+  if (escapes(named)) return undefined
+  return (await kind(root, path.join(root, named))) === "directory" ? named : undefined
+}
+
+async function manifest(root: string, directory: string): Promise<Manifest | undefined> {
+  const value = record(await json(root, path.join(directory, "package.json")))
   if (!value) return undefined
   const dependencies: Dependencies = {}
   for (const key of ["peerDependencies", "devDependencies", "dependencies"])
@@ -101,8 +139,8 @@ async function manifest(directory: string): Promise<Manifest | undefined> {
   return { name: typeof value.name === "string" ? value.name : undefined, dependencies, workspaces }
 }
 
-async function pnpmWorkspaces(directory: string) {
-  const content = await text(path.join(directory, "pnpm-workspace.yaml"))
+async function pnpmWorkspaces(root: string) {
+  const content = await text(root, path.join(root, "pnpm-workspace.yaml"))
   if (!content) return []
   const section = /^packages:\s*\n((?:\s+-.*\n?|\s*#.*\n?|\s*\n)*)/m.exec(content)?.[1] ?? ""
   return [...section.matchAll(/^\s+-\s*['"]?([^'"#\s]+)['"]?/gm)].map((match) => match[1]!)
@@ -116,23 +154,67 @@ function frameworks(dependencies: Dependencies) {
   ]
 }
 
-async function markers(directory: string, dependencies: Dependencies) {
+async function markers(root: string, directory: string, dependencies: Dependencies) {
   const files = await Promise.all(
-    APP_FILES.map(async (file) => ((await kind(path.join(directory, file))) ? [file] : [])),
+    APP_FILES.map(async (file) => ((await kind(root, path.join(directory, file))) ? [file] : [])),
   )
   return [...Object.keys(dependencies).filter((name) => APP_DEPENDENCIES.test(name)), ...files.flat()]
 }
 
-async function hasComponents(directory: string) {
-  if ((await kind(directory)) !== "directory") return false
-  const scan = new Bun.Glob("**/*").scan({ cwd: directory, onlyFiles: true, followSymlinks: false })
+/**
+ * Breadth-first walk below start that never enters node_modules, dot directories or symlinks. Every
+ * entry read counts toward the limit, skipped ones included, and the walk stops at the deadline.
+ */
+async function walk(
+  start: string,
+  visit: (relative: string, directory: boolean) => boolean | Promise<boolean>,
+  limits: { readonly entries: number; readonly depth: number; readonly deadline: number },
+) {
+  const queue: (readonly [string, number])[] = [["", 0]]
   let seen = 0
-  for await (const file of scan) {
-    if (file.split(/[\\/]/).includes("node_modules")) continue
-    if (COMPONENT_FILE.test(file)) return true
-    if (++seen > 2000) return false
+  while (queue.length) {
+    const [relative, depth] = queue.shift()!
+    if (Date.now() > limits.deadline) return "deadline" as const
+    const entries = await readdir(path.join(start, relative), { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (++seen > limits.entries) return "limit" as const
+      if (entry.isSymbolicLink() || entry.name.startsWith(".") || entry.name === "node_modules") continue
+      const child = relative ? `${relative}/${entry.name}` : entry.name
+      if (await visit(child, entry.isDirectory())) return "stopped" as const
+      if (entry.isDirectory() && depth + 1 < limits.depth) queue.push([child, depth + 1])
+    }
   }
-  return false
+  return "done" as const
+}
+
+async function hasComponents(root: string, directory: string, deadline: number) {
+  if ((await kind(root, directory)) !== "directory") return false
+  let found = false
+  await walk(directory, (file, isDirectory) => (found = !isDirectory && COMPONENT_FILE.test(file)), {
+    entries: COMPONENT_ENTRIES,
+    depth: COMPONENT_DEPTH,
+    deadline,
+  })
+  return found
+}
+
+/** Runs work over items with bounded concurrency, skipping what the deadline does not leave time for. */
+async function pool<T, A>(items: readonly T[], work: (item: T) => Promise<A>, deadline: number) {
+  const results: (A | undefined)[] = []
+  let next = 0
+  let skipped = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++
+      if (Date.now() > deadline) {
+        skipped++
+        continue
+      }
+      results[index] = await work(items[index]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker))
+  return { results, skipped }
 }
 
 interface Candidate {
@@ -142,14 +224,14 @@ interface Candidate {
   readonly score: number
 }
 
-async function candidate(root: string, application: string): Promise<Candidate | undefined> {
+async function candidate(root: string, application: string, deadline: number): Promise<Candidate | undefined> {
   const directory = path.join(root, application)
-  const pkg = await manifest(directory)
+  const pkg = await manifest(root, directory)
   if (!pkg || frameworks(pkg.dependencies).length === 0) return undefined
-  const found = await markers(directory, pkg.dependencies)
-  const components = (
-    await Promise.all(COMPONENT_ROOTS.map((entry) => hasComponents(path.join(directory, entry))))
-  ).some(Boolean)
+  const found = await markers(root, directory, pkg.dependencies)
+  let components = false
+  for (const entry of COMPONENT_ROOTS)
+    if (!components) components = await hasComponents(root, path.join(directory, entry), deadline)
   const score =
     (found.length ? 10 : 0) +
     (application.startsWith("apps/") ? 3 : 0) +
@@ -158,31 +240,29 @@ async function candidate(root: string, application: string): Promise<Candidate |
   return { application, manifest: pkg, markers: found, score }
 }
 
-/** Workspace package directories declared by package.json `workspaces` or pnpm-workspace.yaml. */
-async function packages(root: string, patterns: readonly string[]) {
-  const found = await Promise.all(
-    patterns
-      .filter((pattern) => !pattern.startsWith("!") && !pattern.includes(".."))
-      .map((pattern) =>
-        Array.fromAsync(
-          new Bun.Glob(`${clean(pattern)}/package.json`).scan({ cwd: root, onlyFiles: true, followSymlinks: false }),
-        ).catch(() => [] as string[]),
-      ),
+/** Workspace package directories matched by package.json `workspaces` or pnpm-workspace.yaml patterns. */
+async function packages(root: string, patterns: readonly string[], deadline: number) {
+  const globs = patterns
+    .filter((pattern) => !pattern.startsWith("!") && !escapes(clean(pattern)))
+    .map((pattern) => new Bun.Glob(clean(pattern)))
+  const found: string[] = []
+  const status = await walk(
+    root,
+    async (relative, directory) => {
+      if (directory && globs.some((glob) => glob.match(relative)))
+        if ((await kind(root, path.join(root, relative, "package.json"))) === "file") found.push(relative)
+      return false
+    },
+    { entries: WORKSPACE_ENTRIES, depth: WORKSPACE_DEPTH, deadline },
   )
-  return [
-    ...new Set(
-      found
-        .flat()
-        .map((file) => clean(path.posix.dirname(posix(file))))
-        .filter((dir) => dir !== "." && !dir.split("/").includes("node_modules")),
-    ),
-  ].toSorted()
+  return { packages: found.toSorted(), truncated: status === "limit" || status === "deadline" }
 }
 
-async function application(root: string, hint?: string) {
+async function application(root: string, hint: string | undefined, deadline: number) {
   if (hint !== undefined) {
     const named = clean(hint)
-    const pkg = (await manifest(path.join(root, named))) ?? { dependencies: {}, workspaces: [] }
+    if (escapes(named) || (await kind(root, path.join(root, named))) !== "directory") return undefined
+    const pkg = (await manifest(root, path.join(root, named))) ?? { dependencies: {}, workspaces: [] }
     return {
       application: named,
       manifest: pkg,
@@ -190,42 +270,45 @@ async function application(root: string, hint?: string) {
       workspace: [] as string[],
     }
   }
-  const rootManifest = await manifest(root)
+  const rootManifest = await manifest(root, root)
   const patterns = [...(rootManifest?.workspaces ?? []), ...(await pnpmWorkspaces(root))]
-  const self = await candidate(root, ".")
-  if (!patterns.length) {
+  const self = await candidate(root, ".", deadline)
+  if (!patterns.length || self?.markers.length) {
     if (!rootManifest) return undefined
     return {
       application: ".",
       manifest: rootManifest,
       field: {
-        confidence: self ? 0.95 : 0.6,
+        confidence: self ? (patterns.length ? 0.9 : 0.95) : 0.6,
         evidence: [
-          self
-            ? "single package: package.json declares a UI framework"
-            : "single package without a UI framework dependency",
+          patterns.length
+            ? `the opened directory is itself an application (${self!.markers.join(", ")}); workspace packages are not considered`
+            : self
+              ? "single package: package.json declares a UI framework"
+              : "single package without a UI framework dependency",
         ],
       },
       workspace: [] as string[],
     }
   }
-  const workspace = await packages(root, patterns)
-  const ranked = (
-    await Promise.all([...(self && self.markers.length ? [self] : []), ...workspace.map((dir) => candidate(root, dir))])
-  )
+  const workspace = await packages(root, patterns, deadline)
+  const considered = workspace.packages.slice(0, CANDIDATES)
+  const evaluated = await pool(considered, (dir) => candidate(root, dir, deadline), deadline)
+  const ranked = evaluated.results
     .filter((item): item is Candidate => item !== undefined)
     .toSorted((a, b) => b.score - a.score || a.application.localeCompare(b.application))
   const best = ranked[0]
   if (!best) return undefined
   const tied = ranked.filter((item) => item.score === best.score).length > 1
   const confidence = best.markers.length ? (tied ? 0.55 : 0.85) : tied ? 0.35 : 0.5
+  const partial = workspace.truncated || evaluated.skipped > 0 || workspace.packages.length > considered.length
   return {
     application: best.application,
     manifest: best.manifest,
     field: {
-      confidence,
+      confidence: partial ? Math.min(confidence, 0.5) : confidence,
       evidence: [
-        `monorepo with ${workspace.length} workspace package${workspace.length === 1 ? "" : "s"} (${patterns.join(", ")})`,
+        `monorepo with ${workspace.packages.length} workspace package${workspace.packages.length === 1 ? "" : "s"} (${patterns.join(", ")})`,
         best.markers.length
           ? `${best.application} is an application (${best.markers.join(", ")})`
           : `${best.application} declares a UI framework but no application entry; no application package found`,
@@ -241,9 +324,10 @@ async function application(root: string, hint?: string) {
           .slice(1)
           .filter((item) => item.score !== best.score)
           .map((item) => `also considered ${item.application}`),
+        ...(partial ? ["the workspace scan hit its size or time limit; some packages were not considered"] : []),
       ],
     },
-    workspace,
+    workspace: workspace.packages,
   }
 }
 
@@ -253,11 +337,11 @@ interface Tsconfig {
 }
 
 /** tsconfig paths as prefix aliases relative to the application, per file, following one local `extends`. */
-async function tsconfigs(directory: string) {
+async function tsconfigs(root: string, directory: string) {
   const read = async (file: string, seen: Set<string>): Promise<Tsconfig[]> => {
     if (seen.has(file)) return []
     seen.add(file)
-    const value = record(await json(path.join(directory, file)))
+    const value = record(await json(root, path.join(directory, file)))
     if (!value) return []
     const options = record(value.compilerOptions)
     const base = path.posix.dirname(file)
@@ -268,14 +352,14 @@ async function tsconfigs(directory: string) {
       const target = clean(
         path.posix.join(base, typeof options?.baseUrl === "string" ? options.baseUrl : ".", first.replace(/\/\*$/, "")),
       )
-      if (target.startsWith("..") || path.posix.isAbsolute(target)) continue
+      if (escapes(target)) continue
       paths[key.replace(/\/\*$/, "")] = target
     }
     const parent =
       typeof value.extends === "string" && value.extends.startsWith(".")
         ? clean(path.posix.join(base, value.extends.endsWith(".json") ? value.extends : `${value.extends}.json`))
         : undefined
-    return [{ file, paths }, ...(parent && !parent.startsWith("..") ? await read(parent, seen) : [])]
+    return [{ file, paths }, ...(parent && !escapes(parent) ? await read(parent, seen) : [])]
   }
   const seen = new Set<string>()
   return [...(await read("tsconfig.json", seen)), ...(await read("tsconfig.app.json", seen))]
@@ -284,26 +368,31 @@ async function tsconfigs(directory: string) {
 function viaAlias(specifier: string, configs: readonly Tsconfig[]) {
   for (const config of configs)
     for (const [find, target] of Object.entries(config.paths).toSorted((a, b) => b[0].length - a[0].length))
-      if (specifier === find || specifier.startsWith(find + "/"))
-        return clean(path.posix.join(target, specifier.slice(find.length)))
+      if (specifier === find || specifier.startsWith(find + "/")) {
+        const resolved = clean(path.posix.join(target, specifier.slice(find.length)))
+        return escapes(resolved) ? undefined : resolved
+      }
   return undefined
 }
 
 const TAILWIND_V4 = /@import\s+(?:url\()?["']tailwindcss(?:\/[^"']*)?["']/
 const TAILWIND_V3 = /@tailwind\s+(?:base|components|utilities)\b/
 
-export async function detect(
-  root: string,
-  options: { readonly application?: string } = {},
-): Promise<Proposal | undefined> {
-  const target = await application(root, options.application)
+export async function detect(project: string, options: Options = {}): Promise<Proposal | undefined> {
+  const root = await canonical(project)
+  if (!root) return undefined
+  const deadline = Date.now() + (options.budget ?? BUDGET)
+  const target = await application(root, options.application, deadline)
   if (!target) return undefined
   const directory = path.join(root, target.application)
-  if ((await kind(directory)) !== "directory") return undefined
+  if ((await kind(root, directory)) !== "directory") return undefined
+  // Component roots, stylesheets and aliases must stay inside the application itself: design builds
+  // resolve design.system paths against it and refuse anything that leaves it.
+  const app = (await canonical(directory))!
   const dependencies = target.manifest.dependencies
-  const rootDependencies = target.application === "." ? {} : ((await manifest(root))?.dependencies ?? {})
-  const configs = await tsconfigs(directory)
-  const shadcn = record(await json(path.join(directory, "components.json")))
+  const rootDependencies = target.application === "." ? {} : ((await manifest(root, root))?.dependencies ?? {})
+  const configs = await tsconfigs(app, directory)
+  const shadcn = record(await json(app, path.join(directory, "components.json")))
 
   // Component roots
   const roots = new Map<string, { confidence: number; evidence: string }>()
@@ -313,27 +402,24 @@ export async function detect(
     if (typeof alias !== "string") continue
     const resolved = viaAlias(alias, configs)
     if (!resolved || resolved === ".") continue
-    if ((await kind(path.join(directory, resolved))) !== "directory") continue
+    if ((await kind(app, path.join(directory, resolved))) !== "directory") continue
     roots.set(resolved, { confidence: 0.95, evidence: `components.json aliases.${key} ${alias} → ${resolved}` })
   }
   for (const entry of [...COMPONENT_ROOTS, ...(target.application === "." ? MONOREPO_ROOTS : [])]) {
-    if (roots.has(entry) || !(await hasComponents(path.join(directory, entry)))) continue
+    if (roots.has(entry) || !(await hasComponents(app, path.join(directory, entry), deadline))) continue
     roots.set(entry, {
       confidence: entry === "components" || entry === "app/components" ? 0.7 : 0.8,
       evidence: `${entry} holds component files`,
     })
   }
-  const outermost = [...roots.keys()]
+  const paths = [...roots.keys()]
     .toSorted()
     .filter((entry, _, all) => !all.some((outer) => outer !== entry && entry.startsWith(outer + "/")))
-  const paths = outermost
-  const workspaceNotes = (
-    await Promise.all(
-      target.workspace
-        .filter((dir) => dir !== target.application && /(?:^|\/)(?:ui|design-system|components)$/.test(dir))
-        .map(async (dir) => ((await hasComponents(path.join(root, dir, "src"))) ? [`${dir}/src`] : [])),
-    )
-  ).flat()
+  const workspaceNotes: string[] = []
+  for (const dir of target.workspace.filter(
+    (dir) => dir !== target.application && /(?:^|\/)(?:ui|design-system|components)$/.test(dir),
+  ))
+    if (await hasComponents(root, path.join(root, dir, "src"), deadline)) workspaceNotes.push(`${dir}/src`)
   const pathsField: Field = {
     confidence: paths.length ? Math.max(...paths.map((entry) => roots.get(entry)!.confidence)) : 0,
     evidence: [
@@ -355,8 +441,8 @@ export async function detect(
     ...CSS_DIRECTORIES.flatMap((dir) => CSS_NAMES.map((name) => `${dir}${name}.css`)),
   ]
   for (const file of [...new Set(cssCandidates)]) {
-    if (file.startsWith("..")) continue
-    const content = await text(path.join(directory, file))
+    if (escapes(file)) continue
+    const content = await text(app, path.join(directory, file))
     if (content === undefined) continue
     const name = path.posix.basename(file, ".css")
     const [score, evidence] =
@@ -391,7 +477,7 @@ export async function detect(
   )
   const configFiles = await Promise.all(
     ["js", "cjs", "mjs", "ts", "cts", "mts"].map(async (extension) =>
-      (await kind(path.join(directory, `tailwind.config.${extension}`))) === "file"
+      (await kind(app, path.join(directory, `tailwind.config.${extension}`))) === "file"
         ? [`tailwind.config.${extension}`]
         : [],
     ),
@@ -433,9 +519,16 @@ export async function detect(
   // Aliases the preview build would not read by itself: it reads only tsconfig.json compilerOptions.paths.
   const direct = configs.find((config) => config.file === "tsconfig.json")?.paths ?? {}
   const aliases: Record<string, string> = {}
+  const refused: string[] = []
   for (const config of configs)
-    for (const [find, replacement] of Object.entries(config.paths))
-      if (!(find in direct) && !(find in aliases)) aliases[find] = replacement
+    for (const [find, replacement] of Object.entries(config.paths)) {
+      if (find in direct || find in aliases) continue
+      if ((await kind(app, path.join(directory, replacement))) === undefined) {
+        refused.push(`${config.file}: ${find} → ${replacement} is missing or leaves the application; not proposed`)
+        continue
+      }
+      aliases[find] = replacement
+    }
   const aliasEntries = configs.flatMap((config) =>
     Object.entries(config.paths).map(([find, replacement]) => `${config.file}: ${find} → ${replacement}`),
   )
@@ -444,6 +537,7 @@ export async function detect(
     evidence: aliasEntries.length
       ? [
           ...aliasEntries,
+          ...refused,
           ...(Object.keys(direct).length
             ? ["tsconfig.json paths are read by preview builds directly and are not repeated"]
             : []),
@@ -506,5 +600,14 @@ export function summary(proposal: Proposal) {
         ]
       : []),
     `Overall confidence: ${percent(proposal.confidence)}`,
+  ].join("\n")
+}
+
+/** The summary followed by every field's evidence, for design_document {"action":"detect"}. */
+export function evidence(proposal: Proposal) {
+  return [
+    summary(proposal),
+    "Evidence:",
+    ...Object.entries(proposal.fields).flatMap(([field, value]) => value.evidence.map((line) => `- ${field}: ${line}`)),
   ].join("\n")
 }

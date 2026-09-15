@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 import { mkdtemp, realpath, rm } from "node:fs/promises"
+import { PassThrough } from "node:stream"
 import { DesignProposalPrompt } from "../../src/cli/design-proposal"
 
 async function project() {
@@ -78,6 +79,24 @@ test("no is remembered across runs and a dismissed prompt only postpones", async
   await rm(fixture.state)
   expect((await run("n")).outcome.status).toBe("declined")
   expect((await run("y")).outcome.status).toBe("dismissed")
+  expect(await Bun.file(path.join(fixture.root, "redcode.json")).exists()).toBe(false)
+})
+
+test("end of input dismisses the terminal prompt as not now instead of hanging", async () => {
+  await using fixture = await project()
+  const input = new PassThrough()
+  const output = new PassThrough()
+  const written: string[] = []
+  output.on("data", (chunk) => written.push(String(chunk)))
+  const result = DesignProposalPrompt.prompt(fixture.root, {
+    input,
+    output,
+    state: fixture.state,
+    global: fixture.global,
+  })
+  setTimeout(() => input.end(), 50)
+  expect((await result).outcome.status).toBe("later")
+  expect(written.join("")).toContain("Use detected design system? [y]es / [e]dit later / [n]o: ")
   expect(await Bun.file(path.join(fixture.root, "redcode.json")).exists()).toBe(false)
 })
 

@@ -4,12 +4,12 @@ import { Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 
 export const description =
-  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Update requires id and input; reopen and refresh require id. Edit only the returned root. Persist briefing, decisions and scenarios.'
+  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) reports the design system detected in the project with per-field confidence and evidence, without asking or writing anything. Edit only the returned root. Persist briefing, decisions and scenarios.'
 
 // Providers need an object at the root. Decode into the discriminated union
 // afterwards so exposing conditional fields does not weaken execution validation.
 export const Input = Schema.Struct({
-  action: Schema.Literals(["list", "create", "update", "reopen", "refresh"]),
+  action: Schema.Literals(["list", "create", "update", "reopen", "refresh", "detect"]),
   id: Schema.optional(Design.ID).annotate({ description: "Required for update, reopen and refresh." }),
   input: Schema.optional(
     Schema.Struct({
@@ -28,6 +28,10 @@ export const Input = Schema.Struct({
       Schema.Struct({ action: Schema.Literal("update"), id: Design.ID, input: Design.Update }),
       Schema.Struct({ action: Schema.Literal("reopen"), id: Design.ID }),
       Schema.Struct({ action: Schema.Literal("refresh"), id: Design.ID }),
+      Schema.Struct({
+        action: Schema.Literal("detect"),
+        input: Schema.optional(Schema.Struct({ application: Schema.optional(Schema.String) })),
+      }),
     ]),
   ),
 )

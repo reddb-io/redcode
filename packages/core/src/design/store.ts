@@ -8,7 +8,7 @@ import { and, desc, eq, sql } from "drizzle-orm"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { Config } from "../config"
-import type { ConfigDesign } from "../config/design"
+import { ConfigDesign } from "../config/design"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { Location } from "../location"
@@ -28,6 +28,19 @@ const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
       error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: DesignBuild.reason(error) }),
   })
 
+const normalizeApplication = (value: string) =>
+  path.posix.normalize(value.split("\\").join("/")).replace(/^\.\/|\/+$/g, "") || "."
+export const sameApplication = (a: string, b: string) => normalizeApplication(a) === normalizeApplication(b)
+
+/**
+ * A design's application relative to its workspace, as design_document create named it. The root is
+ * `<workspace>/.red/code/design/<id>/work`, so the workspace is five levels above it.
+ */
+export function applicationOf(document: { readonly root: string; readonly application: string }) {
+  const workspace = path.resolve(document.root, "..", "..", "..", "..", "..")
+  return normalizeApplication(path.relative(workspace, document.application) || ".")
+}
+
 const make = Effect.gen(function* () {
   const database = yield* Database.Service
   const location = yield* Location.Service
@@ -42,20 +55,22 @@ const make = Effect.gen(function* () {
   )
   // Configuration is read once per location; a design system the user just adopted is written to the
   // config file for later locations and kept here so this location uses it without reopening.
-  let adopted: ConfigDesign.Info | undefined
-  const configured = Effect.fn("Design.configured")(function* () {
-    const design = Config.latest(yield* config.entries(), "design")
-    if (!adopted) return design
-    return {
-      ...design,
-      system: design?.system ?? adopted.system,
-      application: design?.system ? design.application : (adopted.application ?? design?.application),
-    }
+  let adopted: ConfigDesign.Effective | undefined
+  const configured = Effect.fn("Design.configured")(function* (): Effect.fn.Return<ConfigDesign.Effective | undefined> {
+    const sections = (yield* config.entries()).flatMap((entry) =>
+      entry.type === "document" && entry.info.design ? [entry.info.design] : [],
+    )
+    // An adopted system sits under every document: a system configured meanwhile still wins.
+    return ConfigDesign.merge<ConfigDesign.System>([adopted, ...sections])
   })
-  const adopt = (design: ConfigDesign.Info) =>
+  /** Records (or, with undefined, forgets) a design system adopted for this location. */
+  const adopt = (design: ConfigDesign.Effective | undefined) =>
     Effect.sync(() => {
       adopted = design
     })
+  /** The configured system, unless the configuration names a different application than this design's. */
+  const applicable = (design: ConfigDesign.Effective | undefined, named: string) =>
+    design?.application === undefined || sameApplication(design.application, named) ? design?.system : undefined
 
   const get = Effect.fn("Design.get")(function* (id: Design.ID, sessionID?: Session.ID) {
     const row = yield* db
@@ -101,7 +116,9 @@ const make = Effect.gen(function* () {
     )
     const workspace = yield* io(() => RepositoryGuard.prepare(location.directory, sessionID))
     const application = path.resolve(workspace, path.relative(location.directory, source))
-    const system = yield* io(() => DesignBuild.system(application, design?.system))
+    const system = yield* io(() =>
+      DesignBuild.system(application, applicable(design, input.application ?? design?.application ?? ".")),
+    )
     const data: Design.Info = {
       ...input,
       id,
@@ -529,7 +546,9 @@ const make = Effect.gen(function* () {
   const refresh = Effect.fn("Design.refresh")(function* (id: Design.ID) {
     const document = yield* get(id)
     const design = yield* configured()
-    const system = yield* io(() => DesignBuild.system(document.application, design?.system))
+    const system = yield* io(() =>
+      DesignBuild.system(document.application, applicable(design, applicationOf(document))),
+    )
     return yield* save({
       ...document,
       system,

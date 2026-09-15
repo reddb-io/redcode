@@ -338,7 +338,7 @@ it.instance("Design document and preview expose their arguments in the OpenRoute
                 type: "object",
                 required: ["action"],
                 properties: {
-                  action: { type: "string", enum: ["list", "create", "update", "reopen", "refresh"] },
+                  action: { type: "string", enum: ["list", "create", "update", "reopen", "refresh", "detect"] },
                   id: { type: "string" },
                   input: { type: "object" },
                 },

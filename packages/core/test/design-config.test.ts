@@ -157,6 +157,44 @@ it.live("records the effective design system on create and refresh", () =>
   }),
 )
 
+it.live("design merges per key, an adopted system applies, and never to a differently named application", () =>
+  Effect.gen(function* () {
+    const { location, store, sessionID } = yield* setup
+    yield* Effect.promise(async () => {
+      await mkdir(path.join(location.directory, "apps/web/src/components"), { recursive: true })
+      await mkdir(path.join(location.directory, "apps/admin"), { recursive: true })
+    })
+    entries = [document({ design: { browser: "chromium" } })]
+    expect(yield* store.configured()).toEqual({ browser: "chromium" })
+    yield* store.adopt({ system: new ConfigDesign.System({ paths: ["src/components"] }), application: "apps/web" })
+    expect(yield* store.configured()).toEqual({
+      browser: "chromium",
+      system: { paths: ["src/components"] },
+      application: "apps/web",
+    })
+    const web = yield* store.create(sessionID, { name: "Web", journey: "new", engine: "html", kind: "screen" })
+    expect(DesignStore.applicationOf(web)).toBe("apps/web")
+    expect(web.system?.paths).toEqual(["src/components"])
+    const admin = yield* store.create(sessionID, {
+      name: "Admin",
+      journey: "new",
+      engine: "html",
+      kind: "screen",
+      application: "apps/admin",
+    })
+    expect(DesignStore.applicationOf(admin)).toBe("apps/admin")
+    expect(admin.system).toBeUndefined()
+    expect((yield* store.refresh(admin.id)).system).toBeUndefined()
+    expect((yield* store.refresh(web.id)).system?.paths).toEqual(["src/components"])
+    // A system configured in a document wins over the adopted one.
+    entries = [document({ design: { system: { paths: ["src/ui"] } } })]
+    expect((yield* store.configured())?.system?.paths).toEqual(["src/ui"])
+    yield* store.adopt(undefined)
+    entries = []
+    expect(yield* store.configured()).toBeUndefined()
+  }),
+)
+
 it.live("the standing grant covers declared roots, stylesheets, tooling and node_modules but never escapes", () =>
   Effect.gen(function* () {
     const { location, store, sessionID } = yield* setup

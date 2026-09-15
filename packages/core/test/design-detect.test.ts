@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { symlink } from "node:fs/promises"
 import { DesignDetect } from "../src/design/detect"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -148,6 +149,74 @@ test("a single package that only exposes packages/ui/src proposes that root", as
     "packages/ui/src/Button.tsx": component("Button"),
   })
   expect((await DesignDetect.detect(tmp.path))?.system.paths).toEqual(["packages/ui/src"])
+})
+
+test("detection never reads through a path that leaves the project or the application", async () => {
+  await using tmp = await tmpdir()
+  await using outside = await tmpdir()
+  await write(outside.path, {
+    "package.json": { dependencies: { react: "^19.0.0" } },
+    "src/components/Secret.tsx": component("Secret"),
+    "src/index.css": ":root { --secret: red; }\n",
+    "lib/Button.tsx": component("Button"),
+  })
+  await write(tmp.path, {
+    "package.json": { dependencies: { react: "^19.0.0" } },
+    "src/components/Button.tsx": component("Button"),
+    "tsconfig.app.json": { compilerOptions: { paths: { "@lib/*": ["linked-lib/*"], "@src/*": ["src/*"] } } },
+  })
+  await symlink(path.join(outside.path, "lib"), path.join(tmp.path, "linked-lib"), "dir")
+  await symlink(outside.path, path.join(tmp.path, "escape"), "dir")
+
+  // Named applications: a `..` escape, an absolute path and a symlink to another tree all fail.
+  expect(await DesignDetect.detect(tmp.path, { application: "../outside" })).toBeUndefined()
+  expect(await DesignDetect.detect(tmp.path, { application: outside.path })).toBeUndefined()
+  expect(await DesignDetect.detect(tmp.path, { application: "escape" })).toBeUndefined()
+  expect(await DesignDetect.contained(tmp.path, "escape")).toBeUndefined()
+  expect(await DesignDetect.contained(tmp.path, "./src/")).toBe("src")
+
+  const proposal = await DesignDetect.detect(tmp.path)
+  expect(proposal?.system.aliases).toEqual({ "@src": "src" })
+  expect(proposal?.fields.aliases.evidence).toContain(
+    "tsconfig.app.json: @lib → linked-lib is missing or leaves the application; not proposed",
+  )
+
+  // A symlinked parent directory is caught even though the last component is a real directory.
+  await using linked = await tmpdir()
+  await write(linked.path, { "package.json": { dependencies: { react: "^19.0.0" } } })
+  await symlink(path.join(outside.path, "src"), path.join(linked.path, "src"), "dir")
+  expect(await DesignDetect.detect(linked.path)).toBeUndefined()
+})
+
+test("an opened directory that is itself an application wins over workspace packages", async () => {
+  await using tmp = await tmpdir()
+  await write(tmp.path, {
+    "package.json": { workspaces: ["apps/*"], dependencies: { next: "15.0.0", react: "^19.0.0" } },
+    "app/page.tsx": component("Page"),
+    "src/components/Header.tsx": component("Header"),
+    "apps/docs/package.json": { dependencies: { next: "15.0.0", react: "^19.0.0" } },
+    "apps/docs/src/components/Doc.tsx": component("Doc"),
+  })
+  const proposal = await DesignDetect.detect(tmp.path)
+  expect(proposal?.application).toBe(".")
+  expect(proposal?.fields.application.evidence[0]).toStartWith("the opened directory is itself an application")
+})
+
+test("workspace globs never pick packages under node_modules or dot directories", async () => {
+  await using tmp = await tmpdir()
+  const app = { dependencies: { next: "15.0.0", react: "^19.0.0", tailwindcss: "^3" } }
+  await write(tmp.path, {
+    "package.json": { workspaces: ["packages/**"] },
+    "packages/node_modules/fake/package.json": app,
+    "packages/node_modules/fake/app/page.tsx": component("Fake"),
+    "packages/.cache/hidden/package.json": app,
+    "packages/.cache/hidden/app/page.tsx": component("Hidden"),
+    "packages/site/package.json": { dependencies: { react: "^19.0.0" } },
+    "packages/site/src/components/Site.tsx": component("Site"),
+  })
+  const proposal = await DesignDetect.detect(tmp.path)
+  expect(proposal?.application).toBe("packages/site")
+  expect(proposal?.fields.application.evidence[0]).toBe("monorepo with 1 workspace package (packages/**)")
 })
 
 test("a project without a design system proposes nothing", async () => {
