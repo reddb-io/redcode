@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "design-detect",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [{ "name": "design_document", "input": { "action": "detect" } }],
+      "usage": { "input": 5200, "output": 25 }
+    },
+    {
+      "text": "Detected a Tailwind CSS v4 design system (src/app.css) with shadcn components under src/components/ui. Nothing was written.",
+      "usage": { "input": 5700, "output": 35 }
+    }
+  ]
+}

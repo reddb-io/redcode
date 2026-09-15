@@ -1,0 +1,5 @@
+# Read when bun test runs with this directory as its working directory (the eval runner does).
+# `*.eval.ts` files are never discovered by the package's own `bun test`, which only matches
+# `*.test.ts`, so evals stay out of the unit shards.
+[test]
+preload = ["@opentui/solid/preload", "./preload.ts"]

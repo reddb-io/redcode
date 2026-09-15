@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "slow-ci-monitor",
+  "source": "hand-written",
+  "steps": [
+    {
+      "text": "Starting CI and waiting for it.",
+      "tools": [
+        {
+          "name": "bash",
+          "input": { "command": "sleep 45 && sh ci.sh", "description": "Wait, then run CI" }
+        }
+      ],
+      "usage": { "input": 5100, "output": 40 }
+    },
+    {
+      "text": "Sleep loops are refused; running CI as a one-shot monitor.",
+      "tools": [
+        {
+          "name": "bash",
+          "input": {
+            "command": "sh ci.sh",
+            "description": "Run the local CI",
+            "monitor": { "mode": "once", "wait_ms": 500, "deadline_ms": 60000 }
+          }
+        }
+      ],
+      "usage": { "input": 5400, "output": 60 }
+    },
+    {
+      "text": "CI is running in a monitor; I will report when it finishes.",
+      "usage": { "input": 5700, "output": 20 }
+    },
+    {
+      "match": "A monitor finished.",
+      "text": "CI finished: CI PASSED: 12 checks.",
+      "usage": { "input": 6000, "output": 20 }
+    }
+  ]
+}
