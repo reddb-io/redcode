@@ -3628,6 +3628,27 @@ describe("ProviderTransform.message - cache control on gateway", () => {
     expect(result.every((message) => message.providerOptions === undefined)).toBe(true)
   })
 
+  test("keeps cache breakpoints off the trailing per-step reminder", () => {
+    const model = createModel({
+      providerID: "anthropic",
+      api: { id: "claude-sonnet-4", url: "https://api.anthropic.com", npm: "@ai-sdk/anthropic" },
+    })
+    const msgs = [
+      { role: "system", content: "You are a helpful assistant" },
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi" },
+      { role: "user", content: "Next" },
+      { role: "user", content: [{ type: "text", text: ProviderTransform.reminder("No tracked tasks yet.") }] },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, model, {}) as any[]
+    expect(ProviderTransform.isReminderMessage(result.at(-1))).toBe(true)
+    expect(result.at(-1).providerOptions).toBeUndefined()
+    expect(result.at(-2).providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result.at(-3).providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(ProviderTransform.isReminderMessage({ role: "user", content: "Next" })).toBe(false)
+  })
+
   test("google-vertex-anthropic applies cache control", () => {
     const model = createModel({
       providerID: "google-vertex-anthropic",

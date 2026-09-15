@@ -130,14 +130,18 @@ function errorTool(parts: SessionV1.Part[]) {
   return part?.state.status === "error" ? (part as ErrorToolPart) : undefined
 }
 
-function makeMcp(instructions: MCP.ServerInstructions[] = [], failure?: string) {
+function makeMcp(
+  instructions: MCP.ServerInstructions[] = [],
+  failure?: string,
+  tools?: { current: Record<string, MCP.McpTool> },
+) {
   return Layer.succeed(
     MCP.Service,
     MCP.Service.of({
       status: () => Effect.succeed({}),
       clients: () => Effect.succeed({}),
       instructions: () => (failure === undefined ? Effect.succeed(instructions) : Effect.die(new Error(failure))),
-      tools: () => Effect.succeed({}),
+      tools: () => Effect.sync(() => tools?.current ?? {}),
       prompts: () => Effect.succeed({}),
       resources: () => Effect.succeed({}),
       resourceTemplates: () => Effect.succeed({}),
@@ -287,6 +291,7 @@ function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; proces
 function makeHttp(input?: {
   mcpInstructions?: MCP.ServerInstructions[]
   mcpFailure?: string
+  mcpTools?: { current: Record<string, MCP.McpTool> }
   processor?: "blocking"
   context?: typeof flakyContext
 }) {
@@ -294,7 +299,7 @@ function makeHttp(input?: {
   const replacements = [
     [SessionSummary.node, summary],
     [LSP.node, lsp],
-    [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure)],
+    [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure, input?.mcpTools)],
     [RuntimeFlags.node, runtimeFlags],
   ] as const
   if (input?.context) {
@@ -325,6 +330,8 @@ const withMcpInstructions = testEffect(
   }),
 )
 const brokenMcp = testEffect(makeHttp({ mcpFailure: "mcp exploded" }))
+const liveMcpTools: { current: Record<string, MCP.McpTool> } = { current: {} }
+const withLiveMcpTools = testEffect(makeHttp({ mcpTools: liveMcpTools }))
 const flaky = testEffect(makeHttp({ context: flakyContext }))
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
@@ -727,6 +734,11 @@ it.instance("per-step reminders trail the request so earlier turns stay byte-ide
     for (let i = 1; i < bodies.length; i++) {
       const previous = bodies[i - 1]!
       const next = canon(bodies[i]!)
+      // System prompt and tools are identical; the messages grow only after the previous request.
+      expect(JSON.stringify(bodies[i]!.tools)).toBe(JSON.stringify(previous.tools))
+      expect(messagesOf(bodies[i]!).filter((message) => message.role === "system")).toEqual(
+        messagesOf(previous).filter((message) => message.role === "system"),
+      )
       // Everything the previous request sent except its trailing reminder is a byte prefix of the next.
       expect(next.startsWith(canon(previous, 1))).toBe(true)
       const full = canon(previous)
@@ -735,6 +747,80 @@ it.instance("per-step reminders trail the request so earlier turns stay byte-ide
       const reminder = JSON.stringify(messagesOf(previous).at(-1)).length
       expect(common).toBeGreaterThanOrEqual(full.length - reminder)
     }
+  }),
+)
+
+withLiveMcpTools.instance("an MCP server connecting mid-session keeps the whole previous tool prefix", () =>
+  Effect.gen(function* () {
+    const def = (name: string, description: string) => ({
+      name,
+      description,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          owner: { type: "string", description: "Repository owner or workspace that holds the items to act on" },
+          query: { type: "string", description: "Search query using the provider's filter syntax" },
+          limit: { type: "number", description: "Maximum number of results to return in one page" },
+        },
+        required: ["owner"],
+      },
+    })
+    const server = (defs: Record<string, ReturnType<typeof def>>) =>
+      Object.fromEntries(Object.entries(defs).map(([key, item]) => [key, { def: item, client: {} as never }]))
+    const github = server({
+      github_list_issues: def("list_issues", "List issues in a repository"),
+      github_issue_read: def("issue_read", "Read one issue and its comments"),
+      github_search_code: def("search_code", "Search code across repositories"),
+    })
+    const linear = server({
+      linear_search_issues: def("search_issues", "Search Linear issues"),
+      linear_create_issue: def("create_issue", "Create a Linear issue"),
+    })
+    liveMcpTools.current = github
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const say = (text: string) =>
+      prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text }] })
+
+    yield* say("first")
+    yield* llm.text("one")
+    yield* prompt.loop({ sessionID: chat.id })
+    liveMcpTools.current = { ...github, ...linear }
+    yield* say("second")
+    yield* llm.text("two")
+    yield* prompt.loop({ sessionID: chat.id })
+    liveMcpTools.current = {}
+
+    const [before, after] = (yield* llm.hits).map((hit) => hit.body)
+    expect(before && after).toBeTruthy()
+    type Advertised = Array<{ function: { name: string } }>
+    // Provider cache order: tools, then messages (system first).
+    const canon = (body: Record<string, unknown>, byName = false) => {
+      const tools = (body.tools as Advertised) ?? []
+      const ordered = byName ? tools.toSorted((a, b) => a.function.name.localeCompare(b.function.name)) : tools
+      return { tools: JSON.stringify(ordered), full: JSON.stringify(ordered) + JSON.stringify(body.messages) }
+    }
+    const common = (a: string, b: string) => {
+      let i = 0
+      while (i < a.length && a[i] === b[i]) i++
+      return i
+    }
+    const previous = canon(before!)
+    const kept = common(previous.full, canon(after!).full)
+    const keptByName = common(canon(before!, true).full, canon(after!, true).full)
+
+    expect(((after!.tools as Advertised) ?? []).slice(-2).map((item) => item.function.name)).toEqual([
+      "linear_search_issues",
+      "linear_create_issue",
+    ])
+    // Every previous tool survives: the prefix breaks only at the closing bracket of the tool list,
+    // which is as far as any added tool can keep (system and messages follow the tools).
+    expect(kept).toBe(previous.tools.length - 1)
+    // Sorting by name interleaved linear_* with the native tools and broke the prefix earlier.
+    expect(keptByName).toBeLessThan(kept)
+    expect((100 * kept) / previous.full.length).toBeGreaterThan((100 * keptByName) / previous.full.length)
   }),
 )
 
@@ -3278,7 +3364,7 @@ it.instance("prompt submitted during an active run is included in the next LLM i
     // prompt's bytes do not change when it becomes history on the next turn.
     expect(messages.slice(-2)).toEqual([
       { role: "user", content: "second" },
-      { role: "user", content: SessionTodo.context([]) },
+      { role: "user", content: `<system-reminder>\n${SessionTodo.context([])}\n</system-reminder>` },
     ])
   }),
 )
