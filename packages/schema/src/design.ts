@@ -234,6 +234,10 @@ export const FeedbackItem = Schema.Struct({
   elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
   selectedText: Schema.String.check(Schema.isMaxLength(12000)).pipe(optional),
   label: Schema.String.check(Schema.isMaxLength(120)).pipe(optional),
+  /** A secondary locator: the element's absolute XPath in the revision the note was captured on. */
+  xpath: Schema.String.check(Schema.isMaxLength(2000)).pipe(optional),
+  /** The containers around the element as the page showed them, outermost first. */
+  context: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
   /** The revision the note was captured on; a draft can outlive a live reload to a newer revision. */
   revision: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.FeedbackItem" })

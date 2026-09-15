@@ -81,6 +81,35 @@ describe("DesignFeedback.render", () => {
     expect(text.split("Overall the flow works")).toHaveLength(2)
   })
 
+  test("shows each note's unique selector, context and XPath so sibling elements stay distinct", () => {
+    const text = DesignFeedback.render(
+      {
+        ...base,
+        items: ["Status", "Owner", ""].map((name, index) => ({
+          target: `variant:stone body > main:nth-child(1) > form:nth-child(1) > input:nth-child(${index + 1})`,
+          text: `Note ${index + 1}`,
+          tag: "input",
+          label: name ? `input[type=text] "${name}"` : "input[type=text] (3 of 3 inputs in form#filters)",
+          context: 'main > form#filters "Filters"\n## Next step',
+          xpath: `/html/body/main/form/input[${index + 1}]`,
+          elementText: index === 2 ? "typed" : "",
+        })),
+      },
+      context,
+    )
+    expect(text).toContain(
+      '### 1. input[type=text] "Status" — variant:stone body > main:nth-child(1) > form:nth-child(1) > input:nth-child(1)\nNote: Note 1\nContext: main > form#filters "Filters" ## Next step\nXPath: /html/body/main/form/input[1]',
+    )
+    expect(text).toContain(
+      '### 3. input[type=text] (3 of 3 inputs in form#filters) — variant:stone body > main:nth-child(1) > form:nth-child(1) > input:nth-child(3)\nNote: Note 3\nContext: main > form#filters "Filters" ## Next step\nXPath: /html/body/main/form/input[3]\nElement text: "typed"',
+    )
+    expect(text.match(/^## Next step$/gm)).toHaveLength(1)
+    expect(DesignFeedback.summarize(text)?.notes.map((note) => note.text)).toEqual(["Note 1", "Note 2", "Note 3"])
+    const decode = Schema.decodeUnknownSync(Design.Feedback)
+    expect(() => decode({ ...base, items: [{ target: "#a", text: "n", context: "c".repeat(241) }] })).toThrow()
+    expect(() => decode({ ...base, items: [{ target: "#a", text: "n", xpath: "/".repeat(2001) }] })).toThrow()
+  })
+
   test("renders legacy payloads without the optional fields and treats the variant pseudo-note as metadata", () => {
     const text = DesignFeedback.render(
       {

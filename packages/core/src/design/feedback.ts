@@ -147,6 +147,8 @@ export function render(input: Design.Feedback, context: Context) {
             const label = item.label ? clean(item.label) : ""
             const target = clean(item.target)
             const heading = label && label !== target ? `${label} — ${target}` : label || target
+            const where = item.context ? inline(item.context, 240) : ""
+            const xpath = item.xpath ? inline(item.xpath, 2000) : ""
             const selected = item.selectedText ? clean(item.selectedText) : ""
             const element = item.elementText ? clean(item.elementText) : ""
             const scenario =
@@ -161,6 +163,9 @@ export function render(input: Design.Feedback, context: Context) {
             return [
               `### ${index + 1}. ${heading}`,
               `Note: ${clean(item.text) || "(no text)"}`,
+              // The heading's selector resolves to exactly this element; the XPath and context back it up.
+              where ? `Context: ${where}` : "",
+              xpath ? `XPath: ${xpath}` : "",
               selected ? `Selected text: ${quote(selected, LIMITS.selectedText)}` : "",
               element && element !== selected ? `Element text: ${quote(element, LIMITS.elementText)}` : "",
               scenario ? `Scenario: ${scenario}` : "",

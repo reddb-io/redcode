@@ -3684,6 +3684,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3723,6 +3725,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3762,6 +3766,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3801,6 +3807,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3840,6 +3848,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3879,6 +3889,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3918,6 +3930,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3957,6 +3971,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -3996,6 +4012,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -4035,6 +4053,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -4074,6 +4094,8 @@ export type DesignsFeedbackInput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>
@@ -4266,6 +4288,8 @@ export type DesignsApprovalOutput = {
       readonly elementText?: string
       readonly selectedText?: string
       readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
       readonly revision?: string
     }>
     readonly assets: ReadonlyArray<string>

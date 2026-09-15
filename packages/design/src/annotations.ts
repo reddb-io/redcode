@@ -53,24 +53,223 @@ export function annotations() {
     attributes: true,
     attributeFilter: ["data-design-variant", "data-design-label"],
   })
-  const ancestry = (element: Element): string => {
-    if (element.id) return `#${CSS.escape(element.id)}`
-    if (!element.parentElement || element === document.body) return element.tagName.toLowerCase()
-    return `${ancestry(element.parentElement)} > ${element.tagName.toLowerCase()}:nth-child(${Array.from(element.parentElement.children).indexOf(element) + 1})`
+  // Element references. A note names its element three ways: a selector verified to resolve to exactly
+  // that element within the variant root it lives in (else the document), an absolute XPath, and a label
+  // with the containers around it, so the agent can find it in the prototype source.
+  const flat = (value: string | null | undefined, limit: number) => {
+    const text = (value ?? "").replace(/\s+/g, " ").trim()
+    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
   }
-  const selector = (target: Element) =>
-    target.id
-      ? `#${CSS.escape(target.id)}`
-      : target.hasAttribute("data-design-id")
-        ? `[data-design-id="${CSS.escape(target.getAttribute("data-design-id")!)}"]`
-        : ancestry(target)
-  const elementText = (target: Element) =>
-    ((target instanceof HTMLElement ? target.innerText : target.textContent) ?? "").replace(/\s+/g, " ").trim()
+  const textOf = (target: Element) => (target instanceof HTMLElement ? target.innerText : target.textContent) ?? ""
+  const elementText = (target: Element) => {
+    if (target instanceof HTMLInputElement) {
+      if (target.type === "password" || target.type === "hidden") return ""
+      if (target.type === "checkbox" || target.type === "radio") return target.checked ? "checked" : "unchecked"
+      return flat(target.value, 240)
+    }
+    if (target instanceof HTMLSelectElement)
+      return flat([...target.selectedOptions].map((option) => option.text).join(", "), 240)
+    if (target instanceof HTMLTextAreaElement) return flat(target.value, 240)
+    return flat(textOf(target), 240)
+  }
+  const attribute = (name: string, value: string) =>
+    `[${name}="${value.replace(/["\\]/g, "\\$&").replace(/\n/g, "\\a ")}"]`
+  /** The selected variant root holding the element; other elements are addressed in the whole document. */
+  const scopeOf = (target: Element): ParentNode => {
+    if (!state.variant) return document
+    return (
+      variants().find(
+        (node) => node.dataset.designVariant === state.variant && node !== target && node.contains(target),
+      ) ?? document
+    )
+  }
+  const resolves = (query: string, scope: ParentNode, target: Element) => {
+    try {
+      const found = scope.querySelectorAll(query)
+      return found.length === 1 && found[0] === target
+    } catch {
+      return false
+    }
+  }
+  /** Selectors built from the element's own stable attributes, most specific first. */
+  const own = (target: Element) => {
+    const tag = CSS.escape(target.localName)
+    const found: string[] = []
+    if (target.id) found.push(`#${CSS.escape(target.id)}`)
+    const design = target.getAttribute("data-design-id")
+    if (design) found.push(attribute("data-design-id", design))
+    for (const name of [
+      "data-testid",
+      "name",
+      "aria-label",
+      "placeholder",
+      "for",
+      "title",
+      "alt",
+      "href",
+      "role",
+      "type",
+    ]) {
+      const value = target.getAttribute(name)
+      if (value && value.length <= 80) found.push(`${tag}${attribute(name, value)}`)
+    }
+    const type = target.getAttribute("type")
+    const name = target.getAttribute("name")
+    if (type && name) found.push(`${tag}${attribute("type", type)}${attribute("name", name)}`)
+    found.push(tag)
+    return found
+  }
+  const fullPath = (target: Element) => {
+    if (!document.body.contains(target)) return target.localName
+    const steps: string[] = []
+    for (let node = target; node !== document.body && node.parentElement; node = node.parentElement)
+      steps.unshift(`${CSS.escape(node.localName)}:nth-child(${[...node.parentElement.children].indexOf(node) + 1})`)
+    return ["body", ...steps].join(" > ")
+  }
+  const selector = (target: Element) => {
+    const scope = scopeOf(target)
+    const direct = own(target).find((query) => resolves(query, scope, target))
+    if (direct) return direct
+    // The nearest ancestor that is unique on its own anchors a short path down to the element.
+    const steps: string[] = []
+    for (let node = target; node.parentElement; node = node.parentElement) {
+      const parent: Element = node.parentElement
+      const tag = node.localName
+      const index = [...parent.children].filter((child) => child.localName === tag).indexOf(node) + 1
+      steps.unshift(`${CSS.escape(tag)}:nth-of-type(${index})`)
+      if (parent === scope || parent === document.body || parent === document.documentElement) break
+      const anchor = own(parent)
+        .filter((query) => query !== CSS.escape(parent.localName))
+        .find((query) => resolves(query, scope, parent))
+      if (!anchor) continue
+      const candidate = [...own(target).map((query) => `${anchor} ${query}`), `${anchor} > ${steps.join(" > ")}`].find(
+        (query) => resolves(query, scope, target),
+      )
+      if (candidate) return candidate
+    }
+    const relative = steps.join(" > ")
+    if (scope !== document && relative && resolves(relative, scope, target)) return relative
+    return fullPath(target)
+  }
+  const xpath = (target: Element) => {
+    const steps: string[] = []
+    for (let node: Element | null = target; node; node = node.parentElement) {
+      const current: Element = node
+      const name =
+        current.namespaceURI === "http://www.w3.org/1999/xhtml"
+          ? current.localName
+          : `*[local-name()="${current.localName}"]`
+      const same = current.parentElement
+        ? [...current.parentElement.children].filter((child) => child.localName === current.localName)
+        : [current]
+      steps.unshift(same.length > 1 ? `${name}[${same.indexOf(current) + 1}]` : name)
+    }
+    return `/${steps.join("/")}`
+  }
+  const referenced = (target: Element) =>
+    (target.getAttribute("aria-labelledby") ?? "")
+      .split(/\s+/)
+      .map((id) => (id ? document.getElementById(id) : null))
+      .flatMap((node) => (node ? [textOf(node)] : []))
+      .join(" ")
+  /** The accessible name a reader would use for the element. */
+  const nameOf = (target: Element) => {
+    const control = target.matches("input, select, textarea")
+    const type = (target.getAttribute("type") ?? "").toLowerCase()
+    const labels =
+      control && "labels" in target && target.labels
+        ? [...(target.labels as NodeListOf<HTMLLabelElement>)]
+            .map((node) => {
+              const copy = node.cloneNode(true) as Element
+              copy.querySelectorAll("input, select, textarea").forEach((child) => child.remove())
+              return copy.textContent ?? ""
+            })
+            .join(" ")
+        : ""
+    const candidates = [
+      referenced(target),
+      target.getAttribute("aria-label"),
+      labels,
+      control ? target.getAttribute("placeholder") : "",
+      target.matches("img, area, input[type=image]") ? target.getAttribute("alt") : "",
+      target instanceof HTMLInputElement && /^(button|submit|reset)$/.test(type) ? target.value : "",
+      control ? "" : textOf(target),
+      target.getAttribute("title"),
+    ]
+    return flat(
+      candidates.find((value) => value?.trim()),
+      40,
+    )
+  }
+  const kindOf = (target: Element, named: boolean) => {
+    const tag = target.localName
+    const type = tag === "input" ? (target.getAttribute("type") || "text").toLowerCase() : ""
+    const role = target.getAttribute("role")
+    const name = target.getAttribute("name")
+    return `${tag}${type ? `[type=${flat(type, 20)}]` : ""}${role ? `[role=${flat(role, 20)}]` : ""}${!named && name ? `[name=${flat(name, 30)}]` : ""}`
+  }
+  const baseLabel = (target: Element) => {
+    const name = nameOf(target)
+    return name ? `${kindOf(target, true)} "${name}"` : kindOf(target, false)
+  }
+  const CONTAINERS =
+    "form, fieldset, dialog, [role=dialog], table, section, article, nav, aside, header, footer, main, [data-design-id], [data-design-variant]"
+  const describe = (container: Element) => {
+    // Only the container's own caption or heading names it, never one from a nested section.
+    const heading = container.querySelector(
+      ":scope > :is(legend, caption, h1, h2, h3, h4, h5, h6), :scope > header > :is(h1, h2, h3, h4, h5, h6)",
+    )
+    const name = flat(
+      referenced(container) ||
+        container.getAttribute("aria-label") ||
+        (heading ? textOf(heading) : "") ||
+        container.getAttribute("title"),
+      30,
+    )
+    const design = container.getAttribute("data-design-id")
+    const key = design ? `[data-design-id=${flat(design, 40)}]` : container.id ? `#${flat(container.id, 40)}` : ""
+    return `${container.localName}${key}${name ? ` "${name}"` : ""}`
+  }
+  /** Containers around the element, nearest first; a variant root is named by the target prefix instead. */
+  const containers = (target: Element) => {
+    const found: Element[] = []
+    for (let node = target.parentElement?.closest(CONTAINERS); node; node = node.parentElement?.closest(CONTAINERS))
+      if (!node.hasAttribute("data-design-variant")) found.push(node)
+    return found
+  }
+  const context = (target: Element) => {
+    const parts = containers(target).slice(0, 3).reverse().map(describe)
+    const cell = target.closest("td, th")
+    if (cell instanceof HTMLTableCellElement && cell.parentElement instanceof HTMLTableRowElement) {
+      const row = cell.parentElement
+      const table = cell.closest("table")
+      const head = table?.tHead?.rows[0] ?? (table?.rows[0] !== row ? table?.rows[0] : undefined)
+      const column = head?.cells[cell.cellIndex]
+      const header = row.querySelector("th") ?? row.cells[0]
+      if (header && header !== cell) parts.push(`row "${flat(textOf(header), 30)}"`)
+      if (column && column !== cell) parts.push(`column "${flat(textOf(column), 30)}"`)
+    }
+    return flat(parts.join(" > "), 240)
+  }
   const label = (target: Element) => {
-    const tag = target.tagName.toLowerCase()
-    const text = elementText(target).slice(0, 40)
-    return text ? `${tag} "${text}"` : tag
+    const base = baseLabel(target)
+    const container = target.parentElement?.closest(CONTAINERS)
+    const group = container ?? document.body
+    // Other variants are hidden, so only rendered elements compete for the same label.
+    const peers = [...group.getElementsByTagName(target.localName)].filter(
+      (node) => node === target || node.getClientRects().length > 0,
+    )
+    if (peers.length < 2 || !peers.some((node) => node !== target && baseLabel(node) === base)) return flat(base, 120)
+    const noun = target.localName === "a" ? "links" : `${target.localName}${/s$/.test(target.localName) ? "es" : "s"}`
+    const where = container && !container.hasAttribute("data-design-variant") ? ` in ${describe(container)}` : ""
+    return flat(`${base} (${peers.indexOf(target) + 1} of ${peers.length} ${noun}${where})`, 120)
   }
+  const reference = (target: Element) => ({
+    target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
+    xpath: xpath(target),
+    context: context(target),
+    label: label(target),
+  })
   const rect = (target: Element) => {
     const box = target.getBoundingClientRect()
     return { x: box.x, y: box.y, width: box.width, height: box.height }
@@ -79,10 +278,13 @@ export function annotations() {
   // the element lives in; the host switches variants itself before asking for one.
   const locate = (target: unknown) => {
     if (typeof target !== "string") return undefined
-    const query = target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, "")
+    const prefix = /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(target)
+    const query = target.slice(prefix?.[0].length ?? 0)
     if (!query || query === "page" || query === "diagram") return undefined
     try {
-      return document.querySelector(query) ?? undefined
+      // A selector is unique within the variant root it was captured in; older targets were document-wide.
+      const root = prefix ? variants().find((node) => node.dataset.designVariant === prefix[1]) : undefined
+      return root?.querySelector(query) ?? document.querySelector(query) ?? undefined
     } catch {
       return undefined
     }
@@ -227,7 +429,7 @@ export function annotations() {
       event.stopImmediatePropagation()
       const target =
         event.target.closest("[data-mermaid-source], [data-mermaid], .mermaid") ??
-        event.target.closest("[data-design-id], [id], button, a, input, table, svg") ??
+        event.target.closest("[data-design-id], [id], button, a, input, select, textarea, td, th, table, svg") ??
         event.target
       // A diagram's source is what the note is about; a text selection is next in line.
       const selectedText = target.getAttribute("data-mermaid-source") || (window.getSelection()?.toString() ?? "")
@@ -235,12 +437,11 @@ export function annotations() {
       parent.postMessage(
         {
           type: "design:selection",
-          target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
+          ...reference(target),
           text: target.getAttribute("data-mermaid-source") || selectedText || target.textContent || "",
           tag: target.tagName.toLowerCase(),
-          elementText: elementText(target).slice(0, 240),
+          elementText: elementText(target),
           selectedText: selectedText.trim().slice(0, 12000),
-          label: label(target),
           rect: rect(target),
           snapshot: document.body.innerText,
         },
@@ -256,9 +457,8 @@ export function annotations() {
       if (box.right > innerWidth + 1 || box.left < -1)
         return [
           {
-            target: state.variant ? `variant:${state.variant} ${selector(element)}` : selector(element),
+            ...reference(element),
             tag: element.tagName.toLowerCase(),
-            label: label(element),
             severity: "warn",
             text: "Element extends beyond the viewport",
           },

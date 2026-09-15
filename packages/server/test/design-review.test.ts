@@ -264,10 +264,14 @@ test("new interface: native review, annotation draft, lost response retry and ap
     `<design-review id="${current.document.id}" revision="${current.revision.id}" feedback="${feedback[0].id}" ended="false">`,
   )
   expect(message).toContain(
-    '### 1. h1 "Checkout" — #title\nNote: Make this title more prominent\nElement text: "Checkout"',
+    '### 1. h1 "Checkout" — #title\nNote: Make this title more prominent\nContext: main "Checkout"\nXPath: /html/body/main/h1\nElement text: "Checkout"',
   )
-  expect(message).toContain('### 2. h1 "Checkout" — #title\nNote: Use a verb here\nSelected text: "Checkout"')
-  expect(message).toContain('### 3. pre "diagram" — #diagram\nNote: Swap the arrow\nSelected text: "graph TD A --> B"')
+  expect(message).toContain(
+    '### 2. h1 "Checkout" — #title\nNote: Use a verb here\nContext: main "Checkout"\nXPath: /html/body/main/h1\nSelected text: "Checkout"',
+  )
+  expect(message).toContain(
+    '### 3. pre "diagram" — #diagram\nNote: Swap the arrow\nContext: main "Checkout"\nXPath: /html/body/main/pre\nSelected text: "graph TD A --> B"',
+  )
   expect(message.split("Element text:")).toHaveLength(3)
   expect(message).not.toContain("## Message")
   expect(message).not.toContain("Add item")

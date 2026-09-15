@@ -5532,6 +5532,8 @@ export type DesignFeedbackItem = {
   elementText?: string
   selectedText?: string
   label?: string
+  xpath?: string
+  context?: string
   revision?: string
 }
 
