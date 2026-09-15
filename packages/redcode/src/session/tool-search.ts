@@ -4,7 +4,7 @@ import type { Tool as AITool } from "ai"
 
 /**
  * Progressive discovery for the default (non code mode) tool path. Deferred tools stay in the
- * AI SDK `tools` map, so a call to one still validates and runs through the ordinary execute
+ * AI SDK `tools` map, so a call to one is still parsed and runs through the ordinary execute
  * path, but they are left out of `activeTools`, which is what the SDK sends to the provider.
  *
  * Cache shape: the `tool_search` description is static; the index of deferred tools lives in the
@@ -72,12 +72,35 @@ export function plan(input: {
   readonly mcp: readonly Entry[]
   readonly design: readonly Entry[]
   readonly designContext: boolean
+  /**
+   * Deferral already tripped in this Session. In auto mode it then stays on whatever the schema
+   * size does, so servers hovering around the threshold do not move loaded tools between blocks.
+   */
+  readonly tripped?: boolean
 }): Entry[] {
   const enabled = input.config?.enabled ?? "auto"
   if (enabled === false) return []
   const threshold = input.config?.threshold ?? DEFAULT_THRESHOLD
-  const mcp = enabled === true || estimateTokens(input.mcp) > threshold ? input.mcp : []
+  const mcp = enabled === true || input.tripped || estimateTokens(input.mcp) > threshold ? input.mcp : []
   return [...mcp, ...(input.designContext ? [] : input.design)]
+}
+
+/**
+ * Whether MCP deferral tripped earlier in this Session: a completed `tool_search` call in the
+ * (post-compaction) history that ran while MCP tools were deferred. Design tools alone keep
+ * `tool_search` present, so the call itself is not enough. A compaction resets it together with
+ * the loaded set.
+ */
+export function trippedInHistory(messages: readonly SessionV1.WithParts[]) {
+  return messages.some((message) =>
+    message.parts.some(
+      (part) =>
+        part.type === "tool" &&
+        part.tool === TOOL_ID &&
+        part.state.status === "completed" &&
+        part.state.metadata?.mcpDeferred === true,
+    ),
+  )
 }
 
 /**
@@ -208,7 +231,7 @@ export function search(entries: readonly Entry[], query: string, limit = DEFAULT
 export type Result = {
   readonly title: string
   readonly output: string
-  readonly metadata: { loaded: string[]; notFound: string[] }
+  readonly metadata: { loaded: string[]; notFound: string[]; mcpDeferred: boolean }
 }
 
 /** Runs one `tool_search` call against the deferred entries; `active` names are already callable. */
@@ -217,6 +240,7 @@ export function run(
   active: ReadonlySet<string>,
   args: { query?: unknown; select?: unknown; limit?: unknown },
 ): Result {
+  const mcpDeferred = entries.some((entry) => entry.namespace !== DESIGN_NAMESPACE)
   const query = typeof args.query === "string" ? args.query.trim() : ""
   const select = Array.isArray(args.select)
     ? args.select.filter((name): name is string => typeof name === "string")
@@ -249,7 +273,7 @@ export function run(
   return {
     title: query ? `Tool search: ${query}` : `Load tools: ${select.join(", ")}`,
     output: lines.join("\n"),
-    metadata: { loaded: loaded.map((entry) => entry.name), notFound },
+    metadata: { loaded: loaded.map((entry) => entry.name), notFound, mcpDeferred },
   }
 }
 

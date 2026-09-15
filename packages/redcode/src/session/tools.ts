@@ -59,6 +59,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   structuredOutputTool?: AITool
   toolTimeout?: number | false
   toolSearch?: ToolSearch.Config
+  /** The prompt's per-tool switches (`user.tools`); a tool switched off is never deferred or indexed. */
+  userTools?: Record<string, boolean>
   /**
    * Whether this step has a Design context (the design agent, or a Session with Design
    * documents). Without one the `design_*` tools are deferred; omitted, they never are.
@@ -495,27 +497,32 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
   if (input.structuredOutputTool) tools.StructuredOutput = input.structuredOutputTool
 
-  // Deferred tools stay in the map, so a call to one validates and runs through the same
+  // Deferred tools stay in the map, so a call to one is parsed and runs through the same
   // permission, hook, loop-guard and truncation path as any other; they are only left out of
   // what is advertised. A call to one that was never loaded therefore just works (and loads it
   // through history), which forgives a small model that guesses a listed name.
   const finish = Effect.fnUntraced(function* () {
     const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
+    // The same filters the request applies (permission rules and the prompt's own tool switches),
+    // so the index never lists, and tool_search never loads, a tool the request will drop.
     const visible = (entries: ToolSearch.Entry[]) => {
       const disabled = Permission.disabled(
         entries.map((entry) => entry.name),
         ruleset,
       )
-      return entries.filter((entry) => !disabled.has(entry.name))
+      return entries.filter((entry) => !disabled.has(entry.name) && input.userTools?.[entry.name] !== false)
     }
-    const deferred = Permission.disabled([ToolSearch.TOOL_ID], ruleset).has(ToolSearch.TOOL_ID)
-      ? []
-      : ToolSearch.plan({
-          config: input.toolSearch,
-          mcp: visible(mcpEntries),
-          design: visible(designEntries),
-          designContext: input.designContext ?? true,
-        })
+    const deferred =
+      Permission.disabled([ToolSearch.TOOL_ID], ruleset).has(ToolSearch.TOOL_ID) ||
+      input.userTools?.[ToolSearch.TOOL_ID] === false
+        ? []
+        : ToolSearch.plan({
+            config: input.toolSearch,
+            mcp: visible(mcpEntries),
+            design: visible(designEntries),
+            designContext: input.designContext ?? true,
+            tripped: ToolSearch.trippedInHistory(input.messages),
+          })
     if (deferred.length === 0) return withAllOperationHooks()
 
     const activated = new Map(
@@ -536,7 +543,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         execute(args, opts) {
           return run.promise(
             Effect.gen(function* () {
-              const active = new Set(Object.keys(tools).filter((name) => !pending.has(name)))
+              const active = new Set(
+                Object.keys(tools).filter((name) => !pending.has(name) && input.userTools?.[name] !== false),
+              )
               const output = ToolSearch.run(deferred, active, toRecord(args))
               yield* plugin.trigger(
                 "tool.execute.after",

@@ -562,6 +562,91 @@ describe("tool_search in the legacy loop", () => {
   )
 
   it.instance(
+    "once deferral tripped, a server leaving below the threshold keeps loaded tools where they are",
+    () =>
+      Effect.gen(function* () {
+        // Halfway between linear alone and linear + slack: the pair defers, linear alone would not.
+        const entriesOf = (server: string) =>
+          SCHEMAS[server].map((def) => ({
+            name: McpCatalog.toolName(server, def.name),
+            namespace: server,
+            description: def.description ?? "",
+            schema: def.inputSchema as Record<string, unknown>,
+          }))
+        const alone = ToolSearch.estimateTokens(entriesOf("linear"))
+        const pair = ToolSearch.estimateTokens([...entriesOf("linear"), ...entriesOf("slack")])
+        const threshold = Math.round((alone + pair) / 2)
+        expect(pair - alone).toBeGreaterThan(400)
+        yield* useServers(["linear", "slack"])
+        const s = yield* setup({ extra: { experimental: { tool_search: { threshold } } } })
+        yield* s.say("first")
+        yield* s.llm.tool("tool_search", { select: ["linear_linear_search_issues"] })
+        yield* s.llm.text("loaded")
+        yield* s.loop()
+        yield* useServers(["linear"])
+        yield* s.say("second")
+        yield* s.llm.text("still deferred")
+        yield* s.loop()
+        const bodies = yield* s.bodies()
+        const last = bodies.at(-1)!
+        const previous = bodies.at(-2)!
+        const linearNames = (body: Body) => toolNames(body).filter((name) => name.startsWith("linear_"))
+        expect(linearNames(previous)).toEqual(["linear_linear_search_issues"])
+        expect(linearNames(last)).toEqual(["linear_linear_search_issues"])
+        expect(toolNames(last)).toContain("tool_search")
+        expect(JSON.stringify(last.tools)).toBe(JSON.stringify(previous.tools))
+      }),
+    60_000,
+  )
+
+  it.instance(
+    "a tool_search call while only design tools are deferred does not trip MCP deferral",
+    () =>
+      Effect.gen(function* () {
+        yield* useServers(["linear"])
+        const s = yield* setup()
+        yield* s.say("load the design document tool")
+        yield* s.llm.tool("tool_search", { select: ["design_document"] })
+        yield* s.llm.text("loaded")
+        yield* s.loop()
+        const bodies = yield* s.bodies()
+        const search = (yield* s.toolParts()).find((p) => p.tool === "tool_search")
+        expect(search.state.metadata.mcpDeferred).toBe(false)
+        expect(search.state.metadata.loaded).toEqual(["design_document"])
+        for (const body of bodies) for (const name of mcpNames()) expect(toolNames(body)).toContain(name)
+        expect(toolNames(bodies.at(-1)!)).toContain("design_document")
+      }),
+    60_000,
+  )
+
+  it.instance(
+    "a tool the prompt switches off is neither indexed nor loadable",
+    () =>
+      Effect.gen(function* () {
+        yield* useServers(["github"])
+        const s = yield* setup()
+        const prompt = yield* SessionPrompt.Service
+        yield* prompt.prompt({
+          sessionID: s.chat.id,
+          agent: "build",
+          noReply: true,
+          tools: { github_issue_read: false },
+          parts: [{ type: "text", text: "read an issue" }],
+        })
+        yield* s.llm.tool("tool_search", { select: ["github_issue_read"] })
+        yield* s.llm.text("ok")
+        yield* s.loop()
+        const [body] = yield* s.bodies()
+        expect(systemText(body)).toContain("github (45): ")
+        expect(systemText(body)).not.toContain(" issue_read,")
+        const search = (yield* s.toolParts()).find((p) => p.tool === "tool_search")
+        expect(search.state.metadata.loaded).toEqual([])
+        expect(search.state.metadata.notFound).toEqual(["github_issue_read"])
+      }),
+    60_000,
+  )
+
+  it.instance(
     "a loaded MCP tool still asks for permission",
     () =>
       Effect.gen(function* () {

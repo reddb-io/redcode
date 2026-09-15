@@ -47,21 +47,25 @@ export function unknownToolMessage(
     .map((candidate) => ({ candidate, score: score(candidate) }))
     .toSorted((a, b) => a.score - b.score || (a.candidate < b.candidate ? -1 : 1))
     .slice(0, 3)
-    .map((item) => ({ name: clip(item.candidate, 64), deferred: deferred.has(item.candidate) }))
-  const render = (names: typeof nearest) => {
-    const load = names.find((item) => item.deferred)
+    .map((item) => ({ name: item.candidate, deferred: deferred.has(item.candidate) }))
+  // The select hint must carry the real name, which a clipped one is not: when it does not fit
+  // it is dropped for the plain hint, never shortened.
+  const render = (names: typeof nearest, load: boolean) => {
+    const target = load ? names.find((item) => item.deferred) : undefined
     return (
       `${UNKNOWN}'${clip(name, 64)}'.` +
-      (names.length ? ` Closest: ${names.map((item) => item.name).join(", ")}.` : "") +
-      (load ? ` Load one with tool_search {"select": ["${load.name}"]}.` : HINT)
+      (names.length ? ` Closest: ${names.map((item) => clip(item.name, 64)).join(", ")}.` : "") +
+      (target ? ` Load one with tool_search {"select": ["${target.name}"]}.` : HINT)
     )
   }
-  let message = render(nearest)
-  while (Buffer.byteLength(message) > UNKNOWN_TOOL_MAX_BYTES && nearest.length > 0) {
-    nearest.pop()
-    message = render(nearest)
+  const fits = (message: string) => Buffer.byteLength(message) <= UNKNOWN_TOOL_MAX_BYTES
+  for (let count = nearest.length; count >= 0; count--) {
+    const withLoad = render(nearest.slice(0, count), true)
+    if (fits(withLoad)) return withLoad
+    const plain = render(nearest.slice(0, count), false)
+    if (fits(plain)) return plain
   }
-  return message
+  return render([], false)
 }
 
 export const InvalidTool = Tool.define(

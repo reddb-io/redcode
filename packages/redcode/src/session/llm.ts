@@ -236,10 +236,9 @@ const live: Layer.Layer<
           auth: info,
           llmClient,
           messages: prepared.messages,
-          // The native runtime has no activeTools split, so deferred tools are simply absent.
-          tools: Object.fromEntries(
-            ToolSearch.activeNames(prepared.tools).map((name) => [name, prepared.tools[name]!]),
-          ),
+          // As on the AI SDK path: every tool is dispatchable, only the active ones are sent.
+          tools: prepared.tools,
+          advertise: ToolSearch.activeNames(prepared.tools),
           toolChoice: input.toolChoice,
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
