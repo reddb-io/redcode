@@ -62,6 +62,7 @@ import {
   toolSearchSummary,
   webSearchProviderLabel,
 } from "../../util/tool-display"
+import { pendingBadge } from "../../prompt/steer"
 import { Dynamic, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -1700,9 +1701,14 @@ function UserMessage(props: {
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
   const queued = createMemo(() => props.pending !== undefined && props.index > props.pending)
+  const sync = useSync()
+  const delivery = createMemo(() => sync.data.prompt_delivery[props.message.id])
+  const badge = createMemo(() => pendingBadge(delivery()))
+  // Promotion moves the message into the running turn; a remembered steer then shows it landed.
+  const steered = createMemo(() => !queued() && delivery() === "steer")
   const color = createMemo(() => local.agent.color(props.message.agent))
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
-  const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
+  const metadataVisible = createMemo(() => queued() || steered() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
   const approvals = createMemo(() =>
@@ -1764,17 +1770,34 @@ function UserMessage(props: {
             <Show
               when={queued()}
               fallback={
-                <Show when={ctx.showTimestamps()}>
+                <Show when={ctx.showTimestamps() || steered()}>
                   <text fg={theme.textMuted}>
-                    <span style={{ fg: theme.textMuted }}>
-                      {Locale.todayTimeOrDateTime(props.message.time.created)}
-                    </span>
+                    <Show when={steered()}>
+                      <span style={{ fg: theme.accent }}>↳ steered mid-turn</span>
+                      <Show when={ctx.showTimestamps()}>
+                        <span style={{ fg: theme.textMuted }}> · </span>
+                      </Show>
+                    </Show>
+                    <Show when={ctx.showTimestamps()}>
+                      <span style={{ fg: theme.textMuted }}>
+                        {Locale.todayTimeOrDateTime(props.message.time.created)}
+                      </span>
+                    </Show>
                   </text>
                 </Show>
               }
             >
               <text fg={theme.textMuted}>
-                <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
+                <Show
+                  when={badge().tone === "steer"}
+                  fallback={<span style={{ bg: color(), fg: queuedFg(), bold: true }}> {badge().label} </span>}
+                >
+                  <span style={{ bg: theme.accent, fg: selectedForeground(theme, theme.accent), bold: true }}>
+                    {" "}
+                    {badge().label}{" "}
+                  </span>
+                  <span style={{ fg: theme.accent }}> steering at the next step…</span>
+                </Show>
               </text>
             </Show>
           </box>

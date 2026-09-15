@@ -33,6 +33,7 @@ import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
 import { useToastOptional } from "../ui/toast"
+import { rememberedDelivery, type Delivery } from "../prompt/steer"
 
 export type SyncTiming = {
   /** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
@@ -143,6 +144,10 @@ export const {
       session_status: {
         [sessionID: string]: SessionStatus
       }
+      /** Delivery of prompts admitted while their session was working, by message id. */
+      prompt_delivery: {
+        [messageID: string]: Delivery
+      }
       session_diff: {
         [sessionID: string]: SnapshotFileDiff[]
       }
@@ -186,6 +191,7 @@ export const {
       provider_default: {},
       session: [],
       session_status: {},
+      prompt_delivery: {},
       session_diff: {},
       todo: {},
       message: {},
@@ -253,6 +259,7 @@ export const {
             )
               delete draft.part[messageID]
           }
+          for (const message of draft.message[sessionID] ?? []) delete draft.prompt_delivery[message.id]
           delete draft.message[sessionID]
           delete draft.todo[sessionID]
           delete draft.session_diff[sessionID]
@@ -513,6 +520,15 @@ export const {
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          break
+        }
+
+        case "session.next.prompt.admitted": {
+          const delivery = rememberedDelivery(
+            event.properties.delivery,
+            store.session_status[event.properties.sessionID]?.type,
+          )
+          if (delivery) setStore("prompt_delivery", event.properties.messageID, delivery)
           break
         }
 

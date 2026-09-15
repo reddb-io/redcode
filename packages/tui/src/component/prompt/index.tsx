@@ -59,6 +59,7 @@ import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 import { useLocation } from "../../context/location"
 import { useRedskilled } from "../../context/redskilled"
+import { busyHint, parseSteerCommand, promptDelivery, STEER_SLASH, type PromptIntent } from "../../prompt/steer"
 
 registerOpencodeSpinner()
 
@@ -187,6 +188,8 @@ export function Prompt(props: PromptProps) {
   const agentShortcut = useCommandShortcut("agent.cycle")
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
+  const submitShortcut = useCommandShortcut("input.submit")
+  const steerShortcut = useCommandShortcut("input.steer")
   const exit = useExit()
   const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
@@ -428,6 +431,27 @@ export function Prompt(props: PromptProps) {
           if (!handled) return
 
           dialog.clear()
+        },
+      },
+      {
+        title: "Steer running agent",
+        desc: "Deliver the prompt at the agent's next step instead of queueing it",
+        name: "prompt.steer",
+        category: "Prompt",
+        slashName: STEER_SLASH,
+        run: async () => {
+          dialog.clear()
+          const text = input.plainText
+          // Picked from the slash list or the palette with nothing to send yet: leave `/steer `
+          // in the prompt so the direction can be typed and sent with enter.
+          if (!text.trim() || /^\/\S*$/.test(text)) {
+            input.setText(`/${STEER_SLASH} `)
+            setStore("prompt", "input", input.plainText)
+            input.gotoBufferEnd()
+            input.focus()
+            return
+          }
+          await submit("steer")
         },
       },
       {
@@ -878,6 +902,26 @@ export function Prompt(props: PromptProps) {
     }
   })
 
+  // The steer key must win over the managed textarea layer, which would otherwise read a rebound
+  // steer key that overlaps `input.newline` as a newline.
+  useBindings(() => ({
+    target: inputTarget,
+    enabled: inputTarget() !== undefined && !props.disabled,
+    priority: 1,
+    commands: [
+      {
+        name: "input.steer",
+        title: "Steer running agent",
+        category: "Prompt",
+        // IME: double-defer like the textarea's native submit so the last composed character lands.
+        run: () => {
+          setTimeout(() => setTimeout(() => void submit("steer"), 0), 0)
+        },
+      },
+    ],
+    bindings: tuiConfig.keybinds.gather("prompt.steer", ["input.steer"]),
+  }))
+
   useBindings(() => {
     return {
       target: inputTarget,
@@ -1001,7 +1045,7 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
-  async function submit() {
+  async function submit(intent: PromptIntent = "submit") {
     // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
     // input's native onSubmit racing another dispatch). Without this guard,
     // a second call slips past the empty-input check before the first call
@@ -1011,13 +1055,14 @@ export function Prompt(props: PromptProps) {
     if (submitting) return false
     submitting = true
     try {
-      return await submitInner()
+      return await submitInner(intent)
     } finally {
       submitting = false
     }
   }
 
-  async function submitInner() {
+  async function submitInner(requested: PromptIntent) {
+    let intent = requested
     workspace.clearNotice()
 
     // IME: double-defer may fire before onContentChange flushes the last
@@ -1096,7 +1141,7 @@ export function Prompt(props: PromptProps) {
       sessionID = res.data.id
     }
 
-    const inputText = promptMessageText(
+    let inputText = promptMessageText(
       expandTrackedPastedText(
         store.prompt.input,
         input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
@@ -1107,6 +1152,18 @@ export function Prompt(props: PromptProps) {
         }),
       ),
     )
+
+    // `/steer <text>` steers from any terminal, including those that report shift+return as a
+    // plain return. A server command with the same name keeps precedence.
+    const steerText =
+      store.mode === "shell" || sync.data.command.some((x) => x.name === STEER_SLASH)
+        ? undefined
+        : parseSteerCommand(inputText)
+    if (steerText !== undefined) {
+      if (!steerText.trim()) return false
+      inputText = steerText
+      intent = "steer"
+    }
 
     // Filter out text parts (pasted content) since they're now expanded inline
     const nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
@@ -1163,6 +1220,7 @@ export function Prompt(props: PromptProps) {
         })
         .catch(failed)
     } else if (
+      steerText === undefined &&
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {
@@ -1185,6 +1243,9 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
+      // Busy session: enter queues behind the running turn, the steer key delivers at its next
+      // step. Idle session: a plain submit either way.
+      const delivery = props.sessionID ? promptDelivery(intent, status().type) : undefined
       sdk.client.session
         .prompt(
           {
@@ -1193,6 +1254,7 @@ export function Prompt(props: PromptProps) {
             agent: agent.name,
             model: selectedModel,
             variant,
+            ...(delivery ? { delivery } : {}),
             parts: [
               ...editorParts,
               {
@@ -1706,6 +1768,15 @@ export function Prompt(props: PromptProps) {
                     })()}
                   </box>
                 </box>
+                <Show when={status().type !== "retry"}>
+                  <text fg={theme.textMuted} flexShrink={1}>
+                    {busyHint({
+                      submitKey: submitShortcut(),
+                      steerKey: steerShortcut(),
+                      kittyKeyboard: renderer.capabilities?.kitty_keyboard,
+                    })}
+                  </text>
+                </Show>
                 <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
                   esc{" "}
                   <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
