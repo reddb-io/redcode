@@ -1,5 +1,24 @@
 # opencode
 
+## 0.31.0
+
+### Minor Changes
+
+- 0a5b474: Defer MCP tools behind a new `tool_search` tool once their schemas exceed about 3000 tokens, and defer `design_*` tools outside a Design context. The system context lists deferred tools by name, grouped by server. A search or an exact `select` loads them for the rest of the session, and calling a listed tool directly still works. Loaded tools are advertised after every other tool in the order they were loaded, and a server that connects mid-session reaches the model as one system update, so the cached tools block stays intact. Five connected MCP servers drop the first request from about 31k to 11k tokens. Configure with `experimental.tool_search` (`enabled: "auto" | true | false`, `threshold`).
+
+### Patch Changes
+
+- 7405d9a: Fix every prompt in a session failing with "Unexpected server error" once a completed task's quoted user message was no longer in the session history (for example after compaction). The task review that runs before each provider step re-validated the task's stored request and failed the whole prompt. A stored request is now trusted, and a task review the store refuses is logged and keeps the stored list instead of failing the turn.
+- 7621dc8: Keep the provider prompt cache warm across steps, turns and MCP connects.
+  - Tools are advertised in fixed blocks: native tools sorted by name, MCP resource tools, `tool_search`, directly advertised MCP tools, then tools activated through `tool_search` in activation order. MCP servers keep a durable order (config order, then first-seen) that survives restarts, reconnects and connection timing, so a server connecting mid-session appends its tools instead of interleaving them by name.
+  - Per-step reminders (task state, goal, plan and design context) travel in a trailing `<system-reminder>` message instead of being appended to the last user prompt, so earlier turns stay byte-identical. Cache breakpoints skip that message. Plugins using `experimental.chat.messages.transform` or the Agent PreStep hook no longer see these reminder parts in the step's messages.
+  - Calling an unknown tool returns a message of at most 300 bytes naming the closest tools instead of listing every tool.
+
+- ef04f6c: The v2 core `bash` tool (used by `redcode design`) now refuses sleep polling loops, blocking watchers and long sleeps before asking or running. Without monitors in v2, the refusal offers a single status check to run now and report, or a bounded wait under 30 s. The detector moved to `@reddb-io/redcode-core/tool/shell-polling` and the legacy shell tool uses it unchanged.
+  - @reddb-io/redcode-client@1.18.21
+  - @reddb-io/redcode-server@1.18.27
+  - @reddb-io/redcode-tui@1.21.3
+
 ## 0.30.0
 
 ### Minor Changes

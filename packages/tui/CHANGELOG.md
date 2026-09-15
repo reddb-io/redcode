@@ -1,5 +1,12 @@
 # @reddb-io/redcode-tui
 
+## 1.21.3
+
+### Patch Changes
+
+- Updated dependencies [ef04f6c]
+  - @reddb-io/redcode-core@1.23.1
+
 ## 1.21.2
 
 ### Patch Changes
