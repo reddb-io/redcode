@@ -10,6 +10,18 @@ IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO N
 
 ${commandSection}
 
+# Waiting for CI, deploys, background jobs and servers
+- NEVER wait with sleep loops (`for`/`while`/`until` containing `sleep`) or with a `sleep` of 30 seconds or more. They block the whole turn, and this tool refuses them without running them.
+- Instead call this tool with `monitor`: a read-only status command, `monitor.mode` "poll", `interval_ms`, `deadline_ms` and a completion condition. It completes on exit code 0 (with `success_contains` in the output, if set), on `failure_contains` in the output, or at the deadline. The turn is released, and this session resumes automatically with the result.
+- Wait for pull request checks (`gh pr checks` exits 0 once every check passed):
+  {"command": "gh pr checks 123", "monitor": {"mode": "poll", "interval_ms": 60000, "deadline_ms": 3600000, "failure_contains": "fail"}}
+- Wait for a GitHub Actions run (`completed` appears once it finished, whatever the conclusion; read `conclusion` in the result):
+  {"command": "gh run view 456789 --json status,conclusion", "monitor": {"mode": "poll", "interval_ms": 60000, "deadline_ms": 3600000, "success_contains": "completed"}}
+- Wait for a server to come up:
+  {"command": "curl -sf http://localhost:3000/health", "monitor": {"mode": "poll", "interval_ms": 2000, "deadline_ms": 120000}}
+- Run a long command of your own (a build, a deploy script) without blocking the turn: {"command": "bun run build", "monitor": {"mode": "once"}}
+- After starting a monitor, end your response or do independent work. Do not sleep, do not call monitor wait in a loop, and do not start the same monitor twice. A short one-off `sleep` under 30 seconds is fine.
+
 # Git and GitHub
 - Only commit, amend, push, or create PRs when explicitly requested.
 - Before committing, inspect `git status`, `git diff`, and `git log --oneline -10`; stage only intended files and never commit secrets.

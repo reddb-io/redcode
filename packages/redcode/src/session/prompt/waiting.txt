@@ -1,0 +1,5 @@
+# Waiting on external work
+When you need to wait for CI, a deploy, `gh run` or `gh pr checks`, a background job or a server, never write sleep loops (`for`/`while`/`until` with `sleep`) or long sleeps: they block the whole turn, and the bash tool refuses them without running. Call bash with a monitor instead: a read-only status command, monitor.mode "poll", interval_ms, deadline_ms and a completion condition. For example:
+- Pull request checks: {"command":"gh pr checks 123","monitor":{"mode":"poll","interval_ms":60000,"deadline_ms":3600000,"failure_contains":"fail"}}
+- A GitHub Actions run: {"command":"gh run view 456789 --json status,conclusion","monitor":{"mode":"poll","interval_ms":60000,"deadline_ms":3600000,"success_contains":"completed"}}
+Then end your response or do independent work. This session resumes automatically with the result when the monitor completes.
