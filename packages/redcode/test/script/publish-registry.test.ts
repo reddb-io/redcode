@@ -237,8 +237,8 @@ describe("publishRelease", () => {
     }
     expect(message).not.toContain("@reddb-io/redcode-linux-x64@0.31.1")
     expect(message).toContain("This is not registry lag")
-    expect(message).toContain("npm stage approve <stage-id>")
-    expect(message).toContain("npm stage reject <stage-id>")
+    expect(message).toContain("npx npm@11.19.1 stage approve <stage-id>")
+    expect(message).toContain("npx npm@11.19.1 stage reject <stage-id>")
     expect(message).toContain("https://docs.npmjs.com/trusted-publishers")
     expect(message).toContain(`Not publishing ${main}@0.31.1`)
     // The probe happens only after the full visibility wait, exactly once per missing package.
@@ -276,6 +276,90 @@ describe("publishRelease", () => {
     ).catch((error: Error) => error)
     expect(error).toBeInstanceOf(StagedPublishError)
     expect((error as Error).message).toContain(`${main}@0.31.1  https://www.npmjs.com/package/${main}`)
+  })
+})
+
+describe("publishRelease probe after the visibility wait", () => {
+  const lost = "@reddb-io/redcode-darwin-arm64"
+  const live = "@reddb-io/redcode-linux-x64"
+  const main = "@reddb-io/redcode"
+
+  // A platform package whose publish attempts follow a script: "lost" returns success without
+  // reaching the registry, "publish" really publishes, and an Error is thrown as npm's failure.
+  function scripted(npm: ReturnType<typeof fakeNpm>, name: string, steps: Array<"lost" | "publish" | Error>) {
+    const real = npm.pkg(name)
+    let attempt = 0
+    const item: RegistryPackage = {
+      ...real,
+      publish: async () => {
+        const step = steps[Math.min(attempt, steps.length - 1)]
+        attempt++
+        npm.events.push(`attempt:${name}`)
+        if (step instanceof Error) throw step
+        if (step === "publish") await real.publish()
+      },
+    }
+    return { item, attempts: () => attempt }
+  }
+
+  test("a probe that republishes waits once more and then publishes the main package", async () => {
+    const npm = fakeNpm()
+    const platform = scripted(npm, lost, ["lost", "publish"])
+    expect(
+      await publishRelease({ platforms: [npm.pkg(live), platform.item], main: npm.pkg(main) }, npm.deps, options),
+    ).toBe("published")
+    expect(platform.attempts()).toBe(2)
+    expect(npm.logs.join("\n")).toContain(`republished ${lost}@0.31.1; waiting once more`)
+    expect(npm.events).toContain(`publish:${main}`)
+    expect(npm.now()).toBe(options.timeoutMs)
+  })
+
+  test("a probe that republishes but stays invisible fails as registry lag after one more wait", async () => {
+    const npm = fakeNpm({ visibleAfter: { [lost]: Infinity } })
+    const platform = scripted(npm, lost, ["lost", "publish"])
+    const error = await publishRelease(
+      { platforms: [npm.pkg(live), platform.item], main: npm.pkg(main) },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    expect(error).not.toBeInstanceOf(StagedPublishError)
+    expect((error as Error).message).toContain("looks like registry lag")
+    expect(platform.attempts()).toBe(2)
+    expect(npm.now()).toBe(2 * options.timeoutMs)
+    expect(npm.events).not.toContain(`publish:${main}`)
+  })
+
+  test("a probe answering previously published fails as registry lag without waiting again", async () => {
+    const npm = fakeNpm()
+    const platform = scripted(npm, lost, ["lost", conflictError()])
+    const error = await publishRelease(
+      { platforms: [npm.pkg(live), platform.item], main: npm.pkg(main) },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    expect(error).not.toBeInstanceOf(StagedPublishError)
+    const message = (error as Error).message
+    expect(message).toContain(`did not serve ${lost}@0.31.1`)
+    expect(message).toContain("looks like registry lag")
+    expect(platform.attempts()).toBe(2)
+    expect(npm.now()).toBe(options.timeoutMs)
+    expect(npm.events).not.toContain(`publish:${main}`)
+  })
+
+  test("a probe that errors keeps the timeout in the failure and names the probe error", async () => {
+    const npm = fakeNpm()
+    const platform = scripted(npm, lost, ["lost", new Error("getaddrinfo ENOTFOUND registry.npmjs.org")])
+    const error = await publishRelease(
+      { platforms: [npm.pkg(live), platform.item], main: npm.pkg(main) },
+      npm.deps,
+      options,
+    ).catch((error: Error) => error)
+    const message = (error as Error).message
+    expect(message).toContain(`npm registry did not serve ${lost}@0.31.1 within 600s`)
+    expect(message).toContain(`${lost}@0.31.1: getaddrinfo ENOTFOUND registry.npmjs.org`)
+    expect((error as Error).cause).toBeInstanceOf(Error)
+    expect(npm.now()).toBe(options.timeoutMs)
+    expect(npm.events).not.toContain(`publish:${main}`)
   })
 })
 
