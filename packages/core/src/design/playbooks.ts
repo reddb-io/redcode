@@ -78,16 +78,28 @@ export const PLAYBOOKS: readonly Playbook[] = [
   },
   {
     id: "flow",
-    use_when: "Prototype a journey across several interactive screens or steps",
-    choose: ["Use kind flow when the decision depends on transitions, validation, recovery or completion."],
-    structure: ["Show the entry point, the main path, the completion state and how to return or recover."],
-    design_rules: [
-      "Keep prototype state local and deterministic. Supply mounting fixtures for application providers and data.",
-      "Record scenarios with the actions that traverse each path and data-state assertions on the final visible target.",
+    use_when: "Prototype a journey across several interactive screens or steps, or a multi-page app",
+    choose: [
+      "Use kind flow when the decision depends on transitions, validation, recovery or completion.",
+      "Make each page or wizard step a screen. Keep states within one page (loading, error, a modal, an empty list) as params and scenarios on that screen.",
     ],
-    pitfalls: ["Do not leave primary buttons inert or replace error recovery with explanatory prose."],
+    structure: [
+      "Show the entry point, the main path, the completion state and how to return or recover.",
+      'Mark every page with data-design-screen="stable-id" and data-design-label="Name", in journey order; the first one opens by default. Inside variants, repeat the same screen IDs in each variant root so the reviewer can compare step by step.',
+      'Wire navigation with data-design-go="screen-id" on buttons and links (or href="#screen-id"); use design.go("screen-id") only when a script decides the destination, such as after simulated submit. Call event.preventDefault() in a click handler to block navigation on invalid input.',
+    ],
+    design_rules: [
+      "Keep prototype state local and deterministic. Supply mounting fixtures for application providers and data. Share data between screens in ordinary script variables; screens stay mounted while hidden.",
+      "Expose the journey's knobs as params (outcome, step data, permissions) with design.params.on and report user changes with design.state.",
+      "Record one scenario per screen that matters with screen set, the actions that reach the state and a data-state assertion on the visible target. The audit opens scenario.screen first and reports screens it never rendered.",
+    ],
+    pitfalls: [
+      "Do not leave primary buttons inert or replace error recovery with explanatory prose.",
+      "Do not hand-write hidden/display toggles, a custom router or a step toolbar for pages; the review shell already provides a screen switcher.",
+      "Do not nest screens or use a screen for a transient state; the audit flags nested and duplicate IDs and data-design-go targets that do not exist.",
+    ],
     review_notes: [
-      "Exercise the flow at narrow and wide widths. Attach notes to the published revision and the exact step.",
+      "Exercise the flow at narrow and wide widths. Notes record the screen they were taken on, and revealing a note opens that screen. Check the Screen warnings in the design_preview result before publishing again.",
     ],
   },
   {
