@@ -708,6 +708,7 @@ export function make(options: ClientOptions) {
               decisions: input["decisions"],
               questions: input["questions"],
               scenarios: input["scenarios"],
+              targets: input["targets"],
               designSystem: input["designSystem"],
               entry: input["entry"],
               tweaks: input["tweaks"],

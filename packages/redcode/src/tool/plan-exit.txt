@@ -1,4 +1,4 @@
-Finish the plan file before calling plan_exit. For an implementation handoff, supply tasks covering every deliverable and its verification. Each task needs a stable key, concrete content, observable criterion and an exact quote from the plan.
+Finish the plan file before calling plan_exit. For an implementation handoff, supply tasks covering every deliverable and its verification. Each task needs a stable key, concrete content, observable criterion and an exact quote from the plan. When the plan implements an approved Design that changes existing code, also include tasks that verify the behaviors the plan preserves (for example data loading, pagination, state and existing tests), not only the visual changes.
 
 Example for a plan containing "Handle duplicate payment retries":
 {"tasks":[{"key":"payment-retries","content":"Implement and verify idempotent payment retries","criterion":"Repeated requests charge once","quote":"Handle duplicate payment retries"}]}

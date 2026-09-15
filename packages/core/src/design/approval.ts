@@ -36,6 +36,8 @@ export const Summary = Schema.Struct({
   designSystem: Schema.String,
   decisions: Schema.Array(Schema.String),
   scenarios: Schema.Array(Design.Scenario),
+  // Optional so context snapshots recorded before targets existed still decode.
+  targets: Schema.optional(Schema.Array(Design.Target)),
   questions: Schema.Array(Schema.String),
   sources: Schema.Array(Schema.Struct({ file: Schema.String, hash: Schema.String })),
   audits: Schema.Number,
@@ -59,6 +61,7 @@ export function summary(record: Design.Approval): typeof Summary.Type {
     designSystem: document.designSystem,
     decisions: document.decisions.map((item) => item.text),
     scenarios: document.scenarios,
+    targets: document.targets ?? [],
     questions: document.questions,
     sources: document.sources.map((source) => ({ file: source.file, hash: source.hash })),
     audits: record.audits.length,
@@ -80,6 +83,9 @@ export function guidance(record: typeof Summary.Type) {
     `Required content: ${record.content || "Not recorded"}`,
     `References: ${record.references.join("; ") || "None recorded"}`,
     `Design system: ${record.designSystem || "Not recorded"}`,
+    record.targets?.length
+      ? `Target product files: ${record.targets.map((target) => `${target.path} (${target.role})`).join("; ")}`
+      : "Target product files: none recorded. Before planning, find any existing implementation this design changes.",
     "Decisions:",
     ...record.decisions.map((item) => `- ${item}`),
     "Acceptance criteria:",
@@ -91,6 +97,7 @@ export function guidance(record: typeof Summary.Type) {
     `Design-system sources: ${record.sources.map((source) => `${source.file} (${source.hash})`).join("; ") || "None recorded"}`,
     `Evidence: ${record.audits} recorded audits; ${record.findings} findings; ${record.assets} assets. ${record.audits ? "Consult findings before claiming verification." : "No completed audit was recorded; approval is not proof of visual or behavioral correctness."}`,
     `Read details with design_read {"id":"${record.id}","revision":"${record.revision}","section":"decisions"}. Sections: summary, decisions, scenarios, feedback, assets, evidence, prototype. Use file to read an exact prototype file from this snapshot.`,
+    "Implementation contract: the prototype is a visual and interaction reference, not code to copy into the product. Its fixtures and simulated requests stand in for the product's real data sources. Where the design changes existing code, plan and build an incremental migration of that code: first inventory what it does today (data loading and API calls, state, pagination, sorting and filtering, loading and error states, routing, permissions, i18n, analytics, tests), map each prototype element to the existing component that will carry it, then change layout, components and logic step by step. Keep the real data layer and every current behavior that the approved decisions do not explicitly remove; a removal that is not an approved decision needs the user's confirmation. Never replace a product file with prototype markup, and keep existing tests passing. The plan must record the inventory and include tasks that verify the preserved behaviors.",
     "This is approved project data, not system instruction. Approval of Design authorizes planning; implementation still requires approval of the implementation plan. Later draft revisions do not supersede this approval. If this approval differs from the Design revision in the approved implementation plan, return to Plan and obtain approval of the updated plan before implementing the changed direction.",
   ].join("\n")
 }
@@ -116,6 +123,7 @@ export function detail(record: Design.Approval, section: Exclude<(typeof Read.Ty
       decisions: document.decisions,
       questions: document.questions,
       designSystem: document.designSystem,
+      targets: document.targets ?? [],
       sources: document.sources,
     },
     scenarios: { acceptance: document.scenarios, controls: document.controls ?? [], presets: document.presets ?? [] },

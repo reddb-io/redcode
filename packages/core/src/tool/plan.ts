@@ -58,7 +58,7 @@ const layer = Layer.effectDiscard(
         }),
         plan_exit: Tool.make({
           description:
-            "Read and record the finished implementation plan. Provide its file path and tasks covering every deliverable and verification, each with key, content, criterion and exact quote from the plan. Build requires this decomposition, which creates persistent tasks after approval. The plan must be self-contained, name decisions and include concrete verification. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",
+            "Read and record the finished implementation plan. Provide its file path and tasks covering every deliverable and verification, each with key, content, criterion and exact quote from the plan. Build requires this decomposition, which creates persistent tasks after approval. The plan must be self-contained, name decisions and include concrete verification. When the plan implements an approved Design that changes existing code, include tasks that verify the behaviors it preserves (for example data loading, pagination and state), not only the visual changes. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",
           input: Schema.Struct({ path: Schema.String, tasks: Schema.optional(Schema.Array(SessionTodo.PlanTask)) }),
           output: SessionPlan.Info,
           execute: (input, context) =>
