@@ -1,5 +1,19 @@
 # opencode
 
+## 0.31.1
+
+### Patch Changes
+
+- 0f0bee0: Keep the models catalog working on networks that block `models.opencode.ai`. Redcode now tries `REDCODE_MODELS_URL`, then the new global `models.sources` config list, then `https://models.opencode.ai/api.json` and `https://models.dev/api.json`, and falls back to the disk cache or the catalog bundled into the release. A source that answers 401, 403, 407 or 451, fails with a proxy or TLS error, or returns a page that is not a catalog is skipped for 1h, then 6h, then 24h. The backoff is persisted, so restarts don't retry it, and the source logs one warning instead of an error every refresh. A block page never replaces a good cache, and `models-dev.refreshed` is emitted only when the catalog changes. `redcode models --verbose` prints the catalog origin, age and blocked sources. Release builds now fail when no source yields a valid catalog, instead of embedding whatever the request returned.
+- ae2b008: Stop `todowrite` from failing over and over in fresh sessions. The task gate now reads a legacy session's user requests and tool results even after the session gains a projected context update or agent switch, which used to hide all of them. A requirement that retypes the request with different whitespace, quote marks, accents, case or an ellipsis matches it, and a paraphrase attaches the latest request and keeps the wording as the criterion. Completing a task still requires real evidence. Refusals now say how to fix the call, are logged at WARN with their kind, and the folded "Todo update failed" row shows the latest error, expands to every error in the run and copies them.
+- 7b49f6b: Make `apply_patch` transactional:
+  - **Staging:** every hunk is staged in memory against the current file contents, so later hunks see earlier ones, including updates to a file moved earlier in the same patch.
+  - **Checks:** permission, repository and external-directory checks run on every path with symlinks resolved, including move sources and destinations, deletes, and new files under a linked directory. Nothing touches disk until every path is verified and approved.
+  - **Writes:** each file is written atomically through an exclusive temp file created with the target's mode, keeping its mode and symlinks.
+  - **Failures:** a patch fails without writing if a file changed while approval was pending, or if two paths resolve to the same file. A failure midway rolls back the files already written, restoring deleted symlinks as symlinks, and the error lists what was rolled back and anything that could not be.
+  - **Permission diff:** it shows when an added or moved file replaces an existing one.
+  - **Line endings:** each line keeps its own ending, new lines use the file's dominant ending, and a missing trailing newline is preserved.
+
 ## 0.31.0
 
 ### Minor Changes
