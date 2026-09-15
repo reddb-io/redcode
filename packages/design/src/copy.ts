@@ -109,6 +109,7 @@ export const reviewCopy = {
   approvalDetails: "View approved decisions",
   variants: "Variants",
   variant: "Variant",
+  screens: "Screens",
   single: "Single view",
   sideBySide: "Side by side",
   compareVariant: "Compare variant",

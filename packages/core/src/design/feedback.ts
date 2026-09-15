@@ -43,11 +43,17 @@ function flatten(context: Design.ParamContext | undefined) {
       ...(context.preset ? [`preset=${context.preset}`] : []),
       ...(context.variant ? [`variant=${context.variant}`] : []),
       ...(context.component ? [`component=${context.component}`] : []),
+      ...(context.screen ? [`screen=${context.screen}`] : []),
       ...Object.entries(context.values).flatMap(([component, fields]) =>
         Object.entries(fields).map(([field, value]) => `${component}.${field}=${JSON.stringify(value)}`),
       ),
     ].join("; "),
   )
+}
+
+function unscreened(context: Design.ParamContext): Design.ParamContext {
+  const { screen: _, ...rest } = context
+  return rest
 }
 
 /** Legacy browsers mirrored the selected variant as a pseudo-note; it is metadata, not a note. */
@@ -151,8 +157,12 @@ export function render(input: Design.Feedback, context: Context) {
             const xpath = item.xpath ? inline(item.xpath, 2000) : ""
             const selected = item.selectedText ? clean(item.selectedText) : ""
             const element = item.elementText ? clean(item.elementText) : ""
+            // The screen gets its own line, so a note on another screen does not repeat every parameter.
             const scenario =
-              item.params && !(input.params && sameParams(item.params, input.params)) ? flatten(item.params) : ""
+              item.params && !(input.params && sameParams(unscreened(item.params), unscreened(input.params)))
+                ? flatten(unscreened(item.params))
+                : ""
+            const screen = item.params?.screen ? inline(item.params.screen, 64) : ""
             // A note drafted before a live reload still describes the revision it was captured on.
             const revision = item.revision && item.revision !== input.revision ? attribute(item.revision) : ""
             const attached = boards.flatMap((board, position) => {
@@ -168,6 +178,7 @@ export function render(input: Design.Feedback, context: Context) {
               xpath ? `XPath: ${xpath}` : "",
               selected ? `Selected text: ${quote(selected, LIMITS.selectedText)}` : "",
               element && element !== selected ? `Element text: ${quote(element, LIMITS.elementText)}` : "",
+              screen ? `Screen: ${screen}` : "",
               scenario ? `Scenario: ${scenario}` : "",
               revision ? `Revision: ${revision}` : "",
               ...attached,

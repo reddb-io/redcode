@@ -2493,3 +2493,57 @@ test("the V2 review feed counts a connected review page while it is subscribed",
   abort.abort()
   await until(() => DesignReviewPresence.shared.connected(id) === 0, "the closed feed releases its connection")
 })
+
+test("screens get a switcher that follows in-prototype navigation and notes record and reopen their screen", async () => {
+  const current = await published("html")
+  await Bun.write(
+    path.join(current.document.root, current.document.entry),
+    `<!doctype html><html lang="en"><body><section data-design-screen="cart" data-design-label="Cart"><h1 id="cart-title">Cart</h1><button id="to-pay" data-design-go="pay">Pay</button></section><section data-design-screen="pay" data-design-label="Payment"><h1 id="pay-title">Payment</h1><button id="back" data-design-go="cart">Back</button></section></body></html>`,
+  )
+  const revision = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Screens",
+  })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent = await captureFeedback(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await showsRevision(page, revision.id)
+    const frame = page.frameLocator("#preview")
+    const tab = (name: string) => page.locator("#screens").getByRole("tab", { name, exact: true })
+    await tab("Cart").waitFor()
+    expect(await page.locator("#screens [role=tab]").allTextContents()).toEqual(["Cart", "Payment"])
+    expect(await tab("Cart").getAttribute("aria-selected")).toBe("true")
+    await tab("Payment").click()
+    await frame.locator("#pay-title").waitFor({ state: "visible" })
+    expect(await frame.locator("#cart-title").isVisible()).toBe(false)
+    // Navigation inside the prototype moves the switcher too.
+    await frame.locator("#back").click()
+    await until(async () => (await tab("Cart").getAttribute("aria-selected")) === "true", "switcher follows the frame")
+    await frame.locator("#to-pay").click()
+    await until(async () => (await tab("Payment").getAttribute("aria-selected")) === "true", "payment selected")
+    await annotate(page, true)
+    await frame.locator("#pay-title").click()
+    const card = page.getByLabel("Note for this element", { exact: true })
+    await card.fill("Say which card is charged")
+    await card.press("Enter")
+    await annotate(page, false)
+    await tab("Cart").click()
+    await frame.locator("#cart-title").waitFor({ state: "visible" })
+    // Revealing the note opens the screen it was written on.
+    await note(page, "Payment", "Say which card is charged")
+      .getByRole("button", { name: "Reveal", exact: true })
+      .click()
+    await frame.locator("#pay-title").waitFor({ state: "visible" })
+    await until(async () => (await tab("Payment").getAttribute("aria-selected")) === "true", "note screen selected")
+    await page.getByRole("button", { name: "Send to agent", exact: true }).click()
+    await until(() => sent.length === 1, "feedback sent")
+    expect(sent[0].items[0].params?.screen).toBe("pay")
+    expect(sent[0].params?.screen).toBe("pay")
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)

@@ -1,5 +1,10 @@
 # V2 Schema Changelog
 
+## 2026-09-15: Design Screens
+
+- Add optional `screen` (string, a `data-design-screen` id) to `Design.Scenario`: the audit opens that screen before the scenario's actions. Add optional `screen` to `Design.ParamContext`, carried by `Design.Feedback.params` and each `Design.FeedbackItem.params`: the screen the review page showed when the context was captured. The rendered `<design-review>` message gains a `Screen:` line per note and `screen=` in its preview parameters. Regenerated the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`) and the V2 client (`bun run generate` in `packages/client`).
+- Add no route, migration or durable-event version; stored documents and feedback without `screen` decode as before. The review preview and audits inject the in-frame screen runtime (`@reddb-io/redcode-design/screens`), which is not a schema change.
+
 ## 2026-09-15: Unambiguous Design Review Note Targets
 
 - Add optional `xpath` (at most 2000 characters: the element's absolute XPath in the revision the note was captured on) and `context` (at most 240 characters: the containers around the element, outermost first, plus the row and column headers of a table cell) to each `Design.Feedback.items[]` entry (`POST /api/session/:sessionID/design/:designID/feedback`). The rendered `<design-review>` message shows them as `Context:` and `XPath:` lines under each note. Stored notes without them decode and render as before.

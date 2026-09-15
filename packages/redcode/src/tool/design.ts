@@ -322,12 +322,15 @@ export const DesignTools = Effect.gen(function* () {
                 "No new tab was requested: a review tab was requested moments ago or never connected, or a review page just closed (a reload reconnects on its own). Give the user the review link if they cannot find it.",
               disabled: `Browser launch is disabled by ${disabled}; no tab was requested. Give the user the review link.`,
             }[outcome]
+            const screens = yield* Effect.promise(() =>
+              DesignQuality.screenNotice(revision.document.root, revision.document.engine, revision.document.entry),
+            )
             return result(
               `Published ${revision.id}. Review: ${url}\n${page} Replies appear in the review page and in this TUI.${
                 document.system?.tailwind && !tooling
                   ? "\nProject tooling permission was not granted; this revision was built without the PostCSS pipeline (Tailwind utility classes are absent)."
                   : ""
-              }`,
+              }${screens}`,
               {
                 id: document.id,
                 revision: revision.id,

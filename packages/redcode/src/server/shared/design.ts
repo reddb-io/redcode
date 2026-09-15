@@ -29,6 +29,7 @@ import { NonNegativeInt } from "@reddb-io/redcode-schema/schema"
 import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
+import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
 /** Browser JSON API shared with the review UI. Session admission remains owned by the TUI runtime. */
@@ -231,7 +232,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
                   }),
               })
               return html(
-                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${content}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
+                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><script>(${screens.toString()})()</script>${content}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
               )
             }
             if (parts[4] === "job" && request.method === "GET" && !parts[5]) return reply(yield* renderer.jobs(id))

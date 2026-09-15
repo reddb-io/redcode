@@ -232,6 +232,30 @@ describe("DesignFeedback.render", () => {
   })
 })
 
+describe("DesignFeedback screens", () => {
+  test("names the screen of each note without repeating unchanged parameters", () => {
+    const text = DesignFeedback.render(
+      {
+        ...base,
+        params: { values: { checkout: { items: 2 } }, screen: "pay" },
+        items: [
+          {
+            target: "#card",
+            text: "Label the card field",
+            params: { values: { checkout: { items: 2 } }, screen: "pay" },
+          },
+          { target: "#list", text: "Show totals", params: { values: { checkout: { items: 2 } }, screen: "cart" } },
+        ],
+      },
+      context,
+    )
+    expect(text).toContain("### 1. #card\nNote: Label the card field\nScreen: pay")
+    expect(text).toContain("### 2. #list\nNote: Show totals\nScreen: cart")
+    expect(text).not.toContain("Scenario:")
+    expect(text).toContain("## Preview parameters\nscreen=pay; checkout.items=2")
+  })
+})
+
 describe("DesignFeedback variant operations", () => {
   const decode = Schema.decodeUnknownSync(Design.Feedback)
   const operation = (action: Record<string, unknown>) => decode({ ...base, action })
