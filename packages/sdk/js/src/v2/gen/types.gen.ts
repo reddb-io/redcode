@@ -630,7 +630,6 @@ export type CompactionPart = {
     after: number
   }
   focus?: string
-  trimmed?: number
   tools?: {
     loaded: Array<string>
     mcpDeferred?: boolean

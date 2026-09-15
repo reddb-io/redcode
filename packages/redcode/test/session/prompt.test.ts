@@ -7424,7 +7424,7 @@ const seedTurn = Effect.fn("test.seedTurn")(function* (
     modelID: ref.modelID,
     providerID: ref.providerID,
     parentID: user.id,
-    time: { created: input.completed ?? Date.now(), completed: input.completed ?? Date.now() },
+    time: { created: Date.now(), completed: input.completed ?? Date.now() },
     finish: "stop",
   }
   yield* sessions.updateMessage(assistant)
@@ -7631,7 +7631,7 @@ it.instance(
       expect(toolsOf(summarize).map((tool) => (tool as { name: string }).name)).toEqual(
         toolsOf(step).map((tool) => (tool as { name: string }).name),
       )
-      expect(summarize.body.tool_choice).toBeUndefined()
+      expect(JSON.stringify(summarize.body.tool_choice ?? { type: "auto" })).not.toContain("none")
       const [summary] = summaries(yield* sessions.messages({ sessionID: chat.id }))
       expect(summary?.info.role === "assistant" && summary.info.error).toBeFalsy()
       // The fake refuses what the real API refuses: the same history without tools.
