@@ -1,10 +1,10 @@
 // Steering vs queueing from the prompt.
 //
-// While a session is working, a submitted prompt is admitted to the session inbox with a delivery:
-// `queue` waits until the running turn would otherwise go idle, `steer` is promoted at the next
-// safe step boundary of the running turn without interrupting the tool that is running. Enter
-// queues (the default), the steer keybind (shift+return) or `/steer <text>` steers. On an idle
-// session both are a plain submit and no delivery is sent.
+// A submitted prompt is admitted to the session inbox with a delivery: `queue` waits until the
+// running turn would otherwise go idle, `steer` is promoted at the next safe step boundary of the
+// running turn without interrupting the tool that is running. On an idle session both run right
+// away, so the delivery is always sent and no client-side status check can race the server.
+// Enter queues; the steer key (shift+return, only while the session works) or `/steer <text>` steers.
 
 export type PromptIntent = "submit" | "steer"
 export type Delivery = "steer" | "queue"
@@ -14,10 +14,17 @@ export function isBusy(statusType: string | undefined) {
   return statusType !== undefined && statusType !== "idle"
 }
 
-/** The delivery a prompt is sent with; `undefined` on an idle session (a normal submit). */
-export function promptDelivery(intent: PromptIntent, statusType: string | undefined): Delivery | undefined {
-  if (!isBusy(statusType)) return undefined
+/** The delivery a prompt is sent with. */
+export function promptDelivery(intent: PromptIntent): Delivery {
   return intent === "steer" ? "steer" : "queue"
+}
+
+/**
+ * The steer key only means "steer" while the session works; on an idle session it falls through
+ * to the textarea, where the same key may insert a newline.
+ */
+export function steerKeyActive(input: { focused: boolean; disabled: boolean; statusType: string | undefined }) {
+  return input.focused && !input.disabled && isBusy(input.statusType)
 }
 
 export const STEER_SLASH = "steer"
@@ -27,9 +34,53 @@ export const STEER_SLASH = "steer"
  * with (possibly empty), or `undefined` when the input is not a steer command.
  */
 export function parseSteerCommand(input: string): string | undefined {
+  const prefix = steerPrefixLength(input)
+  return prefix === undefined ? undefined : input.slice(prefix)
+}
+
+function steerPrefixLength(input: string) {
   const match = /^\/steer(?:[ \t]+|\n|$)/.exec(input)
-  if (!match) return undefined
-  return input.slice(match[0].length)
+  return match ? match[0].length : undefined
+}
+
+type Span = { start: number; end: number }
+type SourcedPart = { type: string; source?: unknown }
+
+function shiftSpan<T extends Span>(span: T, by: number): T {
+  return { ...span, start: Math.max(0, span.start - by), end: Math.max(0, span.end - by) }
+}
+
+function isSpan(value: unknown): value is Span {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Span).start === "number" &&
+    typeof (value as Span).end === "number"
+  )
+}
+
+/**
+ * Strips `/steer` from the prompt text and moves the parts' text offsets (file and symbol parts
+ * keep them under `source.text`, agent parts directly under `source`) by the removed prefix, so a
+ * message restored into the prompt still lines its mentions up with the text.
+ */
+export function stripSteerCommand<P extends SourcedPart>(
+  text: string,
+  parts: readonly P[],
+): { text: string; parts: P[] } | undefined {
+  const prefix = steerPrefixLength(text)
+  if (prefix === undefined) return undefined
+  return {
+    text: text.slice(prefix),
+    parts: parts.map((part) => {
+      const source = part.source
+      if (typeof source !== "object" || source === null) return part
+      const nested = (source as { text?: unknown }).text
+      if (isSpan(nested)) return { ...part, source: { ...source, text: shiftSpan(nested, prefix) } } as P
+      if (isSpan(source)) return { ...part, source: shiftSpan(source, prefix) } as P
+      return part
+    }),
+  }
 }
 
 /** Whether a terminal without keyboard enhancements would report the steer key as a plain return. */
@@ -49,17 +100,32 @@ export function busyHint(input: { submitKey: string; steerKey: string; kittyKeyb
 
 export type PendingBadge = { label: string; tone: "steer" | "queue" }
 
-/** Badge for a user message that is admitted but not yet promoted into the running turn. */
-export function pendingBadge(delivery: Delivery | undefined): PendingBadge {
-  if (delivery === "steer") return { label: "STEER", tone: "steer" }
+/** Badge for a user message that is admitted but not yet promoted. */
+export function pendingBadge(steer: boolean): PendingBadge {
+  if (steer) return { label: "STEER", tone: "steer" }
   return { label: "QUEUED", tone: "queue" }
 }
 
+export type SteeredAt = "mid-turn" | "idle"
+
+export function steeredLabel(at: SteeredAt) {
+  return at === "mid-turn" ? "↳ steered mid-turn" : "↳ steered"
+}
+
+type MessageLike = {
+  id: string
+  role: string
+  finish?: string
+  time: { created: number; completed?: number }
+}
+
 /**
- * The delivery the transcript remembers for an admitted prompt. Only prompts admitted while the
- * session was working are remembered: an idle submit is admitted as a steer too, but nothing was
- * steered.
+ * Where a steer landed, judged when its promotion arrives: mid-turn when the assistant message
+ * before it is still open or ended on tool calls (a step boundary), otherwise at an idle boundary.
  */
-export function rememberedDelivery(delivery: Delivery, statusType: string | undefined): Delivery | undefined {
-  return isBusy(statusType) ? delivery : undefined
+export function steeredAt(messages: readonly MessageLike[], messageID: string): SteeredAt {
+  const previous = messages.findLast((message) => message.role === "assistant" && message.id !== messageID)
+  if (!previous) return "idle"
+  if (!previous.time.completed) return "mid-turn"
+  return previous.finish === "tool-calls" || previous.finish === "unknown" ? "mid-turn" : "idle"
 }

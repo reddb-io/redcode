@@ -33,7 +33,7 @@ import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
 import { useToastOptional } from "../ui/toast"
-import { rememberedDelivery, type Delivery } from "../prompt/steer"
+import { steeredAt, type SteeredAt } from "../prompt/steer"
 
 export type SyncTiming = {
   /** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
@@ -144,9 +144,13 @@ export const {
       session_status: {
         [sessionID: string]: SessionStatus
       }
-      /** Delivery of prompts admitted while their session was working, by message id. */
-      prompt_delivery: {
-        [messageID: string]: Delivery
+      /** Steers admitted and not yet promoted, by message id. */
+      prompt_steer: {
+        [messageID: string]: true
+      }
+      /** Promoted steers and where they landed, by message id. */
+      prompt_steered: {
+        [messageID: string]: SteeredAt
       }
       session_diff: {
         [sessionID: string]: SnapshotFileDiff[]
@@ -191,7 +195,8 @@ export const {
       provider_default: {},
       session: [],
       session_status: {},
-      prompt_delivery: {},
+      prompt_steer: {},
+      prompt_steered: {},
       session_diff: {},
       todo: {},
       message: {},
@@ -259,7 +264,10 @@ export const {
             )
               delete draft.part[messageID]
           }
-          for (const message of draft.message[sessionID] ?? []) delete draft.prompt_delivery[message.id]
+          for (const message of draft.message[sessionID] ?? []) {
+            delete draft.prompt_steer[message.id]
+            delete draft.prompt_steered[message.id]
+          }
           delete draft.message[sessionID]
           delete draft.todo[sessionID]
           delete draft.session_diff[sessionID]
@@ -524,11 +532,22 @@ export const {
         }
 
         case "session.next.prompt.admitted": {
-          const delivery = rememberedDelivery(
-            event.properties.delivery,
-            store.session_status[event.properties.sessionID]?.type,
+          if (event.properties.delivery === "steer") setStore("prompt_steer", event.properties.messageID, true)
+          break
+        }
+
+        case "message.promoted": {
+          const { sessionID, messageID } = event.properties
+          if (!store.prompt_steer[messageID]) break
+          // The re-stamped message has already moved to the end, so the assistant message before
+          // it tells a step boundary from an idle one.
+          const at = steeredAt(store.message[sessionID] ?? [], messageID)
+          setStore(
+            produce((draft) => {
+              delete draft.prompt_steer[messageID]
+              draft.prompt_steered[messageID] = at
+            }),
           )
-          if (delivery) setStore("prompt_delivery", event.properties.messageID, delivery)
           break
         }
 
@@ -579,6 +598,13 @@ export const {
         }
         case "message.removed": {
           touchMessage(event.properties.sessionID, event.properties.messageID)
+          if (store.prompt_steer[event.properties.messageID] || store.prompt_steered[event.properties.messageID])
+            setStore(
+              produce((draft) => {
+                delete draft.prompt_steer[event.properties.messageID]
+                delete draft.prompt_steered[event.properties.messageID]
+              }),
+            )
           const messages = store.message[event.properties.sessionID] ?? []
           const index = messages.findIndex((message) => message.id === event.properties.messageID)
           if (index !== -1) {
