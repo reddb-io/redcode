@@ -1,5 +1,14 @@
 # @reddb-io/redcode-app
 
+## 1.21.3
+
+### Patch Changes
+
+- Updated dependencies [ef04f6c]
+  - @reddb-io/redcode-core@1.23.1
+  - @reddb-io/redcode-client@1.18.21
+  - @reddb-io/redcode-session-ui@1.18.27
+
 ## 1.21.2
 
 ### Patch Changes
