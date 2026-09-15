@@ -153,7 +153,7 @@ test("the config target prefers the design source, then the highest-precedence p
   await Bun.write(path.join(tmp.path, "config.json"), "[1]")
   await Bun.write(path.join(tmp.path, ".red/code/config.jsonc"), "{}")
   const list = await DesignProposal.layers(tmp.path)
-  expect(list.map((layer) => [path.relative(tmp.path, layer.file), layer.invalid])).toEqual([
+  expect(list.map((layer) => [path.relative(tmp.path, layer.file).split(path.sep).join("/"), layer.invalid])).toEqual([
     ["redcode.json", false],
     ["config.json", true],
     [".red/code/config.jsonc", false],
