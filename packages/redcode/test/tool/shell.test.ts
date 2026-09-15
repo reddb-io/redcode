@@ -1049,7 +1049,7 @@ describe("tool.shell abort", () => {
           const collected: string[] = []
           const res = yield* run(
             {
-              command: `echo before && sleep 30`,
+              command: `echo before && sleep 20`,
             },
             {
               ...ctx,
@@ -1078,7 +1078,7 @@ describe("tool.shell abort", () => {
       runIsolated(
         Effect.gen(function* () {
           const result = yield* run({
-            command: `sleep 60`,
+            command: `sleep 20`,
             timeout: 500,
           })
           expect(result.output).toContain("shell tool terminated command after exceeding timeout")
@@ -1097,7 +1097,7 @@ describe("tool.shell abort", () => {
           expect(tool.description).toContain("commands will time out after 500ms")
           const result = yield* tool.execute(
             {
-              command: `sleep 60`,
+              command: `sleep 20`,
             },
             ctx,
           )
@@ -1296,5 +1296,29 @@ describe("tool.shell truncation", () => {
         expect(lines[lineCount - 1]).toBe(String(lineCount))
       }),
     ),
+  )
+})
+
+describe("tool.shell polling guard", () => {
+  it.live("refuses a sleep polling loop before asking or running, and returns the monitor call", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
+      const err = yield* runIn(
+        tmp,
+        fail(
+          {
+            command: "for i in $(seq 1 12); do touch ran; sleep 300; gh run view 42 --json status -q .status; done",
+          },
+          capture(requests),
+        ),
+      )
+      expect(err.message).toContain("Not run: this command waits by sleeping in a polling loop")
+      expect(err.message).toContain(
+        '{"command":"gh run view 42 --json status,conclusion","monitor":{"mode":"poll","interval_ms":300000,"deadline_ms":3900000,"success_contains":"completed"}}',
+      )
+      expect(requests).toHaveLength(0)
+      expect(yield* Effect.promise(() => Bun.file(path.join(tmp, "ran")).exists())).toBe(false)
+    }),
   )
 })

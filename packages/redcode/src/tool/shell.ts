@@ -22,6 +22,7 @@ import { Plugin } from "@/plugin"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
+import { ShellPolling } from "./shell/polling"
 import { BashArity } from "@/permission/arity"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { MonitorRuntime } from "@/background/monitor"
@@ -643,7 +644,17 @@ export const ShellTool = Tool.define(
               if (params.timeout !== undefined && params.timeout < 0) {
                 throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
               }
-              const timeout = params.timeout ?? defaultTimeoutMs
+              // A one-shot monitor exists for commands longer than a turn should hold; its deadline,
+              // not the inline default, bounds the process unless the model chose a timeout.
+              const timeout =
+                params.timeout ??
+                (params.monitor?.mode === "once" ? (params.monitor.deadline_ms ?? 3_600_000) : defaultTimeoutMs)
+              // Waiting on CI, a deploy or a server with a sleep loop holds the whole turn. Refused
+              // before anything runs or asks, with the equivalent monitor call to retry with.
+              if (!params.monitor) {
+                const polling = ShellPolling.detect(params.command)
+                if (polling) throw new Error(ShellPolling.refusal(polling, params.workdir))
+              }
               const ps = Shell.ps(shell)
               yield* Effect.scoped(
                 Effect.gen(function* () {

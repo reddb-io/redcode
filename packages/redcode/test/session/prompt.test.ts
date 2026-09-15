@@ -3691,7 +3691,7 @@ unix(
 
       yield* llm.tool("bash", {
         command:
-          'i=0; while [ "$i" -lt 4000 ]; do printf "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx %05d\\n" "$i"; i=$((i + 1)); done; printf truncation-ready; sleep 30',
+          'i=0; while [ "$i" -lt 4000 ]; do printf "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx %05d\\n" "$i"; i=$((i + 1)); done; printf truncation-ready; sleep 25',
         timeout: 30_000,
         workdir: path.resolve(dir),
       })
@@ -5793,6 +5793,131 @@ it.instance(
           message.parts.some((part) => part.type === "text" && part.text.includes("A monitor finished.")),
         ),
       ).toBe(false)
+    }),
+  60000,
+)
+
+unix(
+  "a model that follows the polling refusal starts a monitor that resumes the session when the run completes",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const { ShellPolling } = yield* Effect.promise(() => import("../../src/tool/shell/polling"))
+      const chat = yield* sessions.create({ title: "Polling refusal" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      // A stand-in for `gh run view`: in progress until the test writes the finished status.
+      const gh = path.join(dir, "gh")
+      yield* writeText(gh, `#!/bin/sh\ncat "$(dirname "$0")/run-status" 2>/dev/null || echo '{"status":"in_progress"}'\n`)
+      yield* Effect.promise(() => import("fs/promises").then((fs) => fs.chmod(gh, 0o755)))
+      const polling = `for i in $(seq 1 60); do sleep 1; STATUS=$(./gh run view 42 --json status -q .status); case "$STATUS" in completed) break;; esac; done`
+      const retry = JSON.parse(ShellPolling.call(ShellPolling.detect(polling)!.suggestion!))
+      expect(retry).toEqual({
+        command: "./gh run view 42 --json status,conclusion",
+        monitor: { mode: "poll", interval_ms: 1000, deadline_ms: 61000, success_contains: "completed" },
+      })
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      // The model writes the loop, reads the refusal, and sends back exactly the call it names.
+      yield* llm.tool("bash", { command: polling })
+      yield* llm.toolMatch(
+        (hit) => body(hit).includes("Retry with this bash call:") && !body(hit).includes("monitor_result"),
+        "bash",
+        retry,
+      )
+      yield* llm.textMatch(
+        (hit) => body(hit).includes("monitor_result") && !body(hit).includes("A monitor finished."),
+        "Watching run 42; I will report when it completes.",
+      )
+      yield* llm.textMatch((hit) => body(hit).includes("A monitor finished."), "Run 42 completed successfully.")
+
+      yield* awaitWithTimeout(
+        prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "wait for run 42" }] }),
+        "the refused turn never released the session",
+        "30 seconds",
+      )
+      const refused = (yield* sessions.messages({ sessionID: chat.id }))
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === "tool" && part.state.status === "error")
+      expect(refused?.type === "tool" && refused.state.status === "error" ? refused.state.error : "").toContain(
+        "Not run: this command waits by sleeping in a polling loop",
+      )
+      expect(yield* monitors.list(chat.id)).toMatchObject([{ command: retry.command, status: "running" }])
+
+      yield* writeText(path.join(dir, "run-status"), `{"status":"completed","conclusion":"success"}\n`)
+      yield* pollWithTimeout(
+        sessions.messages({ sessionID: chat.id }).pipe(
+          Effect.map((messages) =>
+            messages.some(
+              (message) =>
+                message.info.role === "assistant" &&
+                message.parts.some((part) => part.type === "text" && part.text === "Run 42 completed successfully."),
+            )
+              ? true
+              : undefined,
+          ),
+        ),
+        "the monitor never resumed the session",
+        "30 seconds",
+      )
+      expect(yield* monitors.list(chat.id)).toMatchObject([{ status: "succeeded", delivery: "delivered" }])
+    }),
+  60000,
+)
+
+it.instance(
+  "a prompt queued during a turn that starts a monitor still runs when that turn ends",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const monitors = yield* MonitorRuntime.Service
+      const chat = yield* sessions.create({ title: "Queued behind a monitor" })
+      yield* sessions.setPermission({
+        sessionID: chat.id,
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const gate = defer<void>()
+      const body = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body)
+      yield* llm.tool("bash", {
+        command: "false",
+        monitor: { mode: "poll", wait_ms: 0, interval_ms: 1000, deadline_ms: 30000 },
+      })
+      yield* llm.pushMatch(
+        (hit) => body(hit).includes("monitor_result") && !body(hit).includes("queued follow-up"),
+        reply().wait(gate.promise).text("Waiting on the monitor.").stop(),
+      )
+      yield* llm.textMatch((hit) => body(hit).includes("queued follow-up"), "Handled the follow-up.")
+
+      const turn = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "start watching" }] })
+        .pipe(Effect.forkChild)
+      yield* pollWithTimeout(
+        monitors.list(chat.id).pipe(Effect.map((list) => (list.length > 0 ? true : undefined))),
+        "the monitor never started",
+        "30 seconds",
+      )
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        parts: [{ type: "text", text: "queued follow-up" }],
+        delivery: "queue",
+        noReply: true,
+      })
+      gate.resolve()
+      yield* awaitWithTimeout(Fiber.join(turn), "the turn never ended", "30 seconds")
+
+      const texts = (yield* sessions.messages({ sessionID: chat.id })).flatMap((message) =>
+        message.info.role === "assistant" ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) : [],
+      )
+      expect(texts).toContain("Handled the follow-up.")
+      expect((yield* monitors.list(chat.id))[0]?.status).toBe("running")
+      yield* monitors.cancel(chat.id, (yield* monitors.list(chat.id))[0]!.id)
     }),
   60000,
 )
