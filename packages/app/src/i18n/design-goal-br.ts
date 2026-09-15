@@ -110,6 +110,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.approvalDetails": "Ver decisões aprovadas",
   "session.design.studio.variants": "Variantes",
   "session.design.studio.variant": "Variante",
+  "session.design.studio.screens": "Telas",
   "session.design.studio.single": "Visualização individual",
   "session.design.studio.sideBySide": "Lado a lado",
   "session.design.studio.compareVariant": "Comparar variante",

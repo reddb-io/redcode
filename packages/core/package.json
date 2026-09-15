@@ -109,6 +109,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "0.214.0",
     "@opentelemetry/sdk-trace-base": "2.6.1",
     "@parcel/watcher": "2.5.1",
+    "@reddb-io/redcode-design": "workspace:*",
     "@reddb-io/redcode-effect-drizzle-sqlite": "workspace:*",
     "@reddb-io/redcode-effect-sqlite-node": "workspace:*",
     "@reddb-io/redcode-llm": "workspace:*",

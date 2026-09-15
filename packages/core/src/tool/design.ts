@@ -38,6 +38,8 @@ const layer = Layer.effectDiscard(
     const tools = yield* Tools.Service
     const registry = yield* ToolRegistry.Service
     const store = yield* DesignStore.Service
+    /** Screen markup warnings per published revision, rendered with the publish result. */
+    const notices = new Map<string, string>()
     const renderer = yield* DesignRenderer.Service
     const permissions = yield* PermissionV2.Service
     const questions = yield* QuestionV2.Service
@@ -364,7 +366,7 @@ const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [
             {
               type: "text",
-              text: `Published ${output.id} for ${output.designID}. The user can annotate this revision. Root: ${output.document.root}${pipeline(output.document)}`,
+              text: `Published ${output.id} for ${output.designID}. The user can annotate this revision. Root: ${output.document.root}${pipeline(output.document)}${notices.get(output.id) ?? ""}`,
             },
           ],
           execute: (input, context) =>
@@ -372,7 +374,20 @@ const layer = Layer.effectDiscard(
               yield* allow("design_preview", context)
               const document = yield* owned(input.id, context)
               yield* standing(document, context)
-              return yield* store.publish(input.id, input.name, read(context), yield* execution(document, context))
+              const revision = yield* store.publish(
+                input.id,
+                input.name,
+                read(context),
+                yield* execution(document, context),
+              )
+              const notice = yield* Effect.promise(() =>
+                DesignQuality.screenNotice(revision.document.root, revision.document.engine, revision.document.entry),
+              )
+              if (notice) {
+                if (notices.size >= 64) notices.delete(notices.keys().next().value!)
+                notices.set(revision.id, notice)
+              }
+              return revision
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_history: Tool.make({

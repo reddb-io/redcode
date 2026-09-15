@@ -20,6 +20,16 @@ import { DesignAssets } from "./assets"
 import { DesignRaster } from "./raster"
 import { DesignRuntime } from "./runtime"
 import { DesignQuality } from "./quality"
+import { screens } from "@reddb-io/redcode-design/screens"
+
+/** Opens a screen through the injected helper; false when the prototype has no such screen. */
+const openScreen = (input: { screen: string; variant?: string }) =>
+  (window as unknown as { design?: { go: (screen: string, variant?: string) => boolean } }).design?.go(
+    input.screen,
+    input.variant,
+  ) === true
+const currentScreen = (variant: string) =>
+  (window as unknown as { design?: { screen: (variant?: string) => string } }).design?.screen(variant) ?? ""
 
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
@@ -117,6 +127,8 @@ const make = Effect.gen(function* () {
         const context = yield* io(() =>
           instance.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" }),
         )
+        // Screens and the design helper run before the prototype's scripts, as in the review page.
+        yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
         const page = yield* io(() => context.newPage())
         yield* io(() =>
           page.route("**/*", async (route) => {
@@ -215,7 +227,14 @@ const make = Effect.gen(function* () {
 
         if (job.input.format === "html") {
           const html = yield* io(() => DesignExport.html(root, entry))
-          yield* io(() => DesignFiles.atomic(output, html))
+          // The exported page keeps working screens without the review page around it.
+          const runtime = `<script>(${screens.toString()})()</script>`
+          yield* io(() =>
+            DesignFiles.atomic(
+              output,
+              /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (head) => head + runtime) : runtime + html,
+            ),
+          )
         }
 
         if (job.input.format === "compare") {
@@ -316,6 +335,9 @@ const make = Effect.gen(function* () {
           const checks: Design.AuditCheck[] = []
           const captures: Design.AuditCapture[] = []
           const runtimeErrors: string[] = []
+          /** "variant screen" keys: screens the prototype declares and screens an audit view showed. */
+          const declared = new Set<string>()
+          const visited = new Set<string>()
           page.on("pageerror", (error) => runtimeErrors.push(error.message))
           const variants = yield* io(() =>
             page
@@ -410,6 +432,25 @@ const make = Effect.gen(function* () {
             for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
               if (captures.length >= 36) continue
               yield* reset(variant)
+              if (width === 390) {
+                const found = yield* io(() =>
+                  page.evaluate(
+                    (source) => ({
+                      problems: (0, eval)(`(${source})`)(document) as string[],
+                      screens:
+                        (
+                          window as unknown as { design?: { screens: () => { id: string; variant: string }[] } }
+                        ).design?.screens() ?? [],
+                    }),
+                    DesignQuality.screenProblems.toString(),
+                  ),
+                )
+                for (const problem of found.problems)
+                  if (!findings.includes(`Screens: ${problem}`)) findings.push(`Screens: ${problem}`)
+                for (const screen of found.screens)
+                  if (!variant || screen.variant === variant) declared.add(`${screen.variant} ${screen.id}`)
+              }
+              visited.add(`${variant ?? ""} ${yield* io(() => page.evaluate(currentScreen, variant ?? ""))}`)
               yield* inspect(width, variant)
               for (const scenario of revision.document.scenarios) {
                 if (
@@ -438,6 +479,14 @@ const make = Effect.gen(function* () {
                         ]),
                       ),
                     )
+                  if (
+                    scenario.screen &&
+                    !(await page.evaluate(openScreen, {
+                      screen: scenario.screen,
+                      ...(variant ? { variant } : {}),
+                    }))
+                  )
+                    return `screen ${scenario.screen} does not exist${variant ? " in this variant" : ""}`
                   for (const action of scenario.actions) {
                     if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
                     if (action.action === "fill")
@@ -448,6 +497,7 @@ const make = Effect.gen(function* () {
                   await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
                   return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
                 }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
+                visited.add(`${variant ?? ""} ${yield* io(() => page.evaluate(currentScreen, variant ?? ""))}`)
                 const label = `${width}px${variant ? ` · ${variant}` : ""} · ${scenario.name}`
                 if (result !== true)
                   findings.push(`${label}: ${typeof result === "string" ? result : "state does not match"}`)
@@ -463,6 +513,11 @@ const make = Effect.gen(function* () {
             )
           if (!evidence.length)
             findings.push("No scenarios have been exercised; interaction behavior remains unverified.")
+          const unvisited = [...declared].filter((key) => !visited.has(key))
+          if (unvisited.length)
+            findings.push(
+              `Screens never rendered by this audit: ${unvisited.map((key) => key.trim().replace(" ", "/")).join(", ")}. Add a scenario with screen set to each one so its layout and states are inspected.`,
+            )
           for (const scenario of revision.document.scenarios.filter(
             (scenario) => scenario.variant && !valid.includes(scenario.variant) && !scenario.notApplicable,
           ))

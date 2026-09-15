@@ -22,6 +22,7 @@ import { Api } from "../api"
 import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
+import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
 export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handlers) => {
@@ -220,7 +221,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           catch: (error) => new Design.Error({ code: "invalid", message: String(error) }),
         })
         return HttpServerResponse.text(
-          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${html}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
+          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
           { contentType: "text/html", headers: { "cache-control": "private, max-age=31536000, immutable" } },
         )
       }),

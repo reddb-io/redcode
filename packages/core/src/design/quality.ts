@@ -114,6 +114,100 @@ export function inspect() {
   return checks
 }
 
+/**
+ * Structural problems with data-design-screen markup. Self-contained so it runs on a parsed static
+ * document and, serialized, inside the rendered prototype.
+ */
+export function screenProblems(root: ParentNode) {
+  const ID = /^[a-zA-Z0-9_-]{1,64}$/
+  const problems: string[] = []
+  const scopeOf = (node: Element) => node.closest("[data-design-variant]")?.getAttribute("data-design-variant") ?? ""
+  const where = (scope: string) => (scope ? `variant "${scope}"` : "the page")
+  const nodes = [...root.querySelectorAll("[data-design-screen]")]
+  const seen = new Map<string, number>()
+  for (const node of nodes) {
+    const id = node.getAttribute("data-design-screen") ?? ""
+    const scope = scopeOf(node)
+    if (!ID.test(id)) {
+      problems.push(
+        `Screen id "${id}" in ${where(scope)} is invalid: use 1-64 letters, digits, underscores or hyphens. It is never shown.`,
+      )
+      continue
+    }
+    if (node.hasAttribute("data-design-variant"))
+      problems.push(`Screen "${id}" is on a variant root; put screens inside the variant root instead.`)
+    const outer = node.parentElement?.closest("[data-design-screen]")
+    if (outer) {
+      problems.push(
+        `Screen "${id}" is nested inside screen "${outer.getAttribute("data-design-screen")}"; nested screens are ignored. Keep screens one level deep and use params for states inside a screen.`,
+      )
+      continue
+    }
+    if (!node.getAttribute("data-design-label"))
+      problems.push(`Screen "${id}" in ${where(scope)} has no data-design-label; the review shows its id.`)
+    const key = `${scope} ${id}`
+    seen.set(key, (seen.get(key) ?? 0) + 1)
+    if (seen.get(key) === 2)
+      problems.push(`Screen id "${id}" is repeated in ${where(scope)}; only the first one is used.`)
+  }
+  const ids = new Set(
+    nodes.map((node) => `${scopeOf(node)} ${node.getAttribute("data-design-screen")}`).filter((key) => seen.has(key)),
+  )
+  for (const node of root.querySelectorAll("[data-design-go]")) {
+    const id = node.getAttribute("data-design-go") ?? ""
+    const scope = scopeOf(node)
+    if (!ids.has(`${scope} ${id}`) && !ids.has(` ${id}`))
+      problems.push(`data-design-go="${id}" in ${where(scope)} names no screen there; the click does nothing.`)
+  }
+  return [...new Set(problems)].slice(0, 20)
+}
+
+/**
+ * Screen markup warnings for a published prototype, read from its source. HTML entries are parsed;
+ * component sources only reveal literal attribute values, so they are checked for unknown targets.
+ */
+export async function screenWarnings(root: string, engine: Design.Info["engine"], entry: string) {
+  const { DesignFiles } = await import("./files")
+  if (engine === "html") {
+    const { parseHTML } = await import("linkedom")
+    const file = await DesignFiles.resolve(root, entry).catch(() => undefined)
+    if (!file) return []
+    return screenProblems(parseHTML(await Bun.file(file).text()).document as unknown as ParentNode)
+  }
+  const sources = await Array.fromAsync(new Bun.Glob("**/*.{tsx,jsx,ts,js,html}").scan({ cwd: root, onlyFiles: true }))
+  const text = (
+    await Promise.all(
+      sources
+        .filter((name) => !name.split("/").includes("node_modules"))
+        .slice(0, 200)
+        .map((name) =>
+          Bun.file(`${root}/${name}`)
+            .text()
+            .catch(() => ""),
+        ),
+    )
+  ).join("\n")
+  const literal = (name: string) =>
+    [...text.matchAll(new RegExp(`${name}=(?:"([^"]*)"|'([^']*)'|\\{\\s*["'\`]([^"'\`]*)["'\`]\\s*\\})`, "g"))].map(
+      (match) => match[1] ?? match[2] ?? match[3] ?? "",
+    )
+  const screens = new Set(literal("data-design-screen"))
+  return [
+    ...[...screens]
+      .filter((id) => !/^[a-zA-Z0-9_-]{1,64}$/.test(id))
+      .map((id) => `Screen id "${id}" is invalid: use 1-64 letters, digits, underscores or hyphens.`),
+    ...[...new Set(literal("data-design-go"))]
+      .filter((id) => !screens.has(id))
+      .map((id) => `data-design-go="${id}" names no data-design-screen in the sources; the click does nothing.`),
+  ].slice(0, 20)
+}
+
+/** Appended to a publish result so the agent fixes screen markup before the reviewer meets it. */
+export async function screenNotice(root: string, engine: Design.Info["engine"], entry: string) {
+  const warnings = await screenWarnings(root, engine, entry).catch(() => [])
+  return warnings.length ? `\nScreen warnings:\n${warnings.map((line) => `- ${line}`).join("\n")}` : ""
+}
+
 /** Both runtimes receive the same evidence instead of a path-only job status. */
 export function report(
   jobs: readonly Pick<

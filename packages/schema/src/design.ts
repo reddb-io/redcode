@@ -65,6 +65,8 @@ export const ParamContext = Schema.Struct({
   preset: Schema.String.pipe(optional),
   variant: Schema.String.pipe(optional),
   component: Schema.String.pipe(optional),
+  /** The data-design-screen shown when the context was captured. */
+  screen: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.ParamContext" })
 export interface ParamContext extends Schema.Schema.Type<typeof ParamContext> {}
 
@@ -73,6 +75,8 @@ export const Scenario = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   variant: Schema.String.pipe(optional),
+  /** A data-design-screen id the audit opens before the actions run. */
+  screen: Schema.String.pipe(optional),
   selector: Schema.String,
   state: Schema.Literals(["loading", "empty", "error", "populated", "edge"]),
   actions: Schema.Array(

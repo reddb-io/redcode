@@ -328,6 +328,67 @@ describe("Design revisions and review", () => {
     180000,
   )
   it.live(
+    "audits open scenario screens, report missing and unrendered screens and export working screens",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(document.root, document.entry),
+            `<!doctype html><html lang="en"><head><title>Checkout</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><section data-design-screen="cart" data-design-label="Cart"><h1>Cart</h1><button data-design-go="pay">Pay</button><button data-design-go="nowhere">Broken</button></section><section data-design-screen="pay" data-design-label="Payment"><h1>Payment</h1><button id="submit" onclick="document.querySelector('#result').dataset.state='populated'">Confirm</button><p id="result" data-state="empty">Pending</p></section><section data-design-screen="done" data-design-label="Done"><h1>Done</h1></section></main></body></html>`,
+          ),
+        )
+        yield* store.update(document.id, {
+          scenarios: [
+            {
+              id: "confirm",
+              name: "Confirm payment",
+              screen: "pay",
+              selector: "#result",
+              state: "populated",
+              actions: [{ action: "click", selector: "#submit" }],
+            },
+            {
+              id: "ghost",
+              name: "Ghost screen",
+              screen: "missing",
+              selector: "#result",
+              state: "populated",
+              actions: [],
+            },
+          ],
+        })
+        const revision = yield* store.publish(document.id, "Screens")
+        const run = (format: "audit" | "html") =>
+          Effect.gen(function* () {
+            const job = yield* renderer.start(document.id, { revision: revision.id, format })
+            for (;;) {
+              const current = (yield* renderer.jobs(document.id)).find((item) => item.id === job.id)!
+              if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+                return current
+              yield* Effect.sleep("50 millis")
+            }
+          }).pipe(Effect.timeout("90 seconds"))
+        const audit = yield* run("audit")
+        expect(audit.status).toBe("completed")
+        expect(audit.audit?.scenarios.filter((item) => item.includes("Confirm payment: exercised"))).toHaveLength(3)
+        expect(audit.audit?.findings).toContain("390px · Ghost screen: screen missing does not exist")
+        expect(audit.audit?.findings).toContain(
+          'Screens: data-design-go="nowhere" in the page names no screen there; the click does nothing.',
+        )
+        expect(audit.audit?.findings).toContain(
+          "Screens never rendered by this audit: done. Add a scenario with screen set to each one so its layout and states are inspected.",
+        )
+        const exported = yield* run("html")
+        expect(exported.status).toBe("completed")
+        const html = yield* Effect.promise(() => Bun.file(exported.result!).text())
+        expect(html).toContain("__designScreens")
+        expect(html.indexOf("__designScreens")).toBeLessThan(html.indexOf("data-design-screen"))
+      }),
+    180000,
+  )
+  it.live(
     "cancels rendering, preserves terminal results and permits an explicit retry",
     () =>
       Effect.gen(function* () {
