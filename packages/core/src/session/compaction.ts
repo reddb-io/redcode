@@ -115,10 +115,12 @@ export const isEffective = (input: { readonly after: number; readonly usable: nu
 export const elideMiddle = (text: string, budget: number, saved?: string) => {
   const tokens = Token.estimate(text)
   if (tokens <= budget) return text
-  const side = Math.max(0, Math.floor((budget * 4) / 2))
-  const head = text.slice(0, side)
-  const tail = side > 0 ? text.slice(-side) : ""
-  const elided = Token.estimate(text.slice(side, text.length - side))
+  // By code points, so a cut never lands inside a surrogate pair.
+  const points = Array.from(text)
+  const side = Math.min(Math.max(0, Math.floor((budget * 4) / 2)), Math.floor(points.length / 2))
+  const head = points.slice(0, side).join("")
+  const tail = side > 0 ? points.slice(-side).join("") : ""
+  const elided = Token.estimate(points.slice(side, points.length - side).join(""))
   const where = saved ? `; the full text is saved at ${saved}, read it if the missing part matters` : ""
   return `${head}\n[middle elided: ${elided} tokens${where}]\n${tail}`
 }
@@ -407,8 +409,11 @@ export const make = (dependencies: Dependencies) => {
     })
     return true
   })
-  // Automatic compaction is bounded per request and pauses after checkpoints that do not bring the
-  // context back under the hysteresis band, until the next user request. Same semantics as legacy.
+  // Automatic compaction pauses after checkpoints that do not bring the context back under the
+  // hysteresis band, until the next user request; compactions that do free room are never capped.
+  // `count` is the ineffective compactions of the current run, `ineffective` those of the request.
+  // TODO(compaction-guard): persist this per session, as legacy does in session metadata, so a
+  // restarted v2 runtime does not start the cycle over.
   type Guard = { request?: string; count: number; ineffective: number; paused?: string }
   const guards = new Map<SessionSchema.ID, Guard>()
   const usableOf = (input: Input) => {
@@ -442,9 +447,14 @@ export const make = (dependencies: Dependencies) => {
   const record = (input: Input, candidate: Candidate, recent: string) => {
     const state = guards.get(input.sessionID)
     if (!state) return
-    const after = estimate(input.request.system) + Token.estimate(candidate.summary) + Token.estimate(recent)
-    state.count++
-    state.ineffective = isEffective({ after, usable: usableOf(input) }) ? 0 : state.ineffective + 1
+    const after =
+      estimate(input.request.system) +
+      estimate(input.request.tools) +
+      Token.estimate(candidate.summary) +
+      Token.estimate(recent)
+    const effective = isEffective({ after, usable: usableOf(input) })
+    state.count = effective ? 0 : state.count + 1
+    state.ineffective = effective ? 0 : state.ineffective + 1
     if (state.ineffective >= PAUSE_AFTER_INEFFECTIVE) state.paused = state.request ?? ""
   }
 

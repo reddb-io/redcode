@@ -11,3 +11,9 @@ export const LOOP_GUARD_REFUSAL = "This is call "
  * a row)"). Resuming such a goal answers the guard, not a judge, so the continuation looks for it.
  */
 export const LOOP_GUARD_PAUSE = "loop guard: "
+
+/**
+ * How the reason of a goal paused around a context compaction begins ("compaction guard: …").
+ * Resuming such a goal answers the context pressure, not a judge, so the continuation looks for it.
+ */
+export const COMPACTION_GUARD_PAUSE = "compaction guard: "
