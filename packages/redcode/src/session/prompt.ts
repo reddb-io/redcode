@@ -1339,13 +1339,17 @@ const layer = Layer.effect(
         // left by a run that is gone — a process that died before it could close it. Left alone it
         // reads as a turn in progress for the rest of the session's life, and everything typed
         // after it is stamped QUEUED, across restarts, with nothing running.
-        const abandoned = SessionOrphan.orphans(
-          yield* MessageV2.filterCompactedEffect(sessionID).pipe(Effect.provideService(Database.Service, database)),
+        const history = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+          Effect.provideService(Database.Service, database),
         )
+        const abandoned = SessionOrphan.orphans(history)
         for (const message of abandoned) {
           message.error ??= new SessionV1.AbortedError({ message: SessionOrphan.ORPHAN_MESSAGE }).toObject()
           message.time.completed = Date.now()
           yield* sessions.updateMessage(message).pipe(Effect.ignore)
+          const item = history.find((entry) => entry.info.id === message.id)
+          for (const part of item ? SessionOrphan.unfinishedTools(item) : [])
+            yield* sessions.updatePart(part).pipe(Effect.ignore)
           yield* guards.record({
             sessionID,
             guard: "orphan",

@@ -20,4 +20,28 @@ export function orphans(messages: readonly SessionV1.WithParts[]): SessionV1.Ass
   )
 }
 
+/**
+ * Tool calls the dead process never settled, closed the way a live cancel closes them, so the
+ * model reads them as interrupted with an unknown outcome and the UI stops showing them as running.
+ */
+export function unfinishedTools(item: SessionV1.WithParts, now = Date.now()): SessionV1.ToolPart[] {
+  return item.parts.flatMap((part): SessionV1.ToolPart[] => {
+    if (part.type !== "tool") return []
+    if (part.state.status !== "pending" && part.state.status !== "running") return []
+    const running = part.state.status === "running" ? part.state : undefined
+    return [
+      {
+        ...part,
+        state: {
+          status: "error",
+          input: part.state.input,
+          error: ORPHAN_MESSAGE,
+          metadata: { ...running?.metadata, interrupted: true },
+          time: { start: running?.time.start ?? now, end: now },
+        },
+      },
+    ]
+  })
+}
+
 export * as SessionOrphan from "./orphan"

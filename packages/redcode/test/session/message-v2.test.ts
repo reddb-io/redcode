@@ -9,6 +9,7 @@ import { SessionID, MessageID, PartID } from "../../src/session/schema"
 import { Question } from "../../src/question"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 
 const sessionID = SessionID.make("session")
 const providerID = ProviderV2.ID.make("test")
@@ -958,7 +959,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-1",
             toolName: "bash",
-            output: { type: "text", value: output },
+            output: { type: "error-text", value: ToolInterrupted.result(output) },
           },
         ],
       },
@@ -986,6 +987,71 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([])
+  })
+
+  test("keeps a failed step whose tool already ran, so the side effect is not hidden", async () => {
+    const assistantID = "m-assistant"
+    const input: SessionV1.WithParts[] = [
+      {
+        info: assistantInfo(
+          assistantID,
+          "m-parent",
+          new SessionV1.APIError({ message: "boom", isRetryable: false }).toObject() as SessionV1.APIError,
+        ),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-ran",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { command: "git commit" },
+              output: "committed",
+              title: "bash",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "tool",
+            callID: "call-cut",
+            tool: "bash",
+            state: {
+              status: "error",
+              input: { command: "git push" },
+              error: "Tool execution aborted",
+              metadata: { interrupted: true },
+              time: { start: 0, end: 1 },
+            },
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    const calls = result.flatMap((msg) =>
+      msg.role === "assistant" && Array.isArray(msg.content)
+        ? msg.content.flatMap((part) => (part.type === "tool-call" ? [part.toolCallId] : []))
+        : [],
+    )
+    const results = result.flatMap((msg) =>
+      msg.role === "tool" ? msg.content.flatMap((part) => (part.type === "tool-result" ? [part] : [])) : [],
+    )
+    expect(calls).toEqual(["call-ran", "call-cut"])
+    expect(results.map((part) => part.toolCallId)).toEqual(["call-ran", "call-cut"])
+    expect(results[1]?.output).toEqual({ type: "error-text", value: ToolInterrupted.RESULT })
+  })
+
+  test("bounds the partial output carried by an interrupted tool result", () => {
+    const long = "x".repeat(ToolInterrupted.PARTIAL_MAX_CHARS + 500) + "tail-marker"
+    const text = ToolInterrupted.result(long)
+    expect(text.startsWith(ToolInterrupted.RESULT)).toBe(true)
+    expect(text).toContain("tail-marker")
+    expect(text).toContain("earlier characters omitted")
+    expect(text.length).toBeLessThan(ToolInterrupted.RESULT.length + ToolInterrupted.PARTIAL_MAX_CHARS + 200)
+    expect(ToolInterrupted.result("  ")).toBe(ToolInterrupted.RESULT)
   })
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", async () => {
@@ -1246,13 +1312,13 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-pending",
             toolName: "bash",
-            output: { type: "error-text", value: "[Tool execution was interrupted]" },
+            output: { type: "error-text", value: ToolInterrupted.RESULT },
           },
           {
             type: "tool-result",
             toolCallId: "call-running",
             toolName: "read",
-            output: { type: "error-text", value: "[Tool execution was interrupted]" },
+            output: { type: "error-text", value: ToolInterrupted.RESULT },
           },
         ],
       },
