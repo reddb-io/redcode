@@ -1,0 +1,4 @@
+Search this session's earlier messages that were compacted away and are no longer in your context.
+- query: keywords, matched case-insensitively against the user's messages, your replies, and tool calls with their output.
+- limit: maximum matches (default 5, at most 20).
+Returns short excerpts with message ids, best matches first. Use it when a detail you need (a path, an error, an instruction) is missing from the summary. It never reads other sessions.

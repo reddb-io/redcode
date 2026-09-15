@@ -50,6 +50,8 @@ export type StreamInput = {
   tools: Record<string, Tool>
   retries?: number
   toolChoice?: "auto" | "required" | "none"
+  /** Caps the response below the model's own output limit, e.g. for a compaction summary. */
+  maxOutputTokens?: number
 }
 
 export type StreamRequest = StreamInput & {

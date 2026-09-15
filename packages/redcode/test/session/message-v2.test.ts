@@ -4,6 +4,8 @@ import { APICallError } from "ai"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
+import { trimPlaceholder } from "@reddb-io/redcode-core/session/compaction-policy"
+import { Token } from "@/util/token"
 
 import { SessionID, MessageID, PartID } from "../../src/session/schema"
 import { Question } from "../../src/question"
@@ -745,7 +747,10 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-1",
             toolName: "bash",
-            output: { type: "text", value: "[Old tool result content cleared]" },
+            output: {
+              type: "text",
+              value: trimPlaceholder({ tokens: Token.estimate("this should be cleared"), tool: "bash" }),
+            },
           },
         ],
       },

@@ -105,12 +105,37 @@ export function trippedInHistory(messages: readonly SessionV1.WithParts[]) {
   return messages.some((message) =>
     message.parts.some(
       (part) =>
-        part.type === "tool" &&
-        part.tool === TOOL_ID &&
-        part.state.status === "completed" &&
-        part.state.metadata?.mcpDeferred === true,
+        (part.type === "compaction" && part.tools?.mcpDeferred === true) ||
+        (part.type === "tool" &&
+          part.tool === TOOL_ID &&
+          part.state.status === "completed" &&
+          part.state.metadata?.mcpDeferred === true),
     ),
   )
+}
+
+/** Names a compaction carries forward, at most this many. */
+const MAX_CARRIED = 200
+
+/**
+ * What a compaction records so the loaded set survives it: every tool name loaded or called so far
+ * (the next step keeps only the ones still deferred), and whether MCP deferral had tripped.
+ */
+export function carried(messages: readonly SessionV1.WithParts[]) {
+  const names = new Set<string>()
+  for (const message of messages)
+    for (const part of message.parts) {
+      if (part.type === "compaction") for (const name of part.tools?.loaded ?? []) names.add(name)
+      if (part.type !== "tool") continue
+      if (part.tool !== TOOL_ID && part.tool !== "invalid") names.add(part.tool)
+      const listed = part.state.status === "completed" ? part.state.metadata?.loaded : undefined
+      if (part.tool === TOOL_ID && Array.isArray(listed))
+        for (const name of listed) if (typeof name === "string") names.add(name)
+    }
+  return {
+    loaded: loadedFromHistory(messages, names).slice(-MAX_CARRIED),
+    mcpDeferred: trippedInHistory(messages),
+  }
 }
 
 /**
@@ -128,6 +153,10 @@ export function loadedFromHistory(
   const seen: Array<{ name: string; at: number; order: number }> = []
   for (const message of messages) {
     for (const part of message.parts) {
+      // A compaction carries what was loaded before it, ahead of anything loaded after.
+      if (part.type === "compaction")
+        for (const name of part.tools?.loaded ?? [])
+          if (names.has(name)) seen.push({ name, at: message.info.time.created, order: seen.length })
       if (part.type !== "tool") continue
       const at = "time" in part.state ? part.state.time.start : message.info.time.created
       if (names.has(part.tool) && !natively?.has(part.tool)) seen.push({ name: part.tool, at, order: seen.length })
