@@ -83,12 +83,12 @@ describe("shell polling guard", () => {
     ).toBe("bun run dev > /tmp/dev.log 2>&1 &")
   })
 
-  test("turns a readiness loop into a monitor whose success is the exit code", () => {
+  test("turns a readiness loop into a brisk, short monitor whose success is the exit code", () => {
     const { call, refusal } = retry("until curl -sf http://localhost:3000/health; do sleep 2; done", "/repo/app")
     expect(call).toEqual({
       command: "curl -sf http://localhost:3000/health",
       workdir: "/repo/app",
-      monitor: { mode: "poll", interval_ms: 2_000, deadline_ms: 3_600_000 },
+      monitor: { mode: "poll", interval_ms: 2_000, deadline_ms: 120_000 },
     })
     expect(refusal).toContain("exit code 0 means done")
     expect(retry("while ! kubectl rollout status deploy/api --timeout=5s; do sleep 10; done").call.command).toBe(
@@ -200,5 +200,81 @@ describe("shell polling guard", () => {
     expect(refusal).toContain("Not started")
     for (const line of refusal.split("\n").filter((line) => line.startsWith("{")))
       expect(() => decode(JSON.parse(line))).not.toThrow()
+  })
+
+  test("lets batch loops that act on each item run, whatever they call", () => {
+    for (const command of [
+      "for c in $(docker ps -q); do docker stop $c; sleep 1; done",
+      "for r in api web worker; do gh api repos/acme/$r/pulls --jq length; sleep 2; done",
+      'for f in *.json; do curl -sf "https://example.com/check/${f}"; sleep 1; done',
+      "while read repo; do gh api repos/$repo; sleep 1; done < repos.txt",
+      "while IFS= read -r url; do curl -s $url; sleep 5; done < urls.txt",
+    ])
+      expect({ command, detection: ShellPolling.detect(command) }).toEqual({ command, detection: undefined })
+    // The same check against a fixed target is still a wait, even over a list.
+    expect(ShellPolling.detect("for i in a b c d e f; do gh run view 42 --json status; sleep 10; done")?.kind).toBe(
+      "loop",
+    )
+  })
+
+  test("names what came after the wait, so it runs once the monitor reports", () => {
+    const { detection, call, refusal } = retry(
+      "docker compose up -d && until docker compose exec db pg_isready; do sleep 1; done && pnpm migrate && pnpm test",
+    )
+    expect(detection.before).toBe("docker compose up -d")
+    expect(detection.after).toBe("pnpm migrate && pnpm test")
+    expect(call).toEqual({
+      command: "docker compose exec db pg_isready",
+      monitor: { mode: "poll", interval_ms: 1_000, deadline_ms: 120_000 },
+    })
+    expect(refusal).toContain("When the monitor reports success, run what came after the wait as its own bash call: pnpm migrate && pnpm test")
+    expect(retry("sleep 300 && gh pr checks 3 && gh pr merge 3 --squash").detection.after).toBe("gh pr merge 3 --squash")
+    expect(retry("gh run watch 42 && ./deploy.sh").detection.after).toBe("./deploy.sh")
+  })
+
+  test("a sleep in front of real work suggests running that work as a one-shot monitor", () => {
+    const { detection, call, refusal } = retry("sleep 45 && npm test")
+    expect(detection.kind).toBe("sleep")
+    expect(call).toEqual({ command: "npm test", monitor: { mode: "once" } })
+    expect(refusal).toContain("one-shot bash monitor")
+    expect(refusal).not.toContain("gh pr checks 123")
+    // Inside a loop there is no single command to hand over.
+    expect(ShellPolling.detect("for i in 1 2 3; do echo $i; sleep 60; done")?.suggestion).toBeUndefined()
+  })
+
+  test("a timeout in front bounds the wait: short enough it runs, otherwise it caps the deadline", () => {
+    const capped = retry(`timeout 60 bash -c 'until curl -sf localhost:3000; do sleep 5; done'`)
+    expect(capped.detection.waitMs).toBe(60_000)
+    expect(capped.call.monitor.deadline_ms).toBe(60_000)
+    const long = retry(`timeout 10m sh -c 'for i in $(seq 1 12); do sleep 300; gh run view 7 --json status; done'`)
+    expect(long.call.monitor.deadline_ms).toBe(600_000)
+    for (const command of [
+      "timeout 20 bash -c 'until pg_isready; do sleep 1; done'",
+      "timeout 25 sh -c 'while ! curl -sf localhost:3000; do sleep 2; done'",
+      "timeout 20 gh run watch 42",
+    ])
+      expect({ command, detection: ShellPolling.detect(command) }).toEqual({ command, detection: undefined })
+  })
+
+  test("catches poll commands that change something through gh api, publishing, curl --json and shell wrappers", () => {
+    for (const command of [
+      "gh api repos/acme/app/issues -f title=broken",
+      "gh api -X POST repos/acme/app/dispatches",
+      "gh api --method PATCH repos/acme/app",
+      "gh api repos/acme/app/releases --input body.json",
+      "npm publish",
+      "pnpm publish --access public",
+      "curl --json '{\"a\":1}' https://example.com/deploy",
+      "bash -c 'git push origin main'",
+      'sh -c "rm -rf dist"',
+    ])
+      expect({ command, change: ShellPolling.mutating(command) }).toMatchObject({ command, change: expect.any(String) })
+    for (const command of [
+      "gh api repos/acme/app/actions/runs --jq .total_count",
+      "gh api -X GET repos/acme/app",
+      "npm view redcode version",
+      "bash -c 'gh pr checks 12'",
+    ])
+      expect({ command, change: ShellPolling.mutating(command) }).toEqual({ command, change: undefined })
   })
 })

@@ -48,7 +48,13 @@ export const Approval = Schema.Struct({ projectID: Project.ID, patterns: Schema.
 })
 export type Approval = typeof Approval.Type
 
-export const AskInput = Schema.Struct({ ...Request.fields, id: Schema.optional(ID), ruleset: Ruleset }).annotate({
+export const AskInput = Schema.Struct({
+  ...Request.fields,
+  id: Schema.optional(ID),
+  ruleset: Ruleset,
+  /** Ask even where a rule or an earlier approval allows the request; a deny still refuses. Not part of the request clients see. */
+  force: Schema.optional(Schema.Boolean),
+}).annotate({
   identifier: "PermissionAskInput",
 })
 export type AskInput = typeof AskInput.Type

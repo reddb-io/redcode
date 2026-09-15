@@ -195,12 +195,13 @@ const layer = Layer.effect(
     const goals = yield* GoalRuntime.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* (sessionID: SessionID) {
-      // Whether a goal drove the turn that may start a monitor. When that goal is parked later
-      // (Esc, loop guard, stall, step ceiling, a failed turn, /goal pause), it waits for the person,
-      // so a monitor finishing afterwards must not start a turn on its own.
-      const driven = (yield* goals.get(sessionID))?.status === "active"
+      // Cancels seen when this step's tools started. A result arriving after a later cancel (Esc, a
+      // stall) stays pending for the person's next message instead of starting a turn on its own.
+      const generation = yield* state.generation(sessionID)
+      // Decided when the result arrives, not when the monitor started: a goal that is paused, blocked
+      // or dropped by then waits for the person, whenever it was set.
       const wake = Effect.gen(function* () {
-        if (!driven) return true
+        if ((yield* state.generation(sessionID)) !== generation) return false
         const goal = yield* goals.get(sessionID)
         return goal === undefined || goal.status === "active" || goal.status === "done"
       })
