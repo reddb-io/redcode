@@ -138,11 +138,17 @@ it.effect("binds requirements to real requests and rejects fabricated, failed or
     yield* setup
     yield* request()
     const todos = yield* SessionTodo.Service
-    expect(
-      (yield* todos.update({ sessionID, todos: [{ ...task, requirement: "invented requirement" }] }).pipe(Effect.exit))
-        ._tag,
-    ).toBe("Failure")
-    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]
+    // A requirement that quotes nothing no longer fails the call: the latest real request is the
+    // source, verbatim, and the model's wording stays a criterion. Evidence is still required below.
+    const [paraphrased] = yield* todos.update({
+      sessionID,
+      todos: [{ content: "Paraphrased", status: "pending", priority: "high", requirement: "invented requirement" }],
+    })
+    expect(paraphrased).toMatchObject({
+      source: { type: "request", id: "msg_request_10", quote: "Implement retries and verify duplicate requests" },
+      criterion: "invented requirement",
+    })
+    const created = (yield* todos.update({ sessionID, todos: [task] })).find((entry) => entry.content === task.content)!
     expect(created).toMatchObject({
       source: { type: "request", id: "msg_request_10", quote: task.requirement },
       criterion: task.criterion,
@@ -180,7 +186,10 @@ it.effect("binds requirements to real requests and rejects fabricated, failed or
         },
       ],
     })
-    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "passing", tool: "bash", observed: 30 } })
+    expect(done.find((entry) => entry.id === created.id)).toMatchObject({
+      status: "completed",
+      evidence: { callID: "passing", tool: "bash", observed: 30 },
+    })
     const facts = yield* SessionTaskFacts.Service
     expect((yield* facts.available(sessionID)).results).toContainEqual(
       expect.objectContaining({ callID: "passing", successful: true, summary: expect.stringContaining("bun test") }),
@@ -266,7 +275,7 @@ it.effect("reopens and updates a task whose quoted request is no longer in the s
     const invented = yield* todos
       .update({ sessionID, todos: [{ content: "Invented", status: "pending", requirement: "never said this" }] })
       .pipe(Effect.flip)
-    expect(invented.message).toContain("must quote a real user message")
+    expect(invented.message).toContain(SessionTodoStore.QUOTE_MISMATCH)
   }),
 )
 
@@ -1150,5 +1159,161 @@ it.effect("sees Windows device, git-bash, mixed-case and drive-relative spelling
     expect(overlaps(["C:foo\\a.ts"], ["d:/project/foo/a.ts"])).toBe(false)
     expect(overlaps(["C:"], ["c:/anything"])).toBe(true)
     expect(overlaps(["C:"], ["d:/anything"])).toBe(false)
+  }),
+)
+
+it.effect("matches a retyped quote but not a different request", () =>
+  Effect.sync(() => {
+    const text =
+      "Corrija a validação do formulário de cadastro e adicione testes para o campo “e-mail”.\nDepois rode   os testes."
+    const { quotes } = SessionTodoStore
+    expect(quotes(text, "Corrija a validação do formulário de cadastro")).toBe(true)
+    expect(quotes(text, "corrija a VALIDAÇÃO do formulário")).toBe(true)
+    expect(quotes(text, "Corrija a validação".normalize("NFD"))).toBe(true)
+    expect(quotes(text, 'testes para o campo "e-mail"')).toBe(true)
+    expect(quotes(text, "“e-mail”. Depois rode os testes.")).toBe(true)
+    expect(quotes(text, "Corrija a validação… rode os testes")).toBe(true)
+    expect(quotes(text, "Corrija a validação...rode os testes")).toBe(true)
+    // Fragments must keep their order, and a paraphrase or an empty quote is not a quote.
+    expect(quotes(text, "rode os testes… Corrija a validação")).toBe(false)
+    expect(quotes(text, "Fix the signup form validation")).toBe(false)
+    expect(quotes(text, "…")).toBe(false)
+  }),
+)
+
+/** A legacy (v1) user message with one text part, as the TUI runtime stores it. */
+const legacyRequest = (id: string, text: string, created: number) =>
+  Effect.gen(function* () {
+    const database = yield* Database.Service
+    yield* database.db
+      .insert(MessageTable)
+      .values({ id, session_id: sessionID, data: { role: "user", time: { created }, agent: "build" } } as never)
+      .run()
+      .pipe(Effect.orDie)
+    yield* database.db
+      .insert(PartTable)
+      .values({
+        id: `prt_${id}`,
+        session_id: sessionID,
+        message_id: id,
+        data: { type: "text", text },
+      } as never)
+      .run()
+      .pipe(Effect.orDie)
+  })
+
+/** A legacy assistant message holding one successful shell check. */
+const legacyCheck = (callID: string, completed: number) =>
+  Effect.gen(function* () {
+    const database = yield* Database.Service
+    const id = `msg_legacy_${callID}`
+    const assistant = Schema.decodeUnknownSync(SessionV1.Assistant)({
+      id,
+      sessionID,
+      role: "assistant",
+      parentID: "msg_legacy_user",
+      agent: "build",
+      mode: "build",
+      modelID: "fixture",
+      providerID: "fixture",
+      path: { cwd: "/project", root: "/project" },
+      time: { created: completed - 1, completed },
+      cost: 0,
+      tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    yield* database.db
+      .insert(MessageTable)
+      .values({ id, session_id: sessionID, data: assistant } as never)
+      .run()
+      .pipe(Effect.orDie)
+    const part = Schema.decodeUnknownSync(SessionV1.Part)({
+      id: `prt_${callID}`,
+      sessionID,
+      messageID: id,
+      type: "tool",
+      tool: "bash",
+      callID,
+      state: {
+        status: "completed",
+        input: { command: "bun test" },
+        title: "Tests",
+        output: "Passed",
+        metadata: { exit: 0 },
+        time: { start: completed - 1, end: completed },
+      },
+    })
+    yield* database.db
+      .insert(PartTable)
+      .values({ id: part.id, session_id: sessionID, message_id: id, data: part } as never)
+      .run()
+      .pipe(Effect.orDie)
+  })
+
+it.effect("reads a legacy session's requests and results even after a projected context update", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* legacyRequest("msg_legacy_user", "Implemente retries e verifique requisições duplicadas", 10)
+    // The legacy loop's Context Epoch writes a projected system message on a later step; any
+    // projected row used to hide every legacy request and result from the task gate.
+    yield* message({ id: "msg_context_update", type: "system", text: "Context changed", time: { created: 15 } }, 15)
+    yield* legacyCheck("legacy-tests", 20)
+    const facts = yield* SessionTaskFacts.Service
+    const observed = yield* facts.load(sessionID)
+    expect(observed.requests.map((entry) => String(entry.id))).toEqual(["msg_legacy_user"])
+    expect(observed.results.map((entry) => entry.callID)).toEqual(["legacy-tests"])
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          content: "Verify retries",
+          status: "pending",
+          priority: "high",
+          requirement: "verifique requisições duplicadas",
+        },
+      ],
+    })
+    expect(created.source).toMatchObject({ id: "msg_legacy_user", quote: "verifique requisições duplicadas" })
+    const [done] = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          id: created.id,
+          revision: created.revision,
+          status: "completed",
+          evidence: { callID: "legacy-tests", explanation: "Tests cover duplicate requests" },
+        },
+      ],
+    })
+    expect(done).toMatchObject({ status: "completed", evidence: { callID: "legacy-tests" } })
+  }),
+)
+
+it.effect("attaches the latest request to a paraphrased requirement and still refuses completion without proof", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Adicione retries", 5)
+    yield* request("Corrija a validação do formulário de cadastro", 10)
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          content: "Fix validation",
+          status: "pending",
+          priority: "high",
+          requirement: "Fix the signup form validation",
+        },
+      ],
+    })
+    expect(created.source).toMatchObject({
+      id: "msg_request_10",
+      quote: "Corrija a validação do formulário de cadastro",
+    })
+    expect(created.criterion).toBe("Fix the signup form validation")
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, revision: created.revision, status: "completed" }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toContain(SessionTodoStore.REFUSED)
   }),
 )
