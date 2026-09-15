@@ -31,6 +31,7 @@ import { HumanWait } from "./human-wait"
 import type { SessionGuardLog } from "./guard-log"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
+import { ToolSearch } from "./tool-search"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -57,6 +58,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   publishEvent: EventV2.Interface["publish"]
   structuredOutputTool?: AITool
   toolTimeout?: number | false
+  toolSearch?: ToolSearch.Config
+  /**
+   * Whether this step has a Design context (the design agent, or a Session with Design
+   * documents). Without one the `design_*` tools are deferred; omitted, they never are.
+   */
+  designContext?: boolean
   /** Passed in rather than resolved here: this module is used from callers that own the service. */
   recordGuard: (trip: SessionGuardLog.Trip) => Effect.Effect<void>
 }) {
@@ -200,6 +207,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       }),
   })
 
+  const designEntries: ToolSearch.Entry[] = []
+  const mcpEntries: ToolSearch.Entry[] = []
+
   for (const item of yield* registry.tools({
     modelID: ModelV2.ID.make(input.model.api.id),
     providerID: input.model.providerID,
@@ -207,6 +217,13 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     permission: input.session.permission,
   })) {
     const schema = ProviderTransform.schema(input.model, ToolJsonSchema.fromTool(item))
+    if (item.id.startsWith(ToolSearch.DESIGN_NAMESPACE + "_"))
+      designEntries.push({
+        name: item.id,
+        namespace: ToolSearch.DESIGN_NAMESPACE,
+        description: item.description,
+        schema: schema as Record<string, unknown>,
+      })
     tools[item.id] = tool({
       description: item.description,
       inputSchema: jsonSchema(schema),
@@ -477,8 +494,66 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   }
 
   if (input.structuredOutputTool) tools.StructuredOutput = input.structuredOutputTool
-  if (flags.experimentalCodeMode) return withAllOperationHooks()
 
+  // Deferred tools stay in the map, so a call to one validates and runs through the same
+  // permission, hook, loop-guard and truncation path as any other; they are only left out of
+  // what is advertised. A call to one that was never loaded therefore just works (and loads it
+  // through history), which forgives a small model that guesses a listed name.
+  const finish = Effect.fnUntraced(function* () {
+    const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
+    const visible = (entries: ToolSearch.Entry[]) => {
+      const disabled = Permission.disabled(
+        entries.map((entry) => entry.name),
+        ruleset,
+      )
+      return entries.filter((entry) => !disabled.has(entry.name))
+    }
+    const deferred = Permission.disabled([ToolSearch.TOOL_ID], ruleset).has(ToolSearch.TOOL_ID)
+      ? []
+      : ToolSearch.plan({
+          config: input.toolSearch,
+          mcp: visible(mcpEntries),
+          design: visible(designEntries),
+          designContext: input.designContext ?? true,
+        })
+    if (deferred.length === 0) return withAllOperationHooks()
+
+    const loaded = ToolSearch.loadedFromHistory(input.messages, new Set(deferred.map((entry) => entry.name)))
+    const pending = new Set(deferred.filter((entry) => !loaded.has(entry.name)).map((entry) => entry.name))
+    // Present whenever anything is deferrable, even once all of it is loaded: removing the tool
+    // later would rewrite the advertised prefix.
+    tools[ToolSearch.TOOL_ID] = ToolSearch.withGuidance(
+      tool({
+        description: ToolSearch.description(deferred),
+        inputSchema: jsonSchema(
+          ProviderTransform.schema(input.model, structuredClone(ToolSearch.InputSchema) as never),
+        ),
+        execute(args, opts) {
+          return run.promise(
+            Effect.gen(function* () {
+              const active = new Set(Object.keys(tools).filter((name) => !pending.has(name)))
+              const output = ToolSearch.run(deferred, active, toRecord(args))
+              yield* plugin.trigger(
+                "tool.execute.after",
+                { tool: ToolSearch.TOOL_ID, sessionID: input.session.id, callID: opts.toolCallId, args },
+                output,
+              )
+              if (opts.abortSignal?.aborted) yield* input.processor.completeToolCall(opts.toolCallId, output)
+              return output
+            }),
+          )
+        },
+      }),
+      ToolSearch.guidanceLine(deferred),
+    )
+    const wrapped = withAllOperationHooks()
+    for (const name of pending) if (wrapped[name]) wrapped[name] = ToolSearch.markDeferred(wrapped[name])
+    return wrapped
+  })
+
+  if (flags.experimentalCodeMode) return yield* finish()
+
+  const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
   for (const [key, entry] of Object.entries(yield* mcp.tools())) {
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
     const execute = item.execute
@@ -487,6 +562,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     const schema = yield* Effect.promise(() => Promise.resolve(asSchema(item.inputSchema).jsonSchema))
     const transformed = ProviderTransform.schema(input.model, { ...schema, properties: schema.properties ?? {} })
     item.inputSchema = jsonSchema(transformed)
+    mcpEntries.push({
+      name: key,
+      namespace: ToolSearch.namespaceOf(key, servers),
+      description: entry.def.description ?? "",
+      schema: transformed as Record<string, unknown>,
+    })
     item.execute = (args, opts) =>
       run.promise(
         Effect.gen(function* () {
@@ -576,7 +657,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     tools[key] = item
   }
 
-  return withAllOperationHooks()
+  return yield* finish()
 })
 
 function toRecord(value: unknown) {

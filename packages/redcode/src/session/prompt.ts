@@ -94,6 +94,8 @@ import { eq } from "drizzle-orm"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
+import { ToolSearch } from "./tool-search"
+import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { LLMEvent } from "@reddb-io/redcode-llm"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
@@ -1820,6 +1822,16 @@ const layer = Layer.effect(
             })
             msgs = decided.messages as typeof msgs
 
+            const toolSearch = (yield* config.get()).experimental?.tool_search
+            // Design tools stay loaded for the design agent and for any Session that has Design
+            // documents, which is also where an approved Design handed to build lives.
+            const designContext =
+              toolSearch?.enabled === false ||
+              agent.name === "design" ||
+              (yield* design.use(DesignStore.Service.use((store) => store.list(sessionID))).pipe(
+                Effect.map((documents) => documents.length > 0),
+                Effect.orElseSucceed(() => true),
+              ))
             const tools = yield* SessionTools.resolve({
               agent,
               session,
@@ -1830,6 +1842,8 @@ const layer = Layer.effect(
               promptOps,
               publishEvent: events.publish,
               toolTimeout: (yield* config.get()).experimental?.tool_timeout,
+              toolSearch,
+              designContext,
               recordGuard: guards.record,
               ...(lastUser.format?.type === "json_schema"
                 ? {
@@ -1888,10 +1902,14 @@ const layer = Layer.effect(
               [...SessionContext.interleave(msgs, updates, lastUser), ...(reminder ? [reminder] : [])],
               model,
             )
+            // Outside the Context Epoch baseline on purpose: it names what tools are deferred, which
+            // changes only when the tools section changes too, so it adds no cache break of its own.
+            const toolSearchGuidance = ToolSearch.guidance(tools)
             const system = [
               SystemPrompt.identity(model),
               prepared.baseline,
               ...(todowrite ? [SessionTodo.guidance] : []),
+              ...(toolSearchGuidance ? [toolSearchGuidance] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

@@ -2145,6 +2145,13 @@ export type Config = {
      * Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.
      */
     tool_timeout?: false | number
+    tool_search?: {
+      /**
+       * Defer tools behind tool_search: "auto" defers MCP tools once their schemas exceed the threshold and Design tools outside a Design context, true always defers MCP tools, false advertises every tool (default: "auto"). Code mode never defers MCP tools.
+       */
+      enabled?: "auto" | boolean
+      threshold?: number
+    }
     /**
      * How long a turn may produce nothing before it is reported and, where nothing is watching, ended. Time a tool spends running or a permission spends awaiting an answer does not count. Set to false to disable.
      */

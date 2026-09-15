@@ -293,6 +293,17 @@ export const Info = Schema.Struct({
         description:
           "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",
       }),
+      tool_search: Schema.optional(
+        Schema.Struct({
+          enabled: Schema.optional(Schema.Union([Schema.Literal("auto"), Schema.Boolean])).annotate({
+            description:
+              'Defer tools behind tool_search: "auto" defers MCP tools once their schemas exceed the threshold and Design tools outside a Design context, true always defers MCP tools, false advertises every tool (default: "auto"). Code mode never defers MCP tools.',
+          }),
+          threshold: Schema.optional(PositiveInt).annotate({
+            description: "Estimated tokens of MCP tool schemas above which MCP tools are deferred (default: 3000)",
+          }),
+        }),
+      ).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." }),
       turn_stall: Schema.optional(
         Schema.Union([
           Schema.Literal(false),
