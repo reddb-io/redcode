@@ -57,6 +57,30 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  it.effect("accepts a trailing reminder as its own user message after user and tool turns", () =>
+    Effect.gen(function* () {
+      const reminder = "<system-reminder>\nNo tracked tasks yet.\n</system-reminder>"
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Find the config."),
+            Message.user(reminder),
+            Message.assistant([ToolCallPart.make({ id: "call_1", name: "glob", input: { pattern: "*.json" } })]),
+            Message.tool({ id: "call_1", name: "glob", result: "opencode.json" }),
+            Message.user(reminder),
+          ],
+          cache: "none",
+        }),
+      )
+
+      const roles = prepared.body.messages.map((message) => message.role)
+      expect(roles).toEqual(["user", "user", "assistant", "user", "user"])
+      expect(prepared.body.messages.at(-1)).toEqual({ role: "user", content: [{ type: "text", text: reminder }] })
+      expect(prepared.body.messages[1]).toEqual({ role: "user", content: [{ type: "text", text: reminder }] })
+    }),
+  )
+
   it.effect("lowers chronological system updates natively for Claude Opus 4.8 with cache hints", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(

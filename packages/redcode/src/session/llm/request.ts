@@ -8,6 +8,7 @@ import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "../message-v2"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
+import { McpCatalog } from "@/mcp/catalog"
 import { SystemPrompt } from "../system"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { DateTime, Effect, Record } from "effect"
@@ -198,7 +199,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   return {
     system,
     messages,
-    tools: orderTools(tools),
+    tools: orderTools({ tools }),
     params,
     messageTransformOptions: options,
     headers: {
@@ -230,26 +231,70 @@ function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission"
   return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
 }
 
-const MCP_RESOURCE_TOOLS = new Set(["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"])
+export const TOOL_SEARCH = "tool_search"
+const MCP_RESOURCE_TOOLS = ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"]
+
+export interface ToolOrderInput<T> {
+  readonly tools: Readonly<Record<string, T>>
+  /**
+   * Durable MCP server order (config order, then first-seen). Omitted, directly advertised MCP
+   * tools keep the caller's insertion order, which `SessionTools` takes from `MCP.tools()` — and
+   * that already lists servers in this order.
+   */
+  readonly serverOrder?: ReadonlyArray<string>
+  /** Deferred MCP tools loaded through `tool_search`, in the order they were activated. */
+  readonly activation?: ReadonlyArray<string>
+}
+
+/** The blocks tools are advertised in; a request only ever grows at the end of the last non-empty one. */
+export const ToolBlock = {
+  native: 0,
+  resource: 1,
+  search: 2,
+  mcp: 3,
+  activated: 4,
+} as const
+
+const byCodePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 /**
- * Tool order is part of the provider's cached prefix, so it must only ever grow at the end.
- * Native tools come first, sorted by name so the set does not depend on what else is loaded;
- * MCP resource tools follow; MCP tools (AI SDK `dynamic` tools) come last in the order the MCP
- * service lists them: servers as they connected, tools as each server returned them. A server
- * that connects mid-session appends its tools instead of interleaving them by name.
+ * Tool order is part of the provider's cached prefix, so it must only change at the end.
+ * 1. native/built-in tools, sorted by name (independent of what else is loaded; not `tool_search`);
+ * 2. MCP resource tools; 3. `tool_search` (static description);
+ * 4. directly advertised MCP tools (AI SDK `dynamic` tools) by durable server order, then the
+ *    server's own tool order; 5. deferred MCP tools activated via `tool_search`, append-only.
+ * A server that connects mid-session, or a tool that is activated, appends instead of
+ * interleaving by name.
  */
-export function orderTools<T extends Tool>(tools: Record<string, T>): Record<string, T> {
-  const rank = ([name, item]: [string, T]) =>
-    (item as { type?: string }).type === "dynamic" ? 2 : MCP_RESOURCE_TOOLS.has(name) ? 1 : 0
+export function orderTools<T extends Tool>(input: ToolOrderInput<T>): Record<string, T> {
+  const activation = new Map((input.activation ?? []).map((name, index) => [name, index]))
+  const prefixes = (input.serverOrder ?? []).map((server, index) => ({ prefix: `${McpCatalog.toolName(server, "")}`, index }))
+  const server = (name: string) =>
+    prefixes
+      .filter((item) => name.startsWith(item.prefix))
+      .reduce<{ prefix: string; index: number } | undefined>(
+        (best, item) => (!best || item.prefix.length > best.prefix.length ? item : best),
+        undefined,
+      )?.index ?? prefixes.length
+  const block = (name: string, item: T) => {
+    if (activation.has(name)) return ToolBlock.activated
+    if (name === TOOL_SEARCH) return ToolBlock.search
+    if (MCP_RESOURCE_TOOLS.includes(name)) return ToolBlock.resource
+    if ((item as { type?: string }).type === "dynamic") return ToolBlock.mcp
+    return ToolBlock.native
+  }
+  const within = (a: { name: string; index: number; block: number }, b: { name: string; index: number }) => {
+    if (a.block === ToolBlock.native) return byCodePoint(a.name, b.name)
+    if (a.block === ToolBlock.resource) return MCP_RESOURCE_TOOLS.indexOf(a.name) - MCP_RESOURCE_TOOLS.indexOf(b.name)
+    if (a.block === ToolBlock.mcp) return server(a.name) - server(b.name) || a.index - b.index
+    if (a.block === ToolBlock.activated) return activation.get(a.name)! - activation.get(b.name)!
+    return 0
+  }
   return Object.fromEntries(
-    Object.entries(tools)
-      .map((entry, index) => ({ entry, index, rank: rank(entry) }))
-      .toSorted(
-        (a, b) =>
-          a.rank - b.rank || (a.rank === 2 ? a.index - b.index : a.entry[0].localeCompare(b.entry[0])),
-      )
-      .map((item) => item.entry),
+    Object.entries(input.tools)
+      .map(([name, item], index) => ({ name, item, index, block: block(name, item) }))
+      .toSorted((a, b) => a.block - b.block || within(a, b))
+      .map((entry) => [entry.name, entry.item]),
   )
 }
 

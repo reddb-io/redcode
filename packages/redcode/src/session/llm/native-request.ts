@@ -1,5 +1,6 @@
 import type { JsonSchema, LLMRequest, ProviderMetadata } from "@reddb-io/redcode-llm"
-import { LLM, Message, SystemPart, ToolCallPart, ToolDefinition, ToolResultPart } from "@reddb-io/redcode-llm"
+import { CacheHint, LLM, Message, SystemPart, ToolCallPart, ToolDefinition, ToolResultPart } from "@reddb-io/redcode-llm"
+import { ProviderTransform } from "@/provider/transform"
 import {
   AmazonBedrock,
   Anthropic,
@@ -178,14 +179,33 @@ export const model = (input: Provider.Model | RequestInput, headers?: Record<str
   throw new Error(`Native LLM request adapter does not support provider package ${model.api.npm}`)
 }
 
+// The default cache policy marks the latest user message, which is the trailing per-step
+// reminder when there is one: a write never read. Mark the last stable message instead.
+const stableBreakpoint = (list: ReadonlyArray<Message>) => {
+  const index = list.length - 2
+  const target = list[index]
+  if (!target || target.content.length === 0) return list
+  const text = target.content.findLastIndex((part) => part.type === "text")
+  const at = text >= 0 ? text : target.content.length - 1
+  const next = list.slice()
+  next[index] = Message.make({
+    ...target,
+    content: target.content.map((part, i) => (i === at ? { ...part, cache: new CacheHint({ type: "ephemeral" }) } : part)),
+  } as never)
+  return next
+}
+
 export const request = (input: RequestInput) => {
   const converted = messages(input.messages)
+  const last = input.messages.at(-1)
+  const trailingReminder = last !== undefined && ProviderTransform.isReminderMessage(last)
   // This is the only native adapter boundary that should construct canonical
   // @reddb-io/redcode-llm request objects from opencode's session/AI SDK-shaped data.
   return LLM.request({
     model: model(input, input.headers),
     system: [...(input.system ?? []).map(SystemPart.make), ...converted.system],
-    messages: converted.messages,
+    messages: trailingReminder ? stableBreakpoint(converted.messages) : converted.messages,
+    ...(trailingReminder ? { cache: { tools: true, system: true } } : {}),
     tools: tools(input.tools),
     toolChoice: input.toolChoice,
     generation: generation(input),

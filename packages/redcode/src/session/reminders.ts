@@ -15,6 +15,7 @@ import { Session } from "./session"
 import { SessionGoal } from "./goal"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { Todo } from "./todo"
+import { ProviderTransform } from "@/provider/transform"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
 
@@ -45,7 +46,17 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     } as SessionV1.User,
     parts: [],
   }
-  const result = () => (trailing.parts.length > 0 ? trailing : undefined)
+  // Tagged so the model reads it as harness context rather than a new request, and so provider
+  // transforms can recognise the message and keep cache breakpoints off it.
+  const result = () =>
+    trailing.parts.length > 0
+      ? {
+          ...trailing,
+          parts: trailing.parts.map((part) =>
+            part.type === "text" ? { ...part, text: ProviderTransform.reminder(part.text) } : part,
+          ),
+        }
+      : undefined
 
   // The goal is re-rendered from the session record on every step, so compaction can drop every
   // earlier copy and the model still reads the objective as it was set — and the turn it is on.

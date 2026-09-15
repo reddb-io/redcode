@@ -36,6 +36,25 @@ describe("Gemini route", () => {
     }),
   )
 
+  it.effect("accepts a trailing reminder as its own user content after a user turn", () =>
+    Effect.gen(function* () {
+      const reminder = "<system-reminder>\nNo tracked tasks yet.\n</system-reminder>"
+      const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(
+        LLM.request({
+          model,
+          messages: [Message.user("Before."), Message.assistant("After."), Message.user("Next."), Message.user(reminder)],
+        }),
+      )
+
+      expect(prepared.body.contents).toEqual([
+        { role: "user", parts: [{ text: "Before." }] },
+        { role: "model", parts: [{ text: "After." }] },
+        { role: "user", parts: [{ text: "Next." }] },
+        { role: "user", parts: [{ text: reminder }] },
+      ])
+    }),
+  )
+
   it.effect("lowers chronological system updates to wrapped user text in order", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(

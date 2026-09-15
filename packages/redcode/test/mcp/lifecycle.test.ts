@@ -36,6 +36,7 @@ interface LifecycleServerState {
   resourcePages?: Record<string, Page<{ name: string; uri: string; description?: string }>>
   resourceTemplatePages?: Record<string, Page<{ name: string; uriTemplate: string; description?: string }>>
   listToolsError?: string
+  listToolsDelay?: number
   requestDelay?: number
   roots?: Array<{ uri: string; name?: string }>
   requests: string[]
@@ -66,7 +67,8 @@ function lifecycleServer(input?: { capabilities?: ServerCapabilities; instructio
         })
 
         if (capabilities.tools) {
-          protocol.setRequestHandler(ListToolsRequestSchema, (request) => {
+          protocol.setRequestHandler(ListToolsRequestSchema, async (request) => {
+            if (state.listToolsDelay) await Bun.sleep(state.listToolsDelay)
             if (state.listToolsError) throw new Error(state.listToolsError)
             const page = state.toolPages?.[request.params?.cursor ?? "initial"]
             return Promise.resolve({ tools: page?.items ?? state.tools, nextCursor: page?.nextCursor })
@@ -300,6 +302,52 @@ it.instance("reload rereads files, adds and removes servers, and preserves manua
     expect(Object.keys(yield* mcp.tools())).toEqual(["third_current_directory"])
     yield* mcp.connect("second")
     expect((yield* mcp.reload("second")).second.status).toBe("connected")
+  }),
+)
+
+it.instance("tools() lists servers in config order however their connections finish", () =>
+  Effect.gen(function* () {
+    const mcp = yield* MCP.Service
+    const test = yield* TestInstance
+    const file = path.join(test.directory, "opencode.json")
+    yield* mcp.status()
+    // The provider caches the tool list as a prefix, so a restart where another server happens to
+    // connect first must not reorder it.
+    for (const [round, slow] of [
+      [1, "first"],
+      [2, "second"],
+    ] as const) {
+      const first = yield* lifecycleServer()
+      const second = yield* lifecycleServer()
+      first.state.tools = [{ name: "a_tool", inputSchema: { type: "object", properties: {} } }]
+      second.state.tools = [{ name: "b_tool", inputSchema: { type: "object", properties: {} } }]
+      ;(slow === "first" ? first : second).state.listToolsDelay = 300
+      const names = [`first${round}`, `second${round}`] as const
+      yield* Effect.promise(() =>
+        Bun.write(file, JSON.stringify({ mcp: { [names[0]]: remote(first.url), [names[1]]: remote(second.url) } })),
+      )
+      yield* mcp.reload()
+      expect(Object.keys(yield* mcp.tools())).toEqual([`${names[0]}_a_tool`, `${names[1]}_b_tool`])
+    }
+  }),
+)
+
+it.instance("a server keeps its tool slot when it disconnects and reconnects", () =>
+  Effect.gen(function* () {
+    const first = yield* lifecycleServer()
+    const second = yield* lifecycleServer()
+    first.state.tools = [{ name: "a_tool", inputSchema: { type: "object", properties: {} } }]
+    second.state.tools = [{ name: "b_tool", inputSchema: { type: "object", properties: {} } }]
+    const mcp = yield* MCP.Service
+    yield* mcp.add("first", remote(first.url))
+    yield* mcp.add("second", remote(second.url))
+    expect(Object.keys(yield* mcp.tools())).toEqual(["first_a_tool", "second_b_tool"])
+
+    yield* mcp.disconnect("first")
+    expect(Object.keys(yield* mcp.tools())).toEqual(["second_b_tool"])
+    yield* Effect.promise(first.restart)
+    yield* mcp.connect("first")
+    expect(Object.keys(yield* mcp.tools())).toEqual(["first_a_tool", "second_b_tool"])
   }),
 )
 

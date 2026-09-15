@@ -152,6 +152,12 @@ interface State {
   clients: Record<string, MCPClient>
   defs: Record<string, MCPToolDef[]>
   instructions: Record<string, string>
+  /**
+   * Durable server order for advertised tools: configured servers in config order, servers added
+   * later in first-seen order. A server keeps its slot across disconnects and reconnects, so the
+   * provider's cached tool prefix does not depend on which connection finished first.
+   */
+  order: string[]
 }
 
 export interface ServerInstructions {
@@ -511,6 +517,7 @@ const layer = Layer.effect(
           clients: {},
           defs: {},
           instructions: {},
+          order: Object.keys(config),
         }
 
         yield* Effect.forEach(
@@ -570,6 +577,14 @@ const layer = Layer.effect(
       }),
     )
 
+    function claim(s: State, name: string) {
+      if (!s.order.includes(name)) s.order.push(name)
+    }
+
+    function serverOrder(s: State) {
+      return [...s.order, ...Object.keys(s.clients).filter((name) => !s.order.includes(name))]
+    }
+
     function closeClient(s: State, name: string) {
       const client = s.clients[name]
       delete s.clients[name]
@@ -593,6 +608,7 @@ const layer = Layer.effect(
     ) {
       const bridge = yield* EffectBridge.make()
       const previous = s.clients[name]
+      claim(s, name)
       s.status[name] = { status: "connected" }
       s.clients[name] = client
       s.defs[name] = listed
@@ -697,6 +713,8 @@ const layer = Layer.effect(
       if (name !== undefined && !(name in s.status) && !isMcpConfigured(config[name])) {
         return yield* new NotFoundError({ name })
       }
+      // Claim slots in config order before connecting concurrently.
+      for (const key of Object.keys(config)) if (isMcpConfigured(config[key])) claim(s, key)
       yield* Effect.forEach(
         names,
         (key) =>
@@ -734,8 +752,9 @@ const layer = Layer.effect(
       const config = s.configured
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
-      for (const [clientName, client] of Object.entries(s.clients)) {
-        if (s.status[clientName]?.status !== "connected") continue
+      for (const clientName of serverOrder(s)) {
+        const client = s.clients[clientName]
+        if (!client || s.status[clientName]?.status !== "connected") continue
         const mcpConfig = config[clientName]
         const listed = s.defs[clientName]
         if (!listed) {

@@ -30,6 +30,13 @@ describe("tool.invalid unknownToolMessage", () => {
     expect(unknownToolMessage("filesystem", available)).toContain("filesystem_operation_")
   })
 
+  test("drops suggestions rather than exceed the cap with very long tool names", () => {
+    const long = Array.from({ length: 5 }, (_, i) => `github_${"x".repeat(180)}_${i}`)
+    const message = unknownToolMessage(`github_${"x".repeat(180)}`, long)
+    expect(Buffer.byteLength(message)).toBeLessThanOrEqual(300)
+    expect(message).toContain("Check the tool name")
+  })
+
   test("bounds a pathological name", () => {
     expect(Buffer.byteLength(unknownToolMessage("x".repeat(5000), available))).toBeLessThan(300)
   })

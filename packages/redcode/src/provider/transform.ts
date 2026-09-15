@@ -355,9 +355,30 @@ function normalizeMessages(
   return msgs
 }
 
+const REMINDER_OPEN = "<system-reminder>\n"
+const REMINDER_CLOSE = "\n</system-reminder>"
+
+/** Wrap per-step harness context sent as a trailing user message. */
+export function reminder(text: string) {
+  return `${REMINDER_OPEN}${text}${REMINDER_CLOSE}`
+}
+
+/**
+ * The trailing per-step reminder changes on every step, so a cache breakpoint on it is a write
+ * that is never read. Breakpoints belong on the last message that stays in the next request.
+ */
+export function isReminderMessage(msg: ModelMessage) {
+  if (msg.role !== "user") return false
+  if (typeof msg.content === "string") return msg.content.startsWith(REMINDER_OPEN)
+  return (
+    msg.content.length > 0 &&
+    msg.content.every((part) => part.type === "text" && part.text.startsWith(REMINDER_OPEN))
+  )
+}
+
 function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
   const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
-  const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
+  const final = msgs.filter((msg) => msg.role !== "system" && !isReminderMessage(msg)).slice(-2)
 
   const providerOptions = {
     anthropic: {
