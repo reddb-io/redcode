@@ -1868,10 +1868,11 @@ const layer = Layer.effect(
             // The safe provider-turn boundary: the epoch's baseline is reused verbatim, and any
             // source that changed since is admitted as one durable system message here rather
             // than rewriting the cached prefix.
+            const stepContext = { toolIndex: ToolSearch.indexOf(tools) }
             const prepared = yield* SessionContextEpoch.prepare(
               db,
               events,
-              context.load(agent, session),
+              context.load(agent, session, stepContext),
               sessionID,
             ).pipe(
               // A snapshot this build cannot read must not hold the session hostage: start a new
@@ -1882,7 +1883,9 @@ const layer = Layer.effect(
                   details: error.details,
                 }).pipe(
                   Effect.andThen(SessionContextEpoch.reset(db, sessionID)),
-                  Effect.andThen(SessionContextEpoch.prepare(db, events, context.load(agent, session), sessionID)),
+                  Effect.andThen(
+                    SessionContextEpoch.prepare(db, events, context.load(agent, session, stepContext), sessionID),
+                  ),
                 ),
               ),
               Effect.catch((error) =>
@@ -1902,14 +1905,10 @@ const layer = Layer.effect(
               [...SessionContext.interleave(msgs, updates, lastUser), ...(reminder ? [reminder] : [])],
               model,
             )
-            // Outside the Context Epoch baseline on purpose: it names what tools are deferred, which
-            // changes only when the tools section changes too, so it adds no cache break of its own.
-            const toolSearchGuidance = ToolSearch.guidance(tools)
             const system = [
               SystemPrompt.identity(model),
               prepared.baseline,
               ...(todowrite ? [SessionTodo.guidance] : []),
-              ...(toolSearchGuidance ? [toolSearchGuidance] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

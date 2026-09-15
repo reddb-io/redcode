@@ -23,7 +23,12 @@ import { SystemPrompt } from "./system"
  * System Message at the next safe boundary.
  */
 export interface Interface {
-  readonly load: (agent: Agent.Info, session: Session.Info) => Effect.Effect<SystemContext.SystemContext>
+  readonly load: (
+    agent: Agent.Info,
+    session: Session.Info,
+    /** Observed by the caller from this step's resolved tools: the deferred tool index. */
+    step?: { readonly toolIndex?: string },
+  ) => Effect.Effect<SystemContext.SystemContext>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/SessionContext") {}
@@ -111,7 +116,11 @@ export const layer = Layer.effect(
     // Every source is observed here and closed over as a value: the epoch reconciles the
     // composed context against its stored snapshot, so a source is present exactly when it has
     // something to say, and a source that could not be observed is unavailable rather than gone.
-    const load = Effect.fn("SessionContext.load")(function* (agent: Agent.Info, session: Session.Info) {
+    const load = Effect.fn("SessionContext.load")(function* (
+      agent: Agent.Info,
+      session: Session.Info,
+      step?: { readonly toolIndex?: string },
+    ) {
       const ctx = yield* InstanceState.context
       const [located, instructions, mcp, skills] = yield* Effect.all(
         [
@@ -191,6 +200,21 @@ export const layer = Layer.effect(
                 baseline: (text) => text,
                 update: (_previous, text) => ["The available skills are now:", text].join("\n"),
                 removed: () => "Previously listed skills are no longer available.",
+              }),
+            ]),
+        // The index of tools behind tool_search lives here rather than in the tool's description,
+        // so a server that connects or disconnects reaches the model as one update at the next
+        // safe boundary and the tools block keeps its cached bytes.
+        ...(step?.toolIndex === undefined
+          ? []
+          : [
+              SystemContext.make({
+                key: SystemContext.Key.make("redcode/tool-index"),
+                codec: Schema.toCodecJson(Schema.String),
+                load: Effect.succeed(step.toolIndex),
+                baseline: (text) => text,
+                update: (_previous, text) => ["The tools available through tool_search are now:", text].join("\n"),
+                removed: () => "No additional tools are available through tool_search anymore.",
               }),
             ]),
       ])

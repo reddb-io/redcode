@@ -518,13 +518,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         })
     if (deferred.length === 0) return withAllOperationHooks()
 
-    const loaded = ToolSearch.loadedFromHistory(input.messages, new Set(deferred.map((entry) => entry.name)))
-    const pending = new Set(deferred.filter((entry) => !loaded.has(entry.name)).map((entry) => entry.name))
+    const activated = new Map(
+      ToolSearch.loadedFromHistory(input.messages, new Set(deferred.map((entry) => entry.name))).map(
+        (name, rank) => [name, rank] as const,
+      ),
+    )
+    const pending = new Set(deferred.filter((entry) => !activated.has(entry.name)).map((entry) => entry.name))
     // Present whenever anything is deferrable, even once all of it is loaded: removing the tool
-    // later would rewrite the advertised prefix.
-    tools[ToolSearch.TOOL_ID] = ToolSearch.withGuidance(
+    // later would rewrite the advertised prefix. Its description is static; the index rides the
+    // system context.
+    tools[ToolSearch.TOOL_ID] = ToolSearch.withIndex(
       tool({
-        description: ToolSearch.description(deferred),
+        description: ToolSearch.DESCRIPTION,
         inputSchema: jsonSchema(
           ProviderTransform.schema(input.model, structuredClone(ToolSearch.InputSchema) as never),
         ),
@@ -544,10 +549,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           )
         },
       }),
-      ToolSearch.guidanceLine(deferred),
+      ToolSearch.indexText(deferred),
     )
     const wrapped = withAllOperationHooks()
     for (const name of pending) if (wrapped[name]) wrapped[name] = ToolSearch.markDeferred(wrapped[name])
+    for (const [name, rank] of activated)
+      if (wrapped[name]) wrapped[name] = ToolSearch.markActivated(wrapped[name], rank)
     return wrapped
   })
 

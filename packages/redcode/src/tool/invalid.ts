@@ -26,26 +26,36 @@ const clip = (value: string, max: number) => (value.length > max ? `${value.slic
 /**
  * What the model reads after calling a tool that does not exist. The AI SDK's own message lists
  * every tool name, which with a few MCP servers is kilobytes on every miss; the closest names are
- * what a retry needs. `available` must be the tools the model can call in this request.
- * The result never exceeds UNKNOWN_TOOL_MAX_BYTES.
+ * what a retry needs. `available` must be the tools the model can call in this request;
+ * `deferred` are tools behind tool_search, which are ranked too and, when one is among the
+ * closest, the message says to load it with tool_search. Never exceeds UNKNOWN_TOOL_MAX_BYTES.
  */
-export function unknownToolMessage(name: string, available: ReadonlyArray<string>) {
+export function unknownToolMessage(
+  name: string,
+  available: ReadonlyArray<string>,
+  options: { deferred?: ReadonlyArray<string> } = {},
+) {
   const lower = name.slice(0, 200).toLowerCase()
   const score = (candidate: string) => {
     const other = candidate.toLowerCase()
     const shared = other.startsWith(lower) || lower.startsWith(other) || other.endsWith(lower) || lower.endsWith(other)
     return distance(lower, other) - (shared ? Math.min(lower.length, other.length) : 0)
   }
-  const nearest = available
+  const deferred = new Set(options.deferred ?? [])
+  const nearest = [...available, ...deferred]
     .filter((candidate) => candidate !== "invalid")
     .map((candidate) => ({ candidate, score: score(candidate) }))
     .toSorted((a, b) => a.score - b.score || (a.candidate < b.candidate ? -1 : 1))
     .slice(0, 3)
-    .map((item) => clip(item.candidate, 64))
-  // TODO(tool_search): PR B passes only active tools here and, when the name matches a deferred
-  // MCP tool, says to load it with tool_search instead.
-  const render = (names: string[]) =>
-    `${UNKNOWN}'${clip(name, 64)}'.` + (names.length ? ` Closest: ${names.join(", ")}.` : "") + HINT
+    .map((item) => ({ name: clip(item.candidate, 64), deferred: deferred.has(item.candidate) }))
+  const render = (names: typeof nearest) => {
+    const load = names.find((item) => item.deferred)
+    return (
+      `${UNKNOWN}'${clip(name, 64)}'.` +
+      (names.length ? ` Closest: ${names.map((item) => item.name).join(", ")}.` : "") +
+      (load ? ` Load one with tool_search {"select": ["${load.name}"]}.` : HINT)
+    )
+  }
   let message = render(nearest)
   while (Buffer.byteLength(message) > UNKNOWN_TOOL_MAX_BYTES && nearest.length > 0) {
     nearest.pop()

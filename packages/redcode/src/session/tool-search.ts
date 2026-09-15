@@ -6,8 +6,12 @@ import type { Tool as AITool } from "ai"
  * Progressive discovery for the default (non code mode) tool path. Deferred tools stay in the
  * AI SDK `tools` map, so a call to one still validates and runs through the ordinary execute
  * path, but they are left out of `activeTools`, which is what the SDK sends to the provider.
- * `tool_search` lists them compactly and loads them; the loaded set is derived from history, so
- * it only grows within a Session (a compaction, which rewrites the prefix anyway, resets it).
+ *
+ * Cache shape: the `tool_search` description is static; the index of deferred tools lives in the
+ * durable system context (`redcode/tool-index`), so a server connecting mid-session arrives as one
+ * system update instead of rewriting the tools block. Loaded tools are advertised after every other
+ * tool in activation order, derived from history, so the advertised list only grows at its end
+ * within a Session (a compaction, which rewrites the prefix anyway, resets it).
  */
 
 export const TOOL_ID = "tool_search"
@@ -34,9 +38,10 @@ export type Entry = {
 }
 
 const DEFERRED = Symbol.for("redcode.tool-search.deferred")
-const GUIDANCE = Symbol.for("redcode.tool-search.guidance")
+const ACTIVATED = Symbol.for("redcode.tool-search.activated")
+const INDEX = Symbol.for("redcode.tool-search.index")
 
-type Marked = AITool & { [DEFERRED]?: true; [GUIDANCE]?: string }
+type Marked = AITool & { [DEFERRED]?: true; [ACTIVATED]?: number; [INDEX]?: string }
 
 /** The namespace a flat MCP tool key belongs to; the longest matching server name wins. */
 export function namespaceOf(key: string, servers: readonly string[]) {
@@ -76,22 +81,27 @@ export function plan(input: {
 }
 
 /**
- * Tools loaded so far in this Session: every deferred tool the history already calls (so a
- * replayed call always refers to an advertised tool) plus everything `tool_search` loaded.
+ * Tools loaded so far in this Session, in activation order: every deferred tool the history
+ * already calls (so a replayed call always refers to an advertised tool) plus everything
+ * `tool_search` loaded. Ordered by when the loading part started, not by array position, because
+ * history is not chronological after a compaction.
  */
 export function loadedFromHistory(messages: readonly SessionV1.WithParts[], names: ReadonlySet<string>) {
-  const loaded = new Set<string>()
+  const seen: Array<{ name: string; at: number; order: number }> = []
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.type !== "tool") continue
-      if (names.has(part.tool)) loaded.add(part.tool)
+      const at = "time" in part.state ? part.state.time.start : message.info.time.created
+      if (names.has(part.tool)) seen.push({ name: part.tool, at, order: seen.length })
       if (part.tool !== TOOL_ID || part.state.status !== "completed") continue
       const listed = part.state.metadata?.loaded
       if (!Array.isArray(listed)) continue
-      for (const name of listed) if (typeof name === "string" && names.has(name)) loaded.add(name)
+      for (const name of listed)
+        if (typeof name === "string" && names.has(name)) seen.push({ name, at, order: seen.length })
     }
   }
-  return loaded
+  const ordered = seen.toSorted((a, b) => a.at - b.at || a.order - b.order).map((item) => item.name)
+  return [...new Set(ordered)]
 }
 
 function groups(entries: readonly Entry[]) {
@@ -112,27 +122,23 @@ export function index(entries: readonly Entry[]) {
     .join("\n")
 }
 
-/**
- * The tool description carries the index so the listing lives in the tools section, which
- * already changes exactly when the set of connected tools does, and never in the system prompt
- * or the durable context baseline.
- */
-export function description(entries: readonly Entry[]) {
-  return [
-    "Find and load tools that are available but not loaded yet. Their schemas are not in your tool list until loaded.",
-    "- query: keywords matched against tool names, descriptions and parameters; returns the best matches and loads them.",
-    '- select: exact tool names to load, e.g. ["' + entries[0]!.name + '"].',
-    "Loaded tools are callable from your next step and stay loaded for the rest of the session.",
-    "A tool's full name is <namespace>_<name> from the list below.",
-    "",
-    "Deferred tools:",
-    index(entries),
-  ].join("\n")
-}
+/** Static on purpose: it sits in the tools block, which must not change when servers do. */
+export const DESCRIPTION = [
+  "Find and load tools that are available but not loaded yet; the system context lists them by namespace. Their schemas are not in your tool list until loaded.",
+  "- query: keywords matched against tool names, descriptions and parameters; returns the best matches and loads them.",
+  '- select: exact tool names to load, e.g. ["github_issue_read"]. A tool\'s full name is <namespace>_<name>.',
+  "Loaded tools are callable from your next step and stay loaded for the rest of the session.",
+].join("\n")
 
-export function guidanceLine(entries: readonly Entry[]) {
+/** The durable system context text: which categories are deferred, one example, and the index. */
+export function indexText(entries: readonly Entry[]) {
   const namespaces = groups(entries).map(([namespace]) => namespace)
-  return `Additional tools for ${namespaces.join(", ")} are available through ${TOOL_ID}. Example: ${TOOL_ID}({"query": "list open issues"}) or ${TOOL_ID}({"select": ["${entries[0]!.name}"]}).`
+  return [
+    `Additional tools for ${namespaces.join(", ")} are available through ${TOOL_ID}. Example: ${TOOL_ID} {"query": "list open issues"} or ${TOOL_ID} {"select": ["${entries[0]!.name}"]}.`,
+    "<deferred_tools>",
+    index(entries),
+    "</deferred_tools>",
+  ].join("\n")
 }
 
 export const InputSchema = {
@@ -145,7 +151,7 @@ export const InputSchema = {
     select: {
       type: "array",
       items: { type: "string" },
-      description: "Exact tool names to load, as listed in the tool description.",
+      description: "Exact tool names to load, as <namespace>_<name> from the deferred tool list.",
     },
     limit: {
       type: "number",
@@ -251,12 +257,33 @@ export function markDeferred(item: AITool): AITool {
   return { ...item, [DEFERRED]: true } as Marked
 }
 
-export function withGuidance(item: AITool, line: string): AITool {
-  return { ...item, [GUIDANCE]: line } as Marked
+/** A deferred tool that has been loaded; `rank` is its position in the Session's activation order. */
+export function markActivated(item: AITool, rank: number): AITool {
+  return { ...item, [ACTIVATED]: rank } as Marked
+}
+
+export function withIndex(item: AITool, text: string): AITool {
+  return { ...item, [INDEX]: text } as Marked
 }
 
 export function isDeferred(item: AITool | undefined) {
   return (item as Marked | undefined)?.[DEFERRED] === true
+}
+
+export function activation(item: AITool | undefined) {
+  return (item as Marked | undefined)?.[ACTIVATED]
+}
+
+/** Loaded deferred tools in the order the Session activated them, for `orderTools`. */
+export function activationOrder(tools: Record<string, AITool>) {
+  return Object.keys(tools)
+    .filter((name) => activation(tools[name]) !== undefined)
+    .toSorted((a, b) => activation(tools[a])! - activation(tools[b])!)
+}
+
+/** Deferred tools that are not loaded yet: callable by exact name, not advertised. */
+export function deferredNames(tools: Record<string, AITool>) {
+  return Object.keys(tools).filter((name) => isDeferred(tools[name]))
 }
 
 /** The names to advertise: everything except `invalid` and tools that are still deferred. */
@@ -264,9 +291,9 @@ export function activeNames(tools: Record<string, AITool>) {
   return Object.keys(tools).filter((name) => name !== "invalid" && !isDeferred(tools[name]))
 }
 
-/** The one system line naming the deferred categories, when this step defers anything. */
-export function guidance(tools: Record<string, AITool>) {
-  return (tools[TOOL_ID] as Marked | undefined)?.[GUIDANCE]
+/** The deferred tool index for the system context, when this step defers anything. */
+export function indexOf(tools: Record<string, AITool>) {
+  return (tools[TOOL_ID] as Marked | undefined)?.[INDEX]
 }
 
 export * as ToolSearch from "./tool-search"
