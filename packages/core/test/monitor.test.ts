@@ -105,6 +105,27 @@ const until = (check: () => boolean) =>
     return check()
   })
 
+/** The start time recovery compares, for a process this test started. */
+const identity = (pid: number) => {
+  const found = Monitor.processInfo(pid)
+  if (!found || found === "unknown") throw new Error(`no identity for ${pid}`)
+  return found.started
+}
+
+/** A detached process group that stands in for a monitor's command. */
+const group = () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" })
+  child.unref()
+  return child
+}
+
+const stop = (child: ReturnType<typeof spawn>) => {
+  try {
+    if (process.platform === "win32") child.kill()
+    else process.kill(-child.pid!, "SIGKILL")
+  } catch {}
+}
+
 describe("Monitors", () => {
   it.live("keeps the same real process alive after yielding and reaps it on cancellation", () =>
     Effect.gen(function* () {
@@ -363,7 +384,7 @@ describe("Monitors", () => {
       const leftover = group()
       const stranger = group()
       try {
-        yield* orphan(sessionID, { process: { pid: leftover, started: Monitor.processInfo(leftover)!.started } })
+        yield* orphan(sessionID, { process: { pid: leftover, started: identity(leftover) } })
         // Same pid, different start time: another process that happens to hold the number now.
         yield* orphan(sessionID, { process: { pid: stranger, started: "1" } })
         const recovered = yield* Monitor.make
@@ -411,32 +432,6 @@ describe("Monitors", () => {
     }),
   )
 
-  it.live("interrupts a running row past its deadline even while its owner's pid looks alive", () =>
-    Effect.gen(function* () {
-      const sessionID = yield* setup
-      // A live process standing in for an owner that crashed and whose pid is now someone else's.
-      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" })
-      try {
-        const started = Buffer.from(Monitor.processInfo(child.pid!)?.started ?? "").toString("base64url")
-        const owner = `${child.pid}:${started}:stand-in`
-        expect(Monitor.ownerAlive(owner)).toBe(true)
-        const stale = yield* orphan(sessionID, { created: Date.now() - 2 * 3_600_000 }, owner)
-        const fresh = yield* orphan(sessionID, { created: Date.now() }, owner)
-        const monitors = yield* Monitor.make
-        const settled = yield* monitors.get(sessionID, stale.id)
-        expect(settled?.status).toBe("interrupted")
-        expect(settled?.error).toContain("passed its deadline")
-        expect((yield* monitors.get(sessionID, fresh.id))?.status).toBe("running")
-        // A stale row no longer counts as running work.
-        expect((yield* monitors.list(sessionID)).filter(MonitorSchema.parks).map((info) => info.id)).toEqual([
-          fresh.id,
-        ])
-      } finally {
-        child.kill("SIGKILL")
-      }
-    }),
-  )
-
   it.live("names a process it could not verify, on every platform", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup
@@ -459,7 +454,7 @@ describe("Monitors", () => {
       const leader = spawn("sh", ["-c", "sleep 30 & sleep 0.3"], { detached: true, stdio: "ignore" })
       const pid = leader.pid!
       try {
-        const started = Monitor.processInfo(pid)!.started
+        const started = identity(pid)
         yield* Effect.promise(() => new Promise((resolve) => leader.once("exit", resolve)))
         const left = yield* orphan(sessionID, { command: "./serve.sh", process: { pid, started } })
         const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
@@ -469,6 +464,103 @@ describe("Monitors", () => {
         try {
           process.kill(-pid, "SIGKILL")
         } catch {}
+      }
+    }),
+  )
+
+  it.live("a verified-live owner keeps its monitor past the deadline, and its process group is never touched", () =>
+    Effect.gen(function* () {
+      if (!Monitor.identifiable) return
+      const sessionID = yield* setup
+      // The owner's runtime and the monitor's command, both alive; this clock jumped past the deadline.
+      const runtime = group()
+      const command = group()
+      try {
+        const owner = `${runtime.pid}:${Buffer.from(identity(runtime.pid!)).toString("base64url")}:stand-in`
+        expect(Monitor.ownerStatus(owner)).toBe("alive")
+        const jumped = yield* orphan(
+          sessionID,
+          { created: Date.now() - 2 * 3_600_000, process: { pid: command.pid!, started: identity(command.pid!) } },
+          owner,
+        )
+        const monitors = yield* Monitor.make
+        expect((yield* monitors.get(sessionID, jumped.id))?.status).toBe("running")
+        expect((yield* monitors.list(sessionID)).map((info) => info.status)).toEqual(["running"])
+        expect(exited(command.pid!)).toBe(false)
+      } finally {
+        stop(runtime)
+        stop(command)
+      }
+    }),
+  )
+
+  it.live("a dead owner past its deadline is interrupted", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      expect(Monitor.ownerStatus(GONE)).toBe("dead")
+      const left = yield* orphan(sessionID, { created: Date.now() - 2 * 3_600_000 })
+      const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+      expect(settled).toMatchObject({ status: "interrupted", delivery: "suppressed" })
+      expect(settled?.error).toContain("Execution ownership was lost")
+    }),
+  )
+
+  it.live("an owner whose identity cannot be verified expires at the deadline without killing anything", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      // No start time in the owner, as on Windows: the pid exists, but it may be anyone's now.
+      const runtime = group()
+      const command = group()
+      try {
+        const owner = `${runtime.pid}::stand-in`
+        expect(Monitor.ownerStatus(owner)).toBe("unverified")
+        const started = Monitor.identifiable ? identity(command.pid!) : ""
+        const fresh = yield* orphan(sessionID, { created: Date.now() }, owner)
+        const stale = yield* orphan(
+          sessionID,
+          { created: Date.now() - 2 * 3_600_000, command: "pnpm build", process: { pid: command.pid!, started } },
+          owner,
+        )
+        const monitors = yield* Monitor.make
+        expect((yield* monitors.get(sessionID, fresh.id))?.status).toBe("running")
+        const expiredRow = yield* monitors.get(sessionID, stale.id)
+        expect(expiredRow?.status).toBe("interrupted")
+        expect(expiredRow?.error).toContain("its owner could not be verified")
+        expect(expiredRow?.cleanup).not.toBe("reaped")
+        expect(expiredRow?.error).toContain(`${command.pid} (pnpm build)`)
+        expect(exited(command.pid!)).toBe(false)
+      } finally {
+        stop(runtime)
+        stop(command)
+      }
+    }),
+  )
+
+  it.live("a failed ps or pgrep is no answer: not cached, not dead, and recovery keeps going", () =>
+    Effect.sync(() => {
+      const original = Monitor.probe.spawn
+      let calls = 0
+      Monitor.probe.spawn = () => {
+        calls++
+        return {
+          pid: 0,
+          output: [],
+          stdout: null as unknown as string,
+          stderr: null as unknown as string,
+          status: null,
+          signal: null,
+          error: new Error("spawn EAGAIN"),
+        }
+      }
+      try {
+        expect(Monitor.processInfo(4_242_424, "darwin")).toBe("unknown")
+        expect(Monitor.processInfo(4_242_424, "darwin")).toBe("unknown")
+        // Failures are asked again rather than remembered.
+        expect(calls).toBe(2)
+        expect(Monitor.groupMembers(4_242_424, "darwin")).toBeUndefined()
+        expect(calls).toBe(3)
+      } finally {
+        Monitor.probe.spawn = original
       }
     }),
   )

@@ -1,6 +1,10 @@
 export * as Monitor from "./monitor"
 
-import { spawnSync } from "node:child_process"
+import {
+  spawnSync,
+  type SpawnSyncOptionsWithStringEncoding,
+  type SpawnSyncReturns,
+} from "node:child_process"
 import { readFileSync, readdirSync } from "node:fs"
 import { and, eq, sql } from "drizzle-orm"
 import { Cause, Clock, Context, Effect, Layer, Scope, Semaphore } from "effect"
@@ -39,45 +43,67 @@ export class Service extends Context.Service<
 >()("@redcode/Monitor") {}
 
 type Identity = { started: string; group: number }
+/** What a probe found: the process, no such process, or no answer at all (a failed or timed-out probe). */
+export type Probe = Identity | undefined | "unknown"
+
+/** The process runner behind `ps` and `pgrep`, replaceable so tests can make it fail. */
+export const probe: {
+  spawn: (command: string, args: string[], options: SpawnSyncOptionsWithStringEncoding) => SpawnSyncReturns<string>
+} = { spawn: spawnSync }
+
+const PROBE_OPTIONS: SpawnSyncOptionsWithStringEncoding = {
+  encoding: "utf8",
+  timeout: 2_000,
+  // `ps -o lstart` is localised; a start time must compare equal across runtimes.
+  env: { ...process.env, LC_ALL: "C" },
+}
+
+const identifiableOn = (platform: NodeJS.Platform) => platform === "linux" || platform === "darwin"
 
 /** Whether this platform can tell a process from an unrelated one that reused its pid. */
-export const identifiable = process.platform === "linux" || process.platform === "darwin"
+export const identifiable = identifiableOn(process.platform)
 
 const probes = new Map<number, { at: number; value: Identity | undefined }>()
 
 /**
- * A process's start time and process group. Linux reads `/proc`; macOS asks `ps` (cached briefly,
- * since every monitor read may ask). Elsewhere there is no cheap answer, so there is none.
+ * A process's start time and process group. Linux reads `/proc`; macOS asks `ps`, caching only
+ * definite answers briefly since every monitor read may ask. A probe that fails says "unknown",
+ * never "gone": nothing is interrupted or killed on a missing answer.
  */
-export function processInfo(pid: number): Identity | undefined {
-  if (!identifiable || !Number.isInteger(pid) || pid <= 0) return undefined
-  if (process.platform === "linux") {
+export function processInfo(pid: number, platform: NodeJS.Platform = process.platform): Probe {
+  if (!identifiableOn(platform) || !Number.isInteger(pid) || pid <= 0) return undefined
+  if (platform === "linux") {
     try {
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
       // The command name is parenthesised and may contain spaces; fields are counted after it.
       const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
       if (fields[0] === "Z") return undefined
       const started = fields[19]
-      return started ? { started, group: Number(fields[2]) } : undefined
-    } catch {
-      return undefined
+      return started ? { started, group: Number(fields[2]) } : "unknown"
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      return code === "ENOENT" || code === "ESRCH" ? undefined : "unknown"
     }
   }
   const cached = probes.get(pid)
   if (cached && Date.now() - cached.at < 5_000) return cached.value
-  const result = spawnSync("ps", ["-o", "pgid=", "-o", "lstart=", "-p", String(pid)], {
-    encoding: "utf8",
-    timeout: 2_000,
-  })
-  const match = result.status === 0 ? /^\s*(\d+)\s+(\S.*?)\s*$/.exec(result.stdout) : null
-  const value = match ? { group: Number(match[1]), started: match[2]! } : undefined
+  const result = probe.spawn("ps", ["-o", "pgid=", "-o", "lstart=", "-p", String(pid)], PROBE_OPTIONS)
+  if (result.error || result.signal || typeof result.stdout !== "string") return "unknown"
+  const match = /^\s*(\d+)\s+(\S.*?)\s*$/.exec(result.stdout)
+  // `ps -p` exits 1 with no output when there is no such process; anything else is no answer.
+  const value: Probe = match
+    ? { group: Number(match[1]), started: match[2]! }
+    : result.status === 1 && result.stdout.trim() === ""
+      ? undefined
+      : "unknown"
+  if (value === "unknown") return value
   probes.set(pid, { at: Date.now(), value })
   return value
 }
 
-/** Live processes in a process group, or undefined where that cannot be listed. */
-function groupMembers(group: number) {
-  if (process.platform === "linux") {
+/** Live processes in a process group, or undefined where that cannot be listed or the listing failed. */
+export function groupMembers(group: number, platform: NodeJS.Platform = process.platform) {
+  if (platform === "linux") {
     try {
       return readdirSync("/proc").filter((name) => {
         if (!/^\d+$/.test(name)) return false
@@ -93,8 +119,12 @@ function groupMembers(group: number) {
       return undefined
     }
   }
-  if (process.platform === "darwin") {
-    const result = spawnSync("pgrep", ["-g", String(group)], { encoding: "utf8", timeout: 2_000 })
+  if (platform === "darwin") {
+    const result = probe.spawn("pgrep", ["-g", String(group)], PROBE_OPTIONS)
+    if (result.error || result.signal || typeof result.stdout !== "string") return undefined
+    // pgrep exits 1 when nothing matches.
+    if (result.status === 1) return 0
+    if (result.status !== 0) return undefined
     return result.stdout.split("\n").filter(Boolean).length
   }
   return undefined
@@ -106,50 +136,69 @@ const encode = (started: string) => Buffer.from(started).toString("base64url")
 /** Owners of the monitor runtimes alive in this process. */
 const live = new Set<string>()
 let selfIdentity: string | undefined
-const self = () => (selfIdentity ??= `${process.pid}:${encode(processInfo(process.pid)?.started ?? "")}`)
+const self = () => {
+  if (selfIdentity) return selfIdentity
+  const found = processInfo(process.pid)
+  return (selfIdentity = `${process.pid}:${encode(typeof found === "object" ? found.started : "")}`)
+}
 
 /**
- * Whether the runtime that owns a row may still be running its monitors. Owners are
- * `pid:start-time:uuid`. This process knows its own runtimes; another is alive while its pid still
- * has its start time. Without a start time (Windows) only the pid can be checked, which a reused pid
- * can fool, so rows there also expire at their deadline.
+ * What is known about the runtime that owns a row. Owners are `pid:start-time:uuid`.
+ * - `alive`: a runtime in this process, or a process whose pid still has that start time.
+ * - `dead`: provably gone.
+ * - `unverified`: the pid exists, but without a start time (Windows) it may belong to anyone.
+ * - `unknown`: the probe gave no answer.
  */
-export function ownerAlive(owner: string) {
-  if (live.has(owner)) return true
+export function ownerStatus(owner: string): "alive" | "dead" | "unverified" | "unknown" {
+  if (live.has(owner)) return "alive"
   const [pid, started, id] = owner.split(":")
-  if (!pid || started === undefined || !id) return false
-  if (`${pid}:${started}` === self()) return false
-  if (identifiable && started !== "") return encode(processInfo(Number(pid))?.started ?? "") === started
+  if (!pid || started === undefined || !id) return "dead"
+  if (`${pid}:${started}` === self()) return "dead"
+  if (identifiable && started !== "") {
+    const found = processInfo(Number(pid))
+    if (found === "unknown") return "unknown"
+    return found && encode(found.started) === started ? "alive" : "dead"
+  }
   try {
     process.kill(Number(pid), 0)
-    return true
+    return "unverified"
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM"
+    return (error as NodeJS.ErrnoException).code === "EPERM" ? "unverified" : "dead"
   }
 }
 
-/** How far past its deadline a running row may be before it is stale, whoever owns it. */
+/** How far past its deadline a row with an unverifiable owner may run before it is treated as stale. */
 export const EXPIRY_GRACE_MS = 60_000
 
-/** A live owner records a timeout at the deadline; a row still running well after it has no owner left. */
 export function expired(info: Monitor.Info, now: number) {
   return now > info.created + Monitor.deadline(info.options) + EXPIRY_GRACE_MS
 }
 
 /**
  * What to do about the process an interrupted monitor left behind. Its group is stopped only when
- * the recorded leader provably still runs; anything that may still be running is named, pid and
- * command, so the person can stop it.
+ * `kill` is allowed (the owner is provably gone) and the recorded leader provably still runs;
+ * anything that may still be running is named, pid and command, so the person can stop it.
  */
 export function settle(
   recorded: Monitor.Process | undefined,
   command: string,
+  options: { kill: boolean },
 ): { cleanup: NonNullable<Monitor.Info["cleanup"]>; note: string } | undefined {
   if (!recorded) return undefined
   const { pid } = recorded
   const current = processInfo(pid)
+  if (current === "unknown")
+    return {
+      cleanup: "unknown",
+      note: `Its process ${pid} (${command}) may still be running; check for it and stop it yourself if so.`,
+    }
   const same = current !== undefined && recorded.started !== "" && current.started === recorded.started
   if (same && current.group === pid) {
+    if (!options.kill)
+      return {
+        cleanup: "left-running",
+        note: `Its process group ${pid} (${command}) may still be running and was left alone because its owner could not be confirmed gone; stop it yourself if so (kill -- -${pid}).`,
+      }
     try {
       process.kill(-pid, "SIGKILL")
       return { cleanup: "reaped", note: `Its process group ${pid} (${command}) was stopped.` }
@@ -160,12 +209,12 @@ export function settle(
       }
     }
   }
-  if (!identifiable)
+  const members = identifiable ? groupMembers(pid) : undefined
+  if (members === undefined)
     return {
       cleanup: "unknown",
       note: `Its process ${pid} (${command}) may still be running; check for it and stop it yourself if so.`,
     }
-  const members = groupMembers(pid) ?? 0
   if (members === 0) return { cleanup: "exited", note: `Its process ${pid} (${command}) is no longer running.` }
   return {
     cleanup: "left-running",
@@ -205,9 +254,13 @@ export const make = Effect.gen(function* () {
     if (found.data.status !== "running") return found.data
     // Our own rows settle through their job's exit.
     if (found.owner === owner) return found.data
+    const status = ownerStatus(found.owner)
+    // A verified-live owner enforces its own deadline; this clock may have jumped past it (a laptop
+    // that slept, an NTP correction) while the owner's timer did not. No answer is not a verdict.
+    if (status === "alive" || status === "unknown") return found.data
     const now = yield* Clock.currentTimeMillis
-    const stale = expired(found.data, now)
-    if (!stale && ownerAlive(found.owner)) return found.data
+    // Without a verifiable identity (Windows) the pid may be anyone's: expire at the deadline, never kill.
+    if (status === "unverified" && !expired(found.data, now)) return found.data
     // A durable identity is not a durable process handle. Never repeat a command during recovery.
     const interrupted: Monitor.Info = {
       ...found.data,
@@ -215,7 +268,7 @@ export const make = Effect.gen(function* () {
       delivery: "suppressed",
       updated: now,
       interruptedBy: owner,
-      error: `${stale ? "The monitor passed its deadline without its owner recording a result." : "Execution ownership was lost."} Inspect the external operation before explicitly starting a new observation.`,
+      error: `${status === "unverified" ? "The monitor passed its deadline and its owner could not be verified." : "Execution ownership was lost."} Inspect the external operation before explicitly starting a new observation.`,
     }
     yield* database.db
       .update(MonitorTable)
@@ -226,14 +279,19 @@ export const make = Effect.gen(function* () {
     const current = (yield* row(found.id))?.data
     // Another runtime got there first: its record, and its cleanup, stand.
     if (current?.interruptedBy !== owner || current.updated !== now) return current ?? interrupted
-    const cleanup = settle(found.data.process, found.data.command)
+    const cleanup = settle(found.data.process, found.data.command, { kill: status === "dead" })
     if (!cleanup) return interrupted
     const settled: Monitor.Info = {
       ...interrupted,
       cleanup: cleanup.cleanup,
       error: `${interrupted.error} ${cleanup.note}`,
     }
-    yield* database.db.update(MonitorTable).set({ data: settled }).where(eq(MonitorTable.id, found.id)).run().pipe(Effect.orDie)
+    yield* database.db
+      .update(MonitorTable)
+      .set({ data: settled })
+      .where(eq(MonitorTable.id, found.id))
+      .run()
+      .pipe(Effect.orDie)
     if (cleanup.cleanup !== "exited")
       yield* Effect.logWarning("interrupted monitor left a process behind", {
         id: found.id,
@@ -318,7 +376,8 @@ export const make = Effect.gen(function* () {
             // Recorded even where no start time can be read, so recovery can at least name the pid.
             const track = (pid: number) =>
               Effect.gen(function* () {
-                current = { ...current, process: { pid, started: processInfo(pid)?.started ?? "" } }
+                const found = processInfo(pid)
+                current = { ...current, process: { pid, started: typeof found === "object" ? found.started : "" } }
                 yield* save(current)
               })
             const run = Effect.gen(function* () {

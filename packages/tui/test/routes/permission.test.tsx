@@ -24,7 +24,7 @@ const REQUEST: PermissionRequest = {
   always: ["ls"],
 }
 
-function Prompt(props: { onExit?: () => void }) {
+function Prompt(props: { onExit?: () => void; request?: PermissionRequest }) {
   const renderer = useRenderer()
   const keymap = createDefaultOpenTuiKeymap(renderer)
   const config = createTuiResolvedConfig({ keybinds: {}, leader_timeout: 1000 })
@@ -36,7 +36,7 @@ function Prompt(props: { onExit?: () => void }) {
           <ToastProvider>
             <LocationProvider>
               <ExitProvider exit={() => props.onExit?.()}>
-                <PermissionPrompt request={REQUEST} />
+                <PermissionPrompt request={props.request ?? REQUEST} />
               </ExitProvider>
             </LocationProvider>
             <Toast />
@@ -57,15 +57,19 @@ async function waitForFrame(setup: { app: { renderOnce(): Promise<void>; capture
   }
 }
 
-async function setupPrompt(respond: (url: URL) => Response | Promise<Response> | undefined, onExit?: () => void) {
+async function setupPrompt(
+  respond: (url: URL) => Response | Promise<Response> | undefined,
+  onExit?: () => void,
+  request: PermissionRequest = REQUEST,
+) {
   const tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")
   const setup = await mount(
     async (url) => respond(url),
     tmp.path,
-    () => <Prompt onExit={onExit} />,
+    () => <Prompt onExit={onExit} request={request} />,
   )
-  setup.sync.set("permission", "ses_test", [REQUEST])
+  setup.sync.set("permission", "ses_test", [request])
   await setup.app.renderOnce()
   await Bun.sleep(50)
   await setup.app.renderOnce()
@@ -134,6 +138,36 @@ test("Ctrl+C that left one permission stage does not arm an exit in the next", a
     expect(exits).toBe(0)
     setup.app.mockInput.pressKey("c", { ctrl: true })
     await wait(() => exits === 1)
+  } finally {
+    setup.app.renderer.destroy()
+    await tmp[Symbol.asyncDispose]()
+  }
+})
+
+test("a request with nothing to remember offers no Allow always, and shows the monitor it approves", async () => {
+  const { setup, tmp } = await setupPrompt(() => undefined, undefined, {
+    ...REQUEST,
+    id: "per_monitor",
+    patterns: ["gh pr checks 12"],
+    metadata: { command: "gh pr checks 12", monitor: 'poll every 1m, for up to 1h, fail on "fail"' },
+    always: [],
+  })
+  try {
+    await waitForFrame(setup, "Allow once")
+    const frame = setup.app.captureCharFrame()
+    expect(frame).toContain("Reject")
+    expect(frame).not.toContain("Allow always")
+    expect(frame).toContain("Monitor: poll every 1m")
+  } finally {
+    setup.app.renderer.destroy()
+    await tmp[Symbol.asyncDispose]()
+  }
+})
+
+test("a request with patterns to remember still offers Allow always", async () => {
+  const { setup, tmp } = await setupPrompt(() => undefined)
+  try {
+    await waitForFrame(setup, "Allow always")
   } finally {
     setup.app.renderer.destroy()
     await tmp[Symbol.asyncDispose]()

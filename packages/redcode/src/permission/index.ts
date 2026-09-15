@@ -20,6 +20,8 @@ export interface Interface {
 }
 
 interface PendingEntry {
+  /** Asked regardless of rules and earlier approvals, so it is never resolved by another reply. */
+  force: boolean
   info: PermissionV1.Request
   deferred: Deferred.Deferred<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>
 }
@@ -87,7 +89,7 @@ const layer = Layer.effect(
         needsAsk = true
       }
       // A forced request asks even where a rule or an earlier approval allows it; a deny still refuses.
-      if (request.force) needsAsk = true
+      if (request.force && !RepositoryGuard.yolo()) needsAsk = true
 
       if (!needsAsk) return
 
@@ -104,7 +106,7 @@ const layer = Layer.effect(
       yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
-      pending.set(id, { info, deferred })
+      pending.set(id, { info, deferred, force: request.force === true })
       yield* events.publish(Event.Asked, info)
       const requested = { timestamp: yield* DateTime.now, ...info }
       yield* hooks.parallel(OperationHook.Operation.Permission.Requested, requested)
@@ -163,6 +165,8 @@ const layer = Layer.effect(
 
       for (const [id, item] of pending.entries()) {
         if (item.info.sessionID !== existing.info.sessionID) continue
+        // A forced request waits for its own answer; an "always" given elsewhere does not settle it.
+        if (item.force) continue
         const ok = item.info.patterns.every(
           (pattern) => evaluate(item.info.permission, pattern, approved).action === "allow",
         )

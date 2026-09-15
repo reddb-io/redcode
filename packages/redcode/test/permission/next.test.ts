@@ -875,6 +875,58 @@ it.instance(
 )
 
 it.instance(
+  "reply - always never settles a forced request, even when its patterns now match",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* ask({
+        id: PermissionV1.ID.make("per_force_a"),
+        sessionID: SessionID.make("session_force"),
+        permission: "bash",
+        patterns: ["gh pr checks 12"],
+        metadata: {},
+        always: ["gh *"],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      const forced = yield* ask({
+        id: PermissionV1.ID.make("per_force_b"),
+        sessionID: SessionID.make("session_force"),
+        permission: "bash",
+        patterns: ["gh pr checks 12"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+        force: true,
+      }).pipe(Effect.forkScoped)
+
+      yield* waitForPending(2)
+      yield* reply({ requestID: PermissionV1.ID.make("per_force_a"), reply: "always" })
+      yield* Fiber.join(a)
+      expect((yield* list()).map((item) => item.id)).toEqual([PermissionV1.ID.make("per_force_b")])
+
+      // A saved rule that allows the command does not skip a forced request either.
+      const again = yield* ask({
+        id: PermissionV1.ID.make("per_force_c"),
+        sessionID: SessionID.make("session_force"),
+        permission: "bash",
+        patterns: ["gh pr checks 12"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "bash", pattern: "gh *", action: "allow" }],
+        force: true,
+      }).pipe(Effect.forkScoped)
+      yield* waitForPending(2)
+
+      yield* reply({ requestID: PermissionV1.ID.make("per_force_b"), reply: "once" })
+      yield* Fiber.join(forced)
+      yield* reply({ requestID: PermissionV1.ID.make("per_force_c"), reply: "once" })
+      yield* Fiber.join(again)
+      expect(yield* list()).toHaveLength(0)
+    }),
+  { git: true },
+)
+
+it.instance(
   "reply - always keeps other session pending",
   () =>
     Effect.gen(function* () {
