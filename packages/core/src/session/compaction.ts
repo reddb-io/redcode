@@ -96,6 +96,33 @@ type Input = {
   readonly request: LLMRequest
 }
 
+/** Automatic compactions allowed while answering one user request. */
+export const MAX_AUTO_PER_TURN = 2
+/** A compaction is effective only when the next request fits in this share of the usable window. */
+export const EFFECTIVE_RATIO = 0.8
+/** Ineffective compactions in a row after which automatic compaction pauses. */
+export const PAUSE_AFTER_INEFFECTIVE = 2
+const MIN_PRESERVED_REQUEST_TOKENS = 2_000
+const MAX_PRESERVED_REQUEST_TOKENS = 15_000
+
+export const isEffective = (input: { readonly after: number; readonly usable: number }) =>
+  input.usable <= 0 || input.after <= input.usable * EFFECTIVE_RATIO
+
+/**
+ * Keeps a bounded head and tail of a text verbatim when it exceeds the budget, with a marker saying
+ * how much was dropped from the middle and, when known, where the full text can be read again.
+ */
+export const elideMiddle = (text: string, budget: number, saved?: string) => {
+  const tokens = Token.estimate(text)
+  if (tokens <= budget) return text
+  const side = Math.max(0, Math.floor((budget * 4) / 2))
+  const head = text.slice(0, side)
+  const tail = side > 0 ? text.slice(-side) : ""
+  const elided = Token.estimate(text.slice(side, text.length - side))
+  const where = saved ? `; the full text is saved at ${saved}, read it if the missing part matters` : ""
+  return `${head}\n[middle elided: ${elided} tokens${where}]\n${tail}`
+}
+
 const estimate = (value: unknown) => Token.estimate(JSON.stringify(value))
 
 const truncate = (value: string) =>
@@ -155,7 +182,8 @@ const select = (
   entries: readonly Entry[],
   tokens: number,
   latestUser: SessionMessage.User | undefined,
-): { readonly head: string; readonly recent: string } | undefined => {
+  preserve: number,
+): { readonly head: string; readonly recent: string; readonly tail: string } | undefined => {
   const conversation = entries
     .filter((entry) => entry.message.type !== "compaction")
     .map((entry) => ({ id: entry.message.id, text: serialize(entry.message) }))
@@ -169,18 +197,24 @@ const select = (
     total = next
     split = index
   }
+  const tail = conversation
+    .slice(split)
+    .map((entry) => entry.text)
+    .join("\n\n")
+  // The latest request is carried verbatim, but a huge pasted request cannot be carried whole: a
+  // bounded head and tail of it fit, and the checkpoint then actually shrinks the context.
+  const preserved =
+    latestUser && !conversation.slice(split).some((entry) => entry.id === latestUser.id)
+      ? elideMiddle(serialize(latestUser), preserve)
+      : undefined
   return {
     head: conversation
       .slice(0, split)
       .filter((entry) => entry.id !== latestUser?.id)
       .map((entry) => entry.text)
       .join("\n\n"),
-    recent: [
-      ...(latestUser && !conversation.slice(split).some((entry) => entry.id === latestUser.id)
-        ? [serialize(latestUser)]
-        : []),
-      ...conversation.slice(split).map((entry) => entry.text),
-    ].join("\n\n"),
+    recent: [...(preserved ? [preserved] : []), ...(tail ? [tail] : [])].join("\n\n"),
+    tail,
   }
 }
 
@@ -243,10 +277,20 @@ export const make = (dependencies: Dependencies) => {
     if (context === undefined || context <= 0) return
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
     // Read the original even when an earlier checkpoint no longer contains a user row.
+    // The same bound legacy applies to a preserved request: a quarter of the usable window,
+    // clamped, and never less than the configured recent budget.
+    const preserve = Math.max(
+      config.tokens,
+      Math.min(
+        MAX_PRESERVED_REQUEST_TOKENS,
+        Math.max(MIN_PRESERVED_REQUEST_TOKENS, Math.floor((context - Math.max(output, config.buffer)) * 0.25)),
+      ),
+    )
     const selected = select(
       input.entries,
       config.tokens,
       yield* dependencies.latestUser(input.sessionID, input.entries.at(-1)?.seq),
+      preserve,
     )
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return
@@ -310,9 +354,11 @@ export const make = (dependencies: Dependencies) => {
       )
     const summary = chunks.join("")
     if (!summarized || failed) return
+    // The preserved latest request is not a product of this summary: counting it as retained made
+    // a large pasted request reject every checkpoint of a history mostly made of that request.
     const error = summaryError({
       summary,
-      retained: "\n\n" + prepared.selected.recent,
+      retained: "\n\n" + prepared.selected.tail,
       source: input.entries
         .map((entry) =>
           entry.message.type === "compaction"
@@ -350,6 +396,7 @@ export const make = (dependencies: Dependencies) => {
     ]
       .filter(Boolean)
       .join("\n\n")
+    record(input, candidate, recent)
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,
@@ -360,7 +407,52 @@ export const make = (dependencies: Dependencies) => {
     })
     return true
   })
+  // Automatic compaction is bounded per request and pauses after checkpoints that do not bring the
+  // context back under the hysteresis band, until the next user request. Same semantics as legacy.
+  type Guard = { request?: string; count: number; ineffective: number; paused?: string }
+  const guards = new Map<SessionSchema.ID, Guard>()
+  const usableOf = (input: Input) => {
+    const context = input.model.route.defaults.limits?.context ?? 0
+    const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
+    return context - Math.max(output, config.buffer)
+  }
+  const admit = Effect.fn("SessionCompaction.admit")(function* (input: Input) {
+    const request = (yield* dependencies.latestUser(input.sessionID))?.id
+    const current = guards.get(input.sessionID)
+    const state: Guard =
+      current && current.request === request ? current : { request, count: 0, ineffective: 0, paused: undefined }
+    guards.set(input.sessionID, state)
+    if (state.paused !== undefined || state.count >= MAX_AUTO_PER_TURN) {
+      yield* Effect.logInfo("automatic compaction held back", {
+        sessionID: input.sessionID,
+        paused: state.paused !== undefined,
+        count: state.count,
+      })
+      return false
+    }
+    return true
+  })
+  // A new run is a new turn: its compaction allowance starts over, while a pause holds until the
+  // next user request, as in legacy.
+  const beginTurn = (sessionID: SessionSchema.ID) =>
+    Effect.sync(() => {
+      const state = guards.get(sessionID)
+      if (state) state.count = 0
+    })
+  const record = (input: Input, candidate: Candidate, recent: string) => {
+    const state = guards.get(input.sessionID)
+    if (!state) return
+    const after = estimate(input.request.system) + Token.estimate(candidate.summary) + Token.estimate(recent)
+    state.count++
+    state.ineffective = isEffective({ after, usable: usableOf(input) }) ? 0 : state.ineffective + 1
+    if (state.ineffective >= PAUSE_AFTER_INEFFECTIVE) state.paused = state.request ?? ""
+  }
+
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
+    if (!(yield* admit(input))) {
+      yield* discard(input.sessionID)
+      return false
+    }
     const previous = pending.get(input.sessionID)
     if (previous && matches(previous.snapshot, input)) {
       const messageID = yield* begin(input.sessionID)
@@ -412,5 +504,6 @@ export const make = (dependencies: Dependencies) => {
     compactIfNeeded,
     compactAfterOverflow,
     discard,
+    beginTurn,
   }
 }

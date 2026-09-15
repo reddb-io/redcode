@@ -577,6 +577,7 @@ const layer = Layer.effect(
     }) {
       const runGoal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
       yield* completion.discard(input.sessionID)
+      yield* compaction.beginTurn(input.sessionID)
       return yield* Effect.gen(function* () {
         const hasSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")
         const hasQueue = hasSteer ? false : yield* SessionInput.hasPending(db, input.sessionID, "queue")

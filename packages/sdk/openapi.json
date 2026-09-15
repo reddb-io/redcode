@@ -26766,6 +26766,19 @@
           "tail_start_id": {
             "type": "string",
             "pattern": "^msg"
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "number"
+              },
+              "after": {
+                "type": "number"
+              }
+            },
+            "required": ["before", "after"],
+            "additionalProperties": false
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "auto"],

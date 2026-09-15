@@ -84,6 +84,8 @@ type Input = {
   /** Admit every primary provider attempt, including retries, before starting the stream. */
   beforeAttempt?: () => Effect.Effect<boolean>
   onFailure?: (reason: string) => Effect.Effect<void>
+  /** The handle writes a compaction summary: every phase it reports is `compacting`. */
+  compacting?: boolean
 }
 
 export interface Interface {
@@ -703,7 +705,12 @@ const layer = Layer.effect(
             return
           }
           ctx.needsCompaction = true
-          yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
+          // Recovered by compaction, so not an error anyone has to act on. If compaction cannot
+          // recover it, the loop reports that once, with what to do about it.
+          yield* Effect.logInfo("context overflow; compacting", {
+            "session.id": ctx.sessionID,
+            messageID: ctx.assistantMessage.id,
+          })
           return
         }
         ctx.assistantMessage.error = error
@@ -807,6 +814,10 @@ const layer = Layer.effect(
         next: "preparing" | "thinking" | "writing" | "tool" | "compacting",
         tool?: string,
       ) {
+        if (input.compacting) {
+          next = "compacting"
+          tool = undefined
+        }
         if (ctx.phase === next && ctx.phaseTool === tool) return
         ctx.phase = next
         ctx.phaseTool = tool

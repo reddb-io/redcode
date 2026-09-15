@@ -1626,6 +1626,12 @@ export function Session() {
   )
 }
 
+/** The compaction divider says how much it freed, when the server recorded it. */
+export function compactionTitle(part: { tokens?: { before: number; after: number } } | undefined) {
+  if (!part?.tokens) return " Compaction "
+  return ` Compaction · ${Locale.number(part.tokens.before)} → ${Locale.number(part.tokens.after)} tokens `
+}
+
 function UserMessage(props: {
   message: UserMessage
   parts: Part[]
@@ -1734,7 +1740,7 @@ function UserMessage(props: {
         <box
           marginTop={1}
           border={["top"]}
-          title=" Compaction "
+          title={compactionTitle(compaction())}
           titleAlignment="center"
           borderColor={theme.borderActive}
         />

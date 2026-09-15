@@ -26,6 +26,8 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   session: Session.Info
   /** The task list as reviewed for this step; omitted when the agent may not use todowrite. */
   todos?: ReadonlyArray<Todo.Info>
+  /** An unattended run is nearly out of context: ask it once to wrap up. */
+  wrapUp?: string
 }) {
   const fsys = yield* FSUtil.Service
   const sessions = yield* Session.Service
@@ -90,6 +92,17 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       synthetic: true,
     })
   }
+
+  // Rides the trailing reminder like everything else here, so the cached prefix stays untouched.
+  if (input.wrapUp)
+    trailing.parts.push({
+      id: PartID.ascending(),
+      messageID: trailing.info.id,
+      sessionID: trailing.info.sessionID,
+      type: "text",
+      text: input.wrapUp,
+      synthetic: true,
+    })
 
   // Task state used to sit in the system prompt, where every todowrite rewrote it and threw away
   // the provider's cached prefix for the next request. Rendered here it rides the trailing

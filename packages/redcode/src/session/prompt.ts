@@ -20,6 +20,9 @@ import { Provider } from "@/provider/provider"
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
+import { CompactionGuard } from "./compaction-guard"
+import { usable as usableTokens } from "./overflow"
+import { Token } from "@/util/token"
 import { SystemPrompt } from "./system"
 import { SessionContext } from "./context"
 import { SessionContextEpoch } from "@reddb-io/redcode-core/session/context-epoch"
@@ -167,6 +170,9 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const processor = yield* SessionProcessor.Service
     const compaction = yield* SessionCompaction.Service
+    // The compaction epoch (its summary message id, or "" before the first) in which each
+    // unattended session was last asked to wrap up near the context limit.
+    const wrapUps = new Map<SessionID, string>()
     const plugin = yield* Plugin.Service
     const commands = yield* Command.Service
     const config = yield* Config.Service
@@ -1318,13 +1324,46 @@ const layer = Layer.effect(
         // turn already finished (a wake, or a queued prompt on an idle session) has no turn of its
         // own to review or judge; it only promotes what is waiting.
         let ran = false
+        // Automatic compactions spent on the current request, and the system prompt size of the
+        // last step, which every request after a compaction carries again.
+        let autoCompactions = 0
+        let overhead = 0
         // A promoted prompt starts a fresh turn: the provider-turn allowance is reset once for the
         // batch, and with it the continuation budget that rides on it.
         const restart = () => {
           step = 0
           todoContinuations = 0
           reviewed = undefined
+          autoCompactions = 0
         }
+        // Why automatic compaction may not run now, if it may not.
+        const compactionHold = Effect.fnUntraced(function* (history: SessionV1.WithParts[]) {
+          const current = yield* sessions.get(sessionID).pipe(Effect.orDie)
+          const latest = history.findLast(
+            (message) =>
+              message.info.role === "user" &&
+              !message.parts.some((part) => part.type === "compaction") &&
+              !message.parts.every((part) => part.type !== "text" || part.synthetic === true),
+          )?.info.id
+          if (CompactionGuard.isPaused(CompactionGuard.fromMetadata(current.metadata), latest)) return "paused" as const
+          if (autoCompactions >= CompactionGuard.MAX_AUTO_PER_TURN) return "limit" as const
+          return undefined
+        })
+        // One notice, then the turn ends: compacting again would only repeat the last attempt.
+        const stopCompacting = Effect.fnUntraced(function* (hold: "paused" | "limit") {
+          const text = hold === "paused" ? CompactionGuard.PAUSED : CompactionGuard.LIMIT
+          yield* guards.record({ sessionID, guard: "compaction", action: "stop", detail: text })
+          yield* Effect.logWarning("automatic compaction held back; ending the turn", {
+            "session.id": sessionID,
+            hold,
+            compactions: autoCompactions,
+          })
+          yield* goals.pause(sessionID, text).pipe(Effect.ignore)
+          yield* events.publish(Session.Event.Error, {
+            sessionID,
+            error: new NamedError.Unknown({ message: text }).toObject(),
+          })
+        })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // A goal never restarts itself: if the process that drove it is not this one, it is
         // paused here, and only /goal resume brings it back.
@@ -1647,18 +1686,36 @@ const layer = Layer.effect(
                 break
               }
               const fresh = yield* sessions.get(sessionID).pipe(Effect.orDie)
-              const outcome = yield* goals
-                .afterTurn({ session: fresh, lastUser, lastAssistant: lastAssistantMsg })
-                .pipe(
-                  Effect.catchCause((cause) =>
-                    Effect.logError("goal loop failed; ending the turn", { "session.id": sessionID, cause }).pipe(
-                      Effect.andThen(
-                        goals.block(sessionID, `Goal verification failed: ${errorMessage(Cause.squash(cause))}`),
-                      ),
-                      Effect.as(undefined),
+              // A compaction is never the answer being judged. When it followed a finished turn,
+              // the answer before it is; when that answer was already judged, nothing is.
+              const answer =
+                lastAssistantMsg?.info.role === "assistant" && lastAssistantMsg.info.summary
+                  ? (yield* sessions.messages({ sessionID }).pipe(Effect.orDie)).findLast(
+                      (message) =>
+                        message.info.role === "assistant" &&
+                        !message.info.summary &&
+                        !!message.info.finish &&
+                        message.info.id < lastAssistantMsg.info.id,
+                    )
+                  : lastAssistantMsg
+              const judged = SessionGoal.fromMetadata(fresh.metadata)?.judged
+              const unjudged =
+                answer !== undefined &&
+                (answer === lastAssistantMsg || judged === undefined || answer.info.time.created >= judged)
+              const outcome = yield* (
+                unjudged
+                  ? goals.afterTurn({ session: fresh, lastUser, lastAssistant: answer })
+                  : Effect.succeed(undefined)
+              ).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logError("goal loop failed; ending the turn", { "session.id": sessionID, cause }).pipe(
+                    Effect.andThen(
+                      goals.block(sessionID, `Goal verification failed: ${errorMessage(Cause.squash(cause))}`),
                     ),
+                    Effect.as(undefined),
                   ),
-                )
+                ),
+              )
               const ag = outcome?.action === "continue" ? yield* agents.get(lastUser.agent) : undefined
               if (outcome?.action === "continue" && outcome.text && step < (ag?.steps ?? Infinity)) {
                 const message: SessionV1.User = {
@@ -1723,7 +1780,16 @@ const layer = Layer.effect(
               sessionID,
               auto: task.auto,
               overflow: task.overflow,
+              overhead,
             })
+            if (result === "paused") {
+              yield* stopCompacting("paused")
+              if (yield* promoteAtIdle(sessionID)) {
+                restart()
+                continue
+              }
+              break
+            }
             if (result === "stop") break
             continue
           }
@@ -1733,8 +1799,13 @@ const layer = Layer.effect(
             lastFinished.summary !== true &&
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
-            continue
+            // Held back, the step still runs: over the threshold is not over the limit, and a
+            // request the provider refuses ends the turn below with one notice.
+            if (!(yield* compactionHold(msgs))) {
+              autoCompactions++
+              yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+              continue
+            }
           }
 
           if (lastFinished && !lastFinished.summary)
@@ -1768,7 +1839,33 @@ const layer = Layer.effect(
           // provider's cached prefix for the whole request that follows.
           const tracked = todowrite ? (reviewed ?? (yield* reviewTodos(sessionID))) : undefined
           reviewed = undefined
-          const reminder = yield* SessionReminders.apply({ messages: msgs, agent, session, todos: tracked }).pipe(
+          // Nobody is watching an unattended run to compact or stop it, so once per compaction
+          // epoch it is asked to wrap up near the limit. Attended sessions get no model warning:
+          // models told the context is short tend to give up on work that would have fit.
+          const wrapUp = yield* Effect.gen(function* () {
+            if (!lastFinished || lastFinished.summary) return undefined
+            const unattended =
+              !attendedClient(flags.client) ||
+              SessionGoal.fromMetadata((yield* sessions.get(sessionID).pipe(Effect.orDie)).metadata)?.status ===
+                "active"
+            if (!unattended) return undefined
+            const epoch = msgs.findLast((message) => message.info.role === "assistant" && message.info.summary)?.info.id
+            const key = epoch ?? ""
+            if (wrapUps.get(sessionID) === key) return undefined
+            const tokens = lastFinished.tokens
+            const count = tokens.total || tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+            const room = usableTokens({ cfg: yield* config.get(), model, outputTokenMax: flags.outputTokenMax })
+            if (!CompactionGuard.wrapUpDue({ count, usable: room })) return undefined
+            wrapUps.set(sessionID, key)
+            return CompactionGuard.WRAP_UP
+          })
+          const reminder = yield* SessionReminders.apply({
+            messages: msgs,
+            agent,
+            session,
+            todos: tracked,
+            wrapUp,
+          }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
@@ -1931,6 +2028,7 @@ const layer = Layer.effect(
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
+            overhead = Token.estimate(system.join("\n"))
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -1985,6 +2083,19 @@ const layer = Layer.effect(
               return "break" as const
             }
             if (result === "compact") {
+              const hold = yield* compactionHold(msgs)
+              if (hold) {
+                // A finished step only crossed the threshold; the next step decides again.
+                if (handle.message.finish) return "continue" as const
+                handle.message.error ??= new SessionV1.ContextOverflowError({
+                  message: hold === "paused" ? CompactionGuard.PAUSED : CompactionGuard.LIMIT,
+                }).toObject()
+                handle.message.finish = "error"
+                yield* sessions.updateMessage(handle.message)
+                yield* stopCompacting(hold)
+                return "break" as const
+              }
+              autoCompactions++
               yield* compaction.create({
                 sessionID,
                 agent: lastUser.agent,
