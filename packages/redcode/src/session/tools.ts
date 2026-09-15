@@ -35,6 +35,7 @@ import { OperationHookBridge } from "@/operation-hook-bridge"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { ToolSearch } from "./tool-search"
 import { NativeToolSearch } from "./native-tool-search"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -74,6 +75,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const outputs = yield* ToolOutputBridge.Service
   const hooks = yield* OperationHookBridge.Service
+  const flags = yield* RuntimeFlags.Service
 
   // One global override rather than a knob per tool: the failure this guards against is a tool
   // that never returns, and that is not a per-tool judgement.
