@@ -971,3 +971,15 @@ Change:
 Compatibility:
 
 - Existing configurations decode unchanged; both fields are optional.
+
+## 2026-09-15: Record the Product Files a Design Changes
+
+Affected schema:
+
+- Add `Design.Target` (`path`, `role`) and optional `targets` (at most 50) to `Design.Update` and `Design.Info`, so `design_document` update and the design update route accept it. Paths are relative to the project root; absolute paths and `..` segments are rejected on admission.
+- The approval summary rendered into the plan's design-owned block and the Plan/Build Design context lists the targets and an implementation contract; `design_read` section `decisions` includes them.
+- No new routes, events or database migrations. Generated client and SDK types pick up the optional field.
+
+Compatibility:
+
+- Existing documents, approval packages and context snapshots without `targets` decode unchanged and render "none recorded".

@@ -86,6 +86,16 @@ export const Scenario = Schema.Struct({
 }).annotate({ identifier: "Design.Scenario" })
 export interface Scenario extends Schema.Schema.Type<typeof Scenario> {}
 
+/**
+ * A product source file the prototype redesigns, relative to the project root. `role` says what the file does
+ * today (for example the page, its data loading or its tests) so Plan and Build evolve it instead of replacing it.
+ */
+export const Target = Schema.Struct({
+  path: Schema.NonEmptyString.check(Schema.isMaxLength(512)),
+  role: Schema.NonEmptyString.check(Schema.isMaxLength(500)),
+}).annotate({ identifier: "Design.Target" })
+export interface Target extends Schema.Schema.Type<typeof Target> {}
+
 export const Brief = Schema.Struct({
   objective: Schema.String,
   audience: Schema.String,
@@ -142,6 +152,7 @@ export const Update = Schema.Struct({
   decisions: Schema.Array(Decision).pipe(optional),
   questions: Schema.Array(Schema.String).pipe(optional),
   scenarios: Schema.Array(Scenario).pipe(optional),
+  targets: Schema.Array(Target).check(Schema.isMaxLength(50)).pipe(optional),
   designSystem: Schema.String.pipe(optional),
   entry: Schema.String.pipe(optional),
   tweaks: Tweaks.pipe(optional),
@@ -164,6 +175,7 @@ export const Info = Schema.Struct({
   decisions: Schema.Array(Decision),
   questions: Schema.Array(Schema.String),
   scenarios: Schema.Array(Scenario),
+  targets: Schema.Array(Target).pipe(optional),
   designSystem: Schema.String,
   system: System.pipe(optional),
   sources: Schema.Array(Source),

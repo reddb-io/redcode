@@ -5420,6 +5420,11 @@ export type DesignScenario = {
   notApplicable?: string
 }
 
+export type DesignTarget = {
+  path: string
+  role: string
+}
+
 export type DesignSystem = {
   paths: Array<string>
   css: Array<string>
@@ -5453,6 +5458,7 @@ export type DesignInfo = {
   decisions: Array<DesignDecision>
   questions: Array<string>
   scenarios: Array<DesignScenario>
+  targets?: Array<DesignTarget>
   designSystem: string
   system?: DesignSystem
   sources: Array<{
@@ -5489,6 +5495,7 @@ export type DesignUpdate = {
   decisions?: Array<DesignDecision>
   questions?: Array<string>
   scenarios?: Array<DesignScenario>
+  targets?: Array<DesignTarget>
   designSystem?: string
   entry?: string
   tweaks?: {

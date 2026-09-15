@@ -2071,6 +2071,7 @@ export type DesignsListOutput = ReadonlyArray<{
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -2208,6 +2209,7 @@ export type DesignsCreateOutput = {
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -2311,6 +2313,7 @@ export type DesignsGetOutput = {
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -2404,6 +2407,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2469,6 +2473,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2534,6 +2539,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2599,6 +2605,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2664,6 +2671,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2729,6 +2737,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2794,10 +2803,77 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["scenarios"]
+  readonly targets?: {
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["targets"]
   readonly designSystem?: {
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -2859,6 +2935,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2924,6 +3001,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -2989,6 +3067,7 @@ export type DesignsUpdateInput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem?: string
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
@@ -3064,6 +3143,7 @@ export type DesignsUpdateOutput = {
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -3174,6 +3254,7 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem: string
     readonly system?: {
       readonly paths: ReadonlyArray<string>
@@ -3302,6 +3383,7 @@ export type DesignsPublishOutput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem: string
     readonly system?: {
       readonly paths: ReadonlyArray<string>
@@ -3414,6 +3496,7 @@ export type DesignsRestoreOutput = {
       }>
       readonly notApplicable?: string
     }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
     readonly designSystem: string
     readonly system?: {
       readonly paths: ReadonlyArray<string>
@@ -3518,6 +3601,7 @@ export type DesignsReopenOutput = {
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -3621,6 +3705,7 @@ export type DesignsRefreshOutput = {
     }>
     readonly notApplicable?: string
   }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
   readonly designSystem: string
   readonly system?: {
     readonly paths: ReadonlyArray<string>
@@ -4217,6 +4302,7 @@ export type DesignsApprovalOutput = {
         }>
         readonly notApplicable?: string
       }>
+      readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
       readonly designSystem: string
       readonly system?: {
         readonly paths: ReadonlyArray<string>

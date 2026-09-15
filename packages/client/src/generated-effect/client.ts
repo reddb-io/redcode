@@ -362,6 +362,7 @@ type Endpoint4_6Input = {
   readonly decisions?: Endpoint4_6Request["payload"]["decisions"]
   readonly questions?: Endpoint4_6Request["payload"]["questions"]
   readonly scenarios?: Endpoint4_6Request["payload"]["scenarios"]
+  readonly targets?: Endpoint4_6Request["payload"]["targets"]
   readonly designSystem?: Endpoint4_6Request["payload"]["designSystem"]
   readonly entry?: Endpoint4_6Request["payload"]["entry"]
   readonly tweaks?: Endpoint4_6Request["payload"]["tweaks"]
@@ -377,6 +378,7 @@ const Endpoint4_6 = (raw: RawClient["server.design"]) => (input: Endpoint4_6Inpu
       decisions: input["decisions"],
       questions: input["questions"],
       scenarios: input["scenarios"],
+      targets: input["targets"],
       designSystem: input["designSystem"],
       entry: input["entry"],
       tweaks: input["tweaks"],

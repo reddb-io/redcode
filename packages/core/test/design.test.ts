@@ -81,6 +81,7 @@ describe("Design revisions and review", () => {
           references: [],
         },
         decisions: [{ id: "palette", text: "Use the Stone palette" }],
+        targets: [{ path: "src/routes/checkout.tsx", role: "Checkout page; loads the cart from the API" }],
         scenarios: [
           {
             id: "empty",
@@ -116,6 +117,13 @@ describe("Design revisions and review", () => {
       expect(initial.baseline).toContain("Use the Stone palette")
       expect(initial.baseline).toContain("No external fonts; preserve keyboard navigation")
       expect(initial.baseline).toContain("click #clear")
+      expect(initial.baseline).toContain(
+        "Target product files: src/routes/checkout.tsx (Checkout page; loads the cart from the API)",
+      )
+      expect(initial.baseline).toContain("the prototype is a visual and interaction reference, not code to copy")
+      expect(initial.baseline).toContain("Never replace a product file with prototype markup")
+      expect(initial.baseline).toContain("inventory what it does today")
+      expect(yield* store.readApproval({ id: document.id, section: "decisions" })).toContain("src/routes/checkout.tsx")
       expect(initial.baseline).not.toContain("OBSOLETE SCREEN CONTENT")
       expect(Array.isArray(initial.snapshot["design/session"].value)).toBe(true)
       expect(initial.baseline.length).toBeLessThan(frozen.length / 5)
@@ -486,6 +494,21 @@ describe("Design revisions and review", () => {
       expect(plan).toEndWith("\nManual tasks")
       expect(plan).toContain(restored.id)
       expect(plan.match(/redcode:design:start/g)).toHaveLength(1)
+      expect(plan).toContain("Implementation contract: the prototype is a visual and interaction reference")
+      expect(plan).toContain("Target product files: none recorded")
+    }),
+  )
+
+  it.effect("records project-relative target files and rejects paths outside the project", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      const targets = [{ path: "src/leads/table.tsx", role: "Leads table; server pagination and filters" }]
+      expect((yield* store.update(document.id, { targets })).targets).toEqual(targets)
+      for (const path of ["/etc/leads.tsx", "../outside/page.tsx", "src/../../page.tsx"]) {
+        const error = yield* store.update(document.id, { targets: [{ path, role: "Page" }] }).pipe(Effect.flip)
+        expect(error.code).toBe("invalid")
+      }
+      expect((yield* store.get(document.id)).targets).toEqual(targets)
     }),
   )
 
