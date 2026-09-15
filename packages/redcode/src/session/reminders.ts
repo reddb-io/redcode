@@ -10,7 +10,7 @@ import { Effect } from "effect"
 import { Agent } from "@/agent/agent"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
-import { PartID } from "./schema"
+import { MessageID, PartID } from "./schema"
 import { Session } from "./session"
 import { SessionGoal } from "./goal"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
@@ -28,17 +28,34 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   const fsys = yield* FSUtil.Service
   const sessions = yield* Session.Service
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
-  if (!userMessage) return input.messages
+  if (!userMessage) return undefined
+  // Per-step reminders ride a synthetic user message after everything else instead of being
+  // appended to the last real user message. That message is part of history on the next turn, so
+  // text added to it changed bytes the provider had cached and re-billed the whole turn after it.
+  // Kept out of the stored transcript and out of the step's `msgs`: tools read those to tell a
+  // human prompt from an autonomous continuation.
+  const trailing: SessionV1.WithParts = {
+    info: {
+      id: MessageID.ascending(),
+      sessionID: userMessage.info.sessionID,
+      role: "user",
+      time: { created: Date.now() },
+      agent: (userMessage.info as SessionV1.User).agent,
+      model: (userMessage.info as SessionV1.User).model,
+    } as SessionV1.User,
+    parts: [],
+  }
+  const result = () => (trailing.parts.length > 0 ? trailing : undefined)
 
   // The goal is re-rendered from the session record on every step, so compaction can drop every
   // earlier copy and the model still reads the objective as it was set — and the turn it is on.
   const current = yield* sessions.get(input.session.id).pipe(Effect.orElseSucceed(() => input.session))
   const goal = SessionGoal.fromMetadata(current.metadata)
   if (goal?.status === "active") {
-    userMessage.parts.push({
+    trailing.parts.push({
       id: PartID.ascending(),
-      messageID: userMessage.info.id,
-      sessionID: userMessage.info.sessionID,
+      messageID: trailing.info.id,
+      sessionID: trailing.info.sessionID,
       type: "text",
       text: SessionGoal.render(goal),
       synthetic: true,
@@ -46,13 +63,13 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   }
 
   // Task state used to sit in the system prompt, where every todowrite rewrote it and threw away
-  // the provider's cached prefix for the next request. Rendered here it rides the last user
-  // message like the goal, and the system prompt only changes when something durable does.
+  // the provider's cached prefix for the next request. Rendered here it rides the trailing
+  // reminder like the goal, and the system prompt only changes when something durable does.
   if (input.todos)
-    userMessage.parts.push({
+    trailing.parts.push({
       id: PartID.ascending(),
-      messageID: userMessage.info.id,
-      sessionID: userMessage.info.sessionID,
+      messageID: trailing.info.id,
+      sessionID: trailing.info.sessionID,
       type: "text",
       synthetic: true,
       text: SessionTodo.context(input.todos),
@@ -62,10 +79,10 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     const plans = yield* SessionPlan.Service
     const guidance = SessionPlan.guidance(yield* plans.list(input.session.id))
     if (guidance)
-      userMessage.parts.push({
+      trailing.parts.push({
         id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
+        messageID: trailing.info.id,
+        sessionID: trailing.info.sessionID,
         type: "text",
         synthetic: true,
         text: guidance,
@@ -78,10 +95,10 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       DesignContext.load(input.session.id).pipe(Effect.flatMap(SystemContext.initialize)),
     )
     if (context.baseline)
-      userMessage.parts.push({
+      trailing.parts.push({
         id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
+        messageID: trailing.info.id,
+        sessionID: trailing.info.sessionID,
         type: "text",
         synthetic: true,
         text: context.baseline,
@@ -91,10 +108,10 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   if (input.agent.name === "design") {
     const studio = yield* DesignStudio.Service
     const documents = yield* studio.use(DesignStore.Service.use((store) => store.list(input.session.id)))
-    userMessage.parts.push({
+    trailing.parts.push({
       id: PartID.ascending(),
-      messageID: userMessage.info.id,
-      sessionID: userMessage.info.sessionID,
+      messageID: trailing.info.id,
+      sessionID: trailing.info.sessionID,
       type: "text",
       synthetic: true,
       text:
@@ -110,7 +127,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
           )
           .join("\n"),
     })
-    return input.messages
+    return result()
   }
 
   if (input.agent.name !== "plan") {
@@ -118,25 +135,25 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       input.agent.name === "build" &&
       input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
     )
-      userMessage.parts.push({
+      trailing.parts.push({
         id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
+        messageID: trailing.info.id,
+        sessionID: trailing.info.sessionID,
         type: "text",
         synthetic: true,
         text: BUILD_SWITCH,
       })
-    return input.messages
+    return result()
   }
 
   const ctx = yield* InstanceState.context
   const plan = yield* Session.preparePlan(input.session, ctx)
   const exists = yield* fsys.existsSafe(plan)
   if (!exists) yield* fsys.ensureDir(path.dirname(plan)).pipe(Effect.catch(Effect.die))
-  userMessage.parts.push({
+  trailing.parts.push({
     id: PartID.ascending(),
-    messageID: userMessage.info.id,
-    sessionID: userMessage.info.sessionID,
+    messageID: trailing.info.id,
+    sessionID: trailing.info.sessionID,
     type: "text",
     synthetic: true,
     text: PLAN_MODE.replace("${planInfo}", () =>
@@ -145,7 +162,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         : `Save your complete plan at ${plan} using the write tool before calling plan_exit. A plan written only in chat cannot be approved for execution.`,
     ),
   })
-  return input.messages
+  return result()
 })
 
 export * as SessionReminders from "./reminders"

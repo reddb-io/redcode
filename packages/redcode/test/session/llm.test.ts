@@ -3,7 +3,7 @@ import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import path from "path"
-import { tool, type ModelMessage } from "ai"
+import { dynamicTool, tool, type ModelMessage } from "ai"
 import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import { InstanceRef } from "../../src/effect/instance-ref"
 import { HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
@@ -888,6 +888,87 @@ describe("session.llm.stream", () => {
 
         const reasoning = (body.reasoningEffort as string | undefined) ?? (body.reasoning_effort as string | undefined)
         expect(reasoning).toBe("high")
+      }),
+    {
+      config: () => ({
+        enabled_providers: [vivgridFixture.providerID],
+        provider: {
+          [vivgridFixture.providerID]: {
+            options: { apiKey: "test-key", baseURL: `${state.server!.url.origin}/v1` },
+          },
+        },
+      }),
+    },
+  )
+
+  it.instance(
+    "keeps native tools as a stable prefix when an MCP server connects mid-session",
+    () =>
+      Effect.gen(function* () {
+        const fixture = loadFixture(vivgridFixture.providerID, vivgridFixture.modelID)
+        const resolved = yield* Provider.use.getModel(
+          ProviderV2.ID.make(vivgridFixture.providerID),
+          ModelV2.ID.make(fixture.model.id),
+        )
+        const sessionID = SessionID.make("session-tool-order")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: MessageID.make("msg_user-tool-order"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make(vivgridFixture.providerID), modelID: resolved.id },
+        } satisfies SessionV1.User
+        const native = (description: string) =>
+          tool({ description, inputSchema: z.object({ value: z.string() }), execute: async () => ({ output: "" }) })
+        const mcp = (description: string) =>
+          dynamicTool({ description, inputSchema: z.object({ value: z.string() }), execute: async () => "" })
+        const send = (tools: Record<string, ReturnType<typeof native> | ReturnType<typeof mcp>>) =>
+          Effect.gen(function* () {
+            const request = waitRequest(
+              "/chat/completions",
+              new Response(createChatStream("Hello"), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+            )
+            yield* drain({
+              user,
+              sessionID,
+              model: resolved,
+              agent,
+              system: ["You are a helpful assistant."],
+              messages: [{ role: "user", content: "Hello" }],
+              tools,
+            })
+            return (yield* Effect.promise(() => request)).body.tools as Array<{ function: { name: string } }>
+          })
+
+        // Insertion order as the session builds it: natives (not sorted), then MCP servers as they list.
+        const natives = { write: native("Write"), bash: native("Bash"), lsp: native("LSP"), read: native("Read") }
+        const github = { github_list_issues: mcp("List issues"), github_issue_read: mcp("Read issue") }
+        const before = yield* send({ ...natives, ...github })
+        // linear_* sorts before lsp: ordering by name used to interleave it with the natives.
+        const after = yield* send({ ...natives, ...github, linear_search_issues: mcp("Search Linear") })
+
+        expect(after.map((item) => item.function.name)).toEqual([
+          "bash",
+          "lsp",
+          "read",
+          "write",
+          "github_list_issues",
+          "github_issue_read",
+          "linear_search_issues",
+        ])
+        const previous = JSON.stringify(before)
+        const next = JSON.stringify(after)
+        let common = 0
+        while (common < previous.length && previous[common] === next[common]) common++
+        // Everything but the closing bracket survives: the new server only appends.
+        expect(common).toBe(previous.length - 1)
       }),
     {
       config: () => ({
