@@ -6,9 +6,9 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(FetchHttpClient.layer)
 
-function serve(fetch: (request: Request) => Response | Promise<Response>) {
+function serve(fetch: (request: Request) => Response | Promise<Response>, options: { idleTimeout?: number } = {}) {
   return Effect.acquireRelease(
-    Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch })),
+    Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch, ...options })),
     (server) => Effect.promise(() => server.stop(true)),
   )
 }
@@ -26,6 +26,9 @@ it.live(
               },
             }),
           ),
+        // Bun closes idle requests after 10 seconds by default, which would race discovery's own
+        // 10 second timeout and surface as a broken body instead.
+        { idleTimeout: 30 },
       )
       const http = yield* HttpClient.HttpClient
       const error = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" }).pipe(
