@@ -23,6 +23,11 @@ import { Tool } from "./tool"
 import { Question } from "@/question"
 import { Session } from "@/session/session"
 import { SessionGoal } from "@/session/goal"
+import { InstanceState } from "@/effect/instance-state"
+import { Global } from "@reddb-io/redcode-core/global"
+import { ConfigDesign } from "@reddb-io/redcode-core/config/design"
+import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
+import path from "node:path"
 
 export const DesignTools = Effect.gen(function* () {
   const settings = yield* Config.Service
@@ -190,15 +195,56 @@ export const DesignTools = Effect.gen(function* () {
                   .join("\n\n"),
               )
             yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
-            if (input.action === "create") return result(describe(yield* store.create(ctx.sessionID, input.input)))
+            // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
+            const propose = (application?: string) =>
+              Effect.gen(function* () {
+                const directory = (yield* InstanceState.context).directory
+                const outcome = yield* DesignProposal.offer({
+                  directory,
+                  application,
+                  state: path.join(Global.Path.state, DesignProposal.STATE),
+                  configured: (yield* store.configured())?.system !== undefined,
+                  ask: (request) =>
+                    questions
+                      .ask({
+                        sessionID: ctx.sessionID,
+                        tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                        questions: [request],
+                      })
+                      .pipe(
+                        Effect.map((answers) => answers[0]?.[0]),
+                        // A dismissed question is "not now": the design goes on without the system.
+                        Effect.catch(() => Effect.succeed(undefined)),
+                      ),
+                })
+                if (outcome.status === "adopted")
+                  yield* store.adopt(
+                    Schema.decodeUnknownSync(ConfigDesign.Info)({
+                      system: outcome.proposal.system,
+                      ...(outcome.proposal.application !== "." ? { application: outcome.proposal.application } : {}),
+                    }),
+                  )
+                return DesignProposal.report(outcome, directory)
+              }).pipe(
+                Effect.catch((error) =>
+                  Effect.succeed(`Design system: could not adopt the detected design system: ${String(error)}.`),
+                ),
+              )
+            const reported = (document: Design.Info, report: string) =>
+              report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
+            if (input.action === "create") {
+              const report = yield* propose(input.input.application)
+              return result(describe(reported(yield* store.create(ctx.sessionID, input.input), report)))
+            }
             yield* store.get(input.id, ctx.sessionID)
+            const report = input.action === "refresh" ? yield* propose() : ""
             const document =
               input.action === "update"
                 ? yield* store.update(input.id, input.input)
                 : input.action === "reopen"
                   ? yield* store.reopen(input.id)
                   : yield* store.refresh(input.id)
-            return result(describe(document))
+            return result(describe(reported(document, report)))
           }),
         ),
     }),
@@ -263,7 +309,7 @@ export const DesignTools = Effect.gen(function* () {
               : yield* DesignReviewPresence.launch({
                   sessionID: ctx.sessionID,
                   explicit: "path" in input && input.reopen === true,
-                  open: DesignBrowser.open(url),
+                  open: DesignBrowser.open(url, { browser: (yield* settings.get()).design?.browser }),
                 })
             const page = {
               claimed:

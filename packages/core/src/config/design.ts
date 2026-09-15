@@ -31,4 +31,12 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
   system: System.pipe(Schema.optional).annotate({
     description: "The project's design system that previews reuse: component roots, stylesheets and CSS pipeline",
   }),
+  application: Schema.String.pipe(Schema.optional).annotate({
+    description:
+      "Project-relative directory of the application package the design system belongs to, such as apps/web in a monorepo. design_document create uses it when no application is named; system paths are relative to it.",
+  }),
+  browser: Schema.String.pipe(Schema.optional).annotate({
+    description:
+      'Browser that opens Design review pages: "default" for the system browser, an app name, or an executable path. Equivalent to REDCODE_DESIGN_BROWSER, which wins when both are set. Default: Chrome or Chromium when installed, else the system browser.',
+  }),
 }) {}

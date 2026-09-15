@@ -41,6 +41,8 @@ const decodeConfigured = Schema.decodeUnknownOption(
     paths: Schema.Array(Schema.String).pipe(Schema.optionalKey),
     css: Schema.Array(Schema.String).pipe(Schema.optionalKey),
     tailwind: Schema.Boolean.pipe(Schema.optionalKey),
+    framework: Schema.String.pipe(Schema.optionalKey),
+    aliases: Schema.Record(Schema.String, Schema.String).pipe(Schema.optionalKey),
   }),
 )
 
@@ -270,7 +272,14 @@ export function describe(document: Document) {
     ...(stories ? [`Stories: ${stories} files`] : []),
     ...(system
       ? [
-          `Configured: paths ${system.paths?.join(", ") || "none"}; css ${system.css?.join(", ") || "none"}; tailwind ${system.tailwind === undefined ? "auto" : system.tailwind ? "on" : "off"}`,
+          `Configured: paths ${system.paths?.join(", ") || "none"}; css ${system.css?.join(", ") || "none"}; tailwind ${system.tailwind === undefined ? "auto" : system.tailwind ? "on" : "off"}${system.framework ? `; framework ${system.framework}` : ""}${
+            system.aliases && Object.keys(system.aliases).length
+              ? `; aliases ${Object.entries(system.aliases)
+                  .map(([find, target]) => `${find} → ${target}`)
+                  .join(", ")}`
+              : ""
+          }`,
+          "Configured design system: import components from the configured paths and include the configured stylesheets instead of recreating them.",
         ]
       : []),
   ].join("\n")

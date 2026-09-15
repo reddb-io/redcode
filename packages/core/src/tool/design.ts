@@ -24,6 +24,14 @@ import { DesignApproval } from "../design/approval"
 import { DesignRenderer } from "../design/renderer"
 import { DesignPlaybooks } from "../design/playbooks"
 import { LocationMutation } from "../location-mutation"
+import { Location } from "../location"
+import { Global } from "../global"
+import { ConfigDesign } from "../config/design"
+import { DesignProposal } from "../design/proposal"
+
+/** The proposal outcome travels with the returned document in its manifest status, rendered by both runtimes. */
+const withReport = (document: Design.Info, report: string) =>
+  report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -36,6 +44,43 @@ const layer = Layer.effectDiscard(
     const events = yield* EventV2.Service
     const goals = yield* SessionGoal.Service
     const mutation = yield* LocationMutation.Service
+    const location = yield* Location.Service
+    const global = yield* Global.Service
+
+    // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
+    const propose = (context: Tool.Context, application?: string) =>
+      Effect.gen(function* () {
+        const outcome = yield* DesignProposal.offer({
+          directory: location.directory,
+          application,
+          state: path.join(global.state, DesignProposal.STATE),
+          configured: (yield* store.configured())?.system !== undefined,
+          ask: (request) =>
+            questions
+              .ask({
+                sessionID: context.sessionID,
+                tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                questions: [request],
+              })
+              .pipe(
+                Effect.map((answers) => answers[0]?.[0]),
+                // A dismissed question is "not now": the design goes on without the system.
+                Effect.catch(() => Effect.succeed(undefined)),
+              ),
+        })
+        if (outcome.status === "adopted")
+          yield* store.adopt(
+            Schema.decodeUnknownSync(ConfigDesign.Info)({
+              system: outcome.proposal.system,
+              ...(outcome.proposal.application !== "." ? { application: outcome.proposal.application } : {}),
+            }),
+          )
+        return DesignProposal.report(outcome, location.directory)
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed(`Design system: could not adopt the detected design system: ${String(error)}.`),
+        ),
+      )
 
     const allow = (action: string, context: Tool.Context) =>
       permissions
@@ -270,7 +315,8 @@ const layer = Layer.effectDiscard(
               if (input.action === "list") return yield* store.list(context.sessionID)
               yield* allow("design_edit", context)
               if (input.action === "create") {
-                const document = yield* store.create(context.sessionID, input.input)
+                const report = yield* propose(context, input.input.application)
+                const document = withReport(yield* store.create(context.sessionID, input.input), report)
                 if (context.agent !== "design")
                   yield* events.publish(SessionEvent.AgentSwitched, {
                     sessionID: context.sessionID,
@@ -282,7 +328,10 @@ const layer = Layer.effectDiscard(
               }
               yield* owned(input.id, context)
               if (input.action === "reopen") return [yield* store.reopen(input.id)]
-              if (input.action === "refresh") return [yield* store.refresh(input.id)]
+              if (input.action === "refresh") {
+                const report = yield* propose(context)
+                return [withReport(yield* store.refresh(input.id), report)]
+              }
               return [yield* store.update(input.id, input.input)]
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
@@ -480,6 +529,8 @@ export const node = makeLocationNode({
     EventV2.node,
     SessionGoal.node,
     LocationMutation.node,
+    Location.node,
+    Global.node,
   ],
 })
 

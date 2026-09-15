@@ -111,6 +111,18 @@ describe("DesignBrowser.open", () => {
     expect(mac.calls).toEqual(["open:Brave Browser"])
   })
 
+  test("design.browser picks the browser when REDCODE_DESIGN_BROWSER is unset, and the variable wins over it", async () => {
+    const configured = fixture({ found: ["google-chrome", "brave", "firefox"] })
+    await run({ ...configured.options("linux", {}), browser: "brave" })
+    expect(configured.calls).toEqual(["spawn:/usr/bin/brave"])
+    const overridden = fixture({ found: ["google-chrome", "brave", "firefox"] })
+    await run({ ...overridden.options("linux", { REDCODE_DESIGN_BROWSER: "firefox" }), browser: "brave" })
+    expect(overridden.calls).toEqual(["spawn:/usr/bin/firefox"])
+    const system = fixture({ found: ["google-chrome"] })
+    await run({ ...system.options("linux", {}), browser: "default" })
+    expect(system.calls).toEqual(["spawn:/usr/bin/xdg-open"])
+  })
+
   test("an unresolvable REDCODE_DESIGN_BROWSER is skipped for the system browser", async () => {
     const browser = fixture({ found: ["google-chrome"] })
     expect(await run(browser.options("linux", { REDCODE_DESIGN_BROWSER: "chrome --incognito" }))).toBe(true)

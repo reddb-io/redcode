@@ -886,3 +886,21 @@ Compatibility:
 
 - Existing Context Epoch rows migrate in place by dropping the obsolete selection and pending-replacement columns.
 - Model and agent switches no longer discard earlier chronological System Context updates by forcing a new baseline.
+
+## 2026-09-14: Detect the Design System and Choose the Review Browser
+
+Affected schema:
+
+- Add optional `design.application` to configuration (V2 and V1): the project-relative application package a design targets by default; `design.system` paths are relative to it.
+- Add optional `design.browser` to configuration (V2 and V1): `"default"`, a browser name or an executable path for Design review pages.
+- No synchronized event, database, public HTTP API route, or `Design.Info` schema changes. Generated client and SDK types pick up the configuration fields.
+
+Change:
+
+- Detect a design system statically (component roots, global stylesheet, Tailwind version and config, framework, tsconfig aliases, target application in monorepos) with per-field confidence and evidence.
+- Ask once, through the question tool in `design_document` create/refresh (both runtimes) and a prompt in `redcode design`, whether to adopt it; Yes writes `design` into the project config with minimal JSONC edits and generates `.red/DESIGN.md`; No and Edit later are recorded in user state, never in config.
+- `REDCODE_DESIGN_BROWSER` keeps precedence over `design.browser`.
+
+Compatibility:
+
+- Existing configurations decode unchanged; both fields are optional.

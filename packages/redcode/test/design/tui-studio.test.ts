@@ -20,7 +20,8 @@ import { MessageID } from "../../src/session/schema"
 import { Tool } from "../../src/tool/tool"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { expect } from "bun:test"
-import { Effect, DateTime, Schema, Cause, Exit } from "effect"
+import { Effect, DateTime, Schema, Cause, Exit, Fiber } from "effect"
+import { Question } from "../../src/question"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import type { Design } from "@reddb-io/redcode-schema/design"
@@ -52,6 +53,7 @@ const it = testEffect(
       SessionProjector.node,
       ToolRegistry.node,
       Permission.node,
+      Question.node,
     ]),
   ),
 )
@@ -519,6 +521,66 @@ it.instance("streamed OpenRouter preview arguments publish a revision in the sam
     expect(designs).toHaveLength(1)
     expect(designs[0]?.revision).toBe(published.metadata.revision)
     expect((yield* sessions.get(session.id)).agent).toBe("design")
+  }),
+)
+
+it.instance("design_document asks once to adopt a detected design system and writes it into the project config", () =>
+  Effect.gen(function* () {
+    const registry = yield* ToolRegistry.Service
+    const sessions = yield* Session.Service
+    const agents = yield* Agent.Service
+    const permissions = yield* Permission.Service
+    const questions = yield* Question.Service
+    const directory = (yield* TestInstance).directory
+    yield* Effect.promise(async () => {
+      await Bun.write(path.join(directory, "package.json"), JSON.stringify({ dependencies: { react: "^19.0.0" } }))
+      await Bun.write(path.join(directory, "src/index.css"), ":root { --brand: #0a7; }\n")
+      await Bun.write(
+        path.join(directory, "src/components/Button.tsx"),
+        "export function Button() { return <button /> }\n",
+      )
+    })
+    const session = yield* sessions.create({ agent: "design" })
+    const agent = yield* agents.get("design")
+    const document = (yield* registry.all()).find((tool) => tool.id === "design_document")!
+    const context: Tool.Context = {
+      sessionID: session.id,
+      messageID: MessageID.ascending(),
+      agent: "design",
+      abort: new AbortController().signal,
+      messages: [],
+      metadata: () => Effect.void,
+      ask: (request) =>
+        permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie),
+    }
+    const create = (name: string) =>
+      document.execute(
+        { action: "create", input: { name, engine: "html", journey: "existing", kind: "screen" } },
+        context,
+      )
+    const fiber = yield* create("Adopted").pipe(Effect.forkChild)
+    let pending = yield* questions.list()
+    for (let attempt = 0; pending.length === 0 && attempt < 500; attempt++) {
+      yield* Effect.sleep("10 millis")
+      pending = yield* questions.list()
+    }
+    expect(pending).toHaveLength(1)
+    expect(pending[0]!.questions[0]!.question).toContain("Use detected design system?")
+    expect(pending[0]!.questions[0]!.options.map((option) => option.label)).toEqual(["Yes", "Edit later", "No"])
+    yield* questions.reply({ requestID: pending[0]!.id, answers: [["Yes"]] })
+    const created = yield* Fiber.join(fiber)
+    expect(created.output).toContain("the user adopted the detected design system; wrote design.system to redcode.json")
+    expect(created.output).toContain(
+      "Configured: paths src/components; css src/index.css; tailwind off; framework react",
+    )
+    const config = JSON.parse(yield* Effect.promise(() => Bun.file(path.join(directory, "redcode.json")).text()))
+    expect(config.design.system.paths).toEqual(["src/components"])
+
+    // Adopted for this location without reopening it: a later design is not asked again.
+    const second = yield* create("Configured")
+    expect(yield* questions.list()).toHaveLength(0)
+    expect(second.output).not.toContain("adopted the detected design system")
+    expect(second.output).toContain("Configured: paths src/components")
   }),
 )
 

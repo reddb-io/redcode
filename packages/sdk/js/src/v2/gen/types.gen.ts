@@ -4069,6 +4069,8 @@ export type ConfigV2DesignSystem = {
 
 export type ConfigV2Design = {
   system?: ConfigV2DesignSystem
+  application?: string
+  browser?: string
 }
 
 export type PolicyEffect = "allow" | "deny"

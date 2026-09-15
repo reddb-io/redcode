@@ -11,6 +11,7 @@ import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-prese
 import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-launcher"
 import { Effect } from "effect"
 import { withTimeout } from "@/util/timeout"
+import { DesignProposalPrompt } from "./design-proposal"
 
 export async function run(args: {
   prompt?: string[]
@@ -22,6 +23,9 @@ export async function run(args: {
   open?: boolean
 }) {
   const selectedModel = args.model ? DesignTerminal.model(args.model) : undefined
+  const directory = path.resolve(args.directory ?? process.cwd())
+  // Asked before the server opens the location, so an adopted design system is read with its config.
+  const { browser } = await DesignProposalPrompt.prompt(directory)
   const server = args.attach ? undefined : await DesignServer.start()
   const baseUrl = args.attach ?? server!.url
   const raw = process.stdin.isRaw
@@ -66,7 +70,7 @@ export async function run(args: {
         return reply && { ...reply, url }
       },
       release: (token) => post(`/design/session/${id}/launch/release`, { token }),
-      launch: (target) => Effect.runPromise(DesignBrowser.open(target)),
+      launch: (target) => Effect.runPromise(DesignBrowser.open(target, { browser })),
     })
     const note = {
       opened: "",
@@ -82,7 +86,7 @@ export async function run(args: {
   }
   const terminal = await DesignTerminal.create({
     client: Redcode.make({ baseUrl, headers: ServerAuth.headers() }),
-    directory: path.resolve(args.directory ?? process.cwd()),
+    directory,
     sessionID: args.session,
     agent: args.agent,
     model: selectedModel,
