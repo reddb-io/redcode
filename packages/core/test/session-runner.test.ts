@@ -8,10 +8,14 @@ import {
   TransportReason,
   RateLimitReason,
   InvalidRequestReason,
+  HttpContext,
+  HttpResponseDetails,
   type LLMClientShape,
   type LLMRequest,
 } from "@reddb-io/redcode-llm"
 import * as OpenAIChat from "@reddb-io/redcode-llm/protocols/openai-chat"
+import * as AnthropicMessages from "@reddb-io/redcode-llm/protocols/anthropic-messages"
+import { NativeToolSearch } from "@reddb-io/redcode-core/tool/native-tool-search"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { makeLocationNode } from "@reddb-io/redcode-core/effect/app-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -134,6 +138,7 @@ const permission = Layer.succeed(
     get: () => Effect.die("unused"),
     forSession: () => Effect.die("unused"),
     list: () => Effect.die("unused"),
+    rules: () => Effect.die("unused"),
   }),
 )
 const echo = Layer.effectDiscard(
@@ -167,7 +172,8 @@ const echo = Layer.effectDiscard(
   ),
 )
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [ToolRegistry.node] })
-let modelResolveHook = Effect.void
+// Typed with an error channel so a test can make model resolution fail, not just delay.
+let modelResolveHook: Effect.Effect<void, SessionRunnerModel.ModelNotSelectedError> = Effect.void
 let currentModel = model
 const models = SessionRunnerModel.layerWith((session) =>
   modelResolveHook.pipe(Effect.as(session.model?.id === "replacement" ? replacementModel : currentModel)),
@@ -366,6 +372,8 @@ const setup = Effect.gen(function* () {
   toolExecutionsReady = 5
   activeToolExecutions = 0
   maxActiveToolExecutions = 0
+  // A provider rejection is remembered for the process; tests must not inherit each other's.
+  NativeToolSearch.reset()
   yield* db
     .insert(ProjectTable)
     .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
@@ -4249,6 +4257,94 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
         expect(requests[0]!.system.map((part) => part.text).join("\n")).toContain("github (1)")
       }),
     ),
+  )
+
+  it.effect("falls back to the client-side tool when the provider refuses native search", () =>
+    withExperimental(
+      { tool_search: { enabled: true, native: true } },
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        const registry = yield* ToolRegistry.Service
+        // An Anthropic Messages model, which is the only protocol that can carry native search.
+        currentModel = Model.make({
+          id: "claude-opus-5",
+          provider: "anthropic",
+          route: AnthropicMessages.route,
+        })
+        yield* registry.register({
+          github_list_issues: Tool.external(
+            Tool.make({
+              description: "List issues in a repository",
+              input: Schema.Struct({}),
+              output: Schema.Struct({}),
+              execute: () => Effect.succeed({}),
+            }),
+          ),
+        })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Find a tool" }), resume: false })
+        requests.length = 0
+        streamFailures = [
+          new LLMError({
+            module: "test",
+            method: "stream",
+            reason: new InvalidRequestReason({
+              message: "tools.0.defer_loading: unsupported parameter",
+              http: new HttpContext({
+                request: { method: "POST", url: "https://api.anthropic.com/v1/messages", headers: {} },
+                response: new HttpResponseDetails({ status: 400, headers: {} }),
+                body: '{"error":{"message":"tools.0.defer_loading: unsupported parameter"}}',
+              }),
+            }),
+          }),
+        ]
+        // The replay answers properly, so the turn ends there instead of continuing the goal.
+        responses = [
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.textStart({ id: "text-fallback" }),
+            LLMEvent.textDelta({ id: "text-fallback", text: "Listed the issues." }),
+            LLMEvent.textEnd({ id: "text-fallback" }),
+            LLMEvent.finish({ reason: "stop" }),
+          ],
+        ]
+
+        yield* session.resume(sessionID)
+
+        // The first attempt sends the deferred definitions flagged, next to the provider's tool.
+        expect(requests[0]!.providerOptions?.anthropic?.toolSearch).toBe("bm25")
+        expect(requests[0]!.tools.find((tool) => tool.name === "github_list_issues")?.deferLoading).toBe(true)
+        expect(requests[0]!.tools.map((tool) => tool.name)).not.toContain("tool_search")
+        // The replay carries the client-side tool instead, and withholds the deferred definition.
+        expect(requests[1]!.providerOptions?.anthropic?.toolSearch).toBeUndefined()
+        expect(requests[1]!.tools.map((tool) => tool.name)).toContain("tool_search")
+        expect(requests[1]!.tools.map((tool) => tool.name)).not.toContain("github_list_issues")
+        // The model is remembered as unsupported, so later turns go straight to the client tool.
+        expect(NativeToolSearch.isRejected(currentModel)).toBe(true)
+        // The fallback replaces the failed attempt rather than recording one: the session ends with
+        // the replay's answer, and the rejected request leaves no failed assistant behind.
+        const context = yield* session.context(sessionID)
+        expect(context.map((message) => message.type)).toEqual(["user", "assistant"])
+        expect(JSON.stringify(context)).toContain("Listed the issues.")
+      }),
+    ),
+  )
+
+  it.live("promotes pending input even when no model can be resolved", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      // Materialization must stay behind the context epoch: resolving a model before promotion
+      // meant a session with no model never published `session.next.prompted` and every client hung.
+      const { db } = yield* Database.Service
+      modelResolveHook = Effect.fail(new SessionRunnerModel.ModelNotSelectedError({ sessionID }))
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Say something" }), resume: false })
+
+      yield* session.resume(sessionID).pipe(Effect.exit)
+
+      expect((yield* session.context(sessionID)).map((message) => message.type)).toContain("user")
+      expect(yield* SessionInput.hasPending(db, sessionID, "steer")).toBe(false)
+    }),
   )
 
   it.effect("lets identical tool calls run when experimental.loop_guard is false", () =>

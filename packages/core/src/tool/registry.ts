@@ -207,7 +207,12 @@ const registryLayer = Layer.effect(
               tripped: input.deferral.tripped,
             })
           : []
-        const loaded = new Set((input.deferral?.loaded ?? []).filter((name) => registrations.has(name)))
+        const deferrableNames = new Set(deferrable.map((entry) => entry.name))
+        // Activation order matters: it is what keeps the advertised prefix stable.
+        const loadedOrder = (input.deferral?.loaded ?? []).filter(
+          (name) => registrations.has(name) && deferrableNames.has(name),
+        )
+        const loaded = new Set(loadedOrder)
         const native = deferrable.length > 0 ? input.deferral?.native : undefined
         // Present whenever anything is deferrable, even once all of it is loaded: removing the tool
         // later would rewrite the advertised prefix. Its description is static; the index rides the
@@ -221,19 +226,26 @@ const registryLayer = Layer.effect(
                 inputSchema: ToolSearch.InputSchema as never,
               })
             : undefined
-        const definitions = Array.from(registrations, ([name, registration]) => {
-          const base = definition(name, registration.tool)
-          if (!pending.has(name)) return base
-          // Native search sends every deferred definition flagged; the client-side tool withholds
-          // them entirely and loads them by name from the next step.
-          return native ? ToolDefinition.make({ ...base, deferLoading: true }) : base
-        }).filter((item) => native !== undefined || !pending.has(item.name))
+        const defined = (name: string) => definition(name, registrations.get(name)!.tool)
+        /**
+         * The advertised list only ever grows at its end: tools that can never be deferred first, in
+         * registration order, then the search tool, then everything this Session has loaded so far in
+         * the order it loaded them. Loading one more tool therefore appends rather than reshuffles,
+         * which is the whole point of deferring them. Native search instead sends every deferred
+         * definition flagged, because the provider keeps them out of the cached prefix itself.
+         */
+        const stable = Array.from(registrations.keys())
+          .filter((name) => !deferrableNames.has(name))
+          .map(defined)
+        const definitions = native
+          ? [...stable, ...deferrable.map((entry) => ToolDefinition.make({ ...defined(entry.name), deferLoading: true }))]
+          : [...stable, ...(searchTool ? [searchTool] : []), ...loadedOrder.map(defined)]
         return {
           media: Array.from(registrations).flatMap(([name, registration]) => {
             const capability = media(registration.tool)
             return capability ? [{ name, capability }] : []
           }),
-          definitions: searchTool ? [...definitions, searchTool] : definitions,
+          definitions,
           ...(deferrable.length > 0 ? { toolIndex: ToolSearch.indexText(deferrable, native !== undefined) } : {}),
           ...(native ? { native } : {}),
           settle: (call) => {

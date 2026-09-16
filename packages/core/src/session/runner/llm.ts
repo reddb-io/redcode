@@ -218,6 +218,8 @@ const layer = Layer.effect(
           readonly failure: LLMError
           readonly message: string
         }
+      // The provider refused native tool search; replay the same step with the client-side tool.
+      | { readonly _tag: "RetryWithoutNativeSearch"; readonly step: number; readonly retry: Retry }
     // Tags the stall watchdog's own failure so it is never mistaken for a retryable transport error.
     const stallKind = "session-stall"
 
@@ -426,6 +428,7 @@ const layer = Layer.effect(
       step: number,
       recoverOverflow?: typeof compaction.compactAfterOverflow,
       retry?: Retry,
+      withoutNative?: boolean,
     ) {
       const attempt = retry?.attempt ?? 1
       const session = yield* getSession(sessionID)
@@ -454,13 +457,19 @@ const layer = Layer.effect(
       const context = entries.map((entry) => entry.message)
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
-      const experimental = Config.latest(yield* config.entries(), "experimental")
+      const configEntries = yield* config.entries()
+      const experimental = Config.latest(configEntries, "experimental")
       const searchConfig = experimental?.tool_search
-      const native = NativeToolSearch.detect({ model, config: searchConfig })
+      const native = withoutNative ? undefined : NativeToolSearch.detect({ model, config: searchConfig })
       const deferral: ToolRegistry.Deferral = {
         ...(searchConfig ? { config: searchConfig } : {}),
-        servers: Object.keys(Config.latest(yield* config.entries(), "mcp")?.servers ?? {}),
-        designContext: (yield* designs.list(session.id).pipe(Effect.orElseSucceed(() => []))).length > 0,
+        servers: Object.keys(Config.latest(configEntries, "mcp")?.servers ?? {}),
+        // Fail closed: a Design store that cannot be read must not be mistaken for "no Design
+        // context", which would defer every Design tool in the middle of a Design session.
+        designContext: yield* designs.list(session.id).pipe(
+          Effect.map((documents) => documents.length > 0),
+          Effect.orElseSucceed(() => true),
+        ),
         tripped: ToolSearch.trippedInHistory(context),
         loaded: ToolSearch.loadedFromHistory(context, ToolSearch.namesInHistory(context)),
         ...(native ? { native } : {}),
@@ -706,6 +715,29 @@ const layer = Layer.effect(
             return yield* Effect.die(continueAfterOverflowCompaction(currentStep, retry))
           if (overflowFailure) yield* publish(overflowFailure)
           const llmFailure = failure instanceof LLMError ? failure : undefined
+          // A provider that refuses native tool search must not take the turn down with it, nor
+          // every later turn: fall back to the client-side tool and replay this step. A reference it
+          // could not resolve comes from this Session's history, so the model keeps its support.
+          if (
+            llmFailure &&
+            toolMaterialization?.native !== undefined &&
+            !publisher.hasAssistantStarted() &&
+            !needsContinuation &&
+            NativeToolSearch.isRejection(llmFailure)
+          ) {
+            if (!NativeToolSearch.isMissingReference(llmFailure)) NativeToolSearch.reject(model)
+            yield* Effect.logWarning("Provider refused native tool search; falling back", {
+              sessionID: session.id,
+              model: model.id,
+            })
+            return yield* Effect.die(
+              new TurnTransitionError({
+                _tag: "RetryWithoutNativeSearch",
+                step: currentStep,
+                retry: { attempt, goalID },
+              }),
+            )
+          }
           // Legacy retry policy: bounded, never for context overflow, never once a local tool ran.
           // Durable v2 events cannot discard a partial attempt the way legacy does, so only an attempt
           // that streamed nothing and reported no provider error is retried: nothing to replay or hide.
@@ -847,6 +879,7 @@ const layer = Layer.effect(
       promotion: SessionInput.Delivery | undefined,
       step: number,
       retry?: Retry,
+      withoutNative?: boolean,
     ) => Effect.Effect<
       {
         readonly needsContinuation: boolean
@@ -862,11 +895,25 @@ const layer = Layer.effect(
 
     const nextRetry = (retry: Retry): Retry => ({ ...retry, attempt: retry.attempt + 1 })
 
-    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, retry) {
-      return yield* runTurnAttempt(sessionID, promotion, step, undefined, retry).pipe(
+    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (
+      sessionID,
+      promotion,
+      step,
+      retry,
+      withoutNative,
+    ) {
+      return yield* runTurnAttempt(sessionID, promotion, step, undefined, retry, withoutNative).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
+            if (defect.transition._tag === "RetryWithoutNativeSearch")
+              return yield* runAfterOverflowCompaction(
+                sessionID,
+                undefined,
+                defect.transition.step,
+                defect.transition.retry,
+                true,
+              )
             if (defect.transition._tag === "RetryProvider") {
               yield* waitToRetry(sessionID, defect.transition)
               return yield* runAfterOverflowCompaction(
@@ -890,11 +937,20 @@ const layer = Layer.effect(
       )
     })
 
-    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, retry) {
-      return yield* runTurnAttempt(sessionID, promotion, step, compaction.compactAfterOverflow, retry).pipe(
+    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, retry, withoutNative) {
+      return yield* runTurnAttempt(
+        sessionID,
+        promotion,
+        step,
+        compaction.compactAfterOverflow,
+        retry,
+        withoutNative,
+      ).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
+            if (defect.transition._tag === "RetryWithoutNativeSearch")
+              return yield* runTurn(sessionID, undefined, defect.transition.step, defect.transition.retry, true)
             if (defect.transition._tag === "RetryProvider") {
               yield* waitToRetry(sessionID, defect.transition)
               return yield* runTurn(sessionID, undefined, defect.transition.step, nextRetry(defect.transition.retry))
