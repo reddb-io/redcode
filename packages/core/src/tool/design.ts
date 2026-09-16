@@ -470,7 +470,7 @@ const layer = Layer.effectDiscard(
         }),
         design_exit: Tool.make({
           description:
-            "Ask the user to approve the currently published revision. Only after approval, update the design section of the plan and switch to Plan. Never silently approve open work.",
+            "Ask the user to approve the currently published revision. Only after approval, update the design section of the plan and switch to Plan. Never silently approve open work. Refused while the latest feedback round has notes without a recorded status.",
           input: Schema.Struct({
             id: Design.ID,
             variant: Schema.optional(Design.Variant),
@@ -491,6 +491,8 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({ message: "Publish the design before requesting approval" })
               if (DesignApproval.missingTargets(document, input.noTargets))
                 return yield* new ToolFailure({ message: DesignApproval.TARGETS_NUDGE })
+              const pending = DesignRounds.blocking(document)
+              if (pending) return yield* new ToolFailure({ message: `Approval is not possible yet. ${pending}` })
               const savedGoal = yield* goals
                 .get(context.sessionID)
                 .pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))

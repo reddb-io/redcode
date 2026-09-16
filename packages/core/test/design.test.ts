@@ -19,6 +19,7 @@ import { DesignQuality } from "../src/design/quality"
 import { DesignRenderer } from "../src/design/renderer"
 import { DesignExport } from "../src/design/export"
 import { DesignFeedback } from "../src/design/feedback"
+import { DesignRounds } from "../src/design/rounds"
 import { Location } from "../src/location"
 import { Project } from "../src/project"
 import { ProjectTable } from "../src/project/sql"
@@ -525,6 +526,36 @@ describe("Design revisions and review", () => {
         ).toContain(`1 note of round 1 arrived after this verify (${feedback.id} #3)`)
         expect(report).toContain(`after: ${title.after}`)
         expect(report).toContain('"evidence":{"job":"' + job.id + '"}')
+        // While the round has notes without an outcome, the review can neither end nor be approved.
+        const refusedApproval = yield* store.approve(document.id, second.id).pipe(Effect.result)
+        expect(refusedApproval).toMatchObject({ _tag: "Failure" })
+        expect(JSON.stringify(refusedApproval)).toContain("Round 1 has 2 notes without a recorded outcome")
+        const ending: Design.Feedback = {
+          ...feedback,
+          id: SessionMessage.ID.create(),
+          revision: second.id,
+          items: [],
+          text: "Done for today",
+          end: true,
+        }
+        expect(JSON.stringify(yield* store.prepareFeedback(document.id, ending).pipe(Effect.result))).toContain(
+          "The review cannot end yet",
+        )
+        // Resolved needs the verify's evidence and a found element; the refusal names the verify jobs.
+        const unproven = yield* store
+          .update(document.id, { notes: [{ feedback: feedback.id, index: 1, status: "resolved" }] })
+          .pipe(Effect.result)
+        expect(JSON.stringify(unproven)).toContain(DesignRounds.REFUSED)
+        expect(JSON.stringify(unproven)).toContain(
+          `${job.id} (revision ${second.id}, round 1, completed, 1 of 2 notes found`,
+        )
+        const missing = yield* store
+          .update(document.id, {
+            notes: [{ feedback: feedback.id, index: 2, status: "resolved", evidence: { job: job.id } }],
+          })
+          .pipe(Effect.result)
+        expect(JSON.stringify(missing)).toContain("did not find its element")
+        expect((yield* store.get(document.id)).notes?.every((note) => note.status === "open")).toBe(true)
         // Statuses cite the job; the evidence records what it saw for each note.
         const updated = yield* store.update(document.id, {
           notes: [
@@ -556,6 +587,9 @@ describe("Design revisions and review", () => {
             .update(document.id, { notes: [{ feedback: feedback.id, index: 3, status: "resolved" }] })
             .pipe(Effect.result),
         ).toMatchObject({ _tag: "Failure" })
+        // Every note has an outcome: ending and approving are possible again (on the current revision).
+        expect(yield* store.prepareFeedback(document.id, ending)).toMatchObject({ admitted: false })
+        expect((yield* store.approve(document.id, afterRestore.revision!)).revision).toBe(afterRestore.revision!)
       }),
     240000,
   )

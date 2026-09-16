@@ -77,7 +77,8 @@ describe("DesignRounds", () => {
     const third = DesignRounds.admit(answered, message("msg_3", "rev_2", [note("#footer", "Smaller")]), 400)
     expect(third.rounds).toHaveLength(2)
     expect(third.rounds![1]).toEqual({ number: 2, opened: 400, revision: "rev_2", feedback: ["msg_3"] })
-    expect(DesignRounds.open(third).map((item) => item.feedback)).toEqual(["msg_3"])
+    // Open notes of every round count until they are recorded, not only the latest round's.
+    expect(DesignRounds.open(third).map((item) => item.feedback)).toEqual(["msg_1", "msg_2", "msg_3"])
     expect(DesignRounds.notes(third, 1)).toHaveLength(2)
     expect(DesignRounds.summary(third)).toBe(
       "round 1 (answered by rev_2): 2 open; round 2 (awaiting a revision): 1 open",
@@ -178,6 +179,112 @@ describe("DesignRounds", () => {
     ).toContain("Evidence job render_4 did not cover note msg_1 #1 (it verified round 2)")
     expect(problem(refused)).not.toContain("render_3 (")
     expect(DesignRounds.describeJobs([])).toContain("Verify jobs: none")
+  })
+
+  test("the status gate needs a passing verify on the current revision for resolved and a reason otherwise", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [note("#title", "Bigger"), note("#gone", "Remove"), note("#cta", "Contrast")]),
+      100,
+    )
+    const answered = { ...DesignRounds.published(opened, "rev_2"), revision: "rev_2" }
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true),
+      seen("msg_1", 2, false),
+      seen("msg_1", 3, true, {
+        blocking: true,
+        findings: ["error · color-contrast: Elements must have sufficient color contrast (1 elements)"],
+      }),
+    ])
+    const stale = job("render_0", "rev_1", 1, [seen("msg_1", 1, true)])
+    const feedback = SessionMessage.ID.make("msg_1")
+    const gate = (update: Design.NoteUpdate, jobs = [stale, verify], by?: Design.NoteRecorder) =>
+      DesignRounds.gate(answered, update, jobs, by)
+    // Resolved: evidence is required, must be a verify of the current revision, and must have found the element cleanly.
+    expect(gate({ feedback, index: 1, status: "resolved" })).toContain(
+      `${DesignRounds.REFUSED} resolved for msg_1 #1 needs evidence`,
+    )
+    expect(gate({ feedback, index: 1, status: "resolved" })).toContain("render_1 (revision rev_2, round 1, completed")
+    expect(gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_0" } })).toContain(
+      "verified rev_1, not the current revision rev_2",
+    )
+    expect(gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_9" } })).toContain(
+      "render_9 is not a completed verify job",
+    )
+    expect(gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_1" } })).toBeUndefined()
+    expect(gate({ feedback, index: 2, status: "resolved", evidence: { job: "render_1" } })).toContain(
+      "did not find its element in rev_2",
+    )
+    expect(gate({ feedback, index: 3, status: "resolved", evidence: { job: "render_1" } })).toContain(
+      "found blocking findings for it (error · color-contrast",
+    )
+    // A verify that did not cover the note is no evidence for it.
+    const other = job("render_2", "rev_2", 2, [seen("msg_9", 1, true)])
+    expect(gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_2" } }, [other])).toContain(
+      'verified round 2, not msg_1 #1 (round 1). Run design_export {"revision":"rev_2","format":"verify","round":1} and cite that job.',
+    )
+    // The reviewer may close a note by hand, but only as accepted or unresolved, with a reason.
+    expect(
+      gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_1" } }, [verify], "reviewer"),
+    ).toContain("the reviewer records a note as accepted or unresolved")
+    expect(gate({ feedback, index: 1, status: "accepted" }, [], "reviewer")).toContain("needs a reason")
+    expect(gate({ feedback, index: 1, status: "accepted", reason: "Fine as is" }, [], "reviewer")).toBeUndefined()
+    const byReviewer = DesignRounds.apply(
+      answered,
+      [{ feedback, index: 1, status: "accepted", reason: "Fine as is" }],
+      [],
+      900,
+      "reviewer",
+    )
+    if ("problem" in byReviewer) throw new Error(byReviewer.problem)
+    expect(byReviewer.notes[0]).toMatchObject({ status: "accepted", by: "reviewer", reason: "Fine as is" })
+    // Partial: the job (whatever it saw) plus a reason. Unresolved and accepted: a reason.
+    expect(gate({ feedback, index: 2, status: "partial", evidence: { job: "render_1" } })).toContain(
+      "partial for msg_1 #2 needs a reason",
+    )
+    expect(
+      gate({ feedback, index: 2, status: "partial", evidence: { job: "render_1" }, reason: "Moved, not gone" }),
+    ).toBeUndefined()
+    expect(gate({ feedback, index: 2, status: "partial", reason: "Moved" })).toContain(
+      "partial for msg_1 #2 needs evidence",
+    )
+    expect(gate({ feedback, index: 2, status: "unresolved" })).toContain("unresolved for msg_1 #2 needs a reason")
+    expect(gate({ feedback, index: 2, status: "accepted", reason: "  " })).toContain(
+      "accepted for msg_1 #2 needs a reason",
+    )
+    expect(gate({ feedback, index: 2, status: "accepted", reason: "Kept on purpose" }, [])).toBeUndefined()
+    expect(gate({ feedback, index: 2, status: "unresolved", reason: "Still there" }, [])).toBeUndefined()
+    // The blocker names the open notes and lifts once every note has an outcome.
+    expect(DesignRounds.blocking(answered)).toContain(
+      "Round 1 has 3 notes without a recorded outcome: msg_1 #1 (#title), msg_1 #2 (#gone), msg_1 #3 (#cta)",
+    )
+    const recorded = DesignRounds.apply(
+      answered,
+      [
+        { feedback, index: 1, status: "resolved", evidence: { job: "render_1" } },
+        { feedback, index: 2, status: "accepted", reason: "Kept on purpose" },
+        { feedback, index: 3, status: "unresolved", reason: "Contrast still fails" },
+      ],
+      [verify],
+    )
+    if ("problem" in recorded) throw new Error(recorded.problem)
+    expect(DesignRounds.blocking({ ...answered, notes: recorded.notes })).toBeUndefined()
+    expect(DesignRounds.blocking({ rounds: undefined, notes: undefined })).toBeUndefined()
+    // An older round's notes keep blocking after a newer round opened and was recorded.
+    const later = DesignRounds.admit(answered, message("msg_2", "rev_2", [note("#footer", "Smaller")]), 1000)
+    const onlyLatest = DesignRounds.apply(
+      later,
+      [{ feedback: SessionMessage.ID.make("msg_2"), index: 1, status: "accepted", reason: "Footer stays" }],
+      [],
+    )
+    if ("problem" in onlyLatest) throw new Error(onlyLatest.problem)
+    expect(DesignRounds.blocking({ ...later, notes: onlyLatest.notes })).toContain(
+      "Round 1 has 3 notes without a recorded outcome: msg_1 #1 (#title), msg_1 #2 (#gone), msg_1 #3 (#cta). Fix them",
+    )
+    const bothOpen = DesignRounds.blocking(later)
+    expect(bothOpen).toContain("Round 1 has 3 notes without a recorded outcome")
+    expect(bothOpen).toContain("; round 2 has 1 note without a recorded outcome: msg_2 #1 (#footer)")
+    expect(DesignRounds.open(later)).toHaveLength(4)
   })
 
   test("verdicts follow what the verify observed", () => {

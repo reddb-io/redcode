@@ -24,7 +24,7 @@ import { Effect, DateTime, Schema, Cause, Exit, Fiber } from "effect"
 import { Question } from "../../src/question"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
-import type { Design } from "@reddb-io/redcode-schema/design"
+import { Design } from "@reddb-io/redcode-schema/design"
 import { AppNodeBuilderV1 } from "../../src/effect/app-node-builder-v1"
 import { DesignStudio } from "../../src/design/studio"
 import { Session } from "../../src/session/session"
@@ -244,6 +244,103 @@ it.instance(
       },
     },
   },
+)
+
+it.instance("the TUI Design tools refuse a note status without verify evidence and approval with open notes", () =>
+  Effect.gen(function* () {
+    const registry = yield* ToolRegistry.Service
+    const sessions = yield* Session.Service
+    const agents = yield* Agent.Service
+    const permissions = yield* Permission.Service
+    const studio = yield* DesignStudio.Service
+    const session = yield* sessions.create({ agent: "design" })
+    const agent = yield* agents.get("design")
+    const tools = yield* registry.all()
+    const context: Tool.Context = {
+      sessionID: session.id,
+      messageID: MessageID.ascending(),
+      agent: "design",
+      abort: new AbortController().signal,
+      messages: [],
+      metadata: () => Effect.void,
+      ask: (request) =>
+        permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie),
+    }
+    const feedback = {
+      id: SessionMessage.ID.create(),
+      revision: "",
+      text: "",
+      items: [{ target: "#title", text: "Bigger", label: 'h1 "Leads"' }],
+      assets: [],
+      snapshot: "",
+      delivery: "queue" as const,
+      end: false,
+    }
+    const document = yield* studio.use(
+      Effect.gen(function* () {
+        const store = yield* DesignStore.Service
+        const created = yield* store.create(session.id, {
+          name: "Leads",
+          journey: "new",
+          engine: "html",
+          kind: "screen",
+        })
+        const first = yield* store.publish(created.id, "Review")
+        const admitted = { ...feedback, revision: first.id }
+        yield* store.prepareFeedback(created.id, admitted)
+        yield* store.acknowledge(created.id, admitted)
+        yield* store.publish(created.id, "Answered")
+        return created
+      }),
+    )
+    const update = tools.find((tool) => tool.id === "design_document")!
+    // The legacy tools surface a Design.Error as a defect that the tool runtime reports to the model.
+    const failure = (exit: Exit.Exit<unknown, unknown>) => (Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined)
+    const unproven = failure(
+      yield* update
+        .execute(
+          {
+            action: "update",
+            id: document.id,
+            input: { notes: [{ feedback: feedback.id, index: 1, status: "resolved" }] },
+          },
+          context,
+        )
+        .pipe(Effect.exit),
+    )
+    expect(unproven).toBeInstanceOf(Design.Error)
+    expect((unproven as Design.Error).message).toContain("Note status refused:")
+    expect((unproven as Design.Error).message).toContain("Verify jobs: none")
+    const exit = tools.find((tool) => tool.id === "design_exit")!
+    const refused = failure(yield* exit.execute({ id: document.id }, context).pipe(Effect.exit))
+    expect((refused as Design.Error).message).toContain(
+      "Approval is not possible yet. Round 1 has 1 note without a recorded outcome",
+    )
+    const recorded = yield* update.execute(
+      {
+        action: "update",
+        id: document.id,
+        input: {
+          notes: [{ feedback: feedback.id, index: 1, status: "unresolved", reason: "Needs the new heading scale" }],
+        },
+      },
+      context,
+    )
+    expect(recorded.output).toContain("Feedback rounds: round 1 (answered by")
+    expect(recorded.output).toContain("1 unresolved")
+    // With every note recorded, design_exit reaches its question; the reviewer keeps reviewing.
+    const questions = yield* Question.Service
+    const asking = yield* exit.execute({ id: document.id }, context).pipe(Effect.forkChild)
+    let pending = yield* questions.list()
+    while (!pending.length) {
+      yield* Effect.sleep("20 millis")
+      pending = yield* questions.list()
+    }
+    expect(pending[0]!.questions[0]!.question).toContain("Approve Leads")
+    yield* questions.reply({ requestID: pending[0]!.id, answers: [["Continue"]] })
+    const continued = yield* Fiber.join(asking)
+    expect(continued.output).toContain("The user chose to continue reviewing.")
+  }),
 )
 
 it.instance("Design remains a cyan primary mode and edits only prototype work", () =>

@@ -602,6 +602,69 @@ it.live("Design approval for an existing application asks for target files befor
   }),
 )
 
+it.live("Design approval is refused while the latest feedback round has notes without a status", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const store = yield* DesignStore.Service
+    const document = yield* store.create(test.sessionID, {
+      name: "Leads",
+      journey: "new",
+      engine: "html",
+      kind: "screen",
+    })
+    const first = yield* store.publish(document.id, "Review")
+    const feedback = {
+      id: SessionMessage.ID.create(),
+      revision: first.id,
+      text: "",
+      items: [{ target: "#title", text: "Bigger", label: 'h1 "Leads"' }],
+      assets: [],
+      snapshot: "",
+      delivery: "queue" as const,
+      end: false,
+    }
+    yield* store.prepareFeedback(document.id, feedback)
+    yield* store.acknowledge(document.id, feedback)
+    yield* store.publish(document.id, "Answered")
+    const asked = questions.length
+    const refused = yield* test.run("design_exit", { id: document.id }, AgentV2.ID.make("design"))
+    expect(refused.type).toBe("error")
+    expect(JSON.stringify(refused)).toContain(
+      "Approval is not possible yet. Round 1 has 1 note without a recorded outcome",
+    )
+    expect(questions).toHaveLength(asked)
+    // A status without verify evidence is refused with the recent verify jobs named, like todowrite.
+    const unproven = yield* test.run(
+      "design_document",
+      {
+        action: "update",
+        id: document.id,
+        input: { notes: [{ feedback: feedback.id, index: 1, status: "resolved" }] },
+      },
+      AgentV2.ID.make("design"),
+    )
+    expect(unproven.type).toBe("error")
+    expect(JSON.stringify(unproven)).toContain("Note status refused:")
+    expect(JSON.stringify(unproven)).toContain("Verify jobs: none")
+    const recorded = yield* test.run(
+      "design_document",
+      {
+        action: "update",
+        id: document.id,
+        input: {
+          notes: [{ feedback: feedback.id, index: 1, status: "accepted", reason: "Heading size is set by the app" }],
+        },
+      },
+      AgentV2.ID.make("design"),
+    )
+    expect(recorded.type).not.toBe("error")
+    expect(JSON.stringify(recorded)).toContain("round 1 (answered by")
+    answer = "Approve"
+    expect((yield* test.run("design_exit", { id: document.id }, AgentV2.ID.make("design"))).type).not.toBe("error")
+    expect(questions).toHaveLength(asked + 1)
+  }),
+)
+
 it.live("Design-only approval presents current findings and preserves its scope", () =>
   Effect.gen(function* () {
     const test = yield* setup

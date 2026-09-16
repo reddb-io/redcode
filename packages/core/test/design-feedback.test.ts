@@ -20,6 +20,36 @@ const base = {
 }
 
 describe("DesignFeedback.render", () => {
+  test("the footer states the round rule with the message's note ids, and only when the message has notes", () => {
+    const withNotes = DesignFeedback.render(
+      {
+        ...base,
+        items: [
+          { target: "variant:stone", text: "" },
+          { target: "#title", text: "Bigger" },
+        ],
+      },
+      { ...context, round: 2 },
+    )
+    const step = withNotes.slice(withNotes.indexOf("## Next step"))
+    expect(step).toContain(
+      'Feedback round 2: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify","round":2}, then design_jobs), then record each note\'s status (design_document update notes: [{"feedback":"msg_review_1","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Reply with what is resolved, partial, unresolved or accepted and why, and ask before starting another round.',
+    )
+    expect(step).not.toContain("Publish a new revision with design_preview and reply")
+    expect(DesignFeedback.render({ ...base, items: [{ target: "#title", text: "Bigger" }] }, context)).toContain(
+      "Feedback round: fix everything",
+    )
+    expect(DesignFeedback.render({ ...base, text: "Looks good" }, { ...context, round: 2 })).not.toContain(
+      "Feedback round",
+    )
+    // An ended review is finished from its notes; there is no next round to ask about.
+    expect(
+      DesignFeedback.render({ ...base, end: true, items: [{ target: "#title", text: "Bigger" }] }, context),
+    ).not.toContain("Feedback round")
+    // The rule lives in the trailer, so the summary still reads the message.
+    expect(DesignFeedback.summarize(withNotes)?.notes).toEqual([{ label: "#title", text: "Bigger" }])
+  })
+
   test("labels each note with its own element context and keeps the page snapshot out", () => {
     const text = DesignFeedback.render(
       {
@@ -164,8 +194,9 @@ describe("DesignFeedback.render", () => {
       context,
     )
     expect(unkeyed).toContain(
-      "## Next step\nPublish a new revision with design_preview and reply with a short summary of what changed.\nSome notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly.\n",
+      '## Next step\nFeedback round: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"}, then design_jobs), then record each note\'s status (design_document update notes: [{"feedback":"msg_review_1","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Reply with what is resolved, partial, unresolved or accepted and why, and ask before starting another round.\nSome notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly.\n',
     )
+    expect(unkeyed).not.toContain("Publish a new revision with design_preview and reply with a short summary")
     // The transcript notice carries the breadcrumb, so the TUI never collapses a note to its tag.
     expect(
       DesignFeedback.notice(
