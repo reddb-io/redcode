@@ -250,20 +250,14 @@ export const memory = () => {
 export const memoryLayer = () => Layer.succeed(Service, memory())
 
 /**
- * The lessons in a JSON file shared by every Redcode process on the machine. The file is read
- * whenever it changed on disk and read again before every change, so two processes never undo
- * each other's lessons; a change is written to a temporary file and renamed into place, so a
- * crash mid-write leaves the previous file intact.
+ * The lessons in a JSON file shared by every Redcode process on the machine. The file is small and
+ * read once per provider request, so it is read whole before every use and before every change,
+ * and two processes never undo each other's lessons; a change is written to a temporary file and
+ * renamed into place, so a crash mid-write leaves the previous file intact.
  */
 export const fileStore = (file: string) =>
   Effect.gen(function* () {
     const lock = Semaphore.makeUnsafe(1)
-    let models: Models = new Map()
-    let seen: number | undefined
-    const modified = Effect.tryPromise(() => NFS.stat(file)).pipe(
-      Effect.map((stat) => stat.mtimeMs),
-      Effect.catch(() => Effect.succeed(undefined)),
-    )
     const load = Effect.gen(function* () {
       const text = yield* Effect.tryPromise(() => NFS.readFile(file, "utf8")).pipe(
         Effect.catch(() => Effect.succeed(undefined)),
@@ -279,32 +273,20 @@ export const fileStore = (file: string) =>
       )
       return new Map(Object.entries(decoded?.models ?? {})) as Models
     })
-    const refresh = Effect.gen(function* () {
-      const current = yield* modified
-      if (current === seen && seen !== undefined) return models
-      models = yield* load
-      seen = current
-      return models
-    })
     const write = (current: Models) =>
       Effect.tryPromise(async () => {
         await NFS.mkdir(path.dirname(file), { recursive: true })
         const temporary = `${file}.${process.pid}.${Date.now()}.tmp`
         await NFS.writeFile(temporary, JSON.stringify({ version: 1, models: Object.fromEntries(current) }, null, 2))
         await NFS.rename(temporary, file)
-        return (await NFS.stat(file)).mtimeMs
-      }).pipe(
-        Effect.tap((mtime) => Effect.sync(() => (seen = mtime))),
-        Effect.asVoid,
-        Effect.catch((error) => Effect.logWarning("could not save learned model limits", { file, error })),
-      )
+      }).pipe(Effect.catch((error) => Effect.logWarning("could not save learned model limits", { file, error })))
     return make({
-      read: lock.withPermit(refresh),
+      read: lock.withPermit(load),
       change: (apply) =>
         lock.withPermit(
           Effect.gen(function* () {
             // Read again: another process may have learned or forgotten something meanwhile.
-            models = yield* load
+            const models = yield* load
             apply(models)
             yield* write(models)
           }),
