@@ -9,6 +9,7 @@ import {
   RateLimitReason,
   InvalidRequestReason,
   HttpContext,
+  HttpRequestDetails,
   HttpResponseDetails,
   type LLMClientShape,
   type LLMRequest,
@@ -17,6 +18,7 @@ import * as OpenAIChat from "@reddb-io/redcode-llm/protocols/openai-chat"
 import * as AnthropicMessages from "@reddb-io/redcode-llm/protocols/anthropic-messages"
 import { NativeToolSearch } from "@reddb-io/redcode-core/tool/native-tool-search"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { makeLocationNode } from "@reddb-io/redcode-core/effect/app-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNodePlatform } from "@reddb-io/redcode-core/effect/app-node-platform"
@@ -264,8 +266,10 @@ const withExperimental = <A, E, R>(
         experimentalConfig = undefined
       }),
   )
+const modelLimits = ModelLimit.memoryLayer()
 const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
   [Snapshot.node, Snapshot.noopLayer],
+  [ModelLimit.node, modelLimits],
   [LayerNodePlatform.llmClient, client],
   [SessionRunnerModel.node, models],
   [SystemContextRegistry.node, systemContext],
@@ -316,9 +320,11 @@ const it = testEffect(
       SessionRunnerLLM.node,
       SessionExecution.node,
       SessionV2.node,
+      ModelLimit.node,
     ]),
     [
       [LayerNodePlatform.llmClient, client],
+      [ModelLimit.node, modelLimits],
       [PermissionV2.node, permission],
       [SessionRunnerModel.node, models],
       [SystemContextRegistry.node, systemContext],
@@ -1499,6 +1505,111 @@ describe("SessionRunnerLLM", () => {
         },
         { type: "assistant", finish: "stop" },
       ])
+    }),
+  )
+
+  it.effect("learns the limit from the exact 400 envelope a router forwards and retries after compaction", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const limits = yield* ModelLimit.Service
+      yield* limits.forget("fake", "recovery")
+      const body = JSON.stringify({
+        error: {
+          message: "input length 4321 exceeds the maximum allowed input length of 4000 tokens",
+          type: "invalid_request_error",
+          code: "invalid_request",
+        },
+      })
+      responseStream = Stream.fail(
+        new LLMError({
+          module: "test",
+          method: "stream",
+          reason: new InvalidRequestReason({
+            message: "Provider request failed with HTTP 400",
+            classification: "context-overflow",
+            http: new HttpContext({
+              request: new HttpRequestDetails({
+                method: "POST",
+                url: "http://router/v1/chat/completions",
+                headers: {},
+              }),
+              body,
+            }),
+          }),
+        }),
+      )
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Recover the envelope"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Recovered"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction" },
+        { type: "assistant", finish: "stop" },
+      ])
+      // The refusal taught the provider's limit and how far the estimate was off.
+      const learned = yield* limits.get("fake", "recovery")
+      expect(learned).toMatchObject({ input: 4_000, counted: 4_321 })
+      expect(learned?.ratio).toBeGreaterThan(0)
+      yield* limits.forget("fake", "recovery")
+    }),
+  )
+
+  it.effect("a learned limit compacts before the next request instead of sending one that cannot fit", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const limits = yield* ModelLimit.Service
+      // Learned earlier: the provider accepts far less than the catalog's 20k context.
+      yield* limits.learn("fake", "recovery", { input: 4_000, at: 1, message: "learned" })
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Sized by the lesson"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Fits"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.ensuring(limits.forget("fake", "recovery")))
+
+      // No request carried the whole history: the first one was the summary request.
+      expect(requests.length).toBeGreaterThanOrEqual(2)
+      expect(userTexts(requests[0])[0]).toContain("<conversation>")
+      expect(
+        requests.every(
+          (request) =>
+            !userTexts(request).some((text) => text.startsWith("Earlier question Earlier question Earlier question")),
+        ),
+      ).toBe(true)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction" },
+        { type: "assistant", finish: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("refuses a request no compaction can bring under the provider's limit", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const limits = yield* ModelLimit.Service
+      // A limit smaller than the system prompt and the request itself: nothing can fit.
+      yield* limits.learn("fake", "recovery", { input: 200, at: 1, message: "learned" })
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Still too large"]).completeEvents,
+        fragmentFixture("text", "text-summary", ["## Objective\n- Still too large"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Never sent"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.ensuring(limits.forget("fake", "recovery")))
+
+      const context = yield* session.context(sessionID)
+      const last = context.at(-1)
+      expect(last?.type).toBe("assistant")
+      if (last?.type !== "assistant") return
+      expect(last.finish).toBe("error")
+      expect(last.error?.message).toContain("would exceed the fake limit of 200 input tokens")
+      expect(last.error?.message).toContain("Raise limit.context")
+      // Every request was a summary request; the doomed one was never sent.
+      expect(requests.every((request) => userTexts(request).some((text) => text.includes("<conversation>")))).toBe(true)
     }),
   )
 
@@ -4240,7 +4351,7 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
         data: {
           id,
           sessionID,
-          command: "probe: process \"build\" exited",
+          command: 'probe: process "build" exited',
           workdir: "/project",
           options: { mode: "poll", interval_ms: 1_000, deadline_ms: 600_000 },
           status: "running",

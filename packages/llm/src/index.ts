@@ -1,7 +1,14 @@
 export { LLMClient } from "./route/client"
 export { Auth } from "./route/auth"
 export { Provider } from "./provider"
-export { isContextOverflow, isContextOverflowFailure } from "./provider-error"
+export {
+  contextOverflowNumbers,
+  isContextOverflow,
+  isContextOverflowBody,
+  isContextOverflowCode,
+  isContextOverflowFailure,
+} from "./provider-error"
+export type { ContextOverflowNumbers } from "./provider-error"
 export type {
   RouteModelInput,
   RouteRoutedModelInput,

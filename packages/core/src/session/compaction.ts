@@ -12,6 +12,8 @@ import type { Hook } from "@reddb-io/redcode-schema/hook"
 import { CompactionAnchors } from "./compaction-anchors"
 import { CompactionPolicy } from "./compaction-policy"
 import { ToolSearch } from "../tool/tool-search"
+import { ModelLimit } from "../model-limit"
+import { latest as latestConfig } from "../config"
 
 const DEFAULT_BUFFER = 20_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
@@ -99,7 +101,16 @@ type Dependencies = {
     readonly sessionID: SessionSchema.ID
     readonly reason: "auto"
   }) => Effect.Effect<Hook.Output>
+  /** Limits learned from providers; without it the catalog's limits are the only ones known. */
+  readonly limits?: Pick<ModelLimit.Interface, "get">
 }
+
+/** What the preflight decided for a request. */
+export type Preflight =
+  | { readonly action: "send" }
+  | { readonly action: "compacted" }
+  /** The request would exceed the provider's limit and compaction could not help: not sent. */
+  | { readonly action: "refuse"; readonly reason: string }
 
 type Input = {
   readonly sessionID: SessionSchema.ID
@@ -308,8 +319,46 @@ export const forkPreparation = <A, E>(
       yield* Effect.logWarning("Background compaction failed", { cause: result.cause })
   }).pipe(Effect.scoped, Effect.forkIn(scope))
 
+/** The limit a model's configuration declares, so a changed declaration wins over a learned one. */
+export const declaredLimit = (
+  entries: readonly Config.Entry[],
+  providerID: string,
+  modelID: string,
+): ModelLimit.Declared | undefined => {
+  const limit = latestConfig(entries, "providers")?.[providerID]?.models?.[modelID]?.limit
+  if (!limit || (limit.context === undefined && limit.input === undefined)) return undefined
+  return {
+    ...(limit.context === undefined ? {} : { context: limit.context }),
+    ...(limit.input === undefined ? {} : { input: limit.input }),
+  }
+}
+
+/**
+ * The counts a request is measured against: `threshold` is where compaction starts, `limit` what
+ * the provider refuses above. Both take the smaller of the catalog's context and the input limit
+ * the provider taught us, and `limit` is zero when the context is unknown.
+ */
+export const bounds = (input: {
+  readonly context: number
+  readonly output: number
+  readonly buffer: number
+  readonly observed?: ModelLimit.Observed
+}) => {
+  const byContext = input.context - Math.max(input.output, input.buffer)
+  const threshold = input.observed === undefined ? byContext : Math.min(byContext, input.observed.input - input.buffer)
+  const limit =
+    input.observed === undefined
+      ? input.context - input.output
+      : Math.min(input.context - input.output, input.observed.input)
+  return { threshold, limit: Math.max(0, limit) }
+}
+
 export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
+  const observedFor = (model: Model) =>
+    dependencies.limits
+      ? dependencies.limits.get(model.provider, model.id, declaredLimit(dependencies.config, model.provider, model.id))
+      : Effect.succeed(undefined)
   const snapshot = (input: Input) => ({
     prefix: input.entries.map((entry) => JSON.stringify(entry)),
     model: JSON.stringify(input.model),
@@ -477,10 +526,10 @@ export const make = (dependencies: Dependencies) => {
   // metadata, so a restarted v2 runtime does not start the cycle over.
   type Guard = { request?: string; count: number; ineffective: number; paused?: string }
   const guards = new Map<SessionSchema.ID, Guard>()
-  const usableOf = (input: Input) => {
+  const usableOf = (input: Input, observed?: ModelLimit.Observed) => {
     const context = input.model.route.defaults.limits?.context ?? 0
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    return context - Math.max(output, config.buffer)
+    return bounds({ context, output, buffer: config.buffer, observed }).threshold
   }
   const admit = Effect.fn("SessionCompaction.admit")(function* (input: Input) {
     const request = (yield* dependencies.latestUser(input.sessionID))?.id
@@ -512,9 +561,12 @@ export const make = (dependencies: Dependencies) => {
   const record = Effect.fn("SessionCompaction.record")(function* (input: Input, summary: string, recent: string) {
     const state = guards.get(input.sessionID)
     if (!state) return
-    const after =
-      estimate(input.request.system) + estimate(input.request.tools) + Token.estimate(summary) + Token.estimate(recent)
-    const effective = isEffective({ after, usable: usableOf(input) })
+    const observed = yield* observedFor(input.model)
+    const after = ModelLimit.calibrate(
+      estimate(input.request.system) + estimate(input.request.tools) + Token.estimate(summary) + Token.estimate(recent),
+      observed,
+    )
+    const effective = isEffective({ after, usable: usableOf(input, observed) })
     const before = { ineffective: state.ineffective, paused: state.paused }
     state.count = effective ? 0 : state.count + 1
     state.ineffective = effective ? 0 : state.ineffective + 1
@@ -552,17 +604,21 @@ export const make = (dependencies: Dependencies) => {
     return candidate ? yield* publish(candidate, input, messageID) : false
   })
 
+  /** The estimate for a request: system prompt, messages and tools, as the provider will read them. */
+  const sizeOf = (request: LLMRequest) =>
+    estimate({ system: request.system, messages: request.messages, tools: request.tools })
+
+  const send: Preflight = { action: "send" }
+  const compacted: Preflight = { action: "compacted" }
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
-    if (!config.auto) return false
+    if (!config.auto) return send
     const context = input.model.route.defaults.limits?.context
-    if (context === undefined || context <= 0) return false
+    if (context === undefined || context <= 0) return send
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    const size = estimate({
-      system: input.request.system,
-      messages: input.request.messages,
-      tools: input.request.tools,
-    })
-    const threshold = context - Math.max(output, config.buffer)
+    const observed = yield* observedFor(input.model)
+    // Scaled by what the provider counted the last time it refused a request from this model.
+    const size = ModelLimit.calibrate(sizeOf(input.request), observed)
+    const { threshold, limit } = bounds({ context, output, buffer: config.buffer, observed })
     if (size <= threshold) {
       const previous = pending.get(input.sessionID)
       if (previous && !matches(previous.snapshot, input)) yield* discard(input.sessionID)
@@ -580,14 +636,32 @@ export const make = (dependencies: Dependencies) => {
         )
         pending.set(input.sessionID, { snapshot: snapshot(input), fiber })
       }
-      return false
+      return send
     }
-    return yield* compactAfterOverflow(input)
+    yield* Effect.logInfo("request projected over the context threshold", {
+      sessionID: input.sessionID,
+      projected: size,
+      threshold,
+      limit,
+    })
+    if (yield* compactAfterOverflow(input)) return compacted
+    // Over the threshold the provider still decides; over a limit the provider itself taught us
+    // the request is doomed, and sending it would only repeat the refusal. The catalog's limit
+    // alone is no reason to refuse: the provider's refusal teaches the real one.
+    if (observed && limit > 0 && size > limit) {
+      const refuse: Preflight = {
+        action: "refuse",
+        reason: ModelLimit.doomed({ providerID: input.model.provider ?? "provider", limit, estimated: size }),
+      }
+      return refuse
+    }
+    return send
   })
   return {
     compactIfNeeded,
     compactAfterOverflow,
     discard,
     beginTurn,
+    sizeOf,
   }
 }

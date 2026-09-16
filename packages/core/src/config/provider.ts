@@ -25,9 +25,17 @@ class Cost extends Schema.Class<Cost>("ConfigV2.Model.Cost")({
 }) {}
 
 class Limit extends Schema.Class<Limit>("ConfigV2.Model.Limit")({
-  context: Schema.Int.pipe(Schema.optional),
-  input: Schema.Int.pipe(Schema.optional),
-  output: Schema.Int.pipe(Schema.optional),
+  context: Schema.Int.pipe(Schema.optional).annotate({
+    description:
+      "Context window in tokens: the most a request's input and output may carry together. Set it to what the provider behind a router or proxy actually enforces when that is smaller than the catalog's value. A limit the provider reports when refusing a request is learned and applied when smaller (see `redcode debug limits`); setting or changing this value clears that lesson.",
+  }),
+  input: Schema.Int.pipe(Schema.optional).annotate({
+    description:
+      "Input limit in tokens, when the provider caps the input separately from the context window. Requests are compacted before reaching it.",
+  }),
+  output: Schema.Int.pipe(Schema.optional).annotate({
+    description: "Maximum output tokens the model may produce in one request.",
+  }),
 }) {}
 
 const ModelApi = Schema.Union([

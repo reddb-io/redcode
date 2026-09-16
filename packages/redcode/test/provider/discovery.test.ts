@@ -60,8 +60,8 @@ it.effect("discovers routed IDs over HTTP, sends only the supplied key and norma
     expect(result).toEqual({
       baseURL: `${server.url}v1`,
       models: [
-        { id: "cc/claude-test", name: "Claude via router", limit: ProviderDiscovery.DEFAULT_LIMIT, estimated: true },
-        { id: "premium-coding", name: "premium-coding", limit: ProviderDiscovery.DEFAULT_LIMIT, estimated: true },
+        { id: "cc/claude-test", name: "Claude via router", limit: ProviderDiscovery.GUESSED_LIMIT, estimated: true },
+        { id: "premium-coding", name: "premium-coding", limit: ProviderDiscovery.GUESSED_LIMIT, estimated: true },
       ],
     })
   }),
@@ -84,17 +84,13 @@ it.effect("reads limits from the router, then the catalog with router prefixes s
     const catalog = ProviderDiscovery.catalogLimits({
       anthropic: { models: { "claude-test": { limit: { context: 200000, output: 64000 } } } },
     })
-    const result = yield* ProviderDiscovery.discover(
-      http,
-      { baseURL: `${server.url}v1`, apiKey: "test" },
-      { catalog },
-    )
+    const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" }, { catalog })
     expect(Object.fromEntries(result.models.map((model) => [model.id, [model.limit, model.estimated]]))).toEqual({
       reported: [{ context: 200000, output: 32000 }, false],
       alternate: [{ context: 64000, output: 4096 }, false],
       "cc/claude-test": [{ context: 200000, output: 64000 }, false],
       "context-only": [{ context: 32000, output: 8192 }, true],
-      junk: [ProviderDiscovery.DEFAULT_LIMIT, true],
+      junk: [ProviderDiscovery.GUESSED_LIMIT, true],
     })
     expect(result.models.every((model) => model.limit.context > 0)).toBe(true)
   }),

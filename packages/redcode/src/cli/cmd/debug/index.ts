@@ -7,6 +7,7 @@ import { effectCmd } from "../../effect-cmd"
 import { cmd } from "../cmd"
 import { ConfigCommand } from "./config"
 import { GuardsCommand } from "./guards"
+import { LimitsCommand } from "./limits"
 import { FileCommand } from "./file"
 import { LSPCommand } from "./lsp"
 import { RipgrepCommand } from "./ripgrep"
@@ -26,6 +27,7 @@ export const DebugCommand = cmd({
     yargs
       .command(ConfigCommand)
       .command(GuardsCommand)
+      .command(LimitsCommand)
       .command(LSPCommand)
       .command(RipgrepCommand)
       .command(FileCommand)

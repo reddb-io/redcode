@@ -5,6 +5,7 @@ import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -247,6 +248,7 @@ const promptRoot = LayerNode.group([
   DesignStudio.node,
   SessionPlan.node,
   SessionPrompt.node,
+  ModelLimit.node,
   SessionGuardLog.node,
   GoalRuntime.node,
   SessionSpend.node,
@@ -7852,7 +7854,12 @@ it.instance(
       })
       yield* seedTurn(chat.id, { user: "and then", answer: "noted" })
       yield* seedTurn(chat.id, { user: "keep going", answer: "going", tokens: 99_500 })
-      yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "next" }],
+      })
       yield* llm.text("done")
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
 
@@ -7894,7 +7901,9 @@ it.instance(
   "an idle trim, then a summary request whose prefix is the last request exactly",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }))
+      const { llm } = yield* useServerConfig((url) =>
+        sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }),
+      )
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
       const chat = yield* sessions.create({ title: "Idle trim" })
@@ -7907,7 +7916,12 @@ it.instance(
       // Near the band (80% of the 68k usable window) and idle past the provider's cache lifetime.
       const idle = Date.now() - 10 * 60_000
       yield* seedTurn(chat.id, { user: "keep going", answer: "going", tokens: 60_000, completed: idle })
-      yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "next" }] })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "next" }],
+      })
       yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
       yield* llm.text("Summary.")
       yield* llm.text("done")
@@ -7973,7 +7987,9 @@ it.instance(
   "a refused cached summary request falls back to the rewritten history",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }))
+      const { llm } = yield* useServerConfig((url) =>
+        sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }),
+      )
       const { chat, prompt, sessions } = yield* startChat("Find the config files.")
       yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
       yield* llm.error(400, { error: { message: "too many tokens in the request", type: "invalid_request_error" } })
@@ -8126,4 +8142,242 @@ it.instance("/compact with a focus puts it in the summary prompt", () =>
     const part = compactionPartOf(all)
     expect(part?.type === "compaction" && part.focus).toBe("the flaky auth test")
   }),
+)
+
+// ---------------------------------------------------------------------------------------------
+// Limits learned from the provider, and the preflight that keeps requests under them
+// ---------------------------------------------------------------------------------------------
+
+const UPSTREAM_REFUSAL = "input length 41234 exceeds the maximum allowed input length of 36000 tokens"
+
+/** The 400 bodies routers answer with: the OpenAI-compatible envelope, and OpenRouter's wrapper. */
+const refusals = {
+  "openai-compatible": { error: { message: UPSTREAM_REFUSAL, type: "invalid_request_error", code: "invalid_request" } },
+  openrouter: {
+    error: {
+      message: "Provider returned error",
+      code: 400,
+      metadata: { raw: JSON.stringify({ error: { message: UPSTREAM_REFUSAL, type: "invalid_request_error" } }) },
+    },
+  },
+}
+
+/** A history of about the given size, in finished turns the provider counted. */
+const seedHistory = Effect.fn("test.seedHistory")(function* (sessionID: SessionID, tokens: number) {
+  for (const index of [0, 1, 2, 3])
+    yield* seedTurn(sessionID, {
+      user: `part ${index}`,
+      answer: words(Math.floor(tokens / 4), `history${index}`),
+      tokens: Math.floor((tokens * (index + 1)) / 4),
+    })
+})
+
+const isSummaryRequest = (hit: { body: Record<string, unknown> }) => requestText(hit).includes("<conversation>")
+
+/** Summary requests, however many windows the history folds into, each get a summary. */
+const answerSummaries = Effect.fn("test.answerSummaries")(function* (llm: TestLLMServer["Service"], count: number) {
+  for (let index = 1; index <= count; index++) yield* llm.textMatch(isSummaryRequest, `Summary ${index}.`)
+})
+
+const forgetTestModel = ModelLimit.Service.use((limits) => limits.forget(ref.providerID, ref.modelID))
+
+for (const shape of ["openai-compatible", "openrouter"] as const) {
+  it.instance(
+    `a ${shape} 400 for the input length compacts, replays the request and teaches the provider's limit`,
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { prune: false }))
+        yield* forgetTestModel
+        const events = yield* EventV2Bridge.Service
+        const toasts: Array<{ title?: string; message: string }> = []
+        const off = yield* events.listen((event) => {
+          if (event.type === TuiEvent.ToastShow.type) toasts.push(event.data as { title?: string; message: string })
+          return Effect.void
+        })
+        const sessions = yield* Session.Service
+        const prompt = yield* SessionPrompt.Service
+        const chat = yield* sessions.create({ title: "Refused" })
+        yield* seedHistory(chat.id, 40_000)
+        yield* llm.error(400, refusals[shape])
+        yield* answerSummaries(llm, 4)
+        yield* llm.text("Answered after the summary.")
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "Go on." }],
+        })
+        yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+        yield* off
+
+        const hits = yield* llm.hits
+        // The refused request, the summary windows the learned limit allows, then the replay.
+        expect(hits.length).toBeGreaterThanOrEqual(3)
+        expect(hits.slice(1, -1).every(isSummaryRequest)).toBe(true)
+        expect(requestText(hits.at(-1)!)).toContain("Go on.")
+        expect(isSummaryRequest(hits.at(-1)!)).toBe(false)
+        const all = yield* sessions.messages({ sessionID: chat.id })
+        expect(summaries(all)).toHaveLength(1)
+        expect(all.some((message) => message.info.role === "assistant" && message.info.error)).toBe(false)
+        expect(JSON.stringify(all)).toContain("Answered after the summary.")
+        // The provider's own sentence reached the store, with what it counted and what we estimated.
+        const learned = yield* ModelLimit.Service.use((limits) => limits.list())
+        expect(learned).toHaveLength(1)
+        expect(learned[0]).toMatchObject({
+          providerID: ref.providerID,
+          modelID: ref.modelID,
+          observed: {
+            input: 36_000,
+            counted: 41_234,
+            message: expect.stringContaining(UPSTREAM_REFUSAL),
+            declared: { context: 200_000 },
+          },
+        })
+        expect(learned[0]!.observed.estimated).toBeGreaterThan(40_000)
+        expect(learned[0]!.observed.ratio).toBeGreaterThan(0.5)
+        expect(toasts.map((toast) => toast.title)).toContain("Provider limit learned")
+        expect(toasts.find((toast) => toast.title === "Provider limit learned")?.message).toContain(
+          "36,000 input tokens",
+        )
+      }).pipe(Effect.ensuring(forgetTestModel)),
+    90_000,
+  )
+}
+
+it.instance(
+  "a learned limit is kept and compacts before the next request instead of sending one that cannot fit",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { prune: false }))
+      yield* forgetTestModel
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const limits = yield* ModelLimit.Service
+      const chat = yield* sessions.create({ title: "Learned" })
+      yield* seedHistory(chat.id, 40_000)
+      yield* llm.error(400, refusals["openai-compatible"])
+      yield* answerSummaries(llm, 8)
+      yield* llm.textMatch((hit) => requestText(hit).includes("First."), "Answered one.")
+      yield* llm.textMatch((hit) => requestText(hit).includes("Second."), "Answered two.")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "First." }],
+      })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the first loop never finished", "60 seconds")
+      const observed = yield* limits.get(ref.providerID, ref.modelID, { context: 200_000 })
+      expect(observed).toMatchObject({ input: 36_000, counted: 41_234, declared: { context: 200_000 } })
+      const first = (yield* llm.hits).length
+      expect(requestText((yield* llm.hits).at(-1)!)).toContain("First.")
+
+      // The history grows past the learned limit again, well under the catalog's 200k context.
+      yield* seedHistory(chat.id, 40_000)
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Second." }],
+      })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the second loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      // No 400 this time: the summary requests went first, then the request that fit.
+      expect(hits.length).toBeGreaterThan(first + 1)
+      expect(hits.slice(first, -1).every(isSummaryRequest)).toBe(true)
+      expect(requestText(hits.at(-1)!)).toContain("Second.")
+      const all = yield* sessions.messages({ sessionID: chat.id })
+      expect(summaries(all)).toHaveLength(2)
+      expect(all.some((message) => message.info.role === "assistant" && message.info.error)).toBe(false)
+      expect(JSON.stringify(all)).toContain("Answered two.")
+    }).pipe(Effect.ensuring(forgetTestModel)),
+  120_000,
+)
+
+it.instance(
+  "a limit set in configuration after the lesson wins over it",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { prune: false }))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const limits = yield* ModelLimit.Service
+      // Learned while the configuration declared a 100k context; it now declares 200k.
+      yield* limits.learn(ref.providerID, ref.modelID, {
+        input: 36_000,
+        at: Date.now(),
+        message: UPSTREAM_REFUSAL,
+        declared: { context: 100_000 },
+      })
+      const chat = yield* sessions.create({ title: "Configured" })
+      yield* seedHistory(chat.id, 40_000)
+      yield* llm.text("Answered directly.")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Go on." }],
+      })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      // Sent as is, sized by the configured 200k: the lesson was dropped, not applied.
+      expect(yield* llm.hits).toHaveLength(1)
+      expect(yield* limits.list()).toEqual([])
+      const all = yield* sessions.messages({ sessionID: chat.id })
+      expect(summaries(all)).toHaveLength(0)
+      expect(JSON.stringify(all)).toContain("Answered directly.")
+    }).pipe(Effect.ensuring(forgetTestModel)),
+  90_000,
+)
+
+it.instance(
+  "a request no compaction can bring under the provider's limit is refused with what to do",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { prune: false }))
+      yield* forgetTestModel
+      const events = yield* EventV2Bridge.Service
+      const errors: string[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type === Session.Event.Error.type) errors.push(JSON.stringify(event.data))
+        return Effect.void
+      })
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const chat = yield* sessions.create({ title: "Doomed" })
+      yield* seedHistory(chat.id, 40_000)
+      // The provider accepts less than the system prompt and tools alone, though a summary
+      // request still fits: compaction runs, twice, and the step request never can.
+      yield* llm.error(400, {
+        error: { message: "input length 41234 exceeds the maximum allowed input length of 8000 tokens" },
+      })
+      yield* answerSummaries(llm, 24)
+      yield* llm.textMatch((hit) => !isSummaryRequest(hit), "Never sent.")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Go on." }],
+      })
+      const result = yield* awaitWithTimeout(
+        prompt.loop({ sessionID: chat.id }),
+        "the loop never finished",
+        "60 seconds",
+      )
+      yield* off
+
+      expect(result.info.role).toBe("assistant")
+      const error = result.info.role === "assistant" ? result.info.error : undefined
+      expect(error?.name).toBe("ContextOverflowError")
+      const text = JSON.stringify(error)
+      expect(text).toContain("would exceed the test limit of 8,000 input tokens")
+      expect(text).toContain("Raise limit.context")
+      expect(errors).toHaveLength(1)
+      // Two recoveries, then the refusal: every request after the refused one was a summary request.
+      const hits = yield* llm.hits
+      expect(hits.length).toBeGreaterThanOrEqual(3)
+      expect(hits.slice(1).every(isSummaryRequest)).toBe(true)
+      expect(JSON.stringify(yield* sessions.messages({ sessionID: chat.id }))).not.toContain("Never sent.")
+    }).pipe(Effect.ensuring(forgetTestModel)),
+  90_000,
 )

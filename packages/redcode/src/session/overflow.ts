@@ -19,6 +19,18 @@ export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outpu
     : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
 }
 
+/**
+ * The most input tokens a request may carry before the provider refuses it: the model's input
+ * limit when one is declared or was learned from the provider, else the context minus the output
+ * the request asks for. Zero when the model's context is unknown.
+ */
+export function hardLimit(input: { model: Provider.Model; outputTokenMax?: number }) {
+  const context = input.model.limit.context
+  if (context === 0) return 0
+  if (input.model.limit.input) return input.model.limit.input
+  return Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
+}
+
 export function isOverflow(input: {
   cfg: ConfigV1.Info
   tokens: SessionV1.Assistant["tokens"]

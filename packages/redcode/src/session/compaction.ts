@@ -1222,7 +1222,9 @@ const layer = Layer.effect(
           detail: AuxDeadline.message("compaction", ms),
         })
         yield* Effect.logWarning(AuxDeadline.message("compaction", ms), { "session.id": input.sessionID })
-        message.error = new SessionV1.ContextOverflowError({ message: AuxDeadline.message("compaction", ms) }).toObject()
+        message.error = new SessionV1.ContextOverflowError({
+          message: AuxDeadline.message("compaction", ms),
+        }).toObject()
         message.finish = "error"
         yield* session.updateMessage(message)
         return "stop" as const
@@ -1479,7 +1481,7 @@ const layer = Layer.effect(
             })
             const text =
               (input.overflow
-                ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
+                ? "The previous request exceeded the provider's context limit. The conversation was compacted and media attachments, if any, were removed from context. If the user was asking about attached images or files that are no longer available, say so and suggest smaller or fewer files.\n\n"
                 : "") +
               CompactionGuard.CONTINUE +
               (handoff ? `\n\n${CompactionGuard.HANDOFF}` : "")

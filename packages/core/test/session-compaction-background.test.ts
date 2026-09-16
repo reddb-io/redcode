@@ -100,11 +100,11 @@ const setup = (auto = true, background = true, latest?: string) =>
 it.effect("prepares without blocking or publishing and preserves messages added before application", () =>
   Effect.gen(function* () {
     const test = yield* setup()
-    expect(yield* test.compaction.compactIfNeeded(test.input)).toBe(false)
+    expect((yield* test.compaction.compactIfNeeded(test.input)).action).toBe("send")
     yield* Deferred.await(test.started)
     expect(test.published).toHaveLength(0)
     // Repeated preflight checks share the same in-flight summary.
-    expect(yield* test.compaction.compactIfNeeded(test.input)).toBe(false)
+    expect((yield* test.compaction.compactIfNeeded(test.input)).action).toBe("send")
     expect(test.calls).toHaveLength(1)
     const correction = SessionMessage.User.make({
       ...test.original,
@@ -178,7 +178,7 @@ it.live("cancels preparation when the owning session drain finishes", () =>
 it.effect("does not speculate when automatic compaction is disabled", () =>
   Effect.gen(function* () {
     const test = yield* setup(false)
-    expect(yield* test.compaction.compactIfNeeded(test.input)).toBe(false)
+    expect((yield* test.compaction.compactIfNeeded(test.input)).action).toBe("send")
     expect(test.calls).toHaveLength(0)
     expect(test.published).toHaveLength(0)
   }),
@@ -215,16 +215,16 @@ it.effect("falls back to a fresh summary after speculative output is rejected", 
 it.effect("disabling preparation still allows ordinary automatic compaction", () =>
   Effect.gen(function* () {
     const test = yield* setup(true, false)
-    expect(yield* test.compaction.compactIfNeeded(test.input)).toBe(false)
+    expect((yield* test.compaction.compactIfNeeded(test.input)).action).toBe("send")
     yield* adjust("2 minutes")
     expect(test.calls).toHaveLength(0)
     yield* Deferred.succeed(test.gate, undefined)
     expect(
-      yield* test.compaction.compactIfNeeded({
+      (yield* test.compaction.compactIfNeeded({
         ...test.input,
         request: LLM.request({ ...test.input.request, messages: [Message.user("x".repeat(48_000))] }),
-      }),
-    ).toBe(true)
+      })).action,
+    ).toBe("compacted")
     expect(test.calls).toHaveLength(1)
   }),
 )
