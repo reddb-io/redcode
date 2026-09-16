@@ -6,6 +6,14 @@
 // away, so the delivery is always sent and no client-side status check can race the server.
 // Enter queues; the steer key (alt+return) or `/steer <text>` steers. Idle, the steer key submits
 // like Enter, so it is always "send now"; shift+return always inserts a newline.
+//
+// A bare ESC CR is not a steer key press. Terminals without keyboard enhancements report
+// alt+return that way, but so does every setup that maps Shift+Enter to ESC CR to get a newline
+// out of a legacy terminal (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`,
+// iTerm2 "Send Escape Sequence", tmux). Those two cannot be told apart, and a newline that turns
+// into a send loses a half-written prompt, so the legacy byte pair stays a newline. alt+return
+// steers when the terminal reports it unambiguously: kitty `CSI 13;3u` or modifyOtherKeys
+// `CSI 27;3;13~`.
 
 export type PromptIntent = "submit" | "steer"
 export type Delivery = "steer" | "queue"
@@ -27,6 +35,18 @@ export function promptDelivery(intent: PromptIntent): Delivery {
  */
 export function steerKeyActive(input: { focused: boolean; disabled: boolean }) {
   return input.focused && !input.disabled
+}
+
+/** The parts of a key event that say how the terminal encoded it. */
+export type KeyReport = { raw?: string; sequence?: string; source?: string }
+
+/**
+ * Whether a key event is the legacy ESC CR encoding, which a Shift+Enter mapped to ESC CR and a
+ * legacy alt+return share. The steer key rejects it so it falls through to `input_newline`.
+ */
+export function legacyAltReturn(event: KeyReport | undefined) {
+  if (!event || event.source === "kitty") return false
+  return (event.raw ?? event.sequence) === "\x1b\r"
 }
 
 /** While the session works the steer key steers; idle, it submits exactly like Enter. */
@@ -93,25 +113,25 @@ export function stripSteerCommand<P extends SourcedPart>(
 export type TerminalEnv = { TERM_PROGRAM?: string; WT_SESSION?: string }
 
 /**
- * Whether the terminal, out of the box, swallows alt+return instead of sending it to us. Legacy
- * terminals report it as ESC CR, which is unambiguous, so only two hosts are known to lose it:
- * macOS Terminal.app sends a bare return until "Use Option as Meta key" is on, and Windows
- * Terminal binds alt+enter to fullscreen until that action is unbound. A terminal the person has
- * fixed still gets a conservative hint here; the key itself works regardless.
+ * Whether the terminal, out of the box, keeps alt+return to itself: macOS Terminal.app sends a
+ * bare return until "Use Option as Meta key" is on, and Windows Terminal and WezTerm bind
+ * alt+enter to fullscreen until that action is unbound. A terminal the person has fixed still gets
+ * a conservative hint here; the key itself works regardless.
  */
 export function altReturnUnreported(env: TerminalEnv) {
-  return env.TERM_PROGRAM === "Apple_Terminal" || env.WT_SESSION !== undefined
+  return env.TERM_PROGRAM === "Apple_Terminal" || env.TERM_PROGRAM === "WezTerm" || env.WT_SESSION !== undefined
 }
 
 /**
- * Whether a terminal without keyboard enhancements would report the steer key as a plain return.
- * shift+return has no legacy encoding at all; alt+return only fails in the hosts named by
- * `altReturnUnreported`.
+ * Whether the busy hint should name `/steer` instead of the steer key. shift+return has no legacy
+ * encoding at all. alt+return only steers when the terminal reports it unambiguously (see
+ * `legacyAltReturn`), which a terminal without the kitty protocol may not do, and some hosts keep
+ * the key for themselves (`altReturnUnreported`).
  */
 export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | undefined, env: TerminalEnv = {}) {
+  if (/(alt|meta|option)\+(return|enter)/i.test(steerKey)) return kittyKeyboard === false || altReturnUnreported(env)
   if (kittyKeyboard !== false) return false
-  if (/shift\+(return|enter)/i.test(steerKey)) return true
-  return /(alt|meta|option)\+(return|enter)/i.test(steerKey) && altReturnUnreported(env)
+  return /shift\+(return|enter)/i.test(steerKey)
 }
 
 /**
