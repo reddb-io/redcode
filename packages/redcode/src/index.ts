@@ -28,6 +28,7 @@ import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
 import { UsageCommand } from "./cli/cmd/usage"
+import { Shutdown } from "./effect/shutdown"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
@@ -162,6 +163,8 @@ try {
   }
   process.exitCode = 1
 } finally {
+  // Close what the runtime opened, the database above all, but only wait so long for it.
+  await Shutdown.run()
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
   // run using `docker run --init`.

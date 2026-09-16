@@ -10,6 +10,7 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { Shutdown } from "@/effect/shutdown"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
 Heap.start()
@@ -78,6 +79,8 @@ export const rpc = {
   async shutdown() {
     await InstanceRuntime.disposeAllInstances()
     if (server) await server.stop(true)
+    // The database lives on this thread: close it before the thread is terminated from outside.
+    await Shutdown.run()
     process.off("unhandledRejection", onUnhandledRejection)
     process.off("uncaughtException", onUncaughtException)
   },

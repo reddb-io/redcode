@@ -1,5 +1,6 @@
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { attach } from "./run-service"
+import { Shutdown } from "./shutdown"
 import * as Observability from "@reddb-io/redcode-core/observability"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
@@ -126,6 +127,8 @@ export const AppLayer = Layer.effectDiscard(
 ).pipe(Layer.provideMerge(services))
 
 const rt = ManagedRuntime.make(AppLayer, { memoMap })
+// Every exit path closes the runtime, and with it the database connection, before the process ends.
+Shutdown.register(() => rt.dispose())
 type Runtime = Pick<typeof rt, "runSync" | "runPromise" | "runPromiseExit" | "runFork" | "runCallback" | "dispose">
 
 /** Services provided by AppRuntime — i.e. what an Effect run via AppRuntime.runPromise can yield. */
