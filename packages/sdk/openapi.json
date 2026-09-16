@@ -3438,6 +3438,12 @@
                     },
                     "oauthState": {
                       "type": "string"
+                    },
+                    "listening": {
+                      "type": "boolean"
+                    },
+                    "redirectUri": {
+                      "type": "string"
                     }
                   },
                   "required": ["authorizationUrl", "oauthState"],
@@ -3448,13 +3454,16 @@
             }
           },
           "400": {
-            "description": "McpUnsupportedOAuthError | InvalidRequestError",
+            "description": "McpUnsupportedOAuthError | McpAuthFailedError | InvalidRequestError",
             "content": {
               "application/json": {
                 "schema": {
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/McpUnsupportedOAuthError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/McpAuthFailedError"
                     },
                     {
                       "$ref": "#/components/schemas/InvalidRequestError"
@@ -3642,6 +3651,9 @@
                 "type": "object",
                 "properties": {
                   "code": {
+                    "type": "string"
+                  },
+                  "oauthState": {
                     "type": "string"
                   }
                 },
@@ -3900,8 +3912,23 @@
             }
           }
         },
-        "description": "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.",
+        "description": "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept. Ignored when oauthState names an older attempt or the code is already being exchanged.",
         "summary": "Cancel MCP OAuth",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oauthState": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
@@ -34223,6 +34250,16 @@
           }
         },
         "required": ["error"],
+        "additionalProperties": false
+      },
+      "McpAuthFailedError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
         "additionalProperties": false
       },
       "MCPAuthPending": {

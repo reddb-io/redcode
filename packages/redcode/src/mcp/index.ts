@@ -83,9 +83,8 @@ export class ReloadError extends Schema.TaggedErrorClass<ReloadError>()("MCP.Rel
 
 type MCPClient = Client
 
-function isUnauthorized(error: unknown) {
-  if (error instanceof UnauthorizedError) return true
-  return error instanceof StreamableHTTPError && error.code === 401
+function isHttpStatus(error: unknown, code: number) {
+  return error instanceof StreamableHTTPError && error.code === code
 }
 
 function createClient(directory: string) {
@@ -145,21 +144,32 @@ export const AuthWaitResult = Schema.Union([
 export type AuthWaitResult = Schema.Schema.Type<typeof AuthWaitResult>
 
 type CallbackOutcome = { code: string } | { error: string }
-// One OAuth attempt per server: the callback listener is registered as soon as the flow starts, so a
-// client that polls `waitAuth` after the user already approved still receives the code.
-type AuthWaiter = { oauthState: string; outcome: Promise<CallbackOutcome>; finished?: Promise<Status> }
-const authWaiters = new Map<string, AuthWaiter>()
+type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
 
-function registerAuthWaiter(mcpName: string, oauthState: string) {
-  if (authWaiters.has(mcpName)) McpOAuthCallback.cancelPending(mcpName)
-  const outcome = McpOAuthCallback.waitForCallback(oauthState, mcpName).then(
-    (code): CallbackOutcome => ({ code }),
-    (error): CallbackOutcome => ({ error: error instanceof Error ? error.message : String(error) }),
-  )
-  const waiter: AuthWaiter = { oauthState, outcome }
-  authWaiters.set(mcpName, waiter)
-  return waiter
+/**
+ * One interactive sign-in attempt. The callback listener is registered when the attempt starts, so a
+ * client that polls `waitAuth` after the user already approved still receives the code.
+ */
+type AuthAttempt = {
+  readonly oauthState: string
+  readonly transport: TransportWithAuth
+  readonly provider: McpOAuthPendingProvider
+  /** Undefined when another process holds the callback port: only a pasted code can finish the attempt. */
+  readonly outcome?: Promise<CallbackOutcome>
+  readonly redirectUri: string
+  /** Set once a code is being exchanged; the attempt can no longer be cancelled or superseded by a paste. */
+  exchange?: Promise<Status>
 }
+
+// Keyed by instance directory and server name: two workspaces may both configure an MCP named `github`.
+const authAttempts = new Map<string, AuthAttempt>()
+// Transports left by a connect-time 401, for `finishAuth` without `startAuth` (legacy clients).
+const pendingOAuthTransports = new Map<string, TransportWithAuth>()
+
+const attemptKey = (directory: string, name: string) => `${directory}\u0000${name}`
+
+// The server waits a little longer than clients do, so a client's own timeout (with its retry screen) wins.
+const ATTEMPT_TIMEOUT_MS = McpOAuthCallback.CALLBACK_TIMEOUT_MS + 30_000
 
 function settleWithin<T>(promise: Promise<T>, ms: number) {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -171,9 +181,11 @@ function settleWithin<T>(promise: Promise<T>, ms: number) {
   ]).finally(() => clearTimeout(timer))
 }
 
-// Store transports for OAuth servers to allow finishing auth
-type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
-const pendingOAuthTransports = new Map<string, { transport: TransportWithAuth; provider?: McpOAuthPendingProvider }>()
+function releaseAttempt(key: string, attempt: AuthAttempt, reason?: string) {
+  if (authAttempts.get(key) !== attempt) return
+  authAttempts.delete(key)
+  McpOAuthCallback.cancelState(attempt.oauthState, reason)
+}
 
 // Prompt cache types
 type PromptInfo = Awaited<ReturnType<MCPClient["listPrompts"]>>["prompts"][number]
@@ -200,7 +212,14 @@ interface AuthResult {
   authorizationUrl: string
   oauthState: string
   client?: MCPClient
+  /** False when the callback listener could not start here (another process holds the port). */
+  listening?: boolean
+  redirectUri?: string
 }
+
+export class AuthError extends Schema.TaggedErrorClass<AuthError>()("MCP.AuthError", {
+  message: Schema.String,
+}) {}
 
 // --- Effect Service ---
 
@@ -265,19 +284,26 @@ export interface Interface {
     mcpName: string,
     onAuthorization?: (authorizationUrl: string) => void,
   ) => Effect.Effect<Status, NotFoundError>
-  readonly finishAuth: (mcpName: string, authorizationCode: string) => Effect.Effect<Status, NotFoundError>
+  readonly finishAuth: (
+    mcpName: string,
+    authorizationCode: string,
+    oauthState?: string,
+  ) => Effect.Effect<Status, NotFoundError>
   /** Start OAuth for a client that opens the URL itself; an empty URL means the server is already authorized and now connected. */
   readonly beginAuth: (
     mcpName: string,
-  ) => Effect.Effect<{ authorizationUrl: string; oauthState: string }, NotFoundError>
+  ) => Effect.Effect<
+    { authorizationUrl: string; oauthState: string; listening: boolean; redirectUri?: string },
+    NotFoundError | AuthError
+  >
   /** Wait up to `waitMs` for the callback of a flow started by `beginAuth`, then finish it. */
   readonly waitAuth: (
     mcpName: string,
     oauthState: string,
     waitMs?: number,
   ) => Effect.Effect<AuthWaitResult, NotFoundError>
-  /** Abandon a pending OAuth attempt without touching stored credentials. */
-  readonly cancelAuth: (mcpName: string) => Effect.Effect<void, NotFoundError>
+  /** Abandon a pending OAuth attempt without touching stored credentials; ignored when `oauthState` names an older attempt. */
+  readonly cancelAuth: (mcpName: string, oauthState?: string) => Effect.Effect<void, NotFoundError>
   readonly info: () => Effect.Effect<Record<string, ServerInfo>>
   readonly removeAuth: (mcpName: string) => Effect.Effect<void>
   readonly supportsOAuth: (mcpName: string) => Effect.Effect<boolean, NotFoundError>
@@ -325,6 +351,7 @@ const layer = Layer.effect(
       key: string,
       mcp: ConfigMCPV1.Info & { type: "remote" },
     ) {
+      const directory = yield* InstanceState.directory
       const oauthDisabled = mcp.oauth === false
       const oauthConfig = typeof mcp.oauth === "object" ? mcp.oauth : undefined
       const url = remoteURL(mcp.url)
@@ -397,7 +424,7 @@ const layer = Layer.effect(
                   })
                   .pipe(Effect.ignore, Effect.as(undefined))
               } else {
-                pendingOAuthTransports.set(key, { transport })
+                pendingOAuthTransports.set(attemptKey(directory, key), transport)
                 lastStatus = { status: "needs_auth" as const }
                 // The TUI raises its own deduplicated "Authenticate" prompt from the status change.
                 return Effect.succeed(undefined)
@@ -524,13 +551,25 @@ const layer = Layer.effect(
     function watch(s: State, name: string, client: MCPClient, bridge: EffectBridge.Shape, timeout?: number) {
       // A token that expires (or fails to refresh) mid-session surfaces here, not at connect time.
       client.onerror = (error) => {
-        if (!isUnauthorized(error) || s.clients[name] !== client) return
+        if (s.clients[name] !== client) return
+        const configured = s.config[name] ?? s.configured[name]
+        const oauth =
+          !!configured && isMcpConfigured(configured) && configured.type === "remote" && configured.oauth !== false
+        let next: Status | undefined
+        if (oauth) {
+          // The SDK throws UnauthorizedError only when refreshing failed and a browser redirect is required.
+          // A 401 after a successful refresh (StreamableHTTPError) is a per-request refusal, not a sign-in problem.
+          if (error instanceof UnauthorizedError) next = { status: "needs_auth" }
+        } else if (error instanceof UnauthorizedError || isHttpStatus(error, 401)) {
+          next = { status: "failed", error: "Unauthorized — check the server's headers or API key" }
+        }
+        if (!next) return
         delete s.clients[name]
         delete s.defs[name]
         delete s.instructions[name]
-        s.status[name] = { status: "needs_auth" }
+        s.status[name] = next
         bridge.fork(
-          Effect.logWarning("MCP server needs authentication", { server: name }).pipe(
+          Effect.logWarning("MCP server rejected its credentials", { server: name, status: next.status }).pipe(
             Effect.andThen(Effect.tryPromise(() => client.close()).pipe(Effect.ignore)),
             Effect.andThen(events.publish(ToolsChanged, { server: name })),
             Effect.ignore,
@@ -591,6 +630,7 @@ const layer = Layer.effect(
       Effect.fn("MCP.state")(function* () {
         const cfg = yield* cfgSvc.get()
         const bridge = yield* EffectBridge.make()
+        const directory = yield* InstanceState.directory
         const config = cfg.mcp ?? {}
         const s: State = {
           lock: yield* Semaphore.make(1),
@@ -665,7 +705,10 @@ const layer = Layer.effect(
                 }),
               { concurrency: "unbounded" },
             )
-            pendingOAuthTransports.clear()
+            const prefix = attemptKey(directory, "")
+            for (const [key, attempt] of authAttempts) if (key.startsWith(prefix)) releaseAttempt(key, attempt)
+            for (const key of pendingOAuthTransports.keys())
+              if (key.startsWith(prefix)) pendingOAuthTransports.delete(key)
           }),
         )
 
@@ -989,6 +1032,8 @@ const layer = Layer.effect(
       if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
       const url = remoteURL(mcpConfig.url)
       if (!url) throw new Error(`Invalid MCP URL for "${mcpName}"`)
+      const directory = yield* InstanceState.directory
+      const key = attemptKey(directory, mcpName)
 
       // OAuth config is optional - if not provided, we'll use auto-discovery
       const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
@@ -998,13 +1043,9 @@ const layer = Layer.effect(
         oauthConfig?.redirectUri ??
         (oauthConfig?.callbackPort ? `http://127.0.0.1:${oauthConfig.callbackPort}${OAUTH_CALLBACK_PATH}` : undefined)
 
-      // Start the callback server with custom redirectUri if configured
-      yield* Effect.promise(() => McpOAuthCallback.ensureRunning(effectiveRedirectUri))
-
       const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("")
-      yield* auth.updateOAuthState(mcpName, oauthState)
       let capturedUrl: URL | undefined
       const authProvider = new McpOAuthPendingProvider(
         mcpName,
@@ -1021,32 +1062,61 @@ const layer = Layer.effect(
           },
         },
         auth,
+        oauthState,
       )
 
       const transport = new StreamableHTTPClientTransport(url, {
         authProvider,
         requestInit: mcpConfig.headers ? { headers: mcpConfig.headers } : undefined,
       })
-      const directory = yield* InstanceState.directory
 
-      return yield* Effect.tryPromise({
-        try: () => {
-          const client = createClient(directory)
-          return client.connect(transport).then(async () => {
-            await authProvider.commit()
-            return { authorizationUrl: "", oauthState, client } satisfies AuthResult
-          })
-        },
-        catch: (error) => error,
+      return yield* Effect.gen(function* () {
+        // Start the callback server with custom redirectUri if configured
+        const listening = yield* Effect.promise(() => McpOAuthCallback.ensureRunning(effectiveRedirectUri))
+        return yield* Effect.tryPromise({
+          try: () => {
+            const client = createClient(directory)
+            return client.connect(transport).then(async () => {
+              await authProvider.commit()
+              return { authorizationUrl: "", oauthState, client } satisfies AuthResult
+            })
+          },
+          catch: (error) => error,
+        }).pipe(
+          Effect.catch((error) => {
+            if (!(error instanceof UnauthorizedError && capturedUrl)) return Effect.die(error)
+            const outcome = listening
+              ? McpOAuthCallback.waitForCallback(oauthState, undefined, ATTEMPT_TIMEOUT_MS).then(
+                  (code): CallbackOutcome => ({ code }),
+                  (reason): CallbackOutcome => ({ error: reason instanceof Error ? reason.message : String(reason) }),
+                )
+              : undefined
+            const attempt: AuthAttempt = {
+              oauthState,
+              transport,
+              provider: authProvider,
+              outcome,
+              redirectUri: authProvider.redirectUrl,
+            }
+            // Register the new listener before releasing the old one, so the port stays bound.
+            const previous = authAttempts.get(key)
+            if (previous) releaseAttempt(key, previous, "Superseded by a new sign-in attempt")
+            authAttempts.set(key, attempt)
+            void outcome?.then((result) => {
+              // A timed-out or failed listener ends the attempt even if no client polls again.
+              if ("error" in result && !attempt.exchange && authAttempts.get(key) === attempt) authAttempts.delete(key)
+            })
+            return Effect.succeed({
+              authorizationUrl: capturedUrl.toString(),
+              oauthState,
+              listening,
+              redirectUri: attempt.redirectUri,
+            } satisfies AuthResult)
+          }),
+        )
       }).pipe(
-        Effect.catch((error) => {
-          if (error instanceof UnauthorizedError && capturedUrl) {
-            pendingOAuthTransports.set(mcpName, { transport, provider: authProvider })
-            registerAuthWaiter(mcpName, oauthState)
-            return Effect.succeed({ authorizationUrl: capturedUrl.toString(), oauthState } satisfies AuthResult)
-          }
-          return Effect.die(error)
-        }),
+        // Anonymous access, or a failure before an attempt registered: nothing is waiting on the port.
+        Effect.ensuring(Effect.sync(() => McpOAuthCallback.stopIfIdle())),
       )
     })
 
@@ -1066,19 +1136,57 @@ const layer = Layer.effect(
       }
 
       const s = yield* InstanceState.get(state)
-      yield* auth.clearOAuthState(mcpName)
       const status = yield* storeClient(s, mcpName, client, listed, client.getInstructions()?.trim(), mcpConfig.timeout)
       yield* events.publish(ToolsChanged, { server: mcpName }).pipe(Effect.ignore)
       return status
     })
 
-    const completeCallback = Effect.fnUntraced(function* (mcpName: string, oauthState: string, code: string) {
-      const storedState = yield* auth.getOAuthState(mcpName)
+    const completeExchange = Effect.fnUntraced(function* (mcpName: string, attempt: AuthAttempt, code: string) {
+      const error = yield* Effect.tryPromise({
+        try: () => attempt.transport.finishAuth(code),
+        catch: (error) => error,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => (error instanceof Error ? error.message : String(error)),
+          onSuccess: () => undefined,
+        }),
+      )
+      if (error) return { status: "failed", error: `OAuth completion failed: ${error}` } satisfies Status
+
+      yield* Effect.promise(() => attempt.provider.commit())
+      // Older builds kept the attempt's state and verifier in the shared store; drop any leftovers.
       yield* auth.clearOAuthState(mcpName)
-      if (storedState !== oauthState) {
-        return { status: "failed", error: "OAuth state mismatch - potential CSRF attack" } satisfies Status
+      yield* auth.clearCodeVerifier(mcpName)
+      const mcpConfig = yield* requireMcpConfig(mcpName)
+      const status = yield* createAndStore(mcpName, { ...mcpConfig, enabled: true })
+      yield* events.publish(ToolsChanged, { server: mcpName }).pipe(Effect.ignore)
+      return status
+    })
+
+    /** Exchange `code` for tokens exactly once per attempt; later callers share the result. */
+    const exchange = Effect.fnUntraced(function* (key: string, mcpName: string, attempt: AuthAttempt, code: string) {
+      if (!attempt.exchange) {
+        // A pasted code finishes the attempt: the listener has nothing left to wait for.
+        McpOAuthCallback.cancelState(attempt.oauthState, "Finished with a pasted authorization code")
+        const bridge = yield* EffectBridge.make()
+        attempt.exchange = bridge.promise(
+          completeExchange(mcpName, attempt, code).pipe(
+            Effect.catchCause((cause) => {
+              const error = Cause.squash(cause)
+              return Effect.succeed({
+                status: "failed",
+                error: error instanceof Error ? error.message : String(error),
+              } satisfies Status)
+            }),
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (authAttempts.get(key) === attempt) authAttempts.delete(key)
+              }),
+            ),
+          ),
+        )
       }
-      return yield* finishAuth(mcpName, code)
+      return yield* Effect.promise(() => attempt.exchange!)
     })
 
     const authenticate = Effect.fn("MCP.authenticate")(function* (
@@ -1089,8 +1197,16 @@ const layer = Layer.effect(
       if (!result.authorizationUrl) {
         return yield* storeAuthorized(mcpName, "client" in result ? result.client : undefined)
       }
+      const key = attemptKey(yield* InstanceState.directory, mcpName)
+      const attempt = authAttempts.get(key)
+      if (!attempt || attempt.oauthState !== result.oauthState) throw new Error("OAuth attempt was superseded")
+      if (!attempt.outcome) {
+        releaseAttempt(key, attempt)
+        throw new Error(
+          `OAuth callback port for ${mcpName} is in use by another process (${attempt.redirectUri}). Close it or set oauth.callbackPort.`,
+        )
+      }
 
-      const waiter = authWaiters.get(mcpName) ?? registerAuthWaiter(mcpName, result.oauthState)
       onAuthorization?.(result.authorizationUrl)
 
       yield* browser.open(result.authorizationUrl).pipe(
@@ -1099,84 +1215,102 @@ const layer = Layer.effect(
         }),
       )
 
-      const outcome = yield* Effect.promise(() => waiter.outcome)
-      if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
-      if ("error" in outcome) throw new Error(outcome.error)
-      return yield* completeCallback(mcpName, result.oauthState, outcome.code)
+      const outcome = yield* Effect.promise(() => attempt.outcome!)
+      if ("error" in outcome) {
+        if (attempt.exchange) return yield* Effect.promise(() => attempt.exchange!)
+        releaseAttempt(key, attempt)
+        throw new Error(outcome.error)
+      }
+      return yield* exchange(key, mcpName, attempt, outcome.code)
     })
 
     const beginAuth = Effect.fn("MCP.beginAuth")(function* (mcpName: string) {
-      const result = yield* startAuth(mcpName)
+      const result: AuthResult = yield* startAuth(mcpName)
       if (!result.authorizationUrl) {
-        yield* storeAuthorized(mcpName, "client" in result ? result.client : undefined)
+        const status: Status = yield* storeAuthorized(mcpName, result.client)
+        if (status.status !== "connected")
+          return yield* new AuthError({
+            message: "error" in status ? status.error : "The server did not connect after authorizing",
+          })
       }
-      return { authorizationUrl: result.authorizationUrl, oauthState: result.oauthState }
+      return {
+        authorizationUrl: result.authorizationUrl,
+        oauthState: result.oauthState,
+        listening: result.listening ?? true,
+        ...(result.redirectUri ? { redirectUri: result.redirectUri } : {}),
+      }
     })
 
     const waitAuth = Effect.fn("MCP.waitAuth")(function* (mcpName: string, oauthState: string, waitMs = 25_000) {
       yield* requireMcpConfig(mcpName)
       const s = yield* InstanceState.get(state)
-      const waiter = authWaiters.get(mcpName)
-      if (!waiter || waiter.oauthState !== oauthState) {
+      const key = attemptKey(yield* InstanceState.directory, mcpName)
+      const attempt = authAttempts.get(key)
+      const settled = (error: string): AuthWaitResult => {
         const current = s.status[mcpName]
-        if (current?.status === "connected") return current
+        return current?.status === "connected" ? current : { status: "failed", error }
+      }
+      if (!attempt || attempt.oauthState !== oauthState)
+        return settled("No pending OAuth flow for this server. Start authentication again.")
+      if (attempt.exchange) return yield* Effect.promise(() => attempt.exchange!)
+      if (!attempt.outcome) {
+        // No listener here: only a pasted code can finish, so just hold the request briefly.
+        yield* Effect.sleep(Math.min(waitMs, 1_000))
+        if (attempt.exchange) return yield* Effect.promise(() => attempt.exchange!)
+        return authAttempts.get(key) === attempt
+          ? ({ status: "pending" } satisfies AuthWaitResult)
+          : settled("Authorization cancelled")
+      }
+      const outcome = yield* Effect.promise(() => settleWithin(attempt.outcome!, waitMs))
+      if (attempt.exchange) return yield* Effect.promise(() => attempt.exchange!)
+      if (!outcome) return { status: "pending" } satisfies AuthWaitResult
+      if ("error" in outcome) {
+        if (authAttempts.get(key) === attempt) authAttempts.delete(key)
+        return settled(outcome.error)
+      }
+      return yield* exchange(key, mcpName, attempt, outcome.code)
+    })
+
+    const cancelAuth = Effect.fn("MCP.cancelAuth")(function* (mcpName: string, oauthState?: string) {
+      yield* requireMcpConfig(mcpName)
+      const key = attemptKey(yield* InstanceState.directory, mcpName)
+      const attempt = authAttempts.get(key)
+      if (!attempt) return
+      // A late cancel from a dialog that was replaced must not end the attempt that replaced it.
+      if (oauthState !== undefined && oauthState !== attempt.oauthState) return
+      // Too late to cancel: the code is consumed and the tokens are being stored.
+      if (attempt.exchange) return
+      releaseAttempt(key, attempt)
+    })
+
+    const finishAuth = Effect.fn("MCP.finishAuth")(function* (
+      mcpName: string,
+      authorizationCode: string,
+      oauthState?: string,
+    ) {
+      yield* requireMcpConfig(mcpName)
+      const key = attemptKey(yield* InstanceState.directory, mcpName)
+      const attempt = authAttempts.get(key)
+      if (attempt) {
+        if (oauthState !== undefined && oauthState !== attempt.oauthState) {
+          return {
+            status: "failed",
+            error: "This authorization code belongs to a different sign-in attempt. Start authentication again.",
+          } satisfies Status
+        }
+        return yield* exchange(key, mcpName, attempt, authorizationCode)
+      }
+      if (oauthState !== undefined) {
         return {
           status: "failed",
-          error: "No pending OAuth flow for this server. Start authentication again.",
-        } satisfies AuthWaitResult
+          error: "No sign-in attempt is waiting for this code. Start authentication again.",
+        } satisfies Status
       }
-      if (!waiter.finished) {
-        const outcome = yield* Effect.promise(() => settleWithin(waiter.outcome, waitMs))
-        if (!outcome) return { status: "pending" } satisfies AuthWaitResult
-        if ("error" in outcome) {
-          if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
-          // A pasted code finishes the flow and cancels the listener; report the connection it made.
-          const current = s.status[mcpName]
-          if (current?.status === "connected") return current
-          return { status: "failed", error: outcome.error } satisfies AuthWaitResult
-        }
-        if (!waiter.finished) {
-          const bridge = yield* EffectBridge.make()
-          waiter.finished = bridge.promise(
-            completeCallback(mcpName, oauthState, outcome.code).pipe(
-              Effect.catchCause((cause) => {
-                const error = Cause.squash(cause)
-                return Effect.succeed({
-                  status: "failed",
-                  error: error instanceof Error ? error.message : String(error),
-                } satisfies Status)
-              }),
-              Effect.ensuring(
-                Effect.sync(() => {
-                  if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
-                }),
-              ),
-            ),
-          )
-        }
-      }
-      return yield* Effect.promise(() => waiter.finished!)
-    })
 
-    const cancelAuth = Effect.fn("MCP.cancelAuth")(function* (mcpName: string) {
-      yield* requireMcpConfig(mcpName)
-      const waiter = authWaiters.get(mcpName)
-      // Too late to cancel: the code already arrived and the connection is being made.
-      if (waiter?.finished) return
-      authWaiters.delete(mcpName)
-      McpOAuthCallback.cancelPending(mcpName)
-      pendingOAuthTransports.delete(mcpName)
-      yield* auth.clearOAuthState(mcpName)
-      yield* auth.clearCodeVerifier(mcpName)
-    })
-
-    const finishAuth = Effect.fn("MCP.finishAuth")(function* (mcpName: string, authorizationCode: string) {
-      yield* requireMcpConfig(mcpName)
-      const pending = pendingOAuthTransports.get(mcpName)
-      if (!pending) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
-
+      const transport = pendingOAuthTransports.get(key)
+      if (!transport) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
       const error = yield* Effect.tryPromise({
-        try: () => pending.transport.finishAuth(authorizationCode),
+        try: () => transport.finishAuth(authorizationCode),
         catch: (error) => error,
       }).pipe(
         Effect.match({
@@ -1184,31 +1318,23 @@ const layer = Layer.effect(
           onSuccess: () => undefined,
         }),
       )
-
       if (error) return { status: "failed", error: `OAuth completion failed: ${error}` } satisfies Status
-
-      yield* Effect.promise(() => pending.provider?.commit() ?? Promise.resolve())
       yield* auth.clearCodeVerifier(mcpName)
-      pendingOAuthTransports.delete(mcpName)
-
+      yield* auth.clearOAuthState(mcpName)
+      pendingOAuthTransports.delete(key)
       const mcpConfig = yield* requireMcpConfig(mcpName)
-
       const status = yield* createAndStore(mcpName, { ...mcpConfig, enabled: true })
-      const waiter = authWaiters.get(mcpName)
-      if (waiter && !waiter.finished) {
-        // Finished with a pasted code: the local callback listener has nothing left to wait for.
-        authWaiters.delete(mcpName)
-        McpOAuthCallback.cancelPending(mcpName)
-      }
       yield* events.publish(ToolsChanged, { server: mcpName }).pipe(Effect.ignore)
       return status
     })
 
     const removeAuth = Effect.fn("MCP.removeAuth")(function* (mcpName: string) {
       yield* auth.remove(mcpName)
-      authWaiters.delete(mcpName)
+      const key = attemptKey(yield* InstanceState.directory, mcpName)
+      const attempt = authAttempts.get(key)
+      if (attempt && !attempt.exchange) releaseAttempt(key, attempt)
       McpOAuthCallback.cancelPending(mcpName)
-      pendingOAuthTransports.delete(mcpName)
+      pendingOAuthTransports.delete(key)
     })
 
     const supportsOAuth = Effect.fn("MCP.supportsOAuth")(function* (mcpName: string) {
@@ -1246,13 +1372,15 @@ const layer = Layer.effect(
         }
         const entry = yield* auth.getForUrl(name, mcpConfig.url)
         const expiresAt = entry?.tokens?.expiresAt
+        // A connected server with a refresh token renews its access token on the next request.
+        const renewable = !!entry?.tokens?.refreshToken && s.status[name]?.status === "connected"
         result[name] = {
           type: "remote",
           tools,
           oauth: true,
           auth: !entry?.tokens
             ? "not_authenticated"
-            : expiresAt && expiresAt < Date.now() / 1000
+            : expiresAt && expiresAt < Date.now() / 1000 && !renewable
               ? "expired"
               : "authenticated",
           ...(expiresAt ? { expiresAt } : {}),

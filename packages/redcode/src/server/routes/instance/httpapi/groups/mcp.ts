@@ -22,10 +22,24 @@ export class McpReloadError extends Schema.ErrorClass<McpReloadError>("McpReload
 export const AuthStartResponse = Schema.Struct({
   authorizationUrl: Schema.String,
   oauthState: Schema.String,
+  /** False when the callback listener could not start on the server (another process holds the port); only a pasted code can finish. */
+  listening: Schema.optional(Schema.Boolean),
+  /** Where the authorization server redirects after approval. */
+  redirectUri: Schema.optional(Schema.String),
 })
 export const AuthCallbackPayload = Schema.Struct({
   code: Schema.String,
+  /** The `state` returned by mcp.auth.start; when given, a code from any other attempt is refused. */
+  oauthState: Schema.optional(Schema.String),
 })
+export const AuthCancelPayload = Schema.Struct({
+  /** The attempt to cancel; a cancel naming an older attempt is ignored. */
+  oauthState: Schema.optional(Schema.String),
+})
+export class McpAuthFailedError extends Schema.ErrorClass<McpAuthFailedError>("McpAuthFailedError")(
+  { message: Schema.String },
+  { httpApiStatus: 400 },
+) {}
 export const AuthWaitPayload = Schema.Struct({
   oauthState: Schema.String,
   /** How long to hold the request before answering `pending`; capped server-side. */
@@ -109,7 +123,7 @@ export const McpApi = HttpApi.make("mcp")
           params: { name: Schema.String },
           query: WorkspaceRoutingQuery,
           success: described(AuthStartResponse, "OAuth flow started"),
-          error: [UnsupportedOAuthError, McpServerNotFoundError],
+          error: [UnsupportedOAuthError, McpServerNotFoundError, McpAuthFailedError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "mcp.auth.start",
@@ -160,13 +174,15 @@ export const McpApi = HttpApi.make("mcp")
         HttpApiEndpoint.post("authCancel", McpPaths.authCancel, {
           params: { name: Schema.String },
           query: WorkspaceRoutingQuery,
+          payload: AuthCancelPayload,
           success: described(AuthCancelResponse, "Pending OAuth flow cancelled"),
           error: McpServerNotFoundError,
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "mcp.auth.cancel",
             summary: "Cancel MCP OAuth",
-            description: "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.",
+            description:
+              "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept. Ignored when oauthState names an older attempt or the code is already being exchanged.",
           }),
         ),
         HttpApiEndpoint.delete("authRemove", McpPaths.auth, {

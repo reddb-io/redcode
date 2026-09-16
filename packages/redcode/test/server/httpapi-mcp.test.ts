@@ -210,7 +210,7 @@ describe("mcp HttpApi", () => {
             route: "/mcp/missing/auth/wait",
             body: JSON.stringify({ oauthState: "state", waitMs: 0 }),
           },
-          { method: "POST", route: "/mcp/missing/auth/cancel" },
+          { method: "POST", route: "/mcp/missing/auth/cancel", body: JSON.stringify({ oauthState: "state" }) },
           { method: "POST", route: "/mcp/missing/connect" },
           { method: "POST", route: "/mcp/missing/disconnect" },
         ]) {

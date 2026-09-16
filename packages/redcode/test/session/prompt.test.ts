@@ -174,7 +174,7 @@ function makeMcp(
       supportsOAuth: () => Effect.succeed(false),
       hasStoredTokens: () => Effect.succeed(false),
       getAuthStatus: () => Effect.succeed("not_authenticated" as const),
-      beginAuth: () => Effect.succeed({ authorizationUrl: "", oauthState: "" }),
+      beginAuth: () => Effect.succeed({ authorizationUrl: "", oauthState: "", listening: true }),
       waitAuth: () => Effect.succeed({ status: "disabled" as const }),
       cancelAuth: () => Effect.void,
       info: () => Effect.succeed({}),
