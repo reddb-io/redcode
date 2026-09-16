@@ -1,5 +1,22 @@
 # opencode
 
+## 0.36.0
+
+### Minor Changes
+
+- 5ebe263: `/connect` → **OpenAI-compatible** connects any endpoint that speaks the OpenAI API without editing JSON: enter the API URL, a provider id (suggested from the host), a display name, the API type (Chat Completions or Responses) and a key, pasted into the credential store or kept as an `{env:VARIABLE}` reference in configuration. Models come from the endpoint's `/models` list with their limits; when that fails or is empty you type the model ids instead of hitting a dead end. Running it again for an id updates that provider, built-in ids ask before being overridden, and the message at the end names the configuration file that was written. It replaces the credential-only **Other** entry. **9Router** is now a preset of the same wizard, and a `9router` provider that points to another endpoint can be moved to its own id. The server route `POST /provider/openai-compatible/connect` does the checks, discovery and saving in one call; `POST /provider/9router/connect` is a thin wrapper over it.
+- dba3f94: Each Redcode tab uses less memory, and `redcode debug memory` shows where it goes.
+  - **About 150 MB less per TUI.** A tab measured 696 MB (proportional set size) after boot, 782 MB after a session with tool calls and 683 MB after ten idle minutes; it is now 553 MB, 604 MB and 527 MB. The peak during a session fell from 968 MB to 737 MB, and `redcode serve` boots in 213 MB instead of 315 MB.
+  - **Services are built once.** The service graph is shared: a service many others depend on was compiled once but built again for every path that reached it, about a hundred thousand throwaway scopes and fibers when a project opened. Each service is now built once per project, which also shortens startup work.
+  - **The TUI keeps only what it shows from the provider list.** The list carries every model of every catalog provider (6 MB of JSON); the TUI keeps provider ids, names and credential variable names.
+  - **Babel loads when a TUI plugin needs it.** The Solid transform for plugin files no longer loads Babel at startup.
+  - **SQLite's page cache is 8 MB per process instead of 64 MB.** File pages are already cached by the operating system and shared by every process; on a large database the private cache added up to 87 MB per tab without making queries faster.
+  - **`redcode debug memory [pid]`** lists running redcode processes with resident and proportional memory, swap, threads and child processes (language servers, MCP servers), and asks each TUI or `redcode serve` from this version for the JavaScript heap of every thread and the size of its caches. Processes started by an older version are listed but never signalled.
+
+### Patch Changes
+
+- 57af46f: Shift+Enter inserts a newline again when the terminal sends it as `ESC CR`. Since 0.35.1 that byte pair counted as Alt+Enter, so it submitted the prompt when idle and steered while busy. That is what the VS Code and Cursor `sendSequence` binding, Alacritty `chars` mappings and tmux send. A bare `ESC CR` is a newline once more (`input_newline` lists `alt+return` again). Alt+Enter steers, or submits when idle, only when the terminal reports it unambiguously: through the kitty keyboard protocol (`CSI 13;3u`) or modifyOtherKeys (`CSI 27;3;13~`). The newline reports `CSI 27;2;13~` (WezTerm and xterm defaults), `CSI 13;2u` (kitty protocol) and `Ctrl+J` keep working. WezTerm binds Alt+Enter to fullscreen by default, so while the agent works the prompt hint there now shows `/steer`, just as it does in terminals without the kitty protocol.
+
 ## 0.35.2
 
 ### Patch Changes
