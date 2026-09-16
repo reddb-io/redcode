@@ -219,7 +219,28 @@ If you have client credentials from the MCP server provider, you can configure t
 
 ### Authenticating
 
-You can manually trigger authentication or manage credentials.
+You can manually trigger authentication or manage credentials, from the TUI or from the command line.
+
+#### In the TUI
+
+Run `/mcp` (or pick **MCP servers** in the command palette) to see every configured server with its status (connected, failed, needs auth, needs client registration, disabled), how many tools it exposes, and its OAuth state, including when the token expires if the server reported it. Press <kbd>enter</kbd> on a server for its actions:
+
+- **Authenticate** / **Re-authenticate** opens the authorization page in your browser once and waits for you to approve. The server reconnects and its tools become available without restarting the session. Press <kbd>ctrl+a</kbd> in the list to start it directly.
+- **Log out** removes the stored credentials after you confirm (<kbd>ctrl+d</kbd> in the list).
+- **Reconnect** rereads the configuration and reconnects the server.
+- **Enable** / **Disable** connects or disconnects the server for the current session only. Configuration files are not changed.
+
+While the sign-in dialog waits, the authorization URL stays on screen. Press <kbd>ctrl+y</kbd> to copy it if no browser could be opened (for example over SSH, or when `REDCODE_NO_BROWSER` is set). The attempt times out after 5 minutes; <kbd>esc</kbd> cancels it, and <kbd>ctrl+r</kbd> starts a new one after a failure or timeout. Cancelling or timing out never removes existing credentials.
+
+When a server needs authentication, at startup or because its token expired or could not be refreshed mid-session, the TUI shows one notification with an **Authenticate** button. It does not repeat for that server until its status changes again. You can also click the server's **Needs auth** entry in the sidebar.
+
+##### Remote servers and `attach`
+
+The OAuth callback is received by the machine running the server, on `http://127.0.0.1:19876/mcp/oauth/callback` (or your `redirectUri`). When the TUI runs on the same machine, approving in the browser completes the flow automatically.
+
+When the TUI is attached to a server on another host, the browser opens on the machine running the TUI, and after you approve it is redirected to `127.0.0.1` on that machine, where nothing is listening, so the page fails to load. Copy the full address from the browser's address bar and paste it into the sign-in dialog, then press <kbd>enter</kbd>. The TUI checks that the address belongs to the current attempt and sends the authorization code to the server, which finishes the flow. You can also forward the callback port instead, for example `ssh -L 19876:127.0.0.1:19876 server-host`, so the redirect reaches the server directly.
+
+#### From the command line
 
 Authenticate with a specific MCP server:
 
