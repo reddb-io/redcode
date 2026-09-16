@@ -16,6 +16,8 @@ import { MonitorProbe } from "../monitor-probe"
 import { PermissionV2 } from "../permission"
 import { SafeRegex } from "../safe-regex"
 import { SessionGoal } from "../session/goal"
+import { SessionWake } from "../session/wake"
+import { SessionStore } from "../session/store"
 import { SessionInput } from "../session/input"
 import { SessionMessage } from "../session/message"
 import { Prompt } from "../session/prompt"
@@ -77,9 +79,9 @@ export type DeliveryDeps = {
   /** The Session's goal, or nothing when it has none; a goal that cannot be read never blocks a wake. */
   readonly goal: (sessionID: SessionSchema.ID) => Effect.Effect<{ readonly status: string } | null | undefined>
   /**
-   * Resumes the Session. Optional: `SessionExecution` is bound by whoever runs sessions, and the
-   * built-in tools are also composed where nothing does (the eval harness, embedded hosts, the
-   * httpapi scenarios). Without it the result still waits in the inbox for the next drain.
+   * Resumes the Session. Defaults to the process's registered wake, which the runtime that owns
+   * execution installs; where nothing runs Sessions nothing is registered, and the queued result
+   * waits for the next drain. Injectable so a test can observe the resume.
    */
   readonly wake?: (sessionID: SessionSchema.ID) => Effect.Effect<void>
 }
@@ -101,7 +103,7 @@ export const deliver =
         prompt: Prompt.make({ text: resultText(info) }),
         delivery: "queue",
       }).pipe(Effect.orDie)
-      if (deps.wake && wakes(yield* deps.goal(sessionID))) yield* deps.wake(sessionID)
+      if (wakes(yield* deps.goal(sessionID))) yield* (deps.wake ?? SessionWake.wake)(sessionID)
       return true
     })
 
@@ -121,16 +123,32 @@ const layer = Layer.effectDiscard(
     const mutation = yield* LocationMutation.Service
     const fs = yield* FSUtil.Service
     const goals = yield* SessionGoal.Service
+    const sessions = yield* SessionStore.Service
     const db = (yield* Database.Service).db
     const events = yield* EventV2.Service
 
-    // No wake from here: `SessionExecution` is an unbound node that only a session-running
-    // composition binds, and the built-in tools are also composed where nothing does. The queued
-    // result is what must never be lost; the drain that follows picks it up.
+    // The wake comes from `SessionWake`, not from a layer dependency: the built-in tools are
+    // composed into hosts that never run Sessions, so depending on `SessionExecution` would stop
+    // those hosts building at all.
     const notify = deliver({
       db,
       events,
       goal: (sessionID) => goals.get(sessionID).pipe(Effect.orElseSucceed(() => undefined)),
+    })
+
+    /**
+     * The human request this monitor serves, and whether the turn asking for it was itself started
+     * by a monitor result. Without them `Monitor.start` cannot enforce its continuation limit, and a
+     * session could start a fresh monitor from every monitor result, forever.
+     */
+    const origin = Effect.fn("MonitorTool.origin")(function* (sessionID: SessionSchema.ID) {
+      const context = yield* sessions.context(sessionID).pipe(Effect.orElseSucceed(() => []))
+      const asked = context.findLast((message) => message.type === "user")
+      const latest = context.findLast((message) => message.type === "user" || message.type === "synthetic")
+      return {
+        ...(asked ? { originMessageID: asked.id } : {}),
+        autonomous: latest?.type === "synthetic",
+      }
     })
 
     const ask = (
@@ -189,6 +207,10 @@ const layer = Layer.effectDiscard(
         // Sending an environment variable is a decision of its own, asked per variable and destination
         // host, whatever webfetch allows. Only the variables approved here are ever read; values are
         // never shown, and `force` means no catch-all and no saved "always" can answer it.
+        //
+        // With no responder - a headless run - this waits rather than failing. That is deliberate:
+        // the alternative is silently starting a monitor that never sends the header it was asked
+        // for, or sending a secret nobody approved. A probe that needs a secret needs a person.
         const host = new URL(probe.url).host
         const variables = MonitorProbe.envNames(probe.headers)
         for (const variable of variables)
@@ -199,6 +221,17 @@ const layer = Layer.effectDiscard(
             force: true,
             metadata: { variable, host, url: probe.url, monitor: summary, probe: label },
           })
+        // A same-host redirect is followed only where the webfetch rules treat its target at least
+        // as openly as the approved URL: never where they deny it, nor where they only ask while
+        // the URL itself was allowed. Taken as a snapshot, because each attempt decides in-process.
+        const ruleset = yield* permissions
+          .rules(context.sessionID, context.agent)
+          .pipe(Effect.orElseSucceed(() => [] as PermissionV2.Ruleset))
+        const original = PermissionV2.evaluate("webfetch", probe.url, ruleset).effect
+        const allowRedirect = (next: URL) => {
+          const effect = PermissionV2.evaluate("webfetch", next.href, ruleset).effect
+          return effect === "allow" || (effect === "ask" && original !== "allow")
+        }
         const timeoutMs = Math.min(MonitorProbe.HTTP_TIMEOUT_MS, interval)
         attemptTimeoutMs = timeoutMs
         // This monitor's own regex worker; it stops itself when idle.
@@ -208,6 +241,7 @@ const layer = Layer.effectDiscard(
             MonitorProbe.http(probe, {
               timeoutMs,
               env: Object.fromEntries(variables.map((variable) => [variable, process.env[variable]])),
+              allowRedirect,
               regex,
             }),
           )
@@ -225,11 +259,19 @@ const layer = Layer.effectDiscard(
           })
         yield* ask(context, {
           action: "read",
-          resources: [path.relative(location.directory, lexical) || "."],
+          // The resource the Location derived, so a deny rule written against a canonical external
+          // path matches here exactly as it does for the read tool.
+          resources: [target.resource],
           save: force ? [] : ["*"],
           ...(force ? { force } : {}),
           metadata: { filepath: lexical, monitor: summary, probe: label },
         })
+        // Against the realpath'd root, like `LocationMutation` resolves: a Location that is itself
+        // reached through a symlink (macOS `/tmp`) must not make every later poll look like an
+        // escape and kill the monitor mid-flight.
+        const root = FSUtil.normalizePath(
+          yield* fs.realPath(location.directory).pipe(Effect.orElseSucceed(() => location.directory)),
+        )
         const approved = [lexical, real].map((item) => path.dirname(item))
         const hash = probe.state === "changed"
         // Taken now, before any jitter delay, so a change right after the call is not missed.
@@ -238,7 +280,7 @@ const layer = Layer.effectDiscard(
           Effect.gen(function* () {
             // A symlink created after approval must not lead the probe somewhere never allowed.
             const now = FSUtil.normalizePath(yield* Effect.promise(() => resolveReal(lexical)))
-            if (!FSUtil.contains(location.directory, now) && !approved.some((dir) => FSUtil.contains(dir, now)))
+            if (!FSUtil.contains(root, now) && !approved.some((dir) => FSUtil.contains(dir, now)))
               return yield* Effect.die(
                 new Error(`${probe.path} now resolves to ${now}, outside the directories approved for this monitor.`),
               )
@@ -260,6 +302,7 @@ const layer = Layer.effectDiscard(
 
       const info = yield* monitors.start({
         sessionID: context.sessionID,
+        ...(yield* origin(context.sessionID)),
         command: label,
         workdir: location.directory,
         options,
@@ -282,7 +325,9 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
-          description: MonitorSchema.instructions,
+          // The probe-only instructions: this runtime's shell tool has no `monitor` parameter, so
+          // the text must not tell the model to call bash with one.
+          description: MonitorSchema.probeInstructions,
           input: MonitorSchema.Control,
           output: Schema.String,
           execute: (input, context) =>
@@ -318,6 +363,7 @@ export const node = makeLocationNode({
     LocationMutation.node,
     FSUtil.node,
     SessionGoal.node,
+    SessionStore.node,
     Database.node,
     EventV2.node,
   ],

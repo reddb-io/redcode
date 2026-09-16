@@ -6,6 +6,7 @@ import { SessionRunner } from "../runner"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionExecution } from "../execution"
+import { SessionWake } from "../wake"
 
 /** Current-process routing for implicit-local Locations. Future remote placement belongs here. */
 const layer = Layer.effect(
@@ -27,6 +28,14 @@ const layer = Layer.effect(
         )
       }),
     })
+
+    // Background work - a finished monitor, say - cannot reach this service through the layer
+    // graph, because the built-in tools are composed into hosts that never run Sessions. Publish
+    // the wake so they can ask a Session to drain without depending on execution.
+    yield* Effect.acquireRelease(
+      Effect.sync(() => SessionWake.register(coordinator.wake)),
+      (remove) => Effect.sync(remove),
+    )
 
     return SessionExecution.Service.of({
       active: coordinator.active,
