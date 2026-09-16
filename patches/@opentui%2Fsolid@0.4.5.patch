@@ -1,0 +1,26 @@
+diff --git a/scripts/solid-plugin.js b/scripts/solid-plugin.js
+index 28c0b12271d07444f36b81cb36f1f332b76bbe4b..22fed78fd2f84b0ca42c1964b98ce9871dfecfba 100644
+--- a/scripts/solid-plugin.js
++++ b/scripts/solid-plugin.js
+@@ -1,5 +1,12 @@
+ import { plugin as registerBunPlugin } from "bun";
+-import { stripQueryAndHash, transformSolidSource } from "./solid-transform.js";
++// Babel (the Solid JSX transform) is loaded on the first file it transforms, not when the plugin is registered.
++const loadSolidTransform = () => import("./solid-transform.js");
++const stripQueryAndHash = (path) => {
++    const searchIndex = path.indexOf("?");
++    const hashIndex = path.indexOf("#");
++    const end = [searchIndex, hashIndex].filter((index) => index >= 0).sort((a, b) => a - b)[0];
++    return end === undefined ? path : path.slice(0, end);
++};
+ const solidTransformStateKey = Symbol.for("opentui.solid.transform");
+ const getSolidTransformState = () => {
+     const state = globalThis;
+@@ -58,6 +65,7 @@ export function createSolidTransformPlugin(input = {}) {
+                 const runtime = getSolidTransformRuntime();
+                 const moduleName = input.moduleName ?? runtime.moduleName ?? "@opentui/solid";
+                 const resolvePath = input.resolvePath ?? runtime.resolvePath;
++                const { transformSolidSource } = await loadSolidTransform();
+                 const contents = await transformSolidSource(code, {
+                     filename: path,
+                     moduleName,
