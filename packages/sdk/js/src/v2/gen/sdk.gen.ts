@@ -167,6 +167,8 @@ import type {
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
   ProviderOauthCallbackResponses,
+  ProviderOpenaiCompatibleConnectErrors,
+  ProviderOpenaiCompatibleConnectResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyConnectTokenErrors,
@@ -3426,11 +3428,77 @@ export class Permission extends HeyApiClient {
   }
 }
 
+export class OpenaiCompatible extends HeyApiClient {
+  /**
+   * Connect an OpenAI-compatible provider
+   *
+   * Validate the provider id, URL, key and headers, discover models from the endpoint's /models list from the Redcode server (or take the model ids given), save the provider to global configuration and the key to the credential store (an {env:NAME} reference stays in configuration), and reload instances before responding. Ids of built-in providers are refused unless override is set. Nothing is saved when a check or discovery fails; reason tells which input to correct.
+   */
+  public connect<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      providerID?: string
+      name?: string
+      baseURL?: string
+      apiKey?: string
+      headers?: {
+        [key: string]: string
+      }
+      npm?: "@ai-sdk/openai-compatible" | "@ai-sdk/openai"
+      override?: boolean
+      models?: Array<{
+        id: string
+        name?: string
+        context?: number
+        output?: number
+      }>
+      moveFrom?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "providerID" },
+            { in: "body", key: "name" },
+            { in: "body", key: "baseURL" },
+            { in: "body", key: "apiKey" },
+            { in: "body", key: "headers" },
+            { in: "body", key: "npm" },
+            { in: "body", key: "override" },
+            { in: "body", key: "models" },
+            { in: "body", key: "moveFrom" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderOpenaiCompatibleConnectResponses,
+      ProviderOpenaiCompatibleConnectErrors,
+      ThrowOnError
+    >({
+      url: "/provider/openai-compatible/connect",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class NineRouter extends HeyApiClient {
   /**
    * Connect 9Router
    *
-   * Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.
+   * Connect the 9Router preset of the OpenAI-compatible connection: discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.
    */
   public connect<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3663,6 +3731,11 @@ export class Provider extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _openaiCompatible?: OpenaiCompatible
+  get openaiCompatible(): OpenaiCompatible {
+    return (this._openaiCompatible ??= new OpenaiCompatible({ client: this.client }))
   }
 
   private _nineRouter?: NineRouter

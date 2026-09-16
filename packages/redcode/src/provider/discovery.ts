@@ -1,5 +1,5 @@
 import { Effect, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 
 export const Input = Schema.Struct({ baseURL: Schema.String, apiKey: Schema.String })
@@ -66,7 +66,7 @@ const INVALID_URL = "Use an HTTP or HTTPS API URL without credentials, query or 
 /**
  * Accepts what people paste from a router dashboard: a missing scheme becomes http, a trailing
  * /models is dropped and a bare host gets /v1. Returns undefined for anything that is not a plain
- * HTTP(S) URL. The TUI mirrors this in util/nine-router.ts.
+ * HTTP(S) URL. The TUI mirrors this in util/openai-compatible.ts.
  */
 export function normalizeBaseURL(raw: string) {
   const trimmed = raw.trim()
@@ -137,17 +137,35 @@ export function catalogLimits(
   }
 }
 
+/** Redirects followed while fetching a model list. */
+export const MAX_REDIRECTS = 5
+
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
+
+/** Header values must be visible ASCII; anything else would fail as a network error. */
+export function validKey(key: string) {
+  return /^[\x21-\x7e]+$/.test(key)
+}
+
+export type DiscoverInput = {
+  baseURL: string
+  /** Sent as a bearer token. Optional unless `requireKey` is set. */
+  apiKey?: string
+  /** Extra request headers, already resolved. Like the key, they never follow a redirect to another origin. */
+  headers?: Readonly<Record<string, string>>
+}
+
 export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
   http: HttpClient.HttpClient,
-  input: typeof Input.Type,
-  options: { catalog?: CatalogLimit; maxBytes?: number } = {},
+  input: DiscoverInput,
+  options: { catalog?: CatalogLimit; maxBytes?: number; requireKey?: boolean; emptyMessage?: string } = {},
 ) {
   const baseURL = normalizeBaseURL(input.baseURL)
   if (!baseURL) return yield* new DiscoveryError({ message: INVALID_URL })
-  const apiKey = input.apiKey.trim()
-  if (!apiKey) return yield* new DiscoveryError({ message: "Enter the API key from your provider dashboard." })
-  // Header values must be visible ASCII; anything else would fail as a network error.
-  if (!/^[\x21-\x7e]+$/.test(apiKey)) {
+  const apiKey = input.apiKey?.trim() ?? ""
+  if (!apiKey && (options.requireKey ?? true))
+    return yield* new DiscoveryError({ message: "Enter the API key from your provider dashboard." })
+  if (apiKey && !validKey(apiKey)) {
     return yield* new DiscoveryError({
       message: "The API key contains invalid characters. Copy it again from the provider dashboard.",
     })
@@ -159,23 +177,36 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
     new DiscoveryError({
       message: "The provider returned an invalid model list. Check that this is an OpenAI-compatible API URL.",
     })
+  const unreachable = () =>
+    new DiscoveryError({
+      message: "Cannot reach the provider. Check the API URL and that it is running on the Redcode server's network.",
+    })
+  const origin = new URL(baseURL).origin
+  // Redirects are followed here rather than by fetch, so the key and custom headers are dropped
+  // explicitly as soon as a hop leaves the origin the user entered, whatever the runtime does.
+  const request = (url: URL, credentials: boolean) => {
+    let next = HttpClientRequest.get(url.toString()).pipe(HttpClientRequest.acceptJson)
+    if (credentials && apiKey) next = HttpClientRequest.bearerToken(next, apiKey)
+    // Configured headers win over the bearer token, as they do for model requests.
+    if (credentials && input.headers) next = HttpClientRequest.setHeaders(next, input.headers)
+    return http
+      .execute(next)
+      .pipe(Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }), Effect.mapError(unreachable))
+  }
   return yield* Effect.gen(function* () {
-    const response = yield* http
-      .execute(
-        HttpClientRequest.get(`${baseURL}/models`).pipe(
-          HttpClientRequest.acceptJson,
-          HttpClientRequest.bearerToken(apiKey),
-        ),
-      )
-      .pipe(
-        Effect.mapError(
-          () =>
-            new DiscoveryError({
-              message:
-                "Cannot reach the provider. Check the API URL and that it is running on the Redcode server's network.",
-            }),
-        ),
-      )
+    let url = new URL(`${baseURL}/models`)
+    let credentials = true
+    let response = yield* request(url, credentials)
+    for (let hops = 0; REDIRECT_STATUS.has(response.status) && response.headers.location; hops++) {
+      if (hops >= MAX_REDIRECTS)
+        return yield* new DiscoveryError({ message: "The model list redirected too many times. Check the API URL." })
+      const target = URL.parse(response.headers.location, url)
+      if (!target || !["http:", "https:"].includes(target.protocol) || target.username || target.password)
+        return yield* new DiscoveryError({ message: "The model list redirected to an unsupported URL." })
+      url = target
+      credentials = credentials && target.origin === origin
+      response = yield* request(url, credentials)
+    }
     if (response.status === 401 || response.status === 403) {
       return yield* new DiscoveryError({
         message: "The provider refused this API key. Copy a valid key from its dashboard and retry.",
@@ -206,7 +237,7 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
     const models = [
       ...new Map(
         body.data
-          .filter((model) => model.id.trim() && !["__proto__", "constructor", "prototype"].includes(model.id))
+          .filter((model) => validModelID(model.id))
           .map((model) => [
             model.id,
             { id: model.id, name: model.name?.trim() || model.id, ...resolveLimit(model, options.catalog) },
@@ -215,7 +246,9 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
     ]
     if (!models.length) {
       return yield* new DiscoveryError({
-        message: "No models are available. Connect an account or create a combo in the provider dashboard, then retry.",
+        message:
+          options.emptyMessage ??
+          "No models are available. Connect an account or create a combo in the provider dashboard, then retry.",
       })
     }
     return { baseURL, models }
@@ -229,5 +262,10 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
     }),
   )
 })
+
+/** A model ID that can be a config key: not blank and not an object prototype key. */
+export function validModelID(id: string) {
+  return !!id.trim() && !["__proto__", "constructor", "prototype"].includes(id)
+}
 
 export * as ProviderDiscovery from "./discovery"

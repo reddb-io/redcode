@@ -9,10 +9,16 @@ import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware
 import { described } from "./metadata"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
+import { OpenAICompatible } from "@/provider/openai-compatible"
 
 export class ProviderDiscoveryApiError extends Schema.ErrorClass<ProviderDiscoveryApiError>(
   "ProviderDiscoveryApiError",
 )({ message: Schema.String }, { httpApiStatus: 400 }) {}
+
+export class ProviderConnectApiError extends Schema.ErrorClass<ProviderConnectApiError>("ProviderConnectApiError")(
+  { reason: OpenAICompatible.Reason, message: Schema.String },
+  { httpApiStatus: 400 },
+) {}
 
 const root = "/provider"
 
@@ -53,6 +59,19 @@ export const ProviderApi = HttpApi.make("provider")
               "Check an OpenAI-compatible model catalog from the Redcode server without saving credentials or configuration.",
           }),
         ),
+        HttpApiEndpoint.post("connectOpenAICompatible", `${root}/openai-compatible/connect`, {
+          query: WorkspaceRoutingQuery,
+          payload: OpenAICompatible.Input,
+          success: OpenAICompatible.Result,
+          error: ProviderConnectApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.openaiCompatible.connect",
+            summary: "Connect an OpenAI-compatible provider",
+            description:
+              "Validate the provider id, URL, key and headers, discover models from the endpoint's /models list from the Redcode server (or take the model ids given), save the provider to global configuration and the key to the credential store (an {env:NAME} reference stays in configuration), and reload instances before responding. Ids of built-in providers are refused unless override is set. Nothing is saved when a check or discovery fails; reason tells which input to correct.",
+          }),
+        ),
         HttpApiEndpoint.post("connectNineRouter", `${root}/9router/connect`, {
           query: WorkspaceRoutingQuery,
           payload: ProviderDiscovery.Input,
@@ -63,7 +82,7 @@ export const ProviderApi = HttpApi.make("provider")
             identifier: "provider.nineRouter.connect",
             summary: "Connect 9Router",
             description:
-              "Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+              "Connect the 9Router preset of the OpenAI-compatible connection: discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
           }),
         ),
         HttpApiEndpoint.get("list", root, {

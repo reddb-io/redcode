@@ -293,6 +293,62 @@ const scenarios: Scenario[] = [
     }))
     .status(400),
   http.protected
+    .post("/provider/openai-compatible/connect", "provider.openaiCompatible.connect")
+    .mutating()
+    .seeded(() =>
+      Effect.sync(() => {
+        const upstream = Bun.serve({
+          hostname: "127.0.0.1",
+          port: 0,
+          fetch: (request) =>
+            request.headers.get("authorization") === "Bearer httpapi-compatible-key"
+              ? Response.json({ data: [{ id: "compatible-model", context_length: 64000 }] })
+              : Response.json({ error: "unauthorized" }, { status: 401 }),
+        })
+        upstream.unref()
+        return upstream
+      }),
+    )
+    .at((ctx) => ({
+      path: "/provider/openai-compatible/connect",
+      headers: ctx.headers(),
+      body: { providerID: "httpapi-compatible", baseURL: `${ctx.state.url}v1`, apiKey: "httpapi-compatible-key" },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.promise(() => ctx.state.stop(true)).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            object(body)
+            check(body.providerID === "httpapi-compatible", "connect should return the provider id")
+            check(body.credential === "stored", "a pasted key should go to the credential store")
+            check(Array.isArray(body.models) && body.models.length === 1, "connect should return the discovered model")
+          }),
+        ),
+      ),
+    ),
+  http.protected
+    .post("/provider/openai-compatible/connect", "provider.openaiCompatible.connect.invalidID")
+    .at((ctx) => ({
+      path: "/provider/openai-compatible/connect",
+      headers: ctx.headers(),
+      body: { providerID: "Not Valid", baseURL: "http://127.0.0.1:1/v1" },
+    }))
+    .json(400, (body) => {
+      object(body)
+      check(body.reason === "invalid_provider_id", "an invalid id should be refused before discovery")
+    }),
+  http.protected
+    .post("/provider/openai-compatible/connect", "provider.openaiCompatible.connect.unreachable")
+    .at((ctx) => ({
+      path: "/provider/openai-compatible/connect",
+      headers: ctx.headers(),
+      body: { providerID: "httpapi-unreachable", baseURL: "http://127.0.0.1:1/v1" },
+    }))
+    .json(400, (body) => {
+      object(body)
+      check(body.reason === "discovery", "an unreachable endpoint should be a discovery failure")
+    }),
+  http.protected
     .post("/provider/9router/connect", "provider.nineRouter.connect")
     .at((ctx) => ({
       path: "/provider/9router/connect",
@@ -1575,7 +1631,10 @@ const scenarios: Scenario[] = [
     .json(200, (body) => {
       check(isRecord(body) && isRecord(body.turns) && body.turns.max === 20, "a spend change keeps the turn ceiling")
       check(
-        isRecord(body) && isRecord(body.budget) && body.budget.max_cost_usd === 2.5 && body.budget.max_tokens === 400000,
+        isRecord(body) &&
+          isRecord(body.budget) &&
+          body.budget.max_cost_usd === 2.5 &&
+          body.budget.max_tokens === 400000,
         "budget should set the goal's spend limits",
       )
     }),
@@ -1627,7 +1686,10 @@ const scenarios: Scenario[] = [
           isRecord(body) && isRecord(body.override) && body.override.max_cost_usd === undefined,
           "null should remove the cost limit",
         )
-        check(isRecord(body) && isRecord(body.override) && body.override.max_tokens === 100, "null keeps the other limit")
+        check(
+          isRecord(body) && isRecord(body.override) && body.override.max_tokens === 100,
+          "null keeps the other limit",
+        )
         const stored = yield* ctx.sessionGet(ctx.state.id)
         const budget = stored?.metadata?.["budget"]
         check(isRecord(budget) && budget.max_cost_usd === undefined, "the stored override should drop the cost limit")

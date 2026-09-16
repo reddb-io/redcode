@@ -56,7 +56,8 @@ function fakes(existing: Record<string, object>) {
   const writes: Array<{ config: unknown; remove: unknown }> = []
   const stored: Array<{ key: string; info: unknown }> = []
   const config = TestConfig.make({
-    getGlobal: () => Effect.succeed({ provider: { "9router": { models: existing } } }),
+    readGlobalFile: () =>
+      Effect.succeed({ path: "/global/config.jsonc", data: { provider: { "9router": { models: existing } } } }),
     updateGlobal: (next, options) =>
       Effect.sync(() => {
         calls.push("config")
@@ -64,8 +65,12 @@ function fakes(existing: Record<string, object>) {
         return { info: next, changed: true }
       }),
   })
-  // Only set is used by connect.
   const auth = {
+    get: () => Effect.succeed(undefined),
+    remove: (key: string) =>
+      Effect.sync(() => {
+        calls.push(`auth.remove:${key}`)
+      }),
     set: (key: string, info: unknown) =>
       Effect.sync(() => {
         calls.push("auth")

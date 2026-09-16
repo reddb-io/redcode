@@ -9,10 +9,11 @@ import { Effect, Schema } from "effect"
 import { HttpClient, HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ProviderAuthApiError, ProviderDiscoveryApiError } from "../groups/provider"
+import { ProviderAuthApiError, ProviderConnectApiError, ProviderDiscoveryApiError } from "../groups/provider"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
 import { NineRouter } from "@/provider/nine-router"
+import { OpenAICompatible } from "@/provider/openai-compatible"
 import { InstanceStore } from "@/project/instance-store"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 
@@ -121,16 +122,10 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       )
     })
 
-    const connectNineRouter = Effect.fn("ProviderHttpApi.connectNineRouter")(function* (ctx: {
-      payload: typeof ProviderDiscovery.Input.Type
-    }) {
-      const catalog = ProviderDiscovery.catalogLimits(yield* ModelsDev.Service.use((s) => s.get()))
-      const result = yield* NineRouter.connect({ http, config: cfg, auth: authStore, catalog }, ctx.payload).pipe(
-        Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
-      )
+    // Global configuration and a credential changed. Reload every instance once, before the
+    // response is sent, so the client's next reads already include the connection.
+    const reloadBeforeResponse = Effect.fn("ProviderHttpApi.reloadBeforeResponse")(function* () {
       const store = yield* InstanceStore.Service
-      // Global configuration and a credential changed. Reload every instance once, before the
-      // response is sent, so the client's next reads already include the connection.
       yield* HttpEffect.appendPreResponseHandler((_request, response) =>
         disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }).pipe(
           Effect.provideService(InstanceStore.Service, store),
@@ -138,11 +133,40 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
           Effect.as(response),
         ),
       )
+    })
+
+    const connectOpenAICompatible = Effect.fn("ProviderHttpApi.connectOpenAICompatible")(function* (ctx: {
+      payload: OpenAICompatible.Input
+    }) {
+      const models = yield* ModelsDev.Service.use((s) => s.get())
+      const result = yield* OpenAICompatible.connect(
+        {
+          http,
+          config: cfg,
+          auth: authStore,
+          catalog: ProviderDiscovery.catalogLimits(models),
+          builtIn: (id) => Object.hasOwn(models, id),
+        },
+        ctx.payload,
+      ).pipe(Effect.mapError((error) => new ProviderConnectApiError({ reason: error.reason, message: error.message })))
+      yield* reloadBeforeResponse()
+      return result
+    })
+
+    const connectNineRouter = Effect.fn("ProviderHttpApi.connectNineRouter")(function* (ctx: {
+      payload: typeof ProviderDiscovery.Input.Type
+    }) {
+      const catalog = ProviderDiscovery.catalogLimits(yield* ModelsDev.Service.use((s) => s.get()))
+      const result = yield* NineRouter.connect({ http, config: cfg, auth: authStore, catalog }, ctx.payload).pipe(
+        Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+      )
+      yield* reloadBeforeResponse()
       return result
     })
 
     return handlers
       .handle("discover", discover)
+      .handle("connectOpenAICompatible", connectOpenAICompatible)
       .handle("connectNineRouter", connectNineRouter)
       .handle("list", list)
       .handle("auth", auth)

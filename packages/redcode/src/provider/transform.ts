@@ -371,8 +371,7 @@ export function isReminderMessage(msg: ModelMessage) {
   if (msg.role !== "user") return false
   if (typeof msg.content === "string") return msg.content.startsWith(REMINDER_OPEN)
   return (
-    msg.content.length > 0 &&
-    msg.content.every((part) => part.type === "text" && part.text.startsWith(REMINDER_OPEN))
+    msg.content.length > 0 && msg.content.every((part) => part.type === "text" && part.text.startsWith(REMINDER_OPEN))
   )
 }
 

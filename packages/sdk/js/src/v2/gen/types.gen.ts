@@ -2676,6 +2676,19 @@ export type ProviderDiscoveryApiError = {
   message: string
 }
 
+export type ProviderConnectApiError = {
+  reason:
+    | "invalid_provider_id"
+    | "builtin_provider"
+    | "invalid_url"
+    | "invalid_key"
+    | "invalid_headers"
+    | "invalid_models"
+    | "invalid_move"
+    | "discovery"
+  message: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -10567,6 +10580,86 @@ export type ProviderDiscoverResponses = {
 }
 
 export type ProviderDiscoverResponse = ProviderDiscoverResponses[keyof ProviderDiscoverResponses]
+
+export type ProviderOpenaiCompatibleConnectData = {
+  body?: {
+    /**
+     * Id under provider in configuration: lowercase letters, numbers, hyphens and underscores, at most 64 characters.
+     */
+    providerID: string
+    name?: string
+    baseURL: string
+    apiKey?: string
+    headers?: {
+      [key: string]: string
+    }
+    npm?: "@ai-sdk/openai-compatible" | "@ai-sdk/openai"
+    override?: boolean
+    models?: Array<{
+      id: string
+      name?: string
+      context?: number
+      output?: number
+    }>
+    moveFrom?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/openai-compatible/connect"
+}
+
+export type ProviderOpenaiCompatibleConnectErrors = {
+  /**
+   * ProviderConnectApiError | InvalidRequestError
+   */
+  400: ProviderConnectApiError | InvalidRequestError
+}
+
+export type ProviderOpenaiCompatibleConnectError =
+  ProviderOpenaiCompatibleConnectErrors[keyof ProviderOpenaiCompatibleConnectErrors]
+
+export type ProviderOpenaiCompatibleConnectResponses = {
+  /**
+   * Success
+   */
+  200: {
+    providerID: string
+    name: string
+    baseURL: string
+    npm: string
+    models: Array<{
+      id: string
+      name: string
+      limit: {
+        context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        output: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      /**
+       * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
+       */
+      estimated: boolean
+    }>
+    /**
+     * False when the models were entered instead of discovered.
+     */
+    discovered: boolean
+    /**
+     * stored: the key is in the credential store; reference: an {env:NAME} reference is in configuration; kept: the saved credential was left as it was; none: no key.
+     */
+    credential: "stored" | "reference" | "kept" | "none"
+    /**
+     * The global configuration file that was written.
+     */
+    configPath: string
+    movedFrom?: string
+  }
+}
+
+export type ProviderOpenaiCompatibleConnectResponse =
+  ProviderOpenaiCompatibleConnectResponses[keyof ProviderOpenaiCompatibleConnectResponses]
 
 export type ProviderNineRouterConnectData = {
   body?: {
