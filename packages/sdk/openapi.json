@@ -5352,6 +5352,245 @@
         ]
       }
     },
+    "/provider/openai-compatible/connect": {
+      "post": {
+        "tags": ["provider"],
+        "operationId": "provider.openaiCompatible.connect",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "providerID": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "npm": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "limit": {
+                            "type": "object",
+                            "properties": {
+                              "context": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["context", "output"],
+                            "additionalProperties": false
+                          },
+                          "estimated": {
+                            "type": "boolean",
+                            "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          }
+                        },
+                        "required": ["id", "name", "limit", "estimated"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "discovered": {
+                      "type": "boolean",
+                      "description": "False when the models were entered instead of discovered."
+                    },
+                    "credential": {
+                      "type": "string",
+                      "enum": ["stored", "reference", "kept", "none"],
+                      "description": "stored: the key is in the credential store; reference: an {env:NAME} reference is in configuration; kept: the saved credential was left as it was; none: no key."
+                    },
+                    "configPath": {
+                      "type": "string",
+                      "description": "The global configuration file that was written."
+                    },
+                    "movedFrom": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerID",
+                    "name",
+                    "baseURL",
+                    "npm",
+                    "models",
+                    "discovered",
+                    "credential",
+                    "configPath"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ProviderConnectApiError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProviderConnectApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Validate the provider id, URL, key and headers, discover models from the endpoint's /models list from the Redcode server (or take the model ids given), save the provider to global configuration and the key to the credential store (an {env:NAME} reference stays in configuration), and reload instances before responding. Ids of built-in providers are refused unless override is set. Nothing is saved when a check or discovery fails; reason tells which input to correct.",
+        "summary": "Connect an OpenAI-compatible provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string",
+                    "description": "Id under provider in configuration: lowercase letters, numbers, hyphens and underscores, at most 64 characters."
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "baseURL": {
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "type": "string"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "npm": {
+                    "type": "string",
+                    "enum": ["@ai-sdk/openai-compatible", "@ai-sdk/openai"]
+                  },
+                  "override": {
+                    "type": "boolean"
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "moveFrom": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "baseURL"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.openaiCompatible.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/9router/connect": {
       "post": {
         "tags": ["provider"],
@@ -5483,7 +5722,7 @@
             }
           }
         },
-        "description": "Discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+        "description": "Connect the 9Router preset of the OpenAI-compatible connection: discover 9Router models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
         "summary": "Connect 9Router",
         "requestBody": {
           "content": {
@@ -31528,13 +31767,15 @@
                   "type": "object",
                   "properties": {
                     "context": {
-                      "type": "number"
+                      "type": "number",
+                      "description": "Context window in tokens: the most a request's input and output may carry together. Set it to what the provider behind a router or proxy actually enforces when that is smaller than the catalog's value. A limit the provider reports when refusing a request is learned and applied when smaller (see `redcode debug limits`); setting or changing this value clears that lesson."
                     },
                     "input": {
                       "type": "number"
                     },
                     "output": {
-                      "type": "number"
+                      "type": "number",
+                      "description": "Maximum output tokens the model may produce in one request."
                     }
                   },
                   "required": ["context", "output"],
@@ -33913,6 +34154,29 @@
           }
         },
         "required": ["message"],
+        "additionalProperties": false
+      },
+      "ProviderConnectApiError": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "invalid_provider_id",
+              "builtin_provider",
+              "invalid_url",
+              "invalid_key",
+              "invalid_headers",
+              "invalid_models",
+              "invalid_move",
+              "discovery"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["reason", "message"],
         "additionalProperties": false
       },
       "ProviderAuthMethod": {
@@ -36576,8 +36840,7 @@
             "type": "string"
           },
           "explanation": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "tool": {
             "type": "string"
@@ -42718,6 +42981,94 @@
             },
             "required": ["seq", "at", "type", "agent"],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "seq": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": ["verified"]
+              },
+              "design": {
+                "type": "string",
+                "pattern": "^design_[a-zA-Z0-9_-]+$"
+              },
+              "revision": {
+                "type": "string"
+              },
+              "round": {
+                "type": "integer"
+              },
+              "job": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "feedback": {
+                      "type": "string"
+                    },
+                    "index": {
+                      "type": "integer"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": ["pass", "warn", "fail"]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["feedback", "index", "label", "verdict", "reason"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["seq", "at", "type", "design", "revision", "round", "job", "notes"],
+            "additionalProperties": false
           }
         ]
       },
@@ -43065,6 +43416,212 @@
         "required": ["root", "file", "name"],
         "additionalProperties": false
       },
+      "DesignRound": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "opened": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "feedback": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "published": {
+            "type": "string"
+          }
+        },
+        "required": ["number", "opened", "revision", "feedback"],
+        "additionalProperties": false
+      },
+      "DesignParamContext": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "$ref": "#/components/schemas/DesignParamValues"
+          },
+          "preset": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "screen": {
+            "type": "string"
+          }
+        },
+        "required": ["values"],
+        "additionalProperties": false
+      },
+      "DesignFeedbackItem": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/DesignParamContext"
+          },
+          "tag": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "elementText": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "selectedText": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "xpath": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "context": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "parent": {
+            "type": "string",
+            "maxLength": 1200
+          },
+          "revision": {
+            "type": "string"
+          },
+          "resent": {
+            "type": "object",
+            "properties": {
+              "feedback": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer"
+              }
+            },
+            "required": ["feedback", "index"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["target", "text"],
+        "additionalProperties": false
+      },
+      "DesignNoteEvidence": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "capture": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["job"],
+        "additionalProperties": false
+      },
+      "DesignNote": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "round": {
+            "type": "integer"
+          },
+          "item": {
+            "$ref": "#/components/schemas/DesignFeedbackItem"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "resolved", "partial", "unresolved", "accepted"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/DesignNoteEvidence"
+          },
+          "by": {
+            "type": "string",
+            "enum": ["agent", "reviewer"]
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["feedback", "index", "round", "item", "status", "updated"],
+        "additionalProperties": false
+      },
       "DesignInfo": {
         "type": "object",
         "properties": {
@@ -43245,6 +43802,18 @@
                 "enum": ["Infinity", "-Infinity", "NaN"]
               }
             ]
+          },
+          "rounds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignRound"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignNote"
+            }
           }
         },
         "required": [
@@ -43297,9 +43866,52 @@
         "required": ["name", "journey", "engine", "kind"],
         "additionalProperties": false
       },
+      "DesignNoteUpdate": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["resolved", "partial", "unresolved", "accepted"]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "job": {
+                "type": "string"
+              }
+            },
+            "required": ["job"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["feedback", "index", "status"],
+        "additionalProperties": false
+      },
       "DesignUpdate": {
         "type": "object",
         "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignNoteUpdate"
+            },
+            "maxItems": 100
+          },
+          "by": {
+            "type": "string",
+            "enum": ["reviewer"]
+          },
           "controls": {
             "type": "array",
             "items": {
@@ -43462,71 +44074,6 @@
           }
         },
         "required": ["kind", "variants"],
-        "additionalProperties": false
-      },
-      "DesignParamContext": {
-        "type": "object",
-        "properties": {
-          "values": {
-            "$ref": "#/components/schemas/DesignParamValues"
-          },
-          "preset": {
-            "type": "string"
-          },
-          "variant": {
-            "type": "string"
-          },
-          "component": {
-            "type": "string"
-          },
-          "screen": {
-            "type": "string"
-          }
-        },
-        "required": ["values"],
-        "additionalProperties": false
-      },
-      "DesignFeedbackItem": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "params": {
-            "$ref": "#/components/schemas/DesignParamContext"
-          },
-          "tag": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "elementText": {
-            "type": "string",
-            "maxLength": 240
-          },
-          "selectedText": {
-            "type": "string",
-            "maxLength": 12000
-          },
-          "label": {
-            "type": "string",
-            "maxLength": 120
-          },
-          "xpath": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "context": {
-            "type": "string",
-            "maxLength": 240
-          },
-          "revision": {
-            "type": "string"
-          }
-        },
-        "required": ["target", "text"],
         "additionalProperties": false
       },
       "DesignFeedback": {
@@ -43965,7 +44512,11 @@
           },
           "format": {
             "type": "string",
-            "enum": ["html", "gif", "audit", "compare"]
+            "enum": ["html", "gif", "audit", "compare", "verify"]
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 1
           },
           "implementation": {
             "type": "string"
@@ -44021,6 +44572,97 @@
           }
         },
         "required": ["revision", "format"],
+        "additionalProperties": false
+      },
+      "DesignVerifyNote": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["feedback", "index", "label", "found", "blocking", "findings", "scenarios", "reason"],
+        "additionalProperties": false
+      },
+      "DesignVerify": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "round": {
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignVerifyNote"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["revision", "round", "width", "notes", "findings"],
         "additionalProperties": false
       },
       "DesignJob": {
@@ -44140,6 +44782,9 @@
           },
           "audit": {
             "$ref": "#/components/schemas/DesignAudit"
+          },
+          "verify": {
+            "$ref": "#/components/schemas/DesignVerify"
           }
         },
         "required": ["id", "designID", "input", "status", "progress", "result", "error", "created"],

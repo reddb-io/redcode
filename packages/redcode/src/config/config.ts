@@ -132,6 +132,11 @@ export interface Interface {
     options?: { remove?: ReadonlyArray<ReadonlyArray<string>> },
   ) => Effect.Effect<{ info: Info; changed: boolean }>
   readonly invalidate: () => Effect.Effect<void>
+  /**
+   * The global file that updateGlobal writes, parsed as written: `{env:...}` and `{file:...}`
+   * references are left unresolved and other global files are not merged in.
+   */
+  readonly readGlobalFile: () => Effect.Effect<{ path: string; data: Record<string, unknown> }>
   readonly directories: () => Effect.Effect<string[]>
   readonly waitForDependencies: () => Effect.Effect<void>
 }
@@ -750,6 +755,13 @@ const layer = Layer.effect(
       return { info: next, changed }
     })
 
+    const readGlobalFile = Effect.fn("Config.readGlobalFile")(function* () {
+      const file = globalConfigFile()
+      const text = yield* readConfigFile(file)
+      const data = text ? ConfigParse.jsonc(text, file) : {}
+      return { path: file, data: isRecord(data) ? data : {} }
+    })
+
     return Service.of({
       get,
       reload,
@@ -758,6 +770,7 @@ const layer = Layer.effect(
       update,
       updateGlobal,
       invalidate,
+      readGlobalFile,
       directories,
       waitForDependencies,
     })

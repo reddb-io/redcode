@@ -329,7 +329,9 @@ describe("provider HttpApi", () => {
             const names = configFiles(await fs.readdir(Global.Path.config).catch(() => []))
             return {
               config: await Promise.all(
-                names.map(async (name) => [name, await fs.readFile(path.join(Global.Path.config, name), "utf8")] as const),
+                names.map(
+                  async (name) => [name, await fs.readFile(path.join(Global.Path.config, name), "utf8")] as const,
+                ),
               ),
               auth: await fs.readFile(authFile, "utf8").catch(() => undefined),
             }
@@ -350,7 +352,10 @@ describe("provider HttpApi", () => {
         yield* upstream.serve(
           Effect.succeed(
             HttpServerResponse.jsonUnsafe({
-              data: [{ id: "reported-combo", context_length: 200000, max_output_tokens: 16000 }, { id: "mystery-combo" }],
+              data: [
+                { id: "reported-combo", context_length: 200000, max_output_tokens: 16000 },
+                { id: "mystery-combo" },
+              ],
             }),
           ),
         )
@@ -375,18 +380,109 @@ describe("provider HttpApi", () => {
         expect(limit("reported-combo")).toMatchObject({ context: 200000, output: 16000 })
         expect(Number(limit("mystery-combo")?.context)).toBeGreaterThan(0)
 
-        const savedConfig = (
-          yield* Effect.promise(async () =>
-            Promise.all(
-              configFiles(await fs.readdir(Global.Path.config)).map((name) =>
-                fs.readFile(path.join(Global.Path.config, name), "utf8"),
-              ),
+        const savedConfig = (yield* Effect.promise(async () =>
+          Promise.all(
+            configFiles(await fs.readdir(Global.Path.config)).map((name) =>
+              fs.readFile(path.join(Global.Path.config, name), "utf8"),
             ),
-          )
-        ).join("\n")
+          ),
+        )).join("\n")
         expect(savedConfig).toContain("mystery-combo")
         expect(savedConfig).not.toContain("router-test-key")
         expect(yield* Effect.promise(() => fs.readFile(authFile, "utf8"))).toContain("router-test-key")
+      }),
+    projectOptions,
+  )
+
+  it.instance(
+    "connects an OpenAI-compatible endpoint with an environment reference and refuses built-in ids",
+    () =>
+      Effect.gen(function* () {
+        const directory = (yield* TestInstance).directory
+        const authFile = path.join(Global.Path.data, "auth.json")
+        const configFiles = (names: string[]) => names.filter((name) => /\.jsonc?$/.test(name))
+        yield* Effect.acquireRelease(
+          Effect.promise(async () => {
+            const names = configFiles(await fs.readdir(Global.Path.config).catch(() => []))
+            return {
+              config: await Promise.all(
+                names.map(
+                  async (name) => [name, await fs.readFile(path.join(Global.Path.config, name), "utf8")] as const,
+                ),
+              ),
+              auth: await fs.readFile(authFile, "utf8").catch(() => undefined),
+            }
+          }),
+          (saved) =>
+            Effect.promise(async () => {
+              const kept = new Map(saved.config)
+              for (const name of configFiles(await fs.readdir(Global.Path.config).catch(() => []))) {
+                if (!kept.has(name)) await fs.rm(path.join(Global.Path.config, name), { force: true })
+              }
+              for (const [name, text] of saved.config) await fs.writeFile(path.join(Global.Path.config, name), text)
+              if (saved.auth === undefined) await fs.rm(authFile, { force: true })
+              else await fs.writeFile(authFile, saved.auth)
+            }),
+        )
+        yield* setEnvScoped("HTTPAPI_COMPATIBLE_KEY", "compatible-env-secret")
+        const context = yield* Layer.build(NodeHttpServer.layer(Http.createServer, { host: "127.0.0.1", port: 0 }))
+        const upstream = Context.get(context, HttpServer.HttpServer)
+        const received: Array<string | undefined> = []
+        yield* upstream.serve(
+          Effect.gen(function* () {
+            const req = yield* HttpServerRequest.HttpServerRequest
+            received.push(req.headers.authorization)
+            return HttpServerResponse.jsonUnsafe({ data: [{ id: "compatible-model", context_length: 64000 }] })
+          }),
+        )
+        const baseURL = `${HttpServer.formatAddress(upstream.address)}/v1`
+        const headers = { "x-opencode-directory": directory, "content-type": "application/json" }
+
+        const refused = yield* request("/provider/openai-compatible/connect", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ providerID: "anthropic", baseURL }),
+        })
+        expect(refused.status).toBe(400)
+        expect(yield* refused.json).toMatchObject({ reason: "builtin_provider" })
+        expect(received).toEqual([])
+
+        const response = yield* request("/provider/openai-compatible/connect", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            providerID: "compatible-test",
+            name: "Compatible Test",
+            baseURL,
+            apiKey: "{env:HTTPAPI_COMPATIBLE_KEY}",
+          }),
+        })
+        expect(response.status).toBe(200)
+        const body = yield* response.json
+        expect(body).toMatchObject({ providerID: "compatible-test", credential: "reference", discovered: true })
+        expect(JSON.stringify(body)).not.toContain("compatible-env-secret")
+        expect(received).toEqual(["Bearer compatible-env-secret"])
+
+        const providers = yield* request("/config/providers", { headers })
+        const connected = providerByID(yield* providers.json, "providers", "compatible-test")
+        const models = isRecord(connected) ? connected.models : undefined
+        if (!isRecord(models)) throw new Error("compatible-test provider was not loaded")
+        expect(Object.keys(models)).toEqual(["compatible-model"])
+
+        const savedConfig = (yield* Effect.promise(async () =>
+          Promise.all(
+            configFiles(await fs.readdir(Global.Path.config)).map((name) =>
+              fs.readFile(path.join(Global.Path.config, name), "utf8"),
+            ),
+          ),
+        )).join("\n")
+        expect(savedConfig).toContain("{env:HTTPAPI_COMPATIBLE_KEY}")
+        expect(savedConfig).not.toContain("compatible-env-secret")
+        expect(
+          (yield* Effect.promise(() => fs.readFile(authFile, "utf8").catch(() => ""))).includes(
+            "compatible-env-secret",
+          ),
+        ).toBe(false)
       }),
     projectOptions,
   )
