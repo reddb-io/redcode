@@ -1964,7 +1964,11 @@ const layer = Layer.effect(
       // A limit the provider taught us caps the declared one; the person's own limit, set or
       // changed after the lesson, wins over it.
       const observed = yield* limits.get(providerID, modelID, declaredLimit(yield* config.get(), providerID, modelID))
-      const input = ModelLimit.effectiveInput(info.limit, observed)
+      const input = ModelLimit.effectiveInput(
+        info.limit,
+        observed,
+        ProviderTransform.maxOutputTokens(info, runtimeFlags.outputTokenMax),
+      )
       if (input === undefined || input === info.limit.input) return info
       return { ...info, limit: { ...info.limit, input } }
     })

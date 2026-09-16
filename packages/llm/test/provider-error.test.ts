@@ -123,6 +123,22 @@ describe("contextOverflowNumbers", () => {
       contextOverflowNumbers("The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)"),
     ).toEqual({ counted: 1_196_265, limit: 1_048_575 })
     expect(contextOverflowNumbers("context length is only 8192 tokens")).toEqual({ limit: 8_192, includesOutput: true })
+    // Localised thousands separators; a decimal is not a count.
+    expect(
+      contextOverflowNumbers("Input length 145.210 exceeds the maximum allowed input length of 131.072 tokens."),
+    ).toEqual({
+      counted: 145_210,
+      limit: 131_072,
+    })
+    expect(
+      contextOverflowNumbers("Input length 145 210 exceeds the maximum allowed input length of 131 072 tokens."),
+    ).toEqual({
+      counted: 145_210,
+      limit: 131_072,
+    })
+    expect(
+      contextOverflowNumbers("Input length 145.21 exceeds the maximum allowed input length of 131.07 tokens."),
+    ).toBeUndefined()
     expect(contextOverflowNumbers("too large for model with 32768 maximum context length")).toEqual({
       limit: 32_768,
       includesOutput: true,
@@ -143,5 +159,13 @@ describe("contextOverflowNumbers", () => {
     expect(contextOverflowNumbers(body)).toEqual({ counted: 145_210, limit: 131_072 })
     expect(contextOverflowNumbers("request entity too large")).toBeUndefined()
     expect(contextOverflowNumbers("Too many tokens")).toBeUndefined()
+    // These classify a refusal but teach no limit: the same words announce other limits.
+    expect(isContextOverflow("number of images exceeds the limit of 20")).toBe(true)
+    expect(contextOverflowNumbers("number of images exceeds the limit of 20")).toBeUndefined()
+    expect(contextOverflowNumbers("number of tools exceeds the limit of 128")).toBeUndefined()
+    expect(contextOverflowNumbers("maximum prompt length is 4000")).toBeUndefined()
+    // Arithmetic without max_tokens says nothing.
+    expect(contextOverflowNumbers("3 + 4 > 5 items")).toBeUndefined()
+    expect(isContextOverflow("3 + 4 > 5 items")).toBe(false)
   })
 })

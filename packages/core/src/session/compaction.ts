@@ -117,6 +117,11 @@ type Input = {
   readonly entries: readonly Entry[]
   readonly model: Model
   readonly request: LLMRequest
+  /**
+   * The provider's count for the last request of this session and our estimate for it, when the
+   * runner has them: the request is then projected from that count plus what it gained since.
+   */
+  readonly anchor?: { readonly counted: number; readonly estimate: number }
 }
 
 /** Automatic compactions allowed while answering one user request. */
@@ -345,11 +350,12 @@ export const bounds = (input: {
   readonly observed?: ModelLimit.Observed
 }) => {
   const byContext = input.context - Math.max(input.output, input.buffer)
-  const threshold = input.observed === undefined ? byContext : Math.min(byContext, input.observed.input - input.buffer)
-  const limit =
-    input.observed === undefined
-      ? input.context - input.output
-      : Math.min(input.context - input.output, input.observed.input)
+  const learned = input.observed === undefined ? undefined : ModelLimit.inputOf(input.observed, input.output)
+  // A learned limit smaller than the buffer still leaves a positive window, so a compaction that
+  // does not fit under it counts as ineffective instead of as an unknown window.
+  const threshold =
+    learned === undefined ? byContext : Math.min(byContext, Math.max(learned - input.buffer, Math.floor(learned / 2)))
+  const limit = learned === undefined ? input.context - input.output : Math.min(input.context - input.output, learned)
   return { threshold, limit: Math.max(0, limit) }
 }
 
@@ -562,10 +568,8 @@ export const make = (dependencies: Dependencies) => {
     const state = guards.get(input.sessionID)
     if (!state) return
     const observed = yield* observedFor(input.model)
-    const after = ModelLimit.calibrate(
-      estimate(input.request.system) + estimate(input.request.tools) + Token.estimate(summary) + Token.estimate(recent),
-      observed,
-    )
+    const after =
+      estimate(input.request.system) + estimate(input.request.tools) + Token.estimate(summary) + Token.estimate(recent)
     const effective = isEffective({ after, usable: usableOf(input, observed) })
     const before = { ineffective: state.ineffective, paused: state.paused }
     state.count = effective ? 0 : state.count + 1
@@ -616,8 +620,14 @@ export const make = (dependencies: Dependencies) => {
     if (context === undefined || context <= 0) return send
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
     const observed = yield* observedFor(input.model)
-    // Scaled by what the provider counted the last time it refused a request from this model.
-    const size = ModelLimit.calibrate(sizeOf(input.request), observed)
+    // From the provider's count for the last request plus what history gained since, scaled by
+    // what the provider counted the last time it refused; without a count, the estimate as is.
+    const estimate = sizeOf(input.request)
+    const anchored = input.anchor !== undefined && input.anchor.counted > 0
+    const size =
+      input.anchor && anchored
+        ? input.anchor.counted + ModelLimit.calibrate(Math.max(0, estimate - input.anchor.estimate), observed)
+        : estimate
     const { threshold, limit } = bounds({ context, output, buffer: config.buffer, observed })
     if (size <= threshold) {
       const previous = pending.get(input.sessionID)
@@ -645,10 +655,10 @@ export const make = (dependencies: Dependencies) => {
       limit,
     })
     if (yield* compactAfterOverflow(input)) return compacted
-    // Over the threshold the provider still decides; over a limit the provider itself taught us
-    // the request is doomed, and sending it would only repeat the refusal. The catalog's limit
-    // alone is no reason to refuse: the provider's refusal teaches the real one.
-    if (observed && limit > 0 && size > limit) {
+    // Over the threshold the provider still decides; over a limit the provider itself taught us,
+    // by the provider's own count, the request is doomed, and sending it would only repeat the
+    // refusal. The catalog's limit or the character estimate alone is no reason to refuse.
+    if (observed && anchored && limit > 0 && size > limit) {
       const refuse: Preflight = {
         action: "refuse",
         reason: ModelLimit.doomed({ providerID: input.model.provider ?? "provider", limit, estimated: size }),

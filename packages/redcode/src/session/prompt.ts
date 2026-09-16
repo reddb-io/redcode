@@ -226,16 +226,17 @@ const layer = Layer.effect(
       sessionID: SessionID
       model: Provider.Model
       error: NonNullable<SessionV1.Assistant["error"]>
-      estimate: number
+      estimate?: number
     }) {
       const data = input.error.data as { message?: unknown; responseBody?: unknown }
       const message = typeof data.message === "string" ? data.message : ""
       const body = typeof data.responseBody === "string" ? data.responseBody : ""
       const numbers = contextOverflowNumbers([message, body].filter(Boolean).join("\n"))
       if (!numbers) return undefined
+      const output = ProviderTransform.maxOutputTokens(input.model, flags.outputTokenMax)
       const observed = ModelLimit.fromNumbers({
         numbers,
-        output: ProviderTransform.maxOutputTokens(input.model, flags.outputTokenMax),
+        output,
         estimated: input.estimate,
         declared: Provider.declaredLimit(yield* config.get(), input.model.providerID, input.model.id),
         message: message || body,
@@ -246,7 +247,8 @@ const layer = Layer.effect(
         "session.id": input.sessionID,
         providerID: input.model.providerID,
         modelID: input.model.id,
-        input: observed.input,
+        limit: observed.limit,
+        includesOutput: observed.includesOutput ?? false,
         counted: observed.counted,
         estimated: observed.estimated,
         ratio: observed.ratio,
@@ -260,6 +262,7 @@ const layer = Layer.effect(
               providerID: input.model.providerID,
               modelID: input.model.id,
               observed,
+              output,
             }),
             variant: "info",
             duration: 8_000,
@@ -2251,51 +2254,58 @@ const layer = Layer.effect(
               return Token.estimate(JSON.stringify(yield* MessageV2.toModelMessagesEffect(since, model)))
             })
             const accepted = evidence ? SessionPreflight.counted(evidence.tokens) : undefined
-            const projected = SessionPreflight.project({
+            const projection = SessionPreflight.project({
               estimate: requestEstimate,
               observed,
               last: accepted === undefined ? undefined : { counted: accepted, gained },
             })
             const limit = hardLimit({ model, outputTokenMax: flags.outputTokenMax })
+            const maxOutput = ProviderTransform.maxOutputTokens(model, flags.outputTokenMax)
             if (
               cfg.compaction?.auto !== false &&
-              projected !== undefined &&
-              SessionPreflight.wouldRefuse({ projected, limit, accepted, observed })
+              projection !== undefined &&
+              SessionPreflight.exceeds({ projection, limit, accepted, observed })
             ) {
               yield* Effect.logInfo("request projected over the provider limit", {
                 "session.id": sessionID,
-                projected,
+                projected: projection.tokens,
+                anchored: projection.anchored,
                 estimate: requestEstimate,
                 limit,
                 recoveries: overflowRecoveries,
               })
               const hold = yield* compactionHold(msgs)
-              if (hold !== undefined || overflowRecoveries >= SessionPreflight.MAX_RECOVERIES) {
-                yield* refuseOversized({ message: handle.message, model, projected })
+              const exhausted = hold !== undefined || overflowRecoveries >= SessionPreflight.MAX_RECOVERIES
+              // Refused only on the provider's own count against the provider's own limit; a
+              // projection from the estimate alone is sent for the provider to decide.
+              if (exhausted && SessionPreflight.refusable({ projection, observed })) {
+                yield* refuseOversized({ message: handle.message, model, projected: projection.tokens })
                 return "break" as const
               }
-              // Trimming old tool output may be enough; the trimmed request is projected again.
-              const relief = yield* compaction.relieve({
-                sessionID,
-                model,
-                tokens: SessionPreflight.tokens(projected),
-                at: lastFinished?.time.completed,
-              })
-              if (relief === "fits") {
-                if (lastFinished) relieved = lastFinished.id
+              if (!exhausted) {
+                // Trimming old tool output may be enough; the trimmed request is projected again.
+                const relief = yield* compaction.relieve({
+                  sessionID,
+                  model,
+                  tokens: SessionPreflight.tokens(projection.tokens),
+                  at: lastFinished?.time.completed,
+                })
+                if (relief === "fits") {
+                  if (lastFinished) relieved = lastFinished.id
+                  return "continue" as const
+                }
+                overflowRecoveries++
+                // A request that cannot be sent is treated like one the provider refused: the
+                // person's request is replayed after the summary.
+                yield* compaction.create({
+                  sessionID,
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                  auto: true,
+                  overflow: true,
+                })
                 return "continue" as const
               }
-              overflowRecoveries++
-              // A request that cannot be sent is treated like one the provider refused: the
-              // person's request is replayed after the summary.
-              yield* compaction.create({
-                sessionID,
-                agent: lastUser.agent,
-                model: lastUser.model,
-                auto: true,
-                overflow: true,
-              })
-              return "continue" as const
             }
             lastSent = { messageID: handle.message.id, estimate: requestEstimate }
             const result = yield* handle.process({
@@ -2348,11 +2358,33 @@ const layer = Layer.effect(
               if (handle.guardStop) yield* goals.pause(sessionID, handle.guardStop).pipe(Effect.ignore)
               return "break" as const
             }
+            // A request the provider accepted above the lesson raises the lesson.
+            if (observed && handle.message.finish && !handle.message.error) {
+              const raised = ModelLimit.raised(observed, SessionPreflight.counted(handle.message.tokens), maxOutput)
+              if (raised) {
+                yield* limits.learn(model.providerID, model.id, raised)
+                yield* Effect.logInfo("provider accepted more than its learned limit; raised it", {
+                  "session.id": sessionID,
+                  providerID: model.providerID,
+                  modelID: model.id,
+                  accepted: SessionPreflight.counted(handle.message.tokens),
+                  limit: raised.limit,
+                })
+              }
+            }
             if (result === "compact") {
               const refused = !handle.message.finish
               // The provider's refusal says what its limit is: the next request is sized by it.
+              // The estimate of a request with images or files in it calibrates nothing.
               if (refused && handle.overflow)
-                yield* learnLimit({ sessionID, model, error: handle.overflow, estimate: requestEstimate })
+                yield* learnLimit({
+                  sessionID,
+                  model,
+                  error: handle.overflow,
+                  estimate: msgs.some((message) => message.parts.some((part) => part.type === "file"))
+                    ? undefined
+                    : requestEstimate,
+                })
               // A finished step that crossed the threshold may only need old tool output trimmed.
               if (
                 handle.message.finish &&
@@ -2369,7 +2401,11 @@ const layer = Layer.effect(
               // Two recoveries per turn, before or after a refusal, then the refusal is reported
               // with what to do about it instead of another summary that cannot fit either.
               if (refused && overflowRecoveries >= SessionPreflight.MAX_RECOVERIES) {
-                yield* refuseOversized({ message: handle.message, model, projected: projected ?? requestEstimate })
+                yield* refuseOversized({
+                  message: handle.message,
+                  model,
+                  projected: projection?.tokens ?? requestEstimate,
+                })
                 return "break" as const
               }
               const hold = yield* compactionHold(msgs)

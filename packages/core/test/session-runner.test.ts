@@ -1515,7 +1515,7 @@ describe("SessionRunnerLLM", () => {
       yield* limits.forget("fake", "recovery")
       const body = JSON.stringify({
         error: {
-          message: "input length 4321 exceeds the maximum allowed input length of 4000 tokens",
+          message: "input length 4821 exceeds the maximum allowed input length of 4500 tokens",
           type: "invalid_request_error",
           code: "invalid_request",
         },
@@ -1552,7 +1552,7 @@ describe("SessionRunnerLLM", () => {
       ])
       // The refusal taught the provider's limit and how far the estimate was off.
       const learned = yield* limits.get("fake", "recovery")
-      expect(learned).toMatchObject({ input: 4_000, counted: 4_321 })
+      expect(learned).toMatchObject({ limit: 4_500, counted: 4_821 })
       expect(learned?.ratio).toBeGreaterThan(0)
       yield* limits.forget("fake", "recovery")
     }),
@@ -1563,7 +1563,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setupOverflowRecovery
       const limits = yield* ModelLimit.Service
       // Learned earlier: the provider accepts far less than the catalog's 20k context.
-      yield* limits.learn("fake", "recovery", { input: 4_000, at: 1, message: "learned" })
+      yield* limits.learn("fake", "recovery", { limit: 4_000, at: 1, message: "learned" })
       responses = [
         fragmentFixture("text", "text-summary", ["## Objective\n- Sized by the lesson"]).completeEvents,
         fragmentFixture("text", "text-final", ["Fits"]).completeEvents,
@@ -1587,17 +1587,39 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("refuses a request no compaction can bring under the provider's limit", () =>
+  /** One accepted turn whose usage the provider reported, so the next request is projected from it. */
+  const acceptedTurn = (count: number) =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      responseStream = Stream.fromIterable([
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "accepted" }),
+        LLMEvent.textDelta({ id: "accepted", text: "Accepted" }),
+        LLMEvent.textEnd({ id: "accepted" }),
+        LLMEvent.stepFinish({
+          index: 0,
+          reason: "stop",
+          usage: { inputTokens: count, nonCachedInputTokens: count, outputTokens: 5, totalTokens: count + 5 },
+        }),
+        LLMEvent.finish({ reason: "stop" }),
+      ])
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Accepted turn" }), resume: false })
+      yield* session.resume(sessionID)
+      return session
+    })
+
+  it.effect("refuses a request the provider's own count puts over its learned limit when compaction cannot help", () =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
       const limits = yield* ModelLimit.Service
-      // A limit smaller than the system prompt and the request itself: nothing can fit.
-      yield* limits.learn("fake", "recovery", { input: 200, at: 1, message: "learned" })
+      yield* acceptedTurn(6_000)
+      // Learned since: the provider takes less than it just counted, and the summary fails.
+      yield* limits.learn("fake", "recovery", { limit: 4_000, at: 1, message: "learned" })
       responses = [
-        fragmentFixture("text", "text-summary", ["## Objective\n- Still too large"]).completeEvents,
-        fragmentFixture("text", "text-summary", ["## Objective\n- Still too large"]).completeEvents,
+        [LLMEvent.providerError({ message: "summary unavailable" })],
         fragmentFixture("text", "text-final", ["Never sent"]).completeEvents,
       ]
+      requests.length = 0
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
       yield* session.resume(sessionID).pipe(Effect.ensuring(limits.forget("fake", "recovery")))
 
@@ -1606,10 +1628,115 @@ describe("SessionRunnerLLM", () => {
       expect(last?.type).toBe("assistant")
       if (last?.type !== "assistant") return
       expect(last.finish).toBe("error")
-      expect(last.error?.message).toContain("would exceed the fake limit of 200 input tokens")
+      expect(last.error?.message).toContain("would exceed the fake limit of 4,000 input tokens")
       expect(last.error?.message).toContain("Raise limit.context")
-      // Every request was a summary request; the doomed one was never sent.
-      expect(requests.every((request) => userTexts(request).some((text) => text.includes("<conversation>")))).toBe(true)
+      // Only the summary request went out; the doomed one was never sent.
+      expect(requests).toHaveLength(1)
+      expect(userTexts(requests[0]).some((text) => text.includes("<conversation>"))).toBe(true)
+    }),
+  )
+
+  it.effect("sends a request the estimate alone puts over the learned limit once compaction had its chances", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const limits = yield* ModelLimit.Service
+      // No count from the provider yet: the estimate is the only measure, and it decides nothing.
+      yield* limits.learn("fake", "recovery", { limit: 4_000, at: 1, message: "learned" })
+      responses = [
+        [LLMEvent.providerError({ message: "summary unavailable" })],
+        fragmentFixture("text", "text-final", ["Sent anyway"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.ensuring(limits.forget("fake", "recovery")))
+
+      expect(requests).toHaveLength(2)
+      expect((yield* session.context(sessionID)).slice(-2)).toMatchObject([
+        { type: "user", text: "Continue" },
+        { type: "assistant", finish: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("compacts again on the next turn when the summary an overflow left still exceeds the learned limit", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const limits = yield* ModelLimit.Service
+      yield* limits.forget("fake", "recovery")
+      // A history large enough that a summary can be shorter than it and still over the lesson.
+      response = fragmentFixture("text", "text-earlier", ["Earlier answer"]).completeEvents
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Earlier question ".repeat(3_000) }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+      currentModel = recoveryModel
+      requests.length = 0
+      // The refusal teaches a limit of 4,500; the summary that recovers it is longer than that.
+      responseStream = Stream.fail(
+        new LLMError({
+          module: "test",
+          method: "stream",
+          reason: new InvalidRequestReason({
+            message: "input length 13000 exceeds the maximum allowed input length of 4500 tokens",
+            classification: "context-overflow",
+          }),
+        }),
+      )
+      const accepted = (count: number, text: string) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: text }),
+        LLMEvent.textDelta({ id: text, text }),
+        LLMEvent.textEnd({ id: text }),
+        LLMEvent.stepFinish({
+          index: 0,
+          reason: "stop",
+          usage: { inputTokens: count, nonCachedInputTokens: count, outputTokens: 5, totalTokens: count + 5 },
+        }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+      responses = [
+        fragmentFixture("text", "text-summary", [`## Objective\n- ${"Long summary. ".repeat(1_500)}`]).completeEvents,
+        // Sent: with nothing left to summarize and no count yet, the estimate alone refuses nothing.
+        accepted(6_000, "Recovered once"),
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.ensuring(Effect.void))
+      expect(requests).toHaveLength(3)
+      expect(userTexts(requests[2])[0]).toContain("Long summary.")
+      // The lesson said 4,500; the provider then took 6,000, which raised it.
+      expect(yield* limits.get("fake", "recovery")).toMatchObject({ limit: 6_000, counted: 13_000 })
+
+      // The next turn is projected from the 6,000 the provider counted: over the lesson, so the
+      // long summary is compacted again before anything is sent, and the rebuilt request goes.
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Short summary"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Recovered twice"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Again" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.ensuring(limits.forget("fake", "recovery")))
+
+      expect(requests).toHaveLength(5)
+      expect(userTexts(requests[3])[0]).toContain("<conversation>")
+      expect(userTexts(requests[3])[0]).toContain("Long summary.")
+      expect(userTexts(requests[4]).join("\n")).toContain("<summary>\n## Objective\n- Short summary")
+      expect(userTexts(requests[4]).join("\n")).toContain("Again")
+      expect((yield* session.context(sessionID)).at(-1)).toMatchObject({ type: "assistant", finish: "stop" })
+    }),
+  )
+
+  it.effect("raises a learned limit when the provider accepts more than it", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const limits = yield* ModelLimit.Service
+      currentModel = recoveryModel
+      yield* limits.learn("fake", "recovery", { limit: 4_000, at: 1, message: "learned" })
+      yield* acceptedTurn(6_000).pipe(Effect.ensuring(Effect.void))
+      const raised = yield* limits.get("fake", "recovery")
+      yield* limits.forget("fake", "recovery")
+      expect(raised).toMatchObject({ limit: 6_000, message: "learned" })
+      expect(raised?.at).toBeGreaterThan(1)
     }),
   )
 
