@@ -141,12 +141,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       }
       HumanWait.claim(input.session.id, call.callID)
       const startedAt = Date.now()
-      yield* Verbose.log("tool.start", {
+      yield* Verbose.log("tool.start", () => ({
         sessionID: input.session.id,
         tool: call.toolID,
         callID: call.callID,
         deadlineMs: deadline,
-      })
+      }))
       const executed = yield* (
         deadline === undefined
           ? call.run(decided.args, call.abort)

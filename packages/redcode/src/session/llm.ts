@@ -1,6 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
-import { Token } from "@/util/token"
 import { llmClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Provider } from "@/provider/provider"
@@ -54,6 +53,8 @@ export type StreamInput = {
   toolChoice?: "auto" | "required" | "none"
   /** Caps the response below the model's own output limit, e.g. for a compaction summary. */
   maxOutputTokens?: number
+  /** The preflight token estimate this request was sized by, for the verbose trace. */
+  estimate?: number
 }
 
 export type StreamRequest = StreamInput & {
@@ -112,8 +113,9 @@ const live: Layer.Layer<
         small: input.small ?? false,
         messages: input.messages.length,
         tools: Object.keys(input.tools ?? {}).length,
-        // The estimate the loop sizes requests by; the provider's count arrives with the response.
-        estimatedTokens: Token.estimate(JSON.stringify(input.messages)),
+        // The preflight estimate the loop sized this request by; the provider's count arrives
+        // with the response. Requests the loop did not size (a summary) carry none.
+        estimatedTokens: input.estimate,
       }))
 
       const [language, cfg, item, info] = yield* Effect.all(

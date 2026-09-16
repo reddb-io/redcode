@@ -2328,6 +2328,7 @@ const layer = Layer.effect(
               tools,
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
+              estimate: requestEstimate,
             })
 
             if (structured !== undefined) {
