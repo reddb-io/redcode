@@ -176,6 +176,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.verifyWarn": "encontrado com achados",
   "session.design.studio.verifyFail": "ausente ou bloqueado",
   "session.design.studio.openReport": "Abrir capturas",
+  "session.design.studio.resentFrom": "Reenviada da rodada",
   "session.design.studio.retarget": "Mover para",
   "session.design.studio.renameSame": "Digite um nome diferente para renomear esta variante.",
   "session.design.studio.approvalReselect":

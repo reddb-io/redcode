@@ -927,6 +927,20 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
               const text = document.createElement("span")
               text.textContent = note.item.text
               body.append(label, text)
+              // A re-sent note names the round it came from, so its outcomes read as one chain.
+              const origin = note.item.resent
+                ? notes.find(
+                    (item) => item.feedback === note.item.resent!.feedback && item.index === note.item.resent!.index,
+                  )
+                : undefined
+              if (origin) {
+                const chain = document.createElement("span")
+                chain.className = "round-reason"
+                chain.dataset.copy = "resentFrom"
+                chain.dataset.copySuffix = ` ${origin.round}`
+                chain.textContent = `${copy.resentFrom} ${origin.round}`
+                body.append(chain)
+              }
               if (note.reason) {
                 const reason = document.createElement("span")
                 reason.className = "round-reason"
@@ -937,7 +951,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
               actions.className = "round-actions"
               actions.append(action("reveal", () => reveal(note.item.target, true, note.item.params?.screen)))
               // A note the agent could not settle goes into the next round as it was, on the revision on screen.
-              if (note.status === "partial" || note.status === "unresolved") {
+              // Only once a revision answered the round: before that the agent is still working on the note.
+              if ((note.status === "partial" || note.status === "unresolved") && round.published) {
                 const again = document.createElement("button")
                 again.type = "button"
                 again.dataset.copy = "resend"
@@ -946,7 +961,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
                   if (state.pending || !state.revision) return
                   if (state.notes.some((item) => item.target === note.item.target && item.text === note.item.text))
                     return
-                  state.notes.push({ ...note.item, revision: state.revision })
+                  state.notes.push({
+                    ...note.item,
+                    revision: state.revision,
+                    resent: { feedback: note.feedback, index: note.index },
+                  })
                   save()
                   drawNotes()
                   status(copy.resendQueued, "resendQueued", "success")

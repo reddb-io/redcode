@@ -431,8 +431,9 @@ describe("Design revisions and review", () => {
       Effect.gen(function* () {
         const { store, document } = yield* setup
         const renderer = yield* DesignRenderer.Service
+        // The faint legal line is a pre-existing contrast violation in the heading's container on both revisions.
         const page = (title: string, remove: boolean) =>
-          `<!doctype html><html lang="en"><head><title>Checkout</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:24px;color:#17202a;background:#fff}button{padding:12px;color:#17202a;background:#fff}</style></head><body><main data-design-id="checkout"><h1 id="title" data-design-id="title">${title}</h1>${remove ? '<button id="remove" data-design-id="remove">Remove item</button>' : ""}<button id="submit" data-design-id="submit" onclick="document.querySelector('#result').dataset.state='populated'">Confirm</button><p id="result" data-state="empty">Pending</p></main></body></html>`
+          `<!doctype html><html lang="en"><head><title>Checkout</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:24px;color:#17202a;background:#fff}button{padding:12px;color:#17202a;background:#fff}.legal{color:#dddddd}</style></head><body><main data-design-id="checkout"><h1 id="title" data-design-id="title">${title}</h1>${remove ? '<button id="remove" data-design-id="remove">Remove item</button>' : ""}<button id="submit" data-design-id="submit" onclick="document.querySelector('#result').dataset.state='populated'">Confirm</button><p id="result" data-state="empty">Pending</p><p class="legal">Prices include tax.</p></main></body></html>`
         yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), page("Checkout", true)))
         yield* store.update(document.id, {
           scenarios: [
@@ -496,8 +497,12 @@ describe("Design revisions and review", () => {
         expect(verify.notes).toHaveLength(2)
         const [title, removed] = verify.notes
         expect(title).toMatchObject({ feedback: feedback.id, index: 1, found: true, blocking: false })
-        expect(title.reason).toStartWith("found; no findings")
+        // The contrast violation existed before the fix, so it is reported without blocking the note.
+        expect(title.findings.some((finding) => finding.startsWith("review · pre-existing: color-contrast"))).toBe(true)
+        expect(title.findings.some((finding) => finding.startsWith("error ·"))).toBe(false)
+        expect(title.reason).toStartWith("found; 1 advisory finding")
         expect(title.scenarios).toEqual(["Confirm: exercised"])
+        expect(title.after).toEndWith("-0-after.jpg")
         expect(yield* Effect.promise(() => Bun.file(title.before!).exists())).toBe(true)
         expect(yield* Effect.promise(() => Bun.file(title.after!).exists())).toBe(true)
         expect(removed).toMatchObject({ index: 2, found: false, blocking: true })
@@ -510,7 +515,14 @@ describe("Design revisions and review", () => {
         expect(html).toContain("Say whose checkout it is")
         const report = DesignQuality.report([result], second.id)
         expect(report).toContain(`Current verify: ${job.id}, round 1`)
-        expect(report).toContain(`1. ${feedback.id} #1 h1 "Checkout" in main: found; no findings`)
+        expect(report).toContain(`1. ${feedback.id} #1 h1 "Checkout" in main: found; 1 advisory finding`)
+        // A note that joins the round after the verify is named, so the agent knows to run it again.
+        expect(
+          DesignQuality.report([result], second.id, [
+            ...(yield* store.get(document.id)).notes!,
+            { feedback: feedback.id, index: 3, round: 1 },
+          ]),
+        ).toContain(`1 note of round 1 arrived after this verify (${feedback.id} #3)`)
         expect(report).toContain(`after: ${title.after}`)
         expect(report).toContain('"evidence":{"job":"' + job.id + '"}')
         // Statuses cite the job; the evidence records what it saw for each note.
@@ -527,8 +539,14 @@ describe("Design revisions and review", () => {
         })
         expect(updated.notes?.[0]).toMatchObject({
           status: "resolved",
-          evidence: { job: job.id, revision: second.id, capture: title.after, findings: [] },
+          evidence: { job: job.id, revision: second.id, capture: title.after, findings: title.findings },
         })
+        // Restoring an older revision keeps the review's rounds and statuses: they are not part of the snapshot.
+        const restored = yield* store.restore(document.id, first.id)
+        const afterRestore = yield* store.get(document.id)
+        expect(afterRestore.revision).toBe(restored.id)
+        expect(afterRestore.rounds).toEqual(updated.rounds)
+        expect(afterRestore.notes).toEqual(updated.notes)
         expect(updated.notes?.[1]).toMatchObject({
           status: "accepted",
           reason: "The button stays until the API allows removal",

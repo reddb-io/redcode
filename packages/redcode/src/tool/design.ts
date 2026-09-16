@@ -428,7 +428,7 @@ export const DesignTools = Effect.gen(function* () {
             const jobs = input.cancel
               ? [yield* renderer.cancel(input.id, input.cancel)]
               : yield* renderer.jobs(input.id)
-            return result(DesignQuality.report(jobs, document.revision), { jobs })
+            return result(DesignQuality.report(jobs, document.revision, document.notes ?? []), { jobs })
           }),
         ),
     }),

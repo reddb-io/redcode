@@ -86,9 +86,11 @@ export function verifiedOf(jobs: unknown, base: { seq: number; at: number }): De
 /** Tool calls seen so far, so a result can be attributed to the tool that produced it. */
 export interface State {
   readonly calls: ReadonlyMap<string, string>
+  /** Verify jobs already announced, so a design_jobs poll does not repeat their entry. */
+  readonly announced: ReadonlySet<string>
 }
 
-export const initial: State = { calls: new Map() }
+export const initial: State = { calls: new Map(), announced: new Set() }
 
 /** Reduce one durable Session event into feed entries. Pure: the handler threads the state. */
 export function reduce(
@@ -112,7 +114,7 @@ export function reduce(
   }
   if (event.type === "session.next.tool.called")
     return [
-      { calls: new Map(state.calls).set(event.data.callID, event.data.tool) },
+      { ...state, calls: new Map(state.calls).set(event.data.callID, event.data.tool) },
       [
         {
           ...base,
@@ -127,9 +129,17 @@ export function reduce(
   if (event.type === "session.next.tool.success") {
     const tool = state.calls.get(event.data.callID) ?? ""
     const published = tool === PREVIEW_TOOL ? revisionOf(event.data.structured) : undefined
-    const verified = tool === JOBS_TOOL ? verifiedOf(event.data.structured.jobs, base) : []
+    const verified =
+      tool === JOBS_TOOL
+        ? verifiedOf(event.data.structured.jobs, base).filter(
+            (entry) => entry.type === "verified" && !state.announced.has(entry.job),
+          )
+        : []
+    const announced = verified.length
+      ? new Set([...state.announced, ...verified.flatMap((entry) => (entry.type === "verified" ? [entry.job] : []))])
+      : state.announced
     return [
-      state,
+      { ...state, announced },
       [
         {
           ...base,

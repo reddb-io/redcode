@@ -2175,6 +2175,7 @@ export type DesignsListOutput = ReadonlyArray<{
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -2354,6 +2355,7 @@ export type DesignsCreateOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -2499,6 +2501,7 @@ export type DesignsGetOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -3532,6 +3535,7 @@ export type DesignsUpdateOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -3684,6 +3688,7 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
         readonly context?: string
         readonly parent?: string
         readonly revision?: string
+        readonly resent?: { readonly feedback: string; readonly index: number }
       }
       readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
       readonly reason?: string
@@ -3854,6 +3859,7 @@ export type DesignsPublishOutput = {
         readonly context?: string
         readonly parent?: string
         readonly revision?: string
+        readonly resent?: { readonly feedback: string; readonly index: number }
       }
       readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
       readonly reason?: string
@@ -4008,6 +4014,7 @@ export type DesignsRestoreOutput = {
         readonly context?: string
         readonly parent?: string
         readonly revision?: string
+        readonly resent?: { readonly feedback: string; readonly index: number }
       }
       readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
       readonly reason?: string
@@ -4154,6 +4161,7 @@ export type DesignsReopenOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -4299,6 +4307,7 @@ export type DesignsRefreshOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }
     readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
     readonly reason?: string
@@ -4352,6 +4361,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4396,6 +4406,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4440,6 +4451,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4484,6 +4496,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4528,6 +4541,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4572,6 +4586,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4616,6 +4631,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4660,6 +4676,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4704,6 +4721,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4748,6 +4766,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4792,6 +4811,7 @@ export type DesignsFeedbackInput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
@@ -4970,6 +4990,7 @@ export type DesignsApprovalOutput = {
           readonly context?: string
           readonly parent?: string
           readonly revision?: string
+          readonly resent?: { readonly feedback: string; readonly index: number }
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
         readonly reason?: string
@@ -5031,6 +5052,7 @@ export type DesignsApprovalOutput = {
       readonly context?: string
       readonly parent?: string
       readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
     }>
     readonly assets: ReadonlyArray<string>
     readonly snapshot: string
