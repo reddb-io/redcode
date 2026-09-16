@@ -6,7 +6,7 @@ import { Global } from "@reddb-io/redcode-core/global"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
-import { ClipboardProvider, useClipboard } from "./context/clipboard"
+import { ClipboardProvider, useClipboard, type ClipboardService } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
@@ -154,6 +154,8 @@ export type TuiInput = {
   headers?: RequestInit["headers"]
   events?: EventSource
   pluginHost: TuiPluginHost
+  /** Replaces the system clipboard; tests use it so they never read or write the real one. */
+  clipboard?: ClipboardService
 }
 
 function errorMessage(error: unknown) {
@@ -291,7 +293,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                           skipInitialLoading: Boolean(process.env.OPENCODE_FAST_BOOT),
                         }}
                       >
-                        <ClipboardProvider>
+                        <ClipboardProvider value={input.clipboard}>
                           <OpencodeKeymapProvider keymap={keymap}>
                             <ArgsProvider {...input.args}>
                               <KVProvider>

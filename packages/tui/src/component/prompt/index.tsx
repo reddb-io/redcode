@@ -19,6 +19,7 @@ import { tint, useTheme } from "../../context/theme"
 import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
+import { createPasteDedupe } from "./paste-dedupe"
 import { Spinner } from "../spinner"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
@@ -52,7 +53,7 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
-import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
+import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
@@ -196,7 +197,7 @@ export function Prompt(props: PromptProps) {
   })
   const history = usePromptHistory()
   const stash = usePromptStash()
-  const keymap = useOpencodeKeymap()
+  const pasteDedupe = createPasteDedupe()
   const agentShortcut = useCommandShortcut("agent.cycle")
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
@@ -531,18 +532,7 @@ export function Prompt(props: PromptProps) {
         run: async (ctx: CommandContext<Renderable, KeyEvent>) => {
           ctx.event.preventDefault()
           ctx.event.stopPropagation()
-          const content = await clipboard.read?.()
-          if (content?.mime.startsWith("image/")) {
-            await pasteAttachment({
-              filename: "clipboard",
-              mime: content.mime,
-              content: content.data,
-            })
-            return
-          }
-          if (content?.mime === "text/plain") {
-            await pasteInputText(content.data)
-          }
+          await pasteFromClipboard(pasteDedupe.keyStarted())
         },
       },
       {
@@ -1431,6 +1421,23 @@ export function Prompt(props: PromptProps) {
     )
   }
 
+  // `keyStartedAt` is set when the paste key triggered the read, so a bracketed paste of the same
+  // text from the terminal is not inserted twice.
+  async function pasteFromClipboard(keyStartedAt?: number) {
+    const content = await clipboard.read?.()
+    if (content?.mime.startsWith("image/")) {
+      await pasteAttachment({
+        filename: "clipboard",
+        mime: content.mime,
+        content: content.data,
+      })
+      return
+    }
+    if (content?.mime !== "text/plain") return
+    if (keyStartedAt !== undefined && !pasteDedupe.acceptKeyText(keyStartedAt, content.data)) return
+    await pasteInputText(content.data)
+  }
+
   async function pasteInputText(text: string) {
     const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
     const pastedContent = normalizedText.trim()
@@ -1661,13 +1668,17 @@ export function Prompt(props: PromptProps) {
                 // Windows Terminal <1.25 can surface image-only clipboard as an
                 // empty bracketed paste. Windows Terminal 1.25+ does not.
                 if (!pastedContent) {
-                  keymap.dispatchCommand("prompt.paste")
+                  if (pasteDedupe.acceptTerminalEmpty()) await pasteFromClipboard()
                   return
                 }
 
                 // Once we cross an async boundary below, the terminal may perform its
                 // default paste unless we suppress it first and handle insertion ourselves.
                 event.preventDefault()
+
+                // The paste key already read this clipboard (a terminal that forwards the key and
+                // pastes too).
+                if (!pasteDedupe.acceptTerminalText(normalizedText)) return
 
                 await pasteInputText(normalizedText)
               }}
