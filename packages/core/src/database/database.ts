@@ -45,7 +45,10 @@ const layer = Layer.effect(
     // crash may be lost, but the file is never corrupted. The right trade for a local tool;
     // FULL would fsync the WAL on every commit.
     yield* db.run("PRAGMA synchronous = NORMAL")
-    yield* db.run("PRAGMA cache_size = -64000")
+    // SQLite's page cache is private to each process, while the file's pages already sit in the OS
+    // page cache that every process shares. On a 500 MB database a scan filled a 64 MB cache (+87 MB
+    // resident per process, once for every open TUI) and ran no faster than with 8 MB (+20 MB).
+    yield* db.run("PRAGMA cache_size = -8000")
     yield* db.run("PRAGMA foreign_keys = ON")
     // Fold a WAL a crashed process left behind back into the file; from here the default
     // autocheckpoint (every 1000 pages) keeps it bounded.
