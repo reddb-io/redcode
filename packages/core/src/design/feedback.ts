@@ -203,6 +203,8 @@ export function render(input: Design.Feedback, context: Context) {
     .filter(Boolean)
     .join("\n\n")
   // A note whose element and ancestors carry no data-design-id asks for one, so later notes name it directly.
+  // An element under a keyed ancestor counts as keyed on purpose: the selector and label already anchor
+  // it to that id, so the request is only made when nothing stable is near.
   const unkeyed = notes.some((item) => !`${item.target} ${item.label ?? ""}`.includes("data-design-id"))
   // The trailer carries the instructions; it is reserved before the user content is bounded.
   const trailer = [
