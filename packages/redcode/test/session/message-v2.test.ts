@@ -1590,6 +1590,61 @@ describe("session.message-v2.fromError", () => {
     expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(true)
   })
 
+  test("detects context overflow from the exact 400 envelope a router forwards", () => {
+    const upstream = "input length 145210 exceeds the maximum allowed input length of 131072 tokens"
+    const envelopes = [
+      // The OpenAI-compatible shape 9Router and the providers behind it answer with.
+      {
+        message: upstream,
+        body: { error: { message: upstream, type: "invalid_request_error", code: "invalid_request" } },
+      },
+      // OpenRouter keeps the upstream sentence in the error's metadata.
+      {
+        message: "Provider returned error",
+        body: {
+          error: {
+            message: "Provider returned error",
+            code: 400,
+            metadata: {
+              raw: JSON.stringify({ error: { message: upstream, type: "invalid_request_error" } }),
+              provider_name: "Novita",
+            },
+          },
+        },
+      },
+      // A gateway that only sets a code.
+      { message: "Bad Request", body: { error: { message: "Bad Request", code: "too_many_tokens" } } },
+    ]
+    for (const envelope of envelopes) {
+      const error = new APICallError({
+        message: envelope.message,
+        url: "https://router.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseHeaders: { "content-type": "application/json" },
+        responseBody: JSON.stringify(envelope.body),
+        isRetryable: false,
+      })
+      const result = MessageV2.fromError(error, { providerID })
+      expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(true)
+      expect((result.data as { responseBody?: string }).responseBody).toBe(JSON.stringify(envelope.body))
+    }
+    // The upstream sentence reaches the person, not only the router's envelope.
+    const wrapped = MessageV2.fromError(
+      new APICallError({
+        message: "Provider returned error",
+        url: "https://router.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseHeaders: {},
+        responseBody: JSON.stringify(envelopes[1]!.body),
+        isRetryable: false,
+      }),
+      { providerID },
+    )
+    expect((wrapped.data as { message: string }).message).toContain(upstream)
+  })
+
   test("does not classify 429 no body as context overflow", () => {
     const result = MessageV2.fromError(
       new APICallError({

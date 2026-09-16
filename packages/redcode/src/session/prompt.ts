@@ -22,7 +22,11 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { CompactionGuard } from "./compaction-guard"
 import { TuiEvent } from "@/server/tui-event"
-import { usable as usableTokens } from "./overflow"
+import { hardLimit, usable as usableTokens } from "./overflow"
+import { SessionPreflight } from "./preflight"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { ProviderTransform } from "@/provider/transform"
+import { contextOverflowNumbers } from "@reddb-io/redcode-llm"
 import { Token } from "@/util/token"
 import { SystemPrompt } from "./system"
 import { SessionContext } from "./context"
@@ -210,6 +214,60 @@ const layer = Layer.effect(
     const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
+    const limits = yield* ModelLimit.Service
+    // Sessions already told that a provider taught us its limit: the notice shows once.
+    const limitNotices = new Set<SessionID>()
+
+    /**
+     * What a provider's refusal teaches about its limit. The next request from this model is
+     * sized by it, so the refusal does not repeat.
+     */
+    const learnLimit = Effect.fnUntraced(function* (input: {
+      sessionID: SessionID
+      model: Provider.Model
+      error: NonNullable<SessionV1.Assistant["error"]>
+      estimate: number
+    }) {
+      const data = input.error.data as { message?: unknown; responseBody?: unknown }
+      const message = typeof data.message === "string" ? data.message : ""
+      const body = typeof data.responseBody === "string" ? data.responseBody : ""
+      const numbers = contextOverflowNumbers([message, body].filter(Boolean).join("\n"))
+      if (!numbers) return undefined
+      const observed = ModelLimit.fromNumbers({
+        numbers,
+        output: ProviderTransform.maxOutputTokens(input.model, flags.outputTokenMax),
+        estimated: input.estimate,
+        declared: Provider.declaredLimit(yield* config.get(), input.model.providerID, input.model.id),
+        message: message || body,
+      })
+      if (!observed) return undefined
+      yield* limits.learn(input.model.providerID, input.model.id, observed)
+      yield* Effect.logInfo("learned provider input limit", {
+        "session.id": input.sessionID,
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        input: observed.input,
+        counted: observed.counted,
+        estimated: observed.estimated,
+        ratio: observed.ratio,
+      })
+      if (!limitNotices.has(input.sessionID)) {
+        limitNotices.add(input.sessionID)
+        yield* events
+          .publish(TuiEvent.ToastShow, {
+            title: "Provider limit learned",
+            message: ModelLimit.learnedNotice({
+              providerID: input.model.providerID,
+              modelID: input.model.id,
+              observed,
+            }),
+            variant: "info",
+            duration: 8_000,
+          })
+          .pipe(Effect.ignore)
+      }
+      return observed
+    })
     const { db } = database
     // Task review is bookkeeping around a turn. A list the store refuses to reconcile keeps its stored
     // state for this step instead of failing the prompt: it runs before every provider step, so a
@@ -1342,6 +1400,12 @@ const layer = Layer.effect(
         // the finished step whose context trimming old tool output already brought under the band.
         let lastRequest: SessionCompaction.ProcessInput["request"]
         let relieved: string | undefined
+        // The last request this drain sent and our estimate for it, matched with the provider's
+        // count for it once the step finishes, so the next request is projected from that count.
+        let lastSent: { messageID: MessageID; estimate: number } | undefined
+        // Recoveries this turn from a request that would not, or did not, fit the provider's
+        // limit. Bounded: after them the request is refused with what to do about it.
+        let overflowRecoveries = 0
         const measured = (effective: boolean) => {
           ineffectiveCompactions = effective ? 0 : ineffectiveCompactions + 1
         }
@@ -1352,7 +1416,43 @@ const layer = Layer.effect(
           todoContinuations = 0
           reviewed = undefined
           ineffectiveCompactions = 0
+          overflowRecoveries = 0
         }
+        // The turn ends here: nothing we can send fits the provider, and compacting again would
+        // only repeat the last attempt.
+        const refuseOversized = Effect.fnUntraced(function* (input: {
+          message: SessionV1.Assistant
+          model: Provider.Model
+          projected: number
+        }) {
+          const limit = hardLimit({ model: input.model, outputTokenMax: flags.outputTokenMax })
+          const text = ModelLimit.doomed({
+            providerID: input.model.providerID,
+            limit,
+            estimated: input.projected,
+          })
+          input.message.error = new SessionV1.ContextOverflowError({ message: text }).toObject()
+          input.message.finish = "error"
+          input.message.time.completed = Date.now()
+          yield* sessions.updateMessage(input.message)
+          yield* guards.record({ sessionID, guard: "compaction", action: "stop", detail: text })
+          yield* Effect.logWarning("request refused before sending; it would exceed the provider limit", {
+            "session.id": sessionID,
+            limit,
+            projected: input.projected,
+            recoveries: overflowRecoveries,
+          })
+          yield* goals.pause(sessionID, `${CompactionGuard.COMPACTION_GUARD_PAUSE}${text}`).pipe(Effect.ignore)
+          yield* events.publish(Session.Event.Error, { sessionID, error: input.message.error })
+          yield* events
+            .publish(TuiEvent.ToastShow, {
+              title: "Request too large",
+              message: text,
+              variant: "warning",
+              duration: 10_000,
+            })
+            .pipe(Effect.ignore)
+        })
         // Why automatic compaction may not run now, if it may not.
         const compactionHold = Effect.fnUntraced(function* (history: SessionV1.WithParts[]) {
           const current = yield* sessions.get(sessionID).pipe(Effect.orDie)
@@ -1776,6 +1876,7 @@ const layer = Layer.effect(
                 })
                 // A new goal turn: its compactions are counted afresh.
                 ineffectiveCompactions = 0
+                overflowRecoveries = 0
                 continue
               }
             }
@@ -2118,6 +2219,85 @@ const layer = Layer.effect(
               ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS_PROMPT }] : []),
             ]
             lastRequest = { system, tools, messages: stepMessages, seen: msgs.map((message) => message.info.id) }
+
+            // Preflight: what this request carries, projected from the provider's count for the
+            // last one plus what history gained since. The compaction threshold stays with the
+            // provider's own count above; this catches a request the provider would refuse, which
+            // is compacted first and, once compaction has had its two chances, not sent at all.
+            const requestEstimate = overhead + Token.estimate(JSON.stringify(stepMessages))
+            const cfg = yield* config.get()
+            const observed = yield* limits.get(
+              model.providerID,
+              model.id,
+              Provider.declaredLimit(cfg, model.providerID, model.id),
+            )
+            // The provider's count for the last step of this model, when there is one, plus what
+            // history gained since: the step's own output and tool results, and every message
+            // after it. When this drain sent that step, the gain is the difference of estimates.
+            // A count taken before old tool output was trimmed no longer describes the history.
+            const evidence =
+              lastFinished &&
+              !lastFinished.summary &&
+              lastFinished.modelID === model.id &&
+              lastFinished.providerID === model.providerID &&
+              relieved !== lastFinished.id
+                ? lastFinished
+                : undefined
+            const gained = yield* Effect.gen(function* () {
+              if (!evidence) return 0
+              if (lastSent?.messageID === evidence.id) return Math.max(0, requestEstimate - lastSent.estimate)
+              const since = msgs.slice(msgs.findIndex((message) => message.info.id === evidence.id))
+              if (since.length === 0) return 0
+              return Token.estimate(JSON.stringify(yield* MessageV2.toModelMessagesEffect(since, model)))
+            })
+            const accepted = evidence ? SessionPreflight.counted(evidence.tokens) : undefined
+            const projected = SessionPreflight.project({
+              estimate: requestEstimate,
+              observed,
+              last: accepted === undefined ? undefined : { counted: accepted, gained },
+            })
+            const limit = hardLimit({ model, outputTokenMax: flags.outputTokenMax })
+            if (
+              cfg.compaction?.auto !== false &&
+              projected !== undefined &&
+              SessionPreflight.wouldRefuse({ projected, limit, accepted, observed })
+            ) {
+              yield* Effect.logInfo("request projected over the provider limit", {
+                "session.id": sessionID,
+                projected,
+                estimate: requestEstimate,
+                limit,
+                recoveries: overflowRecoveries,
+              })
+              const hold = yield* compactionHold(msgs)
+              if (hold !== undefined || overflowRecoveries >= SessionPreflight.MAX_RECOVERIES) {
+                yield* refuseOversized({ message: handle.message, model, projected })
+                return "break" as const
+              }
+              // Trimming old tool output may be enough; the trimmed request is projected again.
+              const relief = yield* compaction.relieve({
+                sessionID,
+                model,
+                tokens: SessionPreflight.tokens(projected),
+                at: lastFinished?.time.completed,
+              })
+              if (relief === "fits") {
+                if (lastFinished) relieved = lastFinished.id
+                return "continue" as const
+              }
+              overflowRecoveries++
+              // A request that cannot be sent is treated like one the provider refused: the
+              // person's request is replayed after the summary.
+              yield* compaction.create({
+                sessionID,
+                agent: lastUser.agent,
+                model: lastUser.model,
+                auto: true,
+                overflow: true,
+              })
+              return "continue" as const
+            }
+            lastSent = { messageID: handle.message.id, estimate: requestEstimate }
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -2169,6 +2349,10 @@ const layer = Layer.effect(
               return "break" as const
             }
             if (result === "compact") {
+              const refused = !handle.message.finish
+              // The provider's refusal says what its limit is: the next request is sized by it.
+              if (refused && handle.overflow)
+                yield* learnLimit({ sessionID, model, error: handle.overflow, estimate: requestEstimate })
               // A finished step that crossed the threshold may only need old tool output trimmed.
               if (
                 handle.message.finish &&
@@ -2182,6 +2366,12 @@ const layer = Layer.effect(
                 relieved = handle.message.id
                 return "continue" as const
               }
+              // Two recoveries per turn, before or after a refusal, then the refusal is reported
+              // with what to do about it instead of another summary that cannot fit either.
+              if (refused && overflowRecoveries >= SessionPreflight.MAX_RECOVERIES) {
+                yield* refuseOversized({ message: handle.message, model, projected: projected ?? requestEstimate })
+                return "break" as const
+              }
               const hold = yield* compactionHold(msgs)
               if (hold) {
                 // A finished step only crossed the threshold; the next step decides again.
@@ -2194,12 +2384,13 @@ const layer = Layer.effect(
                 yield* stopCompacting(hold)
                 return "break" as const
               }
+              if (refused) overflowRecoveries++
               yield* compaction.create({
                 sessionID,
                 agent: lastUser.agent,
                 model: lastUser.model,
                 auto: true,
-                overflow: !handle.message.finish,
+                overflow: refused,
               })
             }
             return "continue" as const
@@ -2581,6 +2772,7 @@ export const node = LayerNode.make({
     Database.node,
     MonitorRuntime.node,
     Todo.node,
+    ModelLimit.node,
   ],
 })
 

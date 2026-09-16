@@ -11,6 +11,7 @@ import { Plugin } from "../plugin"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import { Auth } from "../auth"
 import { Env } from "../env"
@@ -1410,6 +1411,17 @@ function modelSuggestions(provider: Info | undefined, modelID: ModelV2.ID, enabl
     .map((item) => item.id)
 }
 
+/** The limit the person's configuration declares for a model, if any. */
+export function declaredLimit(
+  cfg: ConfigV1.Info,
+  providerID: string,
+  modelID: string,
+): ModelLimit.Declared | undefined {
+  const limit = cfg.provider?.[providerID]?.models?.[modelID]?.limit
+  if (!limit) return undefined
+  return { context: limit.context, ...(limit.input === undefined ? {} : { input: limit.input }) }
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -1421,6 +1433,7 @@ const layer = Layer.effect(
     const modelsDevSvc = yield* ModelsDev.Service
     const runtimeFlags = yield* RuntimeFlags.Service
     const events = yield* EventV2.Service
+    const limits = yield* ModelLimit.Service
 
     const state = yield* InstanceState.make<State>(() =>
       Effect.gen(function* () {
@@ -1948,7 +1961,12 @@ const layer = Layer.effect(
           : modelSuggestions(s.catalog[providerID], modelID, runtimeFlags.enableExperimentalModels)
         return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
       }
-      return info
+      // A limit the provider taught us caps the declared one; the person's own limit, set or
+      // changed after the lesson, wins over it.
+      const observed = yield* limits.get(providerID, modelID, declaredLimit(yield* config.get(), providerID, modelID))
+      const input = ModelLimit.effectiveInput(info.limit, observed)
+      if (input === undefined || input === info.limit.input) return info
+      return { ...info, limit: { ...info.limit, input } }
     })
 
     const getLanguage = Effect.fn("Provider.getLanguage")(function* (model: Model) {
@@ -2124,7 +2142,17 @@ export function parseModel(model: string) {
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node, EventV2.node],
+  deps: [
+    FSUtil.node,
+    Config.node,
+    Auth.node,
+    Env.node,
+    Plugin.node,
+    ModelsDev.node,
+    RuntimeFlags.node,
+    EventV2.node,
+    ModelLimit.node,
+  ],
 })
 
 export * as Provider from "./provider"

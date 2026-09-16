@@ -2,7 +2,7 @@ import { APICallError } from "ai"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import type { ProviderV2 } from "@reddb-io/redcode-core/provider"
-import { isContextOverflow } from "@reddb-io/redcode-llm"
+import { isContextOverflow, isContextOverflowBody, isContextOverflowCode } from "@reddb-io/redcode-llm"
 
 export class HeaderTimeoutError extends Error {
   public override readonly name = "ProviderHeaderTimeoutError"
@@ -42,7 +42,9 @@ function message(providerID: ProviderV2.ID, e: APICallError) {
     }
 
     if (!e.responseBody || (e.statusCode && msg !== STATUS_CODES[e.statusCode])) {
-      return msg
+      // A router answers "Provider returned error" and keeps the upstream sentence, the one that
+      // says what went wrong, in its metadata.
+      return `${msg}${upstream(json(e.responseBody))}`
     }
 
     try {
@@ -50,7 +52,7 @@ function message(providerID: ProviderV2.ID, e: APICallError) {
       // try to extract common error message fields
       const errMsg = body.message || body.error || body.error?.message
       if (errMsg && typeof errMsg === "string") {
-        return `${msg}: ${errMsg}`
+        return `${msg}: ${errMsg}${upstream(body)}`
       }
     } catch {}
 
@@ -70,7 +72,20 @@ function message(providerID: ProviderV2.ID, e: APICallError) {
   }).trim()
 }
 
-function json(input: unknown) {
+/**
+ * The upstream error a router forwards inside its own envelope (OpenRouter: `error.metadata.raw`),
+ * appended so the person, and the overflow classifier, read the provider's own sentence.
+ */
+function upstream(body: unknown) {
+  const error = json((body as { error?: unknown } | undefined)?.error) ?? json(body)
+  const raw = json((error as { metadata?: unknown } | undefined)?.metadata)?.raw
+  if (typeof raw !== "string" || !raw.trim()) return ""
+  const inner = json(raw)
+  const message = inner?.error?.message ?? inner?.message
+  return `: ${typeof message === "string" && message.trim() ? message.trim() : raw.trim()}`
+}
+
+function json(input: unknown): any {
   if (typeof input === "string") {
     try {
       const result = JSON.parse(input)
@@ -107,13 +122,22 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   const responseBody = JSON.stringify(body)
   if (body.type !== "error") return
 
+  if (
+    isContextOverflowCode(body?.error?.code) ||
+    isContextOverflowCode(body?.error?.type) ||
+    isContextOverflowBody(responseBody)
+  ) {
+    return {
+      type: "context_overflow",
+      message:
+        typeof body?.error?.message === "string" && body.error.message
+          ? body.error.message
+          : "Input exceeds context window of this model",
+      responseBody,
+    }
+  }
+
   switch (body?.error?.code) {
-    case "context_length_exceeded":
-      return {
-        type: "context_overflow",
-        message: "Input exceeds context window of this model",
-        responseBody,
-      }
     case "insufficient_quota":
       return {
         type: "api_error",
@@ -174,8 +198,15 @@ export type ParsedAPICallError =
 
 export function parseAPICallError(input: { providerID: ProviderV2.ID; error: APICallError }): ParsedAPICallError {
   const m = message(input.providerID, input.error)
-  const body = json(input.error.responseBody)
-  if (isContextOverflow(m) || input.error.statusCode === 413 || body?.error?.code === "context_length_exceeded") {
+  // The message alone misses a router's envelope: the upstream sentence and code live in the body.
+  if (
+    isContextOverflow(m) ||
+    input.error.statusCode === 413 ||
+    (input.error.statusCode !== undefined &&
+      input.error.statusCode >= 400 &&
+      input.error.statusCode < 500 &&
+      isContextOverflowBody(input.error.responseBody))
+  ) {
     return {
       type: "context_overflow",
       message: m,

@@ -52,6 +52,11 @@ export interface Handle {
    * the turn loop has to park an active goal with this reason itself.
    */
   readonly guardStop?: string
+  /**
+   * The provider's refusal when the last attempt was a context overflow that compaction recovers:
+   * not recorded on the message, so the turn loop reads what the provider said here.
+   */
+  readonly overflow?: NonNullable<SessionV1.Assistant["error"]>
   readonly updateToolCall: (
     toolCallID: string,
     update: (part: SessionV1.ToolPart) => SessionV1.ToolPart,
@@ -109,6 +114,8 @@ interface ProcessorContext extends Input {
   blocked: boolean
   /** Set when the loop guard decided to stop the turn. */
   guardStop?: string
+  /** The refusal behind `needsCompaction` when it came from the provider rather than the count. */
+  overflow?: NonNullable<SessionV1.Assistant["error"]>
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
@@ -705,6 +712,7 @@ const layer = Layer.effect(
             return
           }
           ctx.needsCompaction = true
+          ctx.overflow = error
           // Recovered by compaction, so not an error anyone has to act on. If compaction cannot
           // recover it, the loop reports that once, with what to do about it.
           yield* Effect.logInfo("context overflow; compacting", {
@@ -731,6 +739,7 @@ const layer = Layer.effect(
           messageID: input.assistantMessage.id,
         })
         ctx.needsCompaction = false
+        ctx.overflow = undefined
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         return yield* Effect.gen(function* () {
@@ -882,6 +891,9 @@ const layer = Layer.effect(
         },
         get guardStop() {
           return ctx.guardStop
+        },
+        get overflow() {
+          return ctx.overflow
         },
         get message() {
           return ctx.assistantMessage

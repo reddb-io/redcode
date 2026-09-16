@@ -6,9 +6,13 @@ import {
   Message,
   SystemPart,
   TransportReason,
+  contextOverflowNumbers,
   isContextOverflowFailure,
+  type LLMRequest,
+  type Model,
   type ProviderErrorEvent,
 } from "@reddb-io/redcode-llm"
+import { ModelLimit } from "../../model-limit"
 import { Cause, Clock, DateTime, Duration, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
 import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
 import { Flag } from "../../flag/flag"
@@ -155,15 +159,59 @@ const layer = Layer.effect(
     const plans = yield* SessionPlan.Service
     const monitors = yield* Monitor.Service
     const db = (yield* Database.Service).db
+    const limits = yield* ModelLimit.Service
+    const configEntriesAtStart = yield* config.entries()
     const compaction = SessionCompaction.make({
       scope: yield* Scope.Scope,
       latestUser: (sessionID, beforeSeq) => SessionHistory.latestUser(db, sessionID, beforeSeq).pipe(Effect.orDie),
       events,
       llm,
-      config: yield* config.entries(),
+      config: configEntriesAtStart,
       beforeCompact: ({ sessionID, reason }) =>
         hooks.run({ event: "PreCompact", session_id: sessionID, matcher: reason }),
       guardStore: CompactionGuardStore.make(db),
+      limits,
+    })
+    /**
+     * What a provider's refusal teaches about its limit, kept so the next request from the model
+     * is sized by it instead of repeating the refusal.
+     */
+    const learnLimit = Effect.fnUntraced(function* (input: {
+      readonly sessionID: SessionSchema.ID
+      readonly model: Model
+      readonly request: LLMRequest
+      readonly failure: unknown
+    }) {
+      const failure = input.failure
+      const text =
+        failure instanceof LLMError
+          ? [failure.reason.message, "http" in failure.reason ? failure.reason.http?.body : undefined]
+              .filter((part): part is string => typeof part === "string" && part.length > 0)
+              .join("\n")
+          : LLMEvent.is.providerError(failure as LLMEvent)
+            ? (failure as ProviderErrorEvent).message
+            : ""
+      const numbers = contextOverflowNumbers(text)
+      if (!numbers) return
+      const providerID = input.model.provider ?? ""
+      const observed = ModelLimit.fromNumbers({
+        numbers,
+        output: input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0,
+        estimated: compaction.sizeOf(input.request),
+        declared: SessionCompaction.declaredLimit(configEntriesAtStart, providerID, input.model.id),
+        message: text.split("\n")[0] ?? text,
+      })
+      if (!observed) return
+      yield* limits.learn(providerID, input.model.id, observed)
+      yield* Effect.logInfo("learned provider input limit", {
+        sessionID: input.sessionID,
+        providerID,
+        modelID: input.model.id,
+        input: observed.input,
+        counted: observed.counted,
+        estimated: observed.estimated,
+        ratio: observed.ratio,
+      })
     })
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
       const session = yield* store.get(sessionID)
@@ -515,8 +563,32 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })
-      if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
-        return yield* Effect.die(continueAfterCompaction(currentStep, retry))
+      const preflight = yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request })
+      if (preflight.action === "compacted") return yield* Effect.die(continueAfterCompaction(currentStep, retry))
+      if (preflight.action === "refuse") {
+        // Not sent: the provider would refuse it, and compaction had its chances. Reported as the
+        // step's failure, with what to do about it.
+        yield* recordGuard({ sessionID: session.id, guard: "compaction", action: "stop", detail: preflight.reason })
+        yield* pauseGoal(session.id, preflight.reason)
+        yield* createLLMEventPublisher(events, {
+          sessionID: session.id,
+          agent: agent.id,
+          model: {
+            id: ModelV2.ID.make(model.id),
+            providerID: ProviderV2.ID.make(model.provider ?? ""),
+            ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
+          },
+        }).failAssistant(preflight.reason)
+        return {
+          needsContinuation: false,
+          todoEligible: false,
+          step: currentStep,
+          goalStopped: false,
+          goalID: undefined,
+          failed: true,
+          tokens: 0,
+        }
+      }
       // A retry replays the provider turn the goal already counted: an outage is not budget exhaustion.
       const goalID = retry ? retry.goalID : yield* goals.beginTurn(sessionID).pipe(Effect.orDie)
       if (goalID === false)
@@ -710,6 +782,9 @@ const layer = Layer.effect(
           const stream = yield* restore(Effect.raceFirst(providerStream, watchdog)).pipe(Effect.exit)
           const failure =
             stream._tag === "Failure" ? Option.getOrUndefined(Cause.findErrorOption(stream.cause)) : undefined
+          // The refusal says what the provider's limit is: the next request is sized by it.
+          if (isContextOverflowFailure(overflowFailure ?? failure))
+            yield* learnLimit({ sessionID: session.id, model, request, failure: overflowFailure ?? failure })
           if (
             recoverOverflow &&
             !publisher.hasAssistantStarted() &&
@@ -899,47 +974,43 @@ const layer = Layer.effect(
 
     const nextRetry = (retry: Retry): Retry => ({ ...retry, attempt: retry.attempt + 1 })
 
-    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (
-      sessionID,
-      promotion,
-      step,
-      retry,
-      withoutNative,
-    ) {
-      return yield* runTurnAttempt(sessionID, promotion, step, undefined, retry, withoutNative).pipe(
-        Effect.catchDefect(
-          Effect.fnUntraced(function* (defect) {
-            if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
-            if (defect.transition._tag === "RetryWithoutNativeSearch")
+    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(
+      function* (sessionID, promotion, step, retry, withoutNative) {
+        return yield* runTurnAttempt(sessionID, promotion, step, undefined, retry, withoutNative).pipe(
+          Effect.catchDefect(
+            Effect.fnUntraced(function* (defect) {
+              if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
+              if (defect.transition._tag === "RetryWithoutNativeSearch")
+                return yield* runAfterOverflowCompaction(
+                  sessionID,
+                  undefined,
+                  defect.transition.step,
+                  defect.transition.retry,
+                  true,
+                )
+              if (defect.transition._tag === "RetryProvider") {
+                yield* waitToRetry(sessionID, defect.transition)
+                return yield* runAfterOverflowCompaction(
+                  sessionID,
+                  undefined,
+                  defect.transition.step,
+                  nextRetry(defect.transition.retry),
+                )
+              }
+              if (defect.transition._tag === "ContinueAfterOverflowCompaction")
+                return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
+              yield* Effect.yieldNow
               return yield* runAfterOverflowCompaction(
                 sessionID,
                 undefined,
                 defect.transition.step,
                 defect.transition.retry,
-                true,
               )
-            if (defect.transition._tag === "RetryProvider") {
-              yield* waitToRetry(sessionID, defect.transition)
-              return yield* runAfterOverflowCompaction(
-                sessionID,
-                undefined,
-                defect.transition.step,
-                nextRetry(defect.transition.retry),
-              )
-            }
-            if (defect.transition._tag === "ContinueAfterOverflowCompaction")
-              return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
-            yield* Effect.yieldNow
-            return yield* runAfterOverflowCompaction(
-              sessionID,
-              undefined,
-              defect.transition.step,
-              defect.transition.retry,
-            )
-          }),
-        ),
-      )
-    })
+            }),
+          ),
+        )
+      },
+    )
 
     const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, retry, withoutNative) {
       return yield* runTurnAttempt(
@@ -1149,5 +1220,6 @@ export const node = makeLocationNode({
     SessionGoalCompletion.node,
     SessionPlan.node,
     Monitor.node,
+    ModelLimit.node,
   ],
 })

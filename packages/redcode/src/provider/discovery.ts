@@ -1,5 +1,6 @@
 import { Effect, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 
 export const Input = Schema.Struct({ baseURL: Schema.String, apiKey: Schema.String })
 export const Limit = Schema.Struct({ context: Schema.Number, output: Schema.Number })
@@ -24,6 +25,15 @@ export type Result = typeof Result.Type
  */
 export const DEFAULT_LIMIT: Limit = { context: 128_000, output: 8_192 }
 
+/**
+ * What a model with a guessed context is given: the default held back by the reserve, so a
+ * request sized against it stays under a real limit somewhat smaller than the guess.
+ */
+export const GUESSED_LIMIT: Limit = {
+  context: ModelLimit.conservative(DEFAULT_LIMIT.context),
+  output: DEFAULT_LIMIT.output,
+}
+
 /** A model list larger than this is refused instead of buffered. */
 export const MAX_CATALOG_BYTES = 5 * 1024 * 1024
 
@@ -33,15 +43,20 @@ export class DiscoveryError extends Schema.TaggedErrorClass<DiscoveryError>()("P
   message: Schema.String,
 }) {}
 
-const CONTEXT_FIELDS = ["context_length", "max_context_length", "context_window"] as const
+const CONTEXT_FIELDS = ["context_length", "max_context_length", "context_window", "max_input_tokens"] as const
 const OUTPUT_FIELDS = ["max_output_tokens", "max_output_length", "max_completion_tokens"] as const
+/** OpenRouter reports the serving provider's own limits under `top_provider`. */
+const NESTED = "top_provider"
 
 const Catalog = Schema.Struct({
   data: Schema.Array(
     Schema.Struct({
       id: Schema.String,
       name: Schema.optional(Schema.String),
-      ...Object.fromEntries([...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)])),
+      [NESTED]: Schema.optional(Schema.Unknown),
+      ...Object.fromEntries(
+        [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
+      ),
     }),
   ),
 })
@@ -72,15 +87,27 @@ function firstPositive(item: Record<string, unknown>, fields: readonly string[])
     const value = positive(item[field])
     if (value) return value
   }
+  const nested = item[NESTED]
+  if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+    for (const field of fields) {
+      const value = positive((nested as Record<string, unknown>)[field])
+      if (value) return value
+    }
+  }
 }
 
-/** Router-reported limits win, then the catalog entry, then the conservative default. */
+/**
+ * Router-reported limits win (the serving provider's `top_provider` limits included), then the
+ * catalog entry, then the conservative default. A model whose context nobody reports gets the
+ * guess held back by the reserve, and the smaller of the router's own and the serving provider's
+ * output limit.
+ */
 export function resolveLimit(item: Record<string, unknown> & { id: string }, catalog?: CatalogLimit) {
   const reported = { context: firstPositive(item, CONTEXT_FIELDS), output: firstPositive(item, OUTPUT_FIELDS) }
   const known = reported.context && reported.output ? undefined : catalog?.(item.id)
   const context = reported.context ?? positive(known?.context)
   const output = reported.output ?? positive(known?.output)
-  const limitContext = context ?? DEFAULT_LIMIT.context
+  const limitContext = context ?? GUESSED_LIMIT.context
   return {
     limit: { context: limitContext, output: output ?? Math.min(DEFAULT_LIMIT.output, limitContext) },
     estimated: context === undefined || output === undefined,

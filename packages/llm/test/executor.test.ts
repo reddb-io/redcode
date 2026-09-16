@@ -91,6 +91,52 @@ describe("RequestExecutor", () => {
     ),
   )
 
+  it.effect("classifies the exact 400 envelope a router forwards, upstream sentence in metadata included", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const direct = yield* executor.execute(request).pipe(Effect.flip)
+      expectLLMError(direct)
+      expect(direct.reason).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+      expect(errorHttp(direct)?.body).toContain("exceeds the maximum allowed input length of 131072 tokens")
+      const wrapped = yield* executor.execute(request).pipe(Effect.flip)
+      expectLLMError(wrapped)
+      expect(wrapped.reason).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+    }).pipe(
+      Effect.provide(
+        responsesLayer([
+          new Response(
+            JSON.stringify({
+              error: {
+                message: "input length 145210 exceeds the maximum allowed input length of 131072 tokens",
+                type: "invalid_request_error",
+                code: "invalid_request",
+              },
+            }),
+            { status: 400 },
+          ),
+          new Response(
+            JSON.stringify({
+              error: {
+                message: "Provider returned error",
+                code: 400,
+                metadata: {
+                  raw: JSON.stringify({
+                    error: {
+                      message: "input length 145210 exceeds the maximum allowed input length of 131072 tokens",
+                      type: "invalid_request_error",
+                    },
+                  }),
+                  provider_name: "Novita",
+                },
+              },
+            }),
+            { status: 400 },
+          ),
+        ]),
+      ),
+    ),
+  )
+
   it.effect("does not classify generic HTTP 413 payload errors as context overflow", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service

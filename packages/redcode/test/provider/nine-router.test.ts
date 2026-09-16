@@ -13,7 +13,7 @@ const discovered = {
   baseURL: "http://127.0.0.1:20128/v1",
   models: [
     { id: "cc/new", name: "New", limit: { context: 200000, output: 64000 }, estimated: false },
-    { id: "kept", name: "Kept", limit: ProviderDiscovery.DEFAULT_LIMIT, estimated: true },
+    { id: "kept", name: "Kept", limit: ProviderDiscovery.GUESSED_LIMIT, estimated: true },
   ],
 }
 
@@ -39,16 +39,14 @@ describe("NineRouter.plan", () => {
 
   test("adds limits to a previously discovered model that has none", () => {
     expect(NineRouter.plan({ kept: { name: "Kept" } }, discovered).provider.models.kept).toEqual({
-      limit: ProviderDiscovery.DEFAULT_LIMIT,
+      limit: ProviderDiscovery.GUESSED_LIMIT,
     })
   })
 })
 
 function router(body: unknown, status = 200) {
   return Effect.acquireRelease(
-    Effect.sync(() =>
-      Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json(body, { status }) }),
-    ),
+    Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json(body, { status }) })),
     (server) => Effect.promise(() => server.stop(true)),
   )
 }
@@ -97,7 +95,9 @@ it.effect("connect saves models with a positive context before the key and prune
     expect(models["cc/claude-test"]).toEqual({ name: "cc/claude-test", limit: { context: 200000, output: 64000 } })
     expect(models["mystery-combo"].limit?.context).toBeGreaterThan(0)
     expect(JSON.stringify(fake.writes[0].config)).not.toContain("secret-router-key")
-    expect(fake.stored).toEqual([{ key: "9router", info: expect.objectContaining({ type: "api", key: "secret-router-key" }) }])
+    expect(fake.stored).toEqual([
+      { key: "9router", info: expect.objectContaining({ type: "api", key: "secret-router-key" }) },
+    ])
   }),
 )
 

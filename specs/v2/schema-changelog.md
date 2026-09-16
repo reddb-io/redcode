@@ -1,5 +1,11 @@
 # V2 Schema Changelog
 
+## 2026-09-16: Requests Sized By The Provider's Own Limit
+
+- Describe `limit.context`, `limit.input` and `limit.output` on a configured model (V2 `providers.<id>.models.<id>.limit` and V1 `provider.<id>.models.<id>.limit`): the context window, the separate input cap and the output cap, and that a limit a provider reports when refusing a request is learned and applied when smaller while setting or changing the configured value clears the lesson. Descriptions only; the fields and their types are unchanged, so existing configurations decode as before.
+- Add the state file `model-limits.json` (`{ version: 1, models: { "<provider>/<model>": { input, counted?, estimated?, ratio?, at, message, declared? } } }`) under the state directory, read by both runtimes and by `redcode debug limits`. It is not part of the HTTP API, the durable events or the database.
+- Add no route, migration or durable-event version. The `SessionCompaction.compactIfNeeded` preflight of the V2 runner now answers `{ action: "send" | "compacted" | "refuse", reason? }` instead of a boolean; a refusal ends the step with a `session.step.failed` event whose message says the request would exceed the provider's limit.
+
 ## 2026-09-15: Design Review Notes Name Their Ancestors
 
 - Add optional `parent` (at most 1200 characters) to each `Design.Feedback.items[]` entry (`POST /api/session/:sessionID/design/:designID/feedback`): the element's parent and grandparent, innermost first, each as its descriptor and absolute XPath, such as `button "Close" (/html/body/div/button) in div[role=dialog] "New conversation" (/html/body/div)`. Raise the `label` limit from 120 to 240 characters. The rendered `<design-review>` message shows `parent` as a `Parent:` line after `XPath:`, and its Next step gains one sentence asking for a `data-design-id` when any note names an element whose target and label carry none. Stored notes without `parent` decode and render as before; a label of at most 120 characters still decodes.
