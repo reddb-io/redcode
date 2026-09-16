@@ -130,6 +130,136 @@ test("preserves failed transaction begin errors", async () => {
   }
 })
 
+/** A second connection to the same file, as another process would hold it. */
+const withHolder = async (fn: (filename: string, holder: Database) => Promise<void>) => {
+  const dir = await mkdtemp(join(tmpdir(), "effect-drizzle-sqlite-"))
+  const filename = join(dir, "shared.db")
+  const holder = new Database(filename)
+  try {
+    holder.run("pragma journal_mode = WAL")
+    holder.run("pragma busy_timeout = 0")
+    holder.run("create table users (id integer primary key autoincrement, name text not null)")
+    await fn(filename, holder)
+  } finally {
+    if (holder.inTransaction) holder.run("rollback")
+    holder.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+const onFile = <A, E>(filename: string, effect: Effect.Effect<A, E, SqlClientService>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(SqliteClient.layer({ filename })), Effect.scoped))
+
+test("begins every transaction in the configured mode", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    await onFile(
+      filename,
+      Effect.gen(function* () {
+        const deferred = yield* EffectDrizzleSqlite.makeWithDefaults()
+        yield* deferred.run(sql`pragma busy_timeout = 0`)
+        // A deferred transaction only reads here, so the other writer does not stop it.
+        expect(yield* deferred.transaction((tx) => tx.select().from(users))).toEqual([])
+
+        const immediate = yield* EffectDrizzleSqlite.makeWithDefaults({ transaction: { behavior: "immediate" } })
+        const error = yield* immediate.transaction((tx) => tx.select().from(users)).pipe(Effect.flip)
+        expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+      }),
+    )
+  })
+})
+
+test("retries a locked outermost transaction as a whole once the lock is released", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    const release = setTimeout(() => holder.run("commit"), 150)
+    try {
+      await onFile(
+        filename,
+        Effect.gen(function* () {
+          const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+            transaction: { behavior: "immediate", retry: { attempts: 8, baseDelayMs: 20, maxDelayMs: 80 } },
+          })
+          yield* db.run(sql`pragma busy_timeout = 0`)
+          let bodies = 0
+          yield* db.transaction((tx) =>
+            Effect.gen(function* () {
+              bodies++
+              yield* tx.insert(users).values({ name: "Retried" })
+            }),
+          )
+          // The lock is taken before the body: a body never runs against a lock it did not get.
+          expect(bodies).toBe(1)
+          expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Retried" }])
+        }),
+      )
+    } finally {
+      clearTimeout(release)
+    }
+  })
+})
+
+test("gives up after the configured attempts while the lock is still held", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    await onFile(
+      filename,
+      Effect.gen(function* () {
+        const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+          transaction: { behavior: "immediate", retry: { attempts: 2, baseDelayMs: 5, maxDelayMs: 10 } },
+        })
+        yield* db.run(sql`pragma busy_timeout = 0`)
+        const error = yield* db.transaction((tx) => tx.insert(users).values({ name: "Blocked" })).pipe(Effect.flip)
+        expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+      }),
+    )
+  })
+})
+
+test("an immediate transaction keeps a competing writer out between its read and its write", async () => {
+  await withHolder(async (filename, holder) => {
+    const interleave = () =>
+      Effect.sync(() => {
+        try {
+          holder.run("insert into users (name) values ('Other process')")
+          return "wrote"
+        } catch (error) {
+          return error instanceof Error && "code" in error ? String(error.code) : "failed"
+        }
+      })
+    const readThenWrite = (db: EffectDrizzleSqlite.EffectSQLiteDatabase) =>
+      db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.select().from(users)
+          const other = yield* interleave()
+          yield* tx.insert(users).values({ name: "Mine" })
+          return other
+        }),
+      )
+
+    await onFile(
+      filename,
+      Effect.gen(function* () {
+        // Deferred: the read took a snapshot, the other writer committed, and the write upgrade
+        // fails with SQLITE_BUSY_SNAPSHOT, which no busy timeout waits out.
+        const deferred = yield* EffectDrizzleSqlite.makeWithDefaults()
+        yield* deferred.run(sql`pragma busy_timeout = 5000`)
+        const error = yield* readThenWrite(deferred).pipe(Effect.flip)
+        expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+
+        // Immediate: the write lock is held from the start, so the other writer is the one told
+        // the database is busy, and this transaction commits what it read against.
+        const immediate = yield* EffectDrizzleSqlite.makeWithDefaults({ transaction: { behavior: "immediate" } })
+        expect(yield* readThenWrite(immediate)).toBe("SQLITE_BUSY")
+        expect(yield* immediate.select({ name: users.name }).from(users)).toEqual([
+          { name: "Other process" },
+          { name: "Mine" },
+        ])
+      }),
+    )
+  })
+})
+
 test("supports returning and rejects empty update sets", async () => {
   await run(
     Effect.gen(function* () {

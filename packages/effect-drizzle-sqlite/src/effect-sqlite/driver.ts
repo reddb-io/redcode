@@ -10,7 +10,12 @@ import { SQLiteAsyncDialect } from "drizzle-orm/sqlite-core/dialect"
 import { SQLiteEffectDatabase } from "../sqlite-core/effect/db"
 import type { DrizzleConfig } from "drizzle-orm/utils"
 import { jitCompatCheck } from "../internal/drizzle-utils"
-import { type EffectSQLiteQueryEffectHKT, type EffectSQLiteRunResult, EffectSQLiteSession } from "./session"
+import {
+  type EffectSQLiteQueryEffectHKT,
+  type EffectSQLiteRunResult,
+  EffectSQLiteSession,
+  type TransactionDefaults,
+} from "./session"
 
 export class EffectSQLiteDatabase<TRelations extends AnyRelations = EmptyRelations> extends SQLiteEffectDatabase<
   EffectSQLiteQueryEffectHKT,
@@ -23,7 +28,10 @@ export class EffectSQLiteDatabase<TRelations extends AnyRelations = EmptyRelatio
 export type EffectDrizzleSQLiteConfig<TRelations extends AnyRelations = EmptyRelations> = Omit<
   DrizzleConfig<Record<string, never>, TRelations>,
   "cache" | "logger" | "schema"
->
+> & {
+  /** Begin mode and lock retry applied to every `transaction` that does not name its own. */
+  readonly transaction?: TransactionDefaults
+}
 
 export const DefaultServices = Layer.merge(EffectCache.Default, EffectLogger.Default)
 
@@ -59,6 +67,7 @@ export const make = Effect.fn("SQLiteDrizzle.make")(function* <TRelations extend
     logger,
     cache,
     useJitMappers: jitCompatCheck(config.jit),
+    transaction: config.transaction,
   })
   const db = new EffectSQLiteDatabase(dialect, session, relations) as EffectSQLiteDatabase<TRelations> & {
     $client: SqlClient
