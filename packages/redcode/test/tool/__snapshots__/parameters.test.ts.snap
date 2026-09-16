@@ -890,6 +890,52 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "notes": {
+          "items": {
+            "properties": {
+              "evidence": {
+                "properties": {
+                  "job": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "job",
+                ],
+                "type": "object",
+              },
+              "feedback": {
+                "type": "string",
+              },
+              "index": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "reason": {
+                "maxLength": 500,
+                "type": "string",
+              },
+              "status": {
+                "enum": [
+                  "resolved",
+                  "partial",
+                  "unresolved",
+                  "accepted",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "feedback",
+              "index",
+              "status",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "type": "array",
+        },
         "presets": {
           "items": {
             "properties": {
