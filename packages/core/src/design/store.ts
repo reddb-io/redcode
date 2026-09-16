@@ -19,6 +19,7 @@ import { DesignAssets } from "./assets"
 import { DesignSystem } from "./system"
 import { DesignBuild } from "./build"
 import { DesignApproval } from "./approval"
+import { DesignRounds } from "./rounds"
 import { AssetTable, DesignTable, FeedbackTable, JobTable, RevisionTable } from "./sql"
 
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
@@ -220,12 +221,18 @@ const make = Effect.gen(function* () {
         message: "Target paths must be relative to the project root and stay inside it",
       })
     if (targets) input = { ...input, targets }
+    // Note statuses are recorded against the stored notes, never written into the document as sent.
+    const { notes: statuses, ...fields } = input
     yield* Effect.try({
-      try: () => DesignParams.validate({ ...document, ...input }),
+      try: () => DesignParams.validate({ ...document, ...fields }),
       catch: (error) =>
         error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: String(error) }),
     })
-    return yield* save({ ...document, ...input })
+    const recorded = statuses?.length
+      ? DesignRounds.apply(document, statuses, yield* jobs(id), Date.now())
+      : { notes: document.notes }
+    if ("problem" in recorded) return yield* new Design.Error({ code: "invalid", message: recorded.problem })
+    return yield* save({ ...document, ...fields, ...(recorded.notes ? { notes: recorded.notes } : {}) })
   }, lock.withPermits(1))
 
   const revisions = Effect.fn("Design.revisions")(function* (id: Design.ID) {
@@ -290,9 +297,12 @@ const make = Effect.gen(function* () {
       .transaction((tx) =>
         Effect.gen(function* () {
           yield* tx.insert(RevisionTable).values({ id: data.id, design_id: id, created: data.created, data }).run()
+          // The first revision after a round's notes answers that round; later notes open the next one.
           yield* tx
             .update(DesignTable)
-            .set({ data: { ...current, revision: data.id, updated: Date.now() } })
+            .set({
+              data: { ...current, ...DesignRounds.published(current, data.id), revision: data.id, updated: Date.now() },
+            })
             .where(eq(DesignTable.id, id))
             .run()
         }),
@@ -441,7 +451,11 @@ const make = Effect.gen(function* () {
       .where(and(eq(FeedbackTable.id, feedback.id), eq(FeedbackTable.design_id, id)))
       .run()
       .pipe(Effect.orDie)
-    if (feedback.end) yield* save({ ...(yield* get(id)), ended: true })
+    const document = yield* get(id)
+    // The message's notes open in the current round; an ended review closes with them recorded.
+    const rounds = DesignRounds.admit(document, feedback)
+    if (feedback.end || rounds !== document)
+      yield* save({ ...document, ...rounds, ended: document.ended || feedback.end })
     return { id: feedback.id, status: "admitted" as const }
   }, lock.withPermits(1))
 

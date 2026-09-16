@@ -20,6 +20,7 @@ import { DesignAssets } from "./assets"
 import { DesignRaster } from "./raster"
 import { DesignRuntime } from "./runtime"
 import { DesignQuality } from "./quality"
+import { DesignRounds } from "./rounds"
 import { screens } from "@reddb-io/redcode-design/screens"
 
 /**
@@ -63,6 +64,97 @@ const declaredScreens = () => {
 const currentScreens = () => {
   const api = (window as unknown as ScreenHandle).__redcodeDesign
   return typeof api?.current === "function" ? api.current() : {}
+}
+
+/**
+ * Locates a review note's element in the rendered page: by its data-design-id, then by the selector
+ * the review frame recorded (within its variant root, else outside every variant), then by XPath.
+ * Marks the element and its container so the checks that follow can address them, and scrolls the
+ * element into view so a focused capture shows it. Runs inside the page; self-contained.
+ */
+type Rect = { x: number; y: number; width: number; height: number }
+type Located = { found: false; how: string } | { found: true; how: string; rect: Rect; container: Rect }
+const locateNote = (input: { target: string; xpath: string; variant: string }): Located => {
+  document.querySelectorAll("[data-redcode-verify]").forEach((node) => node.removeAttribute("data-redcode-verify"))
+  const root = input.variant ? document.querySelector(`[data-design-variant="${input.variant}"]`) : null
+  if (input.variant && !root) return { found: false, how: "variant missing" }
+  const scope: ParentNode = root ?? document
+  const query = input.target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, "")
+  const attempt = (how: string, find: () => Element | null | undefined) => {
+    try {
+      const node = find()
+      return node instanceof HTMLElement || node instanceof SVGElement ? { node, how } : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const design = /\[data-design-id="([^"]+)"\]/.exec(query)?.[1]
+  const outside = (found: Element[]) => found.find((node) => !node.closest("[data-design-variant]"))
+  const hit =
+    (design && attempt("data-design-id", () => scope.querySelector(`[data-design-id="${CSS.escape(design)}"]`))) ||
+    (query &&
+      query !== "page" &&
+      query !== "diagram" &&
+      (attempt("selector", () => scope.querySelector(query)) ||
+        (root && attempt("selector", () => outside([...document.querySelectorAll(query)]))))) ||
+    (input.xpath &&
+      attempt("xpath", () => {
+        const node = document.evaluate(
+          input.xpath,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null,
+        ).singleNodeValue
+        return node instanceof Element && (!root || root.contains(node)) ? node : undefined
+      }))
+  if (!hit) return { found: false, how: "not found" }
+  const element = hit.node as Element
+  // The container is the nearest keyed or landmark ancestor; the scoped checks run inside it.
+  const containers =
+    "[data-design-id], [data-design-screen], section, article, main, header, nav, aside, footer, dialog, form, fieldset, table, ul, ol, li, tr"
+  const container =
+    (element.parentElement?.closest(containers) as HTMLElement | null) ?? element.parentElement ?? document.body
+  element.setAttribute("data-redcode-verify", "target")
+  if (container !== element) container.setAttribute("data-redcode-verify", "container")
+  element.scrollIntoView({ block: "center", inline: "nearest" })
+  const box = element.getBoundingClientRect()
+  const around = (container === element ? element : container).getBoundingClientRect()
+  return {
+    found: true,
+    how: hit.how,
+    rect: { x: box.x + scrollX, y: box.y + scrollY, width: box.width, height: box.height },
+    container: { x: around.x + scrollX, y: around.y + scrollY, width: around.width, height: around.height },
+  }
+}
+
+/** Layout facts about the marked element and its container, plus which of the page-wide checks fall inside it. */
+const scopedLayout = (selectors: string[]) => {
+  const target = document.querySelector<HTMLElement>('[data-redcode-verify="target"]')
+  const container = document.querySelector<HTMLElement>('[data-redcode-verify="container"]') ?? target
+  const findings: string[] = []
+  if (target) {
+    const box = target.getBoundingClientRect()
+    const style = getComputedStyle(target)
+    if (box.width === 0 || box.height === 0 || style.visibility === "hidden" || style.display === "none")
+      findings.push("element is not rendered (zero size or hidden)")
+    else if (box.right > innerWidth + 1 || box.left < -1) findings.push("element extends past the viewport width")
+  }
+  if (
+    container &&
+    container.scrollWidth > container.clientWidth + 1 &&
+    getComputedStyle(container).overflowX === "visible"
+  )
+    findings.push(`container overflows horizontally by ${container.scrollWidth - container.clientWidth}px`)
+  const inside = selectors.filter((selector) => {
+    try {
+      const node = document.querySelector(selector)
+      return !!node && !!container && (container === node || container.contains(node))
+    } catch {
+      return false
+    }
+  })
+  return { findings, inside }
 }
 
 /**
@@ -156,7 +248,7 @@ const make = Effect.gen(function* () {
   })
 
   const render = Effect.fn("DesignRenderer.render")(function* (job: Design.Job) {
-    const report: { audit?: Design.Audit } = {}
+    const report: { audit?: Design.Audit; verify?: Design.Verify } = {}
     const started = Date.now()
     yield* store.putJob({ ...job, status: "running", started })
     const revision = yield* store.revision(job.designID, job.input.revision)
@@ -380,6 +472,273 @@ const make = Effect.gen(function* () {
             DesignFiles.atomic(
               output,
               `<!doctype html><meta charset="utf-8"><title>Approved design comparison</title><h1>${escape(revision.document.name)}</h1><p>Approved ${escape(revision.id)} · implementation ${escape(candidate.id)}</p>${report.join("\n")}`,
+            ),
+          )
+        }
+
+        if (job.input.format === "verify") {
+          const current = yield* store.get(job.designID)
+          const round = job.input.round ?? DesignRounds.latest(current)?.number
+          const roundInfo = current.rounds?.find((item) => item.number === round)
+          const notes = round === undefined ? [] : DesignRounds.notes(current, round)
+          if (round === undefined || !roundInfo || !notes.length)
+            return yield* new Design.Error({
+              code: "invalid",
+              message: round === undefined ? "No feedback round to verify yet" : `Round ${round} has no notes`,
+            })
+          const LIMIT = 24
+          const WIDTH = 1440
+          const findings: string[] = []
+          type Draft = {
+            -readonly [K in keyof Design.VerifyNote]: Design.VerifyNote[K] extends ReadonlyArray<string>
+              ? string[]
+              : Design.VerifyNote[K]
+          }
+          const results: Draft[] = []
+          const runtimeErrors: string[] = []
+          page.on("pageerror", (error) => runtimeErrors.push(error.message))
+          if (notes.length > LIMIT)
+            findings.push(
+              `Only the first ${LIMIT} of ${notes.length} notes were verified; verify the rest in another job.`,
+            )
+          const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
+          const escape = (value: string) =>
+            value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
+          /** Serves one revision's build at design.local, with the screen runtime the review page adds. */
+          const serve = (source: string) =>
+            io(async () => {
+              await page.unrouteAll()
+              await page.route("**/*", async (route) => {
+                const url = new URL(route.request().url())
+                if (url.origin !== "http://design.local") {
+                  await route.abort()
+                  return
+                }
+                const file = await DesignFiles.resolve(
+                  source,
+                  decodeURIComponent(url.pathname.slice(1)) || "index.html",
+                ).catch(() => undefined)
+                if (!file) {
+                  await route.fulfill({ status: 404, body: "Not found" })
+                  return
+                }
+                await route.fulfill({
+                  body: Buffer.from(await Bun.file(file).bytes()),
+                  contentType: Bun.file(file).type,
+                })
+              })
+            })
+          /** The built directory of the revision a note was taken on; undefined when it cannot be rendered. */
+          const previous = new Map<string, string | undefined>()
+          const before = (revisionID: string) =>
+            Effect.gen(function* () {
+              if (previous.has(revisionID)) return previous.get(revisionID)
+              const built = yield* store.revision(job.designID, revisionID).pipe(
+                Effect.flatMap(directory),
+                Effect.catchTag("Design.Error", (error) => {
+                  findings.push(`Revision ${revisionID} cannot be rendered for the before capture: ${error.message}`)
+                  return Effect.succeed(undefined)
+                }),
+              )
+              previous.set(revisionID, built)
+              return built
+            })
+          const values = (params: Design.ParamValues | undefined, controls: Design.Info["controls"]) =>
+            Object.fromEntries(
+              (controls ?? []).map((component) => [
+                component.id,
+                {
+                  ...Object.fromEntries(component.fields.map((field) => [field.id, field.default])),
+                  ...params?.[component.id],
+                },
+              ]),
+            )
+          /** Opens a revision in the note's variant, parameters and screen, as the reviewer saw it. */
+          const prepare = (
+            source: string,
+            snapshot: Design.Info,
+            note: { variant?: string; params?: Design.ParamValues; screen?: string },
+          ) =>
+            io(async () => {
+              runtimeErrors.length = 0
+              await page.goto(`http://design.local/${snapshot.engine === "html" ? snapshot.entry : "index.html"}`, {
+                waitUntil: "load",
+              })
+              await page.evaluate(() => document.fonts.ready.then(() => undefined))
+              if (note.variant)
+                await page.evaluate((id) => {
+                  document.querySelectorAll<HTMLElement>("[data-design-variant]").forEach((element) => {
+                    if (element.dataset.designVariant !== id) element.style.setProperty("display", "none", "important")
+                  })
+                }, note.variant)
+              if (note.params && Object.keys(note.params).length)
+                await page.evaluate(
+                  (detail) => {
+                    window.dispatchEvent(new CustomEvent("design:params", { detail: { values: detail, reset: true } }))
+                  },
+                  values(note.params, snapshot.controls),
+                )
+              if (note.screen) {
+                const wanted = { screen: note.screen, ...(note.variant ? { variant: note.variant } : {}) }
+                await page.waitForFunction(listsScreen, wanted, { timeout: 2000 }).catch(() => undefined)
+                if (!(await page.evaluate(openScreen, wanted))) return `screen ${note.screen} does not exist`
+              }
+              return undefined
+            })
+          /** A focused capture of the located element with its surroundings, clamped to one viewport. */
+          const capture = (file: string, found: { rect: Rect; container: Rect }) =>
+            io(async () => {
+              const pad = 24
+              const width = await page.evaluate(() => document.documentElement.scrollWidth)
+              const height = await page.evaluate(() => document.documentElement.scrollHeight)
+              const x = Math.max(0, Math.min(found.rect.x, found.container.x) - pad)
+              const y = Math.max(0, Math.min(found.rect.y, found.container.y) - pad)
+              const clip = {
+                x,
+                y,
+                width: Math.max(1, Math.min(Math.max(found.rect.width, found.container.width) + 2 * pad, width - x)),
+                height: Math.max(
+                  1,
+                  Math.min(Math.max(found.rect.height, found.container.height) + 2 * pad, 900, height - y),
+                ),
+              }
+              await DesignFiles.atomic(file, await page.screenshot({ fullPage: true, clip, animations: "disabled" }))
+            })
+          yield* io(() => page.setViewportSize({ width: WIDTH, height: 900 }))
+          for (const [position, note] of notes.slice(0, LIMIT).entries()) {
+            const item = note.item
+            const variant = item.params?.variant ?? /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(item.target)?.[1]
+            const where = { variant, params: item.params?.values, screen: item.params?.screen }
+            const locate = { target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" }
+            const result: Draft = {
+              feedback: note.feedback,
+              index: note.index,
+              label: DesignRounds.label(note),
+              found: false,
+              blocking: false,
+              findings: [],
+              scenarios: [],
+              reason: "",
+            }
+            const base = path.join(path.dirname(output), `${job.id}-${position}`)
+            // Before: the revision the note was taken on, so the reviewer sees what changed.
+            const origin = item.revision ?? roundInfo.revision
+            const source = origin === revision.id ? undefined : yield* before(origin)
+            if (source) {
+              yield* serve(source)
+              const snapshot = (yield* store.revision(job.designID, origin)).document
+              const problem = yield* prepare(source, snapshot, where)
+              const located = problem ? undefined : yield* io(() => page.evaluate(locateNote, locate))
+              if (located?.found) {
+                yield* capture(`${base}-before.png`, located)
+                result.before = `${base}-before.png`
+              }
+            }
+            // After: the revision under verification.
+            yield* serve(root)
+            const problem = yield* prepare(root, revision.document, where)
+            if (problem) result.findings.push(problem)
+            const located: Located = problem
+              ? { found: false, how: problem }
+              : yield* io(() => page.evaluate(locateNote, locate))
+            if (located.found) {
+              result.found = true
+              yield* capture(`${base}-after.png`, located)
+              result.after = `${base}-after.png`
+              const checks = yield* io(() => page.evaluate(DesignQuality.inspect))
+              const layout = yield* io(() =>
+                page.evaluate(
+                  scopedLayout,
+                  checks.map((check) => check.selector),
+                ),
+              )
+              result.findings.push(...layout.findings)
+              for (const check of checks.filter((check) => layout.inside.includes(check.selector)))
+                result.findings.push(
+                  `${check.severity} · ${check.rule} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
+                )
+              if (checks.some((check) => layout.inside.includes(check.selector) && check.severity === "error"))
+                result.blocking = true
+              const accessibility = yield* io(() =>
+                new AxeBuilder({ page })
+                  .include('[data-redcode-verify="container"], [data-redcode-verify="target"]')
+                  .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+                  .analyze(),
+              )
+              for (const violation of accessibility.violations) {
+                result.findings.push(`error · ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`)
+                result.blocking = true
+              }
+              if (runtimeErrors.length) {
+                result.findings.push(...runtimeErrors.map((error) => `error · script error: ${error}`))
+                result.blocking = true
+              }
+              // Scenarios on the note's screen and variant exercise the states the element takes part in.
+              const relevant = revision.document.scenarios
+                .filter(
+                  (scenario) =>
+                    !scenario.notApplicable &&
+                    (!scenario.variant || scenario.variant === variant) &&
+                    (scenario.screen ?? "") === (where.screen ?? ""),
+                )
+                .slice(0, 2)
+              for (const scenario of relevant) {
+                yield* prepare(root, revision.document, { variant, params: scenario.params, screen: scenario.screen })
+                const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
+                const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
+                const outcome = yield* io(async () => {
+                  for (const action of scenario.actions) {
+                    if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
+                    if (action.action === "fill")
+                      await target(action.selector).fill(action.value ?? "", { timeout: 3000 })
+                    if (action.action === "press")
+                      await target(action.selector).press(action.value ?? "Enter", { timeout: 3000 })
+                  }
+                  await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
+                  return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
+                    ? "exercised"
+                    : "state does not match"
+                }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
+                result.scenarios.push(`${scenario.name}: ${outcome}`)
+                if (outcome !== "exercised") result.findings.push(`review · scenario ${scenario.name}: ${outcome}`)
+              }
+            } else {
+              result.blocking = true
+            }
+            const blocking = result.findings.filter((finding) => finding.startsWith("error ·"))
+            const advisory = result.findings.length - blocking.length
+            result.reason = !result.found
+              ? `element not found in ${revision.id} (${located.how}; looked up by data-design-id, selector and XPath)`
+              : blocking.length
+                ? `found; ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"}: ${blocking[0].replace(/^error · /, "")}`
+                : advisory
+                  ? `found; ${advisory} advisory finding${advisory === 1 ? "" : "s"}`
+                  : `found; no findings${result.scenarios.length ? `; ${result.scenarios.length} scenario${result.scenarios.length === 1 ? "" : "s"} exercised` : ""}`
+            results.push(result)
+            yield* progress((position + 1) / Math.min(notes.length, LIMIT))
+          }
+          report.verify = { revision: revision.id, round, width: WIDTH, notes: results, findings }
+          const image = (file: string | undefined, alt: string) =>
+            file
+              ? Bun.file(file)
+                  .bytes()
+                  .then(
+                    (bytes) =>
+                      `<figure><figcaption>${alt}</figcaption><img style="max-width:100%" alt="${alt}" src="data:image/png;base64,${Buffer.from(bytes).toString("base64")}"></figure>`,
+                  )
+              : Promise.resolve(`<p>${alt}: no capture</p>`)
+          const sections = yield* io(() =>
+            Promise.all(
+              results.map(
+                async (item) =>
+                  `<section id="note-${item.index}-${escape(item.feedback)}"><h2>${item.index}. ${escape(item.label)} — ${escape(item.reason)}</h2><p>Note: ${escape(notes.find((note) => note.feedback === item.feedback && note.index === item.index)?.item.text ?? "")}</p>${await image(item.before, "Before")}${await image(item.after, "After")}<h3>Findings</h3><ul>${item.findings.map((finding) => `<li>${escape(finding)}</li>`).join("") || "<li>None</li>"}</ul><h3>Scenarios</h3><ul>${item.scenarios.map((line) => `<li>${escape(line)}</li>`).join("") || "<li>None on this screen</li>"}</ul></section>`,
+              ),
+            ),
+          )
+          yield* io(() =>
+            DesignFiles.atomic(
+              output,
+              `<!doctype html><meta charset="utf-8"><title>Design verify</title><h1>${escape(revision.document.name)}</h1><p>Round ${round} verified on revision ${escape(revision.id)} at ${WIDTH}px. Captures are evidence for the agent's per-note statuses, not approval.</p>${findings.length ? `<ul>${findings.map((finding) => `<li>${escape(finding)}</li>`).join("")}</ul>` : ""}${sections.join("\n")}`,
             ),
           )
         }
@@ -635,6 +994,18 @@ const make = Effect.gen(function* () {
 
   const start = Effect.fn("DesignRenderer.start")(function* (id: Design.ID, input: Design.Render) {
     yield* store.revision(id, input.revision)
+    if (input.format === "verify") {
+      // Fail now, in the tool result, rather than in a job the agent has to poll for.
+      const document = yield* store.get(id)
+      const round = input.round ?? DesignRounds.latest(document)?.number
+      if (round === undefined)
+        return yield* new Design.Error({
+          code: "invalid",
+          message: "No feedback round to verify yet; notes arrive from the review page",
+        })
+      if (!DesignRounds.notes(document, round).length)
+        return yield* new Design.Error({ code: "invalid", message: `Round ${round} has no notes to verify` })
+    }
     const candidate =
       input.format === "compare" ? yield* store.implementation(id, input.implementation ?? "dist") : undefined
     if (candidate && candidate.parent !== input.revision)
@@ -651,7 +1022,8 @@ const make = Effect.gen(function* () {
     }
     yield* store.putJob(job)
     const fiber = yield* render(job).pipe(
-      Effect.timeout("120 seconds"),
+      // A verify renders two revisions per note; it gets room for a round of two dozen notes.
+      Effect.timeout(input.format === "verify" ? "300 seconds" : "120 seconds"),
       Effect.catchCause((cause) =>
         store.putJob({
           ...job,

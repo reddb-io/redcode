@@ -355,6 +355,7 @@ type Endpoint4_6Request = Parameters<RawClient["server.design"]["design.update"]
 type Endpoint4_6Input = {
   readonly sessionID: Endpoint4_6Request["params"]["sessionID"]
   readonly designID: Endpoint4_6Request["params"]["designID"]
+  readonly notes?: Endpoint4_6Request["payload"]["notes"]
   readonly controls?: Endpoint4_6Request["payload"]["controls"]
   readonly presets?: Endpoint4_6Request["payload"]["presets"]
   readonly name?: Endpoint4_6Request["payload"]["name"]
@@ -371,6 +372,7 @@ const Endpoint4_6 = (raw: RawClient["server.design"]) => (input: Endpoint4_6Inpu
   raw["design.update"]({
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
+      notes: input["notes"],
       controls: input["controls"],
       presets: input["presets"],
       name: input["name"],
@@ -556,6 +558,7 @@ type Endpoint4_19Input = {
   readonly designID: Endpoint4_19Request["params"]["designID"]
   readonly revision: Endpoint4_19Request["payload"]["revision"]
   readonly format: Endpoint4_19Request["payload"]["format"]
+  readonly round?: Endpoint4_19Request["payload"]["round"]
   readonly implementation?: Endpoint4_19Request["payload"]["implementation"]
   readonly candidate?: Endpoint4_19Request["payload"]["candidate"]
   readonly asset?: Endpoint4_19Request["payload"]["asset"]
@@ -572,6 +575,7 @@ const Endpoint4_19 = (raw: RawClient["server.design"]) => (input: Endpoint4_19In
     payload: {
       revision: input["revision"],
       format: input["format"],
+      round: input["round"],
       implementation: input["implementation"],
       candidate: input["candidate"],
       asset: input["asset"],

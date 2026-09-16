@@ -4,6 +4,7 @@ import { DateTime, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { SessionEvent } from "../session/event"
 import { DesignFeedback } from "./feedback"
+import { DesignRounds } from "./rounds"
 
 /** Bounds on one feed entry; the transcript keeps the full content. */
 export const LIMITS = { text: 12000, summary: 240 } as const
@@ -43,6 +44,43 @@ export function revisionOf(structured: Record<string, unknown>) {
   const design = structured.designID
   if (typeof id !== "string" || !id || typeof design !== "string" || !Schema.is(Design.ID)(design)) return undefined
   return { design, revision: id, name: typeof structured.name === "string" ? structured.name : "" }
+}
+
+/** The tool whose result carries finished jobs, among them a round's verify with its per-note verdicts. */
+export const JOBS_TOOL = "design_jobs"
+
+const decodeJob = Schema.decodeUnknownOption(Design.Job)
+
+/**
+ * One `verified` entry per completed verify job in a design_jobs result. The same job is reported by
+ * every later design_jobs call too; the client merges repeats by job id. Jobs are read one by one, so
+ * a malformed or foreign entry never hides the others.
+ */
+export function verifiedOf(jobs: unknown, base: { seq: number; at: number }): Design.FeedEvent[] {
+  if (!Array.isArray(jobs)) return []
+  return jobs.flatMap((item) => {
+    const decoded = decodeJob(item)
+    if (decoded._tag === "None") return []
+    const job = decoded.value
+    if (job.status !== "completed" || !job.verify) return []
+    return [
+      {
+        ...base,
+        type: "verified" as const,
+        design: job.designID,
+        revision: job.verify.revision,
+        round: job.verify.round,
+        job: job.id,
+        notes: job.verify.notes.map((note) => ({
+          feedback: note.feedback,
+          index: note.index,
+          label: bound(note.label, LIMITS.summary),
+          verdict: DesignRounds.verdict(note),
+          reason: bound(note.reason, LIMITS.summary),
+        })),
+      },
+    ]
+  })
 }
 
 /** Tool calls seen so far, so a result can be attributed to the tool that produced it. */
@@ -89,6 +127,7 @@ export function reduce(
   if (event.type === "session.next.tool.success") {
     const tool = state.calls.get(event.data.callID) ?? ""
     const published = tool === PREVIEW_TOOL ? revisionOf(event.data.structured) : undefined
+    const verified = tool === JOBS_TOOL ? verifiedOf(event.data.structured.jobs, base) : []
     return [
       state,
       [
@@ -101,6 +140,7 @@ export function reduce(
           summary: summarize(event.data.structured),
         },
         ...(published ? [{ ...base, type: "published" as const, ...published }] : []),
+        ...verified,
       ],
     ]
   }

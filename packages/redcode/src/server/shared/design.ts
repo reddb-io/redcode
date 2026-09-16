@@ -243,12 +243,13 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             if (parts[4] === "job" && parts[6] === "file" && request.method === "GET") {
               const job = (yield* renderer.jobs(id)).find((job) => job.id === parts[5])
               if (!job?.result || job.status !== "completed") return HttpServerResponse.empty({ status: 404 })
+              // A verify report is read in the browser from the feed; other exports download.
               return HttpServerResponse.uint8Array(yield* Effect.promise(() => Bun.file(job.result!).bytes()), {
                 contentType: job.input.format === "gif" ? "image/gif" : "text/html",
                 headers: {
-                  "content-disposition": `attachment; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
+                  "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
                   "x-content-type-options": "nosniff",
-                  "content-security-policy": "default-src 'none'; sandbox",
+                  "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
                 },
               })
             }

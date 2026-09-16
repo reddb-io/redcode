@@ -259,7 +259,7 @@ export async function screenNotice(root: string, engine: Design.Info["engine"], 
 export function report(
   jobs: readonly Pick<
     Design.Job,
-    "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit"
+    "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit" | "verify"
   >[],
   revision: string | null,
 ) {
@@ -278,12 +278,26 @@ export function report(
       )
       .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))[0]
   const status = jobs.toSorted((a, b) => b.created - a.created).slice(0, 12)
+  const verify = jobs
+    .filter((job) => job.input.revision === revision && job.status === "completed" && job.verify)
+    .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))[0]
   return [
     ...status.map(
       (job) =>
         `${job.id}: ${job.status} (${Math.round(job.progress * 100)}%) revision=${job.input.revision} ${job.result ?? job.error ?? ""}`,
     ),
     ...(jobs.length > status.length ? [`${jobs.length - status.length} older job statuses omitted.`] : []),
+    ...(verify?.verify
+      ? [
+          `Current verify: ${verify.id}, round ${verify.verify.round}, revision ${revision}. One line per note; open the captures with the image-capable read tool before recording a status.`,
+          ...verify.verify.notes.map(
+            (note) =>
+              `${note.index}. ${note.feedback} #${note.index} ${note.label}: ${note.reason}${note.before ? ` before: ${note.before}` : ""}${note.after ? ` after: ${note.after}` : ""}${note.findings.length ? ` findings: ${note.findings.slice(0, 4).join(" | ")}` : ""}`,
+          ),
+          ...verify.verify.findings,
+          `Record each note with design_document update {"notes":[{"feedback":"<message id>","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"<why, for anything but resolved>","evidence":{"job":"${verify.id}"}}]}. Resolved needs the element found with no blocking finding; partial, unresolved and accepted need a reason.`,
+        ]
+      : []),
     ...(jobs.length && !jobs.some((job) => job.input.format === "audit")
       ? []
       : current?.audit

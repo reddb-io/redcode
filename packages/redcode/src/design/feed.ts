@@ -72,7 +72,9 @@ export function part(
     status,
     summary: DesignFeed.bound(summary, DesignFeed.LIMITS.summary),
   }
-  if (item.tool !== DesignFeed.PREVIEW_TOOL || item.state.status !== "completed") return [entry]
+  if (item.state.status !== "completed") return [entry]
+  if (item.tool === DesignFeed.JOBS_TOOL) return [entry, ...DesignFeed.verifiedOf(item.state.metadata.jobs, base)]
+  if (item.tool !== DesignFeed.PREVIEW_TOOL) return [entry]
   const revision = item.state.metadata.revision
   const design = item.state.metadata.id
   if (typeof revision !== "string" || !revision || !Schema.is(Design.ID)(design)) return [entry]

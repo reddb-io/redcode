@@ -338,10 +338,11 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           try: () => Bun.file(job.result!).bytes(),
           catch: () => new Design.Error({ code: "not-found", message: "Export file is unavailable" }),
         })
+        // A verify report is read in the browser from the feed; other exports download.
         return HttpServerResponse.uint8Array(bytes, {
           contentType: job.input.format === "gif" ? "image/gif" : "text/html",
           headers: {
-            "content-disposition": `attachment; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
+            "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
             "x-content-type-options": "nosniff",
             "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
           },

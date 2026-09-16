@@ -1856,8 +1856,14 @@ export type ProviderConfig = {
         }
       }
       limit?: {
+        /**
+         * Context window in tokens: the most a request's input and output may carry together. Set it to what the provider behind a router or proxy actually enforces when that is smaller than the catalog's value. A limit the provider reports when refusing a request is learned and applied when smaller (see `redcode debug limits`); setting or changing this value clears that lesson.
+         */
         context: number
         input?: number
+        /**
+         * Maximum output tokens the model may produce in one request.
+         */
         output: number
       }
       modalities?: {
@@ -5401,6 +5407,22 @@ export type DesignFeedEvent =
       type: "agent"
       agent: string
     }
+  | {
+      seq: number | "NaN" | "Infinity" | "-Infinity"
+      at: number | "NaN" | "Infinity" | "-Infinity"
+      type: "verified"
+      design: string
+      revision: string
+      round: number
+      job: string
+      notes: Array<{
+        feedback: string
+        index: number
+        label: string
+        verdict: "pass" | "warn" | "fail"
+        reason: string
+      }>
+    }
 
 export type DesignFeedEventStream = string
 
@@ -5507,6 +5529,54 @@ export type DesignComponent = {
   props?: string
 }
 
+export type DesignRound = {
+  number: number
+  opened: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  revision: string
+  feedback: Array<string>
+  published?: string
+}
+
+export type DesignParamContext = {
+  values: DesignParamValues
+  preset?: string
+  variant?: string
+  component?: string
+  screen?: string
+}
+
+export type DesignFeedbackItem = {
+  target: string
+  text: string
+  params?: DesignParamContext
+  tag?: string
+  elementText?: string
+  selectedText?: string
+  label?: string
+  xpath?: string
+  context?: string
+  parent?: string
+  revision?: string
+}
+
+export type DesignNoteEvidence = {
+  job: string
+  revision?: string
+  capture?: string
+  findings?: Array<string>
+}
+
+export type DesignNote = {
+  feedback: string
+  index: number
+  round: number
+  item: DesignFeedbackItem
+  status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+  reason?: string
+  evidence?: DesignNoteEvidence
+  updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
 export type DesignInfo = {
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
@@ -5542,6 +5612,8 @@ export type DesignInfo = {
   approvedRevision: string
   ended: boolean
   updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  rounds?: Array<DesignRound>
+  notes?: Array<DesignNote>
 }
 
 export type DesignCreate = {
@@ -5552,7 +5624,18 @@ export type DesignCreate = {
   application?: string
 }
 
+export type DesignNoteUpdate = {
+  feedback: string
+  index: number
+  status: "resolved" | "partial" | "unresolved" | "accepted"
+  reason?: string
+  evidence?: {
+    job: string
+  }
+}
+
 export type DesignUpdate = {
+  notes?: Array<DesignNoteUpdate>
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
   name?: string
@@ -5587,28 +5670,6 @@ export type DesignVariantOperation = {
   name?: string
   order?: Array<string>
   text?: string
-}
-
-export type DesignParamContext = {
-  values: DesignParamValues
-  preset?: string
-  variant?: string
-  component?: string
-  screen?: string
-}
-
-export type DesignFeedbackItem = {
-  target: string
-  text: string
-  params?: DesignParamContext
-  tag?: string
-  elementText?: string
-  selectedText?: string
-  label?: string
-  xpath?: string
-  context?: string
-  parent?: string
-  revision?: string
 }
 
 export type DesignFeedback = {
@@ -5707,7 +5768,8 @@ export type DesignImportAsset = {
 
 export type DesignRender = {
   revision: string
-  format: "html" | "gif" | "audit" | "compare"
+  format: "html" | "gif" | "audit" | "compare" | "verify"
+  round?: number
   implementation?: string
   candidate?: string
   asset?: string
@@ -5717,6 +5779,27 @@ export type DesignRender = {
   repeat?: number
   background?: string
   transparent?: boolean
+}
+
+export type DesignVerifyNote = {
+  feedback: string
+  index: number
+  label: string
+  found: boolean
+  blocking: boolean
+  before?: string
+  after?: string
+  findings: Array<string>
+  scenarios: Array<string>
+  reason: string
+}
+
+export type DesignVerify = {
+  revision: string
+  round: number
+  width: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  notes: Array<DesignVerifyNote>
+  findings: Array<string>
 }
 
 export type DesignJob = {
@@ -5731,6 +5814,7 @@ export type DesignJob = {
   started?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   finished?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   audit?: DesignAudit
+  verify?: DesignVerify
 }
 
 export type ModelApi =

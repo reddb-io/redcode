@@ -1006,3 +1006,23 @@ Affected schema:
 Compatibility:
 
 - Existing documents, approval packages and context snapshots without `targets` (and summaries without `journey`) decode unchanged and render "none recorded".
+
+## 2026-09-16: Feedback Rounds, Note Statuses and the Round Verify
+
+Affected schema:
+
+- Add `Design.Round` (`number`, `opened`, `revision`, `feedback` message ids, optional `published`) and `Design.Note` (`feedback`, 1-based `index`, `round`, the `item` as the browser sent it, `status`, optional `reason` and `evidence`) with `Design.NoteStatus` (`open`, `resolved`, `partial`, `unresolved`, `accepted`) and `Design.NoteEvidence` (`job`, optional `revision`, `capture`, `findings`). `Design.Info` gains optional `rounds` and `notes`; `Design.Update` gains optional `notes` of `Design.NoteUpdate` (`feedback`, `index`, a status other than `open`, optional `reason` of at most 500 characters and `evidence.job`), at most 100 per update.
+- `Design.Render.format` accepts `verify`, with optional `round` (the latest round by default). `Design.Job` gains optional `verify: Design.Verify` (`revision`, `round`, `width`, per-note `Design.VerifyNote` with `found`, `blocking`, optional `before`/`after` capture paths, `findings`, `scenarios`, one-line `reason`, and job-level `findings`).
+- `Design.FeedEvent` gains the `verified` member (`design`, `revision`, `round`, `job`, per-note `verdict` of `pass`, `warn` or `fail` with a `reason`), emitted by both feeds whenever a `design_jobs` result carries a completed verify job; clients merge repeats by job id.
+- `Design.FeedbackItem` moved before `Design.Info` in the module; `Design.notesOf(feedback)` names a message's review notes in rendered order (variant markers excluded).
+- `GET .../job/:jobID/file` serves a verify report inline (both runtimes); other exports still download.
+- No new routes or database migrations. Generated client and SDK types pick up the fields.
+
+Change:
+
+- `DesignStore.acknowledge` opens or extends the current round with the message's notes; `publish` records the first revision after a round's notes as its answer; `update` merges note statuses and copies the cited verify job's observation into the evidence, refusing unknown notes and jobs that are not completed verifies.
+- The renderer's `verify` format locates each note by `data-design-id`, selector or XPath in its variant, parameters and screen, captures a focused crop before and after, runs the scenarios of the note's screen and axe/layout checks scoped to the element's container, and writes a report with anchors per note.
+
+Compatibility:
+
+- Documents, revisions and approval packages without `rounds`/`notes` decode unchanged; jobs without `verify` are unaffected.
