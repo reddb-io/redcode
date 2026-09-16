@@ -1,6 +1,6 @@
 export * as NativeToolSearch from "./native-tool-search"
 
-import type { Model } from "@reddb-io/redcode-llm"
+import { LLMError, type Model } from "@reddb-io/redcode-llm"
 import type { ToolSearch } from "./tool-search"
 
 /**
@@ -26,6 +26,13 @@ export const TOOL: Record<Mode, string> = { anthropic: "tool_search_tool_bm25" }
 
 /** Names the provider executes itself; never settled locally, never replayed without their tool. */
 export const NAMES: ReadonlySet<string> = new Set(["tool_search_tool_bm25", "tool_search_tool_regex"])
+
+/**
+ * Names whose provider-executed parts are dropped when replaying history. The provider's own search
+ * tools, plus `tool_search`: that is the client-side tool's name and also OpenAI's hosted one, and a
+ * provider-executed part under it can only have come from a hosted search this runner never sends.
+ */
+export const REPLAYED: ReadonlySet<string> = new Set([...NAMES, "tool_search"])
 
 // The models Anthropic lists for the tool search tool; dated snapshots match by prefix.
 const ANTHROPIC_MODELS = [
@@ -68,6 +75,34 @@ export function isRejected(model: Pick<Model, "id" | "provider">) {
 /** Test hook: forget every rejection. */
 export function reset() {
   rejected.clear()
+}
+
+const MISSING_REFERENCE = /Tool reference '[^']*' not found in available tools/i
+
+// Only errors about the search feature itself: its tool types, the deferral flag and its parameter
+// paths, or a reference the provider cannot resolve. Generic words appear in unrelated 400s that a
+// retry without search would not fix.
+const REJECTIONS = [/tool_search_tool_(?:bm25|regex)/i, MISSING_REFERENCE, /defer_loading/i, /tool_reference/i]
+
+const failure = (error: unknown) => {
+  if (!(error instanceof LLMError)) return undefined
+  const http = "http" in error.reason ? error.reason.http : undefined
+  return { status: http?.response?.status, text: `${error.reason.message} ${http?.body ?? ""}` }
+}
+
+/** A 400 about the search feature: the provider (or this history) cannot use native search. */
+export function isRejection(error: unknown) {
+  const info = failure(error)
+  return info?.status === 400 && REJECTIONS.some((pattern) => pattern.test(info.text))
+}
+
+/**
+ * A reference the provider cannot resolve comes from this Session's history, not from missing
+ * support: retry without native search, but do not turn it off for the model.
+ */
+export function isMissingReference(error: unknown) {
+  const info = failure(error)
+  return info?.status === 400 && MISSING_REFERENCE.test(info.text)
 }
 
 /**

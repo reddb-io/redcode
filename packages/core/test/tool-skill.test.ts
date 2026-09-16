@@ -54,6 +54,7 @@ describe("SkillTool", () => {
               get: () => Effect.die("unused"),
               forSession: () => Effect.die("unused"),
               list: () => Effect.die("unused"),
+              rules: () => Effect.die("unused"),
             }),
           )
           const skills = Layer.succeed(
