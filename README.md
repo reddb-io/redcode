@@ -45,7 +45,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 
 - [Install](#install) — native CLI and installation methods
 - [Use](#use) — every command, and what it is for
-- [9Router](#9router) — connect a local or remote router without editing configuration
+- [OpenAI-compatible providers](#openai-compatible-providers) — connect any OpenAI-compatible endpoint, or 9Router, without editing configuration
 - [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 - [Tasks](#tasks) — requested work, progress and explicit blockers
@@ -301,8 +301,20 @@ OS sandbox for arbitrary scripts or extension implementations. Those tools must 
 same preservation policy. An invalid shell `workdir` is rejected before execution with the
 session directory and recovery instructions; it never changes the directory of later calls.
 
-## 9Router
+## OpenAI-compatible providers
 
+Open `/connect` and choose **OpenAI-compatible** to connect any endpoint that speaks the OpenAI API
+(vLLM, LM Studio, Ollama, LiteLLM, a company gateway, a hosted provider). The wizard asks for the API
+URL, a provider id (suggested from the host), a display name, the API type (Chat Completions, or
+Responses through `@ai-sdk/openai`) and the key: paste it, type `{env:VARIABLE}` to keep only a
+reference in configuration, or leave it empty for endpoints without one. Models are read from
+`/models`; if that fails or lists nothing, type the model ids instead (`model-a 128k, model-b`).
+Each id is a separate provider, and running the wizard again for an existing id updates it. See the
+[custom provider docs](packages/web/src/content/docs/providers.mdx) for the configuration it writes.
+
+### 9Router
+
+**9Router** in `/connect` is a preset of the same wizard with its id, name and default URL filled in.
 With [9Router](https://github.com/decolua/9router) running and an account or combo configured in
 its dashboard:
 
@@ -335,6 +347,10 @@ router no longer lists are removed, unless you customized them with any setting 
 Project configuration still takes precedence over global configuration. If an existing API-key
 override, endpoint override or provider/model filter prevents activation, Redcode reports it.
 Adding `9router` to `disabled_providers` hides it from `/connect`.
+
+If the `9router` provider points to an address that is not 9Router's default (because another
+endpoint was connected through it), `/connect` → **9Router** offers to move that connection to its
+own provider id. Its settings, models and saved key move with it; keeping it as it is works too.
 
 ## Modes
 

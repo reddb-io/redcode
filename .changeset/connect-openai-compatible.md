@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+`/connect` → **OpenAI-compatible** connects any endpoint that speaks the OpenAI API without editing JSON: enter the API URL, a provider id (suggested from the host), a display name, the API type (Chat Completions or Responses) and a key, pasted into the credential store or kept as an `{env:VARIABLE}` reference in configuration. Models come from the endpoint's `/models` list with their limits; when that fails or is empty you type the model ids instead of hitting a dead end. Running it again for an id updates that provider, built-in ids ask before being overridden, and the message at the end names the configuration file that was written. It replaces the credential-only **Other** entry. **9Router** is now a preset of the same wizard, and a `9router` provider that points to another endpoint can be moved to its own id. The server route `POST /provider/openai-compatible/connect` does the checks, discovery and saving in one call; `POST /provider/9router/connect` is a thin wrapper over it.
