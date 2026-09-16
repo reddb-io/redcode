@@ -64,10 +64,12 @@ import {
   latestQueuedPrompt,
   parseSteerCommand,
   promptDelivery,
+  legacyAltReturn,
   STEER_SLASH,
   steerKeyActive,
   steerKeyIntent,
   stripSteerCommand,
+  type KeyReport,
   type PromptIntent,
 } from "../../prompt/steer"
 
@@ -961,8 +963,9 @@ export function Prompt(props: PromptProps) {
 
   // The steer key (alt+return by default) is "send now" in both states: while the session works it
   // steers, delivering at the next step instead of queueing; idle it submits exactly like Enter.
-  // It sits above the managed textarea layer so a user config that also lists the key under
-  // `input_newline` gets steer/submit here rather than a newline.
+  // It sits above the managed textarea layer, where `input_newline` also lists alt+return: a bare
+  // ESC CR is rejected here and falls through to that newline, because terminals that map
+  // Shift+Enter to ESC CR send exactly what a legacy alt+return sends.
   useBindings(() => ({
     target: inputTarget,
     enabled: steerKeyActive({ focused: inputTarget() !== undefined, disabled: Boolean(props.disabled) }),
@@ -973,7 +976,8 @@ export function Prompt(props: PromptProps) {
         title: "Steer running agent",
         category: "Prompt",
         // IME: double-defer like the textarea's native submit so the last composed character lands.
-        run: () => {
+        run: (ctx: { event?: KeyReport }) => {
+          if (legacyAltReturn(ctx.event)) return false
           setTimeout(
             () =>
               setTimeout(() => {

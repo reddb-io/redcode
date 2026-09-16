@@ -6,7 +6,7 @@ import { testRender, useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { onCleanup } from "solid-js"
 import { TuiKeybind } from "../src/config/keybind"
-import { steerKeyActive, steerKeyIntent } from "../src/prompt/steer"
+import { legacyAltReturn, steerKeyActive, steerKeyIntent } from "../src/prompt/steer"
 import { getOpencodeModeStack, OPENCODE_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
 
 function createResolvedKeymapConfig(input: TuiKeybind.KeybindOverrides = {}) {
@@ -170,7 +170,8 @@ async function mountSteer(input: {
           ref={(r: TextareaRenderable) => {
             textarea = r
             r.focus()
-            // Mirrors the prompt's steer layer: always on, the intent judged per press.
+            // Mirrors the prompt's steer layer: always on, the intent judged per press, and a bare
+            // ESC CR rejected so it falls through to the newline.
             offSteer = keymap.registerLayer({
               target: r,
               priority: 1,
@@ -178,7 +179,8 @@ async function mountSteer(input: {
               commands: [
                 {
                   name: "input.steer",
-                  run: () => {
+                  run: (ctx) => {
+                    if (legacyAltReturn(ctx.event)) return false
                     const intent = steerKeyIntent(input.busy ? "busy" : "idle")
                     calls.push(intent === "steer" ? "steer" : "submit:steer-key")
                   },
@@ -233,17 +235,62 @@ test("shift+return inserts a newline whether busy or idle", async () => {
   }
 })
 
-test("a legacy terminal's ESC CR is alt+return and steers while busy", async () => {
-  const { app, calls, text } = await mountSteer({ busy: true, kittyKeyboard: false })
-  try {
-    // Without the kitty protocol the mock sends alt as an ESC prefix, the way xterm-likes do.
-    app.mockInput.pressEnter({ meta: true })
-    expect(calls).toEqual(["steer"])
-    expect(text()).toBe("draft")
-  } finally {
-    app.renderer.destroy()
+test("a bare ESC CR stays a newline whether busy or idle", async () => {
+  // Legacy alt+return and a Shift+Enter mapped to ESC CR (VS Code sendSequence, Alacritty chars,
+  // tmux) send the same two bytes, so they cannot steer or submit.
+  for (const busy of [true, false]) {
+    for (const kittyKeyboard of [false, true]) {
+      const { app, calls, text } = await mountSteer({ busy, kittyKeyboard })
+      try {
+        app.renderer.stdin.emit("data", Buffer.from("\x1b\r"))
+        expect(calls).toEqual([])
+        expect(text()).toBe("\ndraft")
+      } finally {
+        app.renderer.destroy()
+      }
+    }
   }
 })
+
+// What terminals send for Enter and its modified forms once OpenTUI has asked for kitty flags and
+// modifyOtherKeys (`CSI > 4;1 m`). WezTerm with its defaults answers modifyOtherKeys: Shift+Enter
+// is `CSI 27;2;13~` and Alt+Enter a bare ESC CR (bound to fullscreen until unbound).
+const enterReports = [
+  { name: "legacy return (CR)", bytes: "\r", idle: "submit", busy: "submit" },
+  { name: "shift+return, modifyOtherKeys (CSI 27;2;13~)", bytes: "\x1b[27;2;13~", idle: "newline", busy: "newline" },
+  { name: "shift+return, kitty (CSI 13;2u)", bytes: "\x1b[13;2u", idle: "newline", busy: "newline" },
+  { name: "ctrl+return, modifyOtherKeys (CSI 27;5;13~)", bytes: "\x1b[27;5;13~", idle: "newline", busy: "newline" },
+  { name: "ctrl+j (LF)", bytes: "\n", idle: "newline", busy: "newline" },
+  { name: "legacy alt+return or mapped shift+return (ESC CR)", bytes: "\x1b\r", idle: "newline", busy: "newline" },
+  { name: "alt+return, kitty (CSI 13;3u)", bytes: "\x1b[13;3u", idle: "submit:steer-key", busy: "steer" },
+  {
+    name: "alt+return, modifyOtherKeys (CSI 27;3;13~)",
+    bytes: "\x1b[27;3;13~",
+    idle: "submit:steer-key",
+    busy: "steer",
+  },
+] as const
+
+for (const report of enterReports) {
+  for (const busy of [false, true]) {
+    const expected = busy ? report.busy : report.idle
+    test(`${report.name} ${busy ? "while busy" : "while idle"}: ${expected}`, async () => {
+      const { app, calls, text } = await mountSteer({ busy, kittyKeyboard: report.bytes.endsWith("u") })
+      try {
+        app.renderer.stdin.emit("data", Buffer.from(report.bytes))
+        if (expected === "newline") {
+          expect(calls).toEqual([])
+          expect(text()).toBe("\ndraft")
+          return
+        }
+        expect(calls).toEqual([expected])
+        expect(text()).toBe("draft")
+      } finally {
+        app.renderer.destroy()
+      }
+    })
+  }
+}
 
 test("an explicit input_newline on alt+return keeps its newline while busy", async () => {
   const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_newline: "alt+return,ctrl+j" } })

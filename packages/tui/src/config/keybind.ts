@@ -165,10 +165,13 @@ export const Definitions = {
   input_clear: keybind("ctrl+c", "Clear input field"),
   input_paste: keybind({ key: "ctrl+v", preventDefault: false }, "Paste from clipboard"),
   input_submit: keybind("return", "Submit input"),
-  input_newline: keybind("shift+return,ctrl+return,ctrl+j", "Insert newline in input"),
+  input_newline: keybind(
+    "shift+return,ctrl+return,alt+return,ctrl+j",
+    "Insert newline in input. alt+return covers terminals that send ESC CR for Shift+Enter; ctrl+j works in every terminal",
+  ),
   input_steer: keybind(
     STEER_DEFAULT,
-    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key submits like input_submit. Terminals report alt+return as ESC CR or through the kitty keyboard protocol; macOS Terminal.app and iTerm2 need Option set to act as Meta/Esc+, and Windows Terminal binds alt+enter to fullscreen until that action is unbound. /steer <text> works everywhere",
+    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key submits like input_submit. alt+return steers only when the terminal reports it unambiguously (kitty keyboard protocol or modifyOtherKeys); a bare ESC CR, which legacy terminals and Shift+Enter mappings send alike, stays a newline. WezTerm and Windows Terminal bind alt+enter to fullscreen and macOS Terminal.app needs Option set to act as Meta until changed. /steer <text> works everywhere",
   ),
   input_move_left: keybind("left,ctrl+b", "Move cursor left in input"),
   input_move_right: keybind("right,ctrl+f", "Move cursor right in input"),
@@ -491,8 +494,10 @@ function bindingKeys(value: unknown): string[] {
 // A config that puts the steer key on `input_newline` without mentioning `input_steer` asked for a
 // newline on that key: the steer default steps aside there instead of taking it over. Steer used
 // to live on shift+return; a config that lists shift+return under `input_newline` is no longer a
-// conflict, while one that lists alt+return (as the old newline default did) gives up the key,
-// and the busy hint points at `/steer`.
+// conflict, while one that lists alt+return gives up the key and the busy hint points at `/steer`,
+// so a terminal set up to send alt+return as its newline keeps it. The defaults share alt+return
+// on purpose: the steer layer rejects a bare ESC CR, so that legacy encoding reaches
+// `input_newline` and only an alt+return the terminal reports unambiguously steers.
 function steerDefault(keybinds: KeybindOverrides): BindingValueSchema {
   if (keybinds.input_newline === undefined) return STEER_DEFAULT
   const taken = new Set(bindingKeys(keybinds.input_newline))

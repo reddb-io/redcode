@@ -101,7 +101,7 @@ OpenCode has a list of keybinds that you can customize through `tui.json`.
       "preventDefault": false
     },
     "input_submit": "return",
-    "input_newline": "shift+return,ctrl+return,ctrl+j",
+    "input_newline": "shift+return,ctrl+return,alt+return,ctrl+j",
     "input_steer": "alt+return",
     "input_move_left": "left,ctrl+b",
     "input_move_right": "right,ctrl+f",
@@ -305,11 +305,24 @@ Save the file and restart Windows Terminal or open a new tab.
 
 While the agent is working, `Enter` queues your prompt for after the current turn and `Alt+Enter` (`input_steer`) steers: the prompt is delivered at the agent's next step instead. With an empty prompt, `Alt+Enter` steers the most recently queued prompt. When the session is idle, `Alt+Enter` submits like `Enter`. `Shift+Enter` always inserts a newline. `/steer <text>` does the same as `Alt+Enter` and works in every terminal.
 
-Most terminals report `Alt+Enter` out of the box, either as an escape-prefixed return or through the kitty keyboard protocol. Two need a one-time change:
+`Alt+Enter` steers only when the terminal reports it unambiguously: through the kitty keyboard protocol (`CSI 13;3u`, Kitty, Ghostty, Alacritty, foot) or xterm's modifyOtherKeys (`CSI 27;3;13~`). A bare escape-prefixed return (`ESC CR`) stays a newline, because it is also what a `Shift+Enter` mapped to `\x1b\r` sends (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`, tmux), and the two cannot be told apart. In a terminal that only sends `ESC CR` for `Alt+Enter`, use `/steer <text>`; the hint next to the prompt says `/steer` instead of `alt+return` whenever the key may not arrive. `Ctrl+J` inserts a newline in every terminal.
+
+WezTerm sends `Shift+Enter` as `CSI 27;2;13~` with its defaults, so it is always a newline there. Some terminals keep `Alt+Enter` for themselves until you change a setting:
+
+### WezTerm
+
+WezTerm binds `Alt+Enter` to `ToggleFullScreen` and sends `Alt+Enter` as `ESC CR` without the kitty protocol. To steer with it, enable the protocol and free the key in `~/.wezterm.lua`:
+
+```lua
+config.enable_kitty_keyboard = true
+config.keys = {
+  { key = "Enter", mods = "ALT", action = wezterm.action.DisableDefaultAssignment },
+}
+```
 
 ### macOS Terminal.app and iTerm2
 
-Terminal.app sends a plain `Enter` for `Option+Enter` until you enable **Settings → Profiles → Keyboard → Use Option as Meta key**. In iTerm2, set **Settings → Profiles → Keys → Left Option key** (or Right) to **Esc+**. Kitty, WezTerm, Ghostty and Alacritty need no change.
+Terminal.app sends a plain `Enter` for `Option+Enter` until you enable **Settings → Profiles → Keyboard → Use Option as Meta key**, and even then it arrives as `ESC CR`, which stays a newline. In iTerm2, turn on **Settings → Profiles → Keys → Report keys using CSI u** so `Option+Enter` is reported unambiguously.
 
 ### Windows Terminal
 
