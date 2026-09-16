@@ -80,6 +80,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
           label: string
           xpath: string
           context: string
+          parent: string
           rect: { x: number; y: number; width: number; height: number }
           text: string
         }
@@ -1035,6 +1036,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       label: card.label,
       ...(card.xpath ? { xpath: card.xpath } : {}),
       ...(card.context ? { context: card.context } : {}),
+      ...(card.parent ? { parent: card.parent } : {}),
       ...(card.selectedText ? { selectedText: card.selectedText } : {}),
     })
     closeCard()
@@ -1058,6 +1060,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       label: text("label") || text("tag") || "page",
       xpath: text("xpath"),
       context: text("context"),
+      parent: text("parent"),
       rect,
       text: text("text"),
     }
@@ -2443,7 +2446,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           .map((item: Record<string, unknown>) => ({
             target: field(item, "target", 1000),
             tag: field(item, "tag", 64),
-            label: field(item, "label", 120) || field(item, "tag", 64) || field(item, "target", 120),
+            label: field(item, "label", 240) || field(item, "tag", 64) || field(item, "target", 120),
             severity: item.severity === "info" ? ("info" as const) : ("warn" as const),
             text: field(item, "text", 500),
           })),
@@ -2492,9 +2495,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       tag: field("tag", 64),
       elementText: field("elementText", 240),
       selectedText: field("selectedText", 12000),
-      label: field("label", 120) || field("tag", 64) || "page",
+      label: field("label", 240) || field("tag", 64) || "page",
       xpath: field("xpath", 2000),
       context: field("context", 240),
+      parent: field("parent", 1200),
       rect: box(event.data.rect) ?? { x: 0, y: 0, width: 0, height: 0 },
       text: state.card?.text ?? "",
     }

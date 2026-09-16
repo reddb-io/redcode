@@ -234,7 +234,8 @@ test("new interface: native review, annotation draft, lost response retry and ap
     text: "Make this title more prominent",
     tag: "h1",
     elementText: "Checkout",
-    label: 'h1 "Checkout"',
+    label: 'h1 "Checkout" in main "Checkout"',
+    parent: 'main "Checkout" (/html/body/main) in body (/html/body)',
   })
   expect(feedback[0].items[0].selectedText).toBeUndefined()
   expect(feedback[0].items[1]).toMatchObject({
@@ -243,7 +244,7 @@ test("new interface: native review, annotation draft, lost response retry and ap
     tag: "h1",
     elementText: "Checkout",
     selectedText: "Checkout",
-    label: 'h1 "Checkout"',
+    label: 'h1 "Checkout" in main "Checkout"',
   })
   expect(feedback[0].items[2]).toMatchObject({
     target: "#diagram",
@@ -251,7 +252,7 @@ test("new interface: native review, annotation draft, lost response retry and ap
     tag: "pre",
     elementText: "diagram",
     selectedText: "graph TD\nA --> B",
-    label: 'pre "diagram"',
+    label: 'pre "diagram" in main "Checkout"',
   })
   expect(feedback[0].snapshot).toContain("Checkout")
   const history = await api<{ data: { type: string; data: { prompt?: { text: string; files?: unknown[] } } }[] }>(
@@ -264,13 +265,13 @@ test("new interface: native review, annotation draft, lost response retry and ap
     `<design-review id="${current.document.id}" revision="${current.revision.id}" feedback="${feedback[0].id}" ended="false">`,
   )
   expect(message).toContain(
-    '### 1. h1 "Checkout" — #title\nNote: Make this title more prominent\nContext: main "Checkout"\nXPath: /html/body/main/h1\nElement text: "Checkout"',
+    '### 1. h1 "Checkout" in main "Checkout" — #title\nNote: Make this title more prominent\nContext: main "Checkout"\nXPath: /html/body/main/h1\nParent: main "Checkout" (/html/body/main) in body (/html/body)\nElement text: "Checkout"',
   )
   expect(message).toContain(
-    '### 2. h1 "Checkout" — #title\nNote: Use a verb here\nContext: main "Checkout"\nXPath: /html/body/main/h1\nSelected text: "Checkout"',
+    '### 2. h1 "Checkout" in main "Checkout" — #title\nNote: Use a verb here\nContext: main "Checkout"\nXPath: /html/body/main/h1\nParent: main "Checkout" (/html/body/main) in body (/html/body)\nSelected text: "Checkout"',
   )
   expect(message).toContain(
-    '### 3. pre "diagram" — #diagram\nNote: Swap the arrow\nContext: main "Checkout"\nXPath: /html/body/main/pre\nSelected text: "graph TD A --> B"',
+    '### 3. pre "diagram" in main "Checkout" — #diagram\nNote: Swap the arrow\nContext: main "Checkout"\nXPath: /html/body/main/pre\nParent: main "Checkout" (/html/body/main) in body (/html/body)\nSelected text: "graph TD A --> B"',
   )
   expect(message.split("Element text:")).toHaveLength(3)
   expect(message).not.toContain("## Message")
@@ -995,7 +996,9 @@ test("Params synchronizes wizard and modal, persists scenarios and captures note
     expect(body.items[0]).toMatchObject({
       target: "#retry",
       tag: "button",
-      label: 'button "Try again"',
+      label: expect.stringMatching(
+        /^button "Try again" in section\[id="wizard"\] "Step 2 of 3" in main "Checkout scenarios"$/,
+      ),
       text: "Make the retry action clearer",
     })
     expect(body.items[0].params?.values.wizard).toMatchObject({ step: 2, outcome: "error", result: "error" })
@@ -1132,7 +1135,7 @@ test("annotation card keyboard map and reveal", async () => {
     await annotate(page, true)
     await frame.getByRole("heading", { name: "Checkout" }).click()
     await page.locator("#card:not([hidden])").waitFor()
-    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
+    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout" in main "Checkout"')
     expect(await activeID(page)).toBe("card-text")
     // A design:key that does not come from the preview frame is ignored.
     await page.evaluate(() => window.postMessage({ type: "design:key", key: "Escape" }, "*"))
@@ -1152,7 +1155,7 @@ test("annotation card keyboard map and reveal", async () => {
     await page.reload()
     await page.locator("#card:not([hidden])").waitFor()
     expect(await card.inputValue()).toBe("Line one\nline two")
-    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout"')
+    expect(await page.locator("#card-label").textContent()).toBe('h1 "Checkout" in main "Checkout"')
     await annotate(page, true)
     await card.press("Enter")
     await note(page, 'h1 "Checkout"', "Line one").waitFor()
@@ -1160,7 +1163,7 @@ test("annotation card keyboard map and reveal", async () => {
     // Escape closes an empty card, also when pressed inside the prototype.
     await frame.locator("#bottom").click()
     await page.locator("#card:not([hidden])").waitFor()
-    expect(await page.locator("#card-label").textContent()).toBe('p "Footer"')
+    expect(await page.locator("#card-label").textContent()).toBe('p "Footer" in main "Checkout"')
     await card.press("Escape")
     await page.locator("#card").waitFor({ state: "hidden" })
     await frame.locator("#bottom").click()
@@ -1193,9 +1196,13 @@ test("annotation card keyboard map and reveal", async () => {
       text: "Line one\nline two",
       tag: "h1",
       elementText: "Checkout",
-      label: 'h1 "Checkout"',
+      label: 'h1 "Checkout" in main "Checkout"',
     })
-    expect(payload.items[1]).toMatchObject({ target: "#title", text: "Send me now", label: 'h1 "Checkout"' })
+    expect(payload.items[1]).toMatchObject({
+      target: "#title",
+      text: "Send me now",
+      label: 'h1 "Checkout" in main "Checkout"',
+    })
     expect(await page.locator("#notes .note").count()).toBe(0)
     // Reveal scrolls the prototype to the note's element and pulses it; hovering highlights it.
     await frame.locator("#bottom").click()
@@ -1314,7 +1321,7 @@ test("layout inbox queue/dismiss/resolve", async () => {
     expect(payload.items[0]).toMatchObject({
       target: "#banner",
       tag: "p",
-      label: 'p "Banner"',
+      label: 'p "Banner" in main "Checkout"',
       text: "Element extends beyond the viewport",
     })
     expect(payload.items[0].params?.values).toEqual({})

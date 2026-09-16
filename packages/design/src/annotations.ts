@@ -53,12 +53,13 @@ export function annotations() {
     attributes: true,
     attributeFilter: ["data-design-variant", "data-design-label"],
   })
-  // Element references. A note names its element three ways: a selector verified to resolve to exactly
-  // that element within the variant root it lives in (else the document), an absolute XPath, and a label
-  // with the containers around it, so the agent can find it in the prototype source. A click inside a
-  // shadow root arrives retargeted to its host, and a nested iframe is another document this script does
-  // not run in, so both are addressed by their host element.
-  const LIMITS = { target: 1000, xpath: 2000, peers: 50, findings: 30 }
+  // Element references. A note names its element four ways: a selector verified to resolve to exactly
+  // that element within the variant root it lives in (else the document), an absolute XPath, its parent
+  // and grandparent with their XPaths, and a label that reads as a breadcrumb through the named
+  // ancestors around it, so the agent can find it in the prototype source. A click inside a shadow root
+  // arrives retargeted to its host, and a nested iframe is another document this script does not run
+  // in, so both are addressed by their host element.
+  const LIMITS = { target: 1000, xpath: 2000, label: 240, parent: 1200, context: 240, peers: 50, findings: 30 }
   /** Collapses whitespace and cuts by code point, so a surrogate pair is never split. */
   const flat = (value: string | null | undefined, limit: number) => {
     const text = (value ?? "").replace(/\s+/g, " ").trim()
@@ -234,34 +235,53 @@ export function annotations() {
     const field = target.getAttribute("name")
     return field ? `${kind}[name="${flat(field, 30)}"]` : kind
   }
-  const CONTAINERS =
-    "form, fieldset, dialog, [role=dialog], table, section, article, nav, aside, header, footer, main, [data-design-id], [data-design-variant]"
+  // An ancestor worth naming in a breadcrumb: it has a stable key, a role, an accessible name, or it
+  // is a landmark, a control or a repeated item. Table rows and cells are named by the row and column
+  // headers instead. A variant root is named by the target prefix.
+  const ANCESTORS =
+    "[data-design-id], [id], [role], [aria-label], [aria-labelledby], button, a, label, li, nav, header, footer, aside, main, section, article, dialog, form, fieldset, table, details, summary, h1, h2, h3, h4, h5, h6"
+  const LANDMARKS = "nav, header, footer, aside, main, section, article, dialog, form, [role]"
+  /** Elements whose own text is their name; a container is named by its caption or heading only. */
+  const LEAVES =
+    "button, a, label, summary, legend, li, option, h1, h2, h3, h4, h5, h6, [role=button], [role=link], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=listitem], [role=treeitem]"
   const describe = (container: Element) => {
     // Only the container's own caption or heading names it, never one from a nested section.
-    const heading = container.querySelector(
-      ":scope > :is(legend, caption, h1, h2, h3, h4, h5, h6), :scope > header > :is(h1, h2, h3, h4, h5, h6)",
-    )
+    const heading = container.matches(LEAVES)
+      ? undefined
+      : container.querySelector(
+          ":scope > :is(legend, caption, h1, h2, h3, h4, h5, h6), :scope > header > :is(h1, h2, h3, h4, h5, h6)",
+        )
     const name = flat(
       referenced(container) ||
         container.getAttribute("aria-label") ||
-        (heading ? textOf(heading) : "") ||
+        (container.matches(LEAVES) ? textOf(container) : heading ? textOf(heading) : "") ||
         container.getAttribute("title"),
       30,
     )
-    const design = container.getAttribute("data-design-id")
-    const key = design
-      ? `[data-design-id="${flat(design, 40)}"]`
-      : container.id
-        ? `[id="${flat(container.id, 40)}"]`
-        : ""
-    return `${container.localName}${key}${name ? ` "${name}"` : ""}`
+    // A data-design-id is already in the kind; a plain id is the next most stable key.
+    const key = !container.getAttribute("data-design-id") && container.id ? `[id="${flat(container.id, 40)}"]` : ""
+    return `${kindOf(container)}${key}${name ? ` "${name}"` : ""}`
   }
-  /** Containers around the element, nearest first; a variant root is named by the target prefix instead. */
-  const containers = (target: Element) => {
+  const named = (node: Element) =>
+    node.hasAttribute("data-design-id") || !!referenced(node) || !!node.getAttribute("aria-label")
+  /** Named ancestors, nearest first; variant roots and the body are never part of the chain. */
+  const ancestors = (target: Element) => {
     const found: Element[] = []
-    for (let node = target.parentElement?.closest(CONTAINERS); node; node = node.parentElement?.closest(CONTAINERS))
-      if (!node.hasAttribute("data-design-variant")) found.push(node)
+    for (let node = target.parentElement?.closest(ANCESTORS); node; node = node.parentElement?.closest(ANCESTORS))
+      if (!node.hasAttribute("data-design-variant") && node !== document.body && node !== document.documentElement)
+        found.push(node)
     return found
+  }
+  /**
+   * The ancestors a breadcrumb keeps: the two nearest, and the outermost landmark (else the outermost
+   * named one, else the outermost), so a deep element still says which region of the page it is in.
+   */
+  const chain = (target: Element) => {
+    const all = ancestors(target)
+    if (all.length <= 3) return all
+    const rest = all.slice(2).reverse()
+    const outer = rest.find((node) => node.matches(LANDMARKS)) ?? rest.find(named) ?? rest[0]
+    return [...all.slice(0, 2), outer]
   }
   /** The column a cell starts in, counting the spans of the cells before it. */
   const columnOf = (cell: HTMLTableCellElement) =>
@@ -276,59 +296,87 @@ export function annotations() {
     }
     return undefined
   }
-  const context = (target: Element) => {
-    const parts = containers(target).slice(0, 3).reverse().map(describe)
+  /** The row and column headers of the table cell holding the element, when it is in a body row. */
+  const cellOf = (target: Element) => {
     const cell = target.closest("td, th")
-    if (cell instanceof HTMLTableCellElement && cell.parentElement instanceof HTMLTableRowElement) {
-      const row = cell.parentElement
-      // table.rows and row.cells never include a nested table's rows or cells.
-      const table = cell.closest("table")
-      const first = table?.rows[0]
-      const head =
-        table?.tHead?.rows[0] ??
-        (first && [...first.cells].every((item) => item.localName === "th") ? first : undefined)
-      if (row !== head) {
-        const header = [...row.cells].find((item) => item.localName === "th") ?? row.cells[0]
-        if (header && header !== cell) parts.push(`row "${flat(textOf(header), 30)}"`)
-        const column = head ? cellAt(head, columnOf(cell)) : undefined
-        if (column) parts.push(`column "${flat(textOf(column), 30)}"`)
-      }
+    if (!(cell instanceof HTMLTableCellElement) || !(cell.parentElement instanceof HTMLTableRowElement)) return {}
+    const row = cell.parentElement
+    // table.rows and row.cells never include a nested table's rows or cells.
+    const table = cell.closest("table")
+    const first = table?.rows[0]
+    const head =
+      table?.tHead?.rows[0] ?? (first && [...first.cells].every((item) => item.localName === "th") ? first : undefined)
+    if (row === head) return {}
+    const header = [...row.cells].find((item) => item.localName === "th") ?? row.cells[0]
+    const column = head ? cellAt(head, columnOf(cell)) : undefined
+    return {
+      row: header && header !== cell ? `row "${flat(textOf(header), 30)}"` : "",
+      column: column ? `column "${flat(textOf(column), 30)}"` : "",
     }
-    return flat(parts.join(" > "), 240)
+  }
+  /** The places around the element, nearest first: its table row, then its named ancestors. */
+  const crumbs = (target: Element) => {
+    const cell = cellOf(target)
+    return [...(cell.row ? [cell.row] : []), ...chain(target).map(describe)]
+  }
+  const context = (target: Element) => {
+    const column = cellOf(target).column
+    return flat([...crumbs(target).reverse(), ...(column ? [column] : [])].join(" > "), LIMITS.context)
+  }
+  /** The breadcrumb without a position: the element, then where it is, innermost first. */
+  const breadcrumb = (target: Element, base = baseLabel(target)) => {
+    const parts = crumbs(target).slice(0, 3)
+    // A bare tag never stands alone: an element outside every named ancestor names its parent.
+    const where = parts.length ? parts : [describe(target.parentElement ?? document.body)]
+    return `${base} in ${where.join(" in ")}`
   }
   const label = (target: Element) => {
     const kind = kindOf(target)
     const base = baseLabel(target, kind)
-    const container = target.parentElement?.closest(CONTAINERS)
-    // Other variants are hidden, so only rendered elements compete for the same label. Names are only
-    // computed for peers of the same kind, and the scan stops once enough peers settle the position.
+    const full = breadcrumb(target, base)
+    const scope = scopeOf(target)
+    const root = scope instanceof Element ? scope : document.body
+    // Other variants are hidden, so only rendered elements compete for the same breadcrumb. It is
+    // only computed for peers of the same kind and name, and the scan stops after enough of them.
     let total = 0
     let index = 0
     let compared = 0
-    let ambiguous = false
     let more = false
-    for (const node of (container ?? document.body).getElementsByTagName(target.localName)) {
-      if (node !== target && node.getClientRects().length === 0) continue
-      if (total >= LIMITS.peers && index) {
+    for (const node of root.getElementsByTagName(target.localName)) {
+      if (node === target) {
+        total++
+        index = total
+        continue
+      }
+      if (compared >= LIMITS.peers) {
         more = true
         break
       }
-      total++
-      if (node === target) index = total
-      else if (!ambiguous && compared < LIMITS.peers && kindOf(node) === kind) {
-        compared++
-        ambiguous = baseLabel(node, kind) === base
-      }
+      if (kindOf(node) !== kind || node.getClientRects().length === 0 || baseLabel(node, kind) !== base) continue
+      compared++
+      if (breadcrumb(node, base) === full) total++
     }
-    if (!ambiguous) return flat(base, 120)
-    const where = container && !container.hasAttribute("data-design-variant") ? ` in ${describe(container)}` : ""
-    return flat(`${base} (${index} of ${total}${more ? "+" : ""} <${target.localName}>${where})`, 120)
+    return flat(total > 1 ? `${full} (${index} of ${total}${more ? "+" : ""})` : full, LIMITS.label)
+  }
+  /** The parent and grandparent with their XPaths, so a note on a bare element still says what holds it. */
+  const parentOf = (target: Element) => {
+    const parent = target.parentElement
+    if (!parent || parent === document.documentElement) return ""
+    const one = (node: Element) => {
+      const path = xpath(node)
+      return `${describe(node)}${path ? ` (${path})` : ""}`
+    }
+    const grand = parent.parentElement
+    const both = grand && grand !== document.documentElement ? `${one(parent)} in ${one(grand)}` : one(parent)
+    const value = [both, one(parent)].find((item) => item.length <= LIMITS.parent)
+    return value ?? ""
   }
   const reference = (target: Element) => ({
     target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
     xpath: xpath(target),
     context: context(target),
     label: label(target),
+    parent: parentOf(target),
   })
   const rect = (target: Element) => {
     const box = target.getBoundingClientRect()
