@@ -277,4 +277,27 @@ describe("layer node", () => {
       dependencies: [],
     })
   })
+
+  test("builds a node reached through many paths once per build", async () => {
+    // A ladder: every level depends on the two below it, so the top reaches the bottom through
+    // Fibonacci-many paths. Each implementation is fresh (never memoized on its own) and counts builds.
+    const builds: number[] = []
+    const levels: LayerNode.Node<unknown, unknown>[] = []
+    for (let index = 0; index < 16; index++) {
+      const service = Context.Service<unknown, { readonly level: number }>()(`test/LayerNodeLadder${index}`)
+      builds.push(0)
+      const layer = Layer.fresh(
+        Layer.effect(
+          service,
+          Effect.sync(() => {
+            builds[index]++
+            return { level: index }
+          }),
+        ),
+      )
+      levels.push(LayerNode.make({ name: service.key, layer, deps: levels.slice(-2) } as never))
+    }
+    await Effect.runPromise(Effect.void.pipe(Effect.provide(LayerNode.compile(levels.at(-1)!))))
+    expect(builds).toEqual(builds.map(() => 1))
+  })
 })

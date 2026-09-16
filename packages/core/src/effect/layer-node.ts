@@ -267,9 +267,15 @@ export function compile<A, E, const Items extends Replacements = readonly []>(
         if (node.kind === "unbound") throw new Error(`Unbound layer node: ${node.name}`)
         const dependencies = node.dependencies.flatMap(flatten).map(context.visit)
         const implementation = node.implementation! as RuntimeLayer
-        return dependencies.length === 0
-          ? implementation
-          : implementation.pipe(Layer.provide(dependencies as [RuntimeLayer, ...RuntimeLayer[]]))
+        const provided =
+          dependencies.length === 0
+            ? implementation
+            : implementation.pipe(Layer.provide(dependencies as [RuntimeLayer, ...RuntimeLayer[]]))
+        // The graph is a DAG: a node reached through many paths is compiled once, but `Layer.provide`
+        // is not memoized, so building it walked its whole subtree again for every path — about a
+        // hundred thousand scopes and fibers for the location services alone. `Layer.suspend` is
+        // memoized in the MemoMap, so every node is built once per build, whatever its implementation.
+        return Layer.suspend(() => provided)
       },
       { cache, resolve: (node) => replacementMap.get(node.name) ?? node },
     )
