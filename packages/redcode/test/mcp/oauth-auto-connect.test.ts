@@ -5,7 +5,7 @@ import { ListResourcesRequestSchema, ListToolsRequestSchema } from "@modelcontex
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 import { Config } from "../../src/config/config"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { McpAuth } from "../../src/mcp/auth"
@@ -38,6 +38,7 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
       })
       let listToolsCalls = 0
       let requiresAuth = true
+      let acceptedToken = "replacement-token"
 
       if (capabilities === "tools") {
         protocol.setRequestHandler(ListToolsRequestSchema, () => {
@@ -103,7 +104,7 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
           if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 })
 
           if (request.method === "GET") return new Response(null, { status: 405 })
-          if (requiresAuth && request.headers.get("authorization") !== "Bearer replacement-token") {
+          if (requiresAuth && request.headers.get("authorization") !== `Bearer ${acceptedToken}`) {
             return new Response("Unauthorized", {
               status: 401,
               headers: {
@@ -119,6 +120,9 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
         url: new URL("/mcp", http.url).toString(),
         allowAnonymous: () => {
           requiresAuth = false
+        },
+        revokeTokens: () => {
+          acceptedToken = "rotated-token"
         },
         listToolsCalls: () => listToolsCalls,
         close: async () => {
@@ -296,5 +300,96 @@ mcpTest.instance("authenticate() connects a resource-only server without listing
     expect((yield* mcp.authenticate(name)).status).toBe("connected")
     expect(server.listToolsCalls()).toBe(0)
     expect(Object.keys(yield* mcp.resources())).toEqual([`${name}:docs://readme`])
+  }),
+)
+
+/** Plays the browser: follow the authorization URL's redirect back to the local callback listener. */
+function approve(authorizationUrl: string, code = "valid-code") {
+  const url = new URL(authorizationUrl)
+  const redirect = new URL(url.searchParams.get("redirect_uri")!)
+  redirect.searchParams.set("code", code)
+  redirect.searchParams.set("state", url.searchParams.get("state")!)
+  // 0: the listener already shut down because no flow was left to wait for.
+  return Effect.promise(() =>
+    fetch(redirect).then(
+      (response) => response.status,
+      () => 0,
+    ),
+  )
+}
+
+mcpTest.instance("beginAuth and waitAuth finish a client-driven flow without opening a browser", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-client-driven"
+    yield* mcp.add(name, remote(server.url))
+    expect((yield* mcp.info())[name]).toEqual({ type: "remote", tools: 0, oauth: true, auth: "not_authenticated" })
+
+    const started = yield* mcp.beginAuth(name)
+    expect(started.authorizationUrl).toContain("/authorize")
+    expect(yield* mcp.waitAuth(name, started.oauthState, 10)).toEqual({ status: "pending" })
+
+    expect(yield* approve(started.authorizationUrl)).toBe(200)
+    expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
+    expect((yield* mcp.status())[name]).toEqual({ status: "connected" })
+    expect((yield* mcp.info())[name]).toEqual({ type: "remote", tools: 1, oauth: true, auth: "authenticated" })
+  }),
+)
+
+mcpTest.instance("a pasted code finishes the flow and releases the callback listener", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-pasted-code"
+    yield* mcp.add(name, remote(server.url))
+
+    const started = yield* mcp.beginAuth(name)
+    expect((yield* mcp.finishAuth(name, "valid-code")).status).toBe("connected")
+    expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
+    // The listener no longer accepts the state once the pasted code was used.
+    expect(yield* approve(started.authorizationUrl)).not.toBe(200)
+  }),
+)
+
+mcpTest.instance("cancelAuth abandons the attempt and keeps stored credentials", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const auth = yield* McpAuth.Service
+    const name = "test-cancel"
+    yield* auth.updateTokens(name, { accessToken: "old-token" }, server.url)
+    yield* mcp.add(name, remote(server.url))
+
+    const started = yield* mcp.beginAuth(name)
+    const waiting = yield* Effect.forkChild(mcp.waitAuth(name, started.oauthState, 5_000))
+    yield* Effect.sleep("50 millis")
+    yield* mcp.cancelAuth(name)
+    expect(yield* Fiber.join(waiting)).toEqual({ status: "failed", error: "Authorization cancelled" })
+    expect(yield* mcp.waitAuth(name, started.oauthState, 10)).toMatchObject({ status: "failed" })
+    expect((yield* auth.get(name))?.tokens?.accessToken).toBe("old-token")
+    expect(yield* approve(started.authorizationUrl)).not.toBe(200)
+  }),
+)
+
+mcpTest.instance("a token rejected mid-session moves a connected server to needs_auth", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-mid-session"
+    yield* mcp.add(name, remote(server.url))
+    const started = yield* mcp.beginAuth(name)
+    yield* approve(started.authorizationUrl)
+    expect((yield* mcp.waitAuth(name, started.oauthState, 5_000)).status).toBe("connected")
+
+    server.revokeTokens()
+    const client = (yield* mcp.clients())[name]
+    yield* Effect.promise(() => client.listTools().catch(() => undefined))
+    expect((yield* mcp.status())[name]).toEqual({ status: "needs_auth" })
+    expect((yield* mcp.info())[name]?.tools).toBe(0)
   }),
 )

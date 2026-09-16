@@ -109,14 +109,20 @@ import type {
   McpAuthAuthenticateResponses,
   McpAuthCallbackErrors,
   McpAuthCallbackResponses,
+  McpAuthCancelErrors,
+  McpAuthCancelResponses,
   McpAuthRemoveErrors,
   McpAuthRemoveResponses,
   McpAuthStartErrors,
   McpAuthStartResponses,
+  McpAuthWaitErrors,
+  McpAuthWaitResponses,
   McpConnectErrors,
   McpConnectResponses,
   McpDisconnectErrors,
   McpDisconnectResponses,
+  McpInfoErrors,
+  McpInfoResponses,
   McpLocalConfig,
   McpReloadErrors,
   McpReloadResponses,
@@ -2582,6 +2588,79 @@ export class Auth2 extends HeyApiClient {
       },
     )
   }
+
+  /**
+   * Wait for MCP OAuth
+   *
+   * Wait briefly for the OAuth callback of a flow started with mcp.auth.start, then finish it and reconnect the server. Returns pending when the callback has not arrived yet; call again to keep waiting. Does not open a browser.
+   */
+  public wait<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+      oauthState?: string
+      waitMs?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "oauthState" },
+            { in: "body", key: "waitMs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAuthWaitResponses, McpAuthWaitErrors, ThrowOnError>({
+      url: "/mcp/{name}/auth/wait",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel MCP OAuth
+   *
+   * Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAuthCancelResponses, McpAuthCancelErrors, ThrowOnError>({
+      url: "/mcp/{name}/auth/cancel",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class Mcp extends HeyApiClient {
@@ -2688,6 +2767,36 @@ export class Mcp extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get MCP server details
+   *
+   * Get each MCP server's transport, exposed tool count, and OAuth state (authenticated, expired or not authenticated, with the token expiry when known).
+   */
+  public info<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpInfoResponses, McpInfoErrors, ThrowOnError>({
+      url: "/mcp/info",
+      ...options,
+      ...params,
     })
   }
 
