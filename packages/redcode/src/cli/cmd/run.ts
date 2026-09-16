@@ -125,6 +125,23 @@ async function toolError(part: ToolPart) {
   }
 }
 
+/**
+ * The one directory a local `redcode run` works in: `--dir` resolved against the process's
+ * working directory, or that directory itself, as a real path.
+ *
+ * The instance `effectCmd` boots and the directory the session is created in must be this same
+ * path. When they differ the in-process server loads a second instance for the session and the
+ * turn's tools run there, not where the command was started. `PWD` is deliberately not
+ * consulted: a spawner that sets `cwd` and leaves another shell's `PWD` in the environment (CI
+ * runners, process managers, editors) is exactly how the two used to come apart, and the real
+ * path already erases the one thing `PWD` used to carry, a symlinked spelling of the same place.
+ */
+export function resolveRunDirectory(dir?: string, cwd = process.cwd()) {
+  const root = Filesystem.resolve(cwd)
+  if (!dir) return root
+  return Filesystem.resolve(path.isAbsolute(dir) ? dir : path.join(root, dir))
+}
+
 export const RunCommand = effectCmd({
   command: "run [message..]",
   describe: "run Redcode with a message",
@@ -133,7 +150,7 @@ export const RunCommand = effectCmd({
   instance: (args) => !args.attach,
   // For --dir without --attach, load instance for the resolved target dir.
   // The handler also chdirs (preserving the legacy order: chdir → file resolution).
-  directory: (args) => (args.dir && !args.attach ? path.resolve(process.cwd(), args.dir) : process.cwd()),
+  directory: (args) => (args.attach ? process.cwd() : resolveRunDirectory(args.dir)),
   builder: (yargs: Argv) =>
     yargs
       .positional("message", {
@@ -343,14 +360,16 @@ export const RunCommand = effectCmd({
 
       const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
 
-      const root = Filesystem.resolve(process.env.PWD ?? process.cwd())
+      // Same derivation as the `directory` option above, so the session is created in the
+      // instance effectCmd already booted rather than in a second one.
+      const root = resolveRunDirectory()
       const directory = (() => {
         if (!args.dir) return args.attach ? undefined : root
         if (args.attach) return args.dir
 
         try {
-          process.chdir(path.isAbsolute(args.dir) ? args.dir : path.join(root, args.dir))
-          return process.cwd()
+          process.chdir(resolveRunDirectory(args.dir))
+          return Filesystem.resolve(process.cwd())
         } catch {
           UI.error("Failed to change directory to " + args.dir)
           process.exit(1)

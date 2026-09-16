@@ -95,7 +95,9 @@ export type RunHandle = {
   readonly result: Effect.Effect<RunResult>
 }
 
-export type SpawnOpts = { readonly timeoutMs?: number; readonly env?: Record<string, string> }
+// `cwd` defaults to the fixture's home. Set it when a test needs the process started somewhere
+// else, for example to check how a command treats its working directory versus `--dir`.
+export type SpawnOpts = { readonly timeoutMs?: number; readonly env?: Record<string, string>; readonly cwd?: string }
 
 // Typed equivalent of constructing argv for `opencode run`. New flags should
 // land here so tests stay grep-able and refactor-safe.
@@ -220,7 +222,7 @@ export function withCliFixture<A, E>(
       // consumed as the prompt). The old Process.run wrapper defaulted to
       // ignore; ChildProcess.make defaults to pipe, so we set it explicitly.
       const command = ChildProcess.make("bun", ["run", cliEntry, ...args], {
-        cwd: home,
+        cwd: opts?.cwd ?? home,
         env: { ...env, ...opts?.env },
         extendEnv: true,
         stdin: "ignore",
