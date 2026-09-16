@@ -8,6 +8,7 @@ import {
   type ProviderMetadata,
 } from "@reddb-io/redcode-llm"
 import { SessionMessage } from "../message"
+import { NativeToolSearch } from "../../tool/native-tool-search"
 import { ToolInterrupted } from "../tool-interrupted"
 import type { FileAttachment } from "../prompt"
 
@@ -78,12 +79,11 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
   })
 }
 
-// Provider-native tool search (the legacy loop's `tool_search_tool_bm25` on Anthropic and hosted
-// `tool_search` on OpenAI) only replays next to its search tool, which this runner never sends; a
-// search replayed without it is a 400. The tools it loaded are ordinary calls and stay.
-const NATIVE_TOOL_SEARCH = new Set(["tool_search_tool_bm25", "tool_search_tool_regex", "tool_search"])
+// Provider-native tool search only replays next to its search tool, and a step that falls back to
+// the client-side tool does not send one; a search replayed without it is a 400. The tools it
+// loaded are ordinary calls and stay.
 const isNativeToolSearch = (item: SessionMessage.AssistantTool) =>
-  item.provider?.executed === true && NATIVE_TOOL_SEARCH.has(item.name)
+  item.provider?.executed === true && NativeToolSearch.REPLAYED.has(item.name)
 
 const assistant = (message: SessionMessage.Assistant, model: Model) => {
   const sameModel =

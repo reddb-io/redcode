@@ -1,6 +1,9 @@
 export * as ToolSearch from "./tool-search"
 
-import { Search } from "@reddb-io/redcode-codemode"
+// The `search` subpath, not the barrel: the barrel pulls acorn and the TypeScript compiler, and
+// this module is reached from compaction, so every consumer would load them at startup.
+import { DateTime } from "effect"
+import * as Search from "@reddb-io/redcode-codemode/search"
 import type { SessionMessage } from "../session/message"
 
 /**
@@ -331,7 +334,9 @@ export function loadedFromHistory(
 ) {
   const seen: Array<{ name: string; at: number; order: number }> = []
   for (const message of messages) {
-    const created = Number(message.time?.created ?? 0)
+    // Epoch millis, not `Number(...)`: these are `DateTime.Utc` values, and coercing one directly
+    // yields no usable ordering key, which silently collapsed activation order to insertion order.
+    const created = message.time?.created === undefined ? 0 : DateTime.toEpochMillis(message.time.created)
     // A compaction carries what was loaded before it, ahead of anything loaded after.
     if (message.type === "compaction")
       for (const name of message.tools?.loaded ?? [])
@@ -339,7 +344,8 @@ export function loadedFromHistory(
     if (message.type !== "assistant") continue
     for (const item of message.content) {
       if (item.type !== "tool") continue
-      const at = Number(item.time?.ran ?? item.time?.created ?? created)
+      const stamp = item.time?.ran ?? item.time?.created
+      const at = stamp === undefined ? created : DateTime.toEpochMillis(stamp)
       if (names.has(item.name) && !natively?.has(item.name)) seen.push({ name: item.name, at, order: seen.length })
       if (item.name !== TOOL_ID || item.state.status !== "completed") continue
       for (const name of loadedNames(item.state.structured))

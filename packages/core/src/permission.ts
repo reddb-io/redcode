@@ -104,6 +104,15 @@ export interface Interface {
   readonly get: (id: ID) => EffectRuntime.Effect<Request | undefined>
   readonly forSession: (sessionID: SessionV2.ID) => EffectRuntime.Effect<ReadonlyArray<Request>>
   readonly list: () => EffectRuntime.Effect<ReadonlyArray<Request>>
+  /**
+   * The rules in force for a Session, configured and saved together, for a caller that must decide
+   * synchronously and repeatedly - a monitor probe judging each redirect target, say - rather than
+   * ask. Never a substitute for `assert`: it authorizes nothing.
+   */
+  readonly rules: (
+    sessionID: SessionV2.ID,
+    agent?: AgentV2.ID,
+  ) => EffectRuntime.Effect<Permission.Ruleset, SessionV2.NotFoundError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/v2/Permission") {}
@@ -250,6 +259,13 @@ const layer = Layer.effect(
       ),
     )
 
+    const rules = EffectRuntime.fn("PermissionV2.rules")(function* (
+      sessionID: SessionV2.ID,
+      agent?: AgentV2.ID,
+    ) {
+      return [...(yield* configured(sessionID, agent)), ...(yield* savedRules())]
+    })
+
     const reply = EffectRuntime.fn("PermissionV2.reply")((input: ReplyInput) =>
       EffectRuntime.uninterruptible(
         EffectRuntime.gen(function* () {
@@ -330,7 +346,7 @@ const layer = Layer.effect(
       return Array.from(pending.values(), (item) => item.request).filter((request) => request.sessionID === sessionID)
     })
 
-    return Service.of({ ask, assert, reply, get, forSession, list })
+    return Service.of({ ask, assert, reply, get, forSession, list, rules })
   }),
 )
 
