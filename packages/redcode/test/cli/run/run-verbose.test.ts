@@ -15,8 +15,9 @@ describe("redcode run --verbose", () => {
         )
         yield* llm.text("after")
 
+        // A titled session makes no title request, so every provider call is the turn's.
         const result = yield* opencode.run("trace me", {
-          extraArgs: ["--verbose", "--dangerously-skip-permissions"],
+          extraArgs: ["--verbose", "--dangerously-skip-permissions", "--title", "Traced run"],
         })
         opencode.expectExit(result, 0)
         expect(result.stdout).toBe("before\nafter\n")
@@ -90,12 +91,18 @@ describe("redcode run --verbose", () => {
         yield* llm.tool("bash", { command, description: "Call an API" })
         yield* llm.text("done")
         // No --dangerously-skip-permissions: the run asks, and auto-rejects.
-        const result = yield* opencode.run("call the api", { permission: { bash: "ask" }, extraArgs: ["--verbose"] })
+        const result = yield* opencode.run("call the api", {
+          permission: { bash: "ask" },
+          extraArgs: ["--verbose", "--title", "Permission trace"],
+        })
         opencode.expectExit(result, 0)
 
         const lines = result.stderr.split(/\r?\n/)
         const traced = lines.filter((line) => /^(boot\s+\d+ms|verbose\s+\d+ms)/.test(line)).join("\n")
-        const ask = lines.find((line) => line.includes(" permission.ask "))!
+        // The run's own report that it asked and auto-rejected, then the trace's record of it.
+        expect(result.stderr).toContain("permission requested: bash")
+        const ask = lines.find((line) => line.includes(" permission.ask "))
+        if (!ask) throw new Error("no permission.ask line in the trace; stderr was:\n" + result.stderr)
         expect(ask).toContain("permission=bash")
         expect(ask).toContain("patterns=1")
         expect(ask).toContain("program=curl")
@@ -123,7 +130,7 @@ describe("redcode run --verbose", () => {
         })
         yield* llm.text("done")
         const result = yield* opencode.run("show env", {
-          extraArgs: ["--verbose", "--dangerously-skip-permissions"],
+          extraArgs: ["--verbose", "--dangerously-skip-permissions", "--title", "Environment trace"],
           env: { REDCODE_VERBOSE: "1" },
         })
         opencode.expectExit(result, 0)
