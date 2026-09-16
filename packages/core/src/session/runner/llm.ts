@@ -1060,11 +1060,17 @@ const layer = Layer.effect(
               }
             }
             // Waiting on an external observation is a scheduler boundary: neither the todo nudger
-            // nor a goal continuation should spend provider calls while a monitor is still watching
-            // for a condition. The session goes idle instead, and the monitor's queued result starts
-            // the next turn. Only monitors waiting on a condition park; a long-running observation
-            // with a day-long deadline does not hold the goal back for a day.
-            if (!needsContinuation && (yield* monitors.list(input.sessionID)).some(MonitorSchema.parks)) return
+            // nor a goal continuation should spend provider calls while a monitor watches for a
+            // condition. Every running poll parks (`PARK_LIMIT_MS` bounds only one-shot command
+            // monitors, which this runtime cannot start), and the monitor's own queued result starts
+            // the next turn.
+            //
+            // A person waiting outranks the monitor: one queued prompt is promoted and answered
+            // first, so a user message never starves behind an observation.
+            if (!needsContinuation && (yield* monitors.list(input.sessionID)).some(MonitorSchema.parks)) {
+              if (!(yield* SessionInput.promoteNextQueued(db, events, input.sessionID))) return
+              needsContinuation = true
+            }
             if (!needsContinuation) {
               const goal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
               const blocked = SessionTodo.blocker(yield* todos.get(input.sessionID))
