@@ -1026,3 +1026,18 @@ Change:
 Compatibility:
 
 - Documents, revisions and approval packages without `rounds`/`notes` decode unchanged; jobs without `verify` are unaffected.
+
+## 2026-09-16: Enforce the Fix-Round Gate
+
+Affected schema:
+
+- `Design.Note` gains optional `by` (`agent` | `reviewer`, absent on earlier records) and `Design.Update` optional `by: "reviewer"`, which only the review page sends: the reviewer may record `accepted` or `unresolved` with a reason and needs no verify; the `design_document` tool input omits `by`. `PATCH .../design/:designID` (and `design_document update` in both runtimes) refuses a `notes` status without the evidence the gate requires (409 `invalid`, message prefixed `Note status refused:` and naming the recent verify jobs). `POST .../approve`, `design_exit` (both runtimes) and `POST .../feedback` with `end: true` answer 409 `conflict` while any feedback round has notes with status `open` (listed per round).
+
+Change:
+
+- `resolved` requires a completed verify job on the design's current revision that found the note's element without a blocking finding; `partial` requires such a job and a reason; `unresolved` and `accepted` require a reason.
+- Rendered `<design-review>` messages with notes end with the round rule and the message's note ids; the Design instructions and the screen playbook describe the round (fix all, publish once, verify once, record statuses, ask before another round).
+
+Compatibility:
+
+- Documents without rounds are unaffected; approvals of a revision already approved are still acknowledged.

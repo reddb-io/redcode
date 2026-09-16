@@ -236,6 +236,39 @@ export const designGoalScenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .post(`${item}/approve`, "v2.design.approve.openNotes")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const current = yield* published(ctx)
+        yield* json(ctx, "POST", `${current.item}/feedback`, {
+          id: `msg_${crypto.randomUUID()}`,
+          revision: current.revision.id,
+          text: "",
+          items: [{ target: "h1", text: "Name the shop", label: 'h1 "HTTP API checkout"' }],
+          assets: [],
+          snapshot: "",
+          delivery: "queue",
+          end: false,
+        })
+        const revision = Schema.decodeUnknownSync(Design.Revision)(
+          yield* json(ctx, "POST", `${current.item}/revision`, { name: "Answered without statuses" }),
+        )
+        return { ...current, revision }
+      }),
+    )
+    .at((ctx) => ({
+      path: `${ctx.state.item}/approve`,
+      headers: ctx.headers(),
+      body: { revision: ctx.state.revision.id },
+    }))
+    .json(409, (body) => {
+      const error = Schema.decodeUnknownSync(Design.Error)(body)
+      check(
+        error.code === "conflict" && error.message.includes("Round 1 has 1 note without a recorded outcome"),
+        `approval must wait for the round's note statuses: ${error.message}`,
+      )
+    }),
+  http.protected
     .get(`${item}/approval/{revisionID}`, "v2.design.approval")
     .seeded((ctx) =>
       Effect.gen(function* () {

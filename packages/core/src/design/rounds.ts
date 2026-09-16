@@ -26,11 +26,8 @@ export function next(document: Rounds) {
 /** Notes of one round, in arrival order. */
 export const notes = (document: Rounds, round: number) => (document.notes ?? []).filter((note) => note.round === round)
 
-/** Notes of the latest round still awaiting an outcome. */
-export function open(document: Rounds) {
-  const last = latest(document)
-  return last ? notes(document, last.number).filter((note) => note.status === "open") : []
-}
+/** Notes of every round still awaiting an outcome; an older round's notes count until they are recorded. */
+export const open = (document: Rounds) => (document.notes ?? []).filter((note) => note.status === "open")
 
 /**
  * Record an admitted review message: its notes open in the current round, or a new one when the
@@ -83,6 +80,7 @@ export function apply(
   updates: ReadonlyArray<Design.NoteUpdate>,
   jobs: ReadonlyArray<Design.Job>,
   now = Date.now(),
+  by: Design.NoteRecorder = "agent",
 ): { notes: Design.Note[] } | { problem: string } {
   const current = [...(document.notes ?? [])]
   for (const update of updates) {
@@ -112,15 +110,92 @@ export function apply(
       : kept
         ? previousEvidence
         : undefined
+    const { by: _previousBy, ...rest } = before
     current[position] = {
-      ...before,
+      ...rest,
       status: update.status,
+      by,
       updated: now,
       ...(reason ? { reason } : {}),
       ...(evidence ? { evidence } : {}),
     }
   }
   return { notes: current }
+}
+
+/** Prefix of every refusal the status gate issues, so runtimes and logs recognise it. */
+export const REFUSED = "Note status refused:"
+
+/**
+ * The soft gate on note statuses, judged before an update is applied. `resolved` needs a completed
+ * verify job on the design's current revision that found the note's element with no blocking
+ * finding; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted`
+ * need a reason. A refusal names the recent verify jobs, as the todo evidence gate names callIDs.
+ */
+export function gate(
+  document: Rounds & { readonly revision: string | null },
+  update: Design.NoteUpdate,
+  jobs: ReadonlyArray<Design.Job>,
+  by: Design.NoteRecorder = "agent",
+): string | undefined {
+  const name = `${update.feedback} #${update.index}`
+  const refuse = (text: string) => `${REFUSED} ${text} ${describeJobs(jobs)}`
+  const reason = update.reason?.trim()
+  // The reviewer's escape hatch: a person can close a note the agent cannot verify, but only as
+  // accepted or unresolved, with a reason, and the record says who did it.
+  if (by === "reviewer" && update.status !== "unresolved" && update.status !== "accepted")
+    return `${REFUSED} the reviewer records a note as accepted or unresolved; resolved and partial come from the agent's verify.`
+  if (update.status === "unresolved" || update.status === "accepted")
+    return reason
+      ? undefined
+      : `${REFUSED} ${update.status} for ${name} needs a reason saying what stays open and why; the reviewer reads it.`
+  if (!update.evidence)
+    return refuse(
+      `${update.status} for ${name} needs evidence: run one verify for the round on the current revision (design_export format verify, poll design_jobs) and cite it as {"evidence":{"job":"<verify job id>"}}.`,
+    )
+  const job = jobs.find((item) => item.id === update.evidence!.job)
+  if (!job || job.input.format !== "verify" || job.status !== "completed" || !job.verify)
+    return refuse(`Evidence job ${update.evidence.job} is not a completed verify job of this design.`)
+  if (job.input.revision !== document.revision)
+    return refuse(
+      `Evidence job ${job.id} verified ${job.input.revision}, not the current revision ${document.revision ?? "(unpublished)"}. Run one verify on the current revision and cite it.`,
+    )
+  const seen = observed(job, update)
+  if (!seen) {
+    const round = (document.notes ?? []).find((note) => same(note, update))?.round
+    return refuse(
+      `Evidence job ${job.id} verified round ${job.verify.round}, not ${name}${round === undefined ? "" : ` (round ${round})`}. Run design_export {"revision":"${document.revision}","format":"verify"${round === undefined ? "" : `,"round":${round}`}} and cite that job.`,
+    )
+  }
+  if (update.status === "partial")
+    return reason ? undefined : `${REFUSED} partial for ${name} needs a reason saying what still differs from the note.`
+  if (!seen.found)
+    return refuse(
+      `${name} cannot be resolved: ${job.id} did not find its element in ${job.input.revision} (${seen.reason}). Record it unresolved or accepted with a reason, or restore the element and verify again.`,
+    )
+  if (seen.blocking)
+    return refuse(
+      `${name} cannot be resolved: ${job.id} found blocking findings for it (${seen.findings.filter((finding) => finding.startsWith("error ·")).join("; ") || seen.reason}). Fix them, publish, verify again, or record partial with a reason.`,
+    )
+  return undefined
+}
+
+/**
+ * Why the review cannot end or be approved now: notes of the latest round still awaiting an outcome.
+ * Undefined when every note has one.
+ */
+export function blocking(document: Rounds) {
+  const pending = open(document)
+  if (!pending.length) return undefined
+  const rounds = [...new Set(pending.map((note) => note.round))].toSorted((a, b) => a - b)
+  const describe = (round: number, position: number) => {
+    const items = pending.filter((note) => note.round === round)
+    return `${position === 0 ? "Round" : "round"} ${round} has ${items.length} note${items.length === 1 ? "" : "s"} without a recorded outcome: ${items
+      .slice(0, 8)
+      .map((note) => `${note.feedback} #${note.index} (${label(note)})`)
+      .join(", ")}${items.length > 8 ? ` and ${items.length - 8} more` : ""}`
+  }
+  return `${rounds.map(describe).join("; ")}. Fix them, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed.`
 }
 
 /** The verify jobs of a design, newest first, as a refusal or report names them. */

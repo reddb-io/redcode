@@ -177,6 +177,21 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.verifyFail": "ausente ou bloqueado",
   "session.design.studio.openReport": "Abrir capturas",
   "session.design.studio.resentFrom": "Reenviada da rodada",
+  "session.design.studio.roundOpen":
+    "Enviar e encerrar espera até que todas as notas das rodadas abertas tenham um resultado registrado.",
+  "session.design.studio.endRefused":
+    "A revisão não foi encerrada; as notas foram enviadas sem encerrar. Registre as notas abertas para encerrá-la.",
+  "session.design.studio.recordAs": "Registrar como",
+  "session.design.studio.recordAccepted": "Aceita (não será alterada)",
+  "session.design.studio.recordUnresolved": "Não resolvida",
+  "session.design.studio.recordReason": "Motivo",
+  "session.design.studio.record": "Registrar",
+  "session.design.studio.recordReasonRequired": "Escreva um motivo antes de registrar.",
+  "session.design.studio.recorded": "Nota registrada",
+  "session.design.studio.byReviewer": "registrada por você",
+  "session.design.studio.approvalOpenNotes": "Notas sem resultado registrado:",
+  "session.design.studio.approvalRecordAll": "Registrar as notas abertas como aceitas pelo revisor e aprovar",
+  "session.design.studio.approvalReviewNotes": "Notas que o agente não resolveu; leia antes de aprovar:",
   "session.design.studio.retarget": "Mover para",
   "session.design.studio.renameSame": "Digite um nome diferente para renomear esta variante.",
   "session.design.studio.approvalReselect":

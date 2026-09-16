@@ -434,7 +434,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_exit", {
       description:
-        "Ask the user to approve the published revision, record its immutable handoff, and continue in Plan in this same TUI session.",
+        "Ask the user to approve the published revision, record its immutable handoff, and continue in Plan in this same TUI session. Refused while the latest feedback round has notes without a recorded status.",
       parameters: Schema.Struct({
         id: Design.ID,
         variant: Schema.optional(Design.Variant),
@@ -450,6 +450,9 @@ export const DesignTools = Effect.gen(function* () {
             if (!document.revision)
               return yield* new Design.Error({ code: "conflict", message: "Publish the design before approval" })
             if (DesignApproval.missingTargets(document, input.noTargets)) return result(DesignApproval.TARGETS_NUDGE)
+            const pending = DesignRounds.blocking(document)
+            if (pending)
+              return yield* new Design.Error({ code: "conflict", message: `Approval is not possible yet. ${pending}` })
             const savedGoal = SessionGoal.fromMetadata((yield* sessions.get(ctx.sessionID)).metadata)
             const stay = savedGoal?.status === "active" && savedGoal.stopAfter === "design"
             const answers = yield* questions

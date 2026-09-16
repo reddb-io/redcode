@@ -192,6 +192,10 @@ const NoteRef = {
   index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
 }
 
+/** Who recorded a note's status: the agent after a verify, or the reviewer from the review page. */
+export const NoteRecorder = Schema.Literals(["agent", "reviewer"])
+export type NoteRecorder = typeof NoteRecorder.Type
+
 /** A review note with its durable status; `item` is the note as the browser sent it. */
 export const Note = Schema.Struct({
   ...NoteRef,
@@ -200,6 +204,8 @@ export const Note = Schema.Struct({
   status: NoteStatus,
   reason: Schema.String.pipe(optional),
   evidence: NoteEvidence.pipe(optional),
+  /** Absent on statuses recorded before recorders were tracked; those came from the agent. */
+  by: NoteRecorder.pipe(optional),
   updated: Schema.Number,
 }).annotate({ identifier: "Design.Note" })
 export interface Note extends Schema.Schema.Type<typeof Note> {}
@@ -239,6 +245,11 @@ export interface Create extends Schema.Schema.Type<typeof Create> {}
 
 export const Update = Schema.Struct({
   notes: Schema.Array(NoteUpdate).check(Schema.isMaxLength(100)).pipe(optional),
+  /**
+   * Who records `notes`. The review page sends `reviewer`, which may only record `accepted` or
+   * `unresolved` with a reason and needs no verify; the agent's tools never send it.
+   */
+  by: Schema.Literal("reviewer").pipe(optional),
   controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
   presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   name: Schema.NonEmptyString.pipe(optional),

@@ -222,14 +222,21 @@ const make = Effect.gen(function* () {
       })
     if (targets) input = { ...input, targets }
     // Note statuses are recorded against the stored notes, never written into the document as sent.
-    const { notes: statuses, ...fields } = input
+    const { notes: statuses, by, ...fields } = input
+    const recorder = by ?? "agent"
     yield* Effect.try({
       try: () => DesignParams.validate({ ...document, ...fields }),
       catch: (error) =>
         error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: String(error) }),
     })
+    const verifies = statuses?.length ? yield* jobs(id) : []
+    // The gate judges each status on its own before any is applied, so a refused update changes nothing.
+    for (const status of statuses ?? []) {
+      const refusal = DesignRounds.gate(document, status, verifies, recorder)
+      if (refusal) return yield* new Design.Error({ code: "invalid", message: refusal })
+    }
     const recorded = statuses?.length
-      ? DesignRounds.apply(document, statuses, yield* jobs(id), Date.now())
+      ? DesignRounds.apply(document, statuses, verifies, Date.now(), recorder)
       : { notes: document.notes }
     if ("problem" in recorded) return yield* new Design.Error({ code: "invalid", message: recorded.problem })
     return yield* save({ ...document, ...fields, ...(recorded.notes ? { notes: recorded.notes } : {}) })
@@ -426,6 +433,14 @@ const make = Effect.gen(function* () {
       return { document, feedback: existing.data, admitted: existing.admitted }
     }
     if (document.ended) return yield* new Design.Error({ code: "conflict", message: "This review has ended" })
+    // Ending the review is refused while an earlier round still has notes without an outcome; the
+    // message's own notes are not counted, since they are what the agent is about to work on.
+    const pending = input.end ? DesignRounds.blocking(document) : undefined
+    if (pending)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: `The review cannot end yet. ${pending} Send without ending, or ask the agent to finish the round.`,
+      })
     // An operation names the variants of the latest revision; against an older one it no longer matches.
     // Its ids are not checked here: variants exist only once rendered, so the agent verifies them.
     if (input.action && document.revision !== input.revision)
@@ -521,6 +536,12 @@ const make = Effect.gen(function* () {
     const document = yield* get(id)
     if (document.revision !== revisionID)
       return yield* new Design.Error({ code: "conflict", message: "Approve the currently published revision" })
+    // A repeated acknowledgement of the revision already approved (the browser confirming what the
+    // TUI question approved, or the reverse) only re-reads the package, so the round gate does not
+    // apply to it; design_exit checks the gate before its question and never reaches this waiver.
+    const pending = document.approvedRevision === revisionID ? undefined : DesignRounds.blocking(document)
+    if (pending)
+      return yield* new Design.Error({ code: "conflict", message: `Approval is not possible yet. ${pending}` })
     const approved = yield* revision(id, revisionID)
     const file = path.join(storage, id, "plan.md")
     const packageFile = path.join(storage, id, "approvals", `${revisionID}.json`)

@@ -277,9 +277,27 @@ test("new interface: native review, annotation draft, lost response retry and ap
   expect(message).not.toContain("## Message")
   expect(message).not.toContain("Add item")
   expect(message).toContain('"section":"snapshot"')
+  // The notes just sent opened a round: approval waits until each has a recorded outcome.
   await page.getByRole("button", { name: "Approve this revision" }).click()
   await page.getByRole("button", { name: "Approve and continue in Plan", exact: true }).click()
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Approval is not possible yet. Round 1 has 3 notes without a recorded outcome" })
+    .first()
+    .waitFor()
+  // The dialog lists the open notes and offers the reviewer's second confirmation, which records them first.
+  expect(await page.locator("#approval-open-list li").count()).toBe(3)
+  expect(await page.locator("#approval-open-list li").first().textContent()).toContain("Make this title more prominent")
+  await page
+    .getByRole("button", { name: "Record the open notes as accepted by the reviewer and approve", exact: true })
+    .click()
   await page.getByRole("button", { name: "Reopen review" }).waitFor()
+  const recorded = await api<Design.Info>(`${current.root}/${current.document.id}`)
+  expect(recorded.notes?.map((note) => [note.status, note.by])).toEqual([
+    ["accepted", "reviewer"],
+    ["accepted", "reviewer"],
+    ["accepted", "reviewer"],
+  ])
   const approved = await api<Design.Info>(`${current.root}/${current.document.id}`)
   expect(approved.approvedRevision).toBe(current.revision.id)
   expect(errors).toEqual([])
@@ -2581,6 +2599,33 @@ test("feedback rounds show each note's status, a verify verdict per note, and qu
     expect(await row(1).locator(".round-reason").textContent()).toBe("The shop name comes from the account")
     expect(await row(2).locator(".badge").textContent()).toBe("Unresolved")
     expect(await row(3).locator(".badge").textContent()).toBe("Open")
+    // While a note of the round is still open, the review cannot be ended from the page or the API.
+    expect(await page.getByRole("button", { name: "Send & end", exact: true }).isVisible()).toBe(false)
+    await page.locator("#round-open").waitFor()
+    // The approve dialog shows what the agent declined or left unresolved, with its reasons, before approving.
+    await page.getByRole("button", { name: "Approve this revision" }).click()
+    const reviewList = page.locator("#approval-review-list li")
+    expect(await reviewList.count()).toBe(2)
+    expect(await reviewList.nth(0).textContent()).toBe(
+      'Won\'t fix · h1 "Checkout" in main: Name the shop — The shop name comes from the account',
+    )
+    expect(await reviewList.nth(1).textContent()).toContain('Unresolved · button "Add item" in main')
+    expect(await page.locator("#approval-open-list li").count()).toBe(1)
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    const ended = await fetch(`${base}${current.root}/${current.document.id}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...feedback,
+        id: `msg_${crypto.randomUUID()}`,
+        revision: second.id,
+        items: [],
+        text: "Bye",
+        end: true,
+      }),
+    })
+    expect(ended.status).toBe(409)
+    expect(await ended.text()).toContain("The review cannot end yet")
     // Only an unfinished note offers to go into the next round.
     expect(await row(1).getByRole("button", { name: "Send again", exact: true }).count()).toBe(0)
     expect(await row(3).getByRole("button", { name: "Send again", exact: true }).count()).toBe(0)
@@ -2605,6 +2650,23 @@ test("feedback rounds show each note's status, a verify verdict per note, and qu
       const stored = await api<Design.Info>(`${current.root}/${current.document.id}`)
       return stored.rounds?.length === 2
     }, "the re-sent note opens round 2")
+    // The reviewer closes the open note by hand, with a reason; the record says who did it.
+    await row(3)
+      .getByLabel(/^Reason:/)
+      .fill("Diagram arrows follow the source")
+    await row(3).getByRole("button", { name: "Record", exact: true }).click()
+    await page.getByText("Note recorded", { exact: true }).waitFor()
+    await page.locator('.round-note[data-index="3"][data-status="accepted"]').waitFor()
+    expect(await page.locator('.round-note[data-index="3"]').textContent()).toContain("recorded by you")
+    const byHand = (await api<Design.Info>(`${current.root}/${current.document.id}`)).notes!
+    expect(byHand[2]).toMatchObject({ status: "accepted", by: "reviewer", reason: "Diagram arrows follow the source" })
+    // The re-sent note of round 2 is still open, so ending stays refused; the reviewer records it too.
+    const roundTwo = byHand.at(-1)!
+    expect(roundTwo.round).toBe(2)
+    const second_ = page.locator(`.round-note[data-feedback="${roundTwo.feedback}"]`)
+    await second_.getByLabel(/^Reason:/).fill("Label set by the product")
+    await second_.getByRole("button", { name: "Record", exact: true }).click()
+    await page.getByRole("button", { name: "Send & end", exact: true }).waitFor()
     // The feed's verify entry shows one verdict per note and links to the job's report.
     const verified = page.locator(".entry[data-kind=verified]")
     await verified.waitFor()
@@ -2621,6 +2683,45 @@ test("feedback rounds show each note's status, a verify verdict per note, and qu
     expect(await verified.getByRole("link", { name: "Open captures", exact: true }).getAttribute("href")).toBe(
       `${current.root}/${current.document.id}/job/render_verify/file`,
     )
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
+test("a refused Send & end keeps the draft, drops the ending and retries as a plain send", async () => {
+  const current = await published("html")
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await withoutFeed(page)
+  const sent: Design.Feedback[] = []
+  // A second tab or a stale page can still offer Send & end; the server answers 409 while notes are open.
+  await page.route("**/feedback", async (route) => {
+    const body = route.request().postDataJSON() as Design.Feedback
+    sent.push(body)
+    if (body.end)
+      return route.fulfill({
+        status: 409,
+        json: { message: "The review cannot end yet. Round 1 has 1 note without a recorded outcome: msg_x #1 (h1)." },
+      })
+    await route.continue()
+  })
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    // The draft is typed once the preview is on screen: loading a revision resets the draft fields first.
+    await page.frameLocator("#preview").getByRole("heading", { name: "Checkout" }).waitFor()
+    await page.getByLabel("Review notes", { exact: true }).fill("Wrap it up")
+    await page.getByRole("button", { name: "Send & end", exact: true }).click()
+    await page.getByRole("status").filter({ hasText: "The review cannot end yet" }).first().waitFor()
+    expect(await page.getByRole("status").first().textContent()).toContain("the notes were sent without ending")
+    // The draft is kept for a retry that no longer ends the review.
+    await page.getByRole("button", { name: "Retry sending saved feedback" }).click()
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    expect(sent.map((item) => item.end)).toEqual([true, false])
+    expect(sent[1].id).toBe(sent[0].id)
+    expect(sent[1].text).toBe("Wrap it up")
+    expect((await api<Design.Info>(`${current.root}/${current.document.id}`)).ended).toBe(false)
     expect(errors).toEqual([])
   } finally {
     await page.close()

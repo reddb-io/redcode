@@ -6,6 +6,7 @@ import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { SessionV2 } from "../session"
+import { DesignRounds } from "./rounds"
 import { DesignStore } from "./store"
 
 /** Hard caps on what one review message may carry; the frozen feedback row keeps the full content. */
@@ -125,6 +126,8 @@ export interface Context {
   id: Design.ID
   storage: string
   attachments: readonly string[]
+  /** The feedback round this message's notes belong to, when the caller knows it. */
+  round?: number
 }
 
 /** Render one review as a bounded, labelled message. Pure: both runtimes share it. */
@@ -216,7 +219,9 @@ export function render(input: Design.Feedback, context: Context) {
       "## Next step",
       input.end
         ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
-        : "Publish a new revision with design_preview and reply with a short summary of what changed.",
+        : notes.length
+          ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, then design_jobs), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Reply with what is resolved, partial, unresolved or accepted and why, and ask before starting another round.`
+          : "Publish a new revision with design_preview and reply with a short summary of what changed.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
         : "",
@@ -297,6 +302,7 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
   yield* store.get(id, sessionID)
   const prepared = yield* store.prepareFeedback(id, input)
   if (prepared.admitted) return { id: input.id, status: "admitted" as const }
+  const round = DesignRounds.next(prepared.document)
   const assets = yield* Effect.forEach(input.assets, (assetID) => store.asset(id, assetID))
   const files = yield* Effect.forEach(assets, (asset) =>
     store.readBlob(asset.hash).pipe(
@@ -312,7 +318,7 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
       sessionID,
       delivery: input.delivery,
       prompt: {
-        text: render(input, { id, storage: store.storage, attachments: files.map((file) => file.name) }),
+        text: render(input, { id, storage: store.storage, attachments: files.map((file) => file.name), round }),
         files,
       },
     })
