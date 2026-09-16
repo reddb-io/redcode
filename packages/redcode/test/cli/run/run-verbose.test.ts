@@ -85,15 +85,17 @@ describe("redcode run --verbose", () => {
 
   cliIt.live(
     "a permission ask names the program, never the command a credential may be in",
-    ({ llm, opencode }) =>
+    ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         const command = 'curl -H "Authorization: Bearer x" https://user:pw@example.com/secret?token=abc'
         yield* llm.tool("bash", { command, description: "Call an API" })
         yield* llm.text("done")
-        // No --dangerously-skip-permissions: the run asks, and auto-rejects.
+        // No --dangerously-skip-permissions: the run asks, and auto-rejects. `--dir home` keeps
+        // the tool out of the runner's own checkout, where the worktree guard would refuse it
+        // before anything was asked.
         const result = yield* opencode.run("call the api", {
           permission: { bash: "ask" },
-          extraArgs: ["--verbose", "--title", "Permission trace"],
+          extraArgs: ["--verbose", "--title", "Permission trace", "--dir", home],
         })
         opencode.expectExit(result, 0)
 
@@ -115,7 +117,7 @@ describe("redcode run --verbose", () => {
 
   cliIt.live(
     "the trace's environment never reaches a process the bash tool spawns",
-    ({ llm, opencode }) =>
+    ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         const vars = [
           "REDCODE_VERBOSE",
@@ -130,7 +132,7 @@ describe("redcode run --verbose", () => {
         })
         yield* llm.text("done")
         const result = yield* opencode.run("show env", {
-          extraArgs: ["--verbose", "--dangerously-skip-permissions", "--title", "Environment trace"],
+          extraArgs: ["--verbose", "--dangerously-skip-permissions", "--title", "Environment trace", "--dir", home],
           env: { REDCODE_VERBOSE: "1" },
         })
         opencode.expectExit(result, 0)
