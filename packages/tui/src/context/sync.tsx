@@ -107,6 +107,22 @@ function compareMessage(a: Message, b: Message) {
 const messageKey = (message: Message) => message.time.created + message.id
 export const SESSION_CACHE_LIMIT = 20
 
+export type ProviderCatalog = {
+  all: { id: string; name: string; env: string[] }[]
+  default: ProviderListResponse["default"]
+  connected: ProviderListResponse["connected"]
+}
+
+// The provider list carries every model of every catalog provider (megabytes of JSON). The TUI
+// reads provider ids, names and credential variables from it, so the store keeps those and lets the models go.
+export function providerCatalog(list: ProviderListResponse): ProviderCatalog {
+  return {
+    all: list.all.map((provider) => ({ id: provider.id, name: provider.name, env: provider.env })),
+    default: list.default,
+    connected: list.connected,
+  }
+}
+
 export const {
   context: SyncContext,
   use: useSync,
@@ -125,7 +141,8 @@ export const {
       degraded: ("bootstrap" | "commands")[]
       provider: Provider[]
       provider_default: Record<string, string>
-      provider_next: ProviderListResponse
+      /** The provider catalog reduced to what the TUI reads: `all` carries each provider's id, name and env only. */
+      provider_next: ProviderCatalog
       console_state: ConsoleState
       capabilities: {
         experimentalBackgroundSubagents: boolean
@@ -333,7 +350,7 @@ export const {
       batch(() => {
         setStore("provider", reconcile(providers.providers))
         setStore("provider_default", reconcile(providers.default))
-        setStore("provider_next", reconcile(providerList))
+        setStore("provider_next", reconcile(providerCatalog(providerList)))
       })
     }
 
@@ -1023,7 +1040,7 @@ export const {
           batch(() => {
             setStore("provider", reconcile(providers.providers))
             setStore("provider_default", reconcile(providers.default))
-            setStore("provider_next", reconcile(providerList))
+            setStore("provider_next", reconcile(providerCatalog(providerList)))
             setStore(
               "capabilities",
               "experimentalBackgroundSubagents",
