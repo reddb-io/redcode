@@ -60,7 +60,9 @@ describe("redcode run --verbose", () => {
         expect(events.filter((event) => event === "provider.response").length).toBeGreaterThanOrEqual(2)
         expect(events).toContain("tool.start")
         expect(events).toContain("tool.end")
-        const request = activity.find((line) => line.includes(" provider.request "))!
+        // The turn's own request carries the preflight estimate it was sized by; the title
+        // request is not sized by the loop and carries none.
+        const request = activity.find((line) => line.includes(" provider.request ") && line.includes("agent=build"))!
         expect(request).toContain("providerID=test")
         expect(request).toContain("modelID=test-model")
         expect(request).toMatch(/estimatedTokens=\d+/)
@@ -81,11 +83,66 @@ describe("redcode run --verbose", () => {
   )
 
   cliIt.live(
-    "REDCODE_VERBOSE=1 enables the same trace as the flag",
+    "a permission ask names the program, never the command a credential may be in",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        const command = 'curl -H "Authorization: Bearer x" https://user:pw@example.com/secret?token=abc'
+        yield* llm.tool("bash", { command, description: "Call an API" })
+        yield* llm.text("done")
+        // No --dangerously-skip-permissions: the run asks, and auto-rejects.
+        const result = yield* opencode.run("call the api", { permission: { bash: "ask" }, extraArgs: ["--verbose"] })
+        opencode.expectExit(result, 0)
+
+        const lines = result.stderr.split(/\r?\n/)
+        const traced = lines.filter((line) => /^(boot\s+\d+ms|verbose\s+\d+ms)/.test(line)).join("\n")
+        const ask = lines.find((line) => line.includes(" permission.ask "))!
+        expect(ask).toContain("permission=bash")
+        expect(ask).toContain("patterns=1")
+        expect(ask).toContain("program=curl")
+        expect(lines.find((line) => line.includes(" permission.reply "))).toContain("reply=reject")
+        for (const secret of ["Authorization", "Bearer", "user:pw", "token=abc", "example.com"])
+          expect(traced).not.toContain(secret)
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "the trace's environment never reaches a process the bash tool spawns",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        const vars = [
+          "REDCODE_VERBOSE",
+          "REDCODE_BOOT_START",
+          "REDCODE_VERBOSE_BOOT_FILE",
+          "REDCODE_VERBOSE_NO_STDERR",
+          "REDCODE_LOG_LEVEL",
+        ]
+        yield* llm.tool("bash", {
+          command: `printf 'ENV[%s]' "${vars.map((name) => "$" + name).join("|")}"`,
+          description: "Print the trace variables",
+        })
+        yield* llm.text("done")
+        const result = yield* opencode.run("show env", {
+          extraArgs: ["--verbose", "--dangerously-skip-permissions"],
+          env: { REDCODE_VERBOSE: "1" },
+        })
+        opencode.expectExit(result, 0)
+        expect(result.stderr).toMatch(/^verbose\s+\d+ms tool\.end .*tool=bash/m)
+        // The tool's output goes back to the model: that is where the child's view of it is.
+        expect(JSON.stringify(yield* llm.inputs)).toContain("ENV[||||]")
+      }),
+    60_000,
+  )
+
+  cliIt.live(
+    "REDCODE_VERBOSE=1 enables the same trace as the flag, and a stricter log level does not hide it",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
         yield* llm.text("ok")
-        const result = yield* opencode.run("say ok", { env: { REDCODE_VERBOSE: "1" } })
+        const result = yield* opencode.run("say ok", {
+          env: { REDCODE_VERBOSE: "1" },
+          extraArgs: ["--log-level", "ERROR"],
+        })
         opencode.expectExit(result, 0)
         expect(result.stderr).toMatch(/^boot\s+\d+ms\s+\+\d+ms process\.start/m)
         expect(result.stderr).toMatch(/^boot complete in \d+ ms; log at /m)

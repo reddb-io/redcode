@@ -710,13 +710,13 @@ const layer = Layer.effect(
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
         // The failure's kind only: a provider's message can quote the request it rejected.
-        yield* Verbose.log("provider.error", {
+        yield* Verbose.log("provider.error", () => ({
           sessionID: input.sessionID,
           providerID: input.model.providerID,
           modelID: input.model.id,
           error: e instanceof Error ? e.name : typeof e,
           ms: Date.now() - input.assistantMessage.time.created,
-        })
+        }))
         yield* Effect.logError("process", {
           "session.id": input.sessionID,
           messageID: input.assistantMessage.id,
@@ -817,7 +817,7 @@ const layer = Layer.effect(
                 set: (info) =>
                   discardAttempt().pipe(
                     Effect.andThen(
-                      Verbose.log("provider.retry", {
+                      Verbose.log("provider.retry", () => ({
                         sessionID: ctx.sessionID,
                         providerID: input.model.providerID,
                         modelID: input.model.id,
@@ -825,8 +825,8 @@ const layer = Layer.effect(
                         action: info.action?.reason,
                         waitMs: Math.max(0, info.next - Date.now()),
                         // What the status line shows the person, no more.
-                        reason: info.message.length > 100 ? info.message.slice(0, 97) + "..." : info.message,
-                      }),
+                        reason: info.message.length > 80 ? info.message.slice(0, 77) + "..." : info.message,
+                      })),
                     ),
                     Effect.andThen(
                       status.set(ctx.sessionID, {

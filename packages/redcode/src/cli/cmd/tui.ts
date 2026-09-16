@@ -160,7 +160,7 @@ export const TuiThreadCommand = cmd({
     const noReplay = args.replay === false || args.noReplay === true
 
     // Both interfaces draw on the terminal: the activity trace stays in the file for them.
-    process.env.REDCODE_VERBOSE_NO_STDERR = "1"
+    BootTrace.setMirror(false)
 
     if (args.mini) {
       const network = ["--port", "--hostname", "--mdns", "--no-mdns", "--mdns-domain", "--cors"].find((option) =>
@@ -187,6 +187,8 @@ export const TuiThreadCommand = cmd({
         auto: args.auto,
         yolo: args.yolo || args["dangerously-skip-permissions"],
       })
+      // The terminal is ours again: say how long boot took and where the whole trace is.
+      if (BootTrace.enabled()) process.stderr.write(BootTrace.summary() + "\n")
       return
     }
 
@@ -221,8 +223,6 @@ export const TuiThreadCommand = cmd({
         return
       }
       const cwd = Filesystem.resolve(process.cwd())
-      // Decided here so the worker inherits the same file through its environment.
-      if (BootTrace.enabled()) BootTrace.filePath()
 
       let stopped = false
       const worker = new Worker(file, {
@@ -234,6 +234,9 @@ export const TuiThreadCommand = cmd({
           // scripted run: both default to "cli". Anything that should behave differently when a
           // person is watching — ending a stalled turn, for one — needs to know which this is.
           REDCODE_CLIENT: "tui",
+          // The server thread continues the boot trace on this thread's clock and in its file.
+          // Handed over here, in the worker's own environment, so nothing else inherits it.
+          ...BootTrace.workerEnv(),
         },
       })
       const client = Rpc.client<typeof rpc>(worker)

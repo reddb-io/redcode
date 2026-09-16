@@ -34,9 +34,8 @@ import { Heap } from "./cli/heap"
 import { Global } from "@reddb-io/redcode-core/global"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
-// Pinned before argv is parsed: every later phase, in this thread or the server's, counts from
-// here. `process.start` is the module graph above — imports resolved, the home directory made.
-BootTrace.start()
+// Recorded before argv is parsed: `process.start` is the module graph above — imports resolved,
+// the home directory made — measured from the process's own start.
 // Argument values stay out of the trace: `attach --password` is one of them.
 BootTrace.mark("process.start", { args: hideBin(process.argv).length })
 
@@ -83,9 +82,9 @@ const cli = yargs(args)
     if (opts.pure) {
       process.env.REDCODE_PURE = "1"
     }
-    if (opts.verbose) process.env.REDCODE_VERBOSE = "1"
-    // The activity trace is written at DEBUG; the flag implies the level unless one was given.
-    if (BootTrace.enabled() && !process.env.REDCODE_LOG_LEVEL) process.env.REDCODE_LOG_LEVEL = "DEBUG"
+    // Kept in the tracer, not in the environment: a nested redcode the bash tool spawns must not
+    // inherit the flag. The file log's level follows it (see Logging.minimumLogLevel).
+    if (opts.verbose) BootTrace.enable()
     BootTrace.mark("cli.parsed", {
       version: InstallationVersion,
       command: String(opts._[0] ?? "tui"),

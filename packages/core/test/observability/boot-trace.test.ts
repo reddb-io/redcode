@@ -17,42 +17,32 @@ function captureStderr(into: Written) {
   }
 }
 
+const SHARED = ["REDCODE_VERBOSE", "REDCODE_BOOT_START", "REDCODE_VERBOSE_BOOT_FILE", "REDCODE_VERBOSE_NO_STDERR"]
+
 describe("BootTrace", () => {
-  const saved = {
-    verbose: process.env.REDCODE_VERBOSE,
-    start: process.env.REDCODE_BOOT_START,
-    file: process.env.REDCODE_VERBOSE_BOOT_FILE,
-  }
   let dir: string
   let out: Written
   let restore: () => void
 
   beforeEach(() => {
-    BootTrace.reset()
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "redcode-boot-trace-"))
-    delete process.env.REDCODE_BOOT_START
+    for (const key of SHARED) delete process.env[key]
     process.env.REDCODE_VERBOSE_BOOT_FILE = path.join(dir, "boot.log")
+    BootTrace.reset()
     out = { stderr: [] }
     restore = captureStderr(out)
   })
 
   afterEach(() => {
     restore()
+    for (const key of SHARED) delete process.env[key]
     BootTrace.reset()
     fs.rmSync(dir, { recursive: true, force: true })
-    for (const [key, value] of [
-      ["REDCODE_VERBOSE", saved.verbose],
-      ["REDCODE_BOOT_START", saved.start],
-      ["REDCODE_VERBOSE_BOOT_FILE", saved.file],
-    ] as const) {
-      if (value === undefined) delete process.env[key]
-      else process.env[key] = value
-    }
   })
 
   test("records every phase with elapsed and delta even when tracing is off", () => {
-    delete process.env.REDCODE_VERBOSE
     process.env.REDCODE_BOOT_START = String(Date.now() - 100)
+    BootTrace.reset()
     BootTrace.mark("process.start")
     BootTrace.mark("cli.parsed", { version: "1.2.3" })
     const phases = BootTrace.phases()
@@ -67,8 +57,9 @@ describe("BootTrace", () => {
   })
 
   test("writes one line per phase to stderr and the file, then a summary on stop", () => {
-    process.env.REDCODE_VERBOSE = "1"
     BootTrace.mark("process.start")
+    // The flag is parsed after the first mark: enabling catches up on it.
+    BootTrace.enable()
     BootTrace.mark("config.loaded", { plugins: 2, path: "/home/someone/.red/code/redcode.json" })
     const summary = BootTrace.stop("tui.first-render")
 
@@ -83,7 +74,7 @@ describe("BootTrace", () => {
   })
 
   test("stops writing to stderr once the screen takes over, keeps the file, and stops once", () => {
-    process.env.REDCODE_VERBOSE = "1"
+    BootTrace.enable()
     BootTrace.mark("session.ready")
     BootTrace.quiet()
     BootTrace.mark("tui.mounted")
@@ -103,46 +94,77 @@ describe("BootTrace", () => {
     expect(file.match(/boot complete/g)).toHaveLength(1)
     // The summary is the moment of the first render, not whatever came after.
     expect(second).toBe(first)
-    expect(BootTrace.phases().map((mark) => mark.phase)).toEqual([
-      "session.ready",
-      "tui.mounted",
-      "tui.first-render",
-      "later.phase",
-    ])
+    // Marks after the end of boot are written but no longer retained: a server runs for days.
+    expect(BootTrace.phases().map((mark) => mark.phase)).toEqual(["session.ready", "tui.mounted", "tui.first-render"])
   })
 
   test("never prints a credential, whatever key or shape it arrives under", () => {
-    process.env.REDCODE_VERBOSE = "1"
+    BootTrace.enable()
     BootTrace.mark("providers.ready", {
       apiKey: "sk-live-1234567890",
       authorization: "Basic abc",
       header: "Bearer eyJhbGciOi",
       access_token: "ya29.a0AfH6",
+      passphrase: "hunter2",
+      aws: "AKIAIOSFODNN7EXAMPLE",
+      google: "AIzaSyD-example",
+      pat: "github_pat_11ABC",
+      url: "https://user:secret@example.com/path?x=1",
       id: "anthropic",
       count: 3,
       estimatedTokens: 1200,
     })
     const line = out.stderr.join("")
-    expect(line).not.toContain("sk-live")
-    expect(line).not.toContain("Basic abc")
-    expect(line).not.toContain("eyJhbGci")
-    expect(line).not.toContain("ya29")
+    for (const secret of [
+      "sk-live",
+      "Basic abc",
+      "eyJhbGci",
+      "ya29",
+      "hunter2",
+      "AKIAIOSF",
+      "AIzaSy",
+      "github_pat_",
+      "user:secret",
+    ])
+      expect(line).not.toContain(secret)
     expect(line).toContain("apiKey=[redacted]")
     expect(line).toContain("authorization=[redacted]")
     expect(line).toContain("header=[redacted]")
     expect(line).toContain("access_token=[redacted]")
+    expect(line).toContain("passphrase=[redacted]")
+    expect(line).toContain('url="https://[redacted]@example.com/path?x=1"')
     // A count of tokens is not a token.
     expect(line).toContain("id=anthropic count=3 estimatedTokens=1200")
   })
 
-  test("shares the process start and the file with a worker through the environment", () => {
+  test("reads the sharing variables once at start and removes them from the environment", () => {
     process.env.REDCODE_VERBOSE = "1"
+    process.env.REDCODE_BOOT_START = "1700000000000"
+    process.env.REDCODE_VERBOSE_BOOT_FILE = path.join(dir, "shared.log")
+    process.env.REDCODE_VERBOSE_NO_STDERR = "1"
+    BootTrace.reset()
+
+    expect(BootTrace.enabled()).toBe(true)
+    expect(BootTrace.start()).toBe(1700000000000)
+    expect(BootTrace.filePath()).toBe(path.join(dir, "shared.log"))
+    expect(BootTrace.mirror()).toBe(false)
+    // A child this process spawns — a nested redcode, an MCP server — must see none of it.
+    for (const key of SHARED) expect(process.env[key]).toBeUndefined()
+  })
+
+  test("hands a worker what it needs without touching the environment", () => {
     delete process.env.REDCODE_VERBOSE_BOOT_FILE
-    const start = BootTrace.start()
-    expect(process.env.REDCODE_BOOT_START ?? "").toBe(String(start))
-    expect(BootTrace.start()).toBe(start)
-    const file = BootTrace.filePath()
-    expect(process.env.REDCODE_VERBOSE_BOOT_FILE ?? "").toBe(file)
-    expect(path.basename(file)).toMatch(/^boot-\d{8}T\d{6}Z-\d+\.log$/)
+    BootTrace.reset()
+    expect(BootTrace.workerEnv()).toEqual({})
+
+    BootTrace.enable()
+    BootTrace.setMirror(false)
+    const env = BootTrace.workerEnv()
+    expect(env.REDCODE_VERBOSE).toBe("1")
+    expect(env.REDCODE_BOOT_START).toBe(String(BootTrace.start()))
+    expect(env.REDCODE_VERBOSE_BOOT_FILE).toBe(BootTrace.filePath())
+    expect(env.REDCODE_VERBOSE_NO_STDERR).toBe("1")
+    expect(path.basename(env.REDCODE_VERBOSE_BOOT_FILE!)).toMatch(/^boot-\d{8}T\d{6}Z-\d+\.log$/)
+    for (const key of SHARED) expect(process.env[key]).toBeUndefined()
   })
 })

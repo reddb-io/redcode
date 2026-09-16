@@ -76,7 +76,8 @@ const layer = Layer.effect(
         guard: trip.guard,
         action: trip.action,
         subject: trip.subject,
-        detail: trip.detail.length > 160 ? trip.detail.slice(0, 157) + "..." : trip.detail,
+        // The detail paraphrases the session; the trace records that there was one and how long.
+        detailLength: trip.detail.length,
       })
       yield* db
         .insert(SessionGuardTripTable)

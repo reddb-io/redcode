@@ -2,9 +2,22 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 
-/** A pattern is a command or a path; the trace wants its shape, not a screenful of it. */
-function clip(pattern: string) {
-  return pattern.length > 80 ? pattern.slice(0, 77) + "..." : pattern
+/**
+ * What the trace says about the resource a permission is for. A pattern is the resource itself —
+ * the command text, the URL, the path — and a command or a URL can carry a credential, so the
+ * trace gets the program's name, the URL's origin, or a clipped path, never the whole thing.
+ */
+export function describeResource(permission: string, pattern: string) {
+  if (permission === "bash" || permission === "shell") return { program: pattern.trim().split(/\s+/)[0] ?? "" }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(pattern)) {
+    try {
+      return { origin: new URL(pattern).origin }
+    } catch {
+      return { origin: "[unparseable url]" }
+    }
+  }
+  if (pattern.includes("://") || pattern.includes("@")) return { resource: "[omitted]" }
+  return { resource: pattern.length > 80 ? pattern.slice(0, 77) + "..." : pattern }
 }
 import { ConfigPermissionV1 } from "@reddb-io/redcode-core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
@@ -87,12 +100,13 @@ const layer = Layer.effect(
         const rule = evaluate(request.permission, pattern, ruleset, approved)
         yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny") {
-          yield* Verbose.log("permission.denied", {
+          yield* Verbose.log("permission.denied", () => ({
             sessionID: request.sessionID,
             permission: request.permission,
             callID: request.tool?.callID,
-            pattern: clip(pattern),
-          })
+            patterns: request.patterns.length,
+            ...describeResource(request.permission, pattern),
+          }))
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
@@ -116,15 +130,15 @@ const layer = Layer.effect(
         tool: request.tool,
       }
       yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
-      yield* Verbose.log("permission.ask", {
+      yield* Verbose.log("permission.ask", () => ({
         sessionID: info.sessionID,
         requestID: id,
         permission: info.permission,
         callID: info.tool?.callID,
         patterns: info.patterns.length,
-        pattern: clip(info.patterns[0] ?? ""),
+        ...describeResource(info.permission, info.patterns[0] ?? ""),
         forced: request.force === true,
-      })
+      }))
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred, force: request.force === true })
