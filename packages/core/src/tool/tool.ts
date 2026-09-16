@@ -101,7 +101,8 @@ export function make<
       return definition
     },
     settle: (call, context) =>
-      Schema.decodeUnknownEffect(config.input)(call.input).pipe(
+      // Every problem at once, so a model fixing its arguments needs one retry, not one per key.
+      Schema.decodeUnknownEffect(config.input, { errors: "all" })(call.input).pipe(
         Effect.mapError(
           (error) =>
             new ToolFailure({

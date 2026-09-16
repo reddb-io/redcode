@@ -29,8 +29,14 @@ export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.
       description: DESCRIPTION_WRITE,
       parameters: ModelParameters,
       jsonSchema: ToolJsonSchema.fromSchema(Parameters),
+      // Effect's SchemaError is not an `instanceof Error` here; its `message` getter is what carries
+      // each problem with its path, while `String(error)` wraps them in `SchemaError(…)`.
       formatValidationError: (error) =>
-        SessionTodo.validationHint(error instanceof Error ? error.message : String(error)),
+        SessionTodo.validationHint(
+          typeof (error as { message?: unknown } | null)?.message === "string"
+            ? (error as { message: string }).message
+            : String(error),
+        ),
       execute: (params: Schema.Schema.Type<typeof ModelParameters>, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
           yield* ctx.ask({

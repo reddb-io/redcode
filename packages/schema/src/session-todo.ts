@@ -22,14 +22,24 @@ export const Source = Schema.Struct({
 }).annotate({ identifier: "Todo.Source" })
 export type Source = typeof Source.Type
 
+// Nothing inside the evidence is required by the schema: a model that cites a result without saying how
+// it meets the task is answered by the store with the exact update to resend (see NEEDS_EXPLANATION),
+// and one that explains without citing a result gets the newest verification selected for it. Either
+// answer is more useful than a schema refusal, and neither loosens the completion gate.
 export const EvidenceInput = Schema.Struct({
-  callID: Schema.String,
-  messageID: optional(Schema.String),
-  explanation: Schema.String.check(Schema.isMinLength(1)),
+  callID: optional(
+    Schema.String.annotate({
+      description: "callID of the successful tool result that proves the task; when omitted, one is selected",
+    }),
+  ),
+  messageID: optional(Schema.String.annotate({ description: "The message of that result, when its callID is reused" })),
+  explanation: optional(Schema.String.annotate({ description: "How that result meets the task's criterion" })),
 })
 export const Evidence = Schema.Struct({
   ...EvidenceInput.fields,
+  callID: Schema.String,
   messageID: Schema.String,
+  explanation: Schema.String,
   tool: Schema.String,
   hash: Schema.String,
   observed: Schema.Finite,
@@ -66,8 +76,14 @@ export const Input = Schema.Struct({
         "Successful tool result proving completion, with an explanation. When omitted, only a verification result (successful bash or shell check, design_preview or design_export) newer than the last edit is selected",
     }),
   ),
+  // The description asks for both, but a model that does not know the message id, or that only has the
+  // instruction's words, is linked to the latest request rather than refused; the reason is what a
+  // cancellation cannot do without, and the store checks that.
   scopeChange: optional(
-    Schema.Struct({ messageID: Schema.String, quote: Schema.String }).annotate({
+    Schema.Struct({
+      messageID: optional(Schema.String.annotate({ description: "ID of the user message that removed this work" })),
+      quote: optional(Schema.String.annotate({ description: "The instruction removing the requirement" })),
+    }).annotate({
       description:
         "The user message that removed this work; a quote that matches no message is linked to the latest request",
     }),
@@ -78,7 +94,14 @@ export const Input = Schema.Struct({
       description: "Brief description of the task; required when creating, optional when updating by id",
     }),
   ),
-  status: Status,
+  // Nothing is required of one item: an update names only its id, revision and the fields that change,
+  // so a status that did not change may be left out and the stored one stays. A new task without a
+  // status starts pending.
+  status: optional(
+    Status.annotate({
+      description: "pending when creating without one; stays as stored when omitted from an update by id",
+    }),
+  ),
   priority: optional(Priority.annotate({ description: "Required when creating, optional when updating by id" })),
 }).annotate({ identifier: "Todo.Input" })
 export interface Input extends Schema.Schema.Type<typeof Input> {}

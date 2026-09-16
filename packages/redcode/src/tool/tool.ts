@@ -6,7 +6,19 @@ import type { MessageV2 } from "../session/message-v2"
 import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import { ToolOutputBridge } from "./output-bridge"
+import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import type { Agent } from "@/agent/agent"
+
+/** The task ids a todowrite call names, read from arguments that may have any shape. */
+function namedTasks(args: unknown) {
+  const todos = typeof args === "object" && args !== null ? (args as { todos?: unknown }).todos : undefined
+  if (!Array.isArray(todos)) return []
+  return todos.flatMap((item) =>
+    typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string"
+      ? [(item as { id: string }).id]
+      : [],
+  )
+}
 
 interface Metadata {
   [key: string]: any
@@ -139,7 +151,8 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       // Compile the parser closure once per tool init; `decodeUnknownEffect`
       // allocates a new closure per call, so hoisting avoids re-closing it for
       // every LLM tool invocation.
-      const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
+      // Every problem at once, so a model fixing its arguments needs one retry, not one per key.
+      const decode = Schema.decodeUnknownEffect(toolInfo.parameters, { errors: "all" })
       const execute = toolInfo.execute
       toolInfo.execute = (args, ctx) => {
         const attrs = {
@@ -150,22 +163,27 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
         }
         return Effect.gen(function* () {
           const decoded = yield* decode(args).pipe(
+            // Task updates fail silently in a folded TUI row; the log is where the reason survives. It
+            // records which keys were wrong and which tasks were named, never the content.
+            Effect.tapError((error) =>
+              id === "todowrite"
+                ? Effect.logWarning("todowrite refused", {
+                    ...attrs,
+                    kind: "schema",
+                    keys: SessionTodo.schemaProblems(error.message)
+                      .map((problem) => problem.path || "<root>")
+                      .join(","),
+                    tasks: namedTasks(args).join(","),
+                    error: (error.message.split("\n")[0] ?? "").slice(0, 80),
+                  })
+                : Effect.void,
+            ),
             Effect.mapError(
               (error) =>
                 new InvalidArgumentsError({
                   tool: id,
                   detail: toolInfo.formatValidationError ? toolInfo.formatValidationError(error) : String(error),
                 }),
-            ),
-            // Task updates fail silently in a folded TUI row; the log is where the reason survives.
-            Effect.tapError((error) =>
-              id === "todowrite"
-                ? Effect.logWarning("todowrite refused", {
-                    ...attrs,
-                    kind: "schema",
-                    error: (error.detail.split("\n")[0] ?? "").slice(0, 80),
-                  })
-                : Effect.void,
             ),
           )
           const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, ctx)

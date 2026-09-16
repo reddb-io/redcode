@@ -139,6 +139,13 @@ describe("debug todos", () => {
         },
       ])
       expect(SessionTodoStore.refusalKind(refused)).toBe("evidence-refused")
+      // A schema refusal from either runtime classifies as one, and its first line names the key.
+      expect(
+        SessionTodoStore.refusalKind(
+          "The todowrite tool was called with invalid arguments: Missing key at todos[0].revision\nPlease rewrite",
+        ),
+      ).toBe("schema")
+      expect(SessionTodoStore.refusalKind("Invalid tool input: Missing key at todos[0].revision")).toBe("schema")
 
       const text = renderTodoReport(report)
       expect(text).toContain(`session ${sessionID}`)

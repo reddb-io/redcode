@@ -17,6 +17,7 @@ import {
   alwaysSeparate,
   createTodoFold,
   foldTodoFailures,
+  todoFailureShown,
   TodoFailureRow,
   TodoFailureRunsProvider,
   toolDisplay,
@@ -269,10 +270,105 @@ describe("TUI inline tool wrapping", () => {
     for (const id of ["f1", "f2", "f3"])
       expect(runs.get(id)).toMatchObject({ lead: "f1", count: 3, latest: { id: "f3" } })
     // A rendered tool breaks the run, as does a user message and a successful todowrite.
-    expect(runs.get("f4")).toMatchObject({ lead: "f4", count: 1 })
-    expect(runs.get("f5")).toMatchObject({ lead: "f5", count: 1 })
-    expect(runs.get("f6")).toMatchObject({ lead: "f6", count: 1 })
+    expect(runs.get("f4")).toMatchObject({ lead: "f4", count: 1, corrected: false })
+    // Only the run a successful todowrite followed directly is corrected.
+    expect(runs.get("f5")).toMatchObject({ lead: "f5", count: 1, corrected: true })
+    expect(runs.get("f6")).toMatchObject({ lead: "f6", count: 1, corrected: false })
     expect(runs.has("ok")).toBe(false)
+    // One failure the model fixed on its next call is not shown; two in a row are, fixed or not.
+    expect(todoFailureShown(runs.get("f5"))).toBe(false)
+    expect(todoFailureShown(runs.get("f6"))).toBe(true)
+    expect(todoFailureShown(runs.get("f1"))).toBe(true)
+    const fixedLater = foldTodoFailures(
+      [
+        { id: "a1", role: "assistant" },
+        { id: "a2", role: "assistant" },
+        { id: "a3", role: "assistant" },
+      ],
+      (id) =>
+        ({
+          a1: [todo("g1")],
+          a2: [{ id: "r", type: "reasoning", text: "again" }, todo("g2")],
+          a3: [{ id: "s", type: "step-start" }, todo("fixed", "completed")],
+        })[id] ?? [],
+    )
+    expect(fixedLater.get("g1")).toMatchObject({ lead: "g1", count: 2, corrected: true })
+    expect(todoFailureShown(fixedLater.get("g1"))).toBe(true)
+    // A todowrite still running is a rendered part: it breaks the run without correcting it.
+    const running = foldTodoFailures([{ id: "a1", role: "assistant" }], () => [todo("h1"), todo("live", "running")])
+    expect(running.get("h1")).toMatchObject({ count: 1, corrected: false })
+  })
+
+  test("renders nothing for a single todowrite failure once the model's next call succeeds", async () => {
+    type FixturePart = { id: string; type: string; tool: string; state: { status: string; error?: string } }
+    const part = (id: string, status: string, error?: string): FixturePart => ({
+      id,
+      type: "tool",
+      tool: "todowrite",
+      state: { status, ...(error ? { error } : {}) },
+    })
+    const [store, setStore] = createStore<{
+      messages: Array<{ id: string; role: string }>
+      parts: Record<string, FixturePart[]>
+    }>({
+      messages: [{ id: "a1", role: "assistant" }],
+      parts: { a1: [part("f1", "error", "Missing key at todos[0].status")] },
+    })
+    function Row(props: { failure: string; part: FixturePart }) {
+      return (
+        <InlineToolRow
+          icon="⚙"
+          complete={false}
+          pending="Updating todos…"
+          failed={true}
+          failure={props.failure}
+          error={props.part.state.error ?? ""}
+          errorExpanded={false}
+        >
+          Updating todos…
+        </InlineToolRow>
+      )
+    }
+    const frame = async () => {
+      await testSetup!.renderOnce()
+      await testSetup!.renderOnce()
+      return testSetup!.captureCharFrame()
+    }
+    testSetup = await testRender(
+      () => (
+        <box flexDirection="column" width={72}>
+          <TodoFailureRunsProvider messages={store.messages} parts={(id) => store.parts[id] ?? []}>
+            <For each={store.messages}>
+              {(message) => (
+                <For each={store.parts[message.id]}>
+                  {(item) => (
+                    <Show when={item.state.status === "error"}>
+                      <TodoFailureRow part={item} row={Row} />
+                    </Show>
+                  )}
+                </For>
+              )}
+            </For>
+          </TodoFailureRunsProvider>
+        </box>
+      ),
+      { width: 72, height: 6 },
+    )
+    // While the failure stands it is shown, key and all.
+    expect(await frame()).toContain("Todo update failed: Missing key at todos[0].status")
+    // The retry, a new step and so a new message, succeeds: the corrected failure leaves the screen.
+    setStore(
+      produce((draft) => {
+        draft.messages.push({ id: "a2", role: "assistant" })
+        draft.parts.a2 = [part("ok", "running")]
+      }),
+    )
+    expect(await frame()).toContain("Todo update failed")
+    setStore(produce((draft) => (draft.parts.a2 = [part("ok", "completed")])))
+    expect(await frame()).not.toContain("Todo update failed")
+    // A second failure before the success is a run, and a run is shown even once corrected.
+    setStore(produce((draft) => draft.parts.a1.push(part("f2", "error", "Missing key at todos[0].revision"))))
+    expect(await frame()).toContain("Todo update failed ×2")
   })
 
   test("re-folds only live messages while a session streams, with the same runs as a full fold", () => {
