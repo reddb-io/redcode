@@ -265,6 +265,35 @@ test("a label is a breadcrumb through the named ancestors, so icons and repeated
   }
 })
 
+test("the peer scan stops at its limit, skips generated ids in the label and keeps the position when cut", async () => {
+  const rows = Array.from(
+    { length: 300 },
+    (_, index) =>
+      `<li data-design-id="row-${"x".repeat(36)}" role="listitem"><button data-probe="s${index}">Filipe</button> ${"wrote a long line of text".repeat(2)}</li>`,
+  )
+  const page =
+    await open(`<div role="presentation"><section data-design-id="feed-${"y".repeat(35)}" aria-label="${"Conversations of the week".repeat(2)}">
+    <ul id=":r3:" aria-label="${"All the rows in the feed".repeat(2)}">${rows.join("")}</ul>
+  </section></div>`)
+  try {
+    const first = await pick(page, "[data-probe=s0]")
+    // Fifty peers were examined and all matched, then the scan stopped: the count is a lower bound.
+    expect(first.label).toEndWith(" (1 of 51+)")
+    // The breadcrumb, not the position, is what a long label loses.
+    expect([...first.label]).toHaveLength(240)
+    expect(first.label).toContain("…")
+    expect(first.label).toStartWith('button "Filipe" in li[role=listitem][data-design-id="row-')
+    // A framework id names the list in the context, never in the label; a presentation role is no landmark.
+    expect(first.label).toContain(' in ul "All the rows')
+    expect(first.label).not.toContain(":r3:")
+    expect(first.context).toContain('ul[id=":r3:"] "All the rows')
+    expect(first.context).toStartWith('section[data-design-id="feed-')
+    expect(first.parent).toStartWith('li[role=listitem][data-design-id="row-')
+  } finally {
+    await page.close()
+  }
+})
+
 test("SVG children are addressed and the layout audit caps its findings", async () => {
   const bars = Array.from({ length: 40 }, (_, index) => `<p style="width:${3000 + index}px">Wide ${index}</p>`)
   const page = await open(`<svg id="chart" width="100" height="40"><g>

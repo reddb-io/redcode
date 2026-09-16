@@ -193,6 +193,11 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const input = (id: string) => element<HTMLInputElement>(id)
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
   const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`
+  /** Cuts by code point like the frame does, so a surrogate pair is never split. */
+  const cut = (value: string, limit: number) => {
+    const chars = [...value]
+    return chars.length > limit ? chars.slice(0, limit).join("") : value
+  }
   const box = (value: unknown) =>
     !!value &&
     typeof value === "object" &&
@@ -2430,7 +2435,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       Array.isArray(event.data.findings)
     ) {
       const field = (item: Record<string, unknown>, name: string, limit: number) =>
-        typeof item[name] === "string" ? String(item[name]).slice(0, limit) : ""
+        typeof item[name] === "string" ? cut(String(item[name]), limit) : ""
       mergeFindings(
         event.data.findings
           .slice(0, 30)
@@ -2481,17 +2486,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (event.data?.type !== "design:selection") return
     if (typeof event.data.target !== "string" || typeof event.data.text !== "string") return
-    element("target").textContent = event.data.target.slice(0, 1000)
-    input("selection").value = event.data.text.slice(0, 12000)
-    state.snapshot = typeof event.data.snapshot === "string" ? event.data.snapshot.slice(0, 30000) : ""
+    element("target").textContent = cut(event.data.target, 1000)
+    input("selection").value = cut(event.data.text, 12000)
+    state.snapshot = typeof event.data.snapshot === "string" ? cut(event.data.snapshot, 30000) : ""
     const field = (name: string, limit: number) =>
-      typeof event.data[name] === "string" ? String(event.data[name]).slice(0, limit) : ""
+      typeof event.data[name] === "string" ? cut(String(event.data[name]), limit) : ""
     // Picking another element moves the card and keeps whatever was typed; nothing is lost by a
     // stray click and the header shows the new target.
     const moved = !!state.card?.text.trim() && state.card.target !== event.data.target
     state.card = {
       frame,
-      target: event.data.target.slice(0, 1000),
+      target: cut(event.data.target, 1000),
       tag: field("tag", 64),
       elementText: field("elementText", 240),
       selectedText: field("selectedText", 12000),

@@ -66,7 +66,9 @@ export function annotations() {
     const chars = [...text]
     return chars.length > limit ? `${chars.slice(0, limit - 1).join("")}…` : text
   }
-  const textOf = (target: Element) => (target instanceof HTMLElement ? target.innerText : target.textContent) ?? ""
+  /** Rendered text; the quick form reads textContent without forcing layout, for comparisons only. */
+  const textOf = (target: Element, quick = false) =>
+    (target instanceof HTMLElement && !quick ? target.innerText : target.textContent) ?? ""
   const elementText = (target: Element) => {
     if (
       target instanceof HTMLInputElement ||
@@ -194,7 +196,7 @@ export function annotations() {
       .flatMap((node) => (node ? [textOf(node)] : []))
       .join(" ")
   /** The accessible name a reader would use for the element. */
-  const nameOf = (target: Element) => {
+  const nameOf = (target: Element, quick = false) => {
     const control = target.matches("input, select, textarea")
     const type = (target.getAttribute("type") ?? "").toLowerCase()
     const labels =
@@ -214,7 +216,7 @@ export function annotations() {
       control ? target.getAttribute("placeholder") : "",
       target.matches("img, area, input[type=image]") ? target.getAttribute("alt") : "",
       target instanceof HTMLInputElement && /^(button|submit|reset)$/.test(type) ? target.value : "",
-      control ? "" : textOf(target),
+      control ? "" : textOf(target, quick),
       target.getAttribute("title"),
     ]
     return flat(
@@ -229,8 +231,8 @@ export function annotations() {
     const design = target.getAttribute("data-design-id")
     return `${tag}${type ? `[type=${flat(type, 20)}]` : ""}${role ? `[role=${flat(role, 20)}]` : ""}${design ? `[data-design-id="${flat(design, 40)}"]` : ""}`
   }
-  const baseLabel = (target: Element, kind = kindOf(target)) => {
-    const name = nameOf(target)
+  const baseLabel = (target: Element, kind = kindOf(target), quick = false) => {
+    const name = nameOf(target, quick)
     if (name) return `${kind} "${name}"`
     const field = target.getAttribute("name")
     return field ? `${kind}[name="${flat(field, 30)}"]` : kind
@@ -240,11 +242,16 @@ export function annotations() {
   // headers instead. A variant root is named by the target prefix.
   const ANCESTORS =
     "[data-design-id], [id], [role], [aria-label], [aria-labelledby], button, a, label, li, nav, header, footer, aside, main, section, article, dialog, form, fieldset, table, details, summary, h1, h2, h3, h4, h5, h6"
-  const LANDMARKS = "nav, header, footer, aside, main, section, article, dialog, form, [role]"
+  const LANDMARKS =
+    "nav, header, footer, aside, main, section, article, dialog, form, [role]:not([role=presentation]):not([role=none])"
   /** Elements whose own text is their name; a container is named by its caption or heading only. */
   const LEAVES =
     "button, a, label, summary, legend, li, option, h1, h2, h3, h4, h5, h6, [role=button], [role=link], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=listitem], [role=treeitem]"
-  const describe = (container: Element) => {
+  /** An id a framework minted for one render (React useId, Radix, Headless UI, MUI, Mantine, Chakra). */
+  const generated = (id: string) =>
+    /[:«»]/.test(id) || /^_?r_?[0-9a-z]+_?$/i.test(id) || /^(radix|headlessui|mui|react-aria|mantine|chakra)-/i.test(id)
+  /** One ancestor as the note shows it; a label leaves out ids that will not survive the next render. */
+  const describe = (container: Element, stable = false) => {
     // Only the container's own caption or heading names it, never one from a nested section.
     const heading = container.matches(LEAVES)
       ? undefined
@@ -259,7 +266,8 @@ export function annotations() {
       30,
     )
     // A data-design-id is already in the kind; a plain id is the next most stable key.
-    const key = !container.getAttribute("data-design-id") && container.id ? `[id="${flat(container.id, 40)}"]` : ""
+    const id = container.getAttribute("data-design-id") ? "" : container.id
+    const key = id && !(stable && generated(id)) ? `[id="${flat(id, 40)}"]` : ""
     return `${kindOf(container)}${key}${name ? ` "${name}"` : ""}`
   }
   const named = (node: Element) =>
@@ -314,33 +322,36 @@ export function annotations() {
       column: column ? `column "${flat(textOf(column), 30)}"` : "",
     }
   }
+  /** Where an element is, computed once per reference: its table cell and its named ancestors. */
+  const placeOf = (target: Element) => ({ ...cellOf(target), chain: chain(target) })
+  type Place = ReturnType<typeof placeOf>
   /** The places around the element, nearest first: its table row, then its named ancestors. */
-  const crumbs = (target: Element) => {
-    const cell = cellOf(target)
-    return [...(cell.row ? [cell.row] : []), ...chain(target).map(describe)]
-  }
-  const context = (target: Element) => {
-    const column = cellOf(target).column
-    return flat([...crumbs(target).reverse(), ...(column ? [column] : [])].join(" > "), LIMITS.context)
-  }
+  const crumbs = (place: Place, stable: boolean) => [
+    ...(place.row ? [place.row] : []),
+    ...place.chain.map((node) => describe(node, stable)),
+  ]
+  const context = (place: Place) =>
+    flat([...crumbs(place, false).reverse(), ...(place.column ? [place.column] : [])].join(" > "), LIMITS.context)
   /** The breadcrumb without a position: the element, then where it is, innermost first. */
-  const breadcrumb = (target: Element, base = baseLabel(target)) => {
-    const parts = crumbs(target).slice(0, 3)
+  const breadcrumb = (target: Element, place: Place, base: string) => {
+    const parts = crumbs(place, true).slice(0, 3)
     // A bare tag never stands alone: an element outside every named ancestor names its parent.
-    const where = parts.length ? parts : [describe(target.parentElement ?? document.body)]
+    const where = parts.length ? parts : [describe(target.parentElement ?? document.body, true)]
     return `${base} in ${where.join(" in ")}`
   }
-  const label = (target: Element) => {
+  const label = (target: Element, place: Place) => {
     const kind = kindOf(target)
     const base = baseLabel(target, kind)
-    const full = breadcrumb(target, base)
+    const full = breadcrumb(target, place, base)
     const scope = scopeOf(target)
     const root = scope instanceof Element ? scope : document.body
-    // Other variants are hidden, so only rendered elements compete for the same breadcrumb. It is
-    // only computed for peers of the same kind and name, and the scan stops after enough of them.
+    // Other variants are hidden, so only rendered elements of the same kind compete for the breadcrumb.
+    // Every one of them counts toward the scan limit before its name is read, and names are compared
+    // from textContent so no peer forces a layout; the scan stops once the limit is reached.
+    const quick = baseLabel(target, kind, true)
     let total = 0
     let index = 0
-    let compared = 0
+    let examined = 0
     let more = false
     for (const node of root.getElementsByTagName(target.localName)) {
       if (node === target) {
@@ -348,15 +359,17 @@ export function annotations() {
         index = total
         continue
       }
-      if (compared >= LIMITS.peers) {
+      if (examined >= LIMITS.peers) {
         more = true
         break
       }
-      if (kindOf(node) !== kind || node.getClientRects().length === 0 || baseLabel(node, kind) !== base) continue
-      compared++
-      if (breadcrumb(node, base) === full) total++
+      if (kindOf(node) !== kind || node.getClientRects().length === 0) continue
+      examined++
+      if (baseLabel(node, kind, true) === quick && breadcrumb(node, placeOf(node), base) === full) total++
     }
-    return flat(total > 1 ? `${full} (${index} of ${total}${more ? "+" : ""})` : full, LIMITS.label)
+    // The position is kept whole; the breadcrumb before it is what gets cut.
+    const suffix = total > 1 ? ` (${index} of ${total}${more ? "+" : ""})` : ""
+    return `${flat(full, LIMITS.label - suffix.length)}${suffix}`
   }
   /** The parent and grandparent with their XPaths, so a note on a bare element still says what holds it. */
   const parentOf = (target: Element) => {
@@ -368,16 +381,19 @@ export function annotations() {
     }
     const grand = parent.parentElement
     const both = grand && grand !== document.documentElement ? `${one(parent)} in ${one(grand)}` : one(parent)
-    const value = [both, one(parent)].find((item) => item.length <= LIMITS.parent)
-    return value ?? ""
+    // Too long to carry both paths: the parent alone, then the parent without its path, is still a name.
+    return [both, one(parent), describe(parent)].find((item) => item.length <= LIMITS.parent) ?? ""
   }
-  const reference = (target: Element) => ({
-    target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
-    xpath: xpath(target),
-    context: context(target),
-    label: label(target),
-    parent: parentOf(target),
-  })
+  const reference = (target: Element) => {
+    const place = placeOf(target)
+    return {
+      target: state.variant ? `variant:${state.variant} ${selector(target)}` : selector(target),
+      xpath: xpath(target),
+      context: context(place),
+      label: label(target, place),
+      parent: parentOf(target),
+    }
+  }
   const rect = (target: Element) => {
     const box = target.getBoundingClientRect()
     return { x: box.x, y: box.y, width: box.width, height: box.height }
