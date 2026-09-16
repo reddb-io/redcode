@@ -176,6 +176,13 @@ const layer = Layer.effect(
      * What a provider's refusal teaches about its limit, kept so the next request from the model
      * is sized by it instead of repeating the refusal.
      */
+    // The provider's count for the last request of a session and our estimate for it, so the
+    // next request is projected from that count plus what it gained since.
+    const anchors = new Map<SessionSchema.ID, { counted: number; estimate: number }>()
+    const outputOf = (model: Model, request: LLMRequest) =>
+      request.generation?.maxTokens ?? model.route.defaults.limits?.output ?? 0
+    const carriesMedia = (request: LLMRequest) =>
+      request.messages.some((message) => message.content.some((part) => part.type === "media"))
     const learnLimit = Effect.fnUntraced(function* (input: {
       readonly sessionID: SessionSchema.ID
       readonly model: Model
@@ -196,8 +203,9 @@ const layer = Layer.effect(
       const providerID = input.model.provider ?? ""
       const observed = ModelLimit.fromNumbers({
         numbers,
-        output: input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0,
-        estimated: compaction.sizeOf(input.request),
+        output: outputOf(input.model, input.request),
+        // The estimate of a request with images or files in it calibrates nothing.
+        estimated: carriesMedia(input.request) ? undefined : compaction.sizeOf(input.request),
         declared: SessionCompaction.declaredLimit(configEntriesAtStart, providerID, input.model.id),
         message: text.split("\n")[0] ?? text,
       })
@@ -207,10 +215,36 @@ const layer = Layer.effect(
         sessionID: input.sessionID,
         providerID,
         modelID: input.model.id,
-        input: observed.input,
+        limit: observed.limit,
+        includesOutput: observed.includesOutput ?? false,
         counted: observed.counted,
         estimated: observed.estimated,
         ratio: observed.ratio,
+      })
+    })
+    /** A request the provider accepted above the lesson raises the lesson. */
+    const raiseLimit = Effect.fnUntraced(function* (input: {
+      readonly sessionID: SessionSchema.ID
+      readonly model: Model
+      readonly request: LLMRequest
+      readonly accepted: number
+    }) {
+      const providerID = input.model.provider ?? ""
+      const observed = yield* limits.get(
+        providerID,
+        input.model.id,
+        SessionCompaction.declaredLimit(configEntriesAtStart, providerID, input.model.id),
+      )
+      if (!observed) return
+      const raised = ModelLimit.raised(observed, input.accepted, outputOf(input.model, input.request))
+      if (!raised) return
+      yield* limits.learn(providerID, input.model.id, raised)
+      yield* Effect.logInfo("provider accepted more than its learned limit; raised it", {
+        sessionID: input.sessionID,
+        providerID,
+        modelID: input.model.id,
+        accepted: input.accepted,
+        limit: raised.limit,
       })
     })
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
@@ -563,8 +597,18 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })
-      const preflight = yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request })
-      if (preflight.action === "compacted") return yield* Effect.die(continueAfterCompaction(currentStep, retry))
+      const preflight = yield* compaction.compactIfNeeded({
+        sessionID: session.id,
+        entries,
+        model,
+        request,
+        anchor: anchors.get(session.id),
+      })
+      if (preflight.action === "compacted") {
+        // The count anchored the request that was compacted away, not the one being rebuilt.
+        anchors.delete(session.id)
+        return yield* Effect.die(continueAfterCompaction(currentStep, retry))
+      }
       if (preflight.action === "refuse") {
         // Not sent: the provider would refuse it, and compaction had its chances. Reported as the
         // step's failure, with what to do about it.
@@ -782,6 +826,15 @@ const layer = Layer.effect(
           const stream = yield* restore(Effect.raceFirst(providerStream, watchdog)).pipe(Effect.exit)
           const failure =
             stream._tag === "Failure" ? Option.getOrUndefined(Cause.findErrorOption(stream.cause)) : undefined
+          // What the provider counted for this request anchors the next projection, and raises a
+          // lesson the provider has just shown too low.
+          const accepted = reportedTokens
+            ? reportedTokens.input + reportedTokens.cache.read + reportedTokens.cache.write
+            : 0
+          if (accepted > 0) {
+            anchors.set(session.id, { counted: accepted, estimate: compaction.sizeOf(request) })
+            yield* raiseLimit({ sessionID: session.id, model, request, accepted })
+          } else anchors.delete(session.id)
           // The refusal says what the provider's limit is: the next request is sized by it.
           if (isContextOverflowFailure(overflowFailure ?? failure))
             yield* learnLimit({ sessionID: session.id, model, request, failure: overflowFailure ?? failure })
@@ -790,8 +843,10 @@ const layer = Layer.effect(
             !publisher.hasAssistantStarted() &&
             isContextOverflowFailure(overflowFailure ?? failure) &&
             (yield* restore(recoverOverflow({ sessionID: session.id, entries, model, request })))
-          )
+          ) {
+            anchors.delete(session.id)
             return yield* Effect.die(continueAfterOverflowCompaction(currentStep, retry))
+          }
           if (overflowFailure) yield* publish(overflowFailure)
           const llmFailure = failure instanceof LLMError ? failure : undefined
           // A provider that refuses native tool search must not take the turn down with it, nor
@@ -997,8 +1052,9 @@ const layer = Layer.effect(
                   nextRetry(defect.transition.retry),
                 )
               }
-              if (defect.transition._tag === "ContinueAfterOverflowCompaction")
-                return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
+              // A compaction, of either kind, is followed by another attempt without overflow
+              // recovery; the compaction guard bounds how many run for one request, after which
+              // the preflight sends or refuses and the attempt ends the turn cleanly.
               yield* Effect.yieldNow
               return yield* runAfterOverflowCompaction(
                 sessionID,

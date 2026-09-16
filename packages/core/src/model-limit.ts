@@ -6,23 +6,28 @@
  * refused for its size says what the limit really is, so that number is kept per provider and
  * model, and the loops size their requests by the smaller of the catalog's limit and the
  * provider's. The refusal also says how many tokens the provider counted, which calibrates the
- * character-based estimate for that model.
+ * character-based estimate for that model; a request the provider later accepts above the lesson
+ * raises it.
  */
 export * as ModelLimit from "./model-limit"
 
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema, Semaphore } from "effect"
+import * as NFS from "fs/promises"
 import path from "path"
 import type { ContextOverflowNumbers } from "@reddb-io/redcode-llm"
 import { Global } from "./global"
-import { FSUtil } from "./fs-util"
 import { makeGlobalNode } from "./effect/app-node"
 import { serviceUse } from "./effect/service-use"
 
 /** The estimate is never scaled below or above these: one refusal must not swing it wildly. */
 export const RATIO_MIN = 0.5
-export const RATIO_MAX = 3
+export const RATIO_MAX = 1.5
 /** Share of a guessed limit kept back, since a guess is as likely too large as too small. */
 export const ESTIMATED_RESERVE = 0.1
+/** No model accepts less than this; a smaller number is not a context limit. */
+export const LIMIT_FLOOR = 4_096
+/** Nor less than this share of what the configuration declares for the model. */
+export const LIMIT_SHARE = 0.25
 const MESSAGE_MAX = 300
 const FILE = "model-limits.json"
 
@@ -34,15 +39,17 @@ export const Declared = Schema.Struct({
 export type Declared = typeof Declared.Type
 
 export const Observed = Schema.Struct({
-  /** Input tokens the provider accepts in one request. */
-  input: Schema.Number,
+  /** Tokens the provider enforces in one request, as it said. */
+  limit: Schema.Number,
+  /** Whether that limit counts the completion the request asks for together with the input. */
+  includesOutput: Schema.optional(Schema.Boolean),
   /** Input tokens the provider counted for the refused request. */
   counted: Schema.optional(Schema.Number),
   /** Our estimate for that request. */
   estimated: Schema.optional(Schema.Number),
-  /** `counted / estimated`, bounded; future estimates for the model are scaled by it. */
+  /** `counted / estimated`, bounded; what history gains between requests is scaled by it. */
   ratio: Schema.optional(Schema.Number),
-  /** Epoch milliseconds of the refusal. */
+  /** Epoch milliseconds of the refusal, or of the acceptance that raised the lesson. */
   at: Schema.Number,
   /** The provider's own sentence. */
   message: Schema.String,
@@ -63,8 +70,20 @@ export const ratio = (counted: number, estimated: number) =>
   estimated > 0 && counted > 0 ? Math.min(RATIO_MAX, Math.max(RATIO_MIN, counted / estimated)) : undefined
 
 /**
- * What a refusal teaches. `output` is the completion the refused request asked for, which a
- * provider that counts input and output together has to be given back to find the input it takes.
+ * Input tokens the provider accepts, given the completion a request asks for now. Kept apart from
+ * the lesson so a changed `limit.output` does not leave a stale input limit behind.
+ */
+export const inputOf = (observed: Observed, output: number) =>
+  observed.includesOutput ? Math.max(0, observed.limit - output) : observed.limit
+
+/**
+ * What a refusal teaches, or nothing when the numbers do not describe one: a limit no model has
+ * (below the floor, or a quarter of what the configuration declares), or a count that does not
+ * exceed it. Both keep a sentence about images, tools or unrelated arithmetic from becoming a
+ * limit that refuses every later request.
+ *
+ * `output` is the completion the refused request asked for, which a provider that counts input
+ * and output together has to be given back to find the input it takes.
  */
 export const fromNumbers = (input: {
   readonly numbers: ContextOverflowNumbers
@@ -76,18 +95,30 @@ export const fromNumbers = (input: {
 }): Observed | undefined => {
   const { numbers } = input
   if (numbers.limit === undefined) return undefined
+  const includesOutput = numbers.includesOutput === true
   const output = numbers.output ?? input.output
-  const limit = numbers.includesOutput ? numbers.limit - output : numbers.limit
-  if (!(limit > 0)) return undefined
+  const accepts = includesOutput ? numbers.limit - output : numbers.limit
+  if (!(accepts >= LIMIT_FLOOR)) return undefined
+  const declared = input.declared?.input ?? input.declared?.context
+  if (declared !== undefined && declared > 0 && accepts < declared * LIMIT_SHARE) return undefined
+  // The count is normalised to input tokens; the comparison stays on the provider's own terms.
   const counted =
     numbers.counted === undefined
       ? undefined
-      : numbers.includesOutput && numbers.output === undefined
+      : includesOutput && numbers.output === undefined
         ? Math.max(0, numbers.counted - output)
         : numbers.counted
+  const total =
+    numbers.counted === undefined
+      ? undefined
+      : includesOutput && numbers.output !== undefined
+        ? numbers.counted + numbers.output
+        : numbers.counted
+  if (total !== undefined && total <= numbers.limit) return undefined
   const scale = counted !== undefined && input.estimated !== undefined ? ratio(counted, input.estimated) : undefined
   return {
-    input: Math.floor(limit),
+    limit: Math.floor(numbers.limit),
+    ...(includesOutput ? { includesOutput } : {}),
     ...(counted === undefined ? {} : { counted }),
     ...(input.estimated === undefined ? {} : { estimated: input.estimated }),
     ...(scale === undefined ? {} : { ratio: scale }),
@@ -97,14 +128,25 @@ export const fromNumbers = (input: {
   }
 }
 
+/**
+ * The lesson raised by a request the provider accepted above it: the provider has shown it takes
+ * at least `accepted` input tokens with `output` tokens of completion asked for.
+ */
+export const raised = (observed: Observed, accepted: number, output: number, at = Date.now()): Observed | undefined => {
+  if (!(accepted > inputOf(observed, output))) return undefined
+  return { ...observed, limit: observed.includesOutput ? accepted + output : accepted, at }
+}
+
 /** Whether the configuration still declares what it did when the limit was learned. */
 export const stillApplies = (observed: Observed, declared: Declared | undefined) =>
   (observed.declared?.context ?? null) === (declared?.context ?? null) &&
   (observed.declared?.input ?? null) === (declared?.input ?? null)
 
 /** The input limit to size requests by: the catalog's, the provider's, whichever is smaller. */
-export const effectiveInput = (limit: { readonly input?: number }, observed: Observed | undefined) => {
-  const candidates = [limit.input, observed?.input].filter((value): value is number => value !== undefined && value > 0)
+export const effectiveInput = (limit: { readonly input?: number }, observed: Observed | undefined, output: number) => {
+  const candidates = [limit.input, observed === undefined ? undefined : inputOf(observed, output)].filter(
+    (value): value is number => value !== undefined && value > 0,
+  )
   return candidates.length ? Math.min(...candidates) : undefined
 }
 
@@ -124,12 +166,13 @@ export const learnedNotice = (input: {
   readonly providerID: string
   readonly modelID: string
   readonly observed: Observed
+  readonly output: number
 }) => {
   const counted =
     input.observed.counted === undefined ? "" : `, counted ${input.observed.counted.toLocaleString("en-US")}`
   const estimated =
     input.observed.estimated === undefined ? "" : ` (estimated ${input.observed.estimated.toLocaleString("en-US")})`
-  return `${input.providerID}/${input.modelID} accepts ${input.observed.input.toLocaleString("en-US")} input tokens${counted}${estimated}. Requests are sized to that from now on; set limit.context in config to override.`
+  return `${input.providerID}/${input.modelID} accepts ${inputOf(input.observed, input.output).toLocaleString("en-US")} input tokens${counted}${estimated}. Requests are sized to that from now on; set limit.context in config to override.`
 }
 
 export interface Interface {
@@ -153,15 +196,25 @@ const split = (item: string) => {
 
 const decodeFile = Schema.decodeUnknownEffect(File)
 
-/** The store over a map, persisted through `save` after every change. */
-const make = (models: Map<string, Observed>, save: (models: Map<string, Observed>) => Effect.Effect<void>) => {
+type Models = Map<string, Observed>
+
+/** Where the lessons live: read before every use, and read again before every change. */
+type Backing = {
+  /** The current lessons, fresh from wherever they are kept. */
+  readonly read: Effect.Effect<Models>
+  /** Applies one change to the freshest lessons and keeps the result. */
+  readonly change: (apply: (models: Models) => void) => Effect.Effect<void>
+}
+
+const make = (backing: Backing) => {
   const forget = Effect.fn("ModelLimit.forget")(function* (providerID: string, modelID: string) {
-    if (!models.delete(key(providerID, modelID))) return
-    yield* save(models)
+    yield* backing.change((models) => {
+      models.delete(key(providerID, modelID))
+    })
   })
   return Service.of({
     get: Effect.fn("ModelLimit.get")(function* (providerID: string, modelID: string, declared?: Declared) {
-      const observed = models.get(key(providerID, modelID))
+      const observed = (yield* backing.read).get(key(providerID, modelID))
       if (!observed) return undefined
       if (stillApplies(observed, declared)) return observed
       // The person set or changed the model's limit after the lesson: their configuration wins.
@@ -169,42 +222,103 @@ const make = (models: Map<string, Observed>, save: (models: Map<string, Observed
       return undefined
     }),
     learn: Effect.fn("ModelLimit.learn")(function* (providerID: string, modelID: string, observed: Observed) {
-      models.set(key(providerID, modelID), observed)
-      yield* save(models)
+      yield* backing.change((models) => {
+        models.set(key(providerID, modelID), observed)
+      })
     }),
     forget,
     list: () =>
-      Effect.sync(() =>
-        Array.from(models, ([item, observed]) => ({ ...split(item), observed })).sort((a, b) =>
-          key(a.providerID, a.modelID).localeCompare(key(b.providerID, b.modelID)),
+      backing.read.pipe(
+        Effect.map((models) =>
+          Array.from(models, ([item, observed]) => ({ ...split(item), observed })).sort((a, b) =>
+            key(a.providerID, a.modelID).localeCompare(key(b.providerID, b.modelID)),
+          ),
         ),
       ),
   })
 }
 
 /** A store that forgets everything with the process. */
-export const memory = () => make(new Map(), () => Effect.void)
+export const memory = () => {
+  const models: Models = new Map()
+  return make({
+    read: Effect.succeed(models),
+    change: (apply) => Effect.sync(() => apply(models)),
+  })
+}
 
 export const memoryLayer = () => Layer.succeed(Service, memory())
 
-const layer = Layer.effect(
-  Service,
+/**
+ * The lessons in a JSON file shared by every Redcode process on the machine. The file is read
+ * whenever it changed on disk and read again before every change, so two processes never undo
+ * each other's lessons; a change is written to a temporary file and renamed into place, so a
+ * crash mid-write leaves the previous file intact.
+ */
+export const fileStore = (file: string) =>
   Effect.gen(function* () {
-    const fs = yield* FSUtil.Service
-    const file = path.join(Global.Path.state, FILE)
-    const models = new Map<string, Observed>()
-    const loaded = yield* fs.readJson(file).pipe(
-      Effect.flatMap(decodeFile),
+    const lock = Semaphore.makeUnsafe(1)
+    let models: Models = new Map()
+    let seen: number | undefined
+    const modified = Effect.tryPromise(() => NFS.stat(file)).pipe(
+      Effect.map((stat) => stat.mtimeMs),
       Effect.catch(() => Effect.succeed(undefined)),
     )
-    for (const [item, observed] of Object.entries(loaded?.models ?? {})) models.set(item, observed)
-    const save = (current: Map<string, Observed>) =>
-      fs.ensureDir(Global.Path.state).pipe(
-        Effect.andThen(fs.writeJson(file, { version: 1, models: Object.fromEntries(current) })),
+    const load = Effect.gen(function* () {
+      const text = yield* Effect.tryPromise(() => NFS.readFile(file, "utf8")).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      )
+      if (text === undefined) return new Map() as Models
+      const decoded = yield* Effect.try({ try: () => JSON.parse(text) as unknown, catch: (error) => error }).pipe(
+        Effect.flatMap(decodeFile),
+        Effect.catch((error) =>
+          Effect.logWarning("learned model limits could not be read; starting over", { file, error }).pipe(
+            Effect.as(undefined),
+          ),
+        ),
+      )
+      return new Map(Object.entries(decoded?.models ?? {})) as Models
+    })
+    const refresh = Effect.gen(function* () {
+      const current = yield* modified
+      if (current === seen && seen !== undefined) return models
+      models = yield* load
+      seen = current
+      return models
+    })
+    const write = (current: Models) =>
+      Effect.tryPromise(async () => {
+        await NFS.mkdir(path.dirname(file), { recursive: true })
+        const temporary = `${file}.${process.pid}.${Date.now()}.tmp`
+        await NFS.writeFile(temporary, JSON.stringify({ version: 1, models: Object.fromEntries(current) }, null, 2))
+        await NFS.rename(temporary, file)
+        return (await NFS.stat(file)).mtimeMs
+      }).pipe(
+        Effect.tap((mtime) => Effect.sync(() => (seen = mtime))),
+        Effect.asVoid,
         Effect.catch((error) => Effect.logWarning("could not save learned model limits", { file, error })),
       )
-    return make(models, save)
-  }),
-)
+    return make({
+      read: lock.withPermit(refresh),
+      change: (apply) =>
+        lock.withPermit(
+          Effect.gen(function* () {
+            // Read again: another process may have learned or forgotten something meanwhile.
+            models = yield* load
+            apply(models)
+            yield* write(models)
+          }),
+        ),
+    })
+  })
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [FSUtil.node] })
+export const layerAt = (file: string) => Layer.effect(Service, fileStore(file))
+
+export const node = makeGlobalNode({
+  service: Service,
+  layer: Layer.effect(
+    Service,
+    Effect.suspend(() => fileStore(path.join(Global.Path.state, FILE))),
+  ),
+  deps: [],
+})

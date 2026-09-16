@@ -31,7 +31,7 @@ const patterns = [
   /token limit exceeded/i,
   /max_prompt_tokens_exceeded/i,
   /input_too_long|prompt_too_long|max_context_length_exceeded|context_window_exceeded/i,
-  /[\d,]+\s*\+\s*(?:max_tokens\s*)?[\d,]+\s*>\s*[\d,]+/i,
+  /[\d,]+\s*\+\s*max_tokens\s*[\d,]+\s*>\s*[\d,]+/i,
 ]
 
 const exclusions = [/^(throttling error|service unavailable):/i, /rate limit/i, /too many requests/i]
@@ -102,10 +102,14 @@ export type ContextOverflowNumbers = {
   readonly includesOutput?: boolean
 }
 
-const N = String.raw`(\d[\d,_]*)`
+/**
+ * A token count: plain digits, or digits in groups of three behind a thousands separator, which
+ * some gateways localise (`131,072`, `131.072`, `131 072`). `131.07` is not a count.
+ */
+const N = String.raw`(\d{1,3}(?:[.,_ ]\d{3})+|\d+)`
 const number = (raw: string | undefined) => {
   if (raw === undefined) return undefined
-  const value = Number(raw.replace(/[,_]/g, ""))
+  const value = Number(raw.replace(/[.,_ ]/g, ""))
   return Number.isFinite(value) && value > 0 ? value : undefined
 }
 
@@ -156,9 +160,9 @@ const shapes: readonly Shape[] = [
     ),
     read: (m) => ({ limit: number(m[1]), counted: number(m[2]), includesOutput: true }),
   },
-  // "120000 + max_tokens 8192 > 128000".
+  // "120000 + max_tokens 8192 > 128000"; other arithmetic says nothing about a limit.
   {
-    pattern: new RegExp(String.raw`${N}\s*\+\s*(?:max_tokens\s*)?${N}\s*>\s*${N}`, "i"),
+    pattern: new RegExp(String.raw`${N}\s*\+\s*max_tokens\s*${N}\s*>\s*${N}`, "i"),
     read: (m) => ({ counted: number(m[1]), output: number(m[2]), limit: number(m[3]), includesOutput: true }),
   },
   // llama.cpp, LM Studio and friends.
@@ -205,14 +209,8 @@ const shapes: readonly Shape[] = [
     pattern: new RegExp(String.raw`context length is only ${N} tokens?`, "i"),
     read: (m) => ({ limit: number(m[1]), includesOutput: true }),
   },
-  {
-    pattern: new RegExp(String.raw`maximum prompt length is ${N}`, "i"),
-    read: (m) => ({ limit: number(m[1]) }),
-  },
-  {
-    pattern: new RegExp(String.raw`exceeds the limit of ${N}`, "i"),
-    read: (m) => ({ limit: number(m[1]) }),
-  },
+  // "maximum prompt length is N" and "exceeds the limit of N" classify a refusal but teach
+  // nothing: the same words announce a limit on images, tools or uploads.
 ]
 
 /**

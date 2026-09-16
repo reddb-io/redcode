@@ -202,10 +202,8 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
   if (
     isContextOverflow(m) ||
     input.error.statusCode === 413 ||
-    (input.error.statusCode !== undefined &&
-      input.error.statusCode >= 400 &&
-      input.error.statusCode < 500 &&
-      isContextOverflowBody(input.error.responseBody))
+    // The statuses a size refusal comes with; a 403 "monthly token limit exceeded" is a quota.
+    ([400, 413, 422].includes(input.error.statusCode ?? 0) && isContextOverflowBody(input.error.responseBody))
   ) {
     return {
       type: "context_overflow",

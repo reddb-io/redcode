@@ -51,8 +51,9 @@ export const LimitsCommand = effectCmd({
       const declared = observed.declared
         ? ` (config declared context ${observed.declared.context ?? "-"}${observed.declared.input === undefined ? "" : `, input ${observed.declared.input}`})`
         : ""
+      const kind = observed.includesOutput ? "input and output tokens together" : "input tokens"
       console.log(`  ${entry.providerID}/${entry.modelID}`)
-      console.log(`    accepts ${observed.input.toLocaleString("en-US")} input tokens${counted}${estimated}${ratio}`)
+      console.log(`    accepts ${observed.limit.toLocaleString("en-US")} ${kind}${counted}${estimated}${ratio}`)
       console.log(`    learned ${when}${declared}`)
       console.log(`    ${observed.message.split("\n")[0]}`)
     }

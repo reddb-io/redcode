@@ -8148,7 +8148,7 @@ it.instance("/compact with a focus puts it in the summary prompt", () =>
 // Limits learned from the provider, and the preflight that keeps requests under them
 // ---------------------------------------------------------------------------------------------
 
-const UPSTREAM_REFUSAL = "input length 41234 exceeds the maximum allowed input length of 36000 tokens"
+const UPSTREAM_REFUSAL = "input length 61234 exceeds the maximum allowed input length of 60000 tokens"
 
 /** The 400 bodies routers answer with: the OpenAI-compatible envelope, and OpenRouter's wrapper. */
 const refusals = {
@@ -8227,8 +8227,8 @@ for (const shape of ["openai-compatible", "openrouter"] as const) {
           providerID: ref.providerID,
           modelID: ref.modelID,
           observed: {
-            input: 36_000,
-            counted: 41_234,
+            limit: 60_000,
+            counted: 61_234,
             message: expect.stringContaining(UPSTREAM_REFUSAL),
             declared: { context: 200_000 },
           },
@@ -8237,7 +8237,7 @@ for (const shape of ["openai-compatible", "openrouter"] as const) {
         expect(learned[0]!.observed.ratio).toBeGreaterThan(0.5)
         expect(toasts.map((toast) => toast.title)).toContain("Provider limit learned")
         expect(toasts.find((toast) => toast.title === "Provider limit learned")?.message).toContain(
-          "36,000 input tokens",
+          "60,000 input tokens",
         )
       }).pipe(Effect.ensuring(forgetTestModel)),
     90_000,
@@ -8267,12 +8267,12 @@ it.instance(
       })
       yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the first loop never finished", "60 seconds")
       const observed = yield* limits.get(ref.providerID, ref.modelID, { context: 200_000 })
-      expect(observed).toMatchObject({ input: 36_000, counted: 41_234, declared: { context: 200_000 } })
+      expect(observed).toMatchObject({ limit: 60_000, counted: 61_234, declared: { context: 200_000 } })
       const first = (yield* llm.hits).length
       expect(requestText((yield* llm.hits).at(-1)!)).toContain("First.")
 
       // The history grows past the learned limit again, well under the catalog's 200k context.
-      yield* seedHistory(chat.id, 40_000)
+      yield* seedHistory(chat.id, 80_000)
       yield* prompt.prompt({
         sessionID: chat.id,
         agent: "build",
@@ -8304,7 +8304,7 @@ it.instance(
       const limits = yield* ModelLimit.Service
       // Learned while the configuration declared a 100k context; it now declares 200k.
       yield* limits.learn(ref.providerID, ref.modelID, {
-        input: 36_000,
+        limit: 60_000,
         at: Date.now(),
         message: UPSTREAM_REFUSAL,
         declared: { context: 100_000 },
@@ -8334,7 +8334,7 @@ it.instance(
   "a request no compaction can bring under the provider's limit is refused with what to do",
   () =>
     Effect.gen(function* () {
-      const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { prune: false }))
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000, { prune: false }))
       yield* forgetTestModel
       const events = yield* EventV2Bridge.Service
       const errors: string[] = []
@@ -8345,13 +8345,17 @@ it.instance(
       const sessions = yield* Session.Service
       const prompt = yield* SessionPrompt.Service
       const chat = yield* sessions.create({ title: "Doomed" })
-      yield* seedHistory(chat.id, 40_000)
+      yield* seedHistory(chat.id, 20_000)
       // The provider accepts less than the system prompt and tools alone, though a summary
-      // request still fits: compaction runs, twice, and the step request never can.
-      yield* llm.error(400, {
-        error: { message: "input length 41234 exceeds the maximum allowed input length of 8000 tokens" },
-      })
+      // request still fits: compaction runs, twice, and the step request never can. Without a
+      // count from the provider the estimate alone refuses nothing, so the request goes once
+      // more and the provider's second refusal ends the turn.
+      const refusal = {
+        error: { message: "input length 21234 exceeds the maximum allowed input length of 12000 tokens" },
+      }
+      yield* llm.error(400, refusal)
       yield* answerSummaries(llm, 24)
+      yield* llm.error(400, refusal)
       yield* llm.textMatch((hit) => !isSummaryRequest(hit), "Never sent.")
       yield* prompt.prompt({
         sessionID: chat.id,
@@ -8370,14 +8374,48 @@ it.instance(
       const error = result.info.role === "assistant" ? result.info.error : undefined
       expect(error?.name).toBe("ContextOverflowError")
       const text = JSON.stringify(error)
-      expect(text).toContain("would exceed the test limit of 8,000 input tokens")
+      expect(text).toContain("would exceed the test limit of 12,000 input tokens")
       expect(text).toContain("Raise limit.context")
       expect(errors).toHaveLength(1)
-      // Two recoveries, then the refusal: every request after the refused one was a summary request.
+      // Two recoveries, then the refusal: the provider saw the request twice, both times refused.
       const hits = yield* llm.hits
-      expect(hits.length).toBeGreaterThanOrEqual(3)
-      expect(hits.slice(1).every(isSummaryRequest)).toBe(true)
+      expect(hits.length).toBeGreaterThanOrEqual(4)
+      expect(hits.filter((hit) => !isSummaryRequest(hit))).toHaveLength(2)
       expect(JSON.stringify(yield* sessions.messages({ sessionID: chat.id }))).not.toContain("Never sent.")
+    }).pipe(Effect.ensuring(forgetTestModel)),
+  90_000,
+)
+
+it.instance(
+  "a request the provider accepts above the lesson raises it",
+  () =>
+    Effect.gen(function* () {
+      // Automatic compaction off, so the count over the old lesson only raises it.
+      const { llm } = yield* useServerConfig((url) => windowCfg(url, 200_000, { auto: false, prune: false }))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const limits = yield* ModelLimit.Service
+      yield* limits.learn(ref.providerID, ref.modelID, {
+        limit: 60_000,
+        at: 1,
+        message: UPSTREAM_REFUSAL,
+        declared: { context: 200_000 },
+      })
+      const chat = yield* sessions.create({ title: "Raised" })
+      yield* seedTurn(chat.id, { user: "earlier", answer: "noted", tokens: 1_000 })
+      yield* llm.text("Accepted.", { usage: { input: 65_000, output: 10 } })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Go on." }],
+      })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      expect(yield* llm.hits).toHaveLength(1)
+      const raised = yield* limits.get(ref.providerID, ref.modelID, { context: 200_000 })
+      expect(raised).toMatchObject({ limit: 65_000, message: UPSTREAM_REFUSAL })
+      expect(raised?.at).toBeGreaterThan(1)
     }).pipe(Effect.ensuring(forgetTestModel)),
   90_000,
 )
