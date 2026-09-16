@@ -9,6 +9,8 @@ export type ToastOptions = {
   message: string
   variant: "info" | "success" | "warning" | "error"
   duration: number
+  /** A clickable follow-up, e.g. starting a sign-in the toast announces. */
+  action?: { label: string; run: () => void }
 }
 type ToastInput = Omit<ToastOptions, "duration"> & { duration?: number }
 
@@ -44,6 +46,22 @@ export function Toast() {
           <text fg={theme.text} wrapMode="word" width="100%">
             {current().message}
           </text>
+          <Show when={current().action}>
+            {(action) => (
+              <box
+                marginTop={1}
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={theme[current().variant]}
+                onMouseUp={() => {
+                  toast.dismiss()
+                  action().run()
+                }}
+              >
+                <text fg={theme.background}>{action().label}</text>
+              </box>
+            )}
+          </Show>
         </box>
       )}
     </Show>
@@ -65,6 +83,11 @@ function init() {
       timeoutHandle = setTimeout(() => {
         setStore("currentToast", null)
       }, toastOptions.duration).unref()
+    },
+    dismiss() {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      timeoutHandle = null
+      setStore("currentToast", null)
     },
     error: (err: any) => {
       if (err instanceof Error)

@@ -129,7 +129,7 @@ test("reloading a removed server clears its status and resources from the dialog
   try {
     await wait(() => setup.app.renderer.currentFocusedRenderable instanceof InputRenderable)
     setup.sync.set("mcp_resource", { old: { name: "Old", uri: "test://old", client: "removed" } })
-    setup.app.mockInput.pressEnter()
+    setup.app.mockInput.pressKey("r", { ctrl: true })
     await wait(() => Object.keys(setup.sync.data.mcp).length === 0)
     await wait(() => Object.keys(setup.sync.data.mcp_resource).length === 0)
     await setup.app.renderOnce()
