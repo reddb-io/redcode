@@ -43,6 +43,7 @@ import { SessionID, MessageID, PartID } from "./schema"
 import type { Provider } from "@/provider/provider"
 import { Global } from "@reddb-io/redcode-core/global"
 import { Effect, Layer, Option, Context, Schema, Semaphore, Types } from "effect"
+import { isSqlError } from "effect/unstable/sql/SqlError"
 import { SessionBudget } from "./budget"
 import { NonNegativeInt, optional } from "@reddb-io/redcode-core/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -780,20 +781,36 @@ const layer: Layer.Layer<
       return session
     })
 
-    const patch = (sessionID: SessionID, info: Patch) =>
-      Effect.gen(function* () {
-        const current = yield* get(sessionID)
-        const next = {
-          ...current,
-          ...info,
-          time: info.time ? { ...current.time, ...info.time } : current.time,
-          share: info.share === null ? undefined : info.share ? { ...current.share, ...info.share } : current.share,
-          summary: info.summary === null ? undefined : (info.summary ?? current.summary),
-          revert: info.revert === null ? undefined : (info.revert ?? current.revert),
-          permission: info.permission === null ? undefined : (info.permission ?? current.permission),
-        } as Info
-        yield* events.publish(SessionV1.Event.Updated, { sessionID, info: next })
-      })
+    // Every change to a session is a read-modify-write of its whole row: the update event carries
+    // the full record and the projector writes all of it back, `metadata` (spend, goal status,
+    // compaction state) included. Read and write therefore hold the database write lock together,
+    // so a `touch` in one process never writes back what another process changed in between.
+    // Listeners hear of the change only once the transaction has committed.
+    const patch = (sessionID: SessionID, info: Patch | ((current: Info) => Patch)) =>
+      db
+        .transaction(() =>
+          Effect.gen(function* () {
+            const current = yield* get(sessionID)
+            const change = typeof info === "function" ? info(current) : info
+            const next = {
+              ...current,
+              ...change,
+              time: change.time ? { ...current.time, ...change.time } : current.time,
+              share:
+                change.share === null
+                  ? undefined
+                  : change.share
+                    ? { ...current.share, ...change.share }
+                    : current.share,
+              summary: change.summary === null ? undefined : (change.summary ?? current.summary),
+              revert: change.revert === null ? undefined : (change.revert ?? current.revert),
+              permission: change.permission === null ? undefined : (change.permission ?? current.permission),
+            } as Info
+            yield* events.publish(SessionV1.Event.Updated, { sessionID, info: next })
+            return next
+          }),
+        )
+        .pipe(Effect.catchIf(isSqlError, Effect.die))
 
     const touch = Effect.fn("Session.touch")(function* (sessionID: SessionID) {
       yield* patch(sessionID, { time: { updated: Date.now() } }).pipe(Effect.orDie)
@@ -814,8 +831,9 @@ const layer: Layer.Layer<
       yield* patch(input.sessionID, { time: { compacting: input.time } }).pipe(Effect.orDie)
     })
 
-    // One lock per session for every metadata write: a whole replacement waits for a key update in
-    // flight, and a key update always starts from what the last writer left.
+    // One lock per session for every metadata write, ordering this process's fibers: a whole
+    // replacement waits for a key update in flight, and a key update always starts from what the
+    // last writer left. Processes order themselves on the transaction inside `patch`.
     const metadataLocks = new Map<SessionID, Semaphore.Semaphore>()
     const metadataLock = (sessionID: SessionID) => {
       let lock = metadataLocks.get(sessionID)
@@ -834,19 +852,12 @@ const layer: Layer.Layer<
 
     const updateMetadata: Interface["updateMetadata"] = (sessionID, fn) =>
       metadataLock(sessionID).withPermits(1)(
-        // The lock orders this process's writers; the transaction orders processes. Read and write
-        // hold the database write lock together, so spend, a goal pause or a compaction another
-        // process writes meanwhile is never overwritten from a stale read.
-        db
-          .transaction(() =>
-            Effect.gen(function* () {
-              const current = yield* get(sessionID).pipe(Effect.orDie)
-              const next = fn({ ...current.metadata })
-              yield* patch(sessionID, { metadata: next, time: { updated: Date.now() } }).pipe(Effect.orDie)
-              return next
-            }),
-          )
-          .pipe(Effect.orDie),
+        // `fn` sees the metadata as read under the write lock, so spend, a goal pause or a
+        // compaction another process writes meanwhile is never overwritten from a stale read.
+        patch(sessionID, (current) => ({ metadata: fn({ ...current.metadata }), time: { updated: Date.now() } })).pipe(
+          Effect.map((next) => next.metadata ?? {}),
+          Effect.orDie,
+        ),
       )
 
     const setAgentModel = Effect.fn("Session.setAgentModel")(function* (input: {

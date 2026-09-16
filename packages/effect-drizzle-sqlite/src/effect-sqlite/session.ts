@@ -16,9 +16,17 @@ import type { AnyRelations } from "drizzle-orm/relations"
 import type { RelationalQueryMapperConfig } from "drizzle-orm/relations"
 import type { Query } from "drizzle-orm/sql/sql"
 import type { SQLiteAsyncDialect } from "drizzle-orm/sqlite-core/dialect"
-import { SQLiteEffectPreparedQuery, SQLiteEffectSession, SQLiteEffectTransaction } from "../sqlite-core/effect/session"
+import {
+  SQLiteEffectPreparedQuery,
+  SQLiteEffectSession,
+  SQLiteEffectTransaction,
+  type SQLiteEffectTransactionConfig,
+  type TransactionRetry,
+} from "../sqlite-core/effect/session"
 import type { SelectedFieldsOrdered } from "drizzle-orm/sqlite-core/query-builders/select.types"
 import type { PreparedQueryConfig, SQLiteExecuteMethod, SQLiteTransactionConfig } from "drizzle-orm/sqlite-core/session"
+
+export type { SQLiteEffectTransactionConfig, TransactionRetry } from "../sqlite-core/effect/session"
 
 export interface EffectSQLiteQueryEffectHKT extends QueryEffectHKTBase {
   readonly error: EffectDrizzleQueryError
@@ -28,23 +36,12 @@ export interface EffectSQLiteQueryEffectHKT extends QueryEffectHKTBase {
 export type EffectSQLiteRunResult = readonly never[]
 
 /**
- * How often, and how long apart, an outermost transaction is begun again after SQLite reports the
- * database locked. Delays grow exponentially from `baseDelayMs`, capped at `maxDelayMs`, and are
- * jittered so two waiting processes do not wake together.
- */
-export interface TransactionRetry {
-  /** Attempts after the first; 0 disables retrying. */
-  readonly attempts: number
-  readonly baseDelayMs: number
-  readonly maxDelayMs: number
-}
-
-/**
  * Defaults for every `transaction` on a database. Under WAL with more than one process writing,
  * `immediate` is the safe mode: a transaction that reads first and writes later would otherwise
  * fail with `SQLITE_BUSY_SNAPSHOT` once another writer commits in between, and the busy timeout
  * does not wait that one out. The retry re-runs the whole transaction body, so bodies must only
- * touch the database (or be idempotent otherwise); statements never retry individually.
+ * touch the database (or be idempotent otherwise); statements never retry individually. A
+ * transaction may name its own `retry` to replace the default for that call.
  */
 export interface TransactionDefaults {
   readonly behavior?: SQLiteTransactionConfig["behavior"]
@@ -58,17 +55,71 @@ export interface EffectSQLiteSessionOptions {
   transaction?: TransactionDefaults
 }
 
-const LOCK_MESSAGE = /database is locked|SQLITE_BUSY|SQLITE_LOCKED/i
+/**
+ * Effects to run once the outermost transaction has committed and released its connection,
+ * registered from inside the transaction with {@link afterCommit}. Fresh for every attempt, so
+ * what a rolled-back attempt registered never runs.
+ */
+class TransactionHooks extends Context.Service<
+  TransactionHooks,
+  { readonly afterCommit: Array<Effect.Effect<void>> }
+>()("@reddb-io/redcode-effect-drizzle-sqlite/TransactionHooks") {}
+
+/**
+ * Runs `effect` after the enclosing transaction commits, or right away when no transaction is
+ * open. For what must not happen against state that may still roll back, and must not happen
+ * while the write lock and the connection are held: notifying in-memory listeners of a write.
+ */
+export const afterCommit = (effect: Effect.Effect<void>): Effect.Effect<void> =>
+  Effect.serviceOption(TransactionHooks).pipe(
+    Effect.flatMap((hooks) =>
+      hooks._tag === "Some"
+        ? Effect.sync(() => {
+            hooks.value.afterCommit.push(effect)
+          })
+        : effect,
+    ),
+  )
+
+/**
+ * Whether a native SQLite error says the database is busy (SQLITE_BUSY: another connection holds
+ * the lock, which waiting resolves) rather than locked (SQLITE_LOCKED: a conflict inside this
+ * connection, which waiting never resolves). `undefined` when the error carries neither code.
+ * Reads bun:sqlite's `code`/`errno`, node:sqlite's `errcode`/`errstr`, and the message as a last
+ * resort: SQLITE_BUSY reads "database is locked", SQLITE_LOCKED "database table is locked".
+ */
+const isBusy = (cause: unknown): boolean | undefined => {
+  if (typeof cause !== "object" || cause === null) return undefined
+  const error = cause as { code?: unknown; errno?: unknown; errcode?: unknown; errstr?: unknown; message?: unknown }
+  for (const numeric of [error.errno, error.errcode]) {
+    if (typeof numeric !== "number") continue
+    const primary = numeric & 0xff
+    if (primary === 5) return true
+    if (primary === 6) return false
+  }
+  if (typeof error.code === "string" && error.code.startsWith("SQLITE_")) {
+    if (error.code.startsWith("SQLITE_BUSY")) return true
+    if (error.code.startsWith("SQLITE_LOCKED")) return false
+  }
+  for (const text of [error.errstr, error.message]) {
+    if (typeof text !== "string") continue
+    if (/table is locked/i.test(text)) return false
+    if (/database is locked/i.test(text)) return true
+  }
+  return undefined
+}
 
 /**
  * A failure SQLite reports when another connection holds the lock this transaction needs: the
  * `SqlError` from `begin`, or the same error wrapped in a query error by a statement of the body.
+ * Only SQLITE_BUSY counts. `LockTimeoutError` also stands for SQLITE_LOCKED, which is a conflict
+ * within one connection, so the native cause decides; a lock timeout without a readable cause
+ * is trusted.
  */
 export const isLockError = (error: unknown): boolean => {
   if (isSqlError(error)) {
-    if (error.reason._tag === "LockTimeoutError") return true
-    const cause = error.reason.cause
-    return cause instanceof Error && LOCK_MESSAGE.test(cause.message)
+    const busy = isBusy(error.reason.cause)
+    return busy ?? error.reason._tag === "LockTimeoutError"
   }
   if (is(error, EffectDrizzleQueryError) || is(error, EffectDrizzleError)) {
     const cause = error.cause
@@ -166,7 +217,7 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
     return connection.executeUnprepared(query, [], undefined).pipe(Effect.asVoid)
   }
 
-  private withTransaction<A, E, R>(effect: Effect.Effect<A, E, R>, config: SQLiteTransactionConfig | undefined) {
+  private withTransaction<A, E, R>(effect: Effect.Effect<A, E, R>, config: SQLiteEffectTransactionConfig | undefined) {
     return Effect.uninterruptibleMask((restore) =>
       Effect.withFiber<A, E | SqlError, R>((fiber) => {
         const services = fiber.context
@@ -192,6 +243,10 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
 
         const once = connection.pipe(
           Effect.flatMap(([scope, connection]) => {
+            // The outermost transaction owns the after-commit hooks; a savepoint adds to the ones
+            // around it, since only the outer commit makes anything durable.
+            const hooks = id === 0 ? { afterCommit: new Array<Effect.Effect<void>>() } : undefined
+            const inTransaction = Context.add(services, this.client.transactionService, [connection, id] as const)
             const transaction = this.executeTransactionStatement(
               connection,
               id === 0 ? `begin ${behavior}` : `savepoint effect_sql_${id}`,
@@ -199,7 +254,7 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
               Effect.flatMap(() =>
                 Effect.provideContext(
                   restore(effect),
-                  Context.add(services, this.client.transactionService, [connection, id]),
+                  hooks ? Context.add(inTransaction, TransactionHooks, hooks) : inTransaction,
                 ).pipe(
                   Effect.exit,
                   Effect.flatMap((exit) => {
@@ -229,22 +284,37 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
               ),
             )
 
-            return scope === undefined
-              ? transaction
-              : transaction.pipe(Effect.onExit((exit) => Scope.close(scope, exit)))
+            const released =
+              scope === undefined ? transaction : transaction.pipe(Effect.onExit((exit) => Scope.close(scope, exit)))
+            // Hooks run once the commit is through and the connection is back in the pool, so a
+            // listener never sees state that may still roll back and never holds up other writers.
+            return hooks
+              ? released.pipe(
+                  Effect.flatMap((value) =>
+                    restore(Effect.forEach(hooks.afterCommit, (hook) => hook, { discard: true })).pipe(
+                      Effect.as(value),
+                    ),
+                  ),
+                )
+              : released
           }),
         )
 
         // Only the outermost transaction is begun again: a savepoint's lock failure belongs to the
         // transaction around it. The connection is released before the wait, so other fibers of
         // this process get their turn while another process finishes its write.
-        const retry = this.options.transaction?.retry
+        const retry = config?.retry ?? this.options.transaction?.retry
         if (id !== 0 || !retry || retry.attempts <= 0) return once
         const attempt = (n: number): Effect.Effect<A, E | SqlError, R> =>
           once.pipe(
             Effect.catchIf(
               (error) => n < retry.attempts && isLockError(error),
-              () => restore(Effect.sleep(retryDelay(retry, n))).pipe(Effect.flatMap(() => attempt(n + 1))),
+              () => {
+                const delay = retryDelay(retry, n)
+                return restore(
+                  (retry.onRetry?.(n + 1, delay) ?? Effect.void).pipe(Effect.andThen(Effect.sleep(delay))),
+                ).pipe(Effect.flatMap(() => attempt(n + 1)))
+              },
             ),
           )
         return attempt(0)
@@ -254,7 +324,7 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
 
   override transaction<A, E, R>(
     transaction: (tx: EffectSQLiteTransaction<TRelations>) => Effect.Effect<A, E, R>,
-    config?: SQLiteTransactionConfig,
+    config?: SQLiteEffectTransactionConfig,
   ): Effect.Effect<A, E | SqlError, R> {
     const { dialect, relations } = this
 

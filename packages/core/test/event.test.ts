@@ -320,6 +320,67 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("defers listeners published inside a caller's transaction until it commits", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const order = new Array<string>()
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          order.push(`listener:${event.type}`)
+        }),
+      )
+      const stream = yield* events.subscribe(SyncMessage).pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped)
+      yield* Effect.yieldNow
+
+      // A read-modify-write around a durable event, as Session.patch does: the projector's write
+      // must land with the read's lock held, but nothing in memory may hear of it before commit.
+      yield* db.transaction(() =>
+        Effect.gen(function* () {
+          yield* events.publish(SyncMessage, { id: "deferred", text: "durable" })
+          yield* events.publish(Message, { text: "live" })
+          order.push("body done")
+        }),
+      )
+
+      expect(order).toEqual(["body done", `listener:${SyncMessage.type}`, `listener:${Message.type}`])
+      expect(Array.from(yield* Fiber.join(stream))).toEqual([
+        expect.objectContaining({ data: { id: "deferred", text: "durable" } }),
+      ])
+    }),
+  )
+
+  it.effect("never notifies listeners of an event whose transaction rolled back", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const seen = new Array<string>()
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          seen.push(event.type)
+        }),
+      )
+
+      yield* db
+        .transaction(() =>
+          events
+            .publish(SyncMessage, { id: "rolled-back", text: "durable" })
+            .pipe(Effect.andThen(events.publish(Message, { text: "live" })), Effect.andThen(Effect.fail("boom"))),
+        )
+        .pipe(Effect.ignore)
+
+      expect(seen).toEqual([])
+      expect(
+        yield* db
+          .select({ id: EventTable.id })
+          .from(EventTable)
+          .where(eq(EventTable.aggregate_id, "rolled-back"))
+          .get()
+          .pipe(Effect.orDie),
+      ).toBeUndefined()
+    }),
+  )
+
   it.effect("ends only an overflowing bounded subscriber without blocking other listeners", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

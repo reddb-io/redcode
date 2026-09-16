@@ -8,7 +8,7 @@ import { eq, sql } from "drizzle-orm"
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { Effect } from "effect"
 import type { SqlClient as SqlClientService } from "effect/unstable/sql/SqlClient"
-import { isSqlError } from "effect/unstable/sql/SqlError"
+import { isSqlError, LockTimeoutError, SqlError } from "effect/unstable/sql/SqlError"
 import { EffectDrizzleSqlite } from "../src"
 
 const users = sqliteTable("users", {
@@ -197,6 +197,124 @@ test("retries a locked outermost transaction as a whole once the lock is release
       clearTimeout(release)
     }
   })
+})
+
+test("a transaction's own retry budget replaces the database default", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    const release = setTimeout(() => holder.run("commit"), 150)
+    try {
+      await onFile(
+        filename,
+        Effect.gen(function* () {
+          // The default never retries; this one call waits it out.
+          const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+            transaction: { behavior: "immediate", retry: { attempts: 0, baseDelayMs: 20, maxDelayMs: 80 } },
+          })
+          yield* db.run(sql`pragma busy_timeout = 0`)
+          const waits = new Array<number>()
+          yield* db.transaction((tx) => tx.insert(users).values({ name: "Patient" }), {
+            retry: {
+              attempts: 8,
+              baseDelayMs: 20,
+              maxDelayMs: 80,
+              onRetry: (attempt) => Effect.sync(() => void waits.push(attempt)),
+            },
+          })
+          expect(waits.length).toBeGreaterThan(0)
+          expect(waits).toEqual(waits.map((_, index) => index + 1))
+          expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Patient" }])
+
+          // And the other way round: a call may opt out of the default.
+          holder.run("begin immediate")
+          const error = yield* db
+            .transaction((tx) => tx.insert(users).values({ name: "Impatient" }), {
+              retry: { attempts: 0, baseDelayMs: 20, maxDelayMs: 80 },
+            })
+            .pipe(Effect.flip)
+          expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+          holder.run("commit")
+        }),
+      )
+    } finally {
+      clearTimeout(release)
+    }
+  })
+})
+
+test("only SQLITE_BUSY counts as a lock error, never SQLITE_LOCKED", () => {
+  const lockTimeout = (cause: object) => new SqlError({ reason: new LockTimeoutError({ cause }) })
+  // bun:sqlite shapes.
+  expect(
+    EffectDrizzleSqlite.isLockError(
+      lockTimeout(Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY", errno: 5 })),
+    ),
+  ).toBe(true)
+  expect(
+    EffectDrizzleSqlite.isLockError(
+      lockTimeout(Object.assign(new Error("database table is locked"), { code: "SQLITE_LOCKED", errno: 6 })),
+    ),
+  ).toBe(false)
+  expect(
+    EffectDrizzleSqlite.isLockError(
+      lockTimeout(Object.assign(new Error("database table is locked"), { code: "SQLITE_LOCKED_SHAREDCACHE" })),
+    ),
+  ).toBe(false)
+  // node:sqlite shapes.
+  expect(
+    EffectDrizzleSqlite.isLockError(
+      lockTimeout(Object.assign(new Error("database is locked"), { code: "ERR_SQLITE_ERROR", errcode: 5 })),
+    ),
+  ).toBe(true)
+  expect(
+    EffectDrizzleSqlite.isLockError(
+      lockTimeout(Object.assign(new Error("database table is locked"), { code: "ERR_SQLITE_ERROR", errcode: 6 })),
+    ),
+  ).toBe(false)
+  // Extended busy codes, and a lock timeout with nothing to read from its cause, are trusted.
+  expect(EffectDrizzleSqlite.isLockError(lockTimeout({ code: "SQLITE_BUSY_SNAPSHOT" }))).toBe(true)
+  expect(EffectDrizzleSqlite.isLockError(lockTimeout({}))).toBe(true)
+})
+
+test("runs after-commit hooks once the outermost transaction has committed, and never for a rollback", async () => {
+  await run(
+    Effect.gen(function* () {
+      const db = yield* makeDb
+      const order = new Array<string>()
+      const note = (text: string) => Effect.sync(() => void order.push(text))
+
+      // Outside a transaction the hook runs right away.
+      yield* EffectDrizzleSqlite.afterCommit(note("immediate"))
+      expect(order).toEqual(["immediate"])
+
+      yield* db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.insert(users).values({ name: "Outer" })
+          yield* EffectDrizzleSqlite.afterCommit(note("outer hook"))
+          // A savepoint's hook waits for the outer commit as well.
+          yield* tx.transaction((inner) =>
+            inner
+              .insert(users)
+              .values({ name: "Inner" })
+              .pipe(Effect.andThen(EffectDrizzleSqlite.afterCommit(note("inner hook")))),
+          )
+          yield* note("body done")
+        }),
+      )
+      expect(order).toEqual(["immediate", "body done", "outer hook", "inner hook"])
+
+      yield* db
+        .transaction((tx) =>
+          tx
+            .insert(users)
+            .values({ name: "Lost" })
+            .pipe(Effect.andThen(EffectDrizzleSqlite.afterCommit(note("never"))), Effect.andThen(Effect.fail("boom"))),
+        )
+        .pipe(Effect.ignore)
+      expect(order).not.toContain("never")
+      expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Outer" }, { name: "Inner" }])
+    }),
+  )
 })
 
 test("gives up after the configured attempts while the lock is still held", async () => {

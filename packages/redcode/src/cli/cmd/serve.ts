@@ -25,7 +25,9 @@ export const ServeCommand = effectCmd({
     BootTrace.stop("serve.ready", { hostname: server.hostname, port: server.port })
 
     // Until told to stop. Returning, rather than dying on the signal, lets the command finish
-    // and the process close the runtime — and with it the database — on its way out.
+    // and the process close the runtime — and with it the database — on its way out. The
+    // handlers are one-shot on purpose: a second Ctrl-C while that is under way falls through to
+    // the default handler and exits the process at once.
     yield* Effect.callback<void>((resume) => {
       const stop = () => resume(Effect.void)
       process.once("SIGINT", stop)

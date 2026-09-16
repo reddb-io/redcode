@@ -11,7 +11,13 @@ export const register = (dispose: () => Promise<unknown>) => {
 }
 
 export const run = async (timeoutMs = 3000) => {
-  const pending = Array.from(disposers, (dispose) => dispose().catch(() => undefined))
+  // Each disposer is started from a settled promise, so one that throws synchronously fails its
+  // own entry instead of escaping `run` before the others have started.
+  const pending = Array.from(disposers, (dispose) =>
+    Promise.resolve()
+      .then(() => dispose())
+      .catch(() => undefined),
+  )
   disposers.clear()
   if (pending.length === 0) return
   let timer: ReturnType<typeof setTimeout> | undefined

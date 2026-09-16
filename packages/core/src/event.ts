@@ -4,6 +4,7 @@ import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Schema, Stream } 
 import { Event } from "@reddb-io/redcode-schema/event"
 import type { Data, Definition, Payload } from "@reddb-io/redcode-schema/event"
 import { and, asc, eq, gt, inArray } from "drizzle-orm"
+import { EffectDrizzleSqlite } from "@reddb-io/redcode-effect-drizzle-sqlite"
 import { Database } from "./database/database"
 import { EventSequenceTable, EventTable } from "./event/sql"
 import { Location } from "./location"
@@ -234,10 +235,13 @@ export const layerWith = (options?: LayerOptions) =>
                 )
               }
               const list = projectors.get(event.type) ?? []
-              return yield* Effect.uninterruptible(
+              // The transaction itself may be interrupted: while it waits for another process's
+              // lock, or in its body, which then rolls back whole. Only the step after a commit
+              // is shielded, so a committed event always wakes the fibers tailing its aggregate.
+              return yield* Effect.uninterruptibleMask((restore) =>
                 Effect.gen(function* () {
-                  const committed = yield* db
-                    .transaction(
+                  const committed = yield* restore(
+                    db.transaction(
                       () =>
                         Effect.gen(function* () {
                           const row = yield* db
@@ -349,13 +353,17 @@ export const layerWith = (options?: LayerOptions) =>
                           return { aggregateID, seq }
                         }),
                       { behavior: "immediate" },
-                    )
-                    .pipe(Effect.orDie)
+                    ),
+                  ).pipe(Effect.orDie)
                   if (committed) {
-                    yield* Effect.forEach(
-                      pubsub.durable.get(committed.aggregateID) ?? [],
-                      (wake) => PubSub.publish(wake, undefined),
-                      { discard: true },
+                    // Inside a caller's transaction this waits for that commit; the row is not
+                    // there to read before it.
+                    yield* EffectDrizzleSqlite.afterCommit(
+                      Effect.forEach(
+                        pubsub.durable.get(committed.aggregateID) ?? [],
+                        (wake) => PubSub.publish(wake, undefined),
+                        { discard: true },
+                      ),
                     )
                   }
                   return committed
@@ -386,11 +394,11 @@ export const layerWith = (options?: LayerOptions) =>
                   version: definition.durable.version,
                 },
               }
-              yield* notify(event as Payload, true)
+              yield* EffectDrizzleSqlite.afterCommit(notify(event as Payload, true))
               return event
             }
           }
-          yield* notify(event as Payload, false)
+          yield* EffectDrizzleSqlite.afterCommit(notify(event as Payload, false))
           return event
         })
       }
@@ -403,6 +411,10 @@ export const layerWith = (options?: LayerOptions) =>
           ),
         )
 
+      // Published inside a caller's transaction (a read-modify-write around a durable event),
+      // in-memory delivery is deferred until that transaction commits: a listener must never see
+      // state that then rolls back, and must not run while the write lock and the connection are
+      // held. Outside a transaction it runs at once.
       function notify(event: Payload, isolateListeners: boolean) {
         return Effect.gen(function* () {
           yield* Effect.forEach(
@@ -461,16 +473,18 @@ export const layerWith = (options?: LayerOptions) =>
               strictOwner: options?.strictOwner,
             })
             if (committed && options?.publish) {
-              yield* notify(
-                {
-                  ...payload,
-                  durable: {
-                    aggregateID: committed.aggregateID,
-                    seq: committed.seq,
-                    version: definition.durable.version,
+              yield* EffectDrizzleSqlite.afterCommit(
+                notify(
+                  {
+                    ...payload,
+                    durable: {
+                      aggregateID: committed.aggregateID,
+                      seq: committed.seq,
+                      version: definition.durable.version,
+                    },
                   },
-                },
-                true,
+                  true,
+                ),
               )
             }
           }
