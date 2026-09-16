@@ -137,6 +137,15 @@ export const Event = ModelsDev.Event
 
 declare const REDCODE_MODELS_DEV: Record<string, Provider> | undefined
 
+/**
+ * Provider ids in the catalog snapshot bundled into release builds, for when the live catalog is
+ * unavailable. Empty in development, where no snapshot is bundled.
+ */
+export function snapshotProviderIDs(): string[] {
+  const snapshot = typeof REDCODE_MODELS_DEV === "undefined" ? undefined : REDCODE_MODELS_DEV
+  return snapshot ? Object.keys(snapshot) : []
+}
+
 /** Where the catalog returned by `get()` came from. */
 export type Origin = "cache" | "snapshot" | "file" | "empty"
 

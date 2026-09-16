@@ -11,6 +11,23 @@ import {
 } from "../../src/util/openai-compatible"
 
 describe("normalizeBaseURL", () => {
+  test("defaults a scheme-less public host to https and a local one to http", () => {
+    expect(normalizeBaseURL("api.together.xyz")).toBe("https://api.together.xyz/v1")
+    expect(normalizeBaseURL("172.32.0.1:8000")).toBe("https://172.32.0.1:8000/v1")
+    for (const host of [
+      "localhost:1",
+      "llm.local:1",
+      "10.0.0.1:1",
+      "172.20.0.1:1",
+      "192.168.0.2:1",
+      "[::1]:1",
+      "[fd00::2]:1",
+      "ollama:11434",
+    ])
+      expect(normalizeBaseURL(host)).toStartWith("http://")
+    expect(normalizeBaseURL("http://api.example.com/v1")).toBe("http://api.example.com/v1")
+  })
+
   test("adds http when the scheme is missing", () => {
     expect(normalizeBaseURL("localhost:20128")).toBe("http://localhost:20128/v1")
     expect(normalizeBaseURL(" 127.0.0.1:20128 ")).toBe("http://127.0.0.1:20128/v1")

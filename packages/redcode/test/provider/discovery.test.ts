@@ -115,6 +115,27 @@ describe("normalizeBaseURL", () => {
     expect(ProviderDiscovery.normalizeBaseURL("https://router.example/")).toBe("https://router.example/v1")
     expect(ProviderDiscovery.normalizeBaseURL("https://router.example/api")).toBe("https://router.example/api")
   })
+
+  test("defaults a scheme-less public host to https and keeps http for local hosts", () => {
+    for (const [input, expected] of [
+      ["api.together.xyz", "https://api.together.xyz/v1"],
+      ["8.8.8.8:8000/v1", "https://8.8.8.8:8000/v1"],
+      ["172.32.0.1/v1", "https://172.32.0.1/v1"],
+      ["[2001:db8::1]:8000", "https://[2001:db8::1]:8000/v1"],
+      ["localhost:11434", "http://localhost:11434/v1"],
+      ["gpu.localhost:8000", "http://gpu.localhost:8000/v1"],
+      ["llm.local:1234/v1", "http://llm.local:1234/v1"],
+      ["10.1.2.3:8000", "http://10.1.2.3:8000/v1"],
+      ["172.16.0.1:8000", "http://172.16.0.1:8000/v1"],
+      ["192.168.1.20:8000", "http://192.168.1.20:8000/v1"],
+      ["[::1]:8000", "http://[::1]:8000/v1"],
+      ["[fd12:3456::1]:8000", "http://[fd12:3456::1]:8000/v1"],
+      ["vllm:8000", "http://vllm:8000/v1"],
+      ["http://api.example.com/v1", "http://api.example.com/v1"],
+    ]) {
+      expect(ProviderDiscovery.normalizeBaseURL(input)).toBe(expected)
+    }
+  })
 })
 
 it.effect("requests the models endpoint for scheme-less, /models and bare-root URLs", () =>

@@ -5482,6 +5482,12 @@
                     },
                     "movedFrom": {
                       "type": "string"
+                    },
+                    "projectReferences": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -5549,6 +5555,9 @@
                     "enum": ["@ai-sdk/openai-compatible", "@ai-sdk/openai"]
                   },
                   "override": {
+                    "type": "boolean"
+                  },
+                  "replaceCredential": {
                     "type": "boolean"
                   },
                   "models": {
@@ -34169,6 +34178,7 @@
               "invalid_headers",
               "invalid_models",
               "invalid_move",
+              "credential_in_use",
               "discovery"
             ]
           },

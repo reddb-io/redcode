@@ -2685,6 +2685,7 @@ export type ProviderConnectApiError = {
     | "invalid_headers"
     | "invalid_models"
     | "invalid_move"
+    | "credential_in_use"
     | "discovery"
   message: string
 }
@@ -10595,6 +10596,7 @@ export type ProviderOpenaiCompatibleConnectData = {
     }
     npm?: "@ai-sdk/openai-compatible" | "@ai-sdk/openai"
     override?: boolean
+    replaceCredential?: boolean
     models?: Array<{
       id: string
       name?: string
@@ -10655,6 +10657,7 @@ export type ProviderOpenaiCompatibleConnectResponses = {
      */
     configPath: string
     movedFrom?: string
+    projectReferences?: Array<string>
   }
 }
 

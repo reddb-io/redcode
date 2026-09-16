@@ -18,12 +18,23 @@ function serve(fetch: (request: Request) => Response | Promise<Response>) {
 
 type Write = { patch: Record<string, unknown>; remove: ReadonlyArray<ReadonlyArray<string>> | undefined }
 
-function fakes(input: { data?: Record<string, unknown>; auth?: Record<string, Auth.Info> } = {}) {
+function fakes(
+  input: {
+    data?: Record<string, unknown> | ((read: number) => Record<string, unknown>)
+    auth?: Record<string, Auth.Info>
+    failSet?: boolean
+  } = {},
+) {
+  let reads = 0
   const calls: string[] = []
   const writes: Write[] = []
   const credentials: Record<string, Auth.Info> = { ...input.auth }
   const config = TestConfig.make({
-    readGlobalFile: () => Effect.succeed({ path: "/home/test/.red/code/config.jsonc", data: input.data ?? {} }),
+    readGlobalFile: () =>
+      Effect.sync(() => ({
+        path: "/home/test/.red/code/config.jsonc",
+        data: typeof input.data === "function" ? input.data(++reads) : (input.data ?? {}),
+      })),
     updateGlobal: (next, options) =>
       Effect.sync(() => {
         calls.push("config")
@@ -34,10 +45,15 @@ function fakes(input: { data?: Record<string, unknown>; auth?: Record<string, Au
   const auth = {
     get: (key: string) => Effect.succeed(credentials[key]),
     set: (key: string, info: Auth.Info) =>
-      Effect.sync(() => {
-        calls.push(`auth.set:${key}`)
-        credentials[key] = info
-      }),
+      Effect.suspend(() => {
+        if (input.failSet) return Effect.die(new Error("auth store is read-only"))
+        return Effect.void
+      }).pipe(
+        Effect.map(() => {
+          calls.push(`auth.set:${key}`)
+          credentials[key] = info
+        }),
+      ),
     remove: (key: string) =>
       Effect.sync(() => {
         calls.push(`auth.remove:${key}`)
@@ -339,7 +355,178 @@ it.effect("moves a connection to a new id with its settings, models, key and def
       },
     })
     expect(fake.writes[0].remove).toEqual([["provider", "9router"]])
-    expect(fake.calls).toEqual(["config", "auth.set:gateway", "auth.remove:9router"])
+    expect(fake.calls).toEqual(["auth.set:gateway", "config", "auth.remove:9router"])
     expect(fake.credentials).toEqual({ gateway: api("router-key") })
   }),
 )
+
+it.effect("saved headers never follow the connection to a new URL, and given headers replace them", () =>
+  Effect.gen(function* () {
+    const seen: Array<string | null> = []
+    const server = yield* serve((request) => {
+      seen.push(request.headers.get("x-api-key"))
+      return Response.json({ data: [{ id: "m" }] })
+    })
+    const saved = {
+      provider: {
+        team: {
+          options: { baseURL: "https://old.example.com/v1", headers: { "X-Api-Key": "{env:A_KEY}", "X-Org": "a" } },
+          models: { m: { name: "m", limit: { context: 1000, output: 100 } } },
+        },
+      },
+    }
+    const fake = fakes({ data: saved, auth: { team: api("old-key") } })
+    const http = yield* HttpClient.HttpClient
+    const deps = { http, config: fake.config, auth: fake.auth, env: () => "a-secret" }
+    yield* OpenAICompatible.connect(deps, { providerID: "team", baseURL: `${server.url}v1`, apiKey: "new-key" })
+    expect(seen).toEqual([null])
+    expect((provider(fake.writes[0], "team").options as Record<string, unknown>).headers).toBeUndefined()
+    expect(fake.writes[0].remove).toEqual([
+      ["provider", "team", "options", "headers", "X-Api-Key"],
+      ["provider", "team", "options", "headers", "X-Org"],
+    ])
+
+    yield* OpenAICompatible.connect(deps, {
+      providerID: "team",
+      baseURL: `${server.url}v1`,
+      apiKey: "new-key",
+      headers: { "X-Org": "b" },
+    })
+    expect((provider(fake.writes[1], "team").options as Record<string, unknown>).headers).toEqual({ "X-Org": "b" })
+    expect(fake.writes[1].remove).toEqual([["provider", "team", "options", "headers", "X-Api-Key"]])
+
+    const moved = fakes({ data: { provider: { "9router": saved.provider.team } }, auth: { "9router": api("k") } })
+    yield* OpenAICompatible.connect(
+      { ...deps, config: moved.config, auth: moved.auth },
+      { providerID: "gateway", baseURL: `${server.url}v1`, apiKey: "gateway-key", moveFrom: "9router" },
+    )
+    expect(provider(moved.writes[0], "gateway").options).toEqual({ baseURL: `${server.url}v1` })
+  }),
+)
+
+it.effect("refuses literal secrets in credential headers", () =>
+  Effect.gen(function* () {
+    const fake = fakes()
+    const http = yield* HttpClient.HttpClient
+    for (const name of ["Authorization", "x-api-key", "Api-Key", "Proxy-Authorization"]) {
+      const error = yield* OpenAICompatible.connect(
+        { http, config: fake.config, auth: fake.auth },
+        { providerID: "team", baseURL: "http://127.0.0.1:1/v1", headers: { [name]: "Bearer literal" } },
+      ).pipe(Effect.flip)
+      expect(error.reason).toBe("invalid_headers")
+      expect(error.message).toContain("{env:")
+    }
+    expect(fake.calls).toEqual([])
+  }),
+)
+
+it.effect("overriding a built-in provider with a saved login needs a second confirmation", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() => Response.json({ data: [{ id: "gpt-proxy" }] }))
+    const oauth = { type: "oauth", refresh: "r", access: "a", expires: 1 } as Auth.Info
+    const fake = fakes({ auth: { openai: oauth } })
+    const http = yield* HttpClient.HttpClient
+    const deps = { http, config: fake.config, auth: fake.auth, builtIn: (id: string) => id === "openai" }
+    const input = { providerID: "openai", baseURL: `${server.url}v1`, override: true }
+    for (const apiKey of ["sk-proxy", "{env:PROXY_KEY}", ""]) {
+      const error = yield* OpenAICompatible.connect(deps, { ...input, apiKey }).pipe(Effect.flip)
+      expect(error.reason).toBe("credential_in_use")
+      expect(error.message).toContain("replaces its saved login")
+      expect(error.message).toContain("all openai models will be sent to this URL")
+    }
+    expect(fake.calls).toEqual([])
+    expect(fake.credentials.openai).toBe(oauth)
+
+    yield* OpenAICompatible.connect(deps, { ...input, apiKey: "sk-proxy", replaceCredential: true })
+    expect(fake.credentials.openai).toMatchObject({ type: "api", key: "sk-proxy" })
+  }),
+)
+
+it.effect("a move with a reference or no key removes a stale credential under the new id", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() => Response.json({ data: [{ id: "m" }] }))
+    const http = yield* HttpClient.HttpClient
+    for (const apiKey of ["{env:GATEWAY_KEY}", ""]) {
+      const fake = fakes({
+        data: { provider: { "9router": { options: { baseURL: `${server.url}v1` } } } },
+        auth: { "9router": api("router-key"), gateway: api("stale-key") },
+      })
+      const result = yield* OpenAICompatible.connect(
+        { http, config: fake.config, auth: fake.auth, env: () => "from-env" },
+        { providerID: "gateway", baseURL: `${server.url}v1`, apiKey, moveFrom: "9router" },
+      )
+      expect(result.credential).toBe(apiKey ? "reference" : "none")
+      expect(fake.calls).toEqual(["auth.remove:gateway", "config", "auth.remove:9router"])
+      expect(fake.credentials).toEqual({})
+    }
+  }),
+)
+
+it.effect("a failed credential write during a move leaves the old provider and its key untouched", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() => Response.json({ data: [{ id: "m" }] }))
+    const fake = fakes({
+      data: { provider: { "9router": { options: { baseURL: `${server.url}v1` } } } },
+      auth: { "9router": api("router-key") },
+      failSet: true,
+    })
+    const http = yield* HttpClient.HttpClient
+    const exit = yield* OpenAICompatible.connect(
+      { http, config: fake.config, auth: fake.auth },
+      { providerID: "gateway", baseURL: `${server.url}v1`, moveFrom: "9router" },
+    ).pipe(Effect.exit)
+    expect(exit._tag).toBe("Failure")
+    expect(fake.writes).toEqual([])
+    expect(fake.credentials).toEqual({ "9router": api("router-key") })
+  }),
+)
+
+it.effect("builds the change from the configuration as it is after discovery", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() => Response.json({ data: [{ id: "m" }] }))
+    const fake = fakes({
+      data: (read) => ({
+        provider: {
+          local: {
+            options: { baseURL: `${server.url}v1` },
+            models: read === 1 ? { old: { name: "old" } } : { old: { name: "old", options: { tuned: true } } },
+          },
+        },
+      }),
+    })
+    const http = yield* HttpClient.HttpClient
+    yield* OpenAICompatible.connect(
+      { http, config: fake.config, auth: fake.auth },
+      {
+        providerID: "local",
+        baseURL: `${server.url}v1`,
+      },
+    )
+    // The model was customized while the list was being fetched, so it is kept.
+    expect(fake.writes[0].remove).toEqual([])
+  }),
+)
+
+describe("renameReferences", () => {
+  test("points models, agents, commands and provider lists at the new id", () => {
+    expect(
+      OpenAICompatible.renameReferences(
+        {
+          model: "9router/a",
+          small_model: "other/b",
+          agent: { build: { model: "9router/c" }, plan: { model: "anthropic/d" }, bare: {} },
+          command: { review: { model: "9router/e", template: "x" } },
+          enabled_providers: ["9router", "anthropic"],
+          disabled_providers: ["9router-old", "gateway"],
+        },
+        "9router",
+        "gateway",
+      ),
+    ).toEqual({
+      model: "gateway/a",
+      agent: { build: { model: "gateway/c" } },
+      command: { review: { model: "gateway/e" } },
+      enabled_providers: ["gateway", "anthropic"],
+    })
+  })
+})

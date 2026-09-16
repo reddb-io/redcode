@@ -305,7 +305,7 @@ session directory and recovery instructions; it never changes the directory of l
 
 Open `/connect` and choose **OpenAI-compatible** to connect any endpoint that speaks the OpenAI API
 (vLLM, LM Studio, Ollama, LiteLLM, a company gateway, a hosted provider). The wizard asks for the API
-URL, a provider id (suggested from the host), a display name, the API type (Chat Completions, or
+URL (without a scheme, `https://` is used except for local and private addresses), a provider id (suggested from the host), a display name, the API type (Chat Completions, or
 Responses through `@ai-sdk/openai`) and the key: paste it, type `{env:VARIABLE}` to keep only a
 reference in configuration, or leave it empty for endpoints without one. Models are read from
 `/models`; if that fails or lists nothing, type the model ids instead (`model-a 128k, model-b`).
