@@ -5607,6 +5607,7 @@ export type DesignFeedbackItem = {
   label?: string
   xpath?: string
   context?: string
+  parent?: string
   revision?: string
 }
 
