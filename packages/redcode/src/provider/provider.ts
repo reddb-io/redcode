@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import os from "os"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import fuzzysort from "fuzzysort"
@@ -1774,6 +1775,13 @@ const layer = Layer.effect(
             continue
           }
         }
+
+        // Which providers have credentials, never what they are.
+        BootTrace.mark("providers.ready", {
+          providers: Object.keys(providers).length,
+          ids: Object.keys(providers).join(","),
+          catalog: Object.keys(catalog).length,
+        })
 
         return {
           models: languages,

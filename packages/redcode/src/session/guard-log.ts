@@ -3,6 +3,7 @@ import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionGuardTripTable } from "@reddb-io/redcode-core/session/sql"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { Context, DateTime, Effect, Layer } from "effect"
 import { desc, gte } from "drizzle-orm"
 import { ulid } from "ulid"
@@ -70,6 +71,13 @@ const layer = Layer.effect(
 
     const record = Effect.fn("SessionGuardLog.record")(function* (trip: Trip) {
       const at = Date.now()
+      yield* Verbose.log("guard.trip", {
+        sessionID: trip.sessionID,
+        guard: trip.guard,
+        action: trip.action,
+        subject: trip.subject,
+        detail: trip.detail.length > 160 ? trip.detail.slice(0, 157) + "..." : trip.detail,
+      })
       yield* db
         .insert(SessionGuardTripTable)
         .values({

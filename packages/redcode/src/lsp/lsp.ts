@@ -1,6 +1,7 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import * as LSPClient from "./client"
 import path from "path"
@@ -237,6 +238,12 @@ const layer = Layer.effect(
               .join(", "),
           })
         }
+        // Servers spawn lazily, on the first file each one owns; this is what could spawn.
+        BootTrace.mark("lsp.ready", {
+          enabled: cfg.lsp !== false,
+          servers: Object.keys(servers).length,
+          ids: Object.keys(servers).join(","),
+        })
 
         const s: State = {
           clients: [],

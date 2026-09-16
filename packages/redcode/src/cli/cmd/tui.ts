@@ -14,6 +14,7 @@ import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@reddb-io/redcode-tui/terminal-win32"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
 
@@ -158,6 +159,9 @@ export const TuiThreadCommand = cmd({
     }
     const noReplay = args.replay === false || args.noReplay === true
 
+    // Both interfaces draw on the terminal: the activity trace stays in the file for them.
+    process.env.REDCODE_VERBOSE_NO_STDERR = "1"
+
     if (args.mini) {
       const network = ["--port", "--hostname", "--mdns", "--no-mdns", "--mdns-domain", "--cors"].find((option) =>
         process.argv.some((arg) => arg === option || arg.startsWith(option + "=")),
@@ -217,6 +221,8 @@ export const TuiThreadCommand = cmd({
         return
       }
       const cwd = Filesystem.resolve(process.cwd())
+      // Decided here so the worker inherits the same file through its environment.
+      if (BootTrace.enabled()) BootTrace.filePath()
 
       let stopped = false
       const worker = new Worker(file, {
@@ -231,6 +237,7 @@ export const TuiThreadCommand = cmd({
         },
       })
       const client = Rpc.client<typeof rpc>(worker)
+      BootTrace.mark("worker.spawned", { directory: cwd })
       // A worker that fails to load, or dies, posts nothing back. Without these the calls
       // waiting on it stay pending and the UI shows an empty screen with no error.
       worker.addEventListener("error", (event) => {
@@ -256,6 +263,7 @@ export const TuiThreadCommand = cmd({
 
       const prompt = await input(args.prompt)
       const config = await TuiConfig.get()
+      BootTrace.mark("tui.config", { theme: config.theme, mouse: config.mouse })
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
@@ -304,6 +312,7 @@ export const TuiThreadCommand = cmd({
         process.exitCode = 1
         return
       }
+      BootTrace.mark("session.ready", { sessionID, external, url: transport.url })
 
       setTimeout(() => {
         client.call("checkUpgrade", { directory: cwd }).catch(() => {})
@@ -313,6 +322,8 @@ export const TuiThreadCommand = cmd({
         const { Effect } = await import("effect")
         const { run } = await import("../tui/layer")
         const { createLegacyTuiPluginHost } = await import("@/plugin/tui/runtime")
+        // The server thread prints its own boot lines; from here they would land on the screen.
+        if (BootTrace.enabled()) await client.call("bootQuiet", undefined).catch(() => {})
         await Effect.runPromise(
           run({
             url: transport.url,
@@ -347,6 +358,8 @@ export const TuiThreadCommand = cmd({
         unguard?.()
       } catch {}
     }
+    // The terminal is ours again: say how long boot took and where the whole trace is.
+    if (BootTrace.enabled()) process.stderr.write(BootTrace.summary() + "\n")
     process.exit(0)
   },
 })

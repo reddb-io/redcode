@@ -25,6 +25,7 @@ import { Filesystem } from "@/util/filesystem"
 import { createRedcodeClient, type RedcodeClient, type ToolPart } from "@reddb-io/redcode-sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import { ProviderFailure } from "@reddb-io/redcode-core/util/provider-failure"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<RedcodeClient["session"]["prompt"]>[0]["model"]
@@ -268,7 +269,8 @@ export const RunCommand = effectCmd({
       })
       .option("max-tokens", {
         type: "number",
-        describe: "stop after the step that spends this many tokens (subagents included); exits 1 when reached. No default",
+        describe:
+          "stop after the step that spends this many tokens (subagents included); exits 1 when reached. No default",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
@@ -685,6 +687,10 @@ export const RunCommand = effectCmd({
           process.exit(1)
         }
         const sessionID = sess.id
+        // A run has no screen: boot ends when the session exists and the prompt is about to go.
+        // Interactive mode draws on the terminal, so its trace stays in the file from here.
+        if (interactive) BootTrace.quiet()
+        BootTrace.stop("session.ready", { sessionID, attach: Boolean(args.attach), interactive })
 
         function emit(type: string, data: Record<string, unknown>) {
           if (args.format === "json") {
@@ -899,7 +905,9 @@ export const RunCommand = effectCmd({
               : undefined
           if (!view?.data?.exceeded && goalReason === undefined) return
           process.exitCode = 1
-          const reason = view?.data?.exceeded ? `Budget reached: ${view.data.reason}` : `Goal budget reached: ${goalReason}`
+          const reason = view?.data?.exceeded
+            ? `Budget reached: ${view.data.reason}`
+            : `Goal budget reached: ${goalReason}`
           if (!emit("budget", { budget: view?.data, goal: goal?.data })) UI.error(`${reason}. The run stopped.`)
         }
 

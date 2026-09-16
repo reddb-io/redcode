@@ -9,6 +9,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { ShareNext } from "@/share/share-next"
 import { Effect, Layer } from "effect"
 import { Config } from "@/config/config"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { Service } from "./bootstrap-service"
 
 export { Service } from "./bootstrap-service"
@@ -32,10 +33,18 @@ const layer = Layer.effect(
     const run = Effect.gen(function* () {
       const ctx = yield* InstanceState.context
       yield* Effect.logInfo("bootstrapping", { directory: ctx.directory })
+      BootTrace.mark("instance.boot", { directory: ctx.directory })
       // everything depends on config so eager load it for nice traces
-      yield* config.get()
+      const cfg = yield* config.get()
+      BootTrace.mark("config.loaded", {
+        plugins: cfg.plugin_origins?.length ?? 0,
+        mcp: Object.keys(cfg.mcp ?? {}).length,
+        model: cfg.model,
+        lsp: cfg.lsp === false ? "disabled" : "enabled",
+      })
       // Plugin can mutate config so it has to be initialized before anything else.
       yield* plugin.init()
+      BootTrace.mark("plugins.ready")
       // Each service self-manages its own slow work via Effect.forkScoped against
       // its per-instance state scope. We just await materialization here.
       yield* Effect.forEach(
@@ -43,6 +52,7 @@ const layer = Layer.effect(
         (s) => s.init().pipe(Effect.catchCause((cause) => Effect.logWarning("init failed", { cause }))),
         { concurrency: "unbounded", discard: true },
       ).pipe(Effect.withSpan("InstanceBootstrap.init"))
+      BootTrace.mark("instance.services", { services: "lsp,share,format,vcs,snapshot,project" })
     }).pipe(Effect.withSpan("InstanceBootstrap"))
 
     return Service.of({ run })

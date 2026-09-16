@@ -1,6 +1,7 @@
 import { Prompt, type PromptRef } from "../component/prompt"
 import { createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { Logo } from "../component/logo"
+import { VerboseIndicator } from "../component/verbose-indicator"
 import { useSync } from "../context/sync"
 import { Toast } from "../ui/toast"
 import { useArgs } from "../context/args"
@@ -89,6 +90,9 @@ export function Home() {
       </box>
       <box width="100%" flexShrink={0}>
         <pluginRuntime.Slot name="home_footer" mode="single_winner" />
+        <box paddingLeft={2} paddingRight={2}>
+          <VerboseIndicator />
+        </box>
       </box>
     </HomeSessionDestinationProvider>
   )

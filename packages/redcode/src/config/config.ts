@@ -6,6 +6,7 @@ import { pathToFileURL } from "url"
 import os from "os"
 import { mergeDeep } from "remeda"
 import { Global } from "@reddb-io/redcode-core/global"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import fsNode from "fs/promises"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Auth } from "../auth"
@@ -253,6 +254,7 @@ const layer = Layer.effect(
     const loadFile = Effect.fnUntraced(function* (filepath: string, env?: Record<string, string>) {
       yield* Effect.logInfo("loading", { path: filepath })
       const text = yield* readConfigFile(filepath)
+      BootTrace.mark("config.file", { path: filepath, found: Boolean(text), bytes: text?.length ?? 0 })
       if (!text) return {} as Info
       return yield* loadConfig(text, { path: filepath }, env)
     })
@@ -733,7 +735,10 @@ const layer = Layer.effect(
       } else {
         const updated = remove.reduce(
           (text, keys) =>
-            applyEdits(text, modify(text, [...keys], undefined, { formattingOptions: { insertSpaces: true, tabSize: 2 } })),
+            applyEdits(
+              text,
+              modify(text, [...keys], undefined, { formattingOptions: { insertSpaces: true, tabSize: 2 } }),
+            ),
           patchJsonc(before, patch),
         )
         next = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(updated, file), file)

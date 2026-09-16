@@ -1,4 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
+import { Token } from "@/util/token"
 import { llmClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Provider } from "@/provider/provider"
@@ -102,6 +104,17 @@ const live: Layer.Layer<
         agent: input.agent.name,
         mode: input.agent.mode,
       })
+      yield* Verbose.log("provider.request", () => ({
+        sessionID: input.sessionID,
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        agent: input.agent.name,
+        small: input.small ?? false,
+        messages: input.messages.length,
+        tools: Object.keys(input.tools ?? {}).length,
+        // The estimate the loop sizes requests by; the provider's count arrives with the response.
+        estimatedTokens: Token.estimate(JSON.stringify(input.messages)),
+      }))
 
       const [language, cfg, item, info] = yield* Effect.all(
         [

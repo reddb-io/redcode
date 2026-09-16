@@ -1,5 +1,11 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
+
+/** A pattern is a command or a path; the trace wants its shape, not a screenful of it. */
+function clip(pattern: string) {
+  return pattern.length > 80 ? pattern.slice(0, 77) + "..." : pattern
+}
 import { ConfigPermissionV1 } from "@reddb-io/redcode-core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@reddb-io/redcode-core/util/wildcard"
@@ -81,6 +87,12 @@ const layer = Layer.effect(
         const rule = evaluate(request.permission, pattern, ruleset, approved)
         yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny") {
+          yield* Verbose.log("permission.denied", {
+            sessionID: request.sessionID,
+            permission: request.permission,
+            callID: request.tool?.callID,
+            pattern: clip(pattern),
+          })
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
@@ -104,6 +116,15 @@ const layer = Layer.effect(
         tool: request.tool,
       }
       yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
+      yield* Verbose.log("permission.ask", {
+        sessionID: info.sessionID,
+        requestID: id,
+        permission: info.permission,
+        callID: info.tool?.callID,
+        patterns: info.patterns.length,
+        pattern: clip(info.patterns[0] ?? ""),
+        forced: request.force === true,
+      })
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred, force: request.force === true })
@@ -125,6 +146,12 @@ const layer = Layer.effect(
       if (!existing) return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
 
       pending.delete(input.requestID)
+      yield* Verbose.log("permission.reply", {
+        sessionID: existing.info.sessionID,
+        requestID: existing.info.id,
+        permission: existing.info.permission,
+        reply: input.reply,
+      })
       yield* events.publish(Event.Replied, {
         sessionID: existing.info.sessionID,
         requestID: existing.info.id,

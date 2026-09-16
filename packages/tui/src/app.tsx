@@ -3,6 +3,7 @@ import { registerOpencodeSpinner } from "./component/register-spinner"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { Deferred, Effect } from "effect"
 import { Global } from "@reddb-io/redcode-core/global"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
@@ -192,6 +193,10 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown }
   const result = yield* Effect.scoped(
     Effect.gen(function* () {
+      // The last line the boot trace can print: from the renderer on, the terminal is the
+      // screen's, and stderr would draw over it. The rest of the trace goes to the file.
+      BootTrace.mark("tui.renderer", { mouse: !Flag.REDCODE_DISABLE_MOUSE && input.config.mouse })
+      BootTrace.quiet()
       const renderer = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>
@@ -238,6 +243,10 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         () => Effect.sync(() => process.off("SIGHUP", onSighup)),
       )
       renderer.once("destroy", () => Deferred.doneUnsafe(shutdown, Effect.void))
+      // The first frame the terminal shows is where boot ends.
+      renderer.once("frame", () => {
+        BootTrace.stop("tui.first-render", { width: renderer.width, height: renderer.height })
+      })
       const pluginRuntime = createPluginRuntime()
 
       yield* Effect.tryPromise(async () => {
@@ -355,6 +364,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             </ExitProvider>
           )
         }, renderer)
+        BootTrace.mark("tui.mounted", { theme: mode })
       })
       yield* Deferred.await(shutdown)
       return { epilogue: exit.epilogue, reason: exit.reason }
@@ -483,6 +493,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
   const args = useArgs()
   onMount(() => {
+    // Said once on screen as well as in the footer: the trace left stderr before this rendered.
+    if (BootTrace.enabled()) {
+      toast.show({ variant: "info", message: `verbose: boot trace at ${BootTrace.filePath()}`, duration: 6000 })
+    }
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {

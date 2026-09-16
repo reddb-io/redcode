@@ -12,6 +12,7 @@ import { EventV2 } from "./event"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
 import { ModelsSnapshot } from "./models-snapshot"
+import { BootTrace } from "./observability/boot-trace"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -469,7 +470,27 @@ const layer = Layer.effect(
       return JSON.parse(text) as Record<string, Provider>
     }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
-    const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
+    // Where the catalog came from and how old it is, for the boot trace. The state file is read
+    // only when the trace is on: on the plain path this costs nothing.
+    const traced = populate.pipe(
+      Effect.tap((catalog) =>
+        Effect.gen(function* () {
+          if (!BootTrace.enabled()) return
+          const from = yield* Ref.get(origin)
+          const state = yield* readState.pipe(Effect.catch(() => Effect.succeed(undefined)))
+          const fetchedAt = state?.fetchedAt
+          BootTrace.mark("models.catalog", {
+            origin: from,
+            providers: Object.keys(catalog).length,
+            source: state?.source,
+            age: fetchedAt === undefined ? undefined : `${Math.round((Date.now() - fetchedAt) / 60_000)}min`,
+            path: Flag.REDCODE_MODELS_PATH ?? filepath,
+          })
+        }),
+      ),
+    )
+
+    const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(traced, Duration.infinity)
 
     const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
 

@@ -10,8 +10,10 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
 Heap.start()
+BootTrace.mark("worker.started")
 
 const onUnhandledRejection = (_error: unknown) => {}
 
@@ -55,6 +57,10 @@ export const rpc = {
     if (server) await server.stop(true)
     server = await Server.listen(input)
     return { url: server.url.toString() }
+  },
+  // The screen is about to take the terminal: this thread's boot lines go to the file only.
+  bootQuiet() {
+    BootTrace.quiet()
   },
   async checkUpgrade(input: { directory: string }) {
     await InstanceRuntime.load({ directory: input.directory })

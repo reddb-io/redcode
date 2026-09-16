@@ -1,15 +1,12 @@
 export * as Monitor from "./monitor"
 
-import {
-  spawnSync,
-  type SpawnSyncOptionsWithStringEncoding,
-  type SpawnSyncReturns,
-} from "node:child_process"
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from "node:child_process"
 import { readFileSync, readdirSync } from "node:fs"
 import { and, eq, sql } from "drizzle-orm"
 import { Cause, Clock, Context, Effect, Layer, Scope, Semaphore } from "effect"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { BackgroundJob } from "./background-job"
+import { Verbose } from "./observability/verbose"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { MonitorTable } from "./monitor.sql"
@@ -410,6 +407,13 @@ export const make = Effect.gen(function* () {
               .values({ id: initial.id, session_id: input.sessionID, owner, data: initial })
               .run()
               .pipe(Effect.orDie)
+            yield* Verbose.log("monitor.started", {
+              sessionID: input.sessionID,
+              monitorID: initial.id,
+              mode: input.options.mode,
+              autonomous: input.autonomous ?? false,
+              probe: Boolean(input.probe),
+            })
             let current = initial
             const initialInfo = initial
             // Recorded even where no start time can be read, so recovery can at least name the pid.
@@ -457,7 +461,16 @@ export const make = Effect.gen(function* () {
                       : "running",
                 }
                 yield* save(current)
-                if (current.status !== "running") return
+                if (current.status !== "running") {
+                  yield* Verbose.log("monitor.settled", {
+                    sessionID: input.sessionID,
+                    monitorID: current.id,
+                    status: current.status,
+                    attempts: current.attempts,
+                    ms: now - initialInfo.created,
+                  })
+                  return
+                }
                 const delay = Monitor.nextDelay(
                   input.options,
                   (yield* Clock.currentTimeMillis) - initialInfo.created,

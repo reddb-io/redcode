@@ -80,6 +80,7 @@ import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
 import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
+import { VerboseIndicator } from "../../component/verbose-indicator"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
@@ -1598,6 +1599,7 @@ export function Session() {
                 <Show when={session()?.parentID}>
                   <SubagentFooter />
                 </Show>
+                <VerboseIndicator />
                 <Show when={visible()}>
                   <pluginRuntime.Slot
                     name="session_prompt"

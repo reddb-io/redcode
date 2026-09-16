@@ -663,13 +663,14 @@ opencode upgrade v0.1.48
 
 The opencode CLI takes the following global flags.
 
-| Flag                                       | Short | Description                          |
-| ------------------------------------------ | ----- | ------------------------------------ |
-| <nobr><code>{"--help"}</code></nobr>       | `-h`  | Display help                         |
-| <nobr><code>{"--version"}</code></nobr>    | `-v`  | Print version number                 |
-| <nobr><code>{"--print-logs"}</code></nobr> |       | Print logs to stderr                 |
-| <nobr><code>{"--log-level"}</code></nobr>  |       | Log level (DEBUG, INFO, WARN, ERROR) |
-| <nobr><code>{"--pure"}</code></nobr>       |       | Run without external plugins         |
+| Flag                                       | Short | Description                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <nobr><code>{"--help"}</code></nobr>       | `-h`  | Display help                                                                                                                                                                                                                                                                                      |
+| <nobr><code>{"--version"}</code></nobr>    | `-v`  | Print version number                                                                                                                                                                                                                                                                              |
+| <nobr><code>{"--print-logs"}</code></nobr> |       | Print logs to stderr                                                                                                                                                                                                                                                                              |
+| <nobr><code>{"--log-level"}</code></nobr>  |       | Log level (DEBUG, INFO, WARN, ERROR)                                                                                                                                                                                                                                                              |
+| <nobr><code>{"--pure"}</code></nobr>       |       | Run without external plugins                                                                                                                                                                                                                                                                      |
+| <nobr><code>{"--verbose"}</code></nobr>    |       | Trace the boot to stderr until the screen renders, then trace activity (provider requests, tool calls, compaction, guards) to the log at DEBUG. Also `REDCODE_VERBOSE=1`. Under the TUI the trace continues in `<data>/log/boot-<timestamp>.log`; `redcode run --verbose` prints it all to stderr |
 
 ---
 
