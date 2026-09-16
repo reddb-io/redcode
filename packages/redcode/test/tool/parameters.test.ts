@@ -280,6 +280,86 @@ describe("tool parameters", () => {
     test("rejects missing todos", () => {
       expect(accepts(Todo, {})).toBe(false)
     })
+    // Every shape the tool description, the task guidance and the design instructions tell the model
+    // to send. v0.34.0 refused three of them with "Missing key": an update that left an unchanged status
+    // out ("only their id, revision and the changed fields"), a scopeChange without the messageID the
+    // description says may be unknown, and evidence without an explanation, which the store answers
+    // with the exact update to resend but the schema never let through.
+    const documented: Record<string, unknown> = {
+      create: {
+        todos: [
+          {
+            content: "Add retries",
+            status: "pending",
+            priority: "high",
+            requirement: "adicione retries",
+            criterion: "the retry suite passes",
+          },
+        ],
+      },
+      "create without status": { todos: [{ content: "Add retries", priority: "high" }] },
+      "update status": { todos: [{ id: "todo_1", revision: 2, status: "in_progress" }] },
+      "update a changed field only": { todos: [{ id: "todo_1", revision: 2, reason: "waiting on CI" }] },
+      "update the criterion only": { todos: [{ id: "todo_1", revision: 2, criterion: "tests pass" }] },
+      complete: {
+        todos: [
+          {
+            id: "todo_1",
+            revision: 2,
+            status: "completed",
+            evidence: { callID: "call_1", messageID: "msg_1", explanation: "the suite passed" },
+          },
+        ],
+      },
+      "complete without evidence": { todos: [{ id: "todo_1", revision: 2, status: "completed" }] },
+      "complete with evidence lacking an explanation": {
+        todos: [{ id: "todo_1", revision: 2, status: "completed", evidence: { callID: "call_1" } }],
+      },
+      "complete with only an explanation": {
+        todos: [{ id: "todo_1", revision: 2, status: "completed", evidence: { explanation: "bun test passed" } }],
+      },
+      block: { todos: [{ id: "todo_1", revision: 2, status: "blocked", reason: "the API key is missing" }] },
+      cancel: {
+        todos: [
+          {
+            id: "todo_1",
+            revision: 2,
+            status: "cancelled",
+            reason: "the user dropped it",
+            scopeChange: { messageID: "msg_1", quote: "skip the retries" },
+          },
+        ],
+      },
+      "cancel with a scopeChange quote only": {
+        todos: [
+          { id: "todo_1", revision: 2, status: "cancelled", reason: "dropped", scopeChange: { quote: "skip it" } },
+        ],
+      },
+      "cancel with a scopeChange messageID only": {
+        todos: [
+          { id: "todo_1", revision: 2, status: "cancelled", reason: "dropped", scopeChange: { messageID: "msg_1" } },
+        ],
+      },
+      "read the list": { todos: [] },
+      "design agent update": { todos: [{ id: "todo_1", revision: 3, status: "in_progress", criterion: "renders" }] },
+    }
+    for (const [name, input] of Object.entries(documented))
+      test(`accepts the documented shape: ${name}`, () => {
+        const result = Schema.decodeUnknownResult(TodoModel)(input)
+        expect(Result.isSuccess(result) ? "accepted" : String(result.failure.message)).toBe("accepted")
+      })
+    test("requires nothing of an item on the wire, so a partial update is never a schema error", () => {
+      const schema = toJsonSchema(Todo) as { properties: { todos: { items: Record<string, unknown> } } }
+      expect(schema.properties.todos.items.required).toBeUndefined()
+      const evidence = schema.properties.todos.items.properties as Record<string, Record<string, unknown>>
+      expect(evidence.evidence.required).toBeUndefined()
+      expect(evidence.scopeChange.required).toBeUndefined()
+    })
+    test("still refuses what no shape allows and names the key on the first line", () => {
+      expect(accepts(TodoModel, { todos: [{ id: "todo_1", revision: "2", status: "done" }] })).toBe(false)
+      expect(accepts(TodoModel, { todos: [{ content: "", status: "pending", priority: "high" }] })).toBe(false)
+      expect(accepts(TodoModel, { todos: [{ content: "x", status: "pending", priority: "urgent" }] })).toBe(false)
+    })
   })
 
   describe("webfetch", () => {

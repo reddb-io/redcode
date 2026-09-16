@@ -34,6 +34,7 @@ import { Image } from "../../src/image/image"
 import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
+import { SessionTodoStore } from "@reddb-io/redcode-core/session/todo-store"
 import { Session } from "@/session/session"
 import {
   SessionContextEpochTable,
@@ -983,6 +984,41 @@ it.instance("todowrite preserves omitted work and reports an invalid cancellatio
           part.state.error.includes("requires a concrete reason"),
       ),
     ).toBe(true)
+  }),
+)
+
+it.instance("todowrite accepts a partial update without a status and names the key when a value is wrong", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 4 } } }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const todos = yield* Todo.Service
+    const chat = yield* sessions.create({ title: "Partial update" })
+    const [task] = yield* todos.update({
+      sessionID: chat.id,
+      todos: [{ content: "Add retries", status: "in_progress", priority: "high" }],
+    })
+    // "Update them with only their id, revision and the changed fields": the status did not change, so
+    // the model leaves it out. v0.34.0 refused this with "Missing key".
+    yield* llm.tool("todowrite", { todos: [{ id: task.id, revision: task.revision, reason: "waiting on CI" }] })
+    // A value no shape allows is still refused, and the first line of the error says which key.
+    yield* llm.tool("todowrite", { todos: [{ id: task.id, revision: "2", status: "done" }] })
+    yield* llm.text("done")
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", parts: [{ type: "text", text: "Add retries" }] })
+    const parts = (yield* sessions.messages({ sessionID: chat.id }))
+      .flatMap((message) => message.parts)
+      .filter((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "todowrite")
+    expect(parts).toHaveLength(2)
+    const [partial, wrong] = parts
+    expect(partial.state.status).toBe("completed")
+    expect(yield* todos.get(chat.id)).toMatchObject([
+      { id: task.id, status: "in_progress", reason: "waiting on CI", revision: task.revision! + 1 },
+    ])
+    expect(wrong.state.status).toBe("error")
+    const first = wrong.state.status === "error" ? wrong.state.error.split("\n")[0]! : ""
+    expect(first).toContain("todos[0].revision")
+    expect(first).toContain("todos[0].status")
+    expect(SessionTodoStore.refusalKind(first)).toBe("schema")
   }),
 )
 

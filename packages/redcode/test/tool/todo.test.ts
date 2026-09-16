@@ -273,6 +273,32 @@ describe("tool.todowrite (legacy runtime)", () => {
     }),
   )
 
+  it.instance("names every wrong key on the first line of a schema refusal and accepts an update without status", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* seed()
+      const created = yield* call(
+        sessionID,
+        [{ content: "Verify retries", status: "pending", priority: "high", requirement }],
+        20,
+      )
+      if (!("output" in created)) throw new Error(`task creation failed: ${created.error}`)
+      const task = created.output.metadata.todos[0]!
+      // The folded TUI row, the log and `redcode debug todos` keep only the first line.
+      const wrong = yield* call(sessionID, [{ id: task.id, revision: "1", status: "done" }], 30)
+      if (!("error" in wrong)) throw new Error("expected the malformed update to be refused")
+      const [first] = wrong.error.split("\n")
+      expect(first).toContain("todos[0].revision")
+      expect(first).toContain("todos[0].status")
+      expect(first).not.toContain("SchemaError(")
+      expect(wrong.error).toContain("Do not resend the failed shape")
+      expect(SessionTodoStore.refusalKind(wrong.error)).toBe("schema")
+      // The status did not change, so the model left it out; the stored one stays.
+      const partial = yield* call(sessionID, [{ id: task.id, revision: task.revision, reason: "waiting" }], 40)
+      if (!("output" in partial)) throw new Error(`partial update refused: ${partial.error}`)
+      expect(partial.output.metadata.todos[0]).toMatchObject({ id: task.id, status: "in_progress", reason: "waiting" })
+    }),
+  )
+
   it.instance("completes an existing task with fresh evidence after its request left the history", () =>
     Effect.gen(function* () {
       const sessionID = yield* seed()

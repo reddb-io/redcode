@@ -199,6 +199,77 @@ it.effect("binds requirements to real requests and rejects fabricated, failed or
   }),
 )
 
+it.effect("accepts every documented partial shape: no status, bare evidence, and a scopeChange without an id", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const [created] = yield* todos.update({ sessionID, todos: [task] })
+    // "Update them with only their id, revision and the changed fields": a status left out stays.
+    const reasoned = yield* todos.update({
+      sessionID,
+      todos: [{ id: created.id, revision: created.revision, reason: "waiting on the fixture" }],
+    })
+    expect(reasoned[0]).toMatchObject({ id: created.id, status: "in_progress", reason: "waiting on the fixture" })
+    // A cited result without an explanation is a shape problem the store answers with the exact resend,
+    // never a schema refusal and never a failed attempt.
+    yield* result("bash", "passing", 20)
+    const unexplained = yield* todos
+      .update({
+        sessionID,
+        todos: [
+          { id: created.id, revision: reasoned[0].revision, status: "completed", evidence: { callID: "passing" } },
+        ],
+      })
+      .pipe(Effect.flip)
+    expect(unexplained.message).toStartWith(SessionTodoStore.NEEDS_EXPLANATION)
+    expect(unexplained.message).toContain('"callID":"passing"')
+    // An explanation with no callID is not a claim: the newest verification is selected and the
+    // explanation is what it is recorded with.
+    const explained = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          id: created.id,
+          revision: reasoned[0].revision,
+          status: "completed",
+          evidence: { explanation: "the retry suite passed twice" },
+        },
+      ],
+    })
+    expect(explained[0]).toMatchObject({
+      status: "completed",
+      evidence: { callID: "passing", tool: "bash", explanation: "the retry suite passed twice" },
+    })
+    // A scope change that names no message is linked to the latest request, its words kept.
+    const [other] = (yield* todos.update({
+      sessionID,
+      todos: [{ content: "Drop me", status: "pending", priority: "low", requirement: "verify duplicate requests" }],
+    })).filter((entry) => entry.content === "Drop me")
+    const cancelled = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          id: other.id,
+          revision: other.revision,
+          status: "cancelled",
+          reason: "the user dropped it",
+          scopeChange: { quote: "não precisa mais disso" },
+        },
+      ],
+    })
+    expect(cancelled.find((entry) => entry.id === other.id)).toMatchObject({
+      status: "cancelled",
+      scopeChange: { messageID: "msg_request_10", paraphrase: "não precisa mais disso" },
+    })
+    // A task created without a status starts pending; with nothing else active it is promoted at once.
+    const fresh = yield* todos.update({ sessionID, todos: [{ content: "Later", priority: "low" }] })
+    expect(fresh.find((entry) => entry.content === "Later")).toMatchObject({ status: "in_progress", revision: 1 })
+    const queued = yield* todos.update({ sessionID, todos: [{ content: "After that", priority: "low" }] })
+    expect(queued.find((entry) => entry.content === "After that")).toMatchObject({ status: "pending" })
+  }),
+)
+
 it.effect("reopens stale completion after a failed later edit and keeps its evidence in history", () =>
   Effect.gen(function* () {
     yield* setup

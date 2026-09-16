@@ -87,6 +87,20 @@ describe("SessionTodo", () => {
         "Task todo_b was blocked instead of completed: completion evidence could not be verified after 2 attempts: none",
       ])
       expect(SessionTodo.validationHint("Missing key")).toContain('{"id":"todo_…","revision":3,"status":"completed"}')
+      // Effect puts each problem's path on the line after it; the hint's first line names them all.
+      const detail =
+        'Expected "pending" | "in_progress" | "blocked" | "completed" | "cancelled", got "done"\n  at ["todos"][0]["status"]\nMissing key\n  at ["todos"][1]["evidence"]["callID"]\nExpected object, got 1'
+      expect(SessionTodo.schemaProblems(detail)).toEqual([
+        {
+          path: "todos[0].status",
+          problem: 'Expected "pending" | "in_progress" | "blocked" | "completed" | "cancelled", got "done"',
+        },
+        { path: "todos[1].evidence.callID", problem: "Missing key" },
+        { path: "", problem: "Expected object, got 1" },
+      ])
+      expect(SessionTodo.validationHint(detail).split("\n")[0]).toBe(
+        'Expected "pending" | "in_progress" | "blocked" | "completed" | "cancelled", got "done" at todos[0].status; Missing key at todos[1].evidence.callID; Expected object, got 1',
+      )
     }),
   )
 

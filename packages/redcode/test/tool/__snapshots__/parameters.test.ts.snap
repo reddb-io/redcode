@@ -441,20 +441,18 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "description": "Successful tool result proving completion, with an explanation. When omitted, only a verification result (successful bash or shell check, design_preview or design_export) newer than the last edit is selected",
             "properties": {
               "callID": {
+                "description": "callID of the successful tool result that proves the task; when omitted, one is selected",
                 "type": "string",
               },
               "explanation": {
-                "minLength": 1,
+                "description": "How that result meets the task's criterion",
                 "type": "string",
               },
               "messageID": {
+                "description": "The message of that result, when its callID is reused",
                 "type": "string",
               },
             },
-            "required": [
-              "callID",
-              "explanation",
-            ],
             "type": "object",
           },
           "id": {
@@ -489,19 +487,18 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "description": "The user message that removed this work; a quote that matches no message is linked to the latest request",
             "properties": {
               "messageID": {
+                "description": "ID of the user message that removed this work",
                 "type": "string",
               },
               "quote": {
+                "description": "The instruction removing the requirement",
                 "type": "string",
               },
             },
-            "required": [
-              "messageID",
-              "quote",
-            ],
             "type": "object",
           },
           "status": {
+            "description": "pending when creating without one; stays as stored when omitted from an update by id",
             "enum": [
               "pending",
               "in_progress",
@@ -512,9 +509,6 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "type": "string",
           },
         },
-        "required": [
-          "status",
-        ],
         "type": "object",
       },
       "type": "array",

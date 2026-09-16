@@ -72,9 +72,12 @@ const make = Effect.gen(function* () {
                 return yield* new SessionTodo.Error({
                   message: `Unknown task ${item.id}; omit id when creating a task. Existing tasks: ${listTasks(previous)}`,
                 })
+              // An update names only what changes, so a status left out is the stored one; a new task
+              // without one starts pending.
+              const status = item.status ?? (before ? storedStatus(before) : "pending")
               if (item.id && item.revision === undefined)
                 return yield* new SessionTodo.Error({
-                  message: `Supply the current revision for task ${item.id}, e.g. {"todos":[{"id":"${item.id}","revision":${before!.revision},"status":"${item.status}"}]}`,
+                  message: `Supply the current revision for task ${item.id}, e.g. {"todos":[{"id":"${item.id}","revision":${before!.revision},"status":"${status}"}]}`,
                 })
               if (!before && !supplied)
                 return yield* new SessionTodo.Error({
@@ -89,10 +92,10 @@ const make = Effect.gen(function* () {
               if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
               seen.add(key)
               if (input.origin?.type === "plan" && before) return before
-              const reason = item.reason?.trim() || (before?.status === item.status ? before.reason : undefined)
-              if ((item.status === "blocked" || item.status === "cancelled") && !reason)
+              const reason = item.reason?.trim() || (before?.status === status ? before.reason : undefined)
+              if ((status === "blocked" || status === "cancelled") && !reason)
                 return yield* new SessionTodo.Error({
-                  message: `${item.status} requires a concrete reason; do not discard remaining work`,
+                  message: `${status} requires a concrete reason; do not discard remaining work`,
                 })
               const requirement = item.requirement?.trim()
               const requests = observed.requests.toSorted((a, b) => b.created - a.created)
@@ -124,14 +127,17 @@ const make = Effect.gen(function* () {
                 // With no request to attach at all, the requirement still says what the task must show.
                 (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
                 (source ? content : undefined)
+              // Evidence is a claim only when it cites a result; an explanation on its own asks for the
+              // newest verification to be selected and says what it shows.
+              const claim = item.evidence?.callID ? { ...item.evidence, callID: item.evidence.callID } : undefined
               // A task that is already complete keeps its stored evidence when re-sent without new
               // evidence; review() is what reopens it when later edits made that evidence stale.
-              const kept = before?.status === "completed" && !item.evidence ? before.evidence : undefined
+              const kept = before?.status === "completed" && !claim ? before.evidence : undefined
               const resolved =
-                item.status === "completed" && source && !kept
+                status === "completed" && source && !kept
                   ? resolve({
                       observed,
-                      claim: item.evidence,
+                      claim,
                       source,
                       content,
                       messageID: input.messageID,
@@ -140,6 +146,7 @@ const make = Effect.gen(function* () {
                       // A criterion that only restates the task explains nothing about a check.
                       fallback:
                         item.reason?.trim() ||
+                        (claim ? undefined : item.evidence?.explanation?.trim()) ||
                         explains(item.criterion, content) ||
                         // A paraphrase kept as the criterion restates the request; it explains no check.
                         explains(
@@ -172,7 +179,7 @@ const make = Effect.gen(function* () {
               // A scope change follows the same policy as a requirement: a quote of a real user message
               // links it, anything else is attached to the latest real request with the model's words
               // kept as the paraphrase. What it cannot do without is the concrete reason checked above.
-              const changeQuote = item.scopeChange?.quote.trim()
+              const changeQuote = item.scopeChange?.quote?.trim()
               const changeLinked =
                 item.scopeChange && changeQuote
                   ? observed.requests.find(
@@ -181,7 +188,7 @@ const make = Effect.gen(function* () {
                     )
                   : undefined
               const changeRequest = changeLinked ?? (item.scopeChange ? latest : undefined)
-              if (item.status === "cancelled" && source && before?.status !== "cancelled" && !item.scopeChange)
+              if (status === "cancelled" && source && before?.status !== "cancelled" && !item.scopeChange)
                 return yield* new SessionTodo.Error({
                   message: `${SCOPE_CHANGE_REQUIRED} include scopeChange naming the user message that removed this work, e.g. {"scopeChange":{"messageID":"<user message id>","quote":"<the instruction, quoted or paraphrased>"},"reason":"<concrete reason>"}`,
                 })
@@ -196,12 +203,12 @@ const make = Effect.gen(function* () {
                     : `todo_${crypto.randomUUID()}`),
                 revision: before?.revision ?? 1,
                 content,
-                status: capped ? ("blocked" as const) : item.status,
+                status: capped ? ("blocked" as const) : status,
                 priority,
                 ...(source ? { source } : {}),
                 ...(criterion ? { criterion } : {}),
-                ...(item.status === "completed" && kept ? { evidence: kept } : {}),
-                ...(item.status === "completed" && proof
+                ...(status === "completed" && kept ? { evidence: kept } : {}),
+                ...(status === "completed" && proof
                   ? {
                       evidence: {
                         callID: proof.proof.callID,
@@ -223,7 +230,8 @@ const make = Effect.gen(function* () {
                             ...(!changeLinked && changeQuote ? { paraphrase: changeQuote } : {}),
                           }
                         : {
-                            messageID: item.scopeChange.messageID,
+                            // No user request to link to at all: the change stands on the model's words.
+                            messageID: item.scopeChange.messageID ?? "",
                             quote: changeQuote ?? "",
                             ...(changeQuote ? { paraphrase: changeQuote } : {}),
                           },
@@ -474,13 +482,23 @@ export function quotes(text: string, quote: string) {
   return true
 }
 
+/** A stored status as the input type; `read` already maps historical values to blocked. */
+const storedStatus = (task: SessionTodo.Info): SessionTodo.Input["status"] & string =>
+  Schema.is(SessionTodo.Status)(task.status) ? task.status : "blocked"
+
 /** A short name for why a task update failed, for logs. */
 export function refusalKind(message: string) {
   if (message.includes(LOOP_GUARD_REFUSAL)) return "loop-guard"
   if (message.includes(NEEDS_EXPLANATION)) return "needs-explanation"
   if (message.includes(REFUSED)) return "evidence-refused"
   if (message.includes(QUOTE_MISMATCH)) return "quote-mismatch"
-  if (message.startsWith("Invalid task update")) return "schema"
+  // The store's own decode, the legacy tool wrapper's and the v2 runner's, in that order.
+  if (
+    message.startsWith("Invalid task update") ||
+    message.includes("was called with invalid arguments") ||
+    message.startsWith("Invalid tool input")
+  )
+    return "schema"
   if (message.startsWith("Task content")) return "content"
   if (message.startsWith("Supply the current revision") || message.includes("read its current revision"))
     return "revision"
@@ -553,7 +571,8 @@ function invalidating(
  */
 function resolve(input: {
   observed: Observed
-  claim: SessionTodo.Input["evidence"]
+  /** The result the model cites, if it cites one. */
+  claim: { callID: string; messageID?: string; explanation?: string } | undefined
   source: SessionTodo.Source
   content: string
   messageID?: string

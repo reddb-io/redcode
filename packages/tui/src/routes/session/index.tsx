@@ -276,9 +276,7 @@ export function Session() {
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
 
   // The prompt component reads the same boundary to find the queued prompt an empty steer acts on.
-  const pending = createMemo(() =>
-    pendingAssistantIndex(messages(), sync.data.session_status[route.sessionID]?.type),
-  )
+  const pending = createMemo(() => pendingAssistantIndex(messages(), sync.data.session_status[route.sessionID]?.type))
 
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
@@ -706,7 +704,9 @@ export function Session() {
         if (!change.ok || change.value.max_turns !== undefined) {
           toast.show({
             variant: "warning",
-            message: change.ok ? "Turns belong to /goal-budget; enter an amount such as $5, 200k tokens, or off." : change.error,
+            message: change.ok
+              ? "Turns belong to /goal-budget; enter an amount such as $5, 200k tokens, or off."
+              : change.error,
             duration: 4000,
           })
           return
@@ -1929,27 +1929,50 @@ const PART_MAPPING = {
 
 type TodoFoldPart = { id: string; type: string; tool?: string; text?: string; state?: { status: string } }
 type TodoFoldMessage = { id: string; role: string; error?: unknown; time?: { created?: number; completed?: number } }
-/** A run of failed todowrite parts: its first part, its size, its latest part and every part in order. */
-export type TodoFailureRun<P> = { lead: string; count: number; latest: P; parts: ReadonlyArray<P> }
-/** A message reduced to what folding reads: its failed todowrite parts, and `null` wherever a run breaks. */
-type TodoFoldSegment<P> = ReadonlyArray<P | null>
+/**
+ * A run of failed todowrite parts: its first part, its size, its latest part and every part in order.
+ * `corrected` says a successful todowrite followed the run directly: the model fixed its call.
+ */
+export type TodoFailureRun<P> = {
+  lead: string
+  count: number
+  latest: P
+  parts: ReadonlyArray<P>
+  corrected: boolean
+}
+/**
+ * A message reduced to what folding reads: its failed todowrite parts, `null` wherever a run breaks,
+ * and `CORRECTED` where the break is a todowrite that succeeded.
+ */
+type TodoFoldSegment<P> = ReadonlyArray<P | null | typeof CORRECTED>
+const CORRECTED = Symbol("corrected")
 
 function todoFoldSegment<P extends TodoFoldPart>(
   message: TodoFoldMessage,
   partsOf: (messageID: string) => ReadonlyArray<P>,
 ): TodoFoldSegment<P> {
   if (message.role !== "assistant") return [null]
-  const items: Array<P | null> = []
+  const items: Array<P | null | typeof CORRECTED> = []
+  const open = () => {
+    const last = items.at(-1)
+    return last !== null && last !== CORRECTED
+  }
   for (const part of partsOf(message.id)) {
-    if (part.type === "tool" && part.tool === "todowrite" && part.state?.status === "error") {
-      items.push(part)
-      continue
+    if (part.type === "tool" && part.tool === "todowrite") {
+      if (part.state?.status === "error") {
+        items.push(part)
+        continue
+      }
+      if (part.state?.status === "completed") {
+        if (open()) items.push(CORRECTED)
+        continue
+      }
     }
     if (part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish") continue
     if (part.type === "text" && !part.text?.trim()) continue
-    if (items.at(-1) !== null) items.push(null)
+    if (open()) items.push(null)
   }
-  if (message.error && items.at(-1) !== null) items.push(null)
+  if (message.error && open()) items.push(null)
   return items
 }
 
@@ -1962,23 +1985,34 @@ function todoFoldVisible<M extends TodoFoldMessage>(messages: ReadonlyArray<M>, 
 function todoFoldRuns<P extends TodoFoldPart>(segments: Iterable<TodoFoldSegment<P>>) {
   const runs = new Map<string, TodoFailureRun<P>>()
   let run: { lead: string; parts: P[] } | undefined
-  const close = () => {
+  const close = (corrected: boolean) => {
     if (run)
       for (const part of run.parts)
-        runs.set(part.id, { lead: run.lead, count: run.parts.length, latest: run.parts.at(-1)!, parts: run.parts })
+        runs.set(part.id, {
+          lead: run.lead,
+          count: run.parts.length,
+          latest: run.parts.at(-1)!,
+          parts: run.parts,
+          corrected,
+        })
     run = undefined
   }
   for (const segment of segments)
     for (const item of segment) {
-      if (item === null) {
-        close()
+      if (item === null || item === CORRECTED) {
+        close(item === CORRECTED)
         continue
       }
       if (run) run.parts.push(item)
       else run = { lead: item.id, parts: [item] }
     }
-  close()
+  close(false)
   return runs
+}
+
+/** Whether a run renders at all: a single failure the model corrected on its next call does not. */
+export function todoFailureShown(run: TodoFailureRun<unknown> | undefined) {
+  return !run || run.count > 1 || !run.corrected
 }
 
 /**
@@ -1988,7 +2022,9 @@ function todoFoldRuns<P extends TodoFoldPart>(segments: Iterable<TodoFoldSegment
  * step and so a new assistant message; each refusal used to be its own red line. The run is keyed
  * by part id: its first part renders one counted row that expands to the latest refusal, the rest
  * render nothing. Reasoning, empty text and step markers do not break a run; anything else that
- * renders, a user message, or an assistant error does. Nothing from a reverted message on is folded.
+ * renders, a user message, or an assistant error does. A todowrite that succeeds also breaks it and
+ * marks it corrected: one failure the model fixed on its next call is not shown at all, while two or
+ * more in a row are, corrected or not. Nothing from a reverted message on is folded.
  */
 export function foldTodoFailures<P extends TodoFoldPart>(
   messages: ReadonlyArray<TodoFoldMessage>,
@@ -2109,7 +2145,7 @@ export function TodoFailureRow<P extends TodoFoldPart>(props: {
   const runs = useContext(TodoFailureRuns)
   const run = createMemo(() => runs?.().get(props.part.id) as TodoFailureRun<P> | undefined)
   return (
-    <Show when={!run() || run()!.lead === props.part.id}>
+    <Show when={(!run() || run()!.lead === props.part.id) && todoFailureShown(run())}>
       {props.row({
         get failure() {
           const count = run()?.count ?? 1

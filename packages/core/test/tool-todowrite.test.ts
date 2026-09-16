@@ -131,10 +131,29 @@ describe("TodoWriteTool", () => {
       expect(created.output?.structured).toMatchObject({
         todos: [{ content: "Implement slice", status: "in_progress" }],
       })
-      const invalid = yield* executeTool(registry, call([{ content: "Missing status" }] as never, "call-invalid"))
+      // A status no shape allows is refused; the first line names the key, and every problem is listed.
+      const invalid = yield* executeTool(
+        registry,
+        call([{ content: "Bad status", status: "done", priority: "urgent" }] as never, "call-invalid"),
+      )
       expect(invalid.type).toBe("error")
-      expect(invalid.value).toContain('["todos"][0]["status"]')
-      expect(invalid.value).toContain("Each todo needs status plus either content and priority")
+      const first = (invalid.value as string).split("\n").find((line) => line.includes("todos[0]"))
+      expect(first).toContain("todos[0].status")
+      expect(first).toContain("todos[0].priority")
+      expect(invalid.value).toContain("Each todo needs either content and priority")
+      expect(yield* service.get(sessionID)).toHaveLength(1)
+      // A task created without a status starts pending; the automatic promotion then makes it active
+      // when nothing else is in progress.
+      const started = yield* settleTool(
+        registry,
+        call([{ content: "Without status", priority: "low" }] as never, "call-no-status"),
+      )
+      expect(started.output?.structured).toMatchObject({
+        todos: [
+          { content: "Implement slice", status: "in_progress" },
+          { content: "Without status", status: "pending" },
+        ],
+      })
       const stored = (yield* service.get(sessionID))[0]
       const updated = yield* settleTool(
         registry,
@@ -144,7 +163,10 @@ describe("TodoWriteTool", () => {
         ),
       )
       expect(updated.output?.structured).toMatchObject({
-        todos: [{ id: stored.id, content: "Implement slice", priority: "high", status: "in_progress" }],
+        todos: [
+          { id: stored.id, content: "Implement slice", priority: "high", status: "in_progress", reason: "Waiting" },
+          { content: "Without status", status: "pending" },
+        ],
       })
       expect((yield* toolDefinitions(registry))[0].inputSchema).not.toHaveProperty(
         "properties.todos.items.properties.text",

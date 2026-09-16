@@ -18,7 +18,7 @@ export const Info = SessionTodo.Info
 export type Info = typeof Info.Type
 export const Event = SessionTodo.Event
 export const guidance =
-  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields; content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically (a shell check only when the task has a criterion or reason to explain it); edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request; users write in any language, and a paraphrase or translation is accepted, linked to the latest request and kept as the criterion. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a scopeChange and a concrete reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
+  "For multi-step work, use todowrite to capture EVERY requested item, including verification, then begin real work in the same turn. Update tasks as work happens using only their id, revision and the changed fields (an omitted status stays as stored); content and priority are needed only when creating, and omitted tasks are preserved. Complete only verified work: after the last edit run the verifying command, then complete the task citing that result's callID (and messageID) with an explanation, or omit evidence and the newest verification result (bash or shell check, design_preview, design_export) after the last edit is recorded automatically (a shell check only when the task has a criterion or reason to explain it); edits are never evidence. An investigation task may cite the read or grep that answers it, with an explanation. Commands after the proof never invalidate it (rerun checks after a formatter yourself); only a later edit to the verified files does. For each new task supply criterion and requirement quoting the relevant user request; users write in any language, and a paraphrase or translation is accepted, linked to the latest request and kept as the criterion. Block only on a concrete obstacle, keep working on independent tasks, and cancel only work removed from scope with a scopeChange and a concrete reason. A blocked task is not complete. Skip task tracking for simple or informational requests."
 
 export function active(todos: ReadonlyArray<Info>) {
   return todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled")
@@ -139,7 +139,7 @@ export function notes(
 /** How a requirement or scope change that quoted no user message was linked instead of refused. */
 function linkNotes(item: Input, task: Info) {
   const requirement = item.requirement?.trim()
-  const change = item.scopeChange?.quote.trim()
+  const change = item.scopeChange?.quote?.trim()
   return [
     ...(requirement && task.source?.paraphrase === requirement
       ? [
@@ -172,9 +172,45 @@ export function quotesCommand(incoming: ReadonlyArray<Input>, todos: ReadonlyArr
   })
 }
 
-/** The minimal correct shapes, quoted when an update fails validation so the retry is not a guess. */
+/** One thing wrong with a rejected update: what, and where in the input (`todos[0].status`). */
+export type SchemaProblem = { readonly path: string; readonly problem: string }
+
+/**
+ * The problems in an Effect schema error's message. Effect writes each as its own line followed by an
+ * indented `at ["todos"][0]["status"]` line; the TUI, the log and `redcode debug todos` keep only the
+ * first line, which alone says nothing about which key. This pairs each problem with its path.
+ */
+export function schemaProblems(detail: string): SchemaProblem[] {
+  const out: SchemaProblem[] = []
+  let pending: string | undefined
+  for (const line of detail.split("\n")) {
+    const at = /^\s+at\s+((?:\[[^\]]*\])+)\s*$/.exec(line)
+    if (at && pending !== undefined) {
+      out.push({ path: pathText(at[1]!), problem: pending })
+      pending = undefined
+      continue
+    }
+    if (pending !== undefined) out.push({ path: "", problem: pending })
+    pending = line.trim() || undefined
+  }
+  if (pending !== undefined) out.push({ path: "", problem: pending })
+  return out
+}
+
+/** `["todos"][0]["status"]` as `todos[0].status`. */
+const pathText = (raw: string) =>
+  raw.replace(/\["((?:[^"\\]|\\.)*)"\]/g, (_, key: string) => `.${key}`).replace(/^\./, "")
+
+/**
+ * The minimal correct shapes, quoted when an update fails validation so the retry is not a guess. The
+ * first line names every failing key and where it is, since a folded TUI row and the log show only it.
+ */
 export function validationHint(detail: string) {
-  return `${detail}\nEach todo needs status plus either content and priority (new task) or id and revision (update). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence: {"callID":"<successful result>","explanation":"<how it meets criterion>"}; omit it only when a verification check ran after the last edit). Do not resend the failed shape.`
+  const problems = schemaProblems(detail)
+  const summary = problems.length
+    ? problems.map((entry) => (entry.path ? `${entry.problem} at ${entry.path}` : entry.problem)).join("; ")
+    : detail
+  return `${summary}\nEach todo needs either content and priority (new task, status defaults to pending) or id and revision (update; omitted fields, status included, stay as stored). Examples: {"todos":[{"content":"Add retries","status":"in_progress","priority":"high","requirement":"<quote from the user request>","criterion":"<observable result>"}]} to create, {"todos":[{"id":"todo_…","revision":3,"status":"completed"}]} to complete (evidence: {"callID":"<successful result>","explanation":"<how it meets criterion>"}; omit it only when a verification check ran after the last edit). status is one of pending, in_progress, blocked, completed, cancelled; priority one of high, medium, low; revision the integer from the last result. Do not resend the failed shape.`
 }
 
 export function context(todos: ReadonlyArray<Info>) {
