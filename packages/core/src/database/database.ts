@@ -11,7 +11,19 @@ import { DatabaseMigration } from "./migration"
 import { InstallationChannel } from "../installation/version"
 import { makeGlobalNode } from "../effect/app-node"
 
-const makeDatabase = EffectDrizzleSqlite.makeWithDefaults()
+// One connection per process, shared by every service in it, and any number of processes on the
+// same file: several TUIs, `redcode serve`, `redcode run` workers and the design server all open
+// `<data>/redcode.db`. SQLite keeps that safe on its own in WAL mode, where readers never block
+// the one writer, and a process that dies mid-write leaves a WAL the next opener replays. Nothing
+// copies, moves or exclusively locks the file while it is open.
+const makeDatabase = EffectDrizzleSqlite.makeWithDefaults({
+  // Every process may write, so a transaction takes the write lock as it begins: one that reads
+  // before it writes would otherwise fail with SQLITE_BUSY_SNAPSHOT the moment another process
+  // commits in between, and the busy timeout does not wait that out. When the lock is held past
+  // the timeout, the whole transaction is begun again a few times with jittered delays. Bodies
+  // are re-run whole, so a transaction body must only touch the database.
+  transaction: { behavior: "immediate", retry: { attempts: 6, baseDelayMs: 25, maxDelayMs: 800 } },
+})
 type DatabaseShape = Effect.Success<typeof makeDatabase>
 
 export interface Interface {
@@ -25,20 +37,31 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const db = yield* makeDatabase
 
+    // The connection was opened with the busy timeout below already in force and in WAL mode.
     yield* db.run("PRAGMA journal_mode = WAL")
+    // Durable against a Redcode crash, not against power loss: the last commits before an OS
+    // crash may be lost, but the file is never corrupted. The right trade for a local tool;
+    // FULL would fsync the WAL on every commit.
     yield* db.run("PRAGMA synchronous = NORMAL")
-    yield* db.run("PRAGMA busy_timeout = 5000")
     yield* db.run("PRAGMA cache_size = -64000")
     yield* db.run("PRAGMA foreign_keys = ON")
+    // Fold a WAL a crashed process left behind back into the file; from here the default
+    // autocheckpoint (every 1000 pages) keeps it bounded.
     yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
     yield* DatabaseMigration.apply(db)
+    // On the way out, before the connection closes: refresh the planner's statistics. The last
+    // process to close the file checkpoints and removes the WAL by itself.
+    yield* Effect.addFinalizer(() => db.run("PRAGMA optimize").pipe(Effect.ignore))
 
     return { db }
   }).pipe(Effect.orDie),
 )
 
+/** How long a statement waits for another process's lock before SQLITE_BUSY, from the first one. */
+const BUSY_TIMEOUT_MS = 5000
+
 export function layerFromPath(filename: string) {
-  return layer.pipe(Layer.provide(sqliteLayer({ filename })))
+  return layer.pipe(Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS })))
 }
 
 export function path() {

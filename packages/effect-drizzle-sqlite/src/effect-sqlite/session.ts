@@ -1,16 +1,17 @@
 /* oxlint-disable */
+import * as Cause from "effect/Cause"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Scope from "effect/Scope"
 import type { SqlClient } from "effect/unstable/sql/SqlClient"
-import type { SqlError } from "effect/unstable/sql/SqlError"
+import { isSqlError, type SqlError } from "effect/unstable/sql/SqlError"
 import type { EffectCacheShape } from "drizzle-orm/cache/core/cache-effect"
 import type { WithCacheConfig } from "drizzle-orm/cache/core/types"
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core/errors"
 import type { EffectLoggerShape } from "drizzle-orm/effect-core/logger"
 import type { QueryEffectHKTBase } from "drizzle-orm/effect-core/query-effect"
-import { entityKind } from "drizzle-orm/entity"
+import { EffectDrizzleError, EffectDrizzleQueryError } from "drizzle-orm/effect-core/errors"
+import { entityKind, is } from "drizzle-orm/entity"
 import type { AnyRelations } from "drizzle-orm/relations"
 import type { RelationalQueryMapperConfig } from "drizzle-orm/relations"
 import type { Query } from "drizzle-orm/sql/sql"
@@ -26,10 +27,60 @@ export interface EffectSQLiteQueryEffectHKT extends QueryEffectHKTBase {
 
 export type EffectSQLiteRunResult = readonly never[]
 
+/**
+ * How often, and how long apart, an outermost transaction is begun again after SQLite reports the
+ * database locked. Delays grow exponentially from `baseDelayMs`, capped at `maxDelayMs`, and are
+ * jittered so two waiting processes do not wake together.
+ */
+export interface TransactionRetry {
+  /** Attempts after the first; 0 disables retrying. */
+  readonly attempts: number
+  readonly baseDelayMs: number
+  readonly maxDelayMs: number
+}
+
+/**
+ * Defaults for every `transaction` on a database. Under WAL with more than one process writing,
+ * `immediate` is the safe mode: a transaction that reads first and writes later would otherwise
+ * fail with `SQLITE_BUSY_SNAPSHOT` once another writer commits in between, and the busy timeout
+ * does not wait that one out. The retry re-runs the whole transaction body, so bodies must only
+ * touch the database (or be idempotent otherwise); statements never retry individually.
+ */
+export interface TransactionDefaults {
+  readonly behavior?: SQLiteTransactionConfig["behavior"]
+  readonly retry?: TransactionRetry
+}
+
 export interface EffectSQLiteSessionOptions {
   logger: EffectLoggerShape
   cache: EffectCacheShape
   useJitMappers?: boolean
+  transaction?: TransactionDefaults
+}
+
+const LOCK_MESSAGE = /database is locked|SQLITE_BUSY|SQLITE_LOCKED/i
+
+/**
+ * A failure SQLite reports when another connection holds the lock this transaction needs: the
+ * `SqlError` from `begin`, or the same error wrapped in a query error by a statement of the body.
+ */
+export const isLockError = (error: unknown): boolean => {
+  if (isSqlError(error)) {
+    if (error.reason._tag === "LockTimeoutError") return true
+    const cause = error.reason.cause
+    return cause instanceof Error && LOCK_MESSAGE.test(cause.message)
+  }
+  if (is(error, EffectDrizzleQueryError) || is(error, EffectDrizzleError)) {
+    const cause = error.cause
+    if (Cause.isCause(cause)) return cause.reasons.some((reason) => reason._tag === "Fail" && isLockError(reason.error))
+    return isLockError(cause)
+  }
+  return false
+}
+
+const retryDelay = (retry: TransactionRetry, attempt: number) => {
+  const capped = Math.min(retry.maxDelayMs, retry.baseDelayMs * 2 ** attempt)
+  return Math.round(capped * (0.5 + Math.random()))
 }
 
 export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLiteEffectSession<
@@ -137,12 +188,13 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
                 ),
               )
         const id = connectionOption._tag === "Some" ? connectionOption.value[1] + 1 : 0
+        const behavior = config?.behavior ?? this.options.transaction?.behavior ?? "deferred"
 
-        return connection.pipe(
+        const once = connection.pipe(
           Effect.flatMap(([scope, connection]) => {
             const transaction = this.executeTransactionStatement(
               connection,
-              id === 0 ? `begin ${config?.behavior ?? "deferred"}` : `savepoint effect_sql_${id}`,
+              id === 0 ? `begin ${behavior}` : `savepoint effect_sql_${id}`,
             ).pipe(
               Effect.flatMap(() =>
                 Effect.provideContext(
@@ -182,6 +234,20 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
               : transaction.pipe(Effect.onExit((exit) => Scope.close(scope, exit)))
           }),
         )
+
+        // Only the outermost transaction is begun again: a savepoint's lock failure belongs to the
+        // transaction around it. The connection is released before the wait, so other fibers of
+        // this process get their turn while another process finishes its write.
+        const retry = this.options.transaction?.retry
+        if (id !== 0 || !retry || retry.attempts <= 0) return once
+        const attempt = (n: number): Effect.Effect<A, E | SqlError, R> =>
+          once.pipe(
+            Effect.catchIf(
+              (error) => n < retry.attempts && isLockError(error),
+              () => restore(Effect.sleep(retryDelay(retry, n))).pipe(Effect.flatMap(() => attempt(n + 1))),
+            ),
+          )
+        return attempt(0)
       }),
     )
   }
