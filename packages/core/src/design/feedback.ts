@@ -155,6 +155,7 @@ export function render(input: Design.Feedback, context: Context) {
             const heading = label && label !== target ? `${label} — ${target}` : label || target
             const where = item.context ? inline(item.context, 240) : ""
             const xpath = item.xpath ? inline(item.xpath, 2000) : ""
+            const parent = item.parent ? inline(item.parent, 1200) : ""
             const selected = item.selectedText ? clean(item.selectedText) : ""
             const element = item.elementText ? clean(item.elementText) : ""
             // The screen gets its own line, so a note on another screen does not repeat every parameter.
@@ -176,6 +177,7 @@ export function render(input: Design.Feedback, context: Context) {
               // The heading's selector resolves to exactly this element; the XPath and context back it up.
               where ? `Context: ${where}` : "",
               xpath ? `XPath: ${xpath}` : "",
+              parent ? `Parent: ${parent}` : "",
               selected ? `Selected text: ${quote(selected, LIMITS.selectedText)}` : "",
               element && element !== selected ? `Element text: ${quote(element, LIMITS.elementText)}` : "",
               screen ? `Screen: ${screen}` : "",
@@ -200,6 +202,8 @@ export function render(input: Design.Feedback, context: Context) {
   ]
     .filter(Boolean)
     .join("\n\n")
+  // A note whose element and ancestors carry no data-design-id asks for one, so later notes name it directly.
+  const unkeyed = notes.some((item) => !`${item.target} ${item.label ?? ""}`.includes("data-design-id"))
   // The trailer carries the instructions; it is reserved before the user content is bounded.
   const trailer = [
     context.attachments.length
@@ -213,6 +217,9 @@ export function render(input: Design.Feedback, context: Context) {
       input.end
         ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
         : "Publish a new revision with design_preview and reply with a short summary of what changed.",
+      unkeyed
+        ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
+        : "",
       input.snapshot.trim()
         ? `A page-text snapshot was captured; fetch it with design_read {"id":"${context.id}","section":"snapshot","feedback":"${input.id}"} if you need page context.`
         : "",

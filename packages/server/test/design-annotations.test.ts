@@ -16,6 +16,7 @@ interface Selection {
   xpath: string
   context: string
   label: string
+  parent: string
   elementText: string
 }
 type Seen = { type: string; rect?: unknown; findings?: Selection[] }
@@ -85,24 +86,28 @@ test("three sibling inputs get distinct selectors and labels from labels, placeh
     await page.locator("[data-probe=b]").fill("typed value")
     expect(await pick(page, "[data-probe=status]")).toMatchObject({
       target: 'input[name="status"]',
-      label: 'input[type=text] "Status"',
-      context: 'main > form[id="filters"] "Filters"',
+      label: 'input[type=text] "Status" in label "Status" in form[id="filters"] "Filters" in main',
+      context: 'main > form[id="filters"] "Filters" > label "Status"',
+      parent: 'label "Status" (/html/body/main/form/label[1]) in form[id="filters"] "Filters" (/html/body/main/form)',
     })
     expect(await pick(page, "[data-probe=owner]")).toMatchObject({
       target: "#owner",
-      label: 'input[type=text] "Owner"',
+      label: 'input[type=text] "Owner" in form[id="filters"] "Filters" in main',
       xpath: "/html/body/main/form/input[1]",
+      parent: 'form[id="filters"] "Filters" (/html/body/main/form) in main (/html/body/main)',
     })
     expect(await pick(page, "[data-probe=search]")).toMatchObject({
       target: 'input[type="search"]',
-      label: 'input[type=search] "Search by email"',
+      label: 'input[type=search] "Search by email" in form[id="filters"] "Filters" in main',
     })
     // Payment fields never send their value.
     expect((await pick(page, "[data-probe=card]")).elementText).toBe("")
     const middle = await pick(page, "[data-probe=b]")
+    // Three identical breadcrumbs get their position among the elements that share it.
     expect(middle).toMatchObject({
-      label: 'input[type=text] (2 of 3 <input> in section "Unlabelled")',
+      label: 'input[type=text] in section "Unlabelled" in main (2 of 3)',
       context: 'main > section "Unlabelled"',
+      parent: 'section "Unlabelled" (/html/body/main/section) in main (/html/body/main)',
       elementText: "typed value",
       xpath: "/html/body/main/section/input[2]",
     })
@@ -121,13 +126,15 @@ test("a data-design-id wins over a framework id, and a duplicated id is never us
     <p id="row" data-probe="first">Row</p><p id="row" data-probe="second" data-testid="second-row">Row</p>
   </div>`)
   try {
+    // Outside every named ancestor the parent still names the place; a label is never a bare tag.
     expect(await pick(page, "[data-probe=save]")).toMatchObject({
       target: '[data-design-id="save-lead"]',
-      label: 'button[data-design-id="save-lead"] "Save"',
+      label: 'button[data-design-id="save-lead"] "Save" in div',
+      parent: "div (/html/body/div) in body (/html/body)",
     })
     const second = await pick(page, "[data-probe=second]")
     expect(second.target).toBe('p[data-testid="second-row"]')
-    expect(second.label).toBe('p "Row" (2 of 2 <p>)')
+    expect(second.label).toBe('p "Row" in div (2 of 2)')
     const first = await pick(page, "[data-probe=first]")
     expect(first.target).toBe("body > div:nth-of-type(1) > p:nth-of-type(1)")
     expect(await reveal(page, first.target)).toBe("first")
@@ -163,7 +170,7 @@ test("table cells name their row and spanned column headers without reaching int
   </section></main>`)
   try {
     const cell = await pick(page, "[data-probe=cell]")
-    expect(cell.label).toStartWith('td "Active')
+    expect(cell.label).toBe('td "Active" in row "Globex" in table "Leads" in section[data-design-id="leads"]')
     expect(cell.context).toBe('main > section[data-design-id="leads"] > table "Leads" > row "Globex" > column "Status"')
     expect(cell.target).toStartWith('[data-design-id="leads"] > ')
     const head = await pick(page, "[data-probe=head]")
@@ -189,17 +196,70 @@ test("elements inside variants are unique within their root and never re-address
     const email = await pick(page, "[data-probe=b-email]")
     expect(email).toMatchObject({
       target: 'variant:b [data-design-id="email"]',
-      label: 'input[type=text][data-design-id="email"] "Email"',
+      label: 'input[type=text][data-design-id="email"] "Email" in form "Sign in" in main',
       context: 'main > form "Sign in"',
     })
     expect(await reveal(page, email.target)).toBe("b-email")
     const plain = await pick(page, "[data-probe=b-plain]")
     expect(plain.target).toStartWith("variant:b ")
-    expect(plain.label).toBe('input[type=text] (2 of 3 <input> in form "Sign in")')
+    // Only the visible variant's inputs with the same breadcrumb compete for the position.
+    expect(plain.label).toBe('input[type=text] in form "Sign in" in main (1 of 2)')
     expect(await reveal(page, plain.target)).toBe("b-plain")
     // A note retargeted to a variant that lacks its element reports it missing instead of jumping variants.
     expect(await reveal(page, 'variant:b [data-design-id="only-a"]')).toBeNull()
     expect(await reveal(page, "variant:b #shared")).toBe("shared")
+  } finally {
+    await page.close()
+  }
+})
+
+test("a label is a breadcrumb through the named ancestors, so icons and repeated names stay apart", async () => {
+  const icon = '<svg width="12" height="12" viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>'
+  const page =
+    await open(`<svg width="12" height="12" viewBox="0 0 10 10" data-probe="lone"><path d="M0 0L10 10"/></svg>
+    <header>
+      <nav><a href="#">Home</a></nav>
+      <button data-design-id="user-menu"><span>Filipe</span>${icon.replace("<svg", '<svg data-probe="chevron"')}</button>
+    </header>
+    <aside>
+      <h2>Conversations</h2>
+      <form><input type="text" placeholder="Quick search" data-probe="search"></form>
+      <button data-probe="new-chat">+ New conversation</button>
+      <ul><li><span>Filipe</span></li><li><span data-probe="row-name">Filipe</span></li></ul>
+    </aside>
+    <main><h1>Hello, <span data-probe="main-name">Filipe</span></h1></main>
+    <div role="dialog" aria-label="New conversation"><button aria-label="Close">${icon.replace("<svg", '<svg data-probe="close-icon"')}</button><p>Body</p></div>`)
+  try {
+    const search = await pick(page, "[data-probe=search]")
+    expect(search).toMatchObject({
+      label: 'input[type=text] "Quick search" in form in aside "Conversations"',
+      context: 'aside "Conversations" > form',
+      parent: 'form (/html/body/aside/form) in aside "Conversations" (/html/body/aside)',
+    })
+    expect((await pick(page, "[data-probe=new-chat]")).label).toBe(
+      'button "+ New conversation" in aside "Conversations"',
+    )
+    // An icon names the control holding it, and a stable id on that control leads.
+    const chevron = await pick(page, "[data-probe=chevron]")
+    expect(chevron).toMatchObject({
+      label: 'svg in button[data-design-id="user-menu"] "Filipe" in header',
+      target: '[data-design-id="user-menu"] > svg:nth-of-type(1)',
+      parent: 'button[data-design-id="user-menu"] "Filipe" (/html/body/header/button) in header (/html/body/header)',
+    })
+    expect(await pick(page, "[data-probe=close-icon]")).toMatchObject({
+      label: 'svg in button "Close" in div[role=dialog] "New conversation"',
+      context: 'div[role=dialog] "New conversation" > button "Close"',
+      parent: 'button "Close" (/html/body/div/button) in div[role=dialog] "New conversation" (/html/body/div)',
+    })
+    // The same name in the sidebar list and the main heading reads differently, and identical rows are numbered.
+    const row = await pick(page, "[data-probe=row-name]")
+    expect(row.label).toBe('span "Filipe" in li "Filipe" in aside "Conversations" (2 of 2)')
+    const main = await pick(page, "[data-probe=main-name]")
+    expect(main.label).toBe('span "Filipe" in h1 "Hello, Filipe" in main "Hello, Filipe"')
+    expect(await pick(page, "[data-probe=lone]")).toMatchObject({ label: "svg in body", parent: "body (/html/body)" })
+    const labels = [search.label, chevron.label, row.label, main.label]
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels.every((label) => label.includes(" in "))).toBe(true)
   } finally {
     await page.close()
   }
