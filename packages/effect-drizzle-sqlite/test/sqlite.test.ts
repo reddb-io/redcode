@@ -6,7 +6,7 @@ import { expect, test } from "bun:test"
 import { SqliteClient } from "@effect/sql-sqlite-bun"
 import { eq, sql } from "drizzle-orm"
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
-import { Effect } from "effect"
+import { Deferred, Effect, Fiber } from "effect"
 import type { SqlClient as SqlClientService } from "effect/unstable/sql/SqlClient"
 import { isSqlError, LockTimeoutError, SqlError } from "effect/unstable/sql/SqlError"
 import { EffectDrizzleSqlite } from "../src"
@@ -313,6 +313,103 @@ test("runs after-commit hooks once the outermost transaction has committed, and 
         .pipe(Effect.ignore)
       expect(order).not.toContain("never")
       expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Outer" }, { name: "Inner" }])
+    }),
+  )
+})
+
+test("an interrupt after the commit does not skip the after-commit hooks", async () => {
+  await run(
+    Effect.gen(function* () {
+      const db = yield* makeDb
+      const inFirstHook = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const ran = new Array<string>()
+
+      const fiber = yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx.insert(users).values({ name: "Committed" })
+            // A nested level, as Session.patch wraps a publish that opens its own transaction.
+            yield* tx.transaction(() =>
+              EffectDrizzleSqlite.afterCommit(
+                Deferred.succeed(inFirstHook, undefined).pipe(
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.andThen(Effect.sync(() => void ran.push("wake"))),
+                ),
+              ),
+            )
+            yield* EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("listeners")))
+          }),
+        )
+        .pipe(Effect.forkChild)
+
+      // The commit is through and the first hook is running: interrupt now.
+      yield* Deferred.await(inFirstHook)
+      const interrupting = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+      // Let the interrupt reach the fiber while the hook is still blocked.
+      yield* Effect.sleep("50 millis")
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(interrupting)
+
+      expect(ran).toEqual(["wake", "listeners"])
+      expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Committed" }])
+    }),
+  )
+})
+
+test("a crashing after-commit hook neither skips the hooks after it nor fails the committed write", async () => {
+  await run(
+    Effect.gen(function* () {
+      const db = yield* makeDb
+      const ran = new Array<string>()
+
+      const result = yield* db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.insert(users).values({ name: "Kept" })
+          yield* EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("first")))
+          yield* EffectDrizzleSqlite.afterCommit(Effect.die(new Error("hook defect")))
+          yield* EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("after the crash")))
+          return "committed"
+        }),
+      )
+
+      expect(result).toBe("committed")
+      expect(ran).toEqual(["first", "after the crash"])
+      expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Kept" }])
+    }),
+  )
+})
+
+test("a savepoint that rolls back drops its after-commit hooks while the outer transaction commits", async () => {
+  await run(
+    Effect.gen(function* () {
+      const db = yield* makeDb
+      const ran = new Array<string>()
+
+      yield* db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.insert(users).values({ name: "Outer" })
+          yield* tx
+            .transaction((inner) =>
+              Effect.gen(function* () {
+                yield* inner.insert(users).values({ name: "Rolled back" })
+                yield* EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("rolled-back savepoint")))
+                // A savepoint nested in the failing one: released into it, then dropped with it.
+                yield* inner.transaction(() =>
+                  EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("released into rolled-back"))),
+                )
+                return yield* Effect.fail("inner failure")
+              }),
+            )
+            .pipe(Effect.catch(() => Effect.void))
+          yield* tx.transaction(() =>
+            EffectDrizzleSqlite.afterCommit(Effect.sync(() => void ran.push("kept savepoint"))),
+          )
+        }),
+      )
+
+      expect(ran).toEqual(["kept savepoint"])
+      expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Outer" }])
     }),
   )
 })
