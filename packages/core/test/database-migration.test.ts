@@ -4,7 +4,7 @@ import { fileURLToPath } from "url"
 import path from "path"
 import { SqliteClient } from "@effect/sql-sqlite-bun"
 import { EffectDrizzleSqlite } from "@reddb-io/redcode-effect-drizzle-sqlite"
-import { Effect, Layer } from "effect"
+import { Context, Effect, Layer } from "effect"
 import { eq, inArray, sql } from "drizzle-orm"
 import { DatabaseMigration } from "@reddb-io/redcode-core/database/migration"
 import { migrations } from "@reddb-io/redcode-core/database/migration.gen"
@@ -113,6 +113,21 @@ describe("DatabaseMigration", () => {
       ),
     )
   })
+  test("keeps the per-process page cache small", async () => {
+    await using tmp = await tmpdir()
+    const size = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(Database.layerFromPath(path.join(tmp.path, "cache.sqlite")))
+          const database = Context.get(context, Database.Service)
+          return yield* database.db.get<{ cache_size: number }>(sql`PRAGMA cache_size`)
+        }),
+      ),
+    )
+    // Negative sizes are KiB. Every open TUI holds its own cache, so it stays at 8 MB.
+    expect(size).toEqual({ cache_size: -8000 })
+  })
+
   if (process.platform === "linux") {
     test("declared schema has no ungenerated migrations", async () => {
       const result = await $`bun ${fileURLToPath(new URL("../script/migration.ts", import.meta.url))} --check`
