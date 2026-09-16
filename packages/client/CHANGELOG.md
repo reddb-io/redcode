@@ -1,5 +1,14 @@
 # @reddb-io/redcode-client
 
+## 1.18.23
+
+### Patch Changes
+
+- Updated dependencies [6d14532]
+- Updated dependencies [db75a4d]
+  - @reddb-io/redcode-schema@1.22.0
+  - @reddb-io/redcode-protocol@1.18.23
+
 ## 1.18.22
 
 ### Patch Changes
