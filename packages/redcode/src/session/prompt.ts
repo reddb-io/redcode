@@ -1,4 +1,5 @@
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
@@ -243,6 +244,13 @@ const layer = Layer.effect(
       })
       if (!observed) return undefined
       yield* limits.learn(input.model.providerID, input.model.id, observed)
+      yield* Verbose.log("model.limit.learned", {
+        sessionID: input.sessionID,
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        limit: observed.limit,
+        from: "provider refusal",
+      })
       yield* Effect.logInfo("learned provider input limit", {
         "session.id": input.sessionID,
         providerID: input.model.providerID,
@@ -1338,6 +1346,7 @@ const layer = Layer.effect(
         }
         yield* sessions.updateMessage(info)
         yield* events.publish(SessionV1.Event.MessagePromoted, { sessionID, messageID })
+        yield* Verbose.log("inbox.promoted", { sessionID, messageID, delivery: row.delivery })
         promoted++
       }
       return promoted
@@ -2363,6 +2372,13 @@ const layer = Layer.effect(
               const raised = ModelLimit.raised(observed, SessionPreflight.counted(handle.message.tokens), maxOutput)
               if (raised) {
                 yield* limits.learn(model.providerID, model.id, raised)
+                yield* Verbose.log("model.limit.learned", {
+                  sessionID,
+                  providerID: model.providerID,
+                  modelID: model.id,
+                  limit: raised.limit,
+                  from: "accepted request",
+                })
                 yield* Effect.logInfo("provider accepted more than its learned limit; raised it", {
                   "session.id": sessionID,
                   providerID: model.providerID,

@@ -11,6 +11,8 @@ Options:
       --print-logs         print logs to stderr                                            [boolean]
       --log-level          log level            [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure               run without external plugins                                    [boolean]
+      --verbose            trace the boot to stderr until the screen renders, then trace activity to
+                           the log                                                         [boolean]
       --port               port to listen on                                   [number] [default: 0]
       --hostname           hostname to listen on                     [string] [default: "127.0.0.1"]
       --mdns               enable mDNS service discovery (defaults hostname to 0.0.0.0)
@@ -39,7 +41,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode attach --help 1`] = `
@@ -56,6 +60,8 @@ Options:
       --print-logs    print logs to stderr                                                 [boolean]
       --log-level     log level                 [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure          run without external plugins                                         [boolean]
+      --verbose       trace the boot to stderr until the screen renders, then trace activity to the
+                      log                                                                  [boolean]
       --dir           directory to run in                                                   [string]
   -c, --continue      continue the last session                                            [boolean]
   -s, --session       session id to continue                                                [string]
@@ -81,6 +87,8 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --verbose      trace the boot to stderr until the screen renders, then trace activity to the
+                     log                                                                   [boolean]
       --command      the command to run, use message for args                               [string]
   -c, --continue     continue the last session                                             [boolean]
   -s, --session      session id to continue                                                 [string]
@@ -141,7 +149,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers --help 1`] = `
@@ -159,7 +169,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent --help 1`] = `
@@ -176,7 +188,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode upgrade --help 1`] = `
@@ -193,6 +207,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
   -m, --method      installation method to use      [string] [choices: "npm", "pnpm", "bun", "yarn"]"
 `;
 
@@ -207,6 +223,8 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --verbose      trace the boot to stderr until the screen renders, then trace activity to the
+                     log                                                                   [boolean]
   -c, --keep-config  keep configuration files                             [boolean] [default: false]
   -d, --keep-data    keep session data and snapshots                      [boolean] [default: false]
       --dry-run      show what would be removed without removing          [boolean] [default: false]
@@ -224,6 +242,8 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --verbose      trace the boot to stderr until the screen renders, then trace activity to the
+                     log                                                                   [boolean]
       --port         port to listen on                                         [number] [default: 0]
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
@@ -244,6 +264,8 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --verbose      trace the boot to stderr until the screen renders, then trace activity to the
+                     log                                                                   [boolean]
       --port         port to listen on                                         [number] [default: 0]
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
@@ -282,6 +304,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
       --days        show stats for the last N days (default: all time)                      [number]
       --tools       number of tools to show (default: all)                                  [number]
       --models      show model statistics (default: hidden). Pass a number to show top N, otherwise
@@ -303,6 +327,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
       --sanitize    redact sensitive transcript and file data                              [boolean]"
 `;
 
@@ -319,7 +345,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github --help 1`] = `
@@ -336,7 +364,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode pr --help 1`] = `
@@ -352,7 +382,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode session --help 1`] = `
@@ -369,7 +401,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode plugin --help 1`] = `
@@ -386,6 +420,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
   -g, --global      install in global config                              [boolean] [default: false]
   -f, --force       replace existing plugin version                       [boolean] [default: false]"
 `;
@@ -408,6 +444,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
       --format      Output format                 [string] [choices: "json", "tsv"] [default: "tsv"]"
 `;
 
@@ -421,7 +459,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp add --help 1`] = `
@@ -438,6 +478,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
       --url         URL for a remote MCP server                                             [string]
       --env         environment variable for a local MCP server (KEY=VALUE)                  [array]
       --header      HTTP header for a remote MCP server (KEY=VALUE)                          [array]"
@@ -459,7 +501,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp logout --help 1`] = `
@@ -475,7 +519,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers list --help 1`] = `
@@ -488,7 +534,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers login --help 1`] = `
@@ -505,6 +553,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
   -p, --provider    provider id or name to log in to (skips provider selection)             [string]
   -m, --method      login method label (skips method selection)                             [string]"
 `;
@@ -522,7 +572,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent create --help 1`] = `
@@ -536,6 +588,8 @@ Options:
       --print-logs            print logs to stderr                                         [boolean]
       --log-level             log level         [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure                  run without external plugins                                 [boolean]
+      --verbose               trace the boot to stderr until the screen renders, then trace activity
+                              to the log                                                   [boolean]
       --path                  directory path to generate the agent file                     [string]
       --description           what the agent should do                                      [string]
       --mode                  agent mode            [string] [choices: "all", "primary", "subagent"]
@@ -555,7 +609,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode session list --help 1`] = `
@@ -569,6 +625,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
   -n, --max-count   limit to N most recent sessions                                         [number]
       --format      output format             [string] [choices: "table", "json"] [default: "table"]"
 `;
@@ -586,7 +644,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github install --help 1`] = `
@@ -599,7 +659,9 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github run --help 1`] = `
@@ -613,6 +675,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
       --event       GitHub mock event to run the agent for                                  [string]
       --token       GitHub personal access token (github_pat_********)                      [string]"
 `;
@@ -627,5 +691,7 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]"
 `;

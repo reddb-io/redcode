@@ -1,5 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { Session } from "./session"
@@ -667,6 +668,13 @@ const layer = Layer.effect(
         after: count - freed,
         fits,
         cold,
+      })
+      yield* Verbose.log("compaction.relieved", {
+        sessionID: input.sessionID,
+        why: "old tool output trimmed",
+        before: count,
+        after: count - freed,
+        fits,
       })
       return fits ? ("fits" as const) : ("none" as const)
     })
@@ -1409,6 +1417,15 @@ const layer = Layer.effect(
         effective,
         paused,
       })
+      yield* Verbose.log("compaction.done", {
+        sessionID: input.sessionID,
+        auto: input.auto,
+        before,
+        after,
+        effective,
+        paused,
+        result,
+      })
 
       if (result === "continue" && input.auto && !paused) {
         if (prepared.replay) {
@@ -1521,6 +1538,12 @@ const layer = Layer.effect(
       overflow?: boolean
       focus?: string
     }) {
+      yield* Verbose.log("compaction.requested", {
+        sessionID: input.sessionID,
+        auto: input.auto,
+        why: input.overflow ? "context overflow" : input.auto ? "threshold reached" : "requested",
+        focused: Boolean(input.focus?.trim()),
+      })
       const msg = yield* session.updateMessage({
         id: MessageID.ascending(),
         role: "user",

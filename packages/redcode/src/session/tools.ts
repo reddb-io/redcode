@@ -1,4 +1,5 @@
 import { Agent } from "@/agent/agent"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
@@ -139,6 +140,13 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return yield* Effect.fail(new Error(loop.message))
       }
       HumanWait.claim(input.session.id, call.callID)
+      const startedAt = Date.now()
+      yield* Verbose.log("tool.start", {
+        sessionID: input.session.id,
+        tool: call.toolID,
+        callID: call.callID,
+        deadlineMs: deadline,
+      })
       const executed = yield* (
         deadline === undefined
           ? call.run(decided.args, call.abort)
@@ -157,6 +165,15 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             })
       ).pipe(Effect.exit)
       HumanWait.forget(input.session.id, call.callID)
+      yield* Verbose.log("tool.end", () => ({
+        sessionID: input.session.id,
+        tool: call.toolID,
+        callID: call.callID,
+        ms: Date.now() - startedAt,
+        waitedMs: HumanWait.waited(input.session.id, call.callID),
+        ok: Exit.isSuccess(executed),
+        bytes: Exit.isSuccess(executed) ? Verbose.size(executed.value) : 0,
+      }))
       if (Exit.isFailure(executed)) {
         yield* publishPost({ error: String(Cause.squash(executed.cause)) }, true).pipe(Effect.ignoreCause)
         return yield* Effect.failCause(executed.cause)
@@ -277,7 +294,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         }
       }),
     evaluate: (key, pattern) =>
-      Permission.evaluate(key, pattern, Permission.merge(input.agent.permission, input.session.permission ?? [])).action,
+      Permission.evaluate(key, pattern, Permission.merge(input.agent.permission, input.session.permission ?? []))
+        .action,
     // A tool blocked on a person is not a tool that hung, so the wait is deducted from its
     // deadline rather than counted against it.
     ask: askFor([options.toolCallId ?? ""], options.toolCallId),

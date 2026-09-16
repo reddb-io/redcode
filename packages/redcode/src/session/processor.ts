@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
@@ -512,6 +513,19 @@ const layer = Layer.effect(
             if (!ctx.assistantMessage.summary) ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            yield* Verbose.log("provider.response", () => ({
+              sessionID: ctx.sessionID,
+              providerID: ctx.model.providerID,
+              modelID: ctx.model.id,
+              reason: value.reason,
+              ms: Date.now() - ctx.assistantMessage.time.created,
+              input: usage.tokens.input,
+              output: usage.tokens.output,
+              reasoning: usage.tokens.reasoning,
+              cacheRead: usage.tokens.cache.read,
+              cacheWrite: usage.tokens.cache.write,
+              cost: usage.cost,
+            }))
             yield* session.updatePart({
               id: nextPartID(),
               reason: value.reason,
@@ -695,6 +709,14 @@ const layer = Layer.effect(
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
+        // The failure's kind only: a provider's message can quote the request it rejected.
+        yield* Verbose.log("provider.error", {
+          sessionID: input.sessionID,
+          providerID: input.model.providerID,
+          modelID: input.model.id,
+          error: e instanceof Error ? e.name : typeof e,
+          ms: Date.now() - input.assistantMessage.time.created,
+        })
         yield* Effect.logError("process", {
           "session.id": input.sessionID,
           messageID: input.assistantMessage.id,
@@ -794,6 +816,18 @@ const layer = Layer.effect(
                 // message never shows it twice.
                 set: (info) =>
                   discardAttempt().pipe(
+                    Effect.andThen(
+                      Verbose.log("provider.retry", {
+                        sessionID: ctx.sessionID,
+                        providerID: input.model.providerID,
+                        modelID: input.model.id,
+                        attempt: info.attempt,
+                        action: info.action?.reason,
+                        waitMs: Math.max(0, info.next - Date.now()),
+                        // What the status line shows the person, no more.
+                        reason: info.message.length > 100 ? info.message.slice(0, 97) + "..." : info.message,
+                      }),
+                    ),
                     Effect.andThen(
                       status.set(ctx.sessionID, {
                         type: "retry",

@@ -31,6 +31,14 @@ import { UsageCommand } from "./cli/cmd/usage"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
+import { Global } from "@reddb-io/redcode-core/global"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
+
+// Pinned before argv is parsed: every later phase, in this thread or the server's, counts from
+// here. `process.start` is the module graph above — imports resolved, the home directory made.
+BootTrace.start()
+// Argument values stay out of the trace: `attach --password` is one of them.
+BootTrace.mark("process.start", { args: hideBin(process.argv).length })
 
 const args = hideBin(process.argv)
 
@@ -65,12 +73,29 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("verbose", {
+    describe: "trace the boot to stderr until the screen renders, then trace activity to the log",
+    type: "boolean",
+  })
   .middleware(async (opts) => {
     if (opts.printLogs) process.env.REDCODE_PRINT_LOGS = "1"
     if (opts.logLevel) process.env.REDCODE_LOG_LEVEL = opts.logLevel
     if (opts.pure) {
       process.env.REDCODE_PURE = "1"
     }
+    if (opts.verbose) process.env.REDCODE_VERBOSE = "1"
+    // The activity trace is written at DEBUG; the flag implies the level unless one was given.
+    if (BootTrace.enabled() && !process.env.REDCODE_LOG_LEVEL) process.env.REDCODE_LOG_LEVEL = "DEBUG"
+    BootTrace.mark("cli.parsed", {
+      version: InstallationVersion,
+      command: String(opts._[0] ?? "tui"),
+      pid: process.pid,
+      cwd: process.cwd(),
+      data: Global.Path.data,
+      state: Global.Path.state,
+      config: Global.Path.config,
+      log: Global.Path.log,
+    })
 
     Heap.start()
 

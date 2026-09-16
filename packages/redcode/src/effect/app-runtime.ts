@@ -1,6 +1,7 @@
-import { Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { attach } from "./run-service"
 import * as Observability from "@reddb-io/redcode-core/observability"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -58,61 +59,71 @@ import { AppNodeBuilderV1 } from "./app-node-builder-v1"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 
-export const AppLayer = AppNodeBuilderV1.build(
-  LayerNode.group([
-    Npm.node,
-    FSUtil.node,
-    Database.node,
-    Auth.node,
-    Account.node,
-    Config.node,
-    Git.node,
-    Storage.node,
-    Snapshot.node,
-    Plugin.node,
-    ModelsDev.node,
-    ModelLimit.node,
-    Provider.node,
-    ProviderAuth.node,
-    Agent.node,
-    Skill.node,
-    Discovery.node,
-    Question.node,
-    Permission.node,
-    Todo.node,
-    SessionTaskFacts.node,
-    Session.node,
-    SessionProjector.node,
-    SessionStatus.node,
-    BackgroundJob.node,
-    RuntimeFlags.node,
-    EventV2Bridge.node,
-    SessionRunState.node,
-    SessionProcessor.node,
-    SessionCompaction.node,
-    SessionRevert.node,
-    SessionSummary.node,
-    SessionPrompt.node,
-    SessionGuardLog.node,
-    Instruction.node,
-    LLM.node,
-    LSP.node,
-    MCP.node,
-    McpAuth.node,
-    Command.node,
-    ToolOutputBridge.node,
-    ToolRegistry.node,
-    Format.node,
-    InstanceStore.node,
-    Project.node,
-    Vcs.node,
-    Workspace.node,
-    Worktree.node,
-    Installation.node,
-    ShareNext.node,
-    SessionShare.node,
-  ]),
-).pipe(Layer.provideMerge(AppNodeBuilderV1.build(Ripgrep.node)), Layer.provideMerge(Observability.layer))
+const nodes = [
+  Npm.node,
+  FSUtil.node,
+  Database.node,
+  Auth.node,
+  Account.node,
+  Config.node,
+  Git.node,
+  Storage.node,
+  Snapshot.node,
+  Plugin.node,
+  ModelsDev.node,
+  ModelLimit.node,
+  Provider.node,
+  ProviderAuth.node,
+  Agent.node,
+  Skill.node,
+  Discovery.node,
+  Question.node,
+  Permission.node,
+  Todo.node,
+  SessionTaskFacts.node,
+  Session.node,
+  SessionProjector.node,
+  SessionStatus.node,
+  BackgroundJob.node,
+  RuntimeFlags.node,
+  EventV2Bridge.node,
+  SessionRunState.node,
+  SessionProcessor.node,
+  SessionCompaction.node,
+  SessionRevert.node,
+  SessionSummary.node,
+  SessionPrompt.node,
+  SessionGuardLog.node,
+  Instruction.node,
+  LLM.node,
+  LSP.node,
+  MCP.node,
+  McpAuth.node,
+  Command.node,
+  ToolOutputBridge.node,
+  ToolRegistry.node,
+  Format.node,
+  InstanceStore.node,
+  Project.node,
+  Vcs.node,
+  Workspace.node,
+  Worktree.node,
+  Installation.node,
+  ShareNext.node,
+  SessionShare.node,
+] as const
+
+const services = AppNodeBuilderV1.build(LayerNode.group(nodes)).pipe(
+  Layer.provideMerge(AppNodeBuilderV1.build(Ripgrep.node)),
+  Layer.provideMerge(Observability.layer),
+)
+
+// Marked once the whole graph is built, which is when the first command reaches a service.
+export const AppLayer = Layer.effectDiscard(
+  Effect.sync(() => {
+    BootTrace.mark("runtime.ready", { services: nodes.length })
+  }),
+).pipe(Layer.provideMerge(services))
 
 const rt = ManagedRuntime.make(AppLayer, { memoMap })
 type Runtime = Pick<typeof rt, "runSync" | "runPromise" | "runPromiseExit" | "runFork" | "runCallback" | "dispose">

@@ -2,6 +2,7 @@ import type { Argv } from "yargs"
 import { Effect, Schema } from "effect"
 import type { AppServices } from "@/effect/app-runtime"
 import type { InstanceStore } from "@/project/instance-store"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { cmd, type WithDoubleDash } from "./cmd/cmd"
 
 /**
@@ -87,6 +88,7 @@ export const effectCmd = <Args, A>(opts: EffectCmdOpts<Args, A>) =>
       const { store, ctx } = await AppRuntime.runPromise(
         InstanceStore.Service.use((store) => store.load({ directory }).pipe(Effect.map((ctx) => ({ store, ctx })))),
       )
+      BootTrace.mark("instance.ready", { directory: ctx.directory, worktree: ctx.worktree, project: ctx.project.id })
       try {
         await AppRuntime.runPromise(opts.handler(args).pipe(Effect.provideService(InstanceRef, ctx)))
       } finally {

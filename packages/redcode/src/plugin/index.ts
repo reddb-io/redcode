@@ -1,4 +1,5 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import type {
   Hooks,
   PluginInput,
@@ -226,6 +227,15 @@ const layer = Layer.effect(
             },
           }),
         )
+        BootTrace.mark("plugins.loaded", {
+          configured: plugins.length,
+          loaded: loaded.filter(Boolean).length,
+          pure: flags.pure,
+          specs: loaded
+            .filter((load) => load !== undefined && load !== null)
+            .map((load) => String(load.spec))
+            .join(","),
+        })
         for (const load of loaded) {
           if (!load) continue
 

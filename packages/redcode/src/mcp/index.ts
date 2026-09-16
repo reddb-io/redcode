@@ -1,6 +1,7 @@
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { Client, type ClientOptions } from "@modelcontextprotocol/sdk/client/index.js"
@@ -36,6 +37,12 @@ import { McpEvent } from "@reddb-io/redcode-schema/mcp-event"
 import { McpBrowser } from "./browser"
 
 const DEFAULT_TIMEOUT = 30_000
+
+/** A failure's first line with any URL query stripped: enough to tell timeouts from refusals. */
+function describeMcpError(error: string) {
+  const line = error.split("\n")[0]?.replace(/\?[^\s"']*/g, "?…") ?? ""
+  return line.length > 120 ? line.slice(0, 117) + "..." : line
+}
 const CLIENT_OPTIONS = {
   capabilities: {
     // https://github.com/anomalyco/opencode/issues/11948
@@ -531,11 +538,23 @@ const layer = Layer.effect(
 
               if (mcp.enabled === false) {
                 s.status[key] = { status: "disabled" }
+                BootTrace.mark("mcp.server", { name: key, type: mcp.type, status: "disabled" })
                 return
               }
 
+              BootTrace.mark("mcp.connecting", { name: key, type: mcp.type })
+              const started = Date.now()
               const result = yield* create(key, mcp)
               s.status[key] = result.status
+              BootTrace.mark("mcp.server", {
+                name: key,
+                type: mcp.type,
+                status: result.status.status,
+                ms: Date.now() - started,
+                tools: result.defs?.length ?? 0,
+                // Only the shape of a failure: a message can quote the URL it was given.
+                ...("error" in result.status ? { error: describeMcpError(result.status.error) } : {}),
+              })
               if (result.mcpClient) {
                 s.clients[key] = result.mcpClient
                 s.defs[key] = result.defs!

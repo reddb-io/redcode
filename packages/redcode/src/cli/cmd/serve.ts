@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
+import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { RpcPath } from "@reddb-io/redcode-protocol/rpc"
 
 export const ServeCommand = effectCmd({
@@ -20,6 +21,8 @@ export const ServeCommand = effectCmd({
     const server = yield* Effect.promise(() => Server.listen(opts))
     console.log(`Redcode server listening on http://${server.hostname}:${server.port}`)
     console.log(`Redcode RPC endpoint: http://${server.hostname}:${server.port}${RpcPath}`)
+    // A headless server has no screen to render: listening is where its boot ends.
+    BootTrace.stop("serve.ready", { hostname: server.hostname, port: server.port })
 
     yield* Effect.never
   }),
