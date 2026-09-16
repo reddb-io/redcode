@@ -15,8 +15,15 @@ import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
-import { DialogNineRouter } from "./dialog-nine-router"
-import { NINE_ROUTER_ID, nineRouterConnectionProblem } from "../util/nine-router"
+import { type ConnectedProvider, DialogOpenAICompatible, type ProviderPreset } from "./dialog-openai-compatible"
+import {
+  COMPATIBLE_NPM,
+  connectionProblem,
+  isNineRouterDefaultURL,
+  NINE_ROUTER_DEFAULT_URL,
+  NINE_ROUTER_ID,
+  NINE_ROUTER_NAME,
+} from "../util/openai-compatible"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -27,8 +34,15 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   google: 5,
 }
 
-const CUSTOM_PROVIDER_OPTION_VALUE = "__opencode_custom_provider__"
-const CUSTOM_PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
+const COMPATIBLE_OPTION_VALUE = "__openai_compatible_provider__"
+
+const NINE_ROUTER_PRESET: ProviderPreset = {
+  providerID: NINE_ROUTER_ID,
+  name: NINE_ROUTER_NAME,
+  defaultURL: NINE_ROUTER_DEFAULT_URL,
+  urlHint: "Start 9Router, then confirm its API URL, such as localhost:20128.",
+  keyHint: "Copy a key from the 9Router dashboard.",
+}
 
 type ProviderOptionBase = {
   title: string
@@ -43,52 +57,47 @@ type ProviderOption =
       providerID: string
     })
   | (ProviderOptionBase & {
-      type: "custom"
+      type: "compatible"
     })
 
 export function providerOptions(
   list: { id: string; name: string }[],
   disabled: readonly string[] = [],
 ): ProviderOption[] {
-  return [
-    ...pipe(
-      list.some((provider) => provider.id === NINE_ROUTER_ID) || disabled.includes(NINE_ROUTER_ID)
-        ? list
-        : [...list, { id: NINE_ROUTER_ID, name: "9Router" }],
-      sortBy(
-        (x) => PROVIDER_PRIORITY[x.id] ?? 99,
-        (x) => x.name.toLowerCase(),
-        (x) => x.id,
-      ),
-      map((provider) => ({
-        type: "provider" as const,
-        title: provider.name,
-        value: provider.id,
-        providerID: provider.id,
-        description: {
-          opencode: "(Recommended)",
-          anthropic: "(API key)",
-          openai: "(ChatGPT Plus/Pro or API key)",
-          "opencode-go": "Low cost subscription for everyone",
-          "9router": "Local router · automatic model setup",
-        }[provider.id],
-        category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
-      })),
+  const compatible: ProviderOption = {
+    type: "compatible",
+    title: "OpenAI-compatible",
+    value: COMPATIBLE_OPTION_VALUE,
+    description: "Any endpoint that speaks the OpenAI API: custom base URL and API key",
+    category: "Popular",
+  }
+  const providers = pipe(
+    list.some((provider) => provider.id === NINE_ROUTER_ID) || disabled.includes(NINE_ROUTER_ID)
+      ? list
+      : [...list, { id: NINE_ROUTER_ID, name: "9Router" }],
+    sortBy(
+      (x) => PROVIDER_PRIORITY[x.id] ?? 99,
+      (x) => x.name.toLowerCase(),
+      (x) => x.id,
     ),
-    {
-      type: "custom",
-      title: "Other",
-      value: CUSTOM_PROVIDER_OPTION_VALUE,
-      description: "Custom provider",
-      category: "Providers",
-    },
-  ]
-}
-
-export function normalizeCustomProviderID(value: string) {
-  const providerID = value.trim().replace(/^@ai-sdk\//, "")
-  if (!CUSTOM_PROVIDER_ID.test(providerID)) return
-  return providerID
+    map((provider) => ({
+      type: "provider" as const,
+      title: provider.name,
+      value: provider.id,
+      providerID: provider.id,
+      description: {
+        opencode: "(Recommended)",
+        anthropic: "(API key)",
+        openai: "(ChatGPT Plus/Pro or API key)",
+        "opencode-go": "Low cost subscription for everyone",
+        "9router": "Local router · automatic model setup",
+      }[provider.id],
+      category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
+    })),
+  )
+  // Right after the popular providers, before the long alphabetical list.
+  const popular = providers.filter((option) => option.category === "Popular").length
+  return [...providers.slice(0, popular), compatible, ...providers.slice(popular)]
 }
 
 export function createDialogProviderOptions() {
@@ -99,42 +108,67 @@ export function createDialogProviderOptions() {
   const { theme } = useTheme()
   const onboarded = useConnected()
 
-  async function promptCustomProviderID(): Promise<string | undefined> {
-    const value = await DialogPrompt.show(dialog, "Other", {
-      placeholder: "Provider id",
-      description: () => (
-        <text fg={theme.textMuted}>
-          This only stores a credential. Configure the provider in redcode.json to use it.
-        </text>
-      ),
+  function lookup(providerID: string) {
+    const configured = sync.data.config.provider?.[providerID]
+    const compatible = !!configured && COMPATIBLE_NPM.some((npm) => npm === configured.npm)
+    const baseURL = configured?.options?.baseURL
+    return {
+      existing: compatible
+        ? {
+            name: configured.name,
+            baseURL: typeof baseURL === "string" ? baseURL : undefined,
+            npm: configured.npm,
+            hasKey: !!configured.options?.apiKey || sync.data.provider_next.connected.includes(providerID),
+            hasModels: Object.keys(configured.models ?? {}).length > 0,
+          }
+        : undefined,
+      taken:
+        !compatible && (!!configured || sync.data.provider_next.all.some((provider) => provider.id === providerID)),
+    }
+  }
+
+  async function afterConnect(result: ConnectedProvider, signal: AbortSignal) {
+    // The server reloaded before answering, so these reads include the connection.
+    // sync.data catches up from the reload event and may still be stale here.
+    const [config, providers] = await Promise.all([
+      sdk.client.config.get({}, { throwOnError: true, signal }),
+      sdk.client.config.providers({}, { throwOnError: true, signal }),
+    ])
+    if (signal.aborted) return
+    const problem = connectionProblem({
+      providerID: result.providerID,
+      name: result.name,
+      baseURL: result.baseURL,
+      credential: result.credential,
+      options: config.data.provider?.[result.providerID]?.options,
+      providers: providers.data.providers,
     })
-    if (value === null) return
-
-    const providerID = normalizeCustomProviderID(value)
-    if (providerID) return providerID
-
+    if (problem) throw new Error(problem)
     toast.show({
-      variant: "error",
-      message:
-        "Provider ids must start with a lowercase letter or number and only use lowercase letters, numbers, hyphens, and underscores",
+      variant: "info",
+      message: `${result.name} saved as provider "${result.providerID}"${result.movedFrom ? ` (moved from "${result.movedFrom}")` : ""} in ${result.configPath}.`,
     })
-    return promptCustomProviderID()
+    dialog.replace(() => <DialogModel providerID={result.providerID} />)
+  }
+
+  /** A configured OpenAI-compatible provider that is not a catalog or plugin provider opens the wizard. */
+  function isCustomCompatible(providerID: string) {
+    const provider = sync.data.provider_next.all.find((item) => item.id === providerID)
+    return !!lookup(providerID).existing && !sync.data.provider_auth[providerID] && !provider?.env.length
   }
 
   const options = createMemo(() => {
     return pipe(
       providerOptions(sync.data.provider_next.all, sync.data.config.disabled_providers),
       map((provider) => {
-        if (provider.type === "custom") {
+        if (provider.type === "compatible") {
           return {
             title: provider.title,
             value: provider.value,
             description: provider.description,
             category: provider.category,
-            async onSelect() {
-              const providerID = await promptCustomProviderID()
-              if (!providerID) return
-              return dialog.replace(() => <ApiMethod providerID={providerID} title="API key" custom />)
+            onSelect() {
+              dialog.replace(() => <DialogOpenAICompatible lookup={lookup} onConnected={afterConnect} />)
             },
           }
         }
@@ -154,27 +188,20 @@ export function createDialogProviderOptions() {
             if (consoleManaged) return
 
             if (providerID === NINE_ROUTER_ID) {
-              const configured = sync.data.config.provider?.[providerID]?.options?.baseURL
+              const configured = lookup(providerID).existing?.baseURL
               return dialog.replace(() => (
-                <DialogNineRouter
-                  baseURL={typeof configured === "string" ? configured : undefined}
-                  onConnected={async (baseURL, signal) => {
-                    // The server reloaded before answering, so these reads include the connection.
-                    // sync.data catches up from the reload event and may still be stale here.
-                    const [config, providers] = await Promise.all([
-                      sdk.client.config.get({}, { throwOnError: true, signal }),
-                      sdk.client.config.providers({}, { throwOnError: true, signal }),
-                    ])
-                    if (signal.aborted) return
-                    const problem = nineRouterConnectionProblem({
-                      baseURL,
-                      options: config.data.provider?.[providerID]?.options,
-                      providers: providers.data.providers,
-                    })
-                    if (problem) throw new Error(problem)
-                    dialog.replace(() => <DialogModel providerID={providerID} />)
-                  }}
+                <DialogOpenAICompatible
+                  preset={NINE_ROUTER_PRESET}
+                  offerMove={!!configured && !isNineRouterDefaultURL(configured)}
+                  lookup={lookup}
+                  onConnected={afterConnect}
                 />
+              ))
+            }
+
+            if (isCustomCompatible(providerID)) {
+              return dialog.replace(() => (
+                <DialogOpenAICompatible providerID={providerID} lookup={lookup} onConnected={afterConnect} />
               ))
             }
 
@@ -386,7 +413,6 @@ interface ApiMethodProps {
   providerID: string
   title: string
   metadata?: Record<string, string>
-  custom?: boolean
 }
 function ApiMethod(props: ApiMethodProps) {
   const dialog = useDialog()
@@ -457,14 +483,6 @@ function ApiMethod(props: ApiMethodProps) {
           return
         } finally {
           setBusy(false)
-        }
-        if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
-          toast.show({
-            variant: "info",
-            message: `Saved credential for ${props.providerID}. Configure it in redcode.json to use it.`,
-          })
-          dialog.clear()
-          return
         }
         dialog.replace(() => <DialogModel providerID={props.providerID} />)
       }}
