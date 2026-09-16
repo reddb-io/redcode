@@ -1,7 +1,7 @@
 import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Match, Show, Switch, createSignal } from "solid-js"
-import { DialogMcpAuth } from "../../component/dialog-mcp-auth"
+import { DialogMcpAuth, isSigningIn } from "../../component/dialog-mcp-auth"
 
 const id = "internal:sidebar-mcp"
 
@@ -19,7 +19,10 @@ function View(props: { api: TuiPluginApi }) {
   )
 
   // Clicking a "Needs auth" row starts the same sign-in flow as /mcp → Authenticate.
-  const authenticate = (name: string) => props.api.ui.dialog.replace(() => <DialogMcpAuth name={name} />)
+  const authenticate = (name: string) => {
+    if (isSigningIn(name)) return
+    props.api.ui.dialog.replace(() => <DialogMcpAuth name={name} />)
+  }
 
   const dot = (status: string) => {
     if (status === "connected") return theme().success

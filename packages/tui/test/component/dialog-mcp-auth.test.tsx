@@ -6,9 +6,9 @@ import { describe, expect, test } from "bun:test"
 import { onCleanup, onMount, type JSX } from "solid-js"
 import type { McpServerInfo, McpStatus } from "@reddb-io/redcode-sdk/v2"
 import { DialogMcp, authLabel } from "../../src/component/dialog-mcp"
-import { DialogMcpAuth, parseAuthorizationInput } from "../../src/component/dialog-mcp-auth"
+import { DialogMcpAuth, isSigningIn, parseAuthorizationInput } from "../../src/component/dialog-mcp-auth"
 import { McpAuthPrompt } from "../../src/component/mcp-auth-prompt"
-import { useMcpAuthPrompts } from "../../src/component/mcp-auth-watch"
+import { openMcpAuth, useMcpAuthPrompts } from "../../src/component/mcp-auth-watch"
 import { ClipboardProvider } from "../../src/context/clipboard"
 import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider } from "../../src/config"
@@ -64,13 +64,16 @@ type Server = {
   info?: Record<string, McpServerInfo>
   /** Answers for successive /auth/wait calls; the last one repeats. */
   waits?: Array<McpStatus | { status: "pending" } | (() => Promise<Response>)>
-  callback?: McpStatus
+  callback?: McpStatus | (() => Promise<Response>)
   authorizationUrl?: string
+  /** False: the server reports that its callback listener could not start. */
+  listening?: boolean
 }
 
 function fakeServer(server: Server) {
   const calls: Array<{ method: string; path: string; body?: unknown }> = []
   let waitIndex = 0
+  let attempts = 0
   const handler = async (url: URL, input: RequestInfo | URL) => {
     const request = input instanceof Request ? input : undefined
     const method = request?.method ?? "GET"
@@ -85,7 +88,13 @@ function fakeServer(server: Server) {
     const name = match?.[1] ?? ""
     switch (`${method} ${match?.[2]}`) {
       case "POST auth":
-        return json({ authorizationUrl: server.authorizationUrl ?? AUTH_URL, oauthState: "state-1" })
+        attempts++
+        return json({
+          authorizationUrl: server.authorizationUrl ?? AUTH_URL,
+          oauthState: `state-${attempts}`,
+          listening: server.listening ?? true,
+          redirectUri: "http://127.0.0.1:40123/mcp/oauth/callback",
+        })
       case "POST auth/wait": {
         const answers = server.waits ?? [{ status: "pending" }]
         const answer = answers[Math.min(waitIndex++, answers.length - 1)]
@@ -94,6 +103,7 @@ function fakeServer(server: Server) {
         return json(answer)
       }
       case "POST auth/callback": {
+        if (typeof server.callback === "function") return server.callback()
         const status = server.callback ?? { status: "connected" }
         if (status.status === "connected") server.states[name] = status
         return json(status)
@@ -223,21 +233,29 @@ describe("MCP servers dialog", () => {
     expect(opens).toBe(1)
     expect(frame).toContain("Could not open a browser here (xdg-open not found)")
     expect(frame).toContain("https://auth.example/authorize")
+    expect(frame).toContain("http://127.0.0.1:40123/mcp/oauth/callback?code=…&state=…")
 
     setup.app.mockInput.pressKey("y", { ctrl: true })
     await wait(() => copied.length === 1)
     expect(copied).toEqual([AUTH_URL])
 
     const textarea = setup.app.renderer.currentFocusedRenderable as TextareaRenderable
-    textarea.setText("http://127.0.0.1:19876/mcp/oauth/callback?code=abc&state=other")
+    textarea.setText("http://127.0.0.1:40123/mcp/oauth/callback?code=abc")
+    setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("no state parameter"))
+
+    textarea.setText("http://127.0.0.1:40123/mcp/oauth/callback?code=abc&state=other")
     setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("different sign-in attempt"))
     expect(setup.fake.count("POST", "/mcp/linear/auth/callback")).toBe(0)
 
-    textarea.setText("http://127.0.0.1:19876/mcp/oauth/callback?code=abc&state=state-1")
+    textarea.setText("http://127.0.0.1:40123/mcp/oauth/callback?code=abc&state=state-1")
     setup.app.mockInput.pressEnter()
     await wait(() => setup.sync.data.mcp.linear?.status === "connected")
-    expect(setup.fake.calls.find((c) => c.path === "/mcp/linear/auth/callback")?.body).toEqual({ code: "abc" })
+    expect(setup.fake.calls.find((c) => c.path === "/mcp/linear/auth/callback")?.body).toEqual({
+      code: "abc",
+      oauthState: "state-1",
+    })
     expect(opens).toBe(1)
     frame = await setup.frame()
     expect(frame).not.toContain("Authenticate linear")
@@ -253,6 +271,8 @@ describe("MCP servers dialog", () => {
     await wait(() => setup.fake.count("POST", "/mcp/linear/auth/wait") === 1)
     setup.app.mockInput.pressEscape()
     await wait(() => setup.fake.count("POST", "/mcp/linear/auth/cancel") === 1)
+    // The cancel names its own attempt, so it cannot end one that replaced it.
+    expect(setup.fake.calls.find((c) => c.path === "/mcp/linear/auth/cancel")?.body).toEqual({ oauthState: "state-1" })
     gate.resolve(json({ status: "pending" }))
     expect(opens).toBe(1)
     expect(await setup.frame()).not.toContain("Authenticate linear")
@@ -263,7 +283,7 @@ describe("MCP servers dialog", () => {
     await using setup = await setupDialog(
       {
         states: { linear: { status: "needs_auth" } },
-        waits: [() => Bun.sleep(20).then(() => json({ status: "pending" }))],
+        waits: [{ status: "pending" }],
       },
       () => <DialogMcpAuth name="linear" timeoutMs={150} opener={async () => void opens++} />,
     )
@@ -273,6 +293,69 @@ describe("MCP servers dialog", () => {
     setup.app.mockInput.pressKey("r", { ctrl: true })
     await wait(() => setup.fake.count("POST", "/mcp/linear/auth") === 2)
     await wait(() => opens === 2)
+  })
+
+  test("a second trigger does not replace a sign-in already on screen", async () => {
+    let opens = 0
+    await using setup = await setupDialog({ states: { linear: { status: "needs_auth" } } }, () => (
+      <DialogMcpAuth name="linear" opener={async () => void opens++} />
+    ))
+    await wait(() => setup.fake.count("POST", "/mcp/linear/auth/wait") >= 1)
+    expect(isSigningIn("linear")).toBe(true)
+    const replaced: unknown[] = []
+    expect(openMcpAuth({ replace: (element: unknown) => void replaced.push(element) }, "linear")).toBe(false)
+    expect(replaced).toHaveLength(0)
+    expect(setup.fake.count("POST", "/mcp/linear/auth")).toBe(1)
+    expect(opens).toBe(1)
+  })
+
+  test("esc while a pasted code is exchanged does not cancel the attempt", async () => {
+    const gate = Promise.withResolvers<Response>()
+    await using setup = await setupDialog(
+      { states: { linear: { status: "needs_auth" } }, callback: () => gate.promise },
+      () => <DialogMcpAuth name="linear" opener={async () => {}} />,
+    )
+    await wait(() => setup.app.renderer.currentFocusedRenderable instanceof TextareaRenderable)
+    const textarea = setup.app.renderer.currentFocusedRenderable as TextareaRenderable
+    textarea.setText("abc")
+    setup.app.mockInput.pressEnter()
+    await wait(() => setup.fake.count("POST", "/mcp/linear/auth/callback") === 1)
+    setup.app.mockInput.pressEscape()
+    await wait(() => !setup.app.captureCharFrame().includes("Authenticate linear"))
+    gate.resolve(json({ status: "connected" }))
+    expect(setup.fake.count("POST", "/mcp/linear/auth/cancel")).toBe(0)
+  })
+
+  test("keeps waiting through transient poll failures", async () => {
+    await using setup = await setupDialog(
+      {
+        states: { linear: { status: "needs_auth" } },
+        waits: [
+          async () => new Response("bad gateway", { status: 502 }),
+          async () => {
+            throw new TypeError("fetch failed")
+          },
+          { status: "connected" },
+        ],
+      },
+      () => <DialogMcpAuth name="linear" opener={async () => {}} />,
+    )
+    await wait(() => setup.sync.data.mcp.linear?.status === "connected", 5_000)
+    expect(setup.fake.count("POST", "/mcp/linear/auth/wait")).toBe(3)
+    expect(setup.fake.count("POST", "/mcp/linear/auth/cancel")).toBe(0)
+  })
+
+  test("goes straight to paste mode when the server cannot receive the callback", async () => {
+    await using setup = await setupDialog({ states: { linear: { status: "needs_auth" } }, listening: false }, () => (
+      <DialogMcpAuth name="linear" opener={async () => {}} />
+    ))
+    await wait(() => setup.app.captureCharFrame().includes("callback port is in use"))
+    expect(setup.fake.count("POST", "/mcp/linear/auth/wait")).toBe(0)
+    const textarea = setup.app.renderer.currentFocusedRenderable as TextareaRenderable
+    textarea.setText("http://127.0.0.1:40123/mcp/oauth/callback?code=abc&state=state-1")
+    setup.app.mockInput.pressEnter()
+    await wait(() => setup.sync.data.mcp.linear?.status === "connected")
+    expect(setup.fake.count("POST", "/mcp/linear/auth/wait")).toBe(0)
   })
 
   test("log out asks for confirmation before removing credentials", async () => {
@@ -322,11 +405,12 @@ describe("MCP sign-in prompts", () => {
 
     setup.sync.set("mcp", { notion: { status: "needs_auth" } })
     setup.sync.set("mcp", { notion: { status: "needs_auth" }, other: { status: "connected" } })
-    await Bun.sleep(20)
+    // Disabling and enabling again is not a new transition.
+    setup.sync.set("mcp", { notion: { status: "disabled" }, other: { status: "connected" } })
+    setup.sync.set("mcp", { notion: { status: "needs_auth" }, other: { status: "connected" } })
     expect(toasts).toHaveLength(1)
 
     setup.sync.set("mcp", { notion: { status: "connected" }, other: { status: "connected" } })
-    await Bun.sleep(20)
     setup.sync.set("mcp", { notion: { status: "needs_auth" }, other: { status: "connected" } })
     await wait(() => toasts.length === 2)
 
@@ -336,19 +420,35 @@ describe("MCP sign-in prompts", () => {
     expect(await setup.frame()).toContain("Authenticate notion")
   })
 
-  test("tracker reports each server once until it leaves needs_auth, and skips acknowledged log outs", () => {
+  test("tracker reports each server once per transition, per workspace", () => {
     const track = McpAuthPrompt.createTracker()
-    expect(track({ a: { status: "needs_auth" }, b: { status: "connected" } })).toEqual(["a"])
-    expect(track({ a: { status: "needs_auth" }, b: { status: "connected" } })).toEqual([])
-    expect(track({ a: { status: "failed" }, b: { status: "needs_auth" } })).toEqual(["b"])
-    expect(track({ a: { status: "needs_auth" }, b: { status: "needs_auth" } })).toEqual(["a"])
-    McpAuthPrompt.acknowledge("c")
-    expect(track({ c: { status: "connected" } })).toEqual([])
-    expect(track({ c: { status: "needs_auth" } })).toEqual([])
-    expect(track({ c: { status: "connected" } })).toEqual([])
-    expect(track({ c: { status: "needs_auth" } })).toEqual(["c"])
-    McpAuthPrompt.acknowledge("d", 0)
-    expect(track({ d: { status: "needs_auth" } }, 60_000)).toEqual(["d"])
+    expect(track({ a: { status: "needs_auth" }, b: { status: "connected" } }, "w1")).toEqual(["a"])
+    expect(track({ a: { status: "needs_auth" }, b: { status: "connected" } }, "w1")).toEqual([])
+    expect(track({ a: { status: "failed" }, b: { status: "needs_auth" } }, "w1")).toEqual(["b"])
+    expect(track({ a: { status: "needs_auth" }, b: { status: "needs_auth" } }, "w1")).toEqual(["a"])
+    expect(track({ a: { status: "disabled" } }, "w1")).toEqual([])
+    expect(track({ a: { status: "needs_auth" } }, "w1")).toEqual([])
+    // Another workspace with a server of the same name is tracked on its own.
+    expect(track({ a: { status: "needs_auth" } }, "w2")).toEqual(["a"])
+  })
+
+  test("acknowledged log outs are skipped once, per workspace, and never swallow a later transition", () => {
+    const track = McpAuthPrompt.createTracker()
+    track({ c: { status: "connected" }, e: { status: "needs_auth" } }, "w1", 0)
+    McpAuthPrompt.acknowledge("w1", "c", 0)
+    expect(track({ c: { status: "needs_auth" } }, "w2", 1)).toEqual(["c"])
+    expect(track({ c: { status: "needs_auth" } }, "w1", 1)).toEqual([])
+    expect(track({ c: { status: "connected" } }, "w1", 2)).toEqual([])
+    expect(track({ c: { status: "needs_auth" } }, "w1", 3)).toEqual(["c"])
+
+    // Logging out of a server that already needed auth: the next needs_auth snapshot settles it.
+    McpAuthPrompt.acknowledge("w1", "e", 10)
+    expect(track({ e: { status: "needs_auth" } }, "w1", 11)).toEqual([])
+    expect(track({ e: { status: "connected" } }, "w1", 12)).toEqual([])
+    expect(track({ e: { status: "needs_auth" } }, "w1", 13)).toEqual(["e"])
+
+    McpAuthPrompt.acknowledge("w1", "d", 0)
+    expect(track({ d: { status: "needs_auth" } }, "w1", 60_000)).toEqual(["d"])
   })
 })
 
@@ -357,9 +457,14 @@ describe("pasted authorization input", () => {
     expect(parseAuthorizationInput("http://127.0.0.1:19876/mcp/oauth/callback?code=abc&state=s1")).toEqual({
       code: "abc",
       state: "s1",
+      fromUrl: true,
     })
-    expect(parseAuthorizationInput("  abc-123  ")).toEqual({ code: "abc-123" })
-    expect(parseAuthorizationInput("/mcp/oauth/callback?code=x")).toEqual({ code: "x", state: undefined })
+    expect(parseAuthorizationInput("  abc-123  ")).toEqual({ code: "abc-123", fromUrl: false })
+    expect(parseAuthorizationInput("/mcp/oauth/callback?code=x")).toEqual({
+      code: "x",
+      state: undefined,
+      fromUrl: true,
+    })
     expect(
       parseAuthorizationInput("http://localhost/cb?error=access_denied&error_description=User%20said%20no"),
     ).toEqual({

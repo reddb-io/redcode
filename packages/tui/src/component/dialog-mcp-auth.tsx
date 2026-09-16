@@ -18,8 +18,17 @@ import { Spinner } from "./spinner"
 export const MCP_AUTH_TIMEOUT_MS = 5 * 60 * 1000
 const WAIT_SLICE_MS = 20_000
 const MIN_POLL_INTERVAL_MS = 250
+const TRANSIENT_RETRY_MS = 1_000
 
-export type AuthorizationInput = { code: string; state?: string } | { error: string }
+export type AuthorizationInput = { code: string; state?: string; fromUrl: boolean } | { error: string }
+
+// Servers with a sign-in dialog on screen: a second trigger (toast, sidebar, palette) must not replace it
+// and open another browser tab.
+const signingIn = new Set<string>()
+
+export function isSigningIn(name: string) {
+  return signingIn.has(name)
+}
 
 /**
  * Read what a user pasted after approving in a browser that could not reach the callback listener:
@@ -28,7 +37,7 @@ export type AuthorizationInput = { code: string; state?: string } | { error: str
 export function parseAuthorizationInput(input: string): AuthorizationInput | undefined {
   const text = input.trim()
   if (!text) return undefined
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text) && !text.includes("?")) return { code: text }
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text) && !text.includes("?")) return { code: text, fromUrl: false }
   let url: URL
   try {
     url = new URL(text, "http://localhost")
@@ -40,15 +49,32 @@ export function parseAuthorizationInput(input: string): AuthorizationInput | und
   if (error) return { error: params.get("error_description") ?? error }
   const code = params.get("code")
   if (!code) return undefined
-  return { code, state: params.get("state") ?? undefined }
+  return { code, state: params.get("state") ?? undefined, fromUrl: true }
+}
+
+type Waiting = {
+  url: string
+  oauthState: string
+  browser: BrowserOpenResult
+  /** False when the server could not receive the redirect itself; the user must paste it. */
+  listening: boolean
+  redirectUri?: string
 }
 
 type Phase =
   | { type: "starting" }
-  | { type: "waiting"; url: string; oauthState: string; browser: BrowserOpenResult }
-  | { type: "finishing"; url: string; oauthState: string; browser: BrowserOpenResult }
+  | ({ type: "waiting" } & Waiting)
+  | ({ type: "finishing" } & Waiting)
   | { type: "failed"; error: string; url?: string }
   | { type: "timeout"; url: string }
+
+type Run = {
+  abort: AbortController
+  settled: boolean
+  oauthState?: string
+  /** A pasted code is being exchanged: it is consumed, so leaving must not cancel the attempt. */
+  exchanging: boolean
+}
 
 export type DialogMcpAuthProps = {
   name: string
@@ -74,6 +100,8 @@ export async function refreshMcpState(
   return status.data
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
+
 export function DialogMcpAuth(props: DialogMcpAuthProps) {
   const sdk = useSDK()
   const sync = useSync()
@@ -91,7 +119,7 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
   const [pasteError, setPasteError] = createSignal<string>()
   const [textareaTarget, setTextareaTarget] = createSignal<TextareaRenderable>()
   const workspace = project.workspace.current()
-  let attempt: { abort: AbortController; settled: boolean; oauthState?: string } | undefined
+  let attempt: Run | undefined
   let textarea: TextareaRenderable | undefined
   let ticker: ReturnType<typeof setInterval> | undefined
 
@@ -111,12 +139,15 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
     stopTicker()
     if (!current || current.settled) return
     current.settled = true
+    // The pasted code is already consumed; let the exchange finish and store the tokens.
+    if (current.exchanging) return
     current.abort.abort()
-    // Release the server-side listener; stored credentials stay untouched.
-    if (current.oauthState) void sdk.client.mcp.auth.cancel({ name: props.name, workspace }).catch(() => {})
+    // Release the server-side listener for this attempt only; stored credentials stay untouched.
+    if (current.oauthState)
+      void sdk.client.mcp.auth.cancel({ name: props.name, workspace, oauthState: current.oauthState }).catch(() => {})
   }
 
-  async function finish(run: NonNullable<typeof attempt>, status: McpStatus) {
+  async function finish(run: Run, status: McpStatus) {
     if (run.settled) return
     run.settled = true
     stopTicker()
@@ -138,9 +169,16 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
     })
   }
 
+  function fail(run: Run, error: unknown) {
+    if (attempt !== run || run.settled) return
+    run.settled = true
+    stopTicker()
+    setPhase({ type: "failed", url: url(), error: errorText(error) })
+  }
+
   async function start() {
     abandon()
-    const run = { abort: new AbortController(), settled: false } as NonNullable<typeof attempt>
+    const run: Run = { abort: new AbortController(), settled: false, exchanging: false }
     attempt = run
     setPasteError(undefined)
     setPhase({ type: "starting" })
@@ -150,7 +188,7 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
         { throwOnError: true, signal: run.abort.signal },
       )
       if (attempt !== run) return
-      const { authorizationUrl, oauthState } = started.data
+      const { authorizationUrl, oauthState, listening, redirectUri } = started.data
       if (!authorizationUrl) {
         // Stored credentials were still valid: the server reconnected without a browser round trip.
         const status = await sdk.client.mcp.status({ workspace }, { throwOnError: true, signal: run.abort.signal })
@@ -160,37 +198,55 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
       // Exactly one launch per attempt; the URL stays on screen for every other case.
       const browser = await openBrowser(authorizationUrl, props.opener)
       if (attempt !== run) return
-      setPhase({ type: "waiting", url: authorizationUrl, oauthState, browser })
+      setPhase({
+        type: "waiting",
+        url: authorizationUrl,
+        oauthState,
+        browser,
+        listening: listening !== false,
+        redirectUri,
+      })
       const deadline = Date.now() + (props.timeoutMs ?? MCP_AUTH_TIMEOUT_MS)
       setRemaining(deadline - Date.now())
       ticker = setInterval(() => setRemaining(Math.max(0, deadline - Date.now())), 1000)
       while (attempt === run && !run.settled) {
         const left = deadline - Date.now()
         if (left <= 0) {
+          if (run.exchanging) return
           abandon()
           setPhase({ type: "timeout", url: authorizationUrl })
           return
         }
+        if (listening === false) {
+          // Nothing reaches the server by itself: only a pasted address can finish, so just count down.
+          await sleep(Math.min(left, 1000))
+          continue
+        }
         const asked = Date.now()
-        const result = await sdk.client.mcp.auth.wait(
-          { name: props.name, workspace, oauthState, waitMs: Math.min(WAIT_SLICE_MS, left) },
-          { throwOnError: true, signal: run.abort.signal },
-        )
+        const result = await sdk.client.mcp.auth
+          .wait(
+            { name: props.name, workspace, oauthState, waitMs: Math.min(WAIT_SLICE_MS, left) },
+            { signal: run.abort.signal },
+          )
+          .catch((error: unknown) => ({ data: undefined, error, response: undefined }))
         if (attempt !== run || run.settled) return
+        if (!result.data) {
+          const status = result.response?.status
+          // A proxy hiccup or a dropped connection: keep waiting until the deadline. Other refusals are final.
+          if (status !== undefined && status < 500) return fail(run, result.error)
+          await sleep(Math.min(TRANSIENT_RETRY_MS, deadline - Date.now()))
+          continue
+        }
         if (result.data.status === "pending") {
           // A server that answers at once (a proxy cutting the hold short) must not turn this into a busy loop.
           const early = MIN_POLL_INTERVAL_MS - (Date.now() - asked)
-          if (early > 0)
-            await new Promise((resolve) => setTimeout(resolve, Math.min(early, Math.max(0, deadline - Date.now()))))
+          if (early > 0) await sleep(Math.min(early, deadline - Date.now()))
           continue
         }
         return finish(run, result.data)
       }
     } catch (error) {
-      if (attempt !== run || run.settled) return
-      run.settled = true
-      stopTicker()
-      setPhase({ type: "failed", url: url(), error: errorText(error) })
+      fail(run, error)
     }
   }
 
@@ -201,17 +257,23 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
     const parsed = parseAuthorizationInput(value)
     if (!parsed) return setPasteError("Paste the full address from the browser, or the value of its code parameter.")
     if ("error" in parsed) return setPasteError(`The authorization server refused: ${parsed.error}`)
+    if (parsed.fromUrl && !parsed.state)
+      return setPasteError("That address has no state parameter. Copy the complete address from the browser.")
     if (parsed.state && parsed.state !== current.oauthState)
       return setPasteError("That address belongs to a different sign-in attempt. Paste the latest one.")
     setPasteError(undefined)
     setPhase({ ...current, type: "finishing" })
+    run.exchanging = true
     try {
       const result = await sdk.client.mcp.auth.callback(
-        { name: props.name, workspace, code: parsed.code },
-        { throwOnError: true, signal: run.abort.signal },
+        { name: props.name, workspace, code: parsed.code, oauthState: current.oauthState },
+        { throwOnError: true },
       )
+      run.exchanging = false
+      if (attempt !== run) return
       await finish(run, result.data)
     } catch (error) {
+      run.exchanging = false
       if (attempt !== run || run.settled) return
       setPhase({ ...current, type: "waiting" })
       setPasteError(errorText(error))
@@ -260,9 +322,13 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
 
   onMount(() => {
     dialog.setSize("large")
+    signingIn.add(props.name)
     void start()
   })
-  onCleanup(abandon)
+  onCleanup(() => {
+    signingIn.delete(props.name)
+    abandon()
+  })
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
@@ -281,6 +347,12 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
         <Match when={phase().type === "waiting" || phase().type === "finishing"}>
           <Show when={phase().type === "waiting"} fallback={<Spinner>Finishing sign-in and reconnecting…</Spinner>}>
             <Spinner>Waiting for you to approve in the browser ({formatRemaining(remaining())} left)</Spinner>
+          </Show>
+          <Show when={notListening(phase())}>
+            <text fg={theme.warning} wrapMode="word">
+              The server cannot receive the browser's redirect (its callback port is in use). After approving, paste the
+              address the browser lands on below.
+            </text>
           </Show>
           <Show when={browserFailure(phase())}>
             {(reason) => (
@@ -326,7 +398,7 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
                 if (!value.isDestroyed) value.focus()
               }, 1)
             }}
-            placeholder="http://127.0.0.1:19876/mcp/oauth/callback?code=…&state=…"
+            placeholder={`${redirectUri(phase()) ?? "http://127.0.0.1:19876/mcp/oauth/callback"}?code=…&state=…`}
             placeholderColor={theme.textMuted}
             textColor={theme.text}
             focusedTextColor={theme.text}
@@ -364,6 +436,14 @@ export function DialogMcpAuth(props: DialogMcpAuthProps) {
 function browserFailure(phase: Phase) {
   if (phase.type !== "waiting" && phase.type !== "finishing") return undefined
   return phase.browser.opened ? undefined : phase.browser.reason
+}
+
+function notListening(phase: Phase) {
+  return (phase.type === "waiting" || phase.type === "finishing") && !phase.listening
+}
+
+function redirectUri(phase: Phase) {
+  return phase.type === "waiting" || phase.type === "finishing" ? phase.redirectUri : undefined
 }
 
 function formatRemaining(ms: number) {

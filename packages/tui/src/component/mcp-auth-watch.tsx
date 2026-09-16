@@ -4,13 +4,17 @@ import { useDialog, type DialogContext } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import type { BrowserOpener } from "../util/browser"
 import { DialogMcp } from "./dialog-mcp"
-import { DialogMcpAuth } from "./dialog-mcp-auth"
+import { DialogMcpAuth, isSigningIn } from "./dialog-mcp-auth"
+import { useProject } from "../context/project"
 import { McpAuthPrompt } from "./mcp-auth-prompt"
 
 const PROMPT_DURATION_MS = 15_000
 
-export function openMcpAuth(dialog: DialogContext, name: string, opener?: BrowserOpener) {
+/** Open the sign-in dialog unless one for this server is already on screen (no second browser tab). */
+export function openMcpAuth(dialog: Pick<DialogContext, "replace">, name: string, opener?: BrowserOpener) {
+  if (isSigningIn(name)) return false
   dialog.replace(() => <DialogMcpAuth name={name} opener={opener} />)
+  return true
 }
 
 /** Servers that need authentication right now, sorted by name. */
@@ -29,13 +33,16 @@ export function useMcpAuthPrompts(input: { opener?: BrowserOpener } = {}) {
   const sync = useSync()
   const toast = useToast()
   const dialog = useDialog()
+  const project = useProject()
   const track = McpAuthPrompt.createTracker()
 
   createEffect(() => {
+    const workspace = project.workspace.current()
     const snapshot = Object.fromEntries(
       Object.entries(sync.data.mcp).map(([name, item]) => [name, { status: item.status }]),
     )
-    const entered = track(snapshot)
+    // A server whose sign-in dialog is already open needs no prompt.
+    const entered = track(snapshot, workspace).filter((name) => !isSigningIn(name))
     if (entered.length === 0) return
     untrack(() => {
       if (entered.length === 1) {
