@@ -381,6 +381,41 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("does not notify an event published in a savepoint that rolled back", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const seen = new Array<unknown>()
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          seen.push(event.data)
+        }),
+      )
+
+      yield* db.transaction(() =>
+        Effect.gen(function* () {
+          yield* db
+            .transaction(() =>
+              events
+                .publish(SyncMessage, { id: "savepoint", text: "rolled back" })
+                .pipe(Effect.andThen(Effect.fail("inner failure"))),
+            )
+            .pipe(Effect.catch(() => Effect.void))
+          yield* events.publish(SyncMessage, { id: "savepoint", text: "kept" })
+        }),
+      )
+
+      expect(seen).toEqual([{ id: "savepoint", text: "kept" }])
+      const rows = yield* db
+        .select({ seq: EventTable.seq })
+        .from(EventTable)
+        .where(eq(EventTable.aggregate_id, "savepoint"))
+        .all()
+        .pipe(Effect.orDie)
+      expect(rows).toEqual([{ seq: 0 }])
+    }),
+  )
+
   it.effect("ends only an overflowing bounded subscriber without blocking other listeners", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

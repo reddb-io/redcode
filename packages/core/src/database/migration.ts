@@ -20,7 +20,8 @@ export type Migration = {
 // moment therefore cannot both create the schema or both run a migration: the second waits, then
 // sees what the first did and only fills in what is still missing. It waits far longer than an
 // ordinary transaction would: the first process may be rebuilding a large table, and a second
-// process must not die at boot because of it. About ten minutes in all, with a log line per wait.
+// process must not die at boot because of it. 600 attempts, each a busy wait of up to 1 s plus a
+// sleep of up to 1 s: 10 to 20 minutes in all, with a log line per wait.
 const immediate = {
   behavior: "immediate",
   retry: {

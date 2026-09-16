@@ -57,8 +57,10 @@ export interface EffectSQLiteSessionOptions {
 
 /**
  * Effects to run once the outermost transaction has committed and released its connection,
- * registered from inside the transaction with {@link afterCommit}. Fresh for every attempt, so
- * what a rolled-back attempt registered never runs.
+ * registered from inside the transaction with {@link afterCommit}. Every transaction level has
+ * its own list, fresh for every attempt: a savepoint hands its list to the level around it when
+ * it is released and drops it when it rolls back, so what a rolled-back attempt or savepoint
+ * registered never runs.
  */
 class TransactionHooks extends Context.Service<
   TransactionHooks,
@@ -69,6 +71,14 @@ class TransactionHooks extends Context.Service<
  * Runs `effect` after the enclosing transaction commits, or right away when no transaction is
  * open. For what must not happen against state that may still roll back, and must not happen
  * while the write lock and the connection are held: notifying in-memory listeners of a write.
+ *
+ * Once the commit is through, hooks run with interruption masked, each isolated from the others'
+ * defects (logged, never raised to the caller whose write committed).
+ *
+ * The hook list belongs to the transaction as the calling fiber sees it. A fiber forked inside a
+ * transaction inherits that list, so if it calls `afterCommit` after the transaction has already
+ * committed, its effect lands in a list that has run and is lost. Call it from the transaction's
+ * own fiber, before the body returns.
  */
 export const afterCommit = (effect: Effect.Effect<void>): Effect.Effect<void> =>
   Effect.serviceOption(TransactionHooks).pipe(
@@ -128,6 +138,14 @@ export const isLockError = (error: unknown): boolean => {
   }
   return false
 }
+
+const runHook = (hook: Effect.Effect<void>) =>
+  Effect.suspend(() => hook).pipe(
+    Effect.catchCauseIf(
+      (cause) => !Cause.hasInterrupts(cause),
+      (cause) => Effect.logError("After-commit hook failed", { cause }),
+    ),
+  )
 
 const retryDelay = (retry: TransactionRetry, attempt: number) => {
   const capped = Math.min(retry.maxDelayMs, retry.baseDelayMs * 2 ** attempt)
@@ -243,19 +261,22 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
 
         const once = connection.pipe(
           Effect.flatMap(([scope, connection]) => {
-            // The outermost transaction owns the after-commit hooks; a savepoint adds to the ones
-            // around it, since only the outer commit makes anything durable.
-            const hooks = id === 0 ? { afterCommit: new Array<Effect.Effect<void>>() } : undefined
-            const inTransaction = Context.add(services, this.client.transactionService, [connection, id] as const)
+            // Each level collects its own after-commit hooks. A released savepoint hands them to
+            // the level around it; a rolled-back one drops them; only the outermost commit runs
+            // them, since only it makes anything durable.
+            const hooks = { afterCommit: new Array<Effect.Effect<void>>() }
+            const parentHooks = Context.getOption(services, TransactionHooks)
+            const inTransaction = Context.add(
+              Context.add(services, this.client.transactionService, [connection, id] as const),
+              TransactionHooks,
+              hooks,
+            )
             const transaction = this.executeTransactionStatement(
               connection,
               id === 0 ? `begin ${behavior}` : `savepoint effect_sql_${id}`,
             ).pipe(
               Effect.flatMap(() =>
-                Effect.provideContext(
-                  restore(effect),
-                  hooks ? Context.add(inTransaction, TransactionHooks, hooks) : inTransaction,
-                ).pipe(
+                Effect.provideContext(restore(effect), inTransaction).pipe(
                   Effect.exit,
                   Effect.flatMap((exit) => {
                     const finalize = Exit.isSuccess(exit)
@@ -286,17 +307,28 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
 
             const released =
               scope === undefined ? transaction : transaction.pipe(Effect.onExit((exit) => Scope.close(scope, exit)))
+            // A savepoint that was released hands its hooks to the level around it (reached only
+            // on success: a rolled-back savepoint fails here and its list is dropped). Without a
+            // level around it that collects hooks, the savepoint stands in for the commit.
+            if (id !== 0 && parentHooks._tag === "Some") {
+              return released.pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    parentHooks.value.afterCommit.push(...hooks.afterCommit)
+                  }),
+                ),
+              )
+            }
             // Hooks run once the commit is through and the connection is back in the pool, so a
             // listener never sees state that may still roll back and never holds up other writers.
-            return hooks
-              ? released.pipe(
-                  Effect.flatMap((value) =>
-                    restore(Effect.forEach(hooks.afterCommit, (hook) => hook, { discard: true })).pipe(
-                      Effect.as(value),
-                    ),
-                  ),
-                )
-              : released
+            // Not under `restore`: an interrupt landing after the commit must not skip the wakes
+            // and notifications of a write that is already durable. Each hook is isolated, so one
+            // defect neither skips the hooks after it nor reaches the caller whose write committed.
+            return released.pipe(
+              Effect.flatMap((value) =>
+                Effect.forEach(hooks.afterCommit, runHook, { discard: true }).pipe(Effect.as(value)),
+              ),
+            )
           }),
         )
 
