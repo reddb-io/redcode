@@ -8,6 +8,7 @@ import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable
 import { Config } from "@/config/config"
 import { ConfigManaged } from "@/config/managed"
 import { ConfigParse } from "../../src/config/parse"
+import { OpenAICompatible } from "../../src/provider/openai-compatible"
 import { Npm } from "@reddb-io/redcode-core/npm"
 
 import { InstanceRef } from "../../src/effect/instance-ref"
@@ -508,11 +509,19 @@ it.effect("removes listed global config paths in json and keeps their siblings",
       Effect.gen(function* () {
         yield* Config.use.updateGlobal(
           { model: "test/model" },
-          { remove: [["provider", "9router", "models", "gone"], ["provider", "missing", "models", "gone"]] },
+          {
+            remove: [
+              ["provider", "9router", "models", "gone"],
+              ["provider", "missing", "models", "gone"],
+            ],
+          },
         )
 
         const written = yield* FSUtil.use.readJson(path.join(dir, "opencode.json"))
-        expect(written).toMatchObject({ model: "test/model", provider: { "9router": { models: { kept: { name: "Kept" } } } } })
+        expect(written).toMatchObject({
+          model: "test/model",
+          provider: { "9router": { models: { kept: { name: "Kept" } } } },
+        })
         expect(JSON.stringify(written)).not.toContain('"gone"')
       }),
   ),
@@ -537,6 +546,66 @@ it.effect("removes listed global config paths in jsonc and keeps their siblings"
         expect(parsed.model).toBe("test/model")
         expect(Object.keys(parsed.provider?.["9router"]?.models ?? {})).toEqual(["kept"])
       }),
+  ),
+)
+
+it.effect("moves an OpenAI-compatible provider inside a commented jsonc file and keeps other comments", () =>
+  withGlobalConfig({}, ({ dir }) =>
+    Effect.gen(function* () {
+      const file = path.join(dir, "config.jsonc")
+      yield* FSUtil.use.writeFileString(
+        file,
+        [
+          "{",
+          "  // default model, kept on purpose",
+          '  "model": "9router/combo",',
+          '  "agent": { "plan": { "model": "9router/combo" } },',
+          '  "provider": {',
+          "    // untouched provider",
+          '    "anthropic": { "name": "Anthropic" },',
+          '    "9router": {',
+          '      "npm": "@ai-sdk/openai-compatible",',
+          '      "options": { "baseURL": "https://gateway.example.com/v1", "apiKey": "{env:GATEWAY_KEY}" },',
+          '      "models": { "combo": { "name": "Combo", "limit": { "context": 64000, "output": 4096 } } }',
+          "    }",
+          "  }",
+          "  /* trailing note */",
+          "}",
+        ].join("\n"),
+      )
+      yield* Config.use.invalidate()
+      const auth = {
+        get: () => Effect.succeed(undefined),
+        set: () => Effect.void,
+        remove: () => Effect.void,
+      } as unknown as Auth.Interface
+      const result = yield* OpenAICompatible.connect(
+        { http: unexpectedHttp, config: yield* Config.Service, auth },
+        {
+          providerID: "gateway",
+          name: "Gateway",
+          baseURL: "https://gateway.example.com/v1",
+          models: [{ id: "combo" }],
+          moveFrom: "9router",
+        },
+      )
+      expect(result).toMatchObject({ providerID: "gateway", credential: "kept", configPath: file })
+
+      const text = yield* FSUtil.use.readFileString(file)
+      expect(text).toContain("// default model, kept on purpose")
+      expect(text).toContain("// untouched provider")
+      expect(text).toContain("/* trailing note */")
+      const parsed = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(text, file), file)
+      expect(parsed.model).toBe("gateway/combo")
+      expect(parsed.agent?.plan?.model).toBe("gateway/combo")
+      expect(parsed.provider?.["9router"]).toBeUndefined()
+      expect(parsed.provider?.gateway).toEqual({
+        npm: "@ai-sdk/openai-compatible",
+        name: "Gateway",
+        options: { baseURL: "https://gateway.example.com/v1", apiKey: "{env:GATEWAY_KEY}" },
+        models: { combo: { name: "Combo", limit: { context: 64000, output: 4096 } } },
+      })
+    }),
   ),
 )
 

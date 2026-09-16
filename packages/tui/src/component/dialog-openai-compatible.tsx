@@ -37,7 +37,7 @@ export type ProviderPreset = {
   keyHint: string
 }
 
-type Step = "move" | "url" | "id" | "override" | "name" | "api" | "key" | "models"
+type Step = "move" | "url" | "id" | "override" | "replace" | "name" | "api" | "key" | "models"
 
 export function DialogOpenAICompatible(props: {
   /** Connect this preset instead of asking for an id, name and API type. */
@@ -60,6 +60,7 @@ export function DialogOpenAICompatible(props: {
   const [moveFrom, setMoveFrom] = createSignal<string>()
   const [providerID, setProviderID] = createSignal(initialID ?? "")
   const [override, setOverride] = createSignal(false)
+  const [replaceCredential, setReplaceCredential] = createSignal(false)
   const [name, setName] = createSignal(props.preset?.name ?? initial?.existing?.name ?? "")
   const [baseURL, setBaseURL] = createSignal(
     normalizeBaseURL(initial?.existing?.baseURL ?? "") ?? props.preset?.defaultURL ?? "",
@@ -94,8 +95,11 @@ export function DialogOpenAICompatible(props: {
     setStep(items[items.length - 1])
   }
 
+  // Wizard-scoped and above the prompt's own layer, so ctrl+b goes back a step here instead of moving
+  // the cursor or backgrounding subagents in the session underneath.
   useBindings(() => ({
     enabled: history().length > 0 && !busy(),
+    priority: 2,
     bindings: [{ key: "ctrl+b", desc: "Previous step", group: "Dialog", cmd: back }],
   }))
 
@@ -117,6 +121,7 @@ export function DialogOpenAICompatible(props: {
     const found = props.lookup(id)
     setProviderID(id)
     setOverride(false)
+    setReplaceCredential(false)
     setExisting(found.existing)
     if (found.existing) {
       if (!name()) setName(found.existing.name ?? "")
@@ -141,9 +146,10 @@ export function DialogOpenAICompatible(props: {
       invalid_models: "models" as const,
       discovery: "models" as const,
       builtin_provider: "override" as const,
+      credential_in_use: "replace" as const,
     }[reason ?? ""]
     if (!target || target === step()) return
-    if (target === "override") setResume(true)
+    if (target === "override" || target === "replace") setResume(true)
     setHistory((items) => [...items, step()])
     setStep(target)
   }
@@ -164,6 +170,7 @@ export function DialogOpenAICompatible(props: {
           apiKey: apiKey(),
           npm: npm(),
           ...(override() ? { override: true } : {}),
+          ...(replaceCredential() ? { replaceCredential: true } : {}),
           ...(models ? { models } : {}),
           ...(moveFrom() ? { moveFrom: moveFrom() } : {}),
         },
@@ -281,12 +288,14 @@ export function DialogOpenAICompatible(props: {
             title={`"${providerID()}" is already a provider`}
             options={[
               { title: "Choose a different id", value: "rename" },
-              {
-                title: `Override ${providerID()} with this endpoint`,
-                value: "override",
-                description: "Its requests go to this URL instead",
-              },
+              { title: `Override ${providerID()} with this endpoint`, value: "override" },
             ]}
+            footer={
+              <text fg={theme.warning}>
+                Overriding replaces the saved login or key for {providerID()}, and all {providerID()} models will be
+                sent to this URL.
+              </text>
+            }
             onSelect={(option) => {
               if (option.value === "rename") {
                 setResume(false)
@@ -302,6 +311,33 @@ export function DialogOpenAICompatible(props: {
                 return
               }
               go("name")
+            }}
+          />
+        </Match>
+        <Match when={step() === "replace"}>
+          <DialogSelect
+            title={`Replace the saved login for ${providerID()}?`}
+            options={[
+              { title: "Keep it and choose a different id", value: "keep" },
+              { title: "Replace it", value: "replace" },
+            ]}
+            footer={
+              <text fg={theme.warning}>
+                Your saved login or key for {providerID()} will be replaced, and all {providerID()} models will be sent
+                to this URL.
+              </text>
+            }
+            onSelect={(option) => {
+              setResume(false)
+              if (option.value === "keep") {
+                setOverride(false)
+                setStep("id")
+                setError("")
+                return
+              }
+              setReplaceCredential(true)
+              back()
+              void connect()
             }}
           />
         </Match>
@@ -366,8 +402,10 @@ export function DialogOpenAICompatible(props: {
                   {preset()?.keyHint ??
                     "Paste a key, or type {env:VARIABLE} to read it from the Redcode server's environment. Leave it empty for endpoints without a key."}
                 </text>
-                <Show when={existing()?.hasKey || moveFrom()}>
-                  <text fg={theme.textMuted}>Leave it empty to keep the saved key.</text>
+                <Show when={existing() || moveFrom()}>
+                  <text fg={theme.textMuted}>
+                    Leave it empty to keep a key saved for this URL in the global configuration or credential store.
+                  </text>
                 </Show>
                 <text fg={theme.textMuted}>
                   Models are fetched automatically. Settings go to the global config; a pasted key goes to the

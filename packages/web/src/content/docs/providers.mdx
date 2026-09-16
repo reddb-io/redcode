@@ -2476,12 +2476,17 @@ ending in `/v1` and a `/v1/models` or `/v1/chat/completions` endpoint, it works 
 ### Connect with the wizard
 
 1. Run `/connect` and choose **OpenAI-compatible**.
-2. Enter the **API URL**, such as `https://api.example.com/v1`. A missing `http://`, a trailing
-   `/models` and a bare host (which gets `/v1`) are corrected for you.
+2. Enter the **API URL**, such as `https://api.example.com/v1`. A trailing `/models` and a bare host
+   (which gets `/v1`) are corrected for you. Without a scheme, `https://` is used, except for local
+   addresses (`localhost`, `*.local`, loopback, private `10.x`, `172.16-31.x`, `192.168.x` and `fc00::/7`
+   addresses, and single-label names such as a container name), which get `http://`. Type `http://`
+   yourself for a public host that only serves plain HTTP.
 3. Confirm or change the **provider id**. It is suggested from the host (`api.together.xyz` becomes
    `together`) and is how the provider appears in configuration and model names (`together/<model>`).
    Each id is a separate provider, so you can connect several endpoints. Choosing the id of a
-   configured provider updates it; choosing the id of a built-in provider asks before overriding it.
+   configured provider updates it. Choosing the id of a built-in provider asks before overriding it:
+   every model of that provider is then sent to this URL, and if you are logged in to it or saved a
+   key for it, the wizard asks a second time because that login or key is replaced.
 4. Confirm the **display name**.
 5. Choose the **API type**: **Chat Completions** (`/chat/completions`, what most servers implement)
    or **Responses** (`/responses`, for OpenAI and servers that implement that API).
@@ -2506,13 +2511,15 @@ no longer lists are removed, unless you changed them with any setting besides `n
 
 **9Router** in the `/connect` list is a preset of this wizard, with its id, name and default URL
 filled in. If your `9router` provider points to another endpoint, choosing **9Router** offers to move
-that connection to its own id.
+that connection to its own id. The move updates `model`, `small_model`, agent and command models and
+`enabled_providers`/`disabled_providers` in the global file; other configuration files that still
+mention `9router` are listed, not edited.
 
 ### What the wizard writes
 
-Provider settings go to the global configuration file in `~/.red/code/` (the first that exists of
-`config.jsonc`, `config.json`, `redcode.jsonc` and `redcode.json`; `redcode.json` is the common
-choice when you create one by hand):
+Provider settings go to the global configuration file in `~/.red/code/`: the first that exists of
+`config.jsonc`, `config.json`, `redcode.jsonc`, `redcode.json`, `opencode.jsonc` and `opencode.json`,
+or a new `config.jsonc`. `redcode.json` is the common choice when you create one by hand:
 
 ```jsonc title="~/.red/code/redcode.json"
 {
@@ -2548,8 +2555,10 @@ used, the wizard tells you.
 - **options.apiKey**: optional. Prefer `{env:VARIABLE}` ([env vars](/docs/config#env-vars)) or a key
   saved with `/connect`; a key saved in the credential store is used when this is not set.
 - **options.headers**: optional headers sent with every request, for example an organization or
-  gateway header. Values may use `{env:VARIABLE}`. They are merged with, and can replace, the
-  `Authorization` header built from the key.
+  gateway header. Values may use `{env:VARIABLE}`, which the Redcode server resolves from its own
+  environment. They can replace the `Authorization` header built from the key. Through the connect
+  API, `Authorization`, `Proxy-Authorization`, `X-Api-Key` and `Api-Key` must use a reference, and saved
+  headers are dropped when the URL changes, since they can carry credentials.
 - **models**: the models to offer, keyed by the id the endpoint expects.
 
 ### Model limits

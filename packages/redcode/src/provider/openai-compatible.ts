@@ -14,6 +14,9 @@ export const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const ENV_REFERENCE = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const HEADER_VALUE = /^[\x20-\x7e]*$/
+/** Headers that carry credentials: their values must be {env:NAME} references, never literal secrets. */
+const SECRET_HEADER = /^(authorization|proxy-authorization|x-api-key|api-key)$/i
+const HEADER_REFERENCE = /\{env:[A-Za-z_][A-Za-z0-9_]*\}/
 export const MAX_MANUAL_MODELS = 200
 export const MAX_HEADERS = 32
 
@@ -35,16 +38,22 @@ export const Input = Schema.Struct({
   baseURL: Schema.String,
   apiKey: Schema.optional(Schema.String).annotate({
     description:
-      "A key for the credential store, or an {env:NAME} reference stored verbatim in configuration. Omit it to keep the saved credential; an empty string removes it.",
+      "A key for the credential store, or an {env:NAME} reference stored verbatim in configuration and resolved by the Redcode server from its own environment for the model list request. Omit it to keep the saved credential (only for the same URL); an empty string removes it.",
   }),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)).annotate({
-    description: "Headers merged into provider.options.headers. Values may use {env:NAME} references.",
+    description:
+      "Headers for provider.options.headers, replacing the saved ones. Values may use {env:NAME} references, which the Redcode server resolves from its own environment for the model list request; Authorization, Proxy-Authorization, X-Api-Key and Api-Key must use one. Saved headers are kept only while the URL stays the same.",
   }),
   npm: Schema.optional(Schema.Literals(NPM_PACKAGES)).annotate({
     description: "@ai-sdk/openai-compatible for /chat/completions (default), @ai-sdk/openai for /responses.",
   }),
   override: Schema.optional(Schema.Boolean).annotate({
-    description: "Allow an id that belongs to a built-in catalog provider.",
+    description:
+      "Allow an id that belongs to a built-in catalog provider. Every model of that provider, not only the discovered ones, is then sent to this URL.",
+  }),
+  replaceCredential: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Second confirmation for overriding a built-in provider that has a saved login or key: that credential is replaced or removed.",
   }),
   models: Schema.optional(Schema.Array(ManualModel)).annotate({
     description:
@@ -73,6 +82,9 @@ export const Result = Schema.Struct({
   }),
   configPath: Schema.String.annotate({ description: "The global configuration file that was written." }),
   movedFrom: Schema.optional(Schema.String),
+  projectReferences: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "After a move: other configuration files that still mention the old id. They are not edited.",
+  }),
 })
 export type Result = typeof Result.Type
 
@@ -84,6 +96,7 @@ export const Reason = Schema.Literals([
   "invalid_headers",
   "invalid_models",
   "invalid_move",
+  "credential_in_use",
   "discovery",
 ])
 export type Reason = typeof Reason.Type
@@ -168,7 +181,8 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       "Use a provider id that starts with a lowercase letter or number and has only lowercase letters, numbers, hyphens and underscores (at most 64 characters).",
     )
   }
-  if (!input.override && deps.builtIn?.(providerID)) {
+  const builtIn = deps.builtIn?.(providerID) ?? false
+  if (!input.override && builtIn) {
     return yield* fail(
       "builtin_provider",
       `"${providerID}" is a built-in provider. Choose another id, or confirm that this endpoint should override it.`,
@@ -202,6 +216,11 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
           "invalid_headers",
           `The header "${name.slice(0, 64)}" has an invalid name or value. Use printable ASCII without line breaks.`,
         )
+      if (SECRET_HEADER.test(name) && !HEADER_REFERENCE.test(value))
+        return yield* fail(
+          "invalid_headers",
+          `The ${name} header carries a secret. Use an environment reference such as {env:MY_PROVIDER_TOKEN} so it stays out of configuration.`,
+        )
     }
   }
 
@@ -219,29 +238,39 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     }
   }
 
-  const file = yield* deps.config.readGlobalFile()
-  const configured = record(file.data.provider)
   const moveFrom = input.moveFrom?.trim()
-  if (moveFrom !== undefined) {
+  const checkMove = (file: { path: string; data: Record<string, unknown> }) => {
+    if (moveFrom === undefined) return
+    const configured = record(file.data.provider)
     if (!PROVIDER_ID.test(moveFrom) || moveFrom === providerID)
-      return yield* fail("invalid_move", "Choose a new provider id that differs from the one being moved.")
+      return fail("invalid_move", "Choose a new provider id that differs from the one being moved.")
     if (!isRecord(configured[moveFrom]))
-      return yield* fail("invalid_move", `"${moveFrom}" is not in the global configuration file ${file.path}.`)
+      return fail("invalid_move", `"${moveFrom}" is not in the global configuration file ${file.path}.`)
     if (Object.hasOwn(configured, providerID))
-      return yield* fail("invalid_move", `"${providerID}" already exists. Choose a new id to move the connection to.`)
+      return fail("invalid_move", `"${providerID}" already exists. Choose a new id to move the connection to.`)
   }
+
+  const file = yield* deps.config.readGlobalFile()
+  const moveProblem = checkMove(file)
+  if (moveProblem) return yield* moveProblem
   const sourceID = moveFrom ?? providerID
-  const source = record(configured[sourceID])
-  const sourceOptions = record(source.options)
+  const initialOptions = record(record(record(file.data.provider)[sourceID]).options)
   const savedAuth = yield* deps.auth.get(sourceID).pipe(Effect.orDie)
-  const hasSaved = savedAuth !== undefined || sourceOptions.apiKey !== undefined
-  const sameEndpoint =
-    typeof sourceOptions.baseURL === "string" && ProviderDiscovery.normalizeBaseURL(sourceOptions.baseURL) === baseURL
+  const targetAuth = moveFrom ? yield* deps.auth.get(providerID).pipe(Effect.orDie) : savedAuth
+  const hasSaved = savedAuth !== undefined || initialOptions.apiKey !== undefined
+  const sameEndpoint = sameURL(initialOptions.baseURL, baseURL)
   // A saved key is only reused for the address it was saved for, never sent somewhere new.
   if (rawKey === undefined && hasSaved && !sameEndpoint) {
     return yield* fail(
       "invalid_key",
       "The API URL changed, so the saved key is not reused. Enter the key for the new address.",
+    )
+  }
+  // Overriding a built-in provider must not silently discard the login or key saved for it.
+  if (builtIn && targetAuth && !input.replaceCredential) {
+    return yield* fail(
+      "credential_in_use",
+      `Overriding "${providerID}" replaces its saved ${targetAuth.type === "oauth" ? "login" : "key"}, and all ${providerID} models will be sent to this URL. Confirm to replace it.`,
     )
   }
 
@@ -250,7 +279,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     if (rawKey) return rawKey
     if (rawKey !== undefined) return undefined
     if (savedAuth?.type === "api") return savedAuth.key
-    return typeof sourceOptions.apiKey === "string" ? resolveReferences(sourceOptions.apiKey, env) : undefined
+    return typeof initialOptions.apiKey === "string" ? resolveReferences(initialOptions.apiKey, env) : undefined
   })
 
   let found: Array<typeof ProviderDiscovery.Model.Type>
@@ -266,7 +295,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       {
         baseURL,
         apiKey: discoveryKey,
-        headers: discoveryHeaders(headers ?? (sameEndpoint ? sourceOptions.headers : undefined), env),
+        headers: discoveryHeaders(headers ?? (sameEndpoint ? initialOptions.headers : undefined), env),
       },
       {
         catalog: deps.catalog,
@@ -286,6 +315,12 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     }))
   }
 
+  // Discovery can take seconds; build the change from the file as it is now, not as it was.
+  const latest = yield* deps.config.readGlobalFile()
+  const latestProblem = checkMove(latest)
+  if (latestProblem) return yield* latestProblem
+  const source = record(record(latest.data.provider)[sourceID])
+  const sourceOptions = record(source.options)
   const existingModels = record(source.models)
   if (!found.length && !Object.keys(existingModels).length)
     return yield* fail("invalid_models", "Enter at least one model id.")
@@ -303,48 +338,67 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     ? "reference"
     : rawKey
       ? "stored"
-      : rawKey === undefined && hasSaved
+      : rawKey === undefined && (savedAuth !== undefined || sourceOptions.apiKey !== undefined)
         ? "kept"
         : "none"
 
+  // Saved headers can carry credentials too, so they never follow the connection to a new URL,
+  // and headers given here replace the saved ones instead of merging with them.
+  const savedHeaders = record(sourceOptions.headers)
+  const keptHeaders = headers ?? (sameURL(sourceOptions.baseURL, baseURL) ? savedHeaders : {})
+  const { headers: _headers, apiKey: _apiKey, ...movedOptions } = sourceOptions
   const provider = {
     ...(moveFrom ? source : {}),
     npm,
     name,
     options: {
-      ...(moveFrom ? sourceOptions : {}),
+      ...(moveFrom ? movedOptions : {}),
       baseURL,
-      ...(reference ? { apiKey: rawKey } : {}),
-      ...(headers ? { headers: { ...(moveFrom ? record(sourceOptions.headers) : {}), ...headers } } : {}),
+      ...(reference
+        ? { apiKey: rawKey }
+        : moveFrom && credential === "kept" && _apiKey !== undefined
+          ? { apiKey: _apiKey }
+          : {}),
+      ...(Object.keys(keptHeaders).length && (moveFrom || headers) ? { headers: keptHeaders } : {}),
     },
     models: moveFrom ? { ...existingModels, ...mergeModels(existingModels, next.models) } : next.models,
   }
-  const remove: string[][] = next.remove.map((id) => ["provider", providerID, "models", id])
-  if ((credential === "stored" || credential === "none") && sourceOptions.apiKey !== undefined)
-    remove.push(["provider", providerID, "options", "apiKey"])
+  const remove: string[][] = []
   const patch: Record<string, unknown> = { provider: { [providerID]: provider } }
   if (moveFrom) {
     remove.push(["provider", moveFrom])
-    for (const key of ["model", "small_model"]) {
-      const value = file.data[key]
-      if (typeof value === "string" && value.startsWith(`${moveFrom}/`))
-        patch[key] = `${providerID}/${value.slice(moveFrom.length + 1)}`
-    }
+    Object.assign(patch, renameReferences(latest.data, moveFrom, providerID))
+  } else {
+    remove.push(...next.remove.map((id) => ["provider", providerID, "models", id]))
+    if ((credential === "stored" || credential === "none") && sourceOptions.apiKey !== undefined)
+      remove.push(["provider", providerID, "options", "apiKey"])
+    for (const header of Object.keys(savedHeaders))
+      if (!Object.hasOwn(keptHeaders, header)) remove.push(["provider", providerID, "options", "headers", header])
   }
+  const write = deps.config
+    .updateGlobal(patch as Parameters<Config.Interface["updateGlobal"]>[0], { remove })
+    .pipe(Effect.asVoid)
 
   yield* Effect.uninterruptible(
-    Effect.gen(function* () {
-      yield* deps.config.updateGlobal(patch as Parameters<Config.Interface["updateGlobal"]>[0], { remove })
-      if (credential === "stored") {
-        yield* deps.auth.set(providerID, new Auth.Api({ type: "api", key: rawKey! })).pipe(Effect.orDie)
-      } else if (credential === "kept" && moveFrom && savedAuth) {
-        yield* deps.auth.set(providerID, savedAuth).pipe(Effect.orDie)
-      } else if (credential !== "kept" && savedAuth && !moveFrom) {
-        // A reference or an explicit "no key" replaces the stored key, which would otherwise win.
-        yield* deps.auth.remove(providerID).pipe(Effect.orDie)
-      }
-      if (moveFrom && savedAuth) yield* deps.auth.remove(moveFrom).pipe(Effect.orDie)
-    }),
+    moveFrom
+      ? // The credential lands under the new id before the configuration moves, and leaves the old id
+        // last, so a failure at any point leaves a working provider holding its key.
+        Effect.gen(function* () {
+          if (credential === "stored")
+            yield* deps.auth.set(providerID, new Auth.Api({ type: "api", key: rawKey! })).pipe(Effect.orDie)
+          else if (credential === "kept" && savedAuth) yield* deps.auth.set(providerID, savedAuth).pipe(Effect.orDie)
+          // A stale credential under the new id would win over a reference or a moved config key.
+          else if (targetAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
+          yield* write
+          if (savedAuth) yield* deps.auth.remove(moveFrom).pipe(Effect.orDie)
+        })
+      : Effect.gen(function* () {
+          yield* write
+          if (credential === "stored")
+            yield* deps.auth.set(providerID, new Auth.Api({ type: "api", key: rawKey! })).pipe(Effect.orDie)
+          // A reference or an explicit "no key" replaces the stored key, which would otherwise win.
+          else if (credential !== "kept" && savedAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
+        }),
   )
 
   return {
@@ -355,10 +409,40 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     models: found,
     discovered: manual === undefined,
     credential,
-    configPath: file.path,
+    configPath: latest.path,
     ...(moveFrom ? { movedFrom: moveFrom } : {}),
   } satisfies Result
 })
+
+function sameURL(saved: unknown, baseURL: string) {
+  return typeof saved === "string" && ProviderDiscovery.normalizeBaseURL(saved) === baseURL
+}
+
+/**
+ * The global settings that name a moved provider, pointed at its new id: the default and small
+ * models, agent and command models, and the enabled and disabled provider lists.
+ */
+export function renameReferences(data: Record<string, unknown>, from: string, to: string) {
+  const model = (value: unknown) =>
+    typeof value === "string" && value.startsWith(`${from}/`) ? `${to}/${value.slice(from.length + 1)}` : undefined
+  const patch: Record<string, unknown> = {}
+  for (const key of ["model", "small_model"]) {
+    const renamed = model(data[key])
+    if (renamed) patch[key] = renamed
+  }
+  for (const key of ["agent", "command"]) {
+    const entries = Object.entries(record(data[key]))
+      .map(([name, entry]) => [name, model(record(entry).model)] as const)
+      .filter((entry): entry is readonly [string, string] => entry[1] !== undefined)
+    if (entries.length) patch[key] = Object.fromEntries(entries.map(([name, value]) => [name, { model: value }]))
+  }
+  for (const key of ["enabled_providers", "disabled_providers"]) {
+    const list = data[key]
+    if (Array.isArray(list) && list.includes(from))
+      patch[key] = [...new Set(list.map((item) => (item === from ? to : item)))]
+  }
+  return patch
+}
 
 /** Moved models keep every field they had; the plan only adds names and limits on top. */
 function mergeModels(existing: Record<string, unknown>, patches: Record<string, ModelPatch>) {

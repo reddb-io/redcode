@@ -758,7 +758,13 @@ const layer = Layer.effect(
     const readGlobalFile = Effect.fn("Config.readGlobalFile")(function* () {
       const file = globalConfigFile()
       const text = yield* readConfigFile(file)
-      const data = text ? ConfigParse.jsonc(text, file) : {}
+      // A parse error carries the whole file text; keep it (and any secrets in it) out of logs.
+      const data = text
+        ? yield* Effect.try({
+            try: () => ConfigParse.jsonc(text, file),
+            catch: () => new Error(`The global configuration file ${file} is not valid JSON or JSONC.`),
+          }).pipe(Effect.orDie)
+        : {}
       return { path: file, data: isRecord(data) ? data : {} }
     })
 

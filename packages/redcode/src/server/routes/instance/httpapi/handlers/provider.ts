@@ -16,6 +16,19 @@ import { NineRouter } from "@/provider/nine-router"
 import { OpenAICompatible } from "@/provider/openai-compatible"
 import { InstanceStore } from "@/project/instance-store"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { InstanceState } from "@/effect/instance-state"
+import { ConfigPaths } from "@/config/paths"
+import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import path from "path"
+
+const CONFIG_FILE_NAMES = [
+  "opencode.json",
+  "opencode.jsonc",
+  "redcode.json",
+  "redcode.jsonc",
+  "config.json",
+  "config.jsonc",
+]
 
 function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
   return self.pipe(
@@ -139,19 +152,46 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       payload: OpenAICompatible.Input
     }) {
       const models = yield* ModelsDev.Service.use((s) => s.get())
+      // Without a live or cached catalog (offline), fall back to the ids bundled into the build.
+      const builtInIDs = new Set(Object.keys(models).length ? Object.keys(models) : ModelsDev.snapshotProviderIDs())
       const result = yield* OpenAICompatible.connect(
         {
           http,
           config: cfg,
           auth: authStore,
           catalog: ProviderDiscovery.catalogLimits(models),
-          builtIn: (id) => Object.hasOwn(models, id),
+          builtIn: (id) => builtInIDs.has(id),
         },
         ctx.payload,
       ).pipe(Effect.mapError((error) => new ProviderConnectApiError({ reason: error.reason, message: error.message })))
       yield* reloadBeforeResponse()
-      return result
+      if (!result.movedFrom) return result
+      const projectReferences = yield* referencingFiles(result.movedFrom, result.configPath)
+      return projectReferences.length ? { ...result, projectReferences } : result
     })
+
+    /** Configuration files besides the written global file that mention a provider id. They are listed, not edited. */
+    const referencingFiles = Effect.fn("ProviderHttpApi.referencingFiles")(
+      function* (providerID: string, written: string) {
+        const ctx = yield* InstanceState.context
+        const fsUtil = yield* FSUtil.Service
+        const candidates = [
+          ...(yield* ConfigPaths.files(["redcode", "opencode"], ctx.directory, ctx.worktree)),
+          ...(yield* ConfigPaths.directories(ctx.directory, ctx.worktree)).flatMap((dir) =>
+            CONFIG_FILE_NAMES.map((name) => path.join(dir, name)),
+          ),
+        ]
+        const mention = new RegExp(`"${providerID}["/]`)
+        const found: string[] = []
+        for (const file of new Set(candidates)) {
+          if (path.resolve(file) === path.resolve(written)) continue
+          const text = yield* fsUtil.readFileStringSafe(file).pipe(Effect.orElseSucceed(() => undefined))
+          if (text && mention.test(text)) found.push(file)
+        }
+        return found
+      },
+      Effect.orElseSucceed((): string[] => []),
+    )
 
     const connectNineRouter = Effect.fn("ProviderHttpApi.connectNineRouter")(function* (ctx: {
       payload: typeof ProviderDiscovery.Input.Type

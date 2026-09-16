@@ -3447,6 +3447,7 @@ export class OpenaiCompatible extends HeyApiClient {
       }
       npm?: "@ai-sdk/openai-compatible" | "@ai-sdk/openai"
       override?: boolean
+      replaceCredential?: boolean
       models?: Array<{
         id: string
         name?: string
@@ -3471,6 +3472,7 @@ export class OpenaiCompatible extends HeyApiClient {
             { in: "body", key: "headers" },
             { in: "body", key: "npm" },
             { in: "body", key: "override" },
+            { in: "body", key: "replaceCredential" },
             { in: "body", key: "models" },
             { in: "body", key: "moveFrom" },
           ],

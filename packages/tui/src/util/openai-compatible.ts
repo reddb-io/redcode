@@ -8,15 +8,33 @@ export type CompatibleNpm = (typeof COMPATIBLE_NPM)[number]
 const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const ENV_REFERENCE = /^\{env:[A-Za-z_][A-Za-z0-9_]*\}$/
 
+/** Mirrors isLocalHost in packages/redcode/src/provider/discovery.ts. */
+export function isLocalHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true
+  if (host.includes(":")) return host === "::1" || /^f[cd][0-9a-f]{2}:/.test(host)
+  const ip = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host)
+  if (ip) {
+    const [a, b] = [Number(ip[1]), Number(ip[2])]
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  }
+  return !host.includes(".")
+}
+
 /**
  * Mirrors normalizeBaseURL in packages/redcode/src/provider/discovery.ts, so the wizard shows the
- * URL the server will use: a missing scheme becomes http, a trailing /models is dropped and a bare
- * host gets /v1. Returns undefined for anything that is not a plain HTTP(S) URL.
+ * URL the server will use: a missing scheme becomes http for a local host and https otherwise, a
+ * trailing /models is dropped and a bare host gets /v1. Returns undefined for anything that is not
+ * a plain HTTP(S) URL.
  */
 export function normalizeBaseURL(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) return
-  const url = URL.parse(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`)
+  const schemeless = !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+  const probe = schemeless ? URL.parse(`http://${trimmed}`) : undefined
+  const url = URL.parse(
+    schemeless ? `${probe && !isLocalHost(probe.hostname) ? "https" : "http"}://${trimmed}` : trimmed,
+  )
   if (!url || !["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
     return
   url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/models$/, "") || "/v1"

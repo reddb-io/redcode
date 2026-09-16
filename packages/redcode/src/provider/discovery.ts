@@ -64,14 +64,35 @@ const Catalog = Schema.Struct({
 const INVALID_URL = "Use an HTTP or HTTPS API URL without credentials, query or fragment."
 
 /**
- * Accepts what people paste from a router dashboard: a missing scheme becomes http, a trailing
- * /models is dropped and a bare host gets /v1. Returns undefined for anything that is not a plain
- * HTTP(S) URL. The TUI mirrors this in util/openai-compatible.ts.
+ * True for hosts that are only reachable locally: loopback, private (RFC 1918) and unique local
+ * IPv6 addresses, `localhost`, `*.local` and single-label names such as a container's name.
+ */
+export function isLocalHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true
+  if (host.includes(":")) return host === "::1" || /^f[cd][0-9a-f]{2}:/.test(host)
+  const ip = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host)
+  if (ip) {
+    const [a, b] = [Number(ip[1]), Number(ip[2])]
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  }
+  return !host.includes(".")
+}
+
+/**
+ * Accepts what people paste from a dashboard: a missing scheme becomes http for a local host and
+ * https for anything else (so a key is never sent in cleartext to a public host by default), a
+ * trailing /models is dropped and a bare host gets /v1. Returns undefined for anything that is not
+ * a plain HTTP(S) URL. The TUI mirrors this in util/openai-compatible.ts.
  */
 export function normalizeBaseURL(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) return
-  const url = URL.parse(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`)
+  const schemeless = !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+  const probe = schemeless ? URL.parse(`http://${trimmed}`) : undefined
+  const url = URL.parse(
+    schemeless ? `${probe && !isLocalHost(probe.hostname) ? "https" : "http"}://${trimmed}` : trimmed,
+  )
   if (!url || !["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
     return
   url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/models$/, "") || "/v1"

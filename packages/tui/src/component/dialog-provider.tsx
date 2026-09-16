@@ -146,7 +146,11 @@ export function createDialogProviderOptions() {
     if (problem) throw new Error(problem)
     toast.show({
       variant: "info",
-      message: `${result.name} saved as provider "${result.providerID}"${result.movedFrom ? ` (moved from "${result.movedFrom}")` : ""} in ${result.configPath}.`,
+      message:
+        `${result.name} saved as provider "${result.providerID}"${result.movedFrom ? ` (moved from "${result.movedFrom}")` : ""} in ${result.configPath}.` +
+        (result.projectReferences?.length
+          ? ` These files still mention "${result.movedFrom}" and were not changed: ${result.projectReferences.join(", ")}.`
+          : ""),
     })
     dialog.replace(() => <DialogModel providerID={result.providerID} />)
   }

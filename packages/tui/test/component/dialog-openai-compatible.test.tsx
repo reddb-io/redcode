@@ -133,7 +133,7 @@ test("walks from URL to key and connects with a suggested id, name and an enviro
     {
       providerID: "together",
       name: "Together",
-      baseURL: "http://api.together.xyz/v1",
+      baseURL: "https://api.together.xyz/v1",
       apiKey: "{env:TOGETHER_KEY}",
       npm: "@ai-sdk/openai-compatible",
     },
@@ -226,7 +226,7 @@ test("reopening a configured provider prefills it and keeps the saved key when l
   await wizard.step("My Gateway")
   await wizard.input("OpenAI-compatible · Display name")
   await wizard.select("OpenAI-compatible · API type")
-  await wizard.step("Leave it empty to keep the saved key")
+  await wizard.step("Leave it empty to keep a key saved for this URL")
   await wizard.input("OpenAI-compatible · API key", "")
   await wait(() => wizard.connected.length === 1)
   expect(wizard.bodies).toEqual([
@@ -339,4 +339,74 @@ test("a problem found after connecting is shown in the wizard", async () => {
   await wizard.input("9Router · API URL")
   await wizard.input("9Router · API key", "router-key")
   await wait(() => wizard.frame().includes("Project override found"))
+})
+
+test("ctrl+b goes back a step without editing the prompt text", async () => {
+  await using tmp = await tmpdir()
+  await using wizard = await mountWizard({ root: tmp.path })
+  await wizard.input("OpenAI-compatible · API URL", "https://gateway.example.com/v1")
+  await wizard.step("OpenAI-compatible · Provider id")
+  await wait(() => wizard.app.renderer.currentFocusedEditor instanceof TextareaRenderable)
+  await wizard.app.mockInput.pressKey("b", { ctrl: true })
+  await wizard.app.renderOnce()
+  await wizard.step("OpenAI-compatible · API URL")
+  expect(wizard.frame()).toContain("https://gateway.example.com/v1")
+  await wizard.input("OpenAI-compatible · API URL")
+  await wizard.step("OpenAI-compatible · Provider id")
+  expect(wizard.frame()).toContain("example")
+  expect(wizard.bodies).toEqual([])
+})
+
+test("overriding a built-in provider with a saved login asks again and keeps it when declined", async () => {
+  await using tmp = await tmpdir()
+  await using wizard = await mountWizard({
+    root: tmp.path,
+    lookup: (id) => ({ taken: id === "openai" }),
+    reply: (body) =>
+      body.providerID === "openai" && !body.replaceCredential
+        ? Response.json(
+            {
+              reason: "credential_in_use",
+              message: 'Overriding "openai" replaces its saved login, and all openai models will be sent to this URL.',
+            },
+            { status: 400 },
+          )
+        : Response.json(result(body)),
+  })
+  await wizard.input("OpenAI-compatible · API URL", "https://proxy.example.com/v1")
+  await wizard.input("OpenAI-compatible · Provider id", "openai")
+  await wizard.step('"openai" is already a provider')
+  expect(wizard.frame()).toContain("all openai models will be sent to this URL")
+  await wizard.select('"openai" is already a provider', 1)
+  await wizard.input("OpenAI-compatible · Display name")
+  await wizard.select("OpenAI-compatible · API type")
+  await wizard.input("OpenAI-compatible · API key", "sk-proxy")
+  await wizard.select("Replace the saved login for openai?")
+  await wizard.input("OpenAI-compatible · Provider id", "proxy")
+  await wizard.input("OpenAI-compatible · Display name")
+  await wizard.select("OpenAI-compatible · API type")
+  await wizard.input("OpenAI-compatible · API key", "sk-proxy")
+  await wait(() => wizard.connected.length === 1)
+  expect(wizard.bodies.map((body) => [body.providerID, body.override, body.replaceCredential])).toEqual([
+    ["openai", true, undefined],
+    ["proxy", undefined, undefined],
+  ])
+
+  await using again = await mountWizard({
+    root: tmp.path,
+    lookup: (id) => ({ taken: id === "openai" }),
+    reply: (body) =>
+      body.replaceCredential
+        ? Response.json(result(body))
+        : Response.json({ reason: "credential_in_use", message: "Confirm to replace it." }, { status: 400 }),
+  })
+  await again.input("OpenAI-compatible · API URL", "https://proxy.example.com/v1")
+  await again.input("OpenAI-compatible · Provider id", "openai")
+  await again.select('"openai" is already a provider', 1)
+  await again.input("OpenAI-compatible · Display name")
+  await again.select("OpenAI-compatible · API type")
+  await again.input("OpenAI-compatible · API key", "sk-proxy")
+  await again.select("Replace the saved login for openai?", 1)
+  await wait(() => again.connected.length === 1)
+  expect(again.bodies.map((body) => body.replaceCredential)).toEqual([undefined, true])
 })
