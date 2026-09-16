@@ -18,6 +18,7 @@ import { DesignBrowserLauncher } from "@reddb-io/redcode-core/design/browser-lau
 import { DesignSystem } from "@reddb-io/redcode-core/design/system"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
+import { DesignRounds } from "@reddb-io/redcode-core/design/rounds"
 import { DesignStudio } from "@/design/studio"
 import { Tool } from "./tool"
 import { Question } from "@/question"
@@ -397,7 +398,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_export", {
       description:
-        "Start HTML export, rendered scenario audit, implementation comparison, or SVG-to-GIF export. Poll design_jobs. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
+        "Start HTML export, rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
       parameters: Schema.Struct({ id: Design.ID, input: Design.Render }),
       execute: (input, ctx) =>
         run(
@@ -501,7 +502,7 @@ export const DesignTools = Effect.gen(function* () {
 })
 
 function describe(document: Design.Info, system = DesignSystem.describe(document)) {
-  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${system}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`
+  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${system}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`
 }
 
 function define<S extends Schema.Decoder<unknown>>(

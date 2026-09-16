@@ -109,6 +109,116 @@ describe("DesignFeed (legacy)", () => {
     for (const item of replayed.events) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
   })
 
+  test("a completed design_jobs part carrying a verify job adds a verified entry on replay and live", () => {
+    const job = {
+      id: "render_verify",
+      designID: "design_checkout",
+      input: { revision: "rev_2", format: "verify", round: 1 },
+      status: "completed",
+      progress: 1,
+      result: "/exports/render_verify.html",
+      error: null,
+      created: 1,
+      finished: 2,
+      verify: {
+        revision: "rev_2",
+        round: 1,
+        width: 1440,
+        findings: [],
+        notes: [
+          {
+            feedback: "msg_review",
+            index: 1,
+            label: 'h1 "Checkout"',
+            found: true,
+            blocking: false,
+            findings: [],
+            scenarios: [],
+            reason: "found; no findings",
+          },
+          {
+            feedback: "msg_review",
+            index: 2,
+            label: 'p "Footer"',
+            found: false,
+            blocking: true,
+            findings: [],
+            scenarios: [],
+            reason: "element not found in rev_2",
+          },
+        ],
+      },
+    }
+    const part = {
+      id: "prt_jobs",
+      type: "tool",
+      callID: "call_jobs",
+      tool: "design_jobs",
+      state: {
+        status: "completed",
+        input: { id: "design_checkout" },
+        output: "render_verify: completed",
+        title: "Design",
+        metadata: { jobs: [job] },
+        time: { start: 1, end: 2 },
+      },
+    }
+    const verified = {
+      type: "verified" as const,
+      seq: 0,
+      design: designID,
+      revision: "rev_2",
+      round: 1,
+      job: "render_verify",
+      notes: [
+        {
+          feedback: "msg_review",
+          index: 1,
+          label: 'h1 "Checkout"',
+          verdict: "pass" as const,
+          reason: "found; no findings",
+        },
+        {
+          feedback: "msg_review",
+          index: 2,
+          label: 'p "Footer"',
+          verdict: "fail" as const,
+          reason: "element not found in rev_2",
+        },
+      ],
+    }
+    const replayed = DesignFeed.replay([message("msg_reply", "assistant", [part])])
+    expect(replayed.events).toEqual([
+      {
+        type: "tool",
+        seq: 0,
+        at: 1_700_000_000_001,
+        id: "call_jobs",
+        tool: "design_jobs",
+        status: "done",
+        summary: "Design",
+      },
+      { ...verified, at: 1_700_000_000_001 },
+    ])
+    for (const item of replayed.events) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
+    const assistant = message("msg_live", "assistant", []).info
+    const [state] = DesignFeed.reduce(DesignFeed.initial, live("message.updated", { sessionID, info: assistant }))
+    const [, items] = DesignFeed.reduce(
+      state,
+      live("message.part.updated", { sessionID, time: 1, part: { ...part, sessionID, messageID: "msg_live" } }),
+    )
+    expect(items.map((item) => ({ ...item, at: 0 }))).toEqual([
+      { type: "tool", seq: 0, at: 0, id: "call_jobs", tool: "design_jobs", status: "done", summary: "Design" },
+      { ...verified, at: 0 },
+    ])
+    // A running jobs call and a result without a verify add only the tool entry.
+    const running = { ...part, state: { status: "running", input: { id: "design_checkout" }, time: { start: 1 } } }
+    expect(DesignFeed.part("assistant", running as never, 5)).toHaveLength(1)
+    const { verify: _verify, ...unverified } = job
+    const plain = { ...part, state: { ...part.state, metadata: { jobs: [unverified] } } }
+    expect(DesignFeed.part("assistant", plain as never, 5)).toHaveLength(1)
+  })
+
   test("reports a review pending until a turn takes its admitted prompt up, on replay and live", () => {
     const operation = (id: string) =>
       message(id, "user", [

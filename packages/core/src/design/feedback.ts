@@ -64,9 +64,7 @@ function variantOf(input: Design.Feedback) {
   return value
 }
 
-function notesOf(input: Design.Feedback) {
-  return input.items.filter((item) => !VARIANT_MARKER.test(item.target))
-}
+const notesOf = Design.notesOf
 
 /** One line of page- or user-provided text: indented like all user text, never spanning a line. */
 function inline(text: string, limit = 100) {

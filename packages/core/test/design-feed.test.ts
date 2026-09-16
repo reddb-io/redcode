@@ -127,6 +127,123 @@ describe("DesignFeed.reduce", () => {
     for (const item of items) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
   })
 
+  test("a design_jobs result carrying a completed verify job becomes one verified entry with per-note verdicts", () => {
+    const job = {
+      id: "render_verify",
+      designID: "design_checkout",
+      input: { revision: "rev_2", format: "verify", round: 1 },
+      status: "completed",
+      progress: 1,
+      result: "/exports/render_verify.html",
+      error: null,
+      created: 1,
+      finished: 2,
+      verify: {
+        revision: "rev_2",
+        round: 1,
+        width: 1440,
+        findings: [],
+        notes: [
+          {
+            feedback: "msg_review",
+            index: 1,
+            label: 'h1 "Checkout"',
+            found: true,
+            blocking: false,
+            after: "/exports/render_verify-0-after.png",
+            findings: [],
+            scenarios: ["Confirm: exercised"],
+            reason: "found; no findings; 1 scenario exercised",
+          },
+          {
+            feedback: "msg_review",
+            index: 2,
+            label: 'button "Remove"',
+            found: true,
+            blocking: false,
+            findings: ["review · small-control · #remove: Control height is 20px."],
+            scenarios: [],
+            reason: "found; 1 advisory finding",
+          },
+          {
+            feedback: "msg_review",
+            index: 3,
+            label: 'p "Footer"',
+            found: false,
+            blocking: true,
+            findings: [],
+            scenarios: [],
+            reason: "element not found in rev_2",
+          },
+        ],
+      },
+    }
+    const running = { ...job, id: "render_running", status: "running", verify: undefined, finished: undefined }
+    const items = all([
+      event(
+        SessionEvent.Tool.Called,
+        1,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs",
+          tool: "design_jobs",
+          input: { id: "design_checkout" },
+          provider: { executed: false },
+        }),
+      ),
+      event(
+        SessionEvent.Tool.Success,
+        2,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs",
+          structured: { jobs: [running, job], revision: "rev_2" },
+          content: [],
+          provider: { executed: false },
+        }),
+      ),
+    ])
+    expect(items.map((item) => item.type)).toEqual(["tool", "tool", "verified"])
+    expect(items[2]).toEqual({
+      type: "verified",
+      seq: 2,
+      at: 1_700_000_000_000,
+      design: designID,
+      revision: "rev_2",
+      round: 1,
+      job: "render_verify",
+      notes: [
+        {
+          feedback: "msg_review",
+          index: 1,
+          label: 'h1 "Checkout"',
+          verdict: "pass",
+          reason: "found; no findings; 1 scenario exercised",
+        },
+        {
+          feedback: "msg_review",
+          index: 2,
+          label: 'button "Remove"',
+          verdict: "warn",
+          reason: "found; 1 advisory finding",
+        },
+        {
+          feedback: "msg_review",
+          index: 3,
+          label: 'p "Footer"',
+          verdict: "fail",
+          reason: "element not found in rev_2",
+        },
+      ],
+    })
+    for (const item of items) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
+    // A jobs result without a finished verify adds nothing beyond the tool entry.
+    expect(DesignFeed.verifiedOf([running], { seq: 0, at: 0 })).toEqual([])
+    expect(DesignFeed.verifiedOf("not jobs", { seq: 0, at: 0 })).toEqual([])
+  })
+
   test("attributes results to their call, reports failures and skips other tools' publications", () => {
     const items = all([
       event(

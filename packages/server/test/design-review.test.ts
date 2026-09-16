@@ -2486,6 +2486,142 @@ test("a revision picked while a refresh is in flight stays on screen", async () 
   }
 }, 60000)
 
+test("feedback rounds show each note's status, a verify verdict per note, and queue unfinished notes again", async () => {
+  const current = await published("html")
+  const feedback: Design.Feedback = {
+    id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+    revision: current.revision.id,
+    text: "",
+    items: [
+      { target: "#title", text: "Name the shop", tag: "h1", elementText: "Checkout", label: 'h1 "Checkout" in main' },
+      { target: "#submit", text: "Say what is added", tag: "button", label: 'button "Add item" in main' },
+      { target: "#diagram", text: "Swap the arrow", tag: "pre", label: 'pre "diagram" in main' },
+    ],
+    assets: [],
+    snapshot: "",
+    delivery: "queue",
+    end: false,
+  }
+  await api(`${current.root}/${current.document.id}/feedback`, "POST", feedback)
+  const second = await api<Design.Revision>(`${current.root}/${current.document.id}/revision`, "POST", {
+    name: "Answered round 1",
+  })
+  // The agent records what became of two notes; the third stays open until it does.
+  const updated = await api<Design.Info>(`${current.root}/${current.document.id}`, "PATCH", {
+    notes: [
+      { feedback: feedback.id, index: 1, status: "accepted", reason: "The shop name comes from the account" },
+      { feedback: feedback.id, index: 2, status: "unresolved", reason: "The label is still generic" },
+    ],
+  })
+  expect(updated.rounds).toEqual([
+    {
+      number: 1,
+      opened: expect.any(Number),
+      revision: current.revision.id,
+      feedback: [feedback.id],
+      published: second.id,
+    },
+  ])
+  expect(updated.notes?.map((note) => note.status)).toEqual(["accepted", "unresolved", "open"])
+  const canned = [
+    { type: "state", seq: 0, at: 1, state: "working" },
+    {
+      type: "verified",
+      seq: 6,
+      at: 1,
+      design: current.document.id,
+      revision: second.id,
+      round: 1,
+      job: "render_verify",
+      notes: [
+        {
+          feedback: feedback.id,
+          index: 1,
+          label: 'h1 "Checkout" in main',
+          verdict: "pass",
+          reason: "found; no findings",
+        },
+        {
+          feedback: feedback.id,
+          index: 2,
+          label: 'button "Add item" in main',
+          verdict: "warn",
+          reason: "found; 1 advisory finding",
+        },
+        {
+          feedback: feedback.id,
+          index: 3,
+          label: 'pre "diagram" in main',
+          verdict: "fail",
+          reason: `element not found in ${second.id}`,
+        },
+      ],
+    },
+    { type: "state", seq: 0, at: 2, state: "idle" },
+  ]
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.route(/\/design\/feed(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: canned.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  )
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await showsRevision(page, second.id)
+    const rounds = page.locator("#rounds")
+    await rounds.locator(".round-note").first().waitFor()
+    expect(await rounds.locator("#rounds-count").textContent()).toBe("1")
+    expect(await rounds.locator(".round-head").textContent()).toContain(`Round 1 · answered by ${second.id.slice(-8)}`)
+    const row = (index: number) => rounds.locator(`.round-note[data-index="${index}"]`)
+    expect(await row(1).locator(".badge").textContent()).toBe("Won't fix")
+    expect(await row(1).locator(".round-reason").textContent()).toBe("The shop name comes from the account")
+    expect(await row(2).locator(".badge").textContent()).toBe("Unresolved")
+    expect(await row(3).locator(".badge").textContent()).toBe("Open")
+    // Only an unfinished note offers to go into the next round.
+    expect(await row(1).getByRole("button", { name: "Send again", exact: true }).count()).toBe(0)
+    expect(await row(3).getByRole("button", { name: "Send again", exact: true }).count()).toBe(0)
+    await row(2).getByRole("button", { name: "Send again", exact: true }).click()
+    await note(page, 'button "Add item" in main', "Say what is added").waitFor()
+    await page.getByText("Note queued for the next round", { exact: true }).waitFor()
+    // Clicking again does not queue a duplicate.
+    await row(2).getByRole("button", { name: "Send again", exact: true }).click()
+    expect(await page.locator("#notes .note").count()).toBe(1)
+    const sent = await captureFeedback(page)
+    await page.getByRole("button", { name: "Send to agent", exact: true }).click()
+    await page.getByText("Feedback received", { exact: true }).waitFor()
+    expect(sent[0].items).toHaveLength(1)
+    expect(sent[0].items[0]).toMatchObject({ target: "#submit", text: "Say what is added", revision: second.id })
+    // The new message opens round 2 while round 1 keeps its recorded statuses.
+    await until(async () => {
+      const stored = await api<Design.Info>(`${current.root}/${current.document.id}`)
+      return stored.rounds?.length === 2
+    }, "the re-sent note opens round 2")
+    // The feed's verify entry shows one verdict per note and links to the job's report.
+    const verified = page.locator(".entry[data-kind=verified]")
+    await verified.waitFor()
+    expect(await verified.locator("strong").first().textContent()).toBe(
+      `Verified round 1 on revision ${second.id.slice(-8)}`,
+    )
+    expect(
+      await verified
+        .locator(".verdict")
+        .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.verdict)),
+    ).toEqual(["pass", "warn", "fail"])
+    expect(await verified.locator(".verdict .glyph").allTextContents()).toEqual(["✓", "◐", "✗"])
+    expect(await verified.locator(".verdict").nth(2).textContent()).toContain(`element not found in ${second.id}`)
+    expect(await verified.getByRole("link", { name: "Open captures", exact: true }).getAttribute("href")).toBe(
+      `${current.root}/${current.document.id}/job/render_verify/file`,
+    )
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
 test("the V2 review feed counts a connected review page while it is subscribed", async () => {
   const current = await session()
   const id = current.data.id

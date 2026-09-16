@@ -139,6 +139,93 @@ export const Tweaks = Schema.Record(
   Schema.String.check(Schema.isPattern(/^[^;{}<>]*$/)),
 )
 
+/** One browser review note. The user's words stay in text; the captured element context is separate. */
+export const FeedbackItem = Schema.Struct({
+  target: Schema.String,
+  text: Schema.String,
+  params: ParamContext.pipe(optional),
+  tag: Schema.String.check(Schema.isMaxLength(64)).pipe(optional),
+  elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+  selectedText: Schema.String.check(Schema.isMaxLength(12000)).pipe(optional),
+  /** The element and the named ancestors around it, innermost first, such as `svg in button "Close" in dialog "New"`. */
+  label: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+  /** A secondary locator: the element's absolute XPath in the revision the note was captured on. */
+  xpath: Schema.String.check(Schema.isMaxLength(2000)).pipe(optional),
+  /** The containers around the element as the page showed them, outermost first. */
+  context: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+  /** The element's parent and grandparent, each with its absolute XPath, innermost first. */
+  parent: Schema.String.check(Schema.isMaxLength(1200)).pipe(optional),
+  /** The revision the note was captured on; a draft can outlive a live reload to a newer revision. */
+  revision: Schema.String.pipe(optional),
+}).annotate({ identifier: "Design.FeedbackItem" })
+export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
+
+/** Legacy browsers mirrored the selected variant as a pseudo-note; it is metadata, not a note. */
+const VARIANT_MARKER = /^variant:[a-zA-Z0-9_-]{1,64}$/
+/** The review notes of one feedback message, in the order the rendered message numbers them (1-based). */
+export function notesOf(input: { readonly items: ReadonlyArray<FeedbackItem> }) {
+  return input.items.filter((item) => !VARIANT_MARKER.test(item.target))
+}
+
+/**
+ * What became of one review note. `open` until the agent records an outcome after verifying the
+ * revision that answers the round: `resolved` (fixed, seen in a verify), `partial` (improved, not
+ * fully), `unresolved` (not fixed) or `accepted` (deliberately not changed, with a reason).
+ */
+export const NoteStatus = Schema.Literals(["open", "resolved", "partial", "unresolved", "accepted"])
+export type NoteStatus = typeof NoteStatus.Type
+
+/** The verify job a status cites, with the capture and findings that job recorded for the note. */
+export const NoteEvidence = Schema.Struct({
+  job: Schema.String,
+  revision: Schema.String.pipe(optional),
+  capture: Schema.String.pipe(optional),
+  findings: Schema.Array(Schema.String).pipe(optional),
+}).annotate({ identifier: "Design.NoteEvidence" })
+export interface NoteEvidence extends Schema.Schema.Type<typeof NoteEvidence> {}
+
+/** A note is named by the feedback message it arrived in and its 1-based number in that message. */
+const NoteRef = {
+  feedback: Schema.String,
+  index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+}
+
+/** A review note with its durable status; `item` is the note as the browser sent it. */
+export const Note = Schema.Struct({
+  ...NoteRef,
+  round: Schema.Int,
+  item: FeedbackItem,
+  status: NoteStatus,
+  reason: Schema.String.pipe(optional),
+  evidence: NoteEvidence.pipe(optional),
+  updated: Schema.Number,
+}).annotate({ identifier: "Design.Note" })
+export interface Note extends Schema.Schema.Type<typeof Note> {}
+
+/** What the agent records for one note after a round's verify; `open` is never set by hand. */
+export const NoteUpdate = Schema.Struct({
+  ...NoteRef,
+  status: Schema.Literals(["resolved", "partial", "unresolved", "accepted"]),
+  reason: Schema.String.check(Schema.isMaxLength(500)).pipe(optional),
+  evidence: Schema.Struct({ job: Schema.String }).pipe(optional),
+}).annotate({ identifier: "Design.NoteUpdate" })
+export interface NoteUpdate extends Schema.Schema.Type<typeof NoteUpdate> {}
+
+/**
+ * A feedback round: the notes received, in one or more review messages, since the last revision the
+ * agent published after them. `published` is the first revision published once the round had notes;
+ * notes that arrive after it open the next round.
+ */
+export const Round = Schema.Struct({
+  number: Schema.Int,
+  opened: Schema.Number,
+  /** The revision under review when the round opened. */
+  revision: Schema.String,
+  feedback: Schema.Array(Schema.String),
+  published: Schema.String.pipe(optional),
+}).annotate({ identifier: "Design.Round" })
+export interface Round extends Schema.Schema.Type<typeof Round> {}
+
 export const Create = Schema.Struct({
   name: Schema.NonEmptyString,
   journey: Journey,
@@ -149,6 +236,7 @@ export const Create = Schema.Struct({
 export interface Create extends Schema.Schema.Type<typeof Create> {}
 
 export const Update = Schema.Struct({
+  notes: Schema.Array(NoteUpdate).check(Schema.isMaxLength(100)).pipe(optional),
   controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
   presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   name: Schema.NonEmptyString.pipe(optional),
@@ -190,6 +278,9 @@ export const Info = Schema.Struct({
   approvedRevision: Schema.NullOr(Schema.String),
   ended: Schema.Boolean,
   updated: Schema.Number,
+  /** Feedback rounds and their notes; absent on documents that received no browser review yet. */
+  rounds: Schema.Array(Round).pipe(optional),
+  notes: Schema.Array(Note).pipe(optional),
 }).annotate({ identifier: "Design.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
@@ -240,27 +331,6 @@ export const ApprovalNotice = Schema.Struct({
   variant: Schema.NullOr(Variant),
 }).annotate({ identifier: "Design.ApprovalNotice" })
 export interface ApprovalNotice extends Schema.Schema.Type<typeof ApprovalNotice> {}
-
-/** One browser review note. The user's words stay in text; the captured element context is separate. */
-export const FeedbackItem = Schema.Struct({
-  target: Schema.String,
-  text: Schema.String,
-  params: ParamContext.pipe(optional),
-  tag: Schema.String.check(Schema.isMaxLength(64)).pipe(optional),
-  elementText: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
-  selectedText: Schema.String.check(Schema.isMaxLength(12000)).pipe(optional),
-  /** The element and the named ancestors around it, innermost first, such as `svg in button "Close" in dialog "New"`. */
-  label: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
-  /** A secondary locator: the element's absolute XPath in the revision the note was captured on. */
-  xpath: Schema.String.check(Schema.isMaxLength(2000)).pipe(optional),
-  /** The containers around the element as the page showed them, outermost first. */
-  context: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
-  /** The element's parent and grandparent, each with its absolute XPath, innermost first. */
-  parent: Schema.String.check(Schema.isMaxLength(1200)).pipe(optional),
-  /** The revision the note was captured on; a draft can outlive a live reload to a newer revision. */
-  revision: Schema.String.pipe(optional),
-}).annotate({ identifier: "Design.FeedbackItem" })
-export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
 
 const VariantID = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{1,64}$/))
 export const VariantOperationKind = Schema.Literals(["delete", "rename", "reorder", "merge", "split"])
@@ -379,6 +449,25 @@ export const FeedEvent = Schema.Union([
     name: Schema.String,
   }),
   Schema.Struct({ ...FeedBase, type: Schema.Literal("agent"), agent: Schema.String }),
+  /** A round's verify job finished: one verdict per note, with a link to the job's report and captures. */
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("verified"),
+    design: ID,
+    revision: Schema.String,
+    round: Schema.Int,
+    job: Schema.String,
+    notes: Schema.Array(
+      Schema.Struct({
+        feedback: Schema.String,
+        index: Schema.Int,
+        label: Schema.String,
+        /** pass: found with no findings; warn: found with advisory findings; fail: missing or a blocking finding. */
+        verdict: Schema.Literals(["pass", "warn", "fail"]),
+        reason: Schema.String,
+      }),
+    ),
+  }),
 ]).annotate({ identifier: "Design.FeedEvent" })
 export type FeedEvent = typeof FeedEvent.Type
 
@@ -412,7 +501,9 @@ export interface ImportAsset extends Schema.Schema.Type<typeof ImportAsset> {}
 
 export const Render = Schema.Struct({
   revision: Schema.String,
-  format: Schema.Literals(["html", "gif", "audit", "compare"]),
+  format: Schema.Literals(["html", "gif", "audit", "compare", "verify"]),
+  /** With format verify: the feedback round whose notes are verified against `revision`; the latest round by default. */
+  round: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(optional),
   implementation: Schema.String.pipe(optional),
   candidate: Schema.String.pipe(optional),
   asset: Schema.String.pipe(optional),
@@ -456,6 +547,34 @@ export const Audit = Schema.Struct({
 }).annotate({ identifier: "Design.Audit" })
 export interface Audit extends Schema.Schema.Type<typeof Audit> {}
 
+/** What a round's verify job observed for one note on the new revision. */
+export const VerifyNote = Schema.Struct({
+  feedback: Schema.String,
+  index: Schema.Int,
+  label: Schema.String,
+  /** The note's element was located in the new revision (by data-design-id, selector or XPath). */
+  found: Schema.Boolean,
+  /** A missing element or an error-severity finding inside the element's container. */
+  blocking: Schema.Boolean,
+  /** Focused captures of the element on the revision the note was taken on and on the new one. */
+  before: Schema.String.pipe(optional),
+  after: Schema.String.pipe(optional),
+  findings: Schema.Array(Schema.String),
+  scenarios: Schema.Array(Schema.String),
+  /** One line a reviewer can read: found or missing, and what was observed. */
+  reason: Schema.String,
+}).annotate({ identifier: "Design.VerifyNote" })
+export interface VerifyNote extends Schema.Schema.Type<typeof VerifyNote> {}
+
+export const Verify = Schema.Struct({
+  revision: Schema.String,
+  round: Schema.Int,
+  width: Schema.Number,
+  notes: Schema.Array(VerifyNote),
+  findings: Schema.Array(Schema.String),
+}).annotate({ identifier: "Design.Verify" })
+export interface Verify extends Schema.Schema.Type<typeof Verify> {}
+
 export const Job = Schema.Struct({
   id: Schema.String,
   designID: ID,
@@ -468,6 +587,7 @@ export const Job = Schema.Struct({
   started: Schema.Number.pipe(optional),
   finished: Schema.Number.pipe(optional),
   audit: Audit.pipe(optional),
+  verify: Verify.pipe(optional),
 }).annotate({ identifier: "Design.Job" })
 export interface Job extends Schema.Schema.Type<typeof Job> {}
 

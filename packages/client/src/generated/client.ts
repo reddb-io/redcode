@@ -701,6 +701,7 @@ export function make(options: ClientOptions) {
             method: "PATCH",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
             body: {
+              notes: input["notes"],
               controls: input["controls"],
               presets: input["presets"],
               name: input["name"],
@@ -883,6 +884,7 @@ export function make(options: ClientOptions) {
             body: {
               revision: input["revision"],
               format: input["format"],
+              round: input["round"],
               implementation: input["implementation"],
               candidate: input["candidate"],
               asset: input["asset"],

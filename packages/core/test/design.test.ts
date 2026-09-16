@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import path from "node:path"
 import { Effect } from "effect"
+import { Design } from "@reddb-io/redcode-schema/design"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import { chromium } from "playwright-core"
 import { designDependencies } from "./fixture/design-dependencies"
@@ -421,6 +422,122 @@ describe("Design revisions and review", () => {
         expect(findings.filter((item) => item.includes("does not exist"))).toEqual([])
         expect(findings.filter((item) => item.startsWith("Screens"))).toEqual([])
         expect(findings.filter((item) => item.includes("script error"))).toEqual([])
+      }),
+    240000,
+  )
+  it.live(
+    "verifies a feedback round note by note: focused before/after captures, scoped checks and a missing element",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        const page = (title: string, remove: boolean) =>
+          `<!doctype html><html lang="en"><head><title>Checkout</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:24px;color:#17202a;background:#fff}button{padding:12px;color:#17202a;background:#fff}</style></head><body><main data-design-id="checkout"><h1 id="title" data-design-id="title">${title}</h1>${remove ? '<button id="remove" data-design-id="remove">Remove item</button>' : ""}<button id="submit" data-design-id="submit" onclick="document.querySelector('#result').dataset.state='populated'">Confirm</button><p id="result" data-state="empty">Pending</p></main></body></html>`
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), page("Checkout", true)))
+        yield* store.update(document.id, {
+          scenarios: [
+            {
+              id: "confirm",
+              name: "Confirm",
+              selector: "#result",
+              state: "populated",
+              actions: [{ action: "click", selector: "#submit" }],
+            },
+          ],
+        })
+        const first = yield* store.publish(document.id, "First")
+        // No round yet: a verify has nothing to check and says so in the tool result.
+        expect(
+          yield* renderer.start(document.id, { revision: first.id, format: "verify" }).pipe(Effect.result),
+        ).toMatchObject({ _tag: "Failure" })
+        const feedback: Design.Feedback = {
+          id: SessionMessage.ID.create(),
+          revision: first.id,
+          text: "",
+          items: [
+            {
+              target: 'h1[data-design-id="title"]',
+              text: "Say whose checkout it is",
+              label: 'h1 "Checkout" in main',
+              xpath: "/html/body/main/h1",
+              params: { values: {} },
+            },
+            { target: "#remove", text: "Drop this button", label: 'button "Remove item" in main' },
+          ],
+          assets: [],
+          snapshot: "",
+          delivery: "queue",
+          end: false,
+        }
+        yield* store.prepareFeedback(document.id, feedback)
+        yield* store.acknowledge(document.id, feedback)
+        expect((yield* store.get(document.id)).rounds).toEqual([
+          { number: 1, opened: expect.any(Number), revision: first.id, feedback: [feedback.id] },
+        ])
+        yield* Effect.promise(() => Bun.write(path.join(document.root, document.entry), page("Your checkout", false)))
+        const second = yield* store.publish(document.id, "Second")
+        expect((yield* store.get(document.id)).rounds?.[0].published).toBe(second.id)
+        expect(
+          yield* renderer.start(document.id, { revision: second.id, format: "verify", round: 7 }).pipe(Effect.result),
+        ).toMatchObject({ _tag: "Failure" })
+        const job = yield* renderer.start(document.id, { revision: second.id, format: "verify" })
+        const result = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(document.id)).find((item) => item.id === job.id)!
+            if (current.status !== "running" && current.status !== "queued") return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("120 seconds"))
+        expect(result.error).toBeNull()
+        expect(result.status).toBe("completed")
+        const verify = result.verify!
+        expect(verify.round).toBe(1)
+        expect(verify.revision).toBe(second.id)
+        expect(verify.notes).toHaveLength(2)
+        const [title, removed] = verify.notes
+        expect(title).toMatchObject({ feedback: feedback.id, index: 1, found: true, blocking: false })
+        expect(title.reason).toStartWith("found; no findings")
+        expect(title.scenarios).toEqual(["Confirm: exercised"])
+        expect(yield* Effect.promise(() => Bun.file(title.before!).exists())).toBe(true)
+        expect(yield* Effect.promise(() => Bun.file(title.after!).exists())).toBe(true)
+        expect(removed).toMatchObject({ index: 2, found: false, blocking: true })
+        expect(removed.after).toBeUndefined()
+        expect(removed.reason).toContain(`element not found in ${second.id}`)
+        // The button existed on the revision the note was taken on, so its before capture shows it.
+        expect(yield* Effect.promise(() => Bun.file(removed.before!).exists())).toBe(true)
+        const html = yield* Effect.promise(() => Bun.file(result.result!).text())
+        expect(html).toContain(`id="note-1-${feedback.id}"`)
+        expect(html).toContain("Say whose checkout it is")
+        const report = DesignQuality.report([result], second.id)
+        expect(report).toContain(`Current verify: ${job.id}, round 1`)
+        expect(report).toContain(`1. ${feedback.id} #1 h1 "Checkout" in main: found; no findings`)
+        expect(report).toContain(`after: ${title.after}`)
+        expect(report).toContain('"evidence":{"job":"' + job.id + '"}')
+        // Statuses cite the job; the evidence records what it saw for each note.
+        const updated = yield* store.update(document.id, {
+          notes: [
+            { feedback: feedback.id, index: 1, status: "resolved", evidence: { job: job.id } },
+            {
+              feedback: feedback.id,
+              index: 2,
+              status: "accepted",
+              reason: "The button stays until the API allows removal",
+            },
+          ],
+        })
+        expect(updated.notes?.[0]).toMatchObject({
+          status: "resolved",
+          evidence: { job: job.id, revision: second.id, capture: title.after, findings: [] },
+        })
+        expect(updated.notes?.[1]).toMatchObject({
+          status: "accepted",
+          reason: "The button stays until the API allows removal",
+        })
+        expect(
+          yield* store
+            .update(document.id, { notes: [{ feedback: feedback.id, index: 3, status: "resolved" }] })
+            .pipe(Effect.result),
+        ).toMatchObject({ _tag: "Failure" })
       }),
     240000,
   )

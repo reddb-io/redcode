@@ -436,6 +436,79 @@ export const designGoalScenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .post(`${item}/job`, "v2.design.render.verify")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const current = yield* published(ctx)
+        // A review note on the heading opens round 1; the agent's next revision answers it.
+        const feedback = {
+          id: `msg_${crypto.randomUUID()}`,
+          revision: current.revision.id,
+          text: "",
+          items: [
+            {
+              target: "h1",
+              text: "Name the shop",
+              tag: "h1",
+              elementText: "HTTP API checkout",
+              label: 'h1 "HTTP API checkout"',
+            },
+          ],
+          assets: [],
+          snapshot: "",
+          delivery: "queue",
+          end: false,
+        }
+        yield* json(ctx, "POST", `${current.item}/feedback`, feedback)
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(current.document.root, current.document.entry),
+            "<!doctype html><html><body><h1>Checkout at the HTTP API shop</h1></body></html>",
+          ),
+        )
+        const revision = Schema.decodeUnknownSync(Design.Revision)(
+          yield* json(ctx, "POST", `${current.item}/revision`, { name: "Answered round 1" }),
+        )
+        return { ...current, feedback, revision }
+      }),
+    )
+    .at((ctx) => ({
+      path: `${ctx.state.item}/job`,
+      headers: ctx.headers(),
+      body: { revision: ctx.state.revision.id, format: "verify" },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        const started = Schema.decodeUnknownSync(Design.Job)(body)
+        check(started.input.format === "verify", "verify should start a verify job")
+        const completed = yield* completedJob(ctx, ctx.state.item, started.id)
+        const verify = completed.verify
+        check(verify !== undefined && verify.round === 1, "verify should report the round it checked")
+        check(
+          verify!.notes.length === 1 &&
+            verify!.notes[0].feedback === ctx.state.feedback.id &&
+            verify!.notes[0].index === 1 &&
+            verify!.notes[0].found,
+          `verify should find the note's heading in the new revision: ${JSON.stringify(verify)}`,
+        )
+        const stored = Schema.decodeUnknownSync(Design.Info)(yield* json(ctx, "GET", ctx.state.item))
+        check(
+          stored.rounds?.length === 1 && stored.rounds[0].published === ctx.state.revision.id,
+          "the publish after the note should answer round 1",
+        )
+        check(stored.notes?.[0]?.status === "open", "a note stays open until the agent records its status")
+        const updated = Schema.decodeUnknownSync(Design.Info)(
+          yield* json(ctx, "PATCH", ctx.state.item, {
+            notes: [{ feedback: ctx.state.feedback.id, index: 1, status: "resolved", evidence: { job: started.id } }],
+          }),
+        )
+        check(
+          updated.notes?.[0]?.status === "resolved" && updated.notes[0].evidence?.job === started.id,
+          "recording a status should cite the verify job",
+        )
+      }),
+    ),
+  http.protected
     .post(`${item}/job/{jobID}/cancel`, "v2.design.cancel")
     .seeded(job)
     .at((ctx) => ({ path: `${ctx.state.item}/job/${ctx.state.job.id}/cancel`, headers: ctx.headers() }))

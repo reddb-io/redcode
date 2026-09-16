@@ -23,6 +23,7 @@ import { DesignQuality } from "../design/quality"
 import { DesignApproval } from "../design/approval"
 import { DesignRenderer } from "../design/renderer"
 import { DesignPlaybooks } from "../design/playbooks"
+import { DesignRounds } from "../design/rounds"
 import { LocationMutation } from "../location-mutation"
 import { Location } from "../location"
 import { Global } from "../global"
@@ -300,7 +301,7 @@ const layer = Layer.effectDiscard(
                   : output
                       .map(
                         (document) =>
-                          `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}`,
+                          `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`,
                       )
                       .join("\n\n"),
             },
@@ -432,7 +433,7 @@ const layer = Layer.effectDiscard(
         }),
         design_export: Tool.make({
           description:
-            "Start a local HTML export, rendered scenario audit, implementation comparison, or SVG-to-GIF export. Poll design_jobs for progress and the resulting file. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
+            "Start a local HTML export, rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs for progress and the resulting file. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
           input: Schema.Struct({ id: Design.ID, input: Design.Render }),
           output: Design.Job,
           toModelOutput: ({ output }) => [
