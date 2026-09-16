@@ -1,5 +1,12 @@
 # @reddb-io/redcode-design
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [edae950]
+  - @reddb-io/redcode-schema@1.23.0
+
 ## 0.0.2
 
 ### Patch Changes
