@@ -21,7 +21,7 @@ const pendingAuths = new Map<string, PendingAuth>()
 // find the right entry in pendingAuths (which is keyed by oauthState).
 const mcpNameToState = new Map<string, string>()
 
-const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+export const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 
 function cleanupStateIndex(oauthState: string) {
   for (const [name, state] of mcpNameToState) {
@@ -32,7 +32,8 @@ function cleanupStateIndex(oauthState: string) {
   }
 }
 
-function stopIfIdle() {
+/** Close the listener when no attempt is waiting, so another redcode process can take the port. */
+export function stopIfIdle() {
   if (pendingAuths.size > 0 || !server) return
 
   server.close()
@@ -102,7 +103,8 @@ function handleRequest(req: import("http").IncomingMessage, res: import("http").
   stopIfIdle()
 }
 
-export async function ensureRunning(redirectUri?: string): Promise<void> {
+/** Start the callback listener. Resolves false when another process already holds the port, so callbacks will not reach this one. */
+export async function ensureRunning(redirectUri?: string): Promise<boolean> {
   // Parse the redirect URI to get port and path (uses defaults if not provided)
   const { port, path } = parseRedirectUri(redirectUri)
 
@@ -111,11 +113,11 @@ export async function ensureRunning(redirectUri?: string): Promise<void> {
     await stop()
   }
 
-  if (server) return
+  if (server) return true
 
   const running = await isPortInUse(port)
   if (running) {
-    return
+    return false
   }
 
   currentPort = port
@@ -128,9 +130,14 @@ export async function ensureRunning(redirectUri?: string): Promise<void> {
     })
     server!.on("error", reject)
   })
+  return true
 }
 
-export function waitForCallback(oauthState: string, mcpName?: string): Promise<string> {
+export function waitForCallback(
+  oauthState: string,
+  mcpName?: string,
+  timeoutMs: number = CALLBACK_TIMEOUT_MS,
+): Promise<string> {
   if (mcpName) mcpNameToState.set(mcpName, oauthState)
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -140,7 +147,7 @@ export function waitForCallback(oauthState: string, mcpName?: string): Promise<s
         reject(new Error("OAuth callback timeout - authorization took too long"))
         stopIfIdle()
       }
-    }, CALLBACK_TIMEOUT_MS)
+    }, timeoutMs)
 
     pendingAuths.set(oauthState, { resolve, reject, timeout })
   })
@@ -158,6 +165,17 @@ export function cancelPending(mcpName: string): void {
     pending.reject(new Error("Authorization cancelled"))
     stopIfIdle()
   }
+}
+
+/** Reject the attempt waiting on `oauthState`, leaving attempts for other servers or workspaces alone. */
+export function cancelState(oauthState: string, reason = "Authorization cancelled"): void {
+  const pending = pendingAuths.get(oauthState)
+  if (!pending) return
+  clearTimeout(pending.timeout)
+  pendingAuths.delete(oauthState)
+  cleanupStateIndex(oauthState)
+  pending.reject(new Error(reason))
+  stopIfIdle()
 }
 
 export async function isPortInUse(port: number = OAUTH_CALLBACK_PORT): Promise<boolean> {

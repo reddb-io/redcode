@@ -180,9 +180,44 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 }
 
+/**
+ * Provider for an interactive sign-in attempt. Everything it produces stays in memory until `commit`:
+ * the live connection's provider shares the store entry for this server name, and a 401 on it during the
+ * attempt would otherwise overwrite this attempt's PKCE verifier or state.
+ */
 export class McpOAuthPendingProvider extends McpOAuthProvider {
   private pendingClientInfo?: OAuthClientInformationFull
   private pendingTokens?: OAuthTokens
+  private pendingCodeVerifier?: string
+
+  constructor(
+    mcpName: string,
+    serverUrl: string,
+    config: McpOAuthConfig,
+    callbacks: McpOAuthCallbacks,
+    auth: McpAuth.Interface,
+    private pendingState?: string,
+  ) {
+    super(mcpName, serverUrl, config, callbacks, auth)
+  }
+
+  override async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    this.pendingCodeVerifier = codeVerifier
+  }
+
+  override async codeVerifier(): Promise<string> {
+    if (!this.pendingCodeVerifier) throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
+    return this.pendingCodeVerifier
+  }
+
+  override async saveState(state: string): Promise<void> {
+    this.pendingState = state
+  }
+
+  override async state(): Promise<string> {
+    if (this.pendingState) return this.pendingState
+    return super.state()
+  }
 
   override async clientInformation(): Promise<OAuthClientInformation | undefined> {
     if (!this.config.clientId) return this.pendingClientInfo

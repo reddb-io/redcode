@@ -2527,6 +2527,7 @@ export class Auth2 extends HeyApiClient {
       directory?: string
       workspace?: string
       code?: string
+      oauthState?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2539,6 +2540,7 @@ export class Auth2 extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "code" },
+            { in: "body", key: "oauthState" },
           ],
         },
       ],
@@ -2633,13 +2635,14 @@ export class Auth2 extends HeyApiClient {
   /**
    * Cancel MCP OAuth
    *
-   * Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.
+   * Abandon a pending OAuth flow for an MCP server. Stored credentials are kept. Ignored when oauthState names an older attempt or the code is already being exchanged.
    */
   public cancel<ThrowOnError extends boolean = false>(
     parameters: {
       name: string
       directory?: string
       workspace?: string
+      oauthState?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2651,6 +2654,7 @@ export class Auth2 extends HeyApiClient {
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "body", key: "oauthState" },
           ],
         },
       ],
@@ -2659,6 +2663,11 @@ export class Auth2 extends HeyApiClient {
       url: "/mcp/{name}/auth/cancel",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

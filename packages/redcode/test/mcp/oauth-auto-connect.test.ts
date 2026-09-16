@@ -1,7 +1,11 @@
 import { expect } from "bun:test"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { ListResourcesRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -12,6 +16,7 @@ import { McpAuth } from "../../src/mcp/auth"
 import { MCP } from "../../src/mcp/index"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { McpOAuthPendingProvider, McpOAuthProvider } from "../../src/mcp/oauth-provider"
+import { provideInstance, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 const mcpTest = testEffect(
@@ -22,6 +27,14 @@ const mcpTest = testEffect(
 
 interface OAuthMcpOptions {
   capabilities?: "tools" | "resources"
+  /** Issue refresh tokens, so the SDK renews instead of redirecting when a request is refused. */
+  refreshTokens?: boolean
+  /** Serve without OAuth; requests must carry this `x-api-key`. */
+  apiKey?: string
+}
+
+function base64url(bytes: ArrayBuffer) {
+  return Buffer.from(bytes).toString("base64").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
 }
 
 function serveOAuthMcp(options: OAuthMcpOptions = {}) {
@@ -38,13 +51,21 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
       })
       let listToolsCalls = 0
       let requiresAuth = true
-      let acceptedToken = "replacement-token"
+      const accepted = new Set(["replacement-token"])
+      let apiKey = options.apiKey
+      let challenge: string | undefined
+      let tokenRequests = 0
+      let tokenGate: Promise<void> | undefined
+      let issued = 0
 
       if (capabilities === "tools") {
         protocol.setRequestHandler(ListToolsRequestSchema, () => {
           listToolsCalls++
           return Promise.resolve({ tools: [{ name: "test_tool", inputSchema: { type: "object" } }] })
         })
+        protocol.setRequestHandler(CallToolRequestSchema, () =>
+          Promise.resolve({ content: [{ type: "text" as const, text: "ok" }] }),
+        )
       }
       if (capabilities === "resources") {
         protocol.setRequestHandler(ListResourcesRequestSchema, () =>
@@ -60,14 +81,10 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
           const origin = url.origin
           const mcpUrl = `${origin}/mcp`
 
-          if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
-            return Response.json({
-              resource: mcpUrl,
-              authorization_servers: [origin],
-              scopes_supported: ["mcp"],
-            })
-          }
-          if (url.pathname === "/.well-known/oauth-protected-resource") {
+          if (
+            url.pathname === "/.well-known/oauth-protected-resource/mcp" ||
+            url.pathname === "/.well-known/oauth-protected-resource"
+          ) {
             return Response.json({
               resource: mcpUrl,
               authorization_servers: [origin],
@@ -92,23 +109,65 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
             return Response.json({ ...metadata, client_id: "replacement-client" }, { status: 201 })
           }
           if (url.pathname === "/token") {
+            tokenRequests++
+            if (tokenGate) await tokenGate
             const body = new URLSearchParams(await request.text())
+            const token = () => {
+              const value = `token-${++issued}`
+              accepted.add(value)
+              return {
+                access_token: value,
+                token_type: "Bearer",
+                ...(options.refreshTokens ? { refresh_token: `refresh-${issued}`, expires_in: 3600 } : {}),
+              }
+            }
+            if (body.get("grant_type") === "refresh_token") return Response.json(token())
             if (body.get("code") !== "valid-code") {
               return Response.json(
                 { error: "invalid_grant", error_description: "Token exchange failed" },
                 { status: 400 },
               )
             }
-            return Response.json({ access_token: "replacement-token", token_type: "Bearer" })
+            if (challenge) {
+              const digest = await crypto.subtle.digest(
+                "SHA-256",
+                new TextEncoder().encode(body.get("code_verifier") ?? ""),
+              )
+              if (base64url(digest) !== challenge)
+                return Response.json(
+                  { error: "invalid_grant", error_description: "PKCE verifier mismatch" },
+                  { status: 400 },
+                )
+            }
+            return Response.json({ ...token(), access_token: "replacement-token" })
           }
           if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 })
 
           if (request.method === "GET") return new Response(null, { status: 405 })
-          if (requiresAuth && request.headers.get("authorization") !== `Bearer ${acceptedToken}`) {
-            return new Response("Unauthorized", {
+          const challengeHeader = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", scope="mcp"`
+          if (apiKey !== undefined) {
+            if (request.headers.get("x-api-key") !== apiKey) return new Response("Unauthorized", { status: 401 })
+            return transport.handleRequest(request)
+          }
+          const bearer = request.headers.get("authorization")?.replace(/^Bearer /, "")
+          if (requiresAuth && (!bearer || !accepted.has(bearer))) {
+            return new Response("Unauthorized", { status: 401, headers: { "WWW-Authenticate": challengeHeader } })
+          }
+          const message = (await request
+            .clone()
+            .json()
+            .catch(() => undefined)) as { method?: string; params?: { name?: string } } | undefined
+          if (message?.method === "tools/call" && message.params?.name === "forbidden_tool") {
+            return new Response("Forbidden for this tool", {
               status: 401,
+              headers: { "WWW-Authenticate": challengeHeader },
+            })
+          }
+          if (message?.method === "tools/call" && message.params?.name === "admin_tool") {
+            return new Response("Insufficient scope", {
+              status: 403,
               headers: {
-                "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", scope="mcp"`,
+                "WWW-Authenticate": `Bearer error="insufficient_scope", scope="mcp admin", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
               },
             })
           }
@@ -121,9 +180,22 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
         allowAnonymous: () => {
           requiresAuth = false
         },
-        revokeTokens: () => {
-          acceptedToken = "rotated-token"
+        revokeTokens: () => accepted.clear(),
+        rotateApiKey: () => {
+          apiKey = "rotated"
         },
+        requirePkce: (authorizationUrl: string) => {
+          challenge = new URL(authorizationUrl).searchParams.get("code_challenge") ?? undefined
+        },
+        holdTokens: () => {
+          const gate = Promise.withResolvers<void>()
+          tokenGate = gate.promise
+          return () => {
+            tokenGate = undefined
+            gate.resolve()
+          }
+        },
+        tokenRequests: () => tokenRequests,
         listToolsCalls: () => listToolsCalls,
         close: async () => {
           await http.stop(true)
@@ -135,10 +207,22 @@ function serveOAuthMcp(options: OAuthMcpOptions = {}) {
   )
 }
 
-const remote = (url: string, enabled = true) => ({
+async function freeLoopbackPort() {
+  const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  const port = probe.port!
+  await probe.stop(true)
+  return port
+}
+
+// Never bind the real default callback port: another redcode may be running on this machine.
+const callbackPort = await freeLoopbackPort()
+
+const remote = (url: string, enabled = true, extra: Record<string, unknown> = {}) => ({
   type: "remote" as const,
   url,
   enabled,
+  oauth: { callbackPort },
+  ...extra,
 })
 
 const stopOAuthCallback = Effect.addFinalizer(() => Effect.promise(() => McpOAuthCallback.stop()).pipe(Effect.ignore))
@@ -309,13 +393,25 @@ function approve(authorizationUrl: string, code = "valid-code") {
   const redirect = new URL(url.searchParams.get("redirect_uri")!)
   redirect.searchParams.set("code", code)
   redirect.searchParams.set("state", url.searchParams.get("state")!)
-  // 0: the listener already shut down because no flow was left to wait for.
+  // 0: nothing listens on the callback port any more.
   return Effect.promise(() =>
     fetch(redirect).then(
       (response) => response.status,
       () => 0,
     ),
   )
+}
+
+function until<A>(check: () => A | undefined, label: string) {
+  return Effect.gen(function* () {
+    for (let attempt = 0; attempt < 500; attempt++) {
+      const value = check()
+      if (value !== undefined && value !== false) return value
+      yield* Effect.yieldNow
+      yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)))
+    }
+    return yield* Effect.die(new Error(`timed out: ${label}`))
+  })
 }
 
 mcpTest.instance("beginAuth and waitAuth finish a client-driven flow without opening a browser", () =>
@@ -329,53 +425,157 @@ mcpTest.instance("beginAuth and waitAuth finish a client-driven flow without ope
 
     const started = yield* mcp.beginAuth(name)
     expect(started.authorizationUrl).toContain("/authorize")
+    expect(started.listening).toBe(true)
+    expect(started.redirectUri).toBe(`http://127.0.0.1:${callbackPort}/mcp/oauth/callback`)
     expect(yield* mcp.waitAuth(name, started.oauthState, 10)).toEqual({ status: "pending" })
 
     expect(yield* approve(started.authorizationUrl)).toBe(200)
     expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
     expect((yield* mcp.status())[name]).toEqual({ status: "connected" })
     expect((yield* mcp.info())[name]).toEqual({ type: "remote", tools: 1, oauth: true, auth: "authenticated" })
+    expect(McpOAuthCallback.isRunning()).toBe(false)
   }),
 )
 
-mcpTest.instance("a pasted code finishes the flow and releases the callback listener", () =>
-  Effect.gen(function* () {
-    yield* stopOAuthCallback
-    const server = yield* serveOAuthMcp()
-    const mcp = yield* MCP.Service
-    const name = "test-pasted-code"
-    yield* mcp.add(name, remote(server.url))
-
-    const started = yield* mcp.beginAuth(name)
-    expect((yield* mcp.finishAuth(name, "valid-code")).status).toBe("connected")
-    expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
-    // The listener no longer accepts the state once the pasted code was used.
-    expect(yield* approve(started.authorizationUrl)).not.toBe(200)
-  }),
-)
-
-mcpTest.instance("cancelAuth abandons the attempt and keeps stored credentials", () =>
+mcpTest.instance("a pasted code must match the attempt's state and releases the callback listener", () =>
   Effect.gen(function* () {
     yield* stopOAuthCallback
     const server = yield* serveOAuthMcp()
     const mcp = yield* MCP.Service
     const auth = yield* McpAuth.Service
-    const name = "test-cancel"
-    yield* auth.updateTokens(name, { accessToken: "old-token" }, server.url)
+    const name = "test-pasted-code"
     yield* mcp.add(name, remote(server.url))
 
     const started = yield* mcp.beginAuth(name)
-    const waiting = yield* Effect.forkChild(mcp.waitAuth(name, started.oauthState, 5_000))
-    yield* Effect.sleep("50 millis")
-    yield* mcp.cancelAuth(name)
-    expect(yield* Fiber.join(waiting)).toEqual({ status: "failed", error: "Authorization cancelled" })
-    expect(yield* mcp.waitAuth(name, started.oauthState, 10)).toMatchObject({ status: "failed" })
-    expect((yield* auth.get(name))?.tokens?.accessToken).toBe("old-token")
+    expect(yield* mcp.finishAuth(name, "valid-code", "some-other-state")).toMatchObject({ status: "failed" })
+    expect(server.tokenRequests()).toBe(0)
+
+    expect((yield* mcp.finishAuth(name, "valid-code", started.oauthState)).status).toBe("connected")
+    expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
     expect(yield* approve(started.authorizationUrl)).not.toBe(200)
+    expect((yield* auth.get(name))?.oauthState).toBeUndefined()
   }),
 )
 
-mcpTest.instance("a token rejected mid-session moves a connected server to needs_auth", () =>
+mcpTest.instance("a late cancel for a replaced attempt does not end the new attempt", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const auth = yield* McpAuth.Service
+    const name = "test-cancel-race"
+    yield* auth.updateTokens(name, { accessToken: "old-token" }, server.url)
+    yield* mcp.add(name, remote(server.url))
+
+    const first = yield* mcp.beginAuth(name)
+    const second = yield* mcp.beginAuth(name)
+    expect(second.oauthState).not.toBe(first.oauthState)
+    // The replaced dialog's cleanup lands after the new attempt registered.
+    yield* mcp.cancelAuth(name, first.oauthState)
+    expect(yield* mcp.waitAuth(name, first.oauthState, 10)).toMatchObject({ status: "failed" })
+    expect(yield* mcp.waitAuth(name, second.oauthState, 10)).toEqual({ status: "pending" })
+    expect(yield* approve(first.authorizationUrl)).not.toBe(200)
+
+    yield* mcp.cancelAuth(name, second.oauthState)
+    expect(yield* mcp.waitAuth(name, second.oauthState, 10)).toMatchObject({ status: "failed" })
+    expect((yield* auth.get(name))?.tokens?.accessToken).toBe("old-token")
+    expect(yield* approve(second.authorizationUrl)).not.toBe(200)
+    expect(McpOAuthCallback.isRunning()).toBe(false)
+  }),
+)
+
+mcpTest.instance("cancel is a no-op while a code is being exchanged", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-cancel-exchange"
+    yield* mcp.add(name, remote(server.url))
+
+    const started = yield* mcp.beginAuth(name)
+    const release = server.holdTokens()
+    const finishing = yield* Effect.forkChild(mcp.finishAuth(name, "valid-code", started.oauthState))
+    yield* until(() => server.tokenRequests() > 0, "token exchange started")
+    yield* mcp.cancelAuth(name, started.oauthState)
+    release()
+    expect((yield* Fiber.join(finishing)).status).toBe("connected")
+  }),
+)
+
+mcpTest.instance("the live connection cannot overwrite the PKCE verifier of a sign-in in progress", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const auth = yield* McpAuth.Service
+    const name = "test-pkce"
+    yield* mcp.add(name, remote(server.url))
+
+    const started = yield* mcp.beginAuth(name)
+    server.requirePkce(started.authorizationUrl)
+    // What a 401 on the live client's provider does during the attempt.
+    yield* auth.updateCodeVerifier(name, "verifier-from-the-live-connection")
+    yield* auth.updateOAuthState(name, "state-from-the-live-connection")
+
+    expect(yield* approve(started.authorizationUrl)).toBe(200)
+    expect(yield* mcp.waitAuth(name, started.oauthState, 5_000)).toEqual({ status: "connected" })
+  }),
+)
+
+mcpTest.instance("the callback listener closes when no attempt waits and reports a port held elsewhere", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-listener"
+    yield* mcp.add(name, remote(server.url))
+
+    server.allowAnonymous()
+    expect(yield* mcp.beginAuth(name)).toMatchObject({ authorizationUrl: "" })
+    expect(McpOAuthCallback.isRunning()).toBe(false)
+    expect((yield* mcp.status())[name]).toEqual({ status: "connected" })
+
+    const other = yield* Effect.acquireRelease(
+      Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: callbackPort, fetch: () => new Response("other") })),
+      (probe) => Effect.promise(() => probe.stop(true)),
+    )
+    expect(other.port).toBe(callbackPort)
+    const held = yield* serveOAuthMcp()
+    yield* mcp.add("test-listener-held", remote(held.url))
+    const started = yield* mcp.beginAuth("test-listener-held")
+    expect(started.listening).toBe(false)
+    expect(McpOAuthCallback.isRunning()).toBe(false)
+    expect((yield* mcp.finishAuth("test-listener-held", "valid-code", started.oauthState)).status).toBe("connected")
+  }),
+)
+
+mcpTest.instance("sign-in attempts are separate per workspace for servers with the same name", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const first = yield* serveOAuthMcp()
+    const second = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "github"
+    const otherDirectory = yield* tmpdirScoped()
+    const inOther = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(provideInstance(otherDirectory), Effect.provide(testInstanceStoreLayer))
+
+    yield* mcp.add(name, remote(first.url))
+    yield* inOther(mcp.add(name, remote(second.url)))
+    const here = yield* mcp.beginAuth(name)
+    const there = yield* inOther(mcp.beginAuth(name))
+
+    // The other workspace's code cannot finish this workspace's transport, nor cancel its attempt.
+    expect(yield* mcp.finishAuth(name, "valid-code", there.oauthState)).toMatchObject({ status: "failed" })
+    yield* inOther(mcp.cancelAuth(name, there.oauthState))
+    expect(yield* mcp.waitAuth(name, here.oauthState, 10)).toEqual({ status: "pending" })
+    expect(yield* approve(here.authorizationUrl)).toBe(200)
+    expect(yield* mcp.waitAuth(name, here.oauthState, 5_000)).toEqual({ status: "connected" })
+    expect(second.tokenRequests()).toBe(0)
+  }),
+)
+
+mcpTest.instance("a refresh that fails mid-session moves a connected server to needs_auth", () =>
   Effect.gen(function* () {
     yield* stopOAuthCallback
     const server = yield* serveOAuthMcp()
@@ -391,5 +591,64 @@ mcpTest.instance("a token rejected mid-session moves a connected server to needs
     yield* Effect.promise(() => client.listTools().catch(() => undefined))
     expect((yield* mcp.status())[name]).toEqual({ status: "needs_auth" })
     expect((yield* mcp.info())[name]?.tools).toBe(0)
+  }),
+)
+
+mcpTest.instance("a 401 after a successful refresh is a per-tool refusal, not needs_auth", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp({ refreshTokens: true })
+    const mcp = yield* MCP.Service
+    const name = "test-per-tool-401"
+    yield* mcp.add(name, remote(server.url))
+    const started = yield* mcp.beginAuth(name)
+    yield* approve(started.authorizationUrl)
+    expect((yield* mcp.waitAuth(name, started.oauthState, 5_000)).status).toBe("connected")
+
+    const client = (yield* mcp.clients())[name]
+    const error = yield* Effect.promise(() =>
+      client.callTool({ name: "forbidden_tool", arguments: {} }).then(
+        () => undefined,
+        (reason: unknown) => reason,
+      ),
+    )
+    expect(String(error)).toContain("401")
+    expect((yield* mcp.status())[name]).toEqual({ status: "connected" })
+    expect((yield* mcp.info())[name]?.auth).toBe("authenticated")
+  }),
+)
+
+mcpTest.instance("a 403 insufficient_scope that needs the browser moves the server to needs_auth", () =>
+  Effect.gen(function* () {
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-insufficient-scope"
+    yield* mcp.add(name, remote(server.url))
+    const started = yield* mcp.beginAuth(name)
+    yield* approve(started.authorizationUrl)
+    expect((yield* mcp.waitAuth(name, started.oauthState, 5_000)).status).toBe("connected")
+
+    const client = (yield* mcp.clients())[name]
+    yield* Effect.promise(() => client.callTool({ name: "admin_tool", arguments: {} }).catch(() => undefined))
+    expect((yield* mcp.status())[name]).toEqual({ status: "needs_auth" })
+  }),
+)
+
+mcpTest.instance("a 401 on a server with oauth disabled fails instead of asking to sign in", () =>
+  Effect.gen(function* () {
+    const server = yield* serveOAuthMcp({ apiKey: "secret" })
+    const mcp = yield* MCP.Service
+    const name = "test-api-key"
+    yield* mcp.add(name, { type: "remote", url: server.url, oauth: false, headers: { "x-api-key": "secret" } })
+    expect((yield* mcp.status())[name]).toEqual({ status: "connected" })
+
+    server.rotateApiKey()
+    const client = (yield* mcp.clients())[name]
+    yield* Effect.promise(() => client.listTools().catch(() => undefined))
+    expect((yield* mcp.status())[name]).toEqual({
+      status: "failed",
+      error: "Unauthorized — check the server's headers or API key",
+    })
   }),
 )

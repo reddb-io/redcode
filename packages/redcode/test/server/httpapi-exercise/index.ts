@@ -476,7 +476,11 @@ const scenarios: Scenario[] = [
     .json(404, object, "status"),
   http.protected
     .post("/mcp/{name}/auth/cancel", "mcp.auth.cancel")
-    .at((ctx) => ({ path: route("/mcp/{name}/auth/cancel", { name: "httpapi-missing" }), headers: ctx.headers() }))
+    .at((ctx) => ({
+      path: route("/mcp/{name}/auth/cancel", { name: "httpapi-missing" }),
+      headers: ctx.headers(),
+      body: { oauthState: "state" },
+    }))
     .json(404, object, "status"),
   http.protected
     .post("/mcp/reload", "mcp.reload")

@@ -2617,6 +2617,10 @@ export type McpUnsupportedOAuthError = {
   error: string
 }
 
+export type McpAuthFailedError = {
+  message: string
+}
+
 export type McpAuthPending = {
   status: "pending"
 }
@@ -9826,9 +9830,9 @@ export type McpAuthStartData = {
 
 export type McpAuthStartErrors = {
   /**
-   * McpUnsupportedOAuthError | InvalidRequestError
+   * McpUnsupportedOAuthError | McpAuthFailedError | InvalidRequestError
    */
-  400: McpUnsupportedOAuthError | InvalidRequestError
+  400: McpUnsupportedOAuthError | McpAuthFailedError | InvalidRequestError
   /**
    * McpServerNotFoundError
    */
@@ -9844,6 +9848,8 @@ export type McpAuthStartResponses = {
   200: {
     authorizationUrl: string
     oauthState: string
+    listening?: boolean
+    redirectUri?: string
   }
 }
 
@@ -9852,6 +9858,7 @@ export type McpAuthStartResponse = McpAuthStartResponses[keyof McpAuthStartRespo
 export type McpAuthCallbackData = {
   body?: {
     code: string
+    oauthState?: string
   }
   path: {
     name: string
@@ -9957,7 +9964,9 @@ export type McpAuthWaitResponses = {
 export type McpAuthWaitResponse = McpAuthWaitResponses[keyof McpAuthWaitResponses]
 
 export type McpAuthCancelData = {
-  body?: never
+  body?: {
+    oauthState?: string
+  }
   path: {
     name: string
   }

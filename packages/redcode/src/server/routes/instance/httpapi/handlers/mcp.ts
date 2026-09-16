@@ -6,7 +6,9 @@ import { McpServerNotFoundError } from "../errors"
 import {
   AddPayload,
   AuthCallbackPayload,
+  AuthCancelPayload,
   AuthWaitPayload,
+  McpAuthFailedError,
   McpReloadError,
   StatusMap,
   UnsupportedOAuthError,
@@ -40,6 +42,7 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
         }
         return yield* mcp.beginAuth(ctx.params.name)
       }).pipe(
+        Effect.catchTag("MCP.AuthError", (error) => Effect.fail(new McpAuthFailedError({ message: error.message }))),
         Effect.catchTag("MCP.NotFoundError", (error) =>
           Effect.fail(new McpServerNotFoundError({ name: error.name, message: `MCP server not found: ${error.name}` })),
         ),
@@ -51,7 +54,7 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
       payload: typeof AuthCallbackPayload.Type
     }) {
       return yield* mcp
-        .finishAuth(ctx.params.name, ctx.payload.code)
+        .finishAuth(ctx.params.name, ctx.payload.code, ctx.payload.oauthState)
         .pipe(
           Effect.catchTag("MCP.NotFoundError", (error) =>
             Effect.fail(
@@ -84,8 +87,13 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
         .pipe(Effect.catchTag("MCP.NotFoundError", notFound))
     })
 
-    const authCancel = Effect.fn("McpHttpApi.authCancel")(function* (ctx: { params: { name: string } }) {
-      yield* mcp.cancelAuth(ctx.params.name).pipe(Effect.catchTag("MCP.NotFoundError", notFound))
+    const authCancel = Effect.fn("McpHttpApi.authCancel")(function* (ctx: {
+      params: { name: string }
+      payload: typeof AuthCancelPayload.Type
+    }) {
+      yield* mcp
+        .cancelAuth(ctx.params.name, ctx.payload.oauthState)
+        .pipe(Effect.catchTag("MCP.NotFoundError", notFound))
       return { success: true as const }
     })
 
