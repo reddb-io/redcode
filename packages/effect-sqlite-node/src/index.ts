@@ -58,7 +58,8 @@ export const make = (
     const makeConnection = Effect.gen(function* () {
       const db = new DatabaseSync(options.filename, {
         readOnly: options.readonly,
-        timeout: options.timeout,
+        // Set at open, so even the WAL switch below waits for a process creating the same file.
+        timeout: options.timeout ?? 5000,
         allowExtension: options.allowExtension,
         enableForeignKeyConstraints: true,
         open: true,

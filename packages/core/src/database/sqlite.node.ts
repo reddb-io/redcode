@@ -150,13 +150,15 @@ const nativeLayer = (config: Config) =>
     Effect.gen(function* () {
       const native = new DatabaseSync(config.filename, {
         readOnly: config.readonly,
-        timeout: config.timeout,
+        // Set at open, so even the WAL switch below waits for a process creating the same file.
+        timeout: config.timeout ?? 5000,
         allowExtension: config.allowExtension,
         enableForeignKeyConstraints: true,
         open: true,
       })
       yield* Effect.addFinalizer(() => Effect.sync(() => native.close()))
-      if (config.disableWAL !== true && config.readonly !== true) native.exec("PRAGMA journal_mode = WAL;")
+      if (config.disableWAL !== true && config.readonly !== true)
+        yield* Sqlite.enableWal(() => native.exec("PRAGMA journal_mode = WAL;"))
       return native
     }),
   )
