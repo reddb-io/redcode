@@ -834,12 +834,19 @@ const layer: Layer.Layer<
 
     const updateMetadata: Interface["updateMetadata"] = (sessionID, fn) =>
       metadataLock(sessionID).withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* get(sessionID).pipe(Effect.orDie)
-          const next = fn({ ...current.metadata })
-          yield* patch(sessionID, { metadata: next, time: { updated: Date.now() } }).pipe(Effect.orDie)
-          return next
-        }),
+        // The lock orders this process's writers; the transaction orders processes. Read and write
+        // hold the database write lock together, so spend, a goal pause or a compaction another
+        // process writes meanwhile is never overwritten from a stale read.
+        db
+          .transaction(() =>
+            Effect.gen(function* () {
+              const current = yield* get(sessionID).pipe(Effect.orDie)
+              const next = fn({ ...current.metadata })
+              yield* patch(sessionID, { metadata: next, time: { updated: Date.now() } }).pipe(Effect.orDie)
+              return next
+            }),
+          )
+          .pipe(Effect.orDie),
       )
 
     const setAgentModel = Effect.fn("Session.setAgentModel")(function* (input: {
