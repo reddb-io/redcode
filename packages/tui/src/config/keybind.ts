@@ -163,7 +163,7 @@ export const Definitions = {
   workspace_set: keybind("none", "Set workspace"),
 
   input_clear: keybind("ctrl+c", "Clear input field"),
-  input_paste: keybind({ key: "ctrl+v", preventDefault: false }, "Paste from clipboard"),
+  input_paste: keybind({ key: "ctrl+v,ctrl+shift+v", preventDefault: false }, "Paste from clipboard"),
   input_submit: keybind("return", "Submit input"),
   input_newline: keybind(
     "shift+return,ctrl+return,alt+return,ctrl+j",
