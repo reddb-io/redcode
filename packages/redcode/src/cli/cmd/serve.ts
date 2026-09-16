@@ -24,6 +24,17 @@ export const ServeCommand = effectCmd({
     // A headless server has no screen to render: listening is where its boot ends.
     BootTrace.stop("serve.ready", { hostname: server.hostname, port: server.port })
 
-    yield* Effect.never
+    // Until told to stop. Returning, rather than dying on the signal, lets the command finish
+    // and the process close the runtime — and with it the database — on its way out.
+    yield* Effect.callback<void>((resume) => {
+      const stop = () => resume(Effect.void)
+      process.once("SIGINT", stop)
+      process.once("SIGTERM", stop)
+      return Effect.sync(() => {
+        process.off("SIGINT", stop)
+        process.off("SIGTERM", stop)
+      })
+    })
+    yield* Effect.promise(() => server.stop(true))
   }),
 })
