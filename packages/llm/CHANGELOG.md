@@ -1,5 +1,12 @@
 # @reddb-io/redcode-llm
 
+## 1.19.2
+
+### Patch Changes
+
+- Updated dependencies [edae950]
+  - @reddb-io/redcode-schema@1.23.0
+
 ## 1.19.1
 
 ### Patch Changes

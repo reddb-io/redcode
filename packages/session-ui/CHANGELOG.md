@@ -1,5 +1,11 @@
 # @reddb-io/redcode-session-ui
 
+## 1.18.30
+
+### Patch Changes
+
+- @reddb-io/redcode-core@1.25.1
+
 ## 1.18.29
 
 ### Patch Changes

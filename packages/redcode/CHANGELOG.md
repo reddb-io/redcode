@@ -1,5 +1,35 @@
 # opencode
 
+## 0.35.0
+
+### Minor Changes
+
+- 2f9ec10: Design mode enforces the fix-round gate.
+  - **Status gate.** `design_document update notes` refuses `resolved` unless it cites a completed verify job on the current revision that found the note's element with no blocking finding; `partial` needs such a job and a reason; `unresolved` and `accepted` need a reason. A refusal lists the recent verify jobs, so the agent acts on it instead of resending, the way the todo evidence gate names callIDs.
+  - **No approval or ending with open notes.** `design_exit` (both runtimes), the approval routes and the review page's "Send & end" are refused while any feedback round still has notes without a recorded status (listed per round); unresolved or accepted with a reason are allowed. The page hides "Send & end" and says why until the rounds are recorded, and a refused "Send & end" keeps the draft and retries as a plain send.
+  - **The reviewer can close a note by hand.** In the review page's rounds panel each open note can be recorded as accepted or unresolved with a reason, and the Approve dialog lists the notes the agent declined or left unresolved (with their reasons) and offers, when notes are still open, to record them as accepted by the reviewer and approve. Statuses recorded this way carry `by: "reviewer"`; the agent's tools cannot record as the reviewer, and the reviewer cannot record `resolved` or `partial`.
+  - **The round rule in the message and the prompts.** Every `<design-review>` with notes ends with the rule: fix everything in this round, publish one revision, run one verify for the round, then record each note's status with evidence, naming the message's note ids. The Design instructions replace the per-fix "verified only after an audit" sentence with the round rule, and the screen playbook gains a "Feedback round" step (collect → fix all → publish → one verify → statuses → summarise and ask before another round).
+
+- edae950: Design mode keeps track of feedback rounds and verifies each round in one job.
+  - **Rounds and note statuses.** Review notes sent from the browser are recorded on the design document: notes arriving before a revision answers them form one round, and the first `design_preview` after them closes it. Every note carries a durable status (`open`, `resolved`, `partial`, `unresolved`, `accepted`) that the agent records with `design_document update notes: [{feedback, index, status, reason?, evidence: {job}}]`; the evidence copies the verify job's capture and findings for that note.
+  - **One verify per round.** `design_export` gains `format: "verify"` (optional `round`, latest by default). In one job it renders the new revision and, for each note of the round, locates its element by `data-design-id`, selector or XPath in its variant, parameters and screen, captures a focused crop on the revision the note was taken on and on the new one, runs the scenarios of that screen and axe and layout checks scoped to the element's container, and reports one line per note, including "element not found" when it disappeared. Only a new serious or critical violation blocks a note; what the container already had before the fix is reported as pre-existing. Every note of the round is verified, each within its own time budget, and finished notes are kept even when a later one times out. `design_jobs` prints the per-note lines with the capture paths to cite and names notes that joined the round after the verify ran.
+  - **Review page.** The conversation feed shows a verify's verdict per note (pass, findings, missing) with a link to the report and its captures; a "Feedback rounds" section lists every note with its status and reason, and a partial or unresolved note goes into the next round with one click.
+  - Both runtimes (TUI and `redcode design`) and both conversation feeds carry the new entries. Restoring an older revision keeps the review's rounds and statuses. Existing documents without rounds decode unchanged.
+
+- fdfed38: Add a global `--verbose` flag (also `REDCODE_VERBOSE=1`). It traces the boot to stderr, one line per phase with elapsed and delta times — config files, models catalog origin and age, providers found, plugins, MCP servers with connection time and status, LSP servers, server address, instance, TUI mount and first render — and stops at the first rendered frame with `boot complete in N ms; log at <path>`. Under the TUI the trace continues in `<data>/log/boot-<timestamp>.log` and the footer shows where; `redcode run --verbose` prints everything to stderr. After boot it traces activity at DEBUG with a `verbose=<event>` tag: provider request/response/retry (model, tokens, duration; never bodies or keys), tool start/end (duration, output size), permission ask/reply, compaction decisions, guard trips, inbox promotions, monitors and learned model limits. `redcode debug startup` prints the same phases.
+
+### Patch Changes
+
+- e65319a: `redcode run` boots one instance, in the directory it was started in (or `--dir`). It used to derive the session's directory from `PWD` while the instance it booted came from the process's working directory; when a spawner set the working directory but left another shell's `PWD` in the environment (CI runners, process managers, editors), the in-process server loaded a second instance for the session and the turn's tools ran there. A relative `--dir` now also resolves against the working directory rather than `PWD`.
+- Updated dependencies [edae950]
+  - @reddb-io/redcode-schema@1.23.0
+  - @reddb-io/redcode-client@1.18.24
+  - @reddb-io/redcode-design@0.0.3
+  - @reddb-io/redcode-llm@1.19.2
+  - @reddb-io/redcode-protocol@1.18.24
+  - @reddb-io/redcode-server@1.18.30
+  - @reddb-io/redcode-tui@1.22.2
+
 ## 0.34.1
 
 ### Patch Changes
