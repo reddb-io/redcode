@@ -139,10 +139,10 @@ describe("BootTrace", () => {
     process.env.REDCODE_VERBOSE = "1"
     delete process.env.REDCODE_VERBOSE_BOOT_FILE
     const start = BootTrace.start()
-    expect(process.env.REDCODE_BOOT_START).toBe(String(start))
+    expect(process.env.REDCODE_BOOT_START ?? "").toBe(String(start))
     expect(BootTrace.start()).toBe(start)
     const file = BootTrace.filePath()
-    expect(process.env.REDCODE_VERBOSE_BOOT_FILE).toBe(file)
+    expect(process.env.REDCODE_VERBOSE_BOOT_FILE ?? "").toBe(file)
     expect(path.basename(file)).toMatch(/^boot-\d{8}T\d{6}Z-\d+\.log$/)
   })
 })
