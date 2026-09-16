@@ -11,17 +11,26 @@ import { tmpdir } from "./fixture/tmpdir"
 // thread would.
 const script = fileURLToPath(new URL("./fixture/database-process.ts", import.meta.url))
 
-const readUntil = async (stream: ReadableStream<Uint8Array>, marker: string) => {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let text = ""
-  while (!text.includes(marker)) {
-    const { value, done } = await reader.read()
-    if (done) break
-    text += decoder.decode(value, { stream: true })
-  }
-  reader.releaseLock()
-  return text
+/**
+ * Drains a stream to its end from the start, so a child that logs more than the pipe holds never
+ * blocks on a full buffer, and resolves `seen` the moment `marker` has gone by.
+ */
+const drain = (stream: ReadableStream<Uint8Array>, marker: string) => {
+  let seen!: () => void
+  const ready = new Promise<void>((resolve) => {
+    seen = resolve
+  })
+  const text = (async () => {
+    const decoder = new TextDecoder()
+    let all = ""
+    for await (const chunk of stream) {
+      all += decoder.decode(chunk, { stream: true })
+      if (all.includes(marker)) seen()
+    }
+    seen()
+    return all
+  })()
+  return { ready, text }
 }
 
 /** Starts the processes, releases them together once every one is loaded, and collects their exits. */
@@ -30,11 +39,21 @@ const race = async (dir: string, args: string[][]) => {
   const children = args.map((extra) =>
     Bun.spawn([process.execPath, script, ...extra], { stdout: "pipe", stderr: "pipe", env: process.env }),
   )
-  await Promise.all(children.map((child) => readUntil(child.stdout, "ready")))
-  await fs.writeFile(gate, "")
-  return Promise.all(
-    children.map(async (child) => ({ code: await child.exited, stderr: await new Response(child.stderr).text() })),
-  )
+  try {
+    // Both pipes are read from the start, together: a child blocked on a full stderr pipe would
+    // otherwise never print "ready" and the test would sit until its timeout.
+    const outputs = children.map((child) => ({
+      stdout: drain(child.stdout, "ready"),
+      stderr: drain(child.stderr, ""),
+    }))
+    await Promise.all(outputs.map((output) => output.stdout.ready))
+    await fs.writeFile(gate, "")
+    return await Promise.all(
+      outputs.map(async (output, index) => ({ code: await children[index]!.exited, stderr: await output.stderr.text })),
+    )
+  } finally {
+    for (const child of children) if (child.exitCode === null) child.kill()
+  }
 }
 
 describe("one database across processes", () => {

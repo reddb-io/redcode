@@ -399,8 +399,27 @@ export abstract class SQLiteEffectSession<
 
   abstract transaction<A, E, R>(
     transaction: (tx: SQLiteEffectTransaction<TEffectHKT, TRunResult, TRelations>) => Effect.Effect<A, E, R>,
-    config?: SQLiteTransactionConfig,
+    config?: SQLiteEffectTransactionConfig,
   ): Effect.Effect<A, E | SqlError, R>
+}
+
+/**
+ * How often, and how long apart, an outermost transaction is begun again after SQLite reports the
+ * database busy. Delays grow exponentially from `baseDelayMs`, capped at `maxDelayMs`, and are
+ * jittered so two waiting processes do not wake together.
+ */
+export interface TransactionRetry {
+  /** Attempts after the first; 0 disables retrying. */
+  readonly attempts: number
+  readonly baseDelayMs: number
+  readonly maxDelayMs: number
+  /** Runs before each wait, with the attempt about to be made (from 1) and the wait in front of it. */
+  readonly onRetry?: (attempt: number, delayMs: number) => Effect.Effect<void>
+}
+
+/** Drizzle's begin mode, plus a lock retry budget for this one transaction over the database's default. */
+export interface SQLiteEffectTransactionConfig extends SQLiteTransactionConfig {
+  readonly retry?: TransactionRetry
 }
 
 export abstract class SQLiteEffectTransaction<

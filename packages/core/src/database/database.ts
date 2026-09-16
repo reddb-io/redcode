@@ -20,8 +20,10 @@ const makeDatabase = EffectDrizzleSqlite.makeWithDefaults({
   // Every process may write, so a transaction takes the write lock as it begins: one that reads
   // before it writes would otherwise fail with SQLITE_BUSY_SNAPSHOT the moment another process
   // commits in between, and the busy timeout does not wait that out. When the lock is held past
-  // the timeout, the whole transaction is begun again a few times with jittered delays. Bodies
-  // are re-run whole, so a transaction body must only touch the database.
+  // the timeout, the whole transaction is begun again a few times with jittered delays: with the
+  // busy timeout below, contention surfaces after about 8 s in all. Bodies are re-run whole, so
+  // a transaction body must only touch the database; anything for listeners goes through
+  // `EffectDrizzleSqlite.afterCommit`. Migrations name their own, far larger, budget.
   transaction: { behavior: "immediate", retry: { attempts: 6, baseDelayMs: 25, maxDelayMs: 800 } },
 })
 type DatabaseShape = Effect.Success<typeof makeDatabase>
@@ -37,8 +39,8 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const db = yield* makeDatabase
 
-    // The connection was opened with the busy timeout below already in force and in WAL mode.
-    yield* db.run("PRAGMA journal_mode = WAL")
+    // The native layer opened the connection with the busy timeout below already in force and
+    // switched the file to WAL (`Sqlite.enableWal`), so neither is repeated here.
     // Durable against a Redcode crash, not against power loss: the last commits before an OS
     // crash may be lost, but the file is never corrupted. The right trade for a local tool;
     // FULL would fsync the WAL on every commit.
@@ -57,8 +59,12 @@ const layer = Layer.effect(
   }).pipe(Effect.orDie),
 )
 
-/** How long a statement waits for another process's lock before SQLITE_BUSY, from the first one. */
-const BUSY_TIMEOUT_MS = 5000
+/**
+ * How long a statement waits for another process's lock before SQLITE_BUSY, from the first one.
+ * Short, because the wait blocks the thread (bun:sqlite is synchronous) and a TUI must not hang
+ * on it; the transaction retry above, which sleeps between attempts, does the longer waiting.
+ */
+const BUSY_TIMEOUT_MS = 1000
 
 export function layerFromPath(filename: string) {
   return layer.pipe(Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS })))

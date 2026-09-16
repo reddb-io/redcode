@@ -12,7 +12,6 @@ import { type ColumnsSelection, type SQL, sql, type SQLWrapper } from "drizzle-o
 import type { SQLiteAsyncDialect } from "drizzle-orm/sqlite-core/dialect"
 import { QueryBuilder } from "drizzle-orm/sqlite-core/query-builders/query-builder"
 import type { SelectedFields } from "drizzle-orm/sqlite-core/query-builders/select.types"
-import type { SQLiteTransactionConfig } from "drizzle-orm/sqlite-core/session"
 import type { SQLiteTable } from "drizzle-orm/sqlite-core/table"
 import type { SQLiteViewBase } from "drizzle-orm/sqlite-core/view-base"
 import { WithSubquery } from "drizzle-orm/subquery"
@@ -24,7 +23,7 @@ import { SQLiteEffectRelationalQueryBuilder } from "./query"
 import { SQLiteEffectRaw } from "./raw"
 import { SQLiteEffectSelectBuilder } from "./select"
 import type { SQLiteEffectSelectBase } from "./select"
-import type { SQLiteEffectSession, SQLiteEffectTransaction } from "./session"
+import type { SQLiteEffectSession, SQLiteEffectTransaction, SQLiteEffectTransactionConfig } from "./session"
 import { SQLiteEffectUpdateBuilder } from "./update"
 
 export class SQLiteEffectDatabase<
@@ -235,7 +234,7 @@ export class SQLiteEffectDatabase<
 
   transaction: <A, E, R>(
     transaction: (tx: SQLiteEffectTransaction<TEffectHKT, TRunResult, TRelations>) => Effect.Effect<A, E, R>,
-    config?: SQLiteTransactionConfig,
+    config?: SQLiteEffectTransactionConfig,
   ) => Effect.Effect<A, E | SqlError, R> = (tx, config) => this.session.transaction(tx, config)
 }
 

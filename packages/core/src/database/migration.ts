@@ -18,8 +18,19 @@ export type Migration = {
 
 // Every step takes the write lock before it looks. Two processes opening the same file at the same
 // moment therefore cannot both create the schema or both run a migration: the second waits, then
-// sees what the first did and only fills in what is still missing.
-const immediate = { behavior: "immediate" } as const
+// sees what the first did and only fills in what is still missing. It waits far longer than an
+// ordinary transaction would: the first process may be rebuilding a large table, and a second
+// process must not die at boot because of it. About ten minutes in all, with a log line per wait.
+const immediate = {
+  behavior: "immediate",
+  retry: {
+    attempts: 600,
+    baseDelayMs: 100,
+    maxDelayMs: 1000,
+    onRetry: (attempt: number, delayMs: number) =>
+      Effect.logInfo("waiting for another process to finish migrating the database", { attempt, delayMs }),
+  },
+} as const
 
 export function apply(db: Database) {
   return lock.withPermit(
