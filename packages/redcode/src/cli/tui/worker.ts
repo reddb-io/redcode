@@ -12,6 +12,7 @@ import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { Shutdown } from "@/effect/shutdown"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
+import { MemoryReport } from "@reddb-io/redcode-core/observability/memory"
 
 Heap.start()
 BootTrace.mark("worker.started")
@@ -48,6 +49,12 @@ export const rpc = {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),
       body,
+    }
+  },
+  async memory() {
+    return {
+      threads: [await MemoryReport.thread("server")],
+      caches: MemoryReport.cacheSizes().map((cache) => ({ ...cache, name: `server: ${cache.name}` })),
     }
   },
   snapshot() {

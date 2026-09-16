@@ -10,6 +10,7 @@ import { GuardsCommand } from "./guards"
 import { LimitsCommand } from "./limits"
 import { FileCommand } from "./file"
 import { LSPCommand } from "./lsp"
+import { MemoryCommand } from "./memory"
 import { RipgrepCommand } from "./ripgrep"
 import { ScrapCommand } from "./scrap"
 import { SkillCommand } from "./skill"
@@ -29,6 +30,7 @@ export const DebugCommand = cmd({
       .command(GuardsCommand)
       .command(LimitsCommand)
       .command(LSPCommand)
+      .command(MemoryCommand)
       .command(RipgrepCommand)
       .command(FileCommand)
       .command(ScrapCommand)

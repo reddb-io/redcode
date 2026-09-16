@@ -13,6 +13,7 @@ import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
 import { ModelsSnapshot } from "./models-snapshot"
 import { BootTrace } from "./observability/boot-trace"
+import { MemoryReport } from "./observability/memory"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -482,6 +483,12 @@ const layer = Layer.effect(
     // Where the catalog came from and how old it is, for the boot trace. The state file is read
     // only when the trace is on: on the plain path this costs nothing.
     const traced = populate.pipe(
+      Effect.tap((catalog: Record<string, Provider>) =>
+        Effect.sync(() => {
+          const models = Object.values(catalog).reduce((sum, provider) => sum + Object.keys(provider.models).length, 0)
+          MemoryReport.track("models catalog", () => ({ entries: models }))
+        }),
+      ),
       Effect.tap((catalog) =>
         Effect.gen(function* () {
           if (!BootTrace.enabled()) return
