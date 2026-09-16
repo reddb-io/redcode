@@ -34,6 +34,7 @@ import { useKV } from "./kv"
 import { usePermission } from "./permission"
 import { useToastOptional } from "../ui/toast"
 import { steeredAt, type SteeredAt } from "../prompt/steer"
+import { MemoryReport } from "@reddb-io/redcode-core/observability/memory"
 
 export type SyncTiming = {
   /** Quiet period after an in-flight bootstrap before the coalesced trailing run starts. */
@@ -265,6 +266,17 @@ export const {
       hydratingSessions.clear()
       syncingSessions.clear()
     })
+    // Sizes `redcode debug memory` lists for this thread.
+    const untrackMemory = [
+      MemoryReport.track("sessions cached", () => ({ entries: cachedSessions.size })),
+      MemoryReport.track("messages", () => ({
+        entries: Object.values(store.message).reduce((sum, list) => sum + list.length, 0),
+      })),
+      MemoryReport.track("parts", () => ({
+        entries: Object.values(store.part).reduce((sum, list) => sum + list.length, 0),
+      })),
+    ]
+    onCleanup(() => untrackMemory.forEach((untrack) => untrack()))
 
     function evict(sessionID: string, deleted = false) {
       fullSyncedSessions.delete(sessionID)

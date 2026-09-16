@@ -129,6 +129,8 @@ Commands:
   redcode debug limits             input limits learned from providers, and the estimate calibration
                                    that came with them
   redcode debug lsp                LSP debugging utilities
+  redcode debug memory [pid]       show the memory of running redcode processes: resident, heap per
+                                   thread, caches
   redcode debug rg                 ripgrep debugging utilities
   redcode debug file               file system debugging utilities
   redcode debug scrap              list all known projects

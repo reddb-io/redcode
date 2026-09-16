@@ -3,6 +3,7 @@ import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
+import { MemoryReport } from "@reddb-io/redcode-core/observability/memory"
 import { RpcPath } from "@reddb-io/redcode-protocol/rpc"
 
 export const ServeCommand = effectCmd({
@@ -23,6 +24,7 @@ export const ServeCommand = effectCmd({
     console.log(`Redcode RPC endpoint: http://${server.hostname}:${server.port}${RpcPath}`)
     // A headless server has no screen to render: listening is where its boot ends.
     BootTrace.stop("serve.ready", { hostname: server.hostname, port: server.port })
+    MemoryReport.listen({ name: "server" })
 
     // Until told to stop. Returning, rather than dying on the signal, lets the command finish
     // and the process close the runtime — and with it the database — on its way out. The

@@ -15,6 +15,7 @@ import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@reddb-io/redcode-tui/terminal-win32"
 import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
+import { MemoryReport } from "@reddb-io/redcode-core/observability/memory"
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
 
@@ -255,6 +256,12 @@ export const TuiThreadCommand = cmd({
         client.call("reload", undefined).catch(() => {})
       }
       process.on("SIGUSR2", reload)
+      // `redcode debug memory` signals this process; the server thread reports its own heap and caches.
+      // A busy or wedged server thread must not hold the report back: past the deadline, this half is written alone.
+      const unlisten = MemoryReport.listen({
+        name: "tui",
+        others: async () => await withTimeout(client.call("memory", undefined), 2000, "server memory report"),
+      })
 
       const stop = async () => {
         if (stopped) return
@@ -262,6 +269,7 @@ export const TuiThreadCommand = cmd({
         process.off("SIGUSR2", reload)
         await withTimeout(client.call("shutdown", undefined), 5000).catch(() => {})
         worker.terminate()
+        unlisten()
       }
 
       const prompt = await input(args.prompt)
