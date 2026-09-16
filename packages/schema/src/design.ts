@@ -157,6 +157,8 @@ export const FeedbackItem = Schema.Struct({
   parent: Schema.String.check(Schema.isMaxLength(1200)).pipe(optional),
   /** The revision the note was captured on; a draft can outlive a live reload to a newer revision. */
   revision: Schema.String.pipe(optional),
+  /** The earlier note this one re-sends, so its outcome chains across rounds. */
+  resent: Schema.Struct({ feedback: Schema.String, index: Schema.Int }).pipe(optional),
 }).annotate({ identifier: "Design.FeedbackItem" })
 export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
 

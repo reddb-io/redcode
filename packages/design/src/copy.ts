@@ -41,6 +41,7 @@ export const reviewCopy = {
   verifyWarn: "found with findings",
   verifyFail: "missing or blocked",
   openReport: "Open captures",
+  resentFrom: "Re-sent from round",
   create: "Create design",
   name: "Name",
   journey: "Starting point",

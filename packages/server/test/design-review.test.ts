@@ -2594,7 +2594,12 @@ test("feedback rounds show each note's status, a verify verdict per note, and qu
     await page.getByRole("button", { name: "Send to agent", exact: true }).click()
     await page.getByText("Feedback received", { exact: true }).waitFor()
     expect(sent[0].items).toHaveLength(1)
-    expect(sent[0].items[0]).toMatchObject({ target: "#submit", text: "Say what is added", revision: second.id })
+    expect(sent[0].items[0]).toMatchObject({
+      target: "#submit",
+      text: "Say what is added",
+      revision: second.id,
+      resent: { feedback: feedback.id, index: 2 },
+    })
     // The new message opens round 2 while round 1 keeps its recorded statuses.
     await until(async () => {
       const stored = await api<Design.Info>(`${current.root}/${current.document.id}`)

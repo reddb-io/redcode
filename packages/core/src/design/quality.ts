@@ -262,6 +262,8 @@ export function report(
     "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit" | "verify"
   >[],
   revision: string | null,
+  /** The design's notes, so the report can say which notes a verify did not see. */
+  notes: readonly Pick<Design.Note, "feedback" | "index" | "round">[] = [],
 ) {
   const current = jobs
     .filter((job) => job.input.revision === revision && job.status === "completed" && job.audit)
@@ -295,6 +297,19 @@ export function report(
               `${note.index}. ${note.feedback} #${note.index} ${note.label}: ${note.reason}${note.before ? ` before: ${note.before}` : ""}${note.after ? ` after: ${note.after}` : ""}${note.findings.length ? ` findings: ${note.findings.slice(0, 4).join(" | ")}` : ""}`,
           ),
           ...verify.verify.findings,
+          ...(() => {
+            const seen = verify.verify!
+            const missed = notes.filter(
+              (note) =>
+                note.round === seen.round &&
+                !seen.notes.some((item) => item.feedback === note.feedback && item.index === note.index),
+            )
+            return missed.length
+              ? [
+                  `${missed.length} note${missed.length === 1 ? "" : "s"} of round ${seen.round} arrived after this verify (${missed.map((note) => `${note.feedback} #${note.index}`).join(", ")}); run the verify again to cover them.`,
+                ]
+              : []
+          })(),
           `Record each note with design_document update {"notes":[{"feedback":"<message id>","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"<why, for anything but resolved>","evidence":{"job":"${verify.id}"}}]}. Resolved needs the element found with no blocking finding; partial, unresolved and accepted need a reason.`,
         ]
       : []),

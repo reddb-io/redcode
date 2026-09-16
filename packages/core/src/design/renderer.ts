@@ -6,8 +6,8 @@ export * as DesignRenderer from "./renderer"
 
 import path from "node:path"
 import { createRequire } from "node:module"
-import { rm } from "node:fs/promises"
-import { Cause, Context, Effect, Fiber, Layer, Scope, Semaphore } from "effect"
+import { readdir, rm } from "node:fs/promises"
+import { Cause, Context, Effect, Exit, Fiber, Layer, Scope, Semaphore } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { makeLocationNode } from "../effect/app-node"
@@ -486,8 +486,10 @@ const make = Effect.gen(function* () {
               code: "invalid",
               message: round === undefined ? "No feedback round to verify yet" : `Round ${round} has no notes`,
             })
-          const LIMIT = 24
           const WIDTH = 1440
+          /** One note's budget; a note that exceeds it is recorded as timed out and the job goes on. */
+          const NOTE_BUDGET = "45 seconds"
+          const VARIANT = /^[a-zA-Z0-9_-]{1,64}$/
           const findings: string[] = []
           type Draft = {
             -readonly [K in keyof Design.VerifyNote]: Design.VerifyNote[K] extends ReadonlyArray<string>
@@ -497,10 +499,6 @@ const make = Effect.gen(function* () {
           const results: Draft[] = []
           const runtimeErrors: string[] = []
           page.on("pageerror", (error) => runtimeErrors.push(error.message))
-          if (notes.length > LIMIT)
-            findings.push(
-              `Only the first ${LIMIT} of ${notes.length} notes were verified; verify the rest in another job.`,
-            )
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
           const escape = (value: string) =>
             value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
@@ -528,6 +526,33 @@ const make = Effect.gen(function* () {
                 })
               })
             })
+          /** Revision documents read once per job, however many notes share a revision. */
+          const snapshots = new Map<string, Design.Info>()
+          const snapshot = (revisionID: string) =>
+            Effect.gen(function* () {
+              const cached = snapshots.get(revisionID)
+              if (cached) return cached
+              const loaded = (yield* store.revision(job.designID, revisionID)).document
+              snapshots.set(revisionID, loaded)
+              return loaded
+            })
+          /** Scoped accessibility check of the marked container; only serious and critical impacts can block. */
+          const audit = () =>
+            io(() =>
+              new AxeBuilder({ page })
+                .include('[data-redcode-verify="container"], [data-redcode-verify="target"]')
+                .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+                .analyze(),
+            ).pipe(
+              Effect.map((result) =>
+                result.violations.map((violation) => ({
+                  id: violation.id,
+                  help: violation.help,
+                  serious: violation.impact === "serious" || violation.impact === "critical",
+                  nodes: violation.nodes.map((node) => `${violation.id}|${node.target.join(" ")}`),
+                })),
+              ),
+            )
           /** The built directory of the revision a note was taken on; undefined when it cannot be rendered. */
           const previous = new Map<string, string | undefined>()
           const before = (revisionID: string) =>
@@ -602,12 +627,27 @@ const make = Effect.gen(function* () {
                   Math.min(Math.max(found.rect.height, found.container.height) + 2 * pad, 900, height - y),
                 ),
               }
-              await DesignFiles.atomic(file, await page.screenshot({ fullPage: true, clip, animations: "disabled" }))
+              // Crops are read by people and embedded in the report; JPEG keeps the report small.
+              await DesignFiles.atomic(
+                file,
+                await page.screenshot({ type: "jpeg", quality: 80, fullPage: true, clip, animations: "disabled" }),
+              )
             })
           yield* io(() => page.setViewportSize({ width: WIDTH, height: 900 }))
-          for (const [position, note] of notes.slice(0, LIMIT).entries()) {
+          /** Records what the job has so far, so a timeout or crash keeps every finished note. */
+          const record = (done: number) =>
+            store.putJob({
+              ...job,
+              status: "running",
+              started,
+              progress: done / notes.length,
+              verify: { revision: revision.id, round, width: WIDTH, notes: results, findings },
+            })
+          for (const [position, note] of notes.entries()) {
             const item = note.item
-            const variant = item.params?.variant ?? /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(item.target)?.[1]
+            // The variant id reaches selectors; one the review frame could not have produced is ignored.
+            const named = item.params?.variant ?? /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(item.target)?.[1]
+            const variant = named && VARIANT.test(named) ? named : undefined
             const where = { variant, params: item.params?.values, screen: item.params?.screen }
             const locate = { target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" }
             const result: Draft = {
@@ -620,102 +660,129 @@ const make = Effect.gen(function* () {
               scenarios: [],
               reason: "",
             }
+            if (named && !variant)
+              result.findings.push(`review · variant id ${JSON.stringify(named)} is invalid; located on the whole page`)
             const base = path.join(path.dirname(output), `${job.id}-${position}`)
-            // Before: the revision the note was taken on, so the reviewer sees what changed.
-            const origin = item.revision ?? roundInfo.revision
-            const source = origin === revision.id ? undefined : yield* before(origin)
-            if (source) {
-              yield* serve(source)
-              const snapshot = (yield* store.revision(job.designID, origin)).document
-              const problem = yield* prepare(source, snapshot, where)
-              const located = problem ? undefined : yield* io(() => page.evaluate(locateNote, locate))
-              if (located?.found) {
-                yield* capture(`${base}-before.png`, located)
-                result.before = `${base}-before.png`
+            /** What the element's container already had before the fix: those findings never block the note. */
+            const baseline = { nodes: new Set<string>(), errors: new Set<string>() }
+            const verifyNote = Effect.gen(function* () {
+              // Before: the revision the note was taken on, so the reviewer sees what changed.
+              const origin = item.revision ?? roundInfo.revision
+              const source = origin === revision.id ? undefined : yield* before(origin)
+              if (source) {
+                yield* serve(source)
+                const problem = yield* prepare(source, yield* snapshot(origin), where)
+                const located = problem ? undefined : yield* io(() => page.evaluate(locateNote, locate))
+                if (located?.found) {
+                  yield* capture(`${base}-before.jpg`, located)
+                  result.before = `${base}-before.jpg`
+                  for (const violation of yield* audit()) for (const node of violation.nodes) baseline.nodes.add(node)
+                  for (const error of runtimeErrors) baseline.errors.add(error)
+                }
               }
-            }
-            // After: the revision under verification.
-            yield* serve(root)
-            const problem = yield* prepare(root, revision.document, where)
-            if (problem) result.findings.push(problem)
-            const located: Located = problem
-              ? { found: false, how: problem }
-              : yield* io(() => page.evaluate(locateNote, locate))
-            if (located.found) {
-              result.found = true
-              yield* capture(`${base}-after.png`, located)
-              result.after = `${base}-after.png`
-              const checks = yield* io(() => page.evaluate(DesignQuality.inspect))
-              const layout = yield* io(() =>
-                page.evaluate(
-                  scopedLayout,
-                  checks.map((check) => check.selector),
-                ),
-              )
-              result.findings.push(...layout.findings)
-              for (const check of checks.filter((check) => layout.inside.includes(check.selector)))
-                result.findings.push(
-                  `${check.severity} · ${check.rule} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
+              // After: the revision under verification.
+              yield* serve(root)
+              const problem = yield* prepare(root, revision.document, where)
+              if (problem) result.findings.push(problem)
+              const located: Located = problem
+                ? { found: false, how: problem }
+                : yield* io(() => page.evaluate(locateNote, locate))
+              if (located.found) {
+                result.found = true
+                yield* capture(`${base}-after.jpg`, located)
+                result.after = `${base}-after.jpg`
+                const checks = yield* io(() => page.evaluate(DesignQuality.inspect))
+                const layout = yield* io(() =>
+                  page.evaluate(
+                    scopedLayout,
+                    checks.map((check) => check.selector),
+                  ),
                 )
-              if (checks.some((check) => layout.inside.includes(check.selector) && check.severity === "error"))
-                result.blocking = true
-              const accessibility = yield* io(() =>
-                new AxeBuilder({ page })
-                  .include('[data-redcode-verify="container"], [data-redcode-verify="target"]')
-                  .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-                  .analyze(),
-              )
-              for (const violation of accessibility.violations) {
-                result.findings.push(`error · ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`)
-                result.blocking = true
-              }
-              if (runtimeErrors.length) {
-                result.findings.push(...runtimeErrors.map((error) => `error · script error: ${error}`))
-                result.blocking = true
-              }
-              // Scenarios on the note's screen and variant exercise the states the element takes part in.
-              const relevant = revision.document.scenarios
-                .filter(
-                  (scenario) =>
-                    !scenario.notApplicable &&
-                    (!scenario.variant || scenario.variant === variant) &&
-                    (scenario.screen ?? "") === (where.screen ?? ""),
-                )
-                .slice(0, 2)
-              for (const scenario of relevant) {
-                yield* prepare(root, revision.document, { variant, params: scenario.params, screen: scenario.screen })
-                const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
-                const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
-                const outcome = yield* io(async () => {
-                  for (const action of scenario.actions) {
-                    if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
-                    if (action.action === "fill")
-                      await target(action.selector).fill(action.value ?? "", { timeout: 3000 })
-                    if (action.action === "press")
-                      await target(action.selector).press(action.value ?? "Enter", { timeout: 3000 })
+                result.findings.push(...layout.findings)
+                for (const check of checks.filter((check) => layout.inside.includes(check.selector)))
+                  result.findings.push(
+                    `${check.severity} · ${check.rule} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
+                  )
+                if (checks.some((check) => layout.inside.includes(check.selector) && check.severity === "error"))
+                  result.blocking = true
+                // Only a new serious or critical violation blocks; what the container already had is advisory.
+                for (const violation of yield* audit()) {
+                  const fresh = violation.nodes.filter((node) => !baseline.nodes.has(node))
+                  const line = `${violation.id}: ${violation.help} (${violation.nodes.length} elements)`
+                  if (!fresh.length) result.findings.push(`review · pre-existing: ${line}`)
+                  else if (violation.serious) {
+                    result.findings.push(`error · ${line}`)
+                    result.blocking = true
+                  } else result.findings.push(`review · ${line}`)
+                }
+                for (const error of new Set(runtimeErrors)) {
+                  if (baseline.errors.has(error)) result.findings.push(`review · pre-existing script error: ${error}`)
+                  else {
+                    result.findings.push(`error · script error: ${error}`)
+                    result.blocking = true
                   }
-                  await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
-                  return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
-                    ? "exercised"
-                    : "state does not match"
-                }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
-                result.scenarios.push(`${scenario.name}: ${outcome}`)
-                if (outcome !== "exercised") result.findings.push(`review · scenario ${scenario.name}: ${outcome}`)
+                }
+                // Scenarios on the note's screen and variant exercise the states the element takes part in.
+                const relevant = revision.document.scenarios
+                  .filter(
+                    (scenario) =>
+                      !scenario.notApplicable &&
+                      (!scenario.variant || scenario.variant === variant) &&
+                      (scenario.screen ?? "") === (where.screen ?? ""),
+                  )
+                  .slice(0, 2)
+                for (const scenario of relevant) {
+                  yield* prepare(root, revision.document, { variant, params: scenario.params, screen: scenario.screen })
+                  const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
+                  const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
+                  const outcome = yield* io(async () => {
+                    for (const action of scenario.actions) {
+                      if (action.action === "click") await target(action.selector).click({ timeout: 3000 })
+                      if (action.action === "fill")
+                        await target(action.selector).fill(action.value ?? "", { timeout: 3000 })
+                      if (action.action === "press")
+                        await target(action.selector).press(action.value ?? "Enter", { timeout: 3000 })
+                    }
+                    await target(scenario.selector).waitFor({ state: "visible", timeout: 3000 })
+                    return (await target(scenario.selector).getAttribute("data-state")) === scenario.state
+                      ? "exercised"
+                      : "state does not match"
+                  }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
+                  result.scenarios.push(`${scenario.name}: ${outcome}`)
+                  if (outcome !== "exercised") result.findings.push(`review · scenario ${scenario.name}: ${outcome}`)
+                }
+              } else {
+                result.blocking = true
               }
-            } else {
+            })
+            const outcome = yield* verifyNote.pipe(Effect.timeout(NOTE_BUDGET), Effect.exit)
+            if (Exit.isFailure(outcome)) {
+              // A note that ran out of time or hit a renderer error keeps what it got; the job goes on.
+              const cause = Cause.squash(outcome.cause)
+              const timedOut =
+                Cause.hasInterrupts(outcome.cause) ||
+                (typeof cause === "object" && cause !== null && (cause as { _tag?: string })._tag === "TimeoutError")
+              result.found = false
               result.blocking = true
+              result.findings.push(
+                timedOut
+                  ? `error · timed out after ${NOTE_BUDGET}; run the verify again for this round`
+                  : `error · ${cause instanceof Error ? cause.message : String(cause)}`,
+              )
             }
             const blocking = result.findings.filter((finding) => finding.startsWith("error ·"))
             const advisory = result.findings.length - blocking.length
             result.reason = !result.found
-              ? `element not found in ${revision.id} (${located.how}; looked up by data-design-id, selector and XPath)`
+              ? Exit.isFailure(outcome)
+                ? blocking[0].replace(/^error · /, "")
+                : `element not found in ${revision.id} (${result.findings.find((finding) => !finding.startsWith("error ·") && !finding.startsWith("review ·")) ?? "not found"}; looked up by data-design-id, selector and XPath)`
               : blocking.length
                 ? `found; ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"}: ${blocking[0].replace(/^error · /, "")}`
                 : advisory
                   ? `found; ${advisory} advisory finding${advisory === 1 ? "" : "s"}`
                   : `found; no findings${result.scenarios.length ? `; ${result.scenarios.length} scenario${result.scenarios.length === 1 ? "" : "s"} exercised` : ""}`
             results.push(result)
-            yield* progress((position + 1) / Math.min(notes.length, LIMIT))
+            yield* record(position + 1)
           }
           report.verify = { revision: revision.id, round, width: WIDTH, notes: results, findings }
           const image = (file: string | undefined, alt: string) =>
@@ -724,7 +791,7 @@ const make = Effect.gen(function* () {
                   .bytes()
                   .then(
                     (bytes) =>
-                      `<figure><figcaption>${alt}</figcaption><img style="max-width:100%" alt="${alt}" src="data:image/png;base64,${Buffer.from(bytes).toString("base64")}"></figure>`,
+                      `<figure><figcaption>${alt}</figcaption><img style="max-width:100%" alt="${alt}" src="data:image/jpeg;base64,${Buffer.from(bytes).toString("base64")}"></figure>`,
                   )
               : Promise.resolve(`<p>${alt}: no capture</p>`)
           const sections = yield* io(() =>
@@ -994,6 +1061,8 @@ const make = Effect.gen(function* () {
 
   const start = Effect.fn("DesignRenderer.start")(function* (id: Design.ID, input: Design.Render) {
     yield* store.revision(id, input.revision)
+    // Two renders per note plus scoped checks; the round decides the budget, bounded to half an hour.
+    let budget = 120
     if (input.format === "verify") {
       // Fail now, in the tool result, rather than in a job the agent has to poll for.
       const document = yield* store.get(id)
@@ -1005,6 +1074,7 @@ const make = Effect.gen(function* () {
         })
       if (!DesignRounds.notes(document, round).length)
         return yield* new Design.Error({ code: "invalid", message: `Round ${round} has no notes to verify` })
+      budget = Math.min(1800, 90 + 50 * DesignRounds.notes(document, round).length)
     }
     const candidate =
       input.format === "compare" ? yield* store.implementation(id, input.implementation ?? "dist") : undefined
@@ -1022,14 +1092,37 @@ const make = Effect.gen(function* () {
     }
     yield* store.putJob(job)
     const fiber = yield* render(job).pipe(
-      // A verify renders two revisions per note; it gets room for a round of two dozen notes.
-      Effect.timeout(input.format === "verify" ? "300 seconds" : "120 seconds"),
+      Effect.timeout(`${budget} seconds`),
       Effect.catchCause((cause) =>
-        store.putJob({
-          ...job,
-          status: Cause.hasInterrupts(cause) ? "interrupted" : "failed",
-          error: Cause.pretty(cause),
-          finished: Date.now(),
+        Effect.gen(function* () {
+          // A job that did not finish keeps no captures; a verify's finished notes stay on the job.
+          const exports = path.join(store.storage, id, "exports")
+          yield* Effect.promise(() =>
+            readdir(exports)
+              .then((names) =>
+                Promise.all(
+                  names
+                    .filter((name) => name.startsWith(`${job.id}-`))
+                    .map((name) => rm(path.join(exports, name), { force: true })),
+                ),
+              )
+              .catch(() => undefined),
+          )
+          const current = (yield* store.jobs(id)).find((item) => item.id === job.id)
+          yield* store.putJob({
+            ...job,
+            ...(current?.verify
+              ? {
+                  verify: {
+                    ...current.verify,
+                    notes: current.verify.notes.map((note) => ({ ...note, before: undefined, after: undefined })),
+                  },
+                }
+              : {}),
+            status: Cause.hasInterrupts(cause) ? "interrupted" : "failed",
+            error: Cause.pretty(cause),
+            finished: Date.now(),
+          })
         }),
       ),
       Effect.asVoid,

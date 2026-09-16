@@ -239,6 +239,58 @@ describe("DesignFeed.reduce", () => {
       ],
     })
     for (const item of items) expect(Schema.is(Design.FeedEvent)(item)).toBe(true)
+    // A later poll that lists the same job repeats only the tool entry; the verdicts were announced once.
+    const again = all([
+      event(
+        SessionEvent.Tool.Called,
+        1,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs",
+          tool: "design_jobs",
+          input: { id: "design_checkout" },
+          provider: { executed: false },
+        }),
+      ),
+      event(
+        SessionEvent.Tool.Success,
+        2,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs",
+          structured: { jobs: [job], revision: "rev_2" },
+          content: [],
+          provider: { executed: false },
+        }),
+      ),
+      event(
+        SessionEvent.Tool.Called,
+        3,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs_2",
+          tool: "design_jobs",
+          input: { id: "design_checkout" },
+          provider: { executed: false },
+        }),
+      ),
+      event(
+        SessionEvent.Tool.Success,
+        4,
+        encoded({
+          sessionID,
+          assistantMessageID,
+          callID: "call_jobs_2",
+          structured: { jobs: [job], revision: "rev_2" },
+          content: [],
+          provider: { executed: false },
+        }),
+      ),
+    ])
+    expect(again.filter((item) => item.type === "verified")).toHaveLength(1)
     // A jobs result without a finished verify adds nothing beyond the tool entry.
     expect(DesignFeed.verifiedOf([running], { seq: 0, at: 0 })).toEqual([])
     expect(DesignFeed.verifiedOf("not jobs", { seq: 0, at: 0 })).toEqual([])

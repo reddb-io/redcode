@@ -94,6 +94,10 @@ export function apply(
         problem: `Evidence job ${update.evidence.job} is not a completed verify job of this design. ${describeJobs(jobs)}`,
       }
     const seen = observed(job, update)
+    if (job && !seen)
+      return {
+        problem: `Evidence job ${job.id} did not cover note ${update.feedback} #${update.index} (it verified round ${job.verify!.round}). ${describeJobs(jobs)}`,
+      }
     const { reason: previousReason, evidence: previousEvidence, ...before } = current[position]
     // A repeated status keeps its reason and evidence unless the update replaces them; a new status starts over.
     const kept = before.status === update.status

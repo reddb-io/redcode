@@ -450,8 +450,14 @@ const layer = Layer.effectDiscard(
           description:
             "Read export and audit progress. Interrupted jobs require an explicit new request; they never repeat a provider operation.",
           input: Schema.Struct({ id: Design.ID, cancel: Schema.optional(Schema.String) }),
-          output: Schema.Struct({ jobs: Schema.Array(Design.Job), revision: Schema.NullOr(Schema.String) }),
-          toModelOutput: ({ output }) => [{ type: "text", text: DesignQuality.report(output.jobs, output.revision) }],
+          output: Schema.Struct({
+            jobs: Schema.Array(Design.Job),
+            revision: Schema.NullOr(Schema.String),
+            notes: Schema.Array(Design.Note).pipe(Schema.optional),
+          }),
+          toModelOutput: ({ output }) => [
+            { type: "text", text: DesignQuality.report(output.jobs, output.revision, output.notes ?? []) },
+          ],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* allow("design_jobs", context)
@@ -459,7 +465,7 @@ const layer = Layer.effectDiscard(
               const jobs = input.cancel
                 ? [yield* renderer.cancel(input.id, input.cancel)]
                 : yield* renderer.jobs(input.id)
-              return { jobs, revision: document.revision }
+              return { jobs, revision: document.revision, notes: document.notes ?? [] }
             }).pipe(Effect.catchTag("Design.Error", fail)),
         }),
         design_exit: Tool.make({

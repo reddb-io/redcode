@@ -325,11 +325,15 @@ const make = Effect.gen(function* () {
       Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
     )
     yield* io(() => DesignFiles.restore(document.root, blobs, previous.files))
+    // The snapshot's document is frozen at publish time; the review's rounds and note statuses are
+    // live state of the design and survive a restore, as the revision pointers do.
     yield* save({
       ...previous.document,
       root: document.root,
       revision: document.revision,
       approvedRevision: document.approvedRevision,
+      ...(document.rounds ? { rounds: document.rounds } : {}),
+      ...(document.notes ? { notes: document.notes } : {}),
       ended: false,
     })
     return yield* publish(id, `Restored: ${previous.name}`, read, tooling)

@@ -5557,6 +5557,10 @@ export type DesignFeedbackItem = {
   context?: string
   parent?: string
   revision?: string
+  resent?: {
+    feedback: string
+    index: number
+  }
 }
 
 export type DesignNoteEvidence = {

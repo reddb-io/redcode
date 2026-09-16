@@ -165,6 +165,17 @@ describe("DesignRounds", () => {
       "render_1 (revision rev_2, round 1, completed, 1 of 1 notes found without blocking findings)",
     )
     expect(problem(refused)).toContain("render_2 (revision rev_2, round 1, running)")
+    // A completed verify of another round never stands as evidence for this note.
+    const elsewhere = job("render_4", "rev_2", 2, [seen("msg_9", 1, true)])
+    expect(
+      problem(
+        DesignRounds.apply(
+          opened,
+          [{ feedback: SessionMessage.ID.make("msg_1"), index: 1, status: "resolved", evidence: { job: "render_4" } }],
+          [elsewhere],
+        ),
+      ),
+    ).toContain("Evidence job render_4 did not cover note msg_1 #1 (it verified round 2)")
     expect(problem(refused)).not.toContain("render_3 (")
     expect(DesignRounds.describeJobs([])).toContain("Verify jobs: none")
   })
