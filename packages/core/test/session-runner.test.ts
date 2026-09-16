@@ -56,6 +56,7 @@ import {
   SessionTable,
 } from "@reddb-io/redcode-core/session/sql"
 import { SessionStore } from "@reddb-io/redcode-core/session/store"
+import { MonitorTable } from "@reddb-io/redcode-core/monitor.sql"
 import { SessionGoal } from "../src/session/goal"
 import { SessionPlan } from "../src/session/plan"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
@@ -4223,6 +4224,93 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
         ToolDeadline.message({ tool: "wedged", ms: ToolDeadline.TOOL_DEADLINE_DEFAULT_MS }),
       )
       expect(yield* guardTrips).toEqual([["tool_timeout", "stop"]])
+    }),
+  )
+
+  /** A running poll monitor for this session: `Monitor.parks` is true for every one of them. */
+  const parkingMonitor = Effect.fn("test.parkingMonitor")(function* () {
+    const { db } = yield* Database.Service
+    const id = `monitor_${crypto.randomUUID()}`
+    yield* db
+      .insert(MonitorTable)
+      .values({
+        id,
+        session_id: sessionID,
+        owner: "test",
+        data: {
+          id,
+          sessionID,
+          command: "probe: process \"build\" exited",
+          workdir: "/project",
+          options: { mode: "poll", interval_ms: 1_000, deadline_ms: 600_000 },
+          status: "running",
+          created: 1,
+          updated: 1,
+          attempts: 0,
+          delivery: "pending",
+        },
+      })
+      .run()
+      .pipe(Effect.orDie)
+    return Effect.suspend(() => db.delete(MonitorTable).where(eq(MonitorTable.id, id)).run().pipe(Effect.orDie))
+  })
+
+  it.effect("goes idle while a monitor watches, instead of spending turns on continuations", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const clean = yield* parkingMonitor()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the build" }), resume: false })
+      requests.length = 0
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "text-parked" }),
+          LLMEvent.textDelta({ id: "text-parked", text: "Watching the build." }),
+          LLMEvent.textEnd({ id: "text-parked" }),
+          LLMEvent.finish({ reason: "stop" }),
+        ],
+      ]
+
+      yield* session.resume(sessionID)
+
+      // One turn, then idle: the monitor's own result will start the next one.
+      expect(requests).toHaveLength(1)
+      yield* clean
+    }),
+  )
+
+  it.effect("answers a queued prompt rather than parking behind a monitor", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const { db } = yield* Database.Service
+      const clean = yield* parkingMonitor()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the build" }), resume: false })
+      // Waiting since before the turn ended: a person must not starve behind an observation.
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Actually, check the lint first" }),
+        delivery: "queue",
+        resume: false,
+      })
+      requests.length = 0
+      const answer = (id: string, text: string) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id }),
+        LLMEvent.textDelta({ id, text }),
+        LLMEvent.textEnd({ id }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+      responses = [answer("text-build", "Watching the build."), answer("text-lint", "Linted.")]
+
+      yield* session.resume(sessionID)
+
+      // The queued prompt is promoted and answered before the session parks.
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1]!)).toContain("Actually, check the lint first")
+      expect(yield* SessionInput.hasPending(db, sessionID, "queue")).toBe(false)
+      yield* clean
     }),
   )
 
