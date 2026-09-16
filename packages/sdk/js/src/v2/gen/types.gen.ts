@@ -5578,6 +5578,7 @@ export type DesignNote = {
   status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
   reason?: string
   evidence?: DesignNoteEvidence
+  by?: "agent" | "reviewer"
   updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
 }
 
@@ -5640,6 +5641,7 @@ export type DesignNoteUpdate = {
 
 export type DesignUpdate = {
   notes?: Array<DesignNoteUpdate>
+  by?: "reviewer"
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
   name?: string

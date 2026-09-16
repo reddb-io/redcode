@@ -356,6 +356,7 @@ type Endpoint4_6Input = {
   readonly sessionID: Endpoint4_6Request["params"]["sessionID"]
   readonly designID: Endpoint4_6Request["params"]["designID"]
   readonly notes?: Endpoint4_6Request["payload"]["notes"]
+  readonly by?: Endpoint4_6Request["payload"]["by"]
   readonly controls?: Endpoint4_6Request["payload"]["controls"]
   readonly presets?: Endpoint4_6Request["payload"]["presets"]
   readonly name?: Endpoint4_6Request["payload"]["name"]
@@ -373,6 +374,7 @@ const Endpoint4_6 = (raw: RawClient["server.design"]) => (input: Endpoint4_6Inpu
     params: { sessionID: input["sessionID"], designID: input["designID"] },
     payload: {
       notes: input["notes"],
+      by: input["by"],
       controls: input["controls"],
       presets: input["presets"],
       name: input["name"],
