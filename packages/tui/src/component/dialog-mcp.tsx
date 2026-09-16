@@ -10,7 +10,7 @@ import { useTheme } from "../context/theme"
 import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
 import type { BrowserOpener } from "../util/browser"
-import { DialogMcpAuth } from "./dialog-mcp-auth"
+import { DialogMcpAuth, isSigningIn } from "./dialog-mcp-auth"
 import { McpAuthPrompt } from "./mcp-auth-prompt"
 
 type Operation = "reload" | "toggle" | "logout"
@@ -117,7 +117,7 @@ export function DialogMcp(props: DialogMcpProps = {}) {
   ])
 
   function authenticate(name: string) {
-    if (loading() !== undefined || !canAuth(name)) return
+    if (loading() !== undefined || !canAuth(name) || isSigningIn(name)) return
     dialog.replace(() => (
       <DialogMcpAuth name={name} opener={props.opener} timeoutMs={props.authTimeoutMs} onDone={() => back()} />
     ))
@@ -182,8 +182,9 @@ export function DialogMcp(props: DialogMcpProps = {}) {
           : await (
               operation === "logout"
                 ? sdk.client.mcp.auth.remove({ name: name!, workspace }, { throwOnError: true }).then(() => {
-                    // The user asked for this; the reconnect below reports needs_auth without a prompt.
-                    McpAuthPrompt.acknowledge(name!)
+                    // The user asked for this; the reconnect below reports needs_auth without a prompt. A server
+                    // that already needed auth produces no transition, so there is nothing to acknowledge.
+                    if (sync.data.mcp[name!]?.status !== "needs_auth") McpAuthPrompt.acknowledge(workspace, name!)
                     return sdk.client.mcp.reload({ name, workspace }, { throwOnError: true })
                   })
                 : sync.data.mcp[name!]?.status === "connected"
