@@ -3,7 +3,20 @@ import { Effect, Schema } from "effect"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { McpServerNotFoundError } from "../errors"
-import { AddPayload, AuthCallbackPayload, McpReloadError, StatusMap, UnsupportedOAuthError } from "../groups/mcp"
+import {
+  AddPayload,
+  AuthCallbackPayload,
+  AuthWaitPayload,
+  McpReloadError,
+  StatusMap,
+  UnsupportedOAuthError,
+} from "../groups/mcp"
+
+// Short enough to stay under proxy and server idle timeouts; clients poll again on `pending`.
+const MAX_AUTH_WAIT_MS = 25_000
+
+const notFound = (error: { name: string }) =>
+  Effect.fail(new McpServerNotFoundError({ name: error.name, message: `MCP server not found: ${error.name}` }))
 
 export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handlers) =>
   Effect.gen(function* () {
@@ -25,7 +38,7 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
         if (!(yield* mcp.supportsOAuth(ctx.params.name))) {
           return yield* new UnsupportedOAuthError({ error: `MCP server ${ctx.params.name} does not support OAuth` })
         }
-        return yield* mcp.startAuth(ctx.params.name)
+        return yield* mcp.beginAuth(ctx.params.name)
       }).pipe(
         Effect.catchTag("MCP.NotFoundError", (error) =>
           Effect.fail(new McpServerNotFoundError({ name: error.name, message: `MCP server not found: ${error.name}` })),
@@ -59,6 +72,25 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
           Effect.fail(new McpServerNotFoundError({ name: error.name, message: `MCP server not found: ${error.name}` })),
         ),
       )
+    })
+
+    const authWait = Effect.fn("McpHttpApi.authWait")(function* (ctx: {
+      params: { name: string }
+      payload: typeof AuthWaitPayload.Type
+    }) {
+      const waitMs = Math.min(Math.max(ctx.payload.waitMs ?? MAX_AUTH_WAIT_MS, 0), MAX_AUTH_WAIT_MS)
+      return yield* mcp
+        .waitAuth(ctx.params.name, ctx.payload.oauthState, waitMs)
+        .pipe(Effect.catchTag("MCP.NotFoundError", notFound))
+    })
+
+    const authCancel = Effect.fn("McpHttpApi.authCancel")(function* (ctx: { params: { name: string } }) {
+      yield* mcp.cancelAuth(ctx.params.name).pipe(Effect.catchTag("MCP.NotFoundError", notFound))
+      return { success: true as const }
+    })
+
+    const info = Effect.fn("McpHttpApi.info")(function* () {
+      return yield* mcp.info()
     })
 
     const authRemove = Effect.fn("McpHttpApi.authRemove")(function* (ctx: { params: { name: string } }) {
@@ -110,6 +142,9 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
         ),
       )
       .handle("status", status)
+      .handle("info", info)
+      .handle("authWait", authWait)
+      .handle("authCancel", authCancel)
       .handle("add", add)
       .handle("authStart", authStart)
       .handle("authCallback", authCallback)

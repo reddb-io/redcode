@@ -465,6 +465,19 @@ const scenarios: Scenario[] = [
       "status",
     ),
   http.protected.get("/mcp", "mcp.status").json(),
+  http.protected.get("/mcp/info", "mcp.info").json(200, object, "status"),
+  http.protected
+    .post("/mcp/{name}/auth/wait", "mcp.auth.wait")
+    .at((ctx) => ({
+      path: route("/mcp/{name}/auth/wait", { name: "httpapi-missing" }),
+      headers: ctx.headers(),
+      body: { oauthState: "state", waitMs: 0 },
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/mcp/{name}/auth/cancel", "mcp.auth.cancel")
+    .at((ctx) => ({ path: route("/mcp/{name}/auth/cancel", { name: "httpapi-missing" }), headers: ctx.headers() }))
+    .json(404, object, "status"),
   http.protected
     .post("/mcp/reload", "mcp.reload")
     .mutating()

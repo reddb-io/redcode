@@ -26,6 +26,14 @@ export const AuthStartResponse = Schema.Struct({
 export const AuthCallbackPayload = Schema.Struct({
   code: Schema.String,
 })
+export const AuthWaitPayload = Schema.Struct({
+  oauthState: Schema.String,
+  /** How long to hold the request before answering `pending`; capped server-side. */
+  waitMs: Schema.optional(Schema.Finite),
+})
+export const AuthCancelResponse = Schema.Struct({
+  success: Schema.Literal(true),
+})
 export const AuthRemoveResponse = Schema.Struct({
   success: Schema.Literal(true),
 })
@@ -36,10 +44,13 @@ export class UnsupportedOAuthError extends Schema.ErrorClass<UnsupportedOAuthErr
 
 export const McpPaths = {
   status: "/mcp",
+  info: "/mcp/info",
   reload: "/mcp/reload",
   auth: "/mcp/:name/auth",
   authCallback: "/mcp/:name/auth/callback",
   authAuthenticate: "/mcp/:name/auth/authenticate",
+  authWait: "/mcp/:name/auth/wait",
+  authCancel: "/mcp/:name/auth/cancel",
   connect: "/mcp/:name/connect",
   disconnect: "/mcp/:name/disconnect",
 } as const
@@ -69,6 +80,17 @@ export const McpApi = HttpApi.make("mcp")
             identifier: "mcp.status",
             summary: "Get MCP status",
             description: "Get the status of all Model Context Protocol (MCP) servers.",
+          }),
+        ),
+        HttpApiEndpoint.get("info", McpPaths.info, {
+          query: WorkspaceRoutingQuery,
+          success: described(Schema.Record(Schema.String, MCP.ServerInfo), "MCP server details"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "mcp.info",
+            summary: "Get MCP server details",
+            description:
+              "Get each MCP server's transport, exposed tool count, and OAuth state (authenticated, expired or not authenticated, with the token expiry when known).",
           }),
         ),
         HttpApiEndpoint.post("add", McpPaths.status, {
@@ -119,6 +141,32 @@ export const McpApi = HttpApi.make("mcp")
             identifier: "mcp.auth.authenticate",
             summary: "Authenticate MCP OAuth",
             description: "Start OAuth flow and wait for callback (opens browser).",
+          }),
+        ),
+        HttpApiEndpoint.post("authWait", McpPaths.authWait, {
+          params: { name: Schema.String },
+          query: WorkspaceRoutingQuery,
+          payload: AuthWaitPayload,
+          success: described(MCP.AuthWaitResult, "OAuth flow result, or pending while the user has not approved yet"),
+          error: McpServerNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "mcp.auth.wait",
+            summary: "Wait for MCP OAuth",
+            description:
+              "Wait briefly for the OAuth callback of a flow started with mcp.auth.start, then finish it and reconnect the server. Returns pending when the callback has not arrived yet; call again to keep waiting. Does not open a browser.",
+          }),
+        ),
+        HttpApiEndpoint.post("authCancel", McpPaths.authCancel, {
+          params: { name: Schema.String },
+          query: WorkspaceRoutingQuery,
+          success: described(AuthCancelResponse, "Pending OAuth flow cancelled"),
+          error: McpServerNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "mcp.auth.cancel",
+            summary: "Cancel MCP OAuth",
+            description: "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.",
           }),
         ),
         HttpApiEndpoint.delete("authRemove", McpPaths.auth, {

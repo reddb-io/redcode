@@ -138,6 +138,10 @@ describe("mcp HttpApi", () => {
         const authenticate = yield* request(handler, "/mcp/demo/auth/authenticate", tmp.directory, { method: "POST" })
         expect(authenticate.status).toBe(400)
 
+        const info = yield* request(handler, "/mcp/info", tmp.directory, { method: "GET" })
+        expect(info.status).toBe(200)
+        expect(yield* json(info)).toEqual({ demo: { type: "local", tools: 0, oauth: false } })
+
         const removed = yield* request(handler, "/mcp/demo/auth", tmp.directory, { method: "DELETE" })
         expect(removed.status).toBe(200)
         expect(yield* json(removed)).toEqual({ success: true })
@@ -201,6 +205,12 @@ describe("mcp HttpApi", () => {
           { method: "POST", route: "/mcp/missing/auth/authenticate" },
           { method: "POST", route: "/mcp/missing/auth/callback", body: JSON.stringify({ code: "code" }) },
           { method: "DELETE", route: "/mcp/missing/auth" },
+          {
+            method: "POST",
+            route: "/mcp/missing/auth/wait",
+            body: JSON.stringify({ oauthState: "state", waitMs: 0 }),
+          },
+          { method: "POST", route: "/mcp/missing/auth/cancel" },
           { method: "POST", route: "/mcp/missing/connect" },
           { method: "POST", route: "/mcp/missing/disconnect" },
         ]) {

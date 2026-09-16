@@ -2603,9 +2603,25 @@ export type McpServerNotFoundError = {
   message: string
 }
 
+export type McpAuthStatus = "authenticated" | "expired" | "not_authenticated"
+
+export type McpServerInfo = {
+  type: "local" | "remote"
+  tools: number
+  oauth: boolean
+  auth?: McpAuthStatus
+  expiresAt?: number
+}
+
 export type McpUnsupportedOAuthError = {
   error: string
 }
+
+export type McpAuthPending = {
+  status: "pending"
+}
+
+export type McpAuthWaitResult = McpStatus | McpAuthPending
 
 export type Project = {
   id: string
@@ -9730,6 +9746,36 @@ export type McpAddResponses = {
 
 export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
 
+export type McpInfoData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/info"
+}
+
+export type McpInfoErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type McpInfoError = McpInfoErrors[keyof McpInfoErrors]
+
+export type McpInfoResponses = {
+  /**
+   * MCP server details
+   */
+  200: {
+    [key: string]: McpServerInfo
+  }
+}
+
+export type McpInfoResponse = McpInfoResponses[keyof McpInfoResponses]
+
 export type McpAuthRemoveData = {
   body?: never
   path: {
@@ -9872,6 +9918,79 @@ export type McpAuthAuthenticateResponses = {
 }
 
 export type McpAuthAuthenticateResponse = McpAuthAuthenticateResponses[keyof McpAuthAuthenticateResponses]
+
+export type McpAuthWaitData = {
+  body?: {
+    oauthState: string
+    waitMs?: number
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/auth/wait"
+}
+
+export type McpAuthWaitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
+}
+
+export type McpAuthWaitError = McpAuthWaitErrors[keyof McpAuthWaitErrors]
+
+export type McpAuthWaitResponses = {
+  /**
+   * OAuth flow result, or pending while the user has not approved yet
+   */
+  200: McpAuthWaitResult
+}
+
+export type McpAuthWaitResponse = McpAuthWaitResponses[keyof McpAuthWaitResponses]
+
+export type McpAuthCancelData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/auth/cancel"
+}
+
+export type McpAuthCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
+}
+
+export type McpAuthCancelError = McpAuthCancelErrors[keyof McpAuthCancelErrors]
+
+export type McpAuthCancelResponses = {
+  /**
+   * Pending OAuth flow cancelled
+   */
+  200: {
+    success: true
+  }
+}
+
+export type McpAuthCancelResponse = McpAuthCancelResponses[keyof McpAuthCancelResponses]
 
 export type McpConnectData = {
   body?: never

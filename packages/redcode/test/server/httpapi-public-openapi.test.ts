@@ -324,6 +324,8 @@ describe("PublicApi OpenAPI v2 errors", () => {
       ["post", "/mcp/{name}/auth"],
       ["post", "/mcp/{name}/auth/authenticate"],
       ["post", "/mcp/{name}/auth/callback"],
+      ["post", "/mcp/{name}/auth/wait"],
+      ["post", "/mcp/{name}/auth/cancel"],
       ["delete", "/mcp/{name}/auth"],
       ["post", "/mcp/{name}/connect"],
       ["post", "/mcp/{name}/disconnect"],

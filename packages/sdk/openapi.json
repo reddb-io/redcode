@@ -3337,6 +3337,64 @@
         ]
       }
     },
+    "/mcp/info": {
+      "get": {
+        "tags": ["mcp"],
+        "operationId": "mcp.info",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP server details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/MCPServerInfo"
+                  },
+                  "description": "MCP server details"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Get each MCP server's transport, exposed tool count, and OAuth state (authenticated, expired or not authenticated, with the token expiry when known).",
+        "summary": "Get MCP server details",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.mcp.info({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp/{name}/auth": {
       "post": {
         "tags": ["mcp"],
@@ -3676,6 +3734,178 @@
           {
             "lang": "js",
             "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/auth/wait": {
+      "post": {
+        "tags": ["mcp"],
+        "operationId": "mcp.auth.wait",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OAuth flow result, or pending while the user has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPAuthWaitResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Wait briefly for the OAuth callback of a flow started with mcp.auth.start, then finish it and reconnect the server. Returns pending when the callback has not arrived yet; call again to keep waiting. Does not open a browser.",
+        "summary": "Wait for MCP OAuth",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oauthState": {
+                    "type": "string"
+                  },
+                  "waitMs": {
+                    "type": "number"
+                  }
+                },
+                "required": ["oauthState"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.mcp.auth.wait({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/auth/cancel": {
+      "post": {
+        "tags": ["mcp"],
+        "operationId": "mcp.auth.cancel",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending OAuth flow cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["success"],
+                  "additionalProperties": false,
+                  "description": "Pending OAuth flow cancelled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Abandon a pending OAuth flow for an MCP server. Stored credentials are kept.",
+        "summary": "Cancel MCP OAuth",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.mcp.auth.cancel({\n  ...\n})"
           }
         ]
       }
@@ -33958,6 +34188,33 @@
         "required": ["_tag", "name", "message"],
         "additionalProperties": false
       },
+      "MCPAuthStatus": {
+        "type": "string",
+        "enum": ["authenticated", "expired", "not_authenticated"]
+      },
+      "MCPServerInfo": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["local", "remote"]
+          },
+          "tools": {
+            "type": "number"
+          },
+          "oauth": {
+            "type": "boolean"
+          },
+          "auth": {
+            "$ref": "#/components/schemas/MCPAuthStatus"
+          },
+          "expiresAt": {
+            "type": "number"
+          }
+        },
+        "required": ["type", "tools", "oauth"],
+        "additionalProperties": false
+      },
       "McpUnsupportedOAuthError": {
         "type": "object",
         "properties": {
@@ -33967,6 +34224,27 @@
         },
         "required": ["error"],
         "additionalProperties": false
+      },
+      "MCPAuthPending": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending"]
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      },
+      "MCPAuthWaitResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/MCPStatus"
+          },
+          {
+            "$ref": "#/components/schemas/MCPAuthPending"
+          }
+        ]
       },
       "Project": {
         "type": "object",

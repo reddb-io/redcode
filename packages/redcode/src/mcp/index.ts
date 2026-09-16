@@ -5,7 +5,7 @@ import { BootTrace } from "@reddb-io/redcode-core/observability/boot-trace"
 import { ConfigV1 } from "@reddb-io/redcode-core/v1/config/config"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { Client, type ClientOptions } from "@modelcontextprotocol/sdk/client/index.js"
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
@@ -83,6 +83,11 @@ export class ReloadError extends Schema.TaggedErrorClass<ReloadError>()("MCP.Rel
 
 type MCPClient = Client
 
+function isUnauthorized(error: unknown) {
+  if (error instanceof UnauthorizedError) return true
+  return error instanceof StreamableHTTPError && error.code === 401
+}
+
 function createClient(directory: string) {
   const client = new Client({ name: "redcode", version: InstallationVersion }, CLIENT_OPTIONS)
   client.setRequestHandler(ListRootsRequestSchema, () =>
@@ -116,6 +121,55 @@ export const Status = Schema.Union([
   StatusNeedsClientRegistration,
 ]).annotate({ identifier: "MCPStatus", discriminator: "status" })
 export type Status = Schema.Schema.Type<typeof Status>
+
+export const AuthStatusSchema = Schema.Literals(["authenticated", "expired", "not_authenticated"]).annotate({
+  identifier: "MCPAuthStatus",
+})
+
+export const ServerInfo = Schema.Struct({
+  type: Schema.Literals(["local", "remote"]),
+  /** Tools the server currently exposes to the session; 0 unless connected. */
+  tools: Schema.Finite,
+  /** Whether the server can authenticate with OAuth (a remote server without `oauth: false`). */
+  oauth: Schema.Boolean,
+  auth: Schema.optional(AuthStatusSchema),
+  /** Access token expiry in Unix seconds, when the authorization server reported one. */
+  expiresAt: Schema.optional(Schema.Finite),
+}).annotate({ identifier: "MCPServerInfo" })
+export type ServerInfo = Schema.Schema.Type<typeof ServerInfo>
+
+export const AuthWaitResult = Schema.Union([
+  Status,
+  Schema.Struct({ status: Schema.Literal("pending") }).annotate({ identifier: "MCPAuthPending" }),
+]).annotate({ identifier: "MCPAuthWaitResult", discriminator: "status" })
+export type AuthWaitResult = Schema.Schema.Type<typeof AuthWaitResult>
+
+type CallbackOutcome = { code: string } | { error: string }
+// One OAuth attempt per server: the callback listener is registered as soon as the flow starts, so a
+// client that polls `waitAuth` after the user already approved still receives the code.
+type AuthWaiter = { oauthState: string; outcome: Promise<CallbackOutcome>; finished?: Promise<Status> }
+const authWaiters = new Map<string, AuthWaiter>()
+
+function registerAuthWaiter(mcpName: string, oauthState: string) {
+  if (authWaiters.has(mcpName)) McpOAuthCallback.cancelPending(mcpName)
+  const outcome = McpOAuthCallback.waitForCallback(oauthState, mcpName).then(
+    (code): CallbackOutcome => ({ code }),
+    (error): CallbackOutcome => ({ error: error instanceof Error ? error.message : String(error) }),
+  )
+  const waiter: AuthWaiter = { oauthState, outcome }
+  authWaiters.set(mcpName, waiter)
+  return waiter
+}
+
+function settleWithin<T>(promise: Promise<T>, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
 
 // Store transports for OAuth servers to allow finishing auth
 type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
@@ -212,6 +266,19 @@ export interface Interface {
     onAuthorization?: (authorizationUrl: string) => void,
   ) => Effect.Effect<Status, NotFoundError>
   readonly finishAuth: (mcpName: string, authorizationCode: string) => Effect.Effect<Status, NotFoundError>
+  /** Start OAuth for a client that opens the URL itself; an empty URL means the server is already authorized and now connected. */
+  readonly beginAuth: (
+    mcpName: string,
+  ) => Effect.Effect<{ authorizationUrl: string; oauthState: string }, NotFoundError>
+  /** Wait up to `waitMs` for the callback of a flow started by `beginAuth`, then finish it. */
+  readonly waitAuth: (
+    mcpName: string,
+    oauthState: string,
+    waitMs?: number,
+  ) => Effect.Effect<AuthWaitResult, NotFoundError>
+  /** Abandon a pending OAuth attempt without touching stored credentials. */
+  readonly cancelAuth: (mcpName: string) => Effect.Effect<void, NotFoundError>
+  readonly info: () => Effect.Effect<Record<string, ServerInfo>>
   readonly removeAuth: (mcpName: string) => Effect.Effect<void>
   readonly supportsOAuth: (mcpName: string) => Effect.Effect<boolean, NotFoundError>
   readonly hasStoredTokens: (mcpName: string) => Effect.Effect<boolean>
@@ -332,14 +399,8 @@ const layer = Layer.effect(
               } else {
                 pendingOAuthTransports.set(key, { transport })
                 lastStatus = { status: "needs_auth" as const }
-                return events
-                  .publish(TuiEvent.ToastShow, {
-                    title: "MCP Authentication Required",
-                    message: `Server "${key}" requires authentication. Run: redcode mcp auth ${key}`,
-                    variant: "warning",
-                    duration: 8000,
-                  })
-                  .pipe(Effect.ignore, Effect.as(undefined))
+                // The TUI raises its own deduplicated "Authenticate" prompt from the status change.
+                return Effect.succeed(undefined)
               }
             }
 
@@ -461,6 +522,22 @@ const layer = Layer.effect(
     )
 
     function watch(s: State, name: string, client: MCPClient, bridge: EffectBridge.Shape, timeout?: number) {
+      // A token that expires (or fails to refresh) mid-session surfaces here, not at connect time.
+      client.onerror = (error) => {
+        if (!isUnauthorized(error) || s.clients[name] !== client) return
+        delete s.clients[name]
+        delete s.defs[name]
+        delete s.instructions[name]
+        s.status[name] = { status: "needs_auth" }
+        bridge.fork(
+          Effect.logWarning("MCP server needs authentication", { server: name }).pipe(
+            Effect.andThen(Effect.tryPromise(() => client.close()).pipe(Effect.ignore)),
+            Effect.andThen(events.publish(ToolsChanged, { server: name })),
+            Effect.ignore,
+          ),
+        )
+      }
+
       client.onclose = () => {
         if (s.clients[name] !== client) return
         delete s.clients[name]
@@ -965,11 +1042,43 @@ const layer = Layer.effect(
         Effect.catch((error) => {
           if (error instanceof UnauthorizedError && capturedUrl) {
             pendingOAuthTransports.set(mcpName, { transport, provider: authProvider })
+            registerAuthWaiter(mcpName, oauthState)
             return Effect.succeed({ authorizationUrl: capturedUrl.toString(), oauthState } satisfies AuthResult)
           }
           return Effect.die(error)
         }),
       )
+    })
+
+    const storeAuthorized = Effect.fnUntraced(function* (mcpName: string, client: MCPClient | undefined) {
+      const mcpConfig = yield* requireMcpConfig(mcpName).pipe(
+        Effect.tapError(() => Effect.tryPromise(() => client?.close() ?? Promise.resolve()).pipe(Effect.ignore)),
+      )
+
+      const listed = client
+        ? client.getServerCapabilities()?.tools
+          ? yield* McpCatalog.defs(client, mcpConfig.timeout)
+          : []
+        : undefined
+      if (!client || !listed) {
+        yield* Effect.tryPromise(() => client?.close() ?? Promise.resolve()).pipe(Effect.ignore)
+        return { status: "failed", error: "Failed to get tools" } satisfies Status
+      }
+
+      const s = yield* InstanceState.get(state)
+      yield* auth.clearOAuthState(mcpName)
+      const status = yield* storeClient(s, mcpName, client, listed, client.getInstructions()?.trim(), mcpConfig.timeout)
+      yield* events.publish(ToolsChanged, { server: mcpName }).pipe(Effect.ignore)
+      return status
+    })
+
+    const completeCallback = Effect.fnUntraced(function* (mcpName: string, oauthState: string, code: string) {
+      const storedState = yield* auth.getOAuthState(mcpName)
+      yield* auth.clearOAuthState(mcpName)
+      if (storedState !== oauthState) {
+        return { status: "failed", error: "OAuth state mismatch - potential CSRF attack" } satisfies Status
+      }
+      return yield* finishAuth(mcpName, code)
     })
 
     const authenticate = Effect.fn("MCP.authenticate")(function* (
@@ -978,27 +1087,10 @@ const layer = Layer.effect(
     ) {
       const result = yield* startAuth(mcpName)
       if (!result.authorizationUrl) {
-        const client = "client" in result ? result.client : undefined
-        const mcpConfig = yield* requireMcpConfig(mcpName).pipe(
-          Effect.tapError(() => Effect.tryPromise(() => client?.close() ?? Promise.resolve()).pipe(Effect.ignore)),
-        )
-
-        const listed = client
-          ? client.getServerCapabilities()?.tools
-            ? yield* McpCatalog.defs(client, mcpConfig.timeout)
-            : []
-          : undefined
-        if (!client || !listed) {
-          yield* Effect.tryPromise(() => client?.close() ?? Promise.resolve()).pipe(Effect.ignore)
-          return { status: "failed", error: "Failed to get tools" } satisfies Status
-        }
-
-        const s = yield* InstanceState.get(state)
-        yield* auth.clearOAuthState(mcpName)
-        return yield* storeClient(s, mcpName, client, listed, client.getInstructions()?.trim(), mcpConfig.timeout)
+        return yield* storeAuthorized(mcpName, "client" in result ? result.client : undefined)
       }
 
-      const callbackPromise = McpOAuthCallback.waitForCallback(result.oauthState, mcpName)
+      const waiter = authWaiters.get(mcpName) ?? registerAuthWaiter(mcpName, result.oauthState)
       onAuthorization?.(result.authorizationUrl)
 
       yield* browser.open(result.authorizationUrl).pipe(
@@ -1007,15 +1099,75 @@ const layer = Layer.effect(
         }),
       )
 
-      const code = yield* Effect.promise(() => callbackPromise)
+      const outcome = yield* Effect.promise(() => waiter.outcome)
+      if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
+      if ("error" in outcome) throw new Error(outcome.error)
+      return yield* completeCallback(mcpName, result.oauthState, outcome.code)
+    })
 
-      const storedState = yield* auth.getOAuthState(mcpName)
-      if (storedState !== result.oauthState) {
-        yield* auth.clearOAuthState(mcpName)
-        throw new Error("OAuth state mismatch - potential CSRF attack")
+    const beginAuth = Effect.fn("MCP.beginAuth")(function* (mcpName: string) {
+      const result = yield* startAuth(mcpName)
+      if (!result.authorizationUrl) {
+        yield* storeAuthorized(mcpName, "client" in result ? result.client : undefined)
       }
+      return { authorizationUrl: result.authorizationUrl, oauthState: result.oauthState }
+    })
+
+    const waitAuth = Effect.fn("MCP.waitAuth")(function* (mcpName: string, oauthState: string, waitMs = 25_000) {
+      yield* requireMcpConfig(mcpName)
+      const s = yield* InstanceState.get(state)
+      const waiter = authWaiters.get(mcpName)
+      if (!waiter || waiter.oauthState !== oauthState) {
+        const current = s.status[mcpName]
+        if (current?.status === "connected") return current
+        return {
+          status: "failed",
+          error: "No pending OAuth flow for this server. Start authentication again.",
+        } satisfies AuthWaitResult
+      }
+      if (!waiter.finished) {
+        const outcome = yield* Effect.promise(() => settleWithin(waiter.outcome, waitMs))
+        if (!outcome) return { status: "pending" } satisfies AuthWaitResult
+        if ("error" in outcome) {
+          if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
+          // A pasted code finishes the flow and cancels the listener; report the connection it made.
+          const current = s.status[mcpName]
+          if (current?.status === "connected") return current
+          return { status: "failed", error: outcome.error } satisfies AuthWaitResult
+        }
+        if (!waiter.finished) {
+          const bridge = yield* EffectBridge.make()
+          waiter.finished = bridge.promise(
+            completeCallback(mcpName, oauthState, outcome.code).pipe(
+              Effect.catchCause((cause) => {
+                const error = Cause.squash(cause)
+                return Effect.succeed({
+                  status: "failed",
+                  error: error instanceof Error ? error.message : String(error),
+                } satisfies Status)
+              }),
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (authWaiters.get(mcpName) === waiter) authWaiters.delete(mcpName)
+                }),
+              ),
+            ),
+          )
+        }
+      }
+      return yield* Effect.promise(() => waiter.finished!)
+    })
+
+    const cancelAuth = Effect.fn("MCP.cancelAuth")(function* (mcpName: string) {
+      yield* requireMcpConfig(mcpName)
+      const waiter = authWaiters.get(mcpName)
+      // Too late to cancel: the code already arrived and the connection is being made.
+      if (waiter?.finished) return
+      authWaiters.delete(mcpName)
+      McpOAuthCallback.cancelPending(mcpName)
+      pendingOAuthTransports.delete(mcpName)
       yield* auth.clearOAuthState(mcpName)
-      return yield* finishAuth(mcpName, code)
+      yield* auth.clearCodeVerifier(mcpName)
     })
 
     const finishAuth = Effect.fn("MCP.finishAuth")(function* (mcpName: string, authorizationCode: string) {
@@ -1041,11 +1193,20 @@ const layer = Layer.effect(
 
       const mcpConfig = yield* requireMcpConfig(mcpName)
 
-      return yield* createAndStore(mcpName, { ...mcpConfig, enabled: true })
+      const status = yield* createAndStore(mcpName, { ...mcpConfig, enabled: true })
+      const waiter = authWaiters.get(mcpName)
+      if (waiter && !waiter.finished) {
+        // Finished with a pasted code: the local callback listener has nothing left to wait for.
+        authWaiters.delete(mcpName)
+        McpOAuthCallback.cancelPending(mcpName)
+      }
+      yield* events.publish(ToolsChanged, { server: mcpName }).pipe(Effect.ignore)
+      return status
     })
 
     const removeAuth = Effect.fn("MCP.removeAuth")(function* (mcpName: string) {
       yield* auth.remove(mcpName)
+      authWaiters.delete(mcpName)
       McpOAuthCallback.cancelPending(mcpName)
       pendingOAuthTransports.delete(mcpName)
     })
@@ -1072,7 +1233,39 @@ const layer = Layer.effect(
       return "authenticated"
     })
 
+    const info = Effect.fn("MCP.info")(function* () {
+      const s = yield* InstanceState.get(state)
+      const result: Record<string, ServerInfo> = {}
+      for (const name of Object.keys(yield* status())) {
+        const mcpConfig = yield* getMcpConfig(name)
+        if (!mcpConfig) continue
+        const tools = s.status[name]?.status === "connected" ? (s.defs[name]?.length ?? 0) : 0
+        if (mcpConfig.type !== "remote" || mcpConfig.oauth === false) {
+          result[name] = { type: mcpConfig.type, tools, oauth: false }
+          continue
+        }
+        const entry = yield* auth.getForUrl(name, mcpConfig.url)
+        const expiresAt = entry?.tokens?.expiresAt
+        result[name] = {
+          type: "remote",
+          tools,
+          oauth: true,
+          auth: !entry?.tokens
+            ? "not_authenticated"
+            : expiresAt && expiresAt < Date.now() / 1000
+              ? "expired"
+              : "authenticated",
+          ...(expiresAt ? { expiresAt } : {}),
+        }
+      }
+      return result
+    })
+
     return Service.of({
+      info,
+      beginAuth,
+      waitAuth,
+      cancelAuth,
       status,
       clients,
       instructions,
