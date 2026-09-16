@@ -6,7 +6,7 @@ import { testRender, useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { onCleanup } from "solid-js"
 import { TuiKeybind } from "../src/config/keybind"
-import { steerKeyActive } from "../src/prompt/steer"
+import { steerKeyActive, steerKeyIntent } from "../src/prompt/steer"
 import { getOpencodeModeStack, OPENCODE_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
 
 function createResolvedKeymapConfig(input: TuiKeybind.KeybindOverrides = {}) {
@@ -142,7 +142,12 @@ test("mode-less bindings stay active when opencode mode changes", async () => {
   }
 })
 
-async function mountSteer(input: { busy: boolean; keybinds?: TuiKeybind.KeybindOverrides }) {
+async function mountSteer(input: {
+  busy: boolean
+  keybinds?: TuiKeybind.KeybindOverrides
+  /** Legacy terminal: modifiers reach us as ESC-prefixed bytes instead of kitty key reports. */
+  kittyKeyboard?: boolean
+}) {
   const calls: string[] = []
   let textarea: TextareaRenderable | undefined
 
@@ -165,13 +170,20 @@ async function mountSteer(input: { busy: boolean; keybinds?: TuiKeybind.KeybindO
           ref={(r: TextareaRenderable) => {
             textarea = r
             r.focus()
-            // Mirrors the prompt's steer layer.
+            // Mirrors the prompt's steer layer: always on, the intent judged per press.
             offSteer = keymap.registerLayer({
               target: r,
               priority: 1,
-              enabled: () =>
-                steerKeyActive({ focused: true, disabled: false, statusType: input.busy ? "busy" : "idle" }),
-              commands: [{ name: "input.steer", run: () => void calls.push("steer") }],
+              enabled: () => steerKeyActive({ focused: true, disabled: false }),
+              commands: [
+                {
+                  name: "input.steer",
+                  run: () => {
+                    const intent = steerKeyIntent(input.busy ? "busy" : "idle")
+                    calls.push(intent === "steer" ? "steer" : "submit:steer-key")
+                  },
+                },
+              ],
               bindings: config.keybinds.gather("prompt.steer", ["input.steer"]),
             })
           }}
@@ -180,15 +192,15 @@ async function mountSteer(input: { busy: boolean; keybinds?: TuiKeybind.KeybindO
     )
   }
 
-  const app = await testRender(() => <Harness />, { kittyKeyboard: true })
+  const app = await testRender(() => <Harness />, { kittyKeyboard: input.kittyKeyboard ?? true })
   await app.renderOnce()
   return { app, calls, text: () => textarea?.plainText }
 }
 
-test("while busy, shift+return steers and return still submits", async () => {
+test("while busy, alt+return steers and return still submits", async () => {
   const { app, calls, text } = await mountSteer({ busy: true })
   try {
-    app.mockInput.pressEnter({ shift: true })
+    app.mockInput.pressEnter({ meta: true })
     app.mockInput.pressEnter()
     expect(calls).toEqual(["steer", "submit"])
     expect(text()).toBe("draft")
@@ -197,10 +209,46 @@ test("while busy, shift+return steers and return still submits", async () => {
   }
 })
 
-test("while idle, shift+return inserts a newline", async () => {
+test("while idle, alt+return submits through the steer layer", async () => {
   const { app, calls, text } = await mountSteer({ busy: false })
   try {
-    app.mockInput.pressEnter({ shift: true })
+    app.mockInput.pressEnter({ meta: true })
+    expect(calls).toEqual(["submit:steer-key"])
+    expect(text()).toBe("draft")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("shift+return inserts a newline whether busy or idle", async () => {
+  for (const busy of [true, false]) {
+    const { app, calls, text } = await mountSteer({ busy })
+    try {
+      app.mockInput.pressEnter({ shift: true })
+      expect(calls).toEqual([])
+      expect(text()).toContain("\n")
+    } finally {
+      app.renderer.destroy()
+    }
+  }
+})
+
+test("a legacy terminal's ESC CR is alt+return and steers while busy", async () => {
+  const { app, calls, text } = await mountSteer({ busy: true, kittyKeyboard: false })
+  try {
+    // Without the kitty protocol the mock sends alt as an ESC prefix, the way xterm-likes do.
+    app.mockInput.pressEnter({ meta: true })
+    expect(calls).toEqual(["steer"])
+    expect(text()).toBe("draft")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("an explicit input_newline on alt+return keeps its newline while busy", async () => {
+  const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_newline: "alt+return,ctrl+j" } })
+  try {
+    app.mockInput.pressEnter({ meta: true })
     expect(calls).toEqual([])
     expect(text()).toContain("\n")
   } finally {
@@ -208,12 +256,13 @@ test("while idle, shift+return inserts a newline", async () => {
   }
 })
 
-test("an explicit input_newline on shift+return keeps its newline while busy", async () => {
-  const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_newline: "shift+return,ctrl+j" } })
+test("an explicit input_steer on shift+return still steers while busy", async () => {
+  // The old default, kept on purpose: explicit config wins over the newline default on the same key.
+  const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_steer: "shift+return" } })
   try {
     app.mockInput.pressEnter({ shift: true })
-    expect(calls).toEqual([])
-    expect(text()).toContain("\n")
+    expect(calls).toEqual(["steer"])
+    expect(text()).toBe("draft")
   } finally {
     app.renderer.destroy()
   }

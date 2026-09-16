@@ -66,6 +66,7 @@ import {
   promptDelivery,
   STEER_SLASH,
   steerKeyActive,
+  steerKeyIntent,
   stripSteerCommand,
   type PromptIntent,
 } from "../../prompt/steer"
@@ -958,15 +959,13 @@ export function Prompt(props: PromptProps) {
     }
   })
 
-  // Only while the session works: the steer key then wins over the managed textarea layer, where
-  // the same key (shift+return by default) inserts a newline, which is what it does when idle.
+  // The steer key (alt+return by default) is "send now" in both states: while the session works it
+  // steers, delivering at the next step instead of queueing; idle it submits exactly like Enter.
+  // It sits above the managed textarea layer so a user config that also lists the key under
+  // `input_newline` gets steer/submit here rather than a newline.
   useBindings(() => ({
     target: inputTarget,
-    enabled: steerKeyActive({
-      focused: inputTarget() !== undefined,
-      disabled: Boolean(props.disabled),
-      statusType: status().type,
-    }),
+    enabled: steerKeyActive({ focused: inputTarget() !== undefined, disabled: Boolean(props.disabled) }),
     priority: 1,
     commands: [
       {
@@ -978,12 +977,16 @@ export function Prompt(props: PromptProps) {
           setTimeout(
             () =>
               setTimeout(() => {
-                // Nothing typed: steer what is already queued instead of sending an empty prompt.
-                if (!store.prompt.input.trim() && queuedPrompt()) {
+                // Judged at press time, not when the layer was set up: a press as the turn ends
+                // still does the right thing.
+                const intent = steerKeyIntent(status().type)
+                // Nothing typed while busy: steer what is already queued instead of sending an
+                // empty prompt.
+                if (intent === "steer" && !store.prompt.input.trim() && queuedPrompt()) {
                   void steerQueuedPrompt()
                   return
                 }
-                void submit("steer")
+                void submit(intent)
               }, 0),
             0,
           )
@@ -1246,7 +1249,7 @@ export function Prompt(props: PromptProps) {
     // Filter out text parts (pasted content) since they're now expanded inline
     let nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
 
-    // `/steer <text>` steers from any terminal, including those that report shift+return as a
+    // `/steer <text>` steers from any terminal, including those that report alt+return as a
     // plain return. A server command with the same name keeps precedence.
     const steerCommand = steerCommandAvailable() ? stripSteerCommand(inputText, nonTextParts) : undefined
     if (steerCommand) {
@@ -1861,6 +1864,7 @@ export function Prompt(props: PromptProps) {
                     submitKey: submitShortcut(),
                     steerKey: steerShortcut(),
                     kittyKeyboard: kittyKeyboard(),
+                    env: { TERM_PROGRAM: process.env.TERM_PROGRAM, WT_SESSION: process.env.WT_SESSION },
                     queued: !store.prompt.input.trim() && queuedPrompt() !== undefined,
                   })}
                 </text>

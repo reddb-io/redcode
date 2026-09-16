@@ -10,6 +10,8 @@ import {
   steeredLabel,
   steerKeyActive,
   steerKeyAmbiguous,
+  steerKeyIntent,
+  altReturnUnreported,
   stripSteerCommand,
 } from "../../src/prompt/steer"
 import { TuiKeybind } from "../../src/config/keybind"
@@ -20,13 +22,18 @@ describe("prompt delivery", () => {
     expect(promptDelivery("steer")).toBe("steer")
   })
 
-  test("the steer key is only active while the session works", () => {
-    expect(steerKeyActive({ focused: true, disabled: false, statusType: "busy" })).toBe(true)
-    expect(steerKeyActive({ focused: true, disabled: false, statusType: "retry" })).toBe(true)
-    expect(steerKeyActive({ focused: true, disabled: false, statusType: "idle" })).toBe(false)
-    expect(steerKeyActive({ focused: true, disabled: false, statusType: undefined })).toBe(false)
-    expect(steerKeyActive({ focused: false, disabled: false, statusType: "busy" })).toBe(false)
-    expect(steerKeyActive({ focused: true, disabled: true, statusType: "busy" })).toBe(false)
+  test("the steer key layer is live whenever the prompt takes input", () => {
+    expect(steerKeyActive({ focused: true, disabled: false })).toBe(true)
+    expect(steerKeyActive({ focused: false, disabled: false })).toBe(false)
+    expect(steerKeyActive({ focused: true, disabled: true })).toBe(false)
+  })
+
+  test("the steer key steers while the session works and submits when idle", () => {
+    expect(steerKeyIntent("busy")).toBe("steer")
+    expect(steerKeyIntent("retry")).toBe("steer")
+    expect(steerKeyIntent("idle")).toBe("submit")
+    expect(steerKeyIntent(undefined)).toBe("submit")
+    expect(promptDelivery(steerKeyIntent("idle"))).toBe("queue")
   })
 })
 
@@ -72,22 +79,42 @@ describe("/steer", () => {
 
 describe("busy hint", () => {
   test("names both keys", () => {
-    expect(busyHint({ submitKey: "return", steerKey: "shift+return", kittyKeyboard: true })).toBe(
-      "return queue · shift+return steer",
+    expect(busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: true })).toBe(
+      "return queue · alt+return steer",
     )
-    expect(busyHint({ submitKey: "return", steerKey: "shift+return" })).toBe("return queue · shift+return steer")
+    expect(busyHint({ submitKey: "return", steerKey: "alt+return" })).toBe("return queue · alt+return steer")
+    // Legacy terminals report alt+return as ESC CR, so the key is named without the kitty protocol.
+    expect(busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: false })).toBe(
+      "return queue · alt+return steer",
+    )
   })
 
-  test("falls back to /steer when the terminal cannot report shift+return", () => {
+  test("falls back to /steer when the terminal cannot report the steer key", () => {
+    // shift+return has no legacy encoding: a plain return is all a terminal without kitty sends.
     expect(steerKeyAmbiguous("shift+return", false)).toBe(true)
-    expect(steerKeyAmbiguous("alt+s", false)).toBe(false)
     expect(steerKeyAmbiguous("shift+return", undefined)).toBe(false)
+    expect(steerKeyAmbiguous("alt+s", false)).toBe(false)
     expect(busyHint({ submitKey: "return", steerKey: "shift+return", kittyKeyboard: false })).toBe(
       "return queue · /steer steer",
     )
     expect(busyHint({ submitKey: "return", steerKey: "alt+s", kittyKeyboard: false })).toBe(
       "return queue · alt+s steer",
     )
+  })
+
+  test("falls back to /steer in hosts that swallow alt+return out of the box", () => {
+    expect(altReturnUnreported({ TERM_PROGRAM: "Apple_Terminal" })).toBe(true)
+    expect(altReturnUnreported({ WT_SESSION: "8f2c…" })).toBe(true)
+    expect(altReturnUnreported({ TERM_PROGRAM: "iTerm.app" })).toBe(false)
+    expect(altReturnUnreported({})).toBe(false)
+    expect(steerKeyAmbiguous("alt+return", false, { TERM_PROGRAM: "Apple_Terminal" })).toBe(true)
+    expect(steerKeyAmbiguous("alt+return", false, { WT_SESSION: "8f2c…" })).toBe(true)
+    expect(steerKeyAmbiguous("alt+return", false, { TERM_PROGRAM: "WezTerm" })).toBe(false)
+    // With the kitty protocol the terminal reports the key itself, whatever the host.
+    expect(steerKeyAmbiguous("alt+return", true, { TERM_PROGRAM: "Apple_Terminal" })).toBe(false)
+    expect(
+      busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: false, env: { WT_SESSION: "x" } }),
+    ).toBe("return queue · /steer steer")
   })
 
   test("falls back to /steer when the steer key is unbound", () => {
@@ -141,8 +168,8 @@ describe("the queued prompt an empty steer acts on", () => {
   })
 
   test("the hint says the key steers what is queued", () => {
-    expect(busyHint({ submitKey: "return", steerKey: "shift+return", kittyKeyboard: true, queued: true })).toBe(
-      "return queue · shift+return steer queued",
+    expect(busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: true, queued: true })).toBe(
+      "return queue · alt+return steer queued",
     )
     expect(busyHint({ submitKey: "return", steerKey: "shift+return", kittyKeyboard: false, queued: true })).toBe(
       "return queue · /steer steer queued",
@@ -171,10 +198,10 @@ describe("badges", () => {
 })
 
 describe("keybind defaults", () => {
-  test("shift+return steers while busy and stays a newline key", () => {
+  test("alt+return steers, shift+return is only ever a newline", () => {
     const keybinds = TuiKeybind.parse({})
-    expect(keybinds.input_steer).toBe("shift+return")
-    expect(keybinds.input_newline).toBe("shift+return,ctrl+return,alt+return,ctrl+j")
+    expect(keybinds.input_steer).toBe("alt+return")
+    expect(keybinds.input_newline).toBe("shift+return,ctrl+return,ctrl+j")
     expect(keybinds.input_submit).toBe("return")
     expect(TuiKeybind.CommandMap.input_steer).toBe("input.steer")
   })
@@ -185,13 +212,23 @@ describe("keybind defaults", () => {
     expect(keybinds.input_newline).toBe("shift+return,ctrl+j")
   })
 
-  test("a configured input_newline on the steer key takes it from the steer default", () => {
-    expect(TuiKeybind.parse({ input_newline: "shift+return,ctrl+j" }).input_steer).toBe("none")
-    expect(TuiKeybind.parse({ input_newline: ["ctrl+j", "Shift+Enter"] }).input_steer).toBe("none")
-    expect(TuiKeybind.parse({ input_newline: "alt+return" }).input_steer).toBe("shift+return")
-    // Explicitly set, both keep the key; the steer layer wins while busy.
+  test("the old steer key stays honoured when set explicitly", () => {
+    // A config written for the shift+return days keeps working: explicit config wins over defaults.
+    expect(TuiKeybind.parse({ input_steer: "shift+return" }).input_steer).toBe("shift+return")
     expect(TuiKeybind.parse({ input_newline: "shift+return", input_steer: "shift+return" }).input_steer).toBe(
       "shift+return",
     )
+  })
+
+  test("a configured input_newline on the steer key takes it from the steer default", () => {
+    expect(TuiKeybind.parse({ input_newline: "alt+return,ctrl+j" }).input_steer).toBe("none")
+    expect(TuiKeybind.parse({ input_newline: ["ctrl+j", "Alt+Enter"] }).input_steer).toBe("none")
+    // The old newline default, written out explicitly, listed alt+return and so gives up the key.
+    expect(TuiKeybind.parse({ input_newline: "shift+return,ctrl+return,alt+return,ctrl+j" }).input_steer).toBe("none")
+    // shift+return under input_newline is no conflict any more: steer does not live there.
+    expect(TuiKeybind.parse({ input_newline: "shift+return,ctrl+j" }).input_steer).toBe("alt+return")
+    expect(TuiKeybind.parse({ input_newline: ["ctrl+j", "Shift+Enter"] }).input_steer).toBe("alt+return")
+    // Explicitly set, both keep the key; the steer layer wins.
+    expect(TuiKeybind.parse({ input_newline: "alt+return", input_steer: "alt+return" }).input_steer).toBe("alt+return")
   })
 })
