@@ -1,6 +1,7 @@
 import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Match, Show, Switch, createSignal } from "solid-js"
+import { DialogMcpAuth } from "../../component/dialog-mcp-auth"
 
 const id = "internal:sidebar-mcp"
 
@@ -16,6 +17,9 @@ function View(props: { api: TuiPluginApi }) {
           item.status === "failed" || item.status === "needs_auth" || item.status === "needs_client_registration",
       ).length,
   )
+
+  // Clicking a "Needs auth" row starts the same sign-in flow as /mcp → Authenticate.
+  const authenticate = (name: string) => props.api.ui.dialog.replace(() => <DialogMcpAuth name={name} />)
 
   const dot = (status: string) => {
     if (status === "connected") return theme().success
@@ -46,7 +50,11 @@ function View(props: { api: TuiPluginApi }) {
         <Show when={list().length <= 2 || open()}>
           <For each={list()}>
             {(item) => (
-              <box flexDirection="row" gap={1}>
+              <box
+                flexDirection="row"
+                gap={1}
+                onMouseUp={item.status === "needs_auth" ? () => authenticate(item.name) : undefined}
+              >
                 <text
                   flexShrink={0}
                   style={{
@@ -64,7 +72,9 @@ function View(props: { api: TuiPluginApi }) {
                         <i>{item.error}</i>
                       </Match>
                       <Match when={item.status === "disabled"}>Disabled</Match>
-                      <Match when={item.status === "needs_auth"}>Needs auth</Match>
+                      <Match when={item.status === "needs_auth"}>
+                        Needs auth <span style={{ fg: theme().warning }}>· sign in</span>
+                      </Match>
                       <Match when={item.status === "needs_client_registration"}>Needs client ID</Match>
                     </Switch>
                   </span>

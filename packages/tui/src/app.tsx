@@ -43,6 +43,7 @@ import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
+import { needsAuth, openMcpAuth, useMcpAuthPrompts } from "./component/mcp-auth-watch"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogHooks } from "./component/dialog-hooks"
 import { DialogDebug } from "./component/dialog-debug"
@@ -731,11 +732,23 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "mcp.list",
-        title: "Manage MCPs",
+        title: "MCP servers",
         category: "Agent",
-        slashName: "mcps",
+        slashName: "mcp",
+        slashAliases: ["mcps"],
         run: () => {
           dialog.replace(() => <DialogMcp />)
+        },
+      },
+      {
+        name: "mcp.authenticate",
+        title: "Authenticate MCP server",
+        category: "Agent",
+        enabled: () => needsAuth(sync.data.mcp).length > 0,
+        run: () => {
+          const pending = needsAuth(sync.data.mcp)
+          if (pending.length === 1) openMcpAuth(dialog, pending[0])
+          else dialog.replace(() => <DialogMcp />)
         },
       },
       {
@@ -1056,6 +1069,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       duration: evt.properties.duration,
     })
   })
+
+  useMcpAuthPrompts()
 
   // The browser did not open (or REDCODE_NO_BROWSER blocked it): the user still needs the authorization URL.
   event.on("mcp.browser.open.failed", (evt, { workspace }) => {
