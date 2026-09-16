@@ -39,7 +39,7 @@ type Definition = {
 }
 
 export const LeaderDefault = "ctrl+x"
-const STEER_DEFAULT = "shift+return"
+const STEER_DEFAULT = "alt+return"
 
 const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
 
@@ -165,10 +165,10 @@ export const Definitions = {
   input_clear: keybind("ctrl+c", "Clear input field"),
   input_paste: keybind({ key: "ctrl+v", preventDefault: false }, "Paste from clipboard"),
   input_submit: keybind("return", "Submit input"),
-  input_newline: keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
+  input_newline: keybind("shift+return,ctrl+return,ctrl+j", "Insert newline in input"),
   input_steer: keybind(
     STEER_DEFAULT,
-    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key falls through to newline (needs a terminal that reports shift+return; /steer <text> works everywhere)",
+    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key submits like input_submit. Terminals report alt+return as ESC CR or through the kitty keyboard protocol; macOS Terminal.app and iTerm2 need Option set to act as Meta/Esc+, and Windows Terminal binds alt+enter to fullscreen until that action is unbound. /steer <text> works everywhere",
   ),
   input_move_left: keybind("left,ctrl+b", "Move cursor left in input"),
   input_move_right: keybind("right,ctrl+f", "Move cursor right in input"),
@@ -489,7 +489,10 @@ function bindingKeys(value: unknown): string[] {
 }
 
 // A config that puts the steer key on `input_newline` without mentioning `input_steer` asked for a
-// newline on that key: the steer default steps aside there instead of taking it over while busy.
+// newline on that key: the steer default steps aside there instead of taking it over. Steer used
+// to live on shift+return; a config that lists shift+return under `input_newline` is no longer a
+// conflict, while one that lists alt+return (as the old newline default did) gives up the key,
+// and the busy hint points at `/steer`.
 function steerDefault(keybinds: KeybindOverrides): BindingValueSchema {
   if (keybinds.input_newline === undefined) return STEER_DEFAULT
   const taken = new Set(bindingKeys(keybinds.input_newline))

@@ -4,7 +4,8 @@
 // running turn would otherwise go idle, `steer` is promoted at the next safe step boundary of the
 // running turn without interrupting the tool that is running. On an idle session both run right
 // away, so the delivery is always sent and no client-side status check can race the server.
-// Enter queues; the steer key (shift+return, only while the session works) or `/steer <text>` steers.
+// Enter queues; the steer key (alt+return) or `/steer <text>` steers. Idle, the steer key submits
+// like Enter, so it is always "send now"; shift+return always inserts a newline.
 
 export type PromptIntent = "submit" | "steer"
 export type Delivery = "steer" | "queue"
@@ -20,11 +21,17 @@ export function promptDelivery(intent: PromptIntent): Delivery {
 }
 
 /**
- * The steer key only means "steer" while the session works; on an idle session it falls through
- * to the textarea, where the same key may insert a newline.
+ * The steer key layer is live whenever the prompt takes input, busy or idle: what the key does is
+ * decided per press by `steerKeyIntent`, so a press that lands as the turn ends is never lost to
+ * a layer that was disabled a moment earlier.
  */
-export function steerKeyActive(input: { focused: boolean; disabled: boolean; statusType: string | undefined }) {
-  return input.focused && !input.disabled && isBusy(input.statusType)
+export function steerKeyActive(input: { focused: boolean; disabled: boolean }) {
+  return input.focused && !input.disabled
+}
+
+/** While the session works the steer key steers; idle, it submits exactly like Enter. */
+export function steerKeyIntent(statusType: string | undefined): PromptIntent {
+  return isBusy(statusType) ? "steer" : "submit"
 }
 
 export const STEER_SLASH = "steer"
@@ -83,10 +90,28 @@ export function stripSteerCommand<P extends SourcedPart>(
   }
 }
 
-/** Whether a terminal without keyboard enhancements would report the steer key as a plain return. */
-export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | undefined) {
+export type TerminalEnv = { TERM_PROGRAM?: string; WT_SESSION?: string }
+
+/**
+ * Whether the terminal, out of the box, swallows alt+return instead of sending it to us. Legacy
+ * terminals report it as ESC CR, which is unambiguous, so only two hosts are known to lose it:
+ * macOS Terminal.app sends a bare return until "Use Option as Meta key" is on, and Windows
+ * Terminal binds alt+enter to fullscreen until that action is unbound. A terminal the person has
+ * fixed still gets a conservative hint here; the key itself works regardless.
+ */
+export function altReturnUnreported(env: TerminalEnv) {
+  return env.TERM_PROGRAM === "Apple_Terminal" || env.WT_SESSION !== undefined
+}
+
+/**
+ * Whether a terminal without keyboard enhancements would report the steer key as a plain return.
+ * shift+return has no legacy encoding at all; alt+return only fails in the hosts named by
+ * `altReturnUnreported`.
+ */
+export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | undefined, env: TerminalEnv = {}) {
   if (kittyKeyboard !== false) return false
-  return /shift\+(return|enter)/i.test(steerKey)
+  if (/shift\+(return|enter)/i.test(steerKey)) return true
+  return /(alt|meta|option)\+(return|enter)/i.test(steerKey) && altReturnUnreported(env)
 }
 
 /**
@@ -97,12 +122,13 @@ export function busyHint(input: {
   submitKey: string
   steerKey: string
   kittyKeyboard?: boolean
+  env?: TerminalEnv
   queued?: boolean
 }) {
   const parts: string[] = []
   const what = input.queued === true ? "steer queued" : "steer"
   if (input.submitKey) parts.push(`${input.submitKey} queue`)
-  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard))
+  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard, input.env))
     parts.push(`${input.steerKey} ${what}`)
   else parts.push(`/${STEER_SLASH} ${what}`)
   return parts.join(" · ")
