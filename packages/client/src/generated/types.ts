@@ -866,6 +866,19 @@ export type SessionsContextOutput = {
           readonly cache: { readonly read: number; readonly write: number }
         }
         readonly error?: { readonly type: "unknown"; readonly message: string }
+        readonly timing?: {
+          readonly requestStarted?: number
+          readonly firstToken?: number
+          readonly firstVisible?: number
+          readonly lastToken?: number
+          readonly prepMs?: number
+          readonly ttftMs?: number
+          readonly visibleMs?: number
+          readonly genMs?: number
+          readonly tokens?: number
+          readonly burst?: boolean
+          readonly replayed?: boolean
+        }
       }
     | {
         readonly type: "compaction"
@@ -1082,6 +1095,19 @@ export type SessionsHistoryOutput = {
           }
           readonly snapshot?: string
           readonly files?: ReadonlyArray<string>
+          readonly timing?: {
+            readonly requestStarted?: number
+            readonly firstToken?: number
+            readonly firstVisible?: number
+            readonly lastToken?: number
+            readonly prepMs?: number
+            readonly ttftMs?: number
+            readonly visibleMs?: number
+            readonly genMs?: number
+            readonly tokens?: number
+            readonly burst?: boolean
+            readonly replayed?: boolean
+          }
         }
       }
     | {
@@ -1554,6 +1580,19 @@ export type SessionsEventsOutput =
         }
         readonly snapshot?: string
         readonly files?: ReadonlyArray<string>
+        readonly timing?: {
+          readonly requestStarted?: number
+          readonly firstToken?: number
+          readonly firstVisible?: number
+          readonly lastToken?: number
+          readonly prepMs?: number
+          readonly ttftMs?: number
+          readonly visibleMs?: number
+          readonly genMs?: number
+          readonly tokens?: number
+          readonly burst?: boolean
+          readonly replayed?: boolean
+        }
       }
     }
   | {
@@ -1973,6 +2012,19 @@ export type SessionsMessageOutput = {
           readonly cache: { readonly read: number; readonly write: number }
         }
         readonly error?: { readonly type: "unknown"; readonly message: string }
+        readonly timing?: {
+          readonly requestStarted?: number
+          readonly firstToken?: number
+          readonly firstVisible?: number
+          readonly lastToken?: number
+          readonly prepMs?: number
+          readonly ttftMs?: number
+          readonly visibleMs?: number
+          readonly genMs?: number
+          readonly tokens?: number
+          readonly burst?: boolean
+          readonly replayed?: boolean
+        }
       }
     | {
         readonly type: "compaction"
@@ -5816,6 +5868,19 @@ export type MessagesListOutput = {
           readonly cache: { readonly read: number; readonly write: number }
         }
         readonly error?: { readonly type: "unknown"; readonly message: string }
+        readonly timing?: {
+          readonly requestStarted?: number
+          readonly firstToken?: number
+          readonly firstVisible?: number
+          readonly lastToken?: number
+          readonly prepMs?: number
+          readonly ttftMs?: number
+          readonly visibleMs?: number
+          readonly genMs?: number
+          readonly tokens?: number
+          readonly burst?: boolean
+          readonly replayed?: boolean
+        }
       }
     | {
         readonly type: "compaction"

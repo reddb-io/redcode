@@ -4933,4 +4933,129 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       expect(requests).toHaveLength(1)
     }),
   )
+
+  const assistantTiming = (context: ReadonlyArray<SessionMessage.Message>) =>
+    context.flatMap((message) => (message.type === "assistant" && message.timing ? [message.timing] : []))
+
+  const paced = (steps: ReadonlyArray<readonly [number, LLMEvent]>) =>
+    Stream.fromIterable(steps).pipe(
+      Stream.mapEffect(([after, event]) => Effect.sleep(Duration.millis(after)).pipe(Effect.as(event))),
+    )
+
+  it.live("records the generation window on step ended without the tool run after it", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      executions.length = 0
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Write, then run a tool" }), resume: false })
+      responseStream = paced([
+        [0, LLMEvent.stepStart({ index: 0 })],
+        // Framing before any content is not the first token.
+        [40, LLMEvent.reasoningStart({ id: "thinking" })],
+        [150, LLMEvent.reasoningDelta({ id: "thinking", text: "" })],
+        [60, LLMEvent.reasoningDelta({ id: "thinking", text: "Plan" })],
+        [0, LLMEvent.reasoningEnd({ id: "thinking" })],
+        [0, LLMEvent.textStart({ id: "answer" })],
+        ...Array.from(
+          { length: 8 },
+          (_, index) => [40, LLMEvent.textDelta({ id: "answer", text: `w${index} ` })] as const,
+        ),
+        [0, LLMEvent.textEnd({ id: "answer" })],
+        [0, LLMEvent.toolCall({ id: "call-slow", name: "echo", input: { text: "slow" } })],
+        [
+          0,
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "tool-calls",
+            usage: { inputTokens: 10, nonCachedInputTokens: 10, outputTokens: 120, reasoningTokens: 20 },
+          }),
+        ],
+        [0, LLMEvent.finish({ reason: "tool-calls" })],
+      ])
+      response = fragmentFixture("text", "after-tool", ["Done"]).completeEvents
+      // The tool takes most of a second; the step only ends after it.
+      toolExecutionGate = yield* Deferred.make<void>()
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      toolExecutionsReady = 1
+      const gate = toolExecutionGate
+      const started = toolExecutionsStarted
+      yield* Deferred.await(started).pipe(
+        Effect.andThen(Effect.sleep(Duration.millis(900))),
+        Effect.andThen(Deferred.succeed(gate, undefined)),
+        Effect.forkScoped,
+      )
+
+      yield* session.resume(sessionID)
+
+      const [first] = assistantTiming(yield* session.context(sessionID))
+      expect(executions).toEqual(["slow"])
+      expect(first?.ttftMs).toBeGreaterThanOrEqual(240)
+      // The first text follows the reasoning, eight 40 ms deltas later at the earliest.
+      expect(first!.visibleMs! - first!.ttftMs!).toBeGreaterThanOrEqual(30)
+      expect(first?.genMs).toBeGreaterThanOrEqual(310)
+      expect(first?.genMs).toBeLessThan(850)
+      expect(first?.tokens).toBe(120)
+      expect(first?.burst).toBeUndefined()
+      expect(first!.firstToken! - first!.requestStarted!).toBeCloseTo(first!.ttftMs!, -1)
+
+      // The projection keeps it: replaying the durable events rebuilds the same timing.
+      yield* replaySessionProjection(sessionID)
+      expect(assistantTiming(yield* session.context(sessionID))[0]).toEqual(first!)
+    }),
+  )
+
+  it.live("a retried provider turn measures only the attempt that answered", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fail, then answer" }), resume: false })
+      requests.length = 0
+      streamFailures = [rateLimited()]
+      response = fragmentFixture("text", "answered", ["Answer"]).completeEvents
+      streamGate = yield* Deferred.make<void>()
+      streamStarted = yield* Deferred.make<void>()
+      const gate = streamGate
+      yield* Deferred.await(streamStarted).pipe(
+        Effect.andThen(Effect.sleep(Duration.millis(250))),
+        Effect.andThen(Deferred.succeed(gate, undefined)),
+        Effect.forkScoped,
+      )
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      const timing = assistantTiming(yield* session.context(sessionID))
+      expect(timing).toHaveLength(1)
+      expect(timing[0]?.ttftMs).toBeGreaterThanOrEqual(240)
+      // Everything arrived at once after the wait: a burst, not a stream.
+      expect(timing[0]?.burst).toBe(true)
+    }),
+  )
+
+  it.effect("keeps output when the provider counts reasoning apart from it", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Think a lot" }), resume: false })
+      response = [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "short" }),
+        LLMEvent.textDelta({ id: "short", text: "Short answer" }),
+        LLMEvent.textEnd({ id: "short" }),
+        LLMEvent.stepFinish({
+          index: 0,
+          reason: "stop",
+          usage: { inputTokens: 10, nonCachedInputTokens: 10, outputTokens: 50, reasoningTokens: 200 },
+        }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user" },
+        { type: "assistant", tokens: { output: 50, reasoning: 200 }, timing: { tokens: 250 } },
+      ])
+    }),
+  )
 })

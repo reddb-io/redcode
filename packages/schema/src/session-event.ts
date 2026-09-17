@@ -13,6 +13,7 @@ import { Location } from "./location"
 import { SessionMessage } from "./session-message"
 import { Revert } from "./revert"
 import { PermissionV1 } from "./permission-v1"
+import { GenerationTiming } from "./generation-timing"
 
 export { FileAttachment }
 
@@ -277,6 +278,11 @@ export namespace Step {
       }),
       snapshot: Schema.String.pipe(optional),
       files: Schema.Array(RelativePath).pipe(optional),
+      /**
+       * How fast the provider answered this step: request start, first and last token, and the
+       * generation window. Absent on events recorded before it existed.
+       */
+      timing: GenerationTiming.Info.pipe(optional),
     },
   })
   export type Ended = typeof Ended.Type

@@ -8,6 +8,7 @@ import { FileAttachment, Prompt } from "./prompt"
 import { DateTimeUtcFromMillis, RelativePath, statics } from "./schema"
 import { SessionID } from "./session-id"
 import { ascending } from "./identifier"
+import { GenerationTiming } from "./generation-timing"
 
 export const ID = Schema.String.check(Schema.isStartsWith("msg_")).pipe(
   Schema.brand("Session.Message.ID"),
@@ -186,6 +187,8 @@ export const Assistant = Schema.Struct({
     created: DateTimeUtcFromMillis,
     completed: DateTimeUtcFromMillis.pipe(optional),
   }),
+  /** How fast the provider answered, from the step's `session.next.step.ended` event. */
+  timing: GenerationTiming.Info.pipe(optional),
 }).annotate({ identifier: "Session.Message.Assistant" })
 
 /**

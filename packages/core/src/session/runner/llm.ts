@@ -63,6 +63,7 @@ import { SessionProgressContext } from "../progress-context"
 import { type RunError, Service } from "./index"
 import { SessionRunnerModel } from "./model"
 import { createLLMEventPublisher, usageTokens } from "./publish-llm-event"
+import { GenerationTiming } from "../generation-timing"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
@@ -517,6 +518,10 @@ const layer = Layer.effect(
       withoutNative?: boolean,
     ) {
       const attempt = retry?.attempt ?? 1
+      // Every call is one provider attempt: a retry or a native search fallback measures from scratch,
+      // and its local preparation starts here.
+      const timing = GenerationTiming.recorder({ created: Date.now() })
+      timing.attempt()
       const session = yield* getSession(sessionID)
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
@@ -712,9 +717,15 @@ const layer = Layer.effect(
       const completionTools: Effect.Effect<void, ToolOutputStore.Error>[] = []
       let reportedTokens: ReturnType<typeof usageTokens> | undefined
       let overflowFailure: ProviderErrorEvent | undefined
-      const providerStream = llm.stream(request).pipe(
+      const providerStream = Stream.unwrap(
+        Effect.sync(() => {
+          timing.request()
+          return llm.stream(request)
+        }),
+      ).pipe(
         Stream.runForEach((event) =>
           Effect.gen(function* () {
+            timing.observe(event)
             lastEventAt = yield* Clock.currentTimeMillis
             if (overflowFailure || publisher.hasProviderError()) return
             // Preserve received usage even if cancellation wins while publication waits for a sibling tool.
@@ -816,7 +827,7 @@ const layer = Layer.effect(
               ),
               FiberSet.run(toolFibers),
             )
-          }),
+          }).pipe(Effect.ensuring(Effect.sync(() => timing.handled()))),
         ),
         Effect.ensuring(withPublication(publisher.flush())),
       )
@@ -947,6 +958,8 @@ const layer = Layer.effect(
                 tokens: stepSettlement.tokens,
                 snapshot: endSnapshot,
                 files,
+                // Taken after tool runs and snapshots, but the window ends at the last token.
+                timing: timing.snapshot(stepSettlement.tokens.output + stepSettlement.tokens.reasoning),
               }),
             )
           }

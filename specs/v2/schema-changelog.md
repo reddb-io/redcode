@@ -1,5 +1,12 @@
 # V2 Schema Changelog
 
+## 2026-09-16: Generation Timing On V2 Step Settlement
+
+- Add optional `timing` (`GenerationTiming`, the same contract as the V1 `AssistantMessage.timing`) to the durable event `session.next.step.ended` and to the projected `Session.Message.Assistant`. The V2 runner records it per provider attempt: `requestStarted` when the provider stream is run, `firstToken`, `firstVisible` and `lastToken` from the first non-empty text, reasoning or tool input delta (or a tool call without streamed input) to the last one before `step-finish`, durations from a monotonic clock, `prepMs` from the start of the attempt, `tokens` as the step's output plus reasoning, and `burst` when every token arrived in at most two deliveries. Tool execution, hooks and the end snapshot, which happen before the event is published, stay outside the window. The message updater copies it onto the assistant message, so replaying the durable events rebuilds it; the TUI's V2 message store keeps it too.
+- Add no durable-event version: the field is optional, so `session.next.step.ended.2` events recorded before it decode unchanged. Add no route or migration.
+- The V2 runner now keeps reported output tokens when reasoning exceeds output (reasoning counted apart from output), matching `Session.getUsage` in the legacy runtime.
+- Regenerated the V2 client (`bun run generate` in `packages/client`), `packages/sdk/openapi.json` (`bun dev generate`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`).
+
 ## 2026-09-16: Generation Timing On Assistant Messages
 
 - Add optional `timing` (`GenerationTiming`, defined in `packages/schema/src/generation-timing.ts`) to the V1 `AssistantMessage`:
