@@ -264,6 +264,24 @@ export type UserMessage = {
   }
 }
 
+export type GenerationTiming = {
+  requestStarted?: number
+  firstToken?: number
+  firstVisible?: number
+  lastToken?: number
+  prepMs?: number
+  ttftMs?: number
+  visibleMs?: number
+  genMs?: number
+  visibleGenMs?: number
+  idleMs?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  reasoningChars?: number
+  burst?: boolean
+  replayed?: boolean
+}
+
 export type ProviderAuthError = {
   name: "ProviderAuthError"
   data: {
@@ -342,6 +360,7 @@ export type AssistantMessage = {
     first?: number
     completed?: number
   }
+  timing?: GenerationTiming
   error?:
     | ProviderAuthError
     | UnknownError

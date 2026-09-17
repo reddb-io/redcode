@@ -11,6 +11,7 @@ import { ascending } from "../identifier"
 import { SessionID } from "../session-id"
 import { WorkspaceID } from "../workspace-id"
 import { PermissionV1 } from "./permission"
+import { GenerationTiming } from "../generation-timing"
 
 const Timestamp = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
@@ -466,10 +467,14 @@ export const Assistant = Schema.Struct({
   role: Schema.Literal("assistant"),
   time: Schema.Struct({
     created: NonNegativeInt,
-    /** When the first streamed chunk arrived: latency against `created`, output rate against `completed`. */
+    /**
+     * Deprecated: `timing.firstToken`. Still written for older clients; messages that carry only this
+     * field predate `timing` and are not shown by the meter, because its old math counted tool runs.
+     */
     first: Schema.optional(NonNegativeInt),
     completed: Schema.optional(NonNegativeInt),
   }),
+  timing: Schema.optional(GenerationTiming.Info),
   error: Schema.optional(AssistantErrorSchema),
   parentID: MessageID,
   modelID: Model.ID,

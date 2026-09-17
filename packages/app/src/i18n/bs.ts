@@ -618,6 +618,14 @@ export const dict = {
   "context.stats.totalCost": "Ukupni trošak",
   "context.stats.latency": "Latency (first token)",
   "context.stats.speed": "Output speed",
+  "context.stats.visible": "First visible token",
+  "context.stats.prep": "Local preparation",
+  "context.stats.turnSpeed": "Output speed (turn)",
+  "context.stats.stale": "last step",
+  "context.stats.aborted": "aborted",
+  "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Sesija kreirana",
   "context.stats.lastActivity": "Posljednja aktivnost",
 
@@ -626,6 +634,7 @@ export const dict = {
   "context.usage.cost": "Trošak",
   "context.usage.latency": "Latency",
   "context.usage.speed": "Output speed",
+  "context.usage.burst": "Burst",
   "context.usage.clickToView": "Klikni da vidiš kontekst",
   "context.usage.view": "Prikaži korištenje konteksta",
 

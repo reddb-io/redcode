@@ -617,6 +617,14 @@ export const dict = {
   "context.stats.totalCost": "Общая стоимость",
   "context.stats.latency": "Latency (first token)",
   "context.stats.speed": "Output speed",
+  "context.stats.visible": "First visible token",
+  "context.stats.prep": "Local preparation",
+  "context.stats.turnSpeed": "Output speed (turn)",
+  "context.stats.stale": "last step",
+  "context.stats.aborted": "aborted",
+  "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Сессия создана",
   "context.stats.lastActivity": "Последняя активность",
 
@@ -625,6 +633,7 @@ export const dict = {
   "context.usage.cost": "Стоимость",
   "context.usage.latency": "Latency",
   "context.usage.speed": "Output speed",
+  "context.usage.burst": "Burst",
   "context.usage.clickToView": "Нажмите для просмотра контекста",
   "context.usage.view": "Показать использование контекста",
 

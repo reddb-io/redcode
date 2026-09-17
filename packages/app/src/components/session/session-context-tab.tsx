@@ -201,6 +201,23 @@ export function SessionContextTab() {
     return language.t("context.breakdown.other")
   }
 
+  // A finished or aborted step's numbers describe the past: dimmed and labeled rather than shown as live.
+  const timed = (value: string) => {
+    const step = ctx()?.meter?.step
+    if (!step?.stale || value === "—") return value
+    const note = language.t(step.aborted ? "context.stats.aborted" : "context.stats.stale")
+    return (
+      <span class="text-text-weak">
+        {value} <span class="text-text-weaker">({note})</span>
+      </span>
+    )
+  }
+
+  const speedLabels = () => ({
+    burst: language.t("context.stats.burst"),
+    hidden: language.t("context.stats.reasoningHidden"),
+  })
+
   const stats = [
     { label: "context.stats.session", value: () => info()?.title ?? params.id ?? "—" },
     { label: "context.stats.messages", value: () => counts().all.toLocaleString(language.intl()) },
@@ -220,8 +237,23 @@ export function SessionContextTab() {
     { label: "context.stats.userMessages", value: () => counts().user.toLocaleString(language.intl()) },
     { label: "context.stats.assistantMessages", value: () => counts().assistant.toLocaleString(language.intl()) },
     { label: "context.stats.totalCost", value: cost },
-    { label: "context.stats.latency", value: () => formatLatency(ctx()?.latency) },
-    { label: "context.stats.speed", value: () => formatSpeed(ctx()?.speed) },
+    { label: "context.stats.latency", value: () => timed(formatLatency(ctx()?.meter?.step.latency, language.intl())) },
+    { label: "context.stats.visible", value: () => timed(formatLatency(ctx()?.meter?.step.visible, language.intl())) },
+    {
+      label: "context.stats.speed",
+      value: () => timed(formatSpeed(ctx()?.meter?.step.speed, language.intl(), speedLabels())),
+    },
+    {
+      label: "context.stats.turnSpeed",
+      value: () => {
+        const turn = ctx()?.meter?.turn
+        const speed = formatSpeed(turn?.speed, language.intl(), speedLabels())
+        // Some steps are left out (bursts, too short, unfinished); subagents never count toward the turn.
+        if (!turn || speed === "—" || turn.rated === turn.steps) return speed
+        return `${speed} · ${language.t("context.stats.rated", { rated: turn.rated, steps: turn.steps })}`
+      },
+    },
+    { label: "context.stats.prep", value: () => formatLatency(ctx()?.meter?.step.prep, language.intl()) },
     { label: "context.stats.sessionCreated", value: () => formatter().time(info()?.time.created) },
     { label: "context.stats.lastActivity", value: () => formatter().time(ctx()?.message.time.created) },
   ] satisfies { label: string; value: () => JSX.Element }[]

@@ -499,6 +499,14 @@ export const dict = {
   "context.stats.totalCost": "Samlede omkostninger",
   "context.stats.latency": "Latency (first token)",
   "context.stats.speed": "Output speed",
+  "context.stats.visible": "First visible token",
+  "context.stats.prep": "Local preparation",
+  "context.stats.turnSpeed": "Output speed (turn)",
+  "context.stats.stale": "last step",
+  "context.stats.aborted": "aborted",
+  "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Session oprettet",
   "context.stats.lastActivity": "Seneste aktivitet",
 
@@ -507,6 +515,7 @@ export const dict = {
   "context.usage.cost": "Omkostning",
   "context.usage.latency": "Latency",
   "context.usage.speed": "Output speed",
+  "context.usage.burst": "Burst",
   "context.usage.clickToView": "Klik for at se kontekst",
   "context.usage.view": "Se kontekstforbrug",
 

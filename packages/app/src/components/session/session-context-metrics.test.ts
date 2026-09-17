@@ -99,34 +99,53 @@ describe("getSessionContext", () => {
 })
 
 describe("latency and output speed", () => {
-  const timed = (time: { created: number; first?: number; completed?: number }, output = 200, reasoning = 100) =>
+  const timed = (input: Record<string, unknown>) =>
     ({
-      ...assistant("timed", { input: 10, output, reasoning, read: 0, write: 0 }, 0),
-      time,
+      ...(assistant("timed", { input: 10, output: 200, reasoning: 100, read: 0, write: 0 }, 0) as object),
+      parentID: "u1",
+      time: { created: 1_000, completed: 60_000 },
+      ...input,
     }) as unknown as Message
 
-  test("reads latency from the first chunk and speed from first chunk to completion", () => {
-    const ctx = getSessionContext([timed({ created: 1_000, first: 1_800, completed: 4_800 })])
-    expect(ctx?.latency).toBe(800)
-    // 300 tokens over 3 seconds
-    expect(ctx?.speed).toBe(100)
+  test("reads the measured step: latency to first token and tokens over the generation window", () => {
+    const ctx = getSessionContext([
+      timed({ timing: { firstToken: 1_800, ttftMs: 800, outputTokens: 300, genMs: 3_000 } }),
+    ])
+    expect(ctx?.meter?.step.latency).toBe(800)
+    // 300 tokens over the 3 s window, not over the 59 s the step took with its tool run.
+    expect(ctx?.meter?.step.speed).toEqual({ type: "rate", value: 100 })
+    expect(ctx?.meter?.step.stale).toBe(true)
   })
 
-  test("a message without a first chunk has neither; one still streaming has only latency", () => {
-    expect(getSessionContext([timed({ created: 1_000 })])?.latency).toBeUndefined()
-    expect(getSessionContext([timed({ created: 1_000 })])?.speed).toBeUndefined()
-    const streaming = getSessionContext([timed({ created: 1_000, first: 1_250 })])
-    expect(streaming?.latency).toBe(250)
-    expect(streaming?.speed).toBeUndefined()
+  test("a message recorded before timing existed shows nothing", () => {
+    const ctx = getSessionContext([timed({ time: { created: 1_000, first: 1_800, completed: 60_000 } })])
+    expect(ctx?.message.id).toBe("timed")
+    expect(ctx?.meter).toBeUndefined()
   })
 
-  test("formats for the panel", () => {
-    expect(formatLatency(420)).toBe("420 ms")
-    expect(formatLatency(1_850)).toBe("1.9 s")
-    expect(formatLatency(12_400)).toBe("12 s")
-    expect(formatLatency(undefined)).toBe("—")
-    expect(formatSpeed(7.25)).toBe("7.3 tk/s")
-    expect(formatSpeed(84.6)).toBe("85 tk/s")
-    expect(formatSpeed(undefined)).toBe("—")
+  test("a compaction summary after the step does not replace its numbers", () => {
+    const summary = {
+      ...(timed({ timing: { replayed: true } }) as object),
+      id: "summary",
+      summary: true,
+    } as unknown as Message
+    const ctx = getSessionContext([
+      timed({ timing: { firstToken: 1_800, ttftMs: 800, outputTokens: 300, genMs: 3_000 } }),
+      summary,
+    ])
+    expect(ctx?.meter?.step.message.id).toBe("timed")
+  })
+
+  test("formats for the panel in the reader's locale", () => {
+    expect(formatLatency(420, "en-US")).toBe("420ms")
+    expect(formatLatency(1_850, "en-US")).toBe("1.9s")
+    expect(formatLatency(undefined, "en-US")).toBe("—")
+    const labels = { burst: "Burst", hidden: "reasoning hidden" }
+    expect(formatSpeed({ type: "rate", value: 7.25 }, "en-US", labels)).toBe("7.3 tk/s")
+    expect(formatSpeed({ type: "rate", value: 1_234.6 }, "de-DE", labels)).toBe("1.235 tk/s")
+    expect(formatSpeed({ type: "rate", value: 103, hidden: true }, "en-US", labels)).toBe("103 tk/s (reasoning hidden)")
+    expect(formatSpeed({ type: "burst" }, "en-US", labels)).toBe("Burst")
+    expect(formatSpeed({ type: "short" }, "en-US", labels)).toBe("—")
+    expect(formatSpeed(undefined, "en-US", labels)).toBe("—")
   })
 })
