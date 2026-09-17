@@ -1,5 +1,5 @@
 ---
-"opencode": patch
+"@reddb-io/redcode": patch
 ---
 
 Reduce CI flake from slow `bun run` startup in subprocess tests and an `active`-marker race in the flock stress test.
