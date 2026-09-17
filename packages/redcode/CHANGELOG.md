@@ -1,5 +1,50 @@
 # opencode
 
+## 0.37.0
+
+### Minor Changes
+
+- 4e43804: Latency and output speed now measure the model, not the work around it.
+  - **Output speed counts only generation.** Speed is tokens per second between the first non-empty token (text, reasoning, tool input, or a tool call without streamed input) and the last token before the step finished. Both ends are stamped when the output arrives from the provider, not when the session gets round to handling it. Tool runs, permission prompts, snapshots, hooks and slow plugins no longer count. For example, a step that wrote 120 tokens in half a second and then ran a test suite for 1.5 seconds used to show about 60 tk/s and now shows about 250 tk/s.
+  - **Hidden reasoning is left out.** Reasoning models report every reasoning token, but only a short summary streams, late. When the reasoning that streamed is far shorter than the reasoning reported, speed rates the visible output alone over the visible part of the window and says so (`tk/s (reasoning hidden)`). For example, 1,200 hidden reasoning tokens and a one-line summary, then 80 text tokens over 400 ms, now show about 200 tk/s instead of thousands.
+  - **Latency starts when the request goes out.** Time to first token is measured from the HTTP attempt that produced the answer: the AI SDK provider call, or each native request attempt. Local preparation (tools, MCP, snapshots, plugins, auth), a failed attempt before a retry, and a 429 or 503 backoff before a resend are all excluded. An empty `reasoning-start` or block opening no longer counts as the first token. The app's context tab also shows the time to the first visible token and the local preparation separately.
+  - **No number when there is nothing to measure.** A step whose tokens mostly arrived at once (a non-streaming proxy) shows `burst` instead of the local write speed. Fewer than 20 tokens, or a window under 300 ms, shows no rate. Compaction summaries, which replay collected events, are skipped by both the TUI and the app. So are messages recorded before this release, because their numbers counted tool runs.
+  - **Live and per turn.** Latency is written as soon as the first token arrives, so it shows while the step streams. Values from a finished or aborted step are dimmed. When a turn has more than one step, the TUI sidebar and the app's context tab also show the turn's speed (total tokens over total generation time), the latency of its first step, and how many steps it rated. Subagents run in their own sessions and are not part of the turn. The app formats numbers in the selected language.
+
+  Assistant messages gain an optional `timing` object (`requestStarted`, `firstToken`, `firstVisible`, `lastToken`, `prepMs`, `ttftMs`, `visibleMs`, `genMs`, `visibleGenMs`, `idleMs`, `outputTokens`, `reasoningTokens`, `reasoningChars`, `burst`, `replayed`). Durations come from a monotonic clock. `time.first` is still written for older clients.
+
+- 9ba05d5: The `todowrite` refusal for an update that names neither `id` nor `content` now lists the existing tasks with their ids, revisions and titles, so a model that sends an evidence-only item can resend the exact update instead of retrying the same malformed shape.
+
+### Patch Changes
+
+- 0947b32: Preserve explicit Amazon Bedrock model ARNs and DeepSeek V3.2 IDs, while retaining regional inference prefixes for DeepSeek R1 in both Core and the CLI.
+- da22b7f: Output tokens are no longer lost when an OpenAI-compatible server counts reasoning apart from them.
+
+  OpenAI reports reasoning tokens as part of `completion_tokens`. Some OpenAI-compatible servers, and the proxies in front of them, report `completion_tokens` as the visible answer only and add the reasoning on top; their `total_tokens` shows it (`prompt + completion + reasoning`). Redcode subtracted reasoning from completion anyway, so a reply with 120 visible and 800 reasoning tokens was stored as 0 output tokens.
+
+  Such usage is now recognised from the provider's own total, and only from it: with no `total_tokens`, or a total that already contains reasoning, nothing changes. Both runtimes are affected: the AI SDK path (`@ai-sdk/openai-compatible`) and the native OpenAI Chat protocol, which the V2 runtime also uses.
+
+  **Cost and budget impact.** For those providers only, a step's output tokens now include the visible answer that used to be subtracted away. In the example above, the 120 output tokens are now counted, so:
+  - the step's cost rises by 120 × the model's output price;
+  - session and goal token totals rise by the same amount, and spend budgets and goal token budgets (legacy and V2) reach their limits correspondingly sooner;
+  - compaction and overflow estimates, which use the reported output, see the larger context.
+
+  Providers that report reasoning inside completion (OpenAI, and xAI and Gemini through their own AI SDK providers) are unchanged.
+
+- bc090df: Reduce CI flake from slow `bun run` startup in subprocess tests and an `active`-marker race in the flock stress test.
+  - `packages/opencode/test/lib/cli-process.ts` — prefer the prebuilt `redcode` binary (`dist/redcode-linux-x64/bin/redcode`) over `bun run --conditions=browser src/index.ts` when the binary is present. Cuts subprocess startup from ~20s to ~5s and keeps the run-process tests comfortably under their 30s `timeoutMs` even when many tests run concurrently.
+  - `packages/core/test/util/effect-flock.test.ts` — drop the `active` marker from the mutual-exclusion stress test. The marker sits outside the lock directory, so its `wx` create races between a holder's `fs.rm(active)` and the next holder's `fs.writeFile(active)`; on Windows the race window is wide enough to produce intermittent non-zero exits even though the flock itself is correct. The serialized work + `done.log` line count are sufficient to prove mutual exclusion.
+
+- 15c44b9: The V2 runtime (`redcode design`) records latency and output speed per step, the way the legacy runtime does.
+  - **What is recorded.** Each provider step records its request start (per HTTP attempt, so a rate-limit backoff inside the provider client is excluded), and its first token, first visible token and last token as they arrive. It also records output and reasoning token counts, the reasoning that streamed, and whether the tokens arrived as a burst. Durations use a monotonic clock. Tool runs, hooks and snapshots fall outside the generation window.
+  - **Where it is stored.** The step's settlement event and the projected assistant message carry it as `timing`. Nothing displays it for V2 sessions yet: the TUI sidebar and the app read legacy messages.
+  - **When it is written.** Only when the step settles. Unlike the legacy runtime, a V2 step has no live first token while it streams.
+  - **Older sessions** without `timing` load as before.
+
+- a8c4a05: Update the GitLab provider to 6.15.0 in Core and the CLI, adding GPT-6 Astra model mappings with Responses API routing.
+- b101ba2: Open Redcode directly in the full chat shell, including for profiles that previously selected the legacy interface.
+- 5803b39: Show reasoning token counts in the TUI thinking header. While the model thinks, the spinner reads `Thinking: title · 1.3K tokens`, updating live from the message's reasoning tokens, and the finished line reads `Thought: title · 2s · 1.3K tokens` using compact `Locale.number` notation.
+
 ## 0.36.2
 
 ### Patch Changes
