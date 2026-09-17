@@ -1022,6 +1022,7 @@ export type GlobalEvent = {
           }
           snapshot?: string
           files?: Array<string>
+          timing?: GenerationTiming
         }
       }
     | {
@@ -3919,6 +3920,7 @@ export type SyncEventSessionNextStepEnded = {
       }
       snapshot?: string
       files?: Array<string>
+      timing?: GenerationTiming
     }
   }
 }
@@ -4757,6 +4759,7 @@ export type SessionMessageAssistant = {
     }
   }
   error?: SessionErrorUnknown
+  timing?: GenerationTiming
 }
 
 export type SessionMessageCompaction = {
@@ -5038,6 +5041,7 @@ export type SessionNextStepEnded = {
     }
     snapshot?: string
     files?: Array<string>
+    timing?: GenerationTiming
   }
 }
 
@@ -7561,6 +7565,7 @@ export type EventSessionNextStepEnded = {
     }
     snapshot?: string
     files?: Array<string>
+    timing?: GenerationTiming
   }
 }
 

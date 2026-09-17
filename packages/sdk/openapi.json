@@ -29338,6 +29338,9 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "timing": {
+                        "$ref": "#/components/schemas/GenerationTiming"
                       }
                     },
                     "required": ["timestamp", "sessionID", "assistantMessageID", "finish", "cost", "tokens"],
@@ -38457,6 +38460,9 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "timing": {
+                    "$ref": "#/components/schemas/GenerationTiming"
                   }
                 },
                 "required": ["timestamp", "sessionID", "assistantMessageID", "finish", "cost", "tokens"],
@@ -41113,6 +41119,9 @@
           },
           "error": {
             "$ref": "#/components/schemas/SessionErrorUnknown"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/GenerationTiming"
           }
         },
         "required": ["id", "time", "type", "agent", "model", "content"],
@@ -41931,6 +41940,9 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "timing": {
+                "$ref": "#/components/schemas/GenerationTiming"
               }
             },
             "required": ["timestamp", "sessionID", "assistantMessageID", "finish", "cost", "tokens"],
@@ -50227,6 +50239,9 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "timing": {
+                "$ref": "#/components/schemas/GenerationTiming"
               }
             },
             "required": ["timestamp", "sessionID", "assistantMessageID", "finish", "cost", "tokens"],

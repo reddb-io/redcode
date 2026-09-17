@@ -13,7 +13,20 @@ import {
   type ProviderErrorEvent,
 } from "@reddb-io/redcode-llm"
 import { ModelLimit } from "../../model-limit"
-import { Cause, Clock, DateTime, Duration, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  DateTime,
+  Duration,
+  Effect,
+  FiberSet,
+  Layer,
+  Option,
+  Queue,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
 import { Flag } from "../../flag/flag"
 import { HumanWait } from "../human-wait"
@@ -63,12 +76,33 @@ import { SessionProgressContext } from "../progress-context"
 import { type RunError, Service } from "./index"
 import { SessionRunnerModel } from "./model"
 import { createLLMEventPublisher, usageTokens } from "./publish-llm-event"
+import { GenerationTiming } from "../generation-timing"
+import { RequestExecutor } from "@reddb-io/redcode-llm/route"
+
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { HookV2 } from "../../hook"
+
+/** Events that only carry content: publishing them persists what the provider sent and runs nothing. */
+const CONTENT_EVENTS = new Set([
+  "step-start",
+  "text-start",
+  "text-delta",
+  "text-end",
+  "reasoning-start",
+  "reasoning-delta",
+  "reasoning-end",
+  "tool-input-start",
+  "tool-input-delta",
+])
+
+const prefixLength = <A>(items: ReadonlyArray<A>, keep: (item: A) => boolean) => {
+  const index = items.findIndex((item) => !keep(item))
+  return index < 0 ? items.length : index
+}
 
 /** The latest user message follows a turn that was cancelled or cut off with tool calls unsettled. */
 const followsInterruptedTurn = (context: readonly SessionMessage.Message[]) => {
@@ -517,6 +551,10 @@ const layer = Layer.effect(
       withoutNative?: boolean,
     ) {
       const attempt = retry?.attempt ?? 1
+      // Every call is one provider attempt: a retry or a native search fallback measures from scratch,
+      // and its local preparation starts here.
+      const timing = GenerationTiming.recorder({ created: Date.now() })
+      timing.attempt()
       const session = yield* getSession(sessionID)
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
@@ -712,114 +750,152 @@ const layer = Layer.effect(
       const completionTools: Effect.Effect<void, ToolOutputStore.Error>[] = []
       let reportedTokens: ReturnType<typeof usageTokens> | undefined
       let overflowFailure: ProviderErrorEvent | undefined
-      const providerStream = llm.stream(request).pipe(
-        Stream.runForEach((event) =>
-          Effect.gen(function* () {
-            lastEventAt = yield* Clock.currentTimeMillis
-            if (overflowFailure || publisher.hasProviderError()) return
-            // Preserve received usage even if cancellation wins while publication waits for a sibling tool.
-            if (event.type === "step-finish" && !reportedTokens) reportedTokens = usageTokens(event.usage)
-            if (LLMEvent.is.providerError(event)) {
-              if (isContextOverflowFailure(event) && !publisher.hasAssistantStarted()) {
-                overflowFailure = event
+      // Stamped here in case the client makes no HTTP attempt of its own; the executor stamps each one.
+      timing.request()
+      const upstream = llm.stream(request)
+      // A reader fiber stamps output as it arrives from the provider and queues it, and keeps reading
+      // while the handler below publishes, runs display hooks or waits for a sibling tool's
+      // publication. Tools start in the handler, so reading ahead never starts one early.
+      const arrivals = yield* Queue.unbounded<
+        { readonly event: LLMEvent; readonly at: number },
+        LLMError | Cause.Done
+      >()
+      const reader = upstream.pipe(
+        Stream.runForEach((event) => {
+          // Usage counts once it is received, even if cancellation wins before the handler gets to it.
+          if (event.type === "step-finish" && !reportedTokens) reportedTokens = usageTokens(event.usage)
+          return Queue.offer(arrivals, { event, at: performance.now() })
+        }),
+        Effect.andThen(Queue.end(arrivals)),
+        Effect.catchCause((cause) => Queue.failCause(arrivals, cause)),
+        // The executor retries 429 and 5xx answers itself, after a backoff: time from the last attempt.
+        Effect.provideService(RequestExecutor.AttemptStarted, () => timing.request()),
+      )
+      // Output that arrived but was not handled when the turn is interrupted is still content the
+      // provider sent: it is published, as it was before reading ahead, up to anything that would act.
+      const publishArrived = Queue.clear(arrivals).pipe(
+        Effect.orElseSucceed(() => []),
+        Effect.flatMap((left) =>
+          Effect.forEach(
+            left.slice(
+              0,
+              prefixLength(left, (item) => CONTENT_EVENTS.has(item.event.type)),
+            ),
+            (item) => (publisher.hasProviderError() ? Effect.void : publish(item.event)),
+            { discard: true },
+          ),
+        ),
+      )
+      const providerStream = Effect.gen(function* () {
+        yield* Effect.forkChild(reader)
+        return yield* Stream.fromQueue(arrivals).pipe(
+          Stream.runForEach(({ event, at }) => {
+            const handling = performance.now()
+            timing.observe(event, at)
+            return Effect.gen(function* () {
+              lastEventAt = yield* Clock.currentTimeMillis
+              if (overflowFailure || publisher.hasProviderError()) return
+              if (LLMEvent.is.providerError(event)) {
+                if (isContextOverflowFailure(event) && !publisher.hasAssistantStarted()) {
+                  overflowFailure = event
+                  return
+                }
+              }
+              yield* publish(event)
+              if (event.type !== "tool-call" || event.providerExecuted) return
+              if (!toolMaterialization) {
+                yield* withPublication(publisher.failUnsettledTools("Tools are disabled after the maximum agent steps"))
                 return
               }
-            }
-            yield* publish(event)
-            if (event.type !== "tool-call" || event.providerExecuted) return
-            if (!toolMaterialization) {
-              yield* withPublication(publisher.failUnsettledTools("Tools are disabled after the maximum agent steps"))
-              return
-            }
-            needsContinuation = true
-            const assistantMessageID = yield* publisher.assistantMessageID(event.id)
-            const execute = Effect.uninterruptibleMask((restore) =>
-              restore(
-                Effect.gen(function* () {
-                  const pre = yield* hooks.run({
-                    event: "PreToolUse",
-                    matcher: HookV2.toolName(event.name),
-                    session_id: session.id,
-                    tool_name: HookV2.toolName(event.name),
-                    tool_input: event.input,
-                  })
-                  const denied = !pre.continue || pre.decision === "deny"
-                  // Asked before the call runs: a correction reaches the model as this tool's result.
-                  const loop = denied
-                    ? undefined
-                    : yield* guardLoop(
-                        session.id,
-                        agent.info?.permissions,
-                        event.name,
-                        pre.updatedInput ?? event.input,
-                        loopLimits,
-                      )
-                  if (loop?.type === "stop") loopStop ??= loop.summary
-                  if (!denied && loop?.type === "ok")
-                    yield* setBusy(session.id, { phase: "tool", tool: event.name, step: currentStep })
-                  const settlement = denied
-                    ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
-                    : loop && loop.type !== "ok"
-                      ? { result: { type: "error" as const, value: loop.message } }
-                      : yield* settleBounded(
+              needsContinuation = true
+              const assistantMessageID = yield* publisher.assistantMessageID(event.id)
+              const execute = Effect.uninterruptibleMask((restore) =>
+                restore(
+                  Effect.gen(function* () {
+                    const pre = yield* hooks.run({
+                      event: "PreToolUse",
+                      matcher: HookV2.toolName(event.name),
+                      session_id: session.id,
+                      tool_name: HookV2.toolName(event.name),
+                      tool_input: event.input,
+                    })
+                    const denied = !pre.continue || pre.decision === "deny"
+                    // Asked before the call runs: a correction reaches the model as this tool's result.
+                    const loop = denied
+                      ? undefined
+                      : yield* guardLoop(
                           session.id,
+                          agent.info?.permissions,
                           event.name,
-                          event.id,
-                          toolMaterialization.settle({
-                            sessionID: session.id,
-                            agent: agent.id,
-                            assistantMessageID,
-                            call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
-                          }),
-                          experimental?.tool_timeout,
+                          pre.updatedInput ?? event.input,
+                          loopLimits,
                         )
-                  yield* hooks.run({
-                    event: settlement.result.type === "error" ? "PostToolUseFailure" : "PostToolUse",
-                    matcher: HookV2.toolName(event.name),
-                    session_id: session.id,
-                    tool_name: HookV2.toolName(event.name),
-                    tool_input: pre.updatedInput ?? event.input,
-                    tool_response: settlement.result,
-                    error: settlement.result.type === "error" ? String(settlement.result.value) : undefined,
-                  })
-                  return settlement
-                }),
-              ).pipe(
-                Effect.flatMap((settlement) =>
-                  publish(
-                    LLMEvent.toolResult({
-                      id: event.id,
-                      name: event.name,
-                      result: settlement.result,
-                      output: settlement.output,
-                    }),
-                    settlement.outputPaths ?? [],
+                    if (loop?.type === "stop") loopStop ??= loop.summary
+                    if (!denied && loop?.type === "ok")
+                      yield* setBusy(session.id, { phase: "tool", tool: event.name, step: currentStep })
+                    const settlement = denied
+                      ? { result: { type: "error" as const, value: pre.reason ?? "Tool use denied by hook" } }
+                      : loop && loop.type !== "ok"
+                        ? { result: { type: "error" as const, value: loop.message } }
+                        : yield* settleBounded(
+                            session.id,
+                            event.name,
+                            event.id,
+                            toolMaterialization.settle({
+                              sessionID: session.id,
+                              agent: agent.id,
+                              assistantMessageID,
+                              call: pre.updatedInput === undefined ? event : { ...event, input: pre.updatedInput },
+                            }),
+                            experimental?.tool_timeout,
+                          )
+                    yield* hooks.run({
+                      event: settlement.result.type === "error" ? "PostToolUseFailure" : "PostToolUse",
+                      matcher: HookV2.toolName(event.name),
+                      session_id: session.id,
+                      tool_name: HookV2.toolName(event.name),
+                      tool_input: pre.updatedInput ?? event.input,
+                      tool_response: settlement.result,
+                      error: settlement.result.type === "error" ? String(settlement.result.value) : undefined,
+                    })
+                    return settlement
+                  }),
+                ).pipe(
+                  Effect.flatMap((settlement) =>
+                    publish(
+                      LLMEvent.toolResult({
+                        id: event.id,
+                        name: event.name,
+                        result: settlement.result,
+                        output: settlement.output,
+                      }),
+                      settlement.outputPaths ?? [],
+                    ),
                   ),
                 ),
-              ),
-            )
-            // Review sees the settled artifacts, including effects of every ordinary sibling tool.
-            if (event.name === "goal_complete") {
-              completionTools.push(execute)
-              return
-            }
-            activeTools++
-            yield* execute.pipe(
-              // A tool ending is activity: the watchdog must not count its runtime as provider silence.
-              Effect.ensuring(
-                Clock.currentTimeMillis.pipe(
-                  Effect.map((now) => {
-                    activeTools--
-                    lastEventAt = now
-                  }),
+              )
+              // Review sees the settled artifacts, including effects of every ordinary sibling tool.
+              if (event.name === "goal_complete") {
+                completionTools.push(execute)
+                return
+              }
+              activeTools++
+              yield* execute.pipe(
+                // A tool ending is activity: the watchdog must not count its runtime as provider silence.
+                Effect.ensuring(
+                  Clock.currentTimeMillis.pipe(
+                    Effect.map((now) => {
+                      activeTools--
+                      lastEventAt = now
+                    }),
+                  ),
                 ),
-              ),
-              FiberSet.run(toolFibers),
-            )
+                FiberSet.run(toolFibers),
+              )
+            }).pipe(Effect.ensuring(Effect.sync(() => timing.busy(event, handling, performance.now()))))
           }),
-        ),
-        Effect.ensuring(withPublication(publisher.flush())),
-      )
+        )
+      }).pipe(Effect.ensuring(publishArrived.pipe(Effect.andThen(withPublication(publisher.flush())))))
 
       return yield* Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
@@ -947,6 +1023,11 @@ const layer = Layer.effect(
                 tokens: stepSettlement.tokens,
                 snapshot: endSnapshot,
                 files,
+                // Taken after tool runs and snapshots, but the window ends at the last token.
+                timing: timing.snapshot({
+                  output: stepSettlement.tokens.output,
+                  reasoning: stepSettlement.tokens.reasoning,
+                }),
               }),
             )
           }
