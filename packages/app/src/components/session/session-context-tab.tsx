@@ -201,6 +201,18 @@ export function SessionContextTab() {
     return language.t("context.breakdown.other")
   }
 
+  // A finished or aborted step's numbers describe the past: dimmed and labeled rather than shown as live.
+  const timed = (value: string) => {
+    const step = ctx()?.meter?.step
+    if (!step?.stale || value === "—") return value
+    const note = language.t(step.aborted ? "context.stats.aborted" : "context.stats.stale")
+    return (
+      <span class="text-text-weak">
+        {value} <span class="text-text-weaker">({note})</span>
+      </span>
+    )
+  }
+
   const stats = [
     { label: "context.stats.session", value: () => info()?.title ?? params.id ?? "—" },
     { label: "context.stats.messages", value: () => counts().all.toLocaleString(language.intl()) },
@@ -220,8 +232,17 @@ export function SessionContextTab() {
     { label: "context.stats.userMessages", value: () => counts().user.toLocaleString(language.intl()) },
     { label: "context.stats.assistantMessages", value: () => counts().assistant.toLocaleString(language.intl()) },
     { label: "context.stats.totalCost", value: cost },
-    { label: "context.stats.latency", value: () => formatLatency(ctx()?.latency) },
-    { label: "context.stats.speed", value: () => formatSpeed(ctx()?.speed) },
+    { label: "context.stats.latency", value: () => timed(formatLatency(ctx()?.meter?.step.latency, language.intl())) },
+    { label: "context.stats.visible", value: () => timed(formatLatency(ctx()?.meter?.step.visible, language.intl())) },
+    {
+      label: "context.stats.speed",
+      value: () => timed(formatSpeed(ctx()?.meter?.step.speed, language.intl(), language.t("context.stats.burst"))),
+    },
+    {
+      label: "context.stats.turnSpeed",
+      value: () => formatSpeed(ctx()?.meter?.turn.speed, language.intl(), language.t("context.stats.burst")),
+    },
+    { label: "context.stats.prep", value: () => formatLatency(ctx()?.meter?.step.prep, language.intl()) },
     { label: "context.stats.sessionCreated", value: () => formatter().time(info()?.time.created) },
     { label: "context.stats.lastActivity", value: () => formatter().time(ctx()?.message.time.created) },
   ] satisfies { label: string; value: () => JSX.Element }[]

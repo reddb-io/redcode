@@ -31,11 +31,10 @@ import { Database } from "@reddb-io/redcode-core/database/database"
 import { Usage, type LLMEvent } from "@reddb-io/redcode-llm"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
+import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 
 /** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
 const LOOP_WINDOW = 16
-/** The stream events that carry the first content back: the wait for the provider ends here. */
-const FIRST_CHUNK = new Set(["reasoning-start", "text-start", "tool-input-start", "tool-call"])
 export type Result = "compact" | "stop" | "continue"
 
 export interface Handle {
@@ -132,6 +131,8 @@ interface ProcessorContext extends Input {
    * would ask for that tool again and its side effect would happen twice.
    */
   attemptExecuted: boolean
+  /** Output plus reasoning tokens of the step once the provider reported usage: the rate's numerator. */
+  stepTokens: number | undefined
 }
 
 type StreamEvent = LLMEvent
@@ -176,8 +177,12 @@ const layer = Layer.effect(
         lastEventAt: Date.now(),
         attemptParts: [],
         attemptExecuted: false,
+        stepTokens: undefined,
       }
       let aborted = false
+      // Stamped as events are read: the generation window, the provider's wait and the local work
+      // before the request, per attempt. See GenerationTiming for what each number covers.
+      const timing = GenerationTiming.recorder({ created: input.assistantMessage.time.created })
 
       /** A fresh part id, remembered so the attempt's output can be discarded if it is retried. */
       const nextPartID = () => {
@@ -349,12 +354,14 @@ const layer = Layer.effect(
         }
       }
 
+      /** The first token is written at once, so a client shows the provider's latency while it streams. */
+      const recordFirstToken = Effect.fn("SessionProcessor.recordFirstToken")(function* () {
+        ctx.assistantMessage.timing = timing.snapshot()
+        ctx.assistantMessage.time.first = ctx.assistantMessage.timing?.firstToken
+        yield* session.updateMessage(ctx.assistantMessage)
+      })
+
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
-        // The first chunk with content marks the end of the wait: latency is this minus
-        // `created`, and the output rate is the tokens over the time from here to `completed`.
-        if (ctx.assistantMessage.time.first === undefined && FIRST_CHUNK.has(value.type)) {
-          ctx.assistantMessage.time.first = Date.now()
-        }
         switch (value.type) {
           case "reasoning-start":
             if (value.id in ctx.reasoningMap) return
@@ -513,6 +520,8 @@ const layer = Layer.effect(
             if (!ctx.assistantMessage.summary) ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            ctx.stepTokens = usage.tokens.output + usage.tokens.reasoning
+            if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepTokens)
             yield* Verbose.log("provider.response", () => ({
               sessionID: ctx.sessionID,
               providerID: ctx.model.providerID,
@@ -686,6 +695,7 @@ const layer = Layer.effect(
         }
         ctx.toolcalls = {}
         ctx.assistantMessage.time.completed = Date.now()
+        if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepTokens)
         // Compaction owns validation and publication of a successful history boundary.
         yield* session.updateMessage({
           ...ctx.assistantMessage,
@@ -706,6 +716,13 @@ const layer = Layer.effect(
         ctx.attemptParts = []
         ctx.currentText = undefined
         ctx.reasoningMap = {}
+        // A failed attempt's first token is not the answer's: the next attempt measures its own.
+        timing.discard()
+        ctx.stepTokens = undefined
+        if (ctx.assistantMessage.timing === undefined && ctx.assistantMessage.time.first === undefined) return
+        ctx.assistantMessage.timing = undefined
+        ctx.assistantMessage.time.first = undefined
+        yield* session.updateMessage(ctx.assistantMessage)
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
@@ -766,6 +783,7 @@ const layer = Layer.effect(
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
+            timing.attempt()
             if (input.beforeAttempt && !(yield* input.beforeAttempt())) {
               ctx.blocked = true
               ctx.assistantMessage.finish = "stop"
@@ -778,13 +796,23 @@ const layer = Layer.effect(
             ctx.phase = undefined
             ctx.phaseTool = undefined
             yield* phase("preparing")
-            const stream = preparedEvents ? Stream.fromIterable(preparedEvents) : llm.stream(streamInput)
+            // Replayed events were collected earlier, so reading them now measures nothing: the
+            // message says so instead of showing the replay's local speed.
+            if (preparedEvents) ctx.assistantMessage.timing = { replayed: true }
+            const stream = preparedEvents
+              ? Stream.fromIterable(preparedEvents)
+              : llm.stream({ ...streamInput, onRequest: () => timing.request() })
 
             ctx.lastEventAt = Date.now()
             yield* stream.pipe(
               Stream.tap((event) => {
                 ctx.lastEventAt = Date.now()
-                return handleEvent(event)
+                if (preparedEvents) return handleEvent(event)
+                return Effect.gen(function* () {
+                  if (timing.observe(event)) yield* recordFirstToken()
+                  yield* handleEvent(event)
+                  timing.handled()
+                })
               }),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,

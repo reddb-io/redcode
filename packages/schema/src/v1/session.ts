@@ -461,15 +461,49 @@ export const SubtaskPartInput = Schema.Struct({
 }).annotate({ identifier: "SubtaskPartInput" })
 export type SubtaskPartInput = Types.DeepMutable<Schema.Schema.Type<typeof SubtaskPartInput>>
 
+/**
+ * How fast one provider step answered. Durations come from a monotonic clock and exclude tool runs,
+ * permission waits, snapshots and hooks; see `GenerationTiming` in core for the exact rules.
+ */
+export const GenerationTiming = Schema.Struct({
+  /** Epoch ms: the request of the attempt that produced this output went to the provider. */
+  requestStarted: Schema.optional(Timestamp),
+  /** Epoch ms: the first non-empty token of any kind, reasoning included. */
+  firstToken: Schema.optional(Timestamp),
+  /** Epoch ms: the first non-empty text or tool input. */
+  firstVisible: Schema.optional(Timestamp),
+  /** Epoch ms: the last token before the step finished. */
+  lastToken: Schema.optional(Timestamp),
+  /** Local work before the request of the attempt that produced this output. */
+  prepMs: Schema.optional(Timestamp),
+  /** Request start to the first token. */
+  ttftMs: Schema.optional(Timestamp),
+  /** Request start to the first visible token. */
+  visibleMs: Schema.optional(Timestamp),
+  /** First token to last token. */
+  genMs: Schema.optional(Timestamp),
+  /** Output plus reasoning tokens reported for the step. */
+  tokens: Schema.optional(Timestamp),
+  /** All tokens arrived in at most two deliveries, so the window does not measure generation. */
+  burst: Schema.optional(Schema.Boolean),
+  /** The step replayed events collected earlier, so nothing was measured. */
+  replayed: Schema.optional(Schema.Boolean),
+}).annotate({ identifier: "GenerationTiming" })
+export type GenerationTiming = Types.DeepMutable<Schema.Schema.Type<typeof GenerationTiming>>
+
 export const Assistant = Schema.Struct({
   ...messageBase,
   role: Schema.Literal("assistant"),
   time: Schema.Struct({
     created: NonNegativeInt,
-    /** When the first streamed chunk arrived: latency against `created`, output rate against `completed`. */
+    /**
+     * Deprecated: `timing.firstToken`. Still written for older clients; messages that carry only this
+     * field predate `timing` and are not shown by the meter, because its old math counted tool runs.
+     */
     first: Schema.optional(NonNegativeInt),
     completed: Schema.optional(NonNegativeInt),
   }),
+  timing: Schema.optional(GenerationTiming),
   error: Schema.optional(AssistantErrorSchema),
   parentID: MessageID,
   modelID: Model.ID,

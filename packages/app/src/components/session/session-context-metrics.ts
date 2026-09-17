@@ -1,4 +1,5 @@
 import type { AssistantMessage, Message } from "@reddb-io/redcode-sdk/v2/client"
+import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 
 type Provider = {
   id: string
@@ -23,31 +24,21 @@ type Context = {
   input: number
   total: number
   usage: number | null
-  /** Milliseconds from the request to the first streamed chunk, when the message recorded one. */
-  latency?: number
-  /** Output plus reasoning tokens per second between the first chunk and completion. */
-  speed?: number
+  /**
+   * The latest measured step and its turn, chosen by the rules the TUI uses too: compaction
+   * summaries, replays and messages from before timing was recorded are skipped.
+   */
+  meter?: GenerationTiming.Meter<Message>
 }
 
-const pace = (msg: AssistantMessage): { latency?: number; speed?: number } => {
-  const first = msg.time.first
-  if (first === undefined || first < msg.time.created) return {}
-  const latency = first - msg.time.created
-  const completed = msg.time.completed
-  const produced = msg.tokens.output + msg.tokens.reasoning
-  if (completed === undefined || completed <= first || produced <= 0) return { latency }
-  return { latency, speed: produced / ((completed - first) / 1000) }
-}
+export const formatLatency = (ms: number | undefined, locale?: string) =>
+  ms === undefined ? "—" : GenerationTiming.formatLatency(ms, locale)
 
-export const formatLatency = (ms: number | undefined) => {
-  if (ms === undefined) return "—"
-  if (ms < 1000) return `${Math.round(ms)} ms`
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`
-}
-
-export const formatSpeed = (tps: number | undefined) => {
-  if (tps === undefined) return "—"
-  return `${tps < 10 ? tps.toFixed(1) : Math.round(tps)} tk/s`
+/** A rate, or the reason there is none: `burst` for output that arrived all at once. */
+export const formatSpeed = (speed: GenerationTiming.Speed | undefined, locale: string | undefined, burst: string) => {
+  if (speed?.type === "rate") return GenerationTiming.formatRate(speed.value, locale)
+  if (speed?.type === "burst") return burst
+  return "—"
 }
 
 const tokenTotal = (msg: AssistantMessage) => {
@@ -82,7 +73,7 @@ const build = (messages: Message[] = [], providers: Provider[] = []): Context | 
     input: message.tokens.input,
     total,
     usage: limit ? Math.round((total / limit) * 100) : null,
-    ...pace(message),
+    meter: GenerationTiming.meter(messages),
   }
 }
 

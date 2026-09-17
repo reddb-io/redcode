@@ -1,5 +1,13 @@
 # V2 Schema Changelog
 
+## 2026-09-16: Generation Timing On Assistant Messages
+
+- Add optional `timing` (`GenerationTiming`) to the V1 `AssistantMessage`: `requestStarted`, `firstToken`, `firstVisible` and `lastToken` (epoch milliseconds), `prepMs`, `ttftMs`, `visibleMs` and `genMs` (durations measured with a monotonic clock), `tokens` (output plus reasoning tokens reported for the step), `burst` (every token arrived in at most two deliveries) and `replayed` (a compaction summary replayed collected events, so nothing was measured). All fields are optional; `timing` is reset at the start of every provider attempt and when a failed attempt is discarded, `firstToken` is written as soon as it happens and the rest when the step finishes.
+- `time.first` is deprecated in favour of `timing.firstToken` and is still written. Readers show nothing for messages without `timing`: the old `time.first` was stamped on the first framing event and its rate ran to `time.completed`, which counted tool runs and local work.
+- `Session.getUsage` treats reported reasoning larger than output as additive (output unchanged) instead of clamping output to zero.
+- The shared reader is `GenerationTiming` in `@reddb-io/redcode-core/session/generation-timing`, used by both the TUI and the app.
+- Add no route, migration or durable-event version; stored messages without `timing` decode as before. Regenerated `packages/sdk/openapi.json` (`bun dev generate`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`); the V2 client is unchanged because it does not carry the V1 message.
+
 ## 2026-09-16: Requests Sized By The Provider's Own Limit
 
 - Describe `limit.context`, `limit.input` and `limit.output` on a configured model (V2 `providers.<id>.models.<id>.limit` and V1 `provider.<id>.models.<id>.limit`): the context window, the separate input cap and the output cap, and that a limit a provider reports when refusing a request is learned and applied when smaller while setting or changing the configured value clears the lesson. Descriptions only; the fields and their types are unchanged, so existing configurations decode as before.

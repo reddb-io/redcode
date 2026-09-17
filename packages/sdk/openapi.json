@@ -26952,6 +26952,54 @@
         "required": ["id", "sessionID", "role", "time", "agent", "model"],
         "additionalProperties": false
       },
+      "GenerationTiming": {
+        "type": "object",
+        "properties": {
+          "requestStarted": {
+            "type": "number",
+            "minimum": 0
+          },
+          "firstToken": {
+            "type": "number",
+            "minimum": 0
+          },
+          "firstVisible": {
+            "type": "number",
+            "minimum": 0
+          },
+          "lastToken": {
+            "type": "number",
+            "minimum": 0
+          },
+          "prepMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ttftMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "visibleMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "genMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": "number",
+            "minimum": 0
+          },
+          "burst": {
+            "type": "boolean"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProviderAuthError": {
         "type": "object",
         "properties": {
@@ -27182,6 +27230,9 @@
             },
             "required": ["created"],
             "additionalProperties": false
+          },
+          "timing": {
+            "$ref": "#/components/schemas/GenerationTiming"
           },
           "error": {
             "anyOf": [

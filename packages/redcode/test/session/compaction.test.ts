@@ -2044,6 +2044,34 @@ describe("SessionNs.getUsage", () => {
     expect(result.tokens.total).toBe(1500)
   })
 
+  test("adds reasoning a provider counted apart from output instead of zeroing output", () => {
+    // xAI-style usage forwarded by a proxy: 120 visible tokens and 800 reasoning tokens, separately.
+    const model = createModel({
+      context: 100_000,
+      output: 32_000,
+      cost: { input: 0, output: 10, cache: { read: 0, write: 0 } },
+    })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 1000, outputTokens: 120, reasoningTokens: 800, totalTokens: 1920 }),
+    })
+
+    expect(result.tokens.output).toBe(120)
+    expect(result.tokens.reasoning).toBe(800)
+    expect(result.cost).toBeCloseTo((920 * 10) / 1_000_000, 10)
+  })
+
+  test("keeps subtracting reasoning when it fits inside output", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 1000, outputTokens: 800, reasoningTokens: 800, totalTokens: 1800 }),
+    })
+
+    expect(result.tokens.output).toBe(0)
+    expect(result.tokens.reasoning).toBe(800)
+  })
+
   test("does not double count reasoning tokens in cost", () => {
     const model = createModel({
       context: 100_000,

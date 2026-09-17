@@ -55,6 +55,11 @@ export type StreamInput = {
   maxOutputTokens?: number
   /** The preflight token estimate this request was sized by, for the verbose trace. */
   estimate?: number
+  /**
+   * Called immediately before the provider is called, after all local request preparation, once per
+   * provider call (a native tool search fallback calls again). Latency is measured from here.
+   */
+  onRequest?: () => void
 }
 
 export type StreamRequest = StreamInput & {
@@ -300,7 +305,13 @@ const live: Layer.Layer<
           })
           return {
             type: "native" as const,
-            stream: native.stream,
+            // The native stream lowers the request eagerly and calls the provider when it is run.
+            stream: Stream.unwrap(
+              Effect.sync(() => {
+                input.onRequest?.()
+                return native.stream
+              }),
+            ),
             search,
           }
         }
@@ -328,6 +339,7 @@ const live: Layer.Layer<
       })
       // Default runtime path: AI SDK owns provider execution and tool dispatch;
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
+      input.onRequest?.()
       return {
         type: "ai-sdk" as const,
         search,

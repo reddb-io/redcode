@@ -128,8 +128,22 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const tooltipValue = () => (
     <div class="flex w-[120px] flex-col gap-2">
       <ContextTooltipRow name={language.t("context.usage.cost")} value={cost()} />
-      <ContextTooltipRow name={language.t("context.usage.latency")} value={formatLatency(context()?.latency)} />
-      <ContextTooltipRow name={language.t("context.usage.speed")} value={formatSpeed(context()?.speed)} />
+      <ContextTooltipRow
+        name={language.t("context.usage.latency")}
+        value={
+          <span classList={{ "opacity-60": context()?.meter?.step.stale }}>
+            {formatLatency(context()?.meter?.step.latency, language.intl())}
+          </span>
+        }
+      />
+      <ContextTooltipRow
+        name={language.t("context.usage.speed")}
+        value={
+          <span classList={{ "opacity-60": context()?.meter?.step.stale }}>
+            {formatSpeed(context()?.meter?.step.speed, language.intl(), language.t("context.usage.burst"))}
+          </span>
+        }
+      />
       <ContextTooltipRow name={language.t("context.usage.usage")} value={`${context()?.usage ?? 0}%`} />
       <ContextTooltipRow
         name={language.t("context.usage.tokens")}
