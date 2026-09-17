@@ -110,7 +110,7 @@ describe("GenerationTiming.recorder", () => {
     recorder.request()
     time.advance(300)
     recorder.observe(delta("answer"))
-    expect(recorder.snapshot()?.ttftMs).toBe(300)
+    expect(recorder.snapshot()).toMatchObject({ ttftMs: 300, prepMs: 0 })
   })
 })
 

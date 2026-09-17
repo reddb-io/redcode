@@ -118,6 +118,7 @@ export function recorder(input: {
   const epochAt = (at: number) => Math.round(anchorEpoch + (at - anchor))
   let attempts = 0
   let attemptStart = anchor - Math.max(0, anchorEpoch - input.created)
+  let firstRequest: number | undefined
   let request: number | undefined
   let first: number | undefined
   let visible: number | undefined
@@ -127,6 +128,7 @@ export function recorder(input: {
   const streamedInput = new Set<string>()
 
   const reset = () => {
+    firstRequest = undefined
     request = undefined
     first = undefined
     visible = undefined
@@ -145,6 +147,7 @@ export function recorder(input: {
     discard: reset,
     /** A retried HTTP attempt calls this again: the answer is timed from the attempt that produced it. */
     request(at = now()) {
+      firstRequest ??= at
       request = at
     },
     /** Returns true when this event carried the step's first token. */
@@ -175,7 +178,8 @@ export function recorder(input: {
         firstToken: first === undefined ? undefined : epochAt(first),
         firstVisible: visible === undefined ? undefined : epochAt(visible),
         lastToken: last === undefined ? undefined : epochAt(last),
-        prepMs: request === undefined ? undefined : duration(request - attemptStart),
+        // Local work ends at the first call; a backoff before a resend is neither prep nor latency.
+        prepMs: firstRequest === undefined ? undefined : duration(firstRequest - attemptStart),
         ttftMs: request === undefined || first === undefined ? undefined : duration(first - request),
         visibleMs: request === undefined || visible === undefined ? undefined : duration(visible - request),
         genMs: genMs === undefined ? undefined : duration(genMs),
