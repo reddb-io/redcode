@@ -580,6 +580,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "ክፍለ ተፈጠረ",
   "context.stats.lastActivity": "የመጨረሻው እንቅስቃሴ",
   "context.usage.tokens": "ቶከኖች",

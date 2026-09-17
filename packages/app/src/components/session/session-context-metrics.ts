@@ -34,10 +34,18 @@ type Context = {
 export const formatLatency = (ms: number | undefined, locale?: string) =>
   ms === undefined ? "—" : GenerationTiming.formatLatency(ms, locale)
 
-/** A rate, or the reason there is none: `burst` for output that arrived all at once. */
-export const formatSpeed = (speed: GenerationTiming.Speed | undefined, locale: string | undefined, burst: string) => {
-  if (speed?.type === "rate") return GenerationTiming.formatRate(speed.value, locale)
-  if (speed?.type === "burst") return burst
+/**
+ * A rate, or the reason there is none. `labels.burst` stands in for output that arrived all at once,
+ * and `labels.hidden` follows a rate of the visible output alone, when reasoning did not stream.
+ */
+export const formatSpeed = (
+  speed: GenerationTiming.Speed | undefined,
+  locale: string | undefined,
+  labels: { readonly burst: string; readonly hidden: string },
+) => {
+  if (speed?.type === "rate")
+    return `${GenerationTiming.formatRate(speed.value, locale)}${speed.hidden ? ` (${labels.hidden})` : ""}`
+  if (speed?.type === "burst") return labels.burst
   return "—"
 }
 

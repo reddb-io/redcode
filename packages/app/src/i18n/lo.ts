@@ -587,6 +587,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "ສ້າງເຊດຊັນແລ້ວ",
   "context.stats.lastActivity": "ການເຄື່ອນໄຫວຫຼ້າສຸດ",
   "context.usage.tokens": "ໂທເຄັນ",

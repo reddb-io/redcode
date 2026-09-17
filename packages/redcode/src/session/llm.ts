@@ -35,6 +35,7 @@ import { OperationHookBridge } from "@/operation-hook-bridge"
 import { ToolSearch } from "./tool-search"
 import { SessionSpend } from "./spend"
 import { NativeToolSearch } from "./native-tool-search"
+import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -56,10 +57,12 @@ export type StreamInput = {
   /** The preflight token estimate this request was sized by, for the verbose trace. */
   estimate?: number
   /**
-   * Called immediately before the provider is called, after all local request preparation, once per
-   * provider call (a native tool search fallback calls again). Latency is measured from here.
+   * Timing hooks. `request` runs right before every provider HTTP attempt, after all local request
+   * preparation: from a stream middleware on the AI SDK path (again for each SDK retry), and per
+   * executor attempt on the native path (again for each status retry). `arrived` runs as each output
+   * event is read from the provider, below tool dispatch, so handling it later does not delay it.
    */
-  onRequest?: () => void
+  timing?: LLMNativeRuntime.StreamTiming
 }
 
 export type StreamRequest = StreamInput & {
@@ -296,6 +299,7 @@ const live: Layer.Layer<
           providerOptions: prepared.params.options,
           headers: prepared.headers,
           abort: input.abort,
+          timing: input.timing,
         })
         if (native.type === "supported") {
           yield* Effect.logInfo("llm runtime selected", {
@@ -305,13 +309,7 @@ const live: Layer.Layer<
           })
           return {
             type: "native" as const,
-            // The native stream lowers the request eagerly and calls the provider when it is run.
-            stream: Stream.unwrap(
-              Effect.sync(() => {
-                input.onRequest?.()
-                return native.stream
-              }),
-            ),
+            stream: native.stream,
             search,
           }
         }
@@ -339,7 +337,6 @@ const live: Layer.Layer<
       })
       // Default runtime path: AI SDK owns provider execution and tool dispatch;
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
-      input.onRequest?.()
       return {
         type: "ai-sdk" as const,
         search,
@@ -410,6 +407,36 @@ const live: Layer.Layer<
                     )
                   }
                   return args.params
+                },
+                // After transformParams, prompt conversion and auth: the provider call itself, once
+                // per SDK retry. Output parts are stamped as the provider stream is read, ahead of
+                // the SDK's tool execution, which still waits for the session to pull.
+                async wrapStream({ doStream }) {
+                  const timing = input.timing
+                  timing?.request()
+                  const result = await doStream()
+                  if (!timing) return result
+                  return {
+                    ...result,
+                    stream: result.stream.pipeThrough(
+                      new TransformStream(
+                        {
+                          transform(part, controller) {
+                            if (
+                              GenerationTiming.carriesToken({
+                                type: part.type,
+                                text: "delta" in part && typeof part.delta === "string" ? part.delta : undefined,
+                              })
+                            )
+                              timing.arrived()
+                            controller.enqueue(part)
+                          },
+                        },
+                        { highWaterMark: Number.POSITIVE_INFINITY },
+                        { highWaterMark: Number.POSITIVE_INFINITY },
+                      ),
+                    ),
+                  }
                 },
               },
             ],

@@ -592,6 +592,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Sesioni u krijua",
   "context.stats.lastActivity": "Aktiviteti i fundit",
   "context.usage.tokens": "Shenjat",

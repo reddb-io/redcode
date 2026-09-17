@@ -2,10 +2,15 @@
 
 ## 2026-09-16: Generation Timing On Assistant Messages
 
-- Add optional `timing` (`GenerationTiming`) to the V1 `AssistantMessage`: `requestStarted`, `firstToken`, `firstVisible` and `lastToken` (epoch milliseconds), `prepMs`, `ttftMs`, `visibleMs` and `genMs` (durations measured with a monotonic clock), `tokens` (output plus reasoning tokens reported for the step), `burst` (every token arrived in at most two deliveries) and `replayed` (a compaction summary replayed collected events, so nothing was measured). All fields are optional; `timing` is reset at the start of every provider attempt and when a failed attempt is discarded, `firstToken` is written as soon as it happens and the rest when the step finishes.
+- Add optional `timing` (`GenerationTiming`, defined in `packages/schema/src/generation-timing.ts`) to the V1 `AssistantMessage`:
+  - epoch milliseconds: `requestStarted`, `firstToken`, `firstVisible`, `lastToken`, stamped when output arrives from the provider;
+  - durations from a monotonic clock: `prepMs`, `ttftMs`, `visibleMs`, `genMs`, `visibleGenMs`, and `idleMs` (the part of the window spent waiting for the provider rather than handling output);
+  - counts: `outputTokens` and `reasoningTokens` as reported for the step, and `reasoningChars` (the reasoning that actually streamed);
+  - `burst` (idle for less than half the window) and `replayed` (a compaction summary replayed collected events, so nothing was measured).
+- All fields are optional. `timing` is reset at the start of every provider attempt and when a failed attempt is discarded, and `requestStarted` moves to each HTTP attempt, including SDK and executor status retries. `firstToken` is written as soon as it arrives; the rest is written when the step finishes.
 - `time.first` is deprecated in favour of `timing.firstToken` and is still written. Readers show nothing for messages without `timing`: the old `time.first` was stamped on the first framing event and its rate ran to `time.completed`, which counted tool runs and local work.
-- `Session.getUsage` treats reported reasoning larger than output as additive (output unchanged) instead of clamping output to zero.
-- The shared reader is `GenerationTiming` in `@reddb-io/redcode-core/session/generation-timing`, used by both the TUI and the app.
+- `RequestExecutor.AttemptStarted` (`@reddb-io/redcode-llm/route`) is a context reference called before every HTTP attempt; the default does nothing. Runtime API only, not a schema.
+- The shared reader is `GenerationTiming` in `@reddb-io/redcode-core/session/generation-timing`, used by both the TUI and the app. When reasoning tokens are reported but under half of their estimated characters (4 per token) streamed, it rates visible output over `visibleGenMs` and marks the rate `hidden`.
 - Add no route, migration or durable-event version; stored messages without `timing` decode as before. Regenerated `packages/sdk/openapi.json` (`bun dev generate`) and the legacy JavaScript SDK (`./packages/sdk/js/script/build.ts`: `js/src/v2/gen`); the V2 client is unchanged because it does not carry the V1 message.
 
 ## 2026-09-16: Requests Sized By The Provider's Own Limit

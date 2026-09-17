@@ -1561,6 +1561,140 @@ describe("session.llm.stream", () => {
   )
 
   it.instance(
+    "times a native answer from the HTTP attempt that produced it, not from before a 429 wait",
+    () =>
+      Effect.gen(function* () {
+        const model = loadFixture("openai", "gpt-5.2").model
+        const chunks = [
+          { type: "response.created", response: { id: "resp-retried" } },
+          { type: "response.output_item.added", item: { type: "message", id: "item-retried", status: "in_progress" } },
+          { type: "response.output_text.delta", item_id: "item-retried", delta: "After the wait" },
+          {
+            type: "response.completed",
+            response: { incomplete_details: null, usage: { input_tokens: 1, output_tokens: 1 } },
+          },
+        ]
+        waitRequest(
+          "/responses",
+          new Response(JSON.stringify({ error: { message: "Rate limit reached", type: "rate_limit_exceeded" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "retry-after-ms": "400" },
+          }),
+        )
+        waitRequest("/responses", createEventResponse(chunks, true))
+        const requests: number[] = []
+        const arrivals: number[] = []
+
+        const resolved = yield* Provider.use.getModel(ProviderV2.ID.openai, ModelV2.ID.make(model.id))
+        const sessionID = SessionID.make("session-test-native-retry-timing")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+
+        yield* drainWith(llmLayerWithExecutor({ flags: { experimentalNativeLlm: true } }), {
+          user: {
+            id: MessageID.make("msg_user-native-retry-timing"),
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: agent.name,
+            model: { providerID: ProviderV2.ID.make("openai"), modelID: resolved.id },
+          } satisfies SessionV1.User,
+          sessionID,
+          model: resolved,
+          agent,
+          system: [],
+          messages: [{ role: "user", content: "Hello" }],
+          tools: {},
+          timing: {
+            request: () => requests.push(performance.now()),
+            arrived: () => arrivals.push(performance.now()),
+          },
+        })
+
+        // The stream subscription, then one call per HTTP attempt: the executor waited out the 429
+        // between the last two, and the answer is timed from the last one.
+        expect(requests.length).toBeGreaterThanOrEqual(3)
+        expect(requests.at(-1)! - requests.at(-2)!).toBeGreaterThanOrEqual(380)
+        expect(arrivals).toHaveLength(1)
+        expect(arrivals[0]! - requests.at(-1)!).toBeLessThan(380)
+      }),
+    { config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
+  )
+
+  it.instance(
+    "stamps each AI SDK provider attempt from the stream middleware",
+    () =>
+      Effect.gen(function* () {
+        const fixture = loadFixture(vivgridFixture.providerID, vivgridFixture.modelID)
+        waitRequest(
+          "/chat/completions",
+          new Response(JSON.stringify({ error: { message: "overloaded" } }), {
+            status: 503,
+            headers: { "Content-Type": "application/json", "retry-after-ms": "300" },
+          }),
+        )
+        waitRequest(
+          "/chat/completions",
+          new Response(createChatStream("Hello"), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+        )
+        const requests: number[] = []
+        const arrivals: number[] = []
+        const resolved = yield* Provider.use.getModel(
+          ProviderV2.ID.make(vivgridFixture.providerID),
+          ModelV2.ID.make(fixture.model.id),
+        )
+        const sessionID = SessionID.make("session-test-sdk-retry-timing")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+
+        yield* drain({
+          user: {
+            id: MessageID.make("msg_user-sdk-retry-timing"),
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: agent.name,
+            model: { providerID: ProviderV2.ID.make(vivgridFixture.providerID), modelID: resolved.id },
+          } satisfies SessionV1.User,
+          sessionID,
+          model: resolved,
+          agent,
+          system: [],
+          messages: [{ role: "user", content: "Hello" }],
+          tools: {},
+          retries: 1,
+          timing: {
+            request: () => requests.push(performance.now()),
+            arrived: () => arrivals.push(performance.now()),
+          },
+        })
+
+        expect(requests).toHaveLength(2)
+        expect(requests[1]! - requests[0]!).toBeGreaterThanOrEqual(250)
+        expect(arrivals).toHaveLength(1)
+        expect(arrivals[0]!).toBeGreaterThan(requests[1]!)
+      }),
+    {
+      config: () => ({
+        enabled_providers: [vivgridFixture.providerID],
+        provider: {
+          [vivgridFixture.providerID]: {
+            options: { apiKey: "test-key", baseURL: `${state.server!.url.origin}/v1` },
+          },
+        },
+      }),
+    },
+  )
+
+  it.instance(
     "uses injected native request executor for tool calls",
     () =>
       Effect.gen(function* () {

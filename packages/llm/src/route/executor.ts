@@ -32,6 +32,15 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/LLM/RequestExecutor") {}
 
+/**
+ * Called right before every HTTP attempt, retries included. Status retries back off for up to ten
+ * seconds inside `execute`, invisible to the caller, so a caller timing the provider's answer has to
+ * start the clock here rather than when it asked for the stream.
+ */
+export const AttemptStarted = Context.Reference<() => void>("@opencode/LLM/RequestExecutor/AttemptStarted", {
+  defaultValue: () => () => {},
+})
+
 const BODY_LIMIT = 16_384
 const MAX_RETRIES = 2
 const BASE_DELAY_MS = 500
@@ -370,6 +379,8 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.e
     const executeOnce = (request: HttpClientRequest.HttpClientRequest) =>
       Effect.gen(function* () {
         const redactedNames = yield* Headers.CurrentRedactedNames
+        const started = yield* AttemptStarted
+        started()
         return yield* http
           .execute(request)
           .pipe(Effect.mapError(toHttpError(redactedNames)), Effect.flatMap(statusError(request, redactedNames)))

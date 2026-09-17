@@ -17,7 +17,8 @@ import {
   type JsonSchema,
   type LLMEvent,
 } from "@reddb-io/redcode-llm"
-import type { LLMClientShape } from "@reddb-io/redcode-llm/route"
+import { RequestExecutor, type LLMClientShape } from "@reddb-io/redcode-llm/route"
+import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 import { LLMNative } from "./native-request"
 
 export type RuntimeStatus =
@@ -52,7 +53,12 @@ type StreamInput = {
   readonly providerOptions?: Record<string, any>
   readonly headers: Record<string, string>
   readonly abort: AbortSignal
+  /** See `LLM.StreamInput["timing"]`. */
+  readonly timing?: StreamTiming
 }
+
+/** Hooks for timing a provider call: every HTTP attempt, and every output event as it arrives. */
+export type StreamTiming = { readonly request: () => void; readonly arrived: () => void }
 
 export function status(input: Pick<StreamInput, "model" | "provider" | "auth">): RuntimeStatus {
   return statusWithFetch(input, providerFetch(input))
@@ -127,39 +133,54 @@ export function stream(input: StreamInput): StreamResult {
       Effect.gen(function* () {
         const settlements = yield* FiberSet.make<void>()
         const results = yield* Queue.unbounded<LLMEvent, Cause.Done>()
-        const provider = input.llmClient
-          .stream(
-            LLMRequest.update(request, {
-              tools: [...request.tools, ...definitions],
-            }),
-          )
-          .pipe(
-            Stream.flatMap((event) =>
-              event.type !== "tool-call" || event.providerExecuted
-                ? Stream.make(event)
-                : Stream.make(event).pipe(
-                    Stream.concat(
-                      Stream.fromEffectDrain(
-                        ToolRuntime.dispatch(tools, event).pipe(
-                          Effect.flatMap((dispatched) => Queue.offerAll(results, dispatched.events)),
-                          Effect.catchCause((cause) => Queue.failCause(results, cause)),
-                          Effect.asVoid,
-                          FiberSet.run(settlements, { startImmediately: true }),
-                        ),
+        const events = input.llmClient.stream(
+          LLMRequest.update(request, {
+            tools: [...request.tools, ...definitions],
+          }),
+        )
+        const timing = input.timing
+        // Output is stamped as it is read from the provider, and the buffer keeps reading while the
+        // session handles what came before. It sits ahead of tool dispatch, so a tool still starts
+        // only when the session reaches its call.
+        const read = timing
+          ? events.pipe(
+              Stream.tap((event) =>
+                Effect.sync(() => {
+                  if (GenerationTiming.carriesToken(event)) timing.arrived()
+                }),
+              ),
+              Stream.buffer({ capacity: "unbounded" }),
+            )
+          : events
+        const provider = read.pipe(
+          Stream.flatMap((event) =>
+            event.type !== "tool-call" || event.providerExecuted
+              ? Stream.make(event)
+              : Stream.make(event).pipe(
+                  Stream.concat(
+                    Stream.fromEffectDrain(
+                      ToolRuntime.dispatch(tools, event).pipe(
+                        Effect.flatMap((dispatched) => Queue.offerAll(results, dispatched.events)),
+                        Effect.catchCause((cause) => Queue.failCause(results, cause)),
+                        Effect.asVoid,
+                        FiberSet.run(settlements, { startImmediately: true }),
                       ),
                     ),
                   ),
+                ),
+          ),
+          Stream.concat(
+            Stream.fromEffectDrain(
+              FiberSet.awaitEmpty(settlements).pipe(Effect.andThen(Queue.end(results)), Effect.asVoid),
             ),
-            Stream.concat(
-              Stream.fromEffectDrain(
-                FiberSet.awaitEmpty(settlements).pipe(Effect.andThen(Queue.end(results)), Effect.asVoid),
-              ),
-            ),
-          )
+          ),
+        )
+        // The executor calls this again for each HTTP attempt it retries.
+        input.timing?.request()
         return provider.pipe(Stream.concat(Stream.fromQueue(results)))
       }),
     ),
-  )
+  ).pipe(Stream.provideService(RequestExecutor.AttemptStarted, () => input.timing?.request()))
 
   return {
     ...current,

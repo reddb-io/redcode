@@ -596,6 +596,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "ဆက်ရှင်ကို ဖန်တီးထားသည်။",
   "context.stats.lastActivity": "နောက်ဆုံးလုပ်ဆောင်ချက်",
   "context.usage.tokens": "တိုကင်များ",

@@ -140,7 +140,10 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
         name={language.t("context.usage.speed")}
         value={
           <span classList={{ "opacity-60": context()?.meter?.step.stale }}>
-            {formatSpeed(context()?.meter?.step.speed, language.intl(), language.t("context.usage.burst"))}
+            {formatSpeed(context()?.meter?.step.speed, language.intl(), {
+              burst: language.t("context.usage.burst"),
+              hidden: language.t("context.stats.reasoningHidden"),
+            })}
           </span>
         }
       />

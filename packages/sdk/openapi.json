@@ -26987,7 +26987,23 @@
             "type": "number",
             "minimum": 0
           },
-          "tokens": {
+          "visibleGenMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "idleMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reasoningTokens": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reasoningChars": {
             "type": "number",
             "minimum": 0
           },

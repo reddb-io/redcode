@@ -15,6 +15,13 @@ const clock = (start = 1_000) => {
 
 const delta = (text: string) => ({ type: "text-delta", id: "t", text })
 
+const started = (time: ReturnType<typeof clock>) => {
+  const recorder = GenerationTiming.recorder({ created: time.epoch(), now: time.now, epoch: time.epoch })
+  recorder.attempt()
+  recorder.request()
+  return recorder
+}
+
 describe("GenerationTiming.recorder", () => {
   test("measures prep, time to first token, first visible token and the generation window", () => {
     const time = clock()
@@ -25,39 +32,49 @@ describe("GenerationTiming.recorder", () => {
     recorder.request()
     time.advance(100)
     recorder.observe({ type: "reasoning-start", id: "r" })
-    recorder.handled()
     time.advance(200)
     expect(recorder.observe({ type: "reasoning-delta", id: "r", text: "" })).toBe(false)
-    recorder.handled()
     time.advance(100)
-    expect(recorder.observe({ type: "reasoning-delta", id: "r", text: "hmm" })).toBe(true)
-    recorder.handled()
+    expect(recorder.observe({ type: "reasoning-delta", id: "r", text: "hmm, the parser first" })).toBe(true)
     time.advance(300)
     expect(recorder.observe(delta("Hello"))).toBe(false)
-    recorder.handled()
     time.advance(500)
     recorder.observe(delta(" world"))
-    recorder.handled()
     // Tool execution after the last token does not move the window.
     time.advance(45_000)
     recorder.observe({ type: "tool-result", id: "c" })
 
-    const timing = recorder.snapshot(120)!
-    expect(timing.prepMs).toBe(300)
-    expect(timing.ttftMs).toBe(400)
-    expect(timing.visibleMs).toBe(700)
-    expect(timing.genMs).toBe(800)
-    expect(timing.tokens).toBe(120)
+    const timing = recorder.snapshot({ output: 110, reasoning: 10 })!
+    expect(timing).toMatchObject({
+      prepMs: 300,
+      ttftMs: 400,
+      visibleMs: 700,
+      genMs: 800,
+      visibleGenMs: 500,
+      idleMs: 800,
+      outputTokens: 110,
+      reasoningTokens: 10,
+      reasoningChars: 21,
+    })
     expect(timing.burst).toBeUndefined()
     expect(timing.firstToken! - timing.requestStarted!).toBe(400)
     expect(GenerationTiming.speed(timing)).toEqual({ type: "rate", value: 150 })
   })
 
+  test("uses the arrival stamp it is given, not the time the event is handled", () => {
+    const time = clock()
+    const recorder = started(time)
+    const arrivals = [1_100, 1_140, 1_180]
+    time.advance(900)
+    arrivals.forEach((at) => recorder.observe(delta("x"), at))
+    const timing = recorder.snapshot({ output: 30, reasoning: 0 })!
+    expect(timing.ttftMs).toBe(100)
+    expect(timing.genMs).toBe(80)
+  })
+
   test("a tool call counts only when its input was not streamed", () => {
     const time = clock()
-    const recorder = GenerationTiming.recorder({ created: time.epoch(), now: time.now, epoch: time.epoch })
-    recorder.attempt()
-    recorder.request()
+    const recorder = started(time)
     time.advance(100)
     expect(recorder.observe({ type: "tool-input-start", id: "a" })).toBe(false)
     expect(recorder.observe({ type: "tool-input-delta", id: "a", text: "{}" })).toBe(true)
@@ -71,10 +88,7 @@ describe("GenerationTiming.recorder", () => {
 
   test("every attempt starts over, and a retry's prep starts at the retry", () => {
     const time = clock()
-    const recorder = GenerationTiming.recorder({ created: time.epoch(), now: time.now, epoch: time.epoch })
-    recorder.attempt()
-    time.advance(10)
-    recorder.request()
+    const recorder = started(time)
     time.advance(20)
     recorder.observe(delta("partial"))
     recorder.discard()
@@ -85,54 +99,139 @@ describe("GenerationTiming.recorder", () => {
     recorder.request()
     time.advance(400)
     recorder.observe(delta("again"))
-    const timing = recorder.snapshot()!
-    expect(timing.prepMs).toBe(30)
-    expect(timing.ttftMs).toBe(400)
+    expect(recorder.snapshot()).toMatchObject({ prepMs: 30, ttftMs: 400 })
   })
 
-  test("events handed over back to back are one delivery", () => {
+  test("a status retry inside one attempt restarts the request clock", () => {
     const time = clock()
-    const recorder = GenerationTiming.recorder({ created: time.epoch(), now: time.now, epoch: time.epoch })
-    recorder.attempt()
+    const recorder = started(time)
+    // 429, then the executor waits out retry-after before the second HTTP attempt.
+    time.advance(5_000)
     recorder.request()
-    time.advance(900)
-    for (const index of Array.from({ length: 50 }, (_, item) => item)) {
+    time.advance(300)
+    recorder.observe(delta("answer"))
+    expect(recorder.snapshot()?.ttftMs).toBe(300)
+  })
+})
+
+describe("GenerationTiming burst detection", () => {
+  test("a fast provider 3 ms apart with light handling is a stream", () => {
+    const time = clock()
+    const recorder = started(time)
+    time.advance(500)
+    for (const index of Array.from({ length: 200 }, (_, item) => item)) {
       recorder.observe(delta(`w${index}`))
-      // Local work between events (database writes) is not a wait for the provider.
-      time.advance(8)
-      recorder.handled()
+      recorder.busy(delta("w"), time.now(), time.now() + 0.4)
+      time.advance(3)
     }
-    expect(recorder.snapshot(300)?.burst).toBe(true)
-    expect(GenerationTiming.speed(recorder.snapshot(300))).toEqual({ type: "burst" })
+    const timing = recorder.snapshot({ output: 200, reasoning: 0 })!
+    expect(timing.burst).toBeUndefined()
+    expect(GenerationTiming.speed(timing)).toMatchObject({ type: "rate" })
   })
 
-  test("a framing event that waited opens a new delivery for the delta after it", () => {
+  test("a buffered burst spread out by handling stalls is a burst", () => {
     const time = clock()
-    const recorder = GenerationTiming.recorder({ created: time.epoch(), now: time.now, epoch: time.epoch })
-    recorder.attempt()
-    recorder.request()
-    for (const _ of [1, 2, 3]) {
-      time.advance(100)
-      recorder.observe({ type: "text-start", id: "t" })
-      recorder.handled()
-      recorder.observe(delta("x"))
-      recorder.handled()
+    const recorder = started(time)
+    time.advance(2_000)
+    // Everything is already buffered; each arrival waits for the previous event's database write.
+    for (const index of Array.from({ length: 60 }, (_, item) => item)) {
+      recorder.observe(delta(`w${index}`))
+      recorder.busy(delta("w"), time.now(), time.now() + 8)
+      time.advance(8)
     }
-    expect(recorder.snapshot(300)?.burst).toBeUndefined()
+    const timing = recorder.snapshot({ output: 400, reasoning: 0 })!
+    expect(timing.genMs).toBe(472)
+    expect(timing.idleMs).toBe(0)
+    expect(timing.burst).toBe(true)
+    expect(GenerationTiming.speed(timing)).toEqual({ type: "burst" })
+  })
+
+  test("a hook that waits outside the event loop does not make a stream look like a burst", () => {
+    const time = clock()
+    const recorder = started(time)
+    time.advance(100)
+    const start = time.now()
+    for (const index of Array.from({ length: 12 }, (_, item) => item)) {
+      if (index === 6) recorder.busy({ type: "text-end" }, time.now(), time.now() + 900)
+      recorder.observe(delta(`w${index}`))
+      time.advance(40)
+    }
+    const timing = recorder.snapshot({ output: 120, reasoning: 0 })!
+    expect(time.now() - start).toBe(480)
+    expect(timing).toMatchObject({ genMs: 440, idleMs: 440 })
+    expect(timing.burst).toBeUndefined()
+  })
+
+  test("handling after the last arrival does not count against the window", () => {
+    const time = clock()
+    const recorder = started(time)
+    time.advance(100)
+    for (const _ of [1, 2, 3, 4, 5]) {
+      recorder.observe(delta("x"))
+      time.advance(100)
+    }
+    // A slow text-end hook runs after the stream is over.
+    recorder.busy(delta("x"), time.now(), time.now() + 5_000)
+    const timing = recorder.snapshot({ output: 50, reasoning: 0 })!
+    expect(timing).toMatchObject({ genMs: 400, idleMs: 400 })
+    expect(timing.burst).toBeUndefined()
+  })
+})
+
+describe("GenerationTiming.arrivals", () => {
+  test("hands out stamps in order for events that carry output, and the current time otherwise", () => {
+    const time = clock()
+    const queue = GenerationTiming.arrivals(time.now)
+    queue.arrived()
+    time.advance(10)
+    queue.arrived()
+    time.advance(500)
+    expect(queue.take({ type: "text-start" })).toBe(1_510)
+    expect(queue.take(delta("a"))).toBe(1_000)
+    expect(queue.take({ type: "tool-call" })).toBe(1_010)
+    expect(queue.take(delta("b"))).toBe(1_510)
+    queue.arrived()
+    queue.clear()
+    expect(queue.take(delta(""))).toBe(1_510)
   })
 })
 
 describe("GenerationTiming.speed", () => {
-  const base = { firstToken: 1, genMs: 2_000, tokens: 200 }
+  const base = { firstToken: 1, genMs: 2_000, visibleGenMs: 1_000, outputTokens: 200, reasoningTokens: 0 }
   test("guards against numbers that measure nothing", () => {
     expect(GenerationTiming.speed(undefined)).toBeUndefined()
     expect(GenerationTiming.speed({ requestStarted: 1 })).toBeUndefined()
     expect(GenerationTiming.speed({ firstToken: 1, genMs: 500 })).toEqual({ type: "pending" })
     expect(GenerationTiming.speed({ firstToken: 1, genMs: 500 }, true)).toBeUndefined()
-    expect(GenerationTiming.speed({ ...base, tokens: 19 })).toEqual({ type: "short" })
+    expect(GenerationTiming.speed({ ...base, outputTokens: 19 })).toEqual({ type: "short" })
     expect(GenerationTiming.speed({ ...base, genMs: 299 })).toEqual({ type: "short" })
     expect(GenerationTiming.speed({ ...base, burst: true })).toEqual({ type: "burst" })
     expect(GenerationTiming.speed(base)).toEqual({ type: "rate", value: 100 })
+  })
+
+  test("reasoning that streamed counts with the output over the whole window", () => {
+    // 600 reasoning tokens with about 4 characters each streamed.
+    const timing = { ...base, outputTokens: 200, reasoningTokens: 600, reasoningChars: 2_300 }
+    expect(GenerationTiming.speed(timing)).toEqual({ type: "rate", value: 400 })
+  })
+
+  test("reasoning that did not stream is left out: the visible output over the visible window", () => {
+    // 1,200 hidden reasoning tokens, a short summary, then 80 text tokens over 780 ms.
+    const timing = {
+      firstToken: 1,
+      genMs: 800,
+      visibleGenMs: 780,
+      outputTokens: 80,
+      reasoningTokens: 1_200,
+      reasoningChars: 60,
+    }
+    expect(GenerationTiming.reasoningHidden(timing)).toBe(true)
+    const speed = GenerationTiming.speed(timing)
+    expect(speed).toMatchObject({ type: "rate", hidden: true })
+    expect(speed?.type === "rate" ? Math.round(speed.value) : 0).toBe(103)
+    // Counting all 1,280 tokens over the window would have claimed 1,600 tk/s.
+    expect(GenerationTiming.reasoningHidden({ reasoningTokens: 1_200, reasoningChars: 2_400 })).toBe(false)
+    expect(GenerationTiming.reasoningHidden({ reasoningTokens: 1_200 })).toBe(true)
   })
 })
 
@@ -144,11 +243,13 @@ describe("GenerationTiming.meter", () => {
     time: { created: 1, completed: 2 },
     ...input,
   })
-  const timing = (ttftMs: number, tokens: number, genMs: number, extra: GenerationTiming.Timing = {}) => ({
+  const timing = (ttftMs: number, outputTokens: number, genMs: number, extra: GenerationTiming.Timing = {}) => ({
     firstToken: 10,
     ttftMs,
-    tokens,
+    outputTokens,
+    reasoningTokens: 0,
     genMs,
+    visibleGenMs: genMs,
     ...extra,
   })
 
@@ -166,12 +267,12 @@ describe("GenerationTiming.meter", () => {
   })
 
   test("a finished or superseded step is stale; the streaming one is live", () => {
-    const live = assistant("a2", { time: { created: 3 }, timing: timing(300, 0, 0, { tokens: undefined }) })
+    const live = assistant("a2", { time: { created: 3 }, timing: timing(300, 0, 0, { outputTokens: undefined }) })
     expect(GenerationTiming.meter([live])?.step).toMatchObject({ stale: false, speed: { type: "pending" } })
     expect(GenerationTiming.meter([assistant("a1", { timing: timing(300, 100, 1_000) })])?.step.stale).toBe(true)
     // An unfinished message with a later assistant message after it will never finish.
     const superseded = [
-      assistant("a1", { time: { created: 1 }, timing: timing(300, 0, 0, { tokens: undefined }) }),
+      assistant("a1", { time: { created: 1 }, timing: timing(300, 0, 0, { outputTokens: undefined }) }),
       assistant("a2", { time: { created: 3 } }),
     ]
     expect(GenerationTiming.meter(superseded)?.step).toMatchObject({ stale: true, speed: undefined })
@@ -180,12 +281,12 @@ describe("GenerationTiming.meter", () => {
   test("an aborted step is stale and marked", () => {
     const aborted = assistant("a1", {
       error: { name: "MessageAbortedError", data: { message: "Aborted" } },
-      timing: timing(300, 0, 0, { tokens: undefined }),
+      timing: timing(300, 0, 0, { outputTokens: undefined }),
     })
     expect(GenerationTiming.meter([aborted])?.step).toMatchObject({ stale: true, aborted: true, latency: 300 })
   })
 
-  test("the turn aggregates its steps: Σtokens over Σwindows, latency from its first step", () => {
+  test("the turn aggregates its rated steps and says how many were rated", () => {
     const messages = [
       assistant("old", { parentID: "u0", timing: timing(900, 1_000, 1_000) }),
       assistant("s1", { timing: timing(700, 100, 1_000) }),
@@ -196,12 +297,12 @@ describe("GenerationTiming.meter", () => {
     const meter = GenerationTiming.meter(messages)!
     expect(meter.step.message.id).toBe("s3")
     expect(meter.step.speed).toEqual({ type: "rate", value: 300 })
-    expect(meter.turn).toEqual({ steps: 3, latency: 700, speed: { type: "rate", value: 200 } })
+    expect(meter.turn).toEqual({ steps: 3, rated: 2, latency: 700, speed: { type: "rate", value: 200 } })
   })
 
   test("a turn without a meaningful rate reports why", () => {
     const messages = [assistant("s1", { timing: timing(200, 300, 4, { burst: true }) })]
-    expect(GenerationTiming.meter(messages)?.turn.speed).toEqual({ type: "burst" })
+    expect(GenerationTiming.meter(messages)?.turn).toMatchObject({ rated: 0, speed: { type: "burst" } })
   })
 })
 

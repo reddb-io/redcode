@@ -108,7 +108,9 @@ describe("latency and output speed", () => {
     }) as unknown as Message
 
   test("reads the measured step: latency to first token and tokens over the generation window", () => {
-    const ctx = getSessionContext([timed({ timing: { firstToken: 1_800, ttftMs: 800, tokens: 300, genMs: 3_000 } })])
+    const ctx = getSessionContext([
+      timed({ timing: { firstToken: 1_800, ttftMs: 800, outputTokens: 300, genMs: 3_000 } }),
+    ])
     expect(ctx?.meter?.step.latency).toBe(800)
     // 300 tokens over the 3 s window, not over the 59 s the step took with its tool run.
     expect(ctx?.meter?.step.speed).toEqual({ type: "rate", value: 100 })
@@ -128,7 +130,7 @@ describe("latency and output speed", () => {
       summary: true,
     } as unknown as Message
     const ctx = getSessionContext([
-      timed({ timing: { firstToken: 1_800, ttftMs: 800, tokens: 300, genMs: 3_000 } }),
+      timed({ timing: { firstToken: 1_800, ttftMs: 800, outputTokens: 300, genMs: 3_000 } }),
       summary,
     ])
     expect(ctx?.meter?.step.message.id).toBe("timed")
@@ -138,10 +140,12 @@ describe("latency and output speed", () => {
     expect(formatLatency(420, "en-US")).toBe("420ms")
     expect(formatLatency(1_850, "en-US")).toBe("1.9s")
     expect(formatLatency(undefined, "en-US")).toBe("—")
-    expect(formatSpeed({ type: "rate", value: 7.25 }, "en-US", "Burst")).toBe("7.3 tk/s")
-    expect(formatSpeed({ type: "rate", value: 1_234.6 }, "de-DE", "Burst")).toBe("1.235 tk/s")
-    expect(formatSpeed({ type: "burst" }, "en-US", "Burst")).toBe("Burst")
-    expect(formatSpeed({ type: "short" }, "en-US", "Burst")).toBe("—")
-    expect(formatSpeed(undefined, "en-US", "Burst")).toBe("—")
+    const labels = { burst: "Burst", hidden: "reasoning hidden" }
+    expect(formatSpeed({ type: "rate", value: 7.25 }, "en-US", labels)).toBe("7.3 tk/s")
+    expect(formatSpeed({ type: "rate", value: 1_234.6 }, "de-DE", labels)).toBe("1.235 tk/s")
+    expect(formatSpeed({ type: "rate", value: 103, hidden: true }, "en-US", labels)).toBe("103 tk/s (reasoning hidden)")
+    expect(formatSpeed({ type: "burst" }, "en-US", labels)).toBe("Burst")
+    expect(formatSpeed({ type: "short" }, "en-US", labels)).toBe("—")
+    expect(formatSpeed(undefined, "en-US", labels)).toBe("—")
   })
 })

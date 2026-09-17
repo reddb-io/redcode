@@ -399,14 +399,10 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
 
   const total = input.usage.totalTokens
 
-  // Output normally includes reasoning. Reasoning larger than output can only mean the provider
-  // counted them apart (xAI does, and proxies forward it unchanged), so output is already visible
-  // output and reasoning adds to it rather than being subtracted down to zero.
-  const exclusiveReasoning = reasoningTokens > outputTokens
   const tokens = {
     total,
     input: adjustedInputTokens,
-    output: exclusiveReasoning ? outputTokens : safe(outputTokens - reasoningTokens),
+    output: safe(outputTokens - reasoningTokens),
     reasoning: reasoningTokens,
     cache: {
       write: cacheWriteInputTokens,

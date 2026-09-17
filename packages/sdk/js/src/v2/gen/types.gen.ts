@@ -273,7 +273,11 @@ export type GenerationTiming = {
   ttftMs?: number
   visibleMs?: number
   genMs?: number
-  tokens?: number
+  visibleGenMs?: number
+  idleMs?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  reasoningChars?: number
   burst?: boolean
   replayed?: boolean
 }

@@ -45,7 +45,7 @@ const assistant = (id: string, input: Partial<AssistantMessage> = {}) =>
 test("shows the latest step, skipping a compaction summary written after it", async () => {
   const app = await renderSidebar([
     user("u1"),
-    assistant("a1", { timing: { firstToken: 5, ttftMs: 820, visibleMs: 2_400, tokens: 240, genMs: 1_500 } }),
+    assistant("a1", { timing: { firstToken: 5, ttftMs: 820, visibleMs: 2_400, outputTokens: 240, genMs: 1_500 } }),
     // A replayed summary: first and completed a few milliseconds apart.
     assistant("sum", { summary: true, timing: { replayed: true }, time: { created: 3, completed: 4 } }),
   ])
@@ -62,7 +62,7 @@ test("shows the latest step, skipping a compaction summary written after it", as
 test("a burst shows a marker instead of a local write speed", async () => {
   const app = await renderSidebar([
     user("u1"),
-    assistant("a1", { timing: { firstToken: 5, ttftMs: 3_100, tokens: 400, genMs: 6, burst: true } }),
+    assistant("a1", { timing: { firstToken: 5, ttftMs: 3_100, outputTokens: 400, genMs: 6, burst: true } }),
   ])
   try {
     const frame = app.captureCharFrame()
@@ -85,10 +85,37 @@ test("messages recorded before timing existed show nothing", async () => {
   }
 })
 
+test("reasoning that did not stream is labelled, and the turn says how many steps it rated", async () => {
+  const app = await renderSidebar([
+    user("u1"),
+    assistant("a1", { timing: { firstToken: 5, ttftMs: 640, outputTokens: 400, genMs: 6, burst: true } }),
+    assistant("a2", {
+      timing: {
+        firstToken: 7,
+        ttftMs: 12_000,
+        visibleMs: 12_020,
+        outputTokens: 80,
+        reasoningTokens: 1_200,
+        reasoningChars: 60,
+        genMs: 800,
+        visibleGenMs: 780,
+      },
+    }),
+  ])
+  try {
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("103 tk/s (reasoning hidden)")
+    expect(frame).not.toContain("1641")
+    expect(frame).toContain("turn · 640ms · 103 tk/s · 1/2 rated")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("the streaming step is bright, a finished or aborted one is muted", async () => {
   const live = await renderSidebar([
     user("u1"),
-    assistant("a1", { timing: { firstToken: 5, ttftMs: 640, tokens: 90, genMs: 900 } }),
+    assistant("a1", { timing: { firstToken: 5, ttftMs: 640, outputTokens: 90, genMs: 900 } }),
     assistant("a2", { time: { created: 3 }, timing: { firstToken: 6, ttftMs: 510, genMs: 200 } }),
   ])
   try {
@@ -103,12 +130,15 @@ test("the streaming step is bright, a finished or aborted one is muted", async (
     assistant("a1", {
       time: { created: 3, completed: 4 },
       error: { name: "MessageAbortedError", data: { message: "Aborted" } },
-      timing: { firstToken: 6, ttftMs: 510, genMs: 200 },
+      timing: { firstToken: 6, ttftMs: 45_000, visibleMs: 52_000, genMs: 200 },
     }),
   ])
   try {
-    expect(aborted.captureCharFrame()).toContain("510ms latency · aborted")
-    expect(colorOf(aborted, "510ms latency")).toEqual(muted)
+    const frame = aborted.captureCharFrame()
+    // Fits the 36-column sidebar: the marker has its own line.
+    expect(frame).toMatch(/^45s latency · 52s to output\s*$/m)
+    expect(frame).toMatch(/^\s*aborted\s*$/m)
+    expect(colorOf(aborted, "45s latency")).toEqual(muted)
   } finally {
     aborted.renderer.destroy()
   }
@@ -147,7 +177,7 @@ async function renderSidebar(messages: Message[]) {
 
   await sidebarContext.tui(api, undefined, pluginMeta)
   if (!render) throw new Error("sidebar context slot was not registered")
-  const app = await testRender(render, { width: 60, height: 14 })
+  const app = await testRender(render, { width: 36, height: 16 })
   await app.renderOnce()
   return app
 }

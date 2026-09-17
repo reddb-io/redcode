@@ -23,9 +23,13 @@ import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { LLMEvent, type Usage } from "@reddb-io/redcode-llm"
+import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 
 // Every scenario scripts the provider: how long local preparation takes before the request, and
-// when each event arrives after the previous one. Timings are real sleeps, so bounds are loose.
+// when each event arrives after the previous one. The fake reads its script the way llm.ts reads a
+// provider: it stamps output as it arrives and keeps reading while the processor handles earlier
+// events. Timings are real sleeps, so bounds are loose; the exact rules are tested with a fake clock
+// in core's generation-timing tests.
 
 type Step = { readonly after?: number } & ({ readonly event: LLMEvent } | { readonly fail: unknown })
 type Script = { readonly prep?: number; readonly steps: readonly Step[] }
@@ -42,18 +46,35 @@ const scriptedLLM = Layer.succeed(
           const script = scripts[Math.min(calls++, scripts.length - 1)]!
           // Local request preparation happens before the provider is called, so it is not latency.
           if (script.prep) yield* Effect.sleep(Duration.millis(script.prep))
-          input.onRequest?.()
+          input.timing?.request()
           return Stream.fromIterable(script.steps).pipe(
             Stream.mapEffect((step) =>
               Effect.gen(function* () {
                 if (step.after) yield* Effect.sleep(Duration.millis(step.after))
                 if ("fail" in step) return yield* Effect.fail(step.fail)
+                if (GenerationTiming.carriesToken(step.event)) input.timing?.arrived()
                 return step.event
               }),
             ),
+            Stream.buffer({ capacity: "unbounded" }),
           )
         }),
       ),
+  }),
+)
+
+// The text-end waterfall is where plugins and hooks run in the middle of a stream: a slow one holds up
+// handling while the provider keeps sending.
+let textCompleteDelayMs = 0
+const slowHooks = Layer.succeed(
+  OperationHookBridge.Service,
+  OperationHookBridge.Service.of({
+    waterfall: (definition, data) =>
+      definition === OperationHook.Operation.Text.Complete && textCompleteDelayMs > 0
+        ? Effect.sleep(Duration.millis(textCompleteDelayMs)).pipe(Effect.as(data))
+        : Effect.succeed(data),
+    serial: () => Effect.void,
+    parallel: () => Effect.void,
   }),
 )
 
@@ -108,7 +129,7 @@ const it = testEffect(
   LayerNode.compile(root, [
     [SessionSummary.node, summary],
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
-    [OperationHookBridge.node, OperationHookBridge.passthroughLayer],
+    [OperationHookBridge.node, slowHooks],
     [LLM.node, scriptedLLM],
   ]),
 )
@@ -213,6 +234,7 @@ const stored = (sessionID: SessionID, messageID: MessageID) =>
 const reset = (next: Script[]) => {
   scripts = next
   calls = 0
+  textCompleteDelayMs = 0
 }
 
 it.live(
@@ -229,11 +251,14 @@ it.live(
                 // OpenAI Responses opens a reasoning item before any reasoning exists.
                 { after: 40, event: LLMEvent.reasoningStart({ id: "r-1" }) },
                 { after: 200, event: LLMEvent.reasoningDelta({ id: "r-1", text: "" }) },
-                { after: 60, event: LLMEvent.reasoningDelta({ id: "r-1", text: "thinking" }) },
+                {
+                  after: 60,
+                  event: LLMEvent.reasoningDelta({ id: "r-1", text: "Weighing the two approaches in detail" }),
+                },
                 { after: 30, event: LLMEvent.reasoningEnd({ id: "r-1" }) },
                 { event: LLMEvent.textStart({ id: "text-1" }) },
                 ...text(12, 40, 200),
-                ...finish({ output: 60, reasoning: 40 }),
+                ...finish({ output: 60, reasoning: 8 }),
               ],
             },
           ])
@@ -248,8 +273,7 @@ it.live(
           // Visible output starts with the first text, after thinking.
           expect(timing.visibleMs! - timing.ttftMs!).toBeGreaterThanOrEqual(220)
           expect(timing.prepMs).toBeGreaterThanOrEqual(110)
-          expect(timing.tokens).toBe(100)
-          expect(timing.burst).toBeUndefined()
+          expect(timing).toMatchObject({ outputTokens: 60, reasoningTokens: 8, reasoningChars: 37 })
           expect(info.time.first).toBe(timing.firstToken)
           expect(timing.requestStarted! + timing.ttftMs!).toBeCloseTo(timing.firstToken!, -1)
         }),
@@ -304,6 +328,45 @@ it.live(
           const endToEnd = 120 / ((info.time.completed! - timing.firstToken!) / 1000)
           expect(rate).toBeGreaterThan(100)
           expect(endToEnd).toBeLessThan(rate / 2)
+        }),
+      { config: cfg },
+    ),
+  20_000,
+)
+
+it.live(
+  "a slow hook while handling does not stretch the window: tokens are timed on arrival",
+  () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          reset([
+            {
+              steps: [
+                ...opening,
+                ...text(6, 40, 50),
+                // The first text part ends while more is on the way; its text-end hook takes 900 ms.
+                { event: LLMEvent.textEnd({ id: "text-1" }) },
+                { event: LLMEvent.textStart({ id: "text-2" }) },
+                ...Array.from({ length: 6 }, (_, index) => ({
+                  after: 40,
+                  event: LLMEvent.textDelta({ id: "text-2", text: `more${index} ` }),
+                })),
+                { event: LLMEvent.textEnd({ id: "text-2" }) },
+                { event: LLMEvent.stepFinish({ index: 0, reason: "stop", usage: usage({ outputTokens: 120 }) }) },
+              ],
+            },
+          ])
+          const { chat, msg, handle, streamInput } = yield* setup(dir)
+          textCompleteDelayMs = 900
+          yield* handle.process(streamInput)
+          const timing = (yield* stored(chat.id, msg.id)).timing!
+
+          // Twelve deltas 40 ms apart arrive over about 440 ms; stamping when handled would add the hook's 900.
+          expect(timing.genMs).toBeGreaterThanOrEqual(400)
+          expect(timing.genMs).toBeLessThan(750)
+          // The hook waited on a timer, not on the event loop: the stream is still a stream.
+          expect(timing.burst).toBeUndefined()
         }),
       { config: cfg },
     ),
@@ -368,7 +431,7 @@ it.live(
           // Only the retry's own preparation, not the first attempt and the wait before the retry.
           expect(timing.prepMs).toBeGreaterThanOrEqual(140)
           expect(timing.prepMs).toBeLessThan(400)
-          expect(timing.tokens).toBe(60)
+          expect(timing.outputTokens).toBe(60)
         }),
       { config: cfg },
     ),
@@ -394,6 +457,37 @@ it.live(
           expect(first.timing?.ttftMs).toBeGreaterThanOrEqual(25)
           const cleared = yield* poll(read, (info) => calls === 2 && info.timing === undefined)
           expect(cleared.time.first).toBeUndefined()
+          yield* Fiber.interrupt(run)
+        }),
+      { config: cfg },
+    ),
+  20_000,
+)
+
+it.live(
+  "a summary never publishes its finish before cleanup",
+  () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          const database = yield* Database.Service
+          reset([
+            {
+              steps: [
+                ...opening,
+                // A finish reason known before the first token is written: the write must not carry it.
+                { event: LLMEvent.finish({ reason: "stop" }) },
+                ...text(2, 20, 30),
+                { after: 60_000, event: LLMEvent.textDelta({ id: "text-1", text: "never" }) },
+              ],
+            },
+          ])
+          const { chat, msg, handle, streamInput } = yield* setup(dir, { summary: true })
+          const run = yield* handle.process(streamInput).pipe(Effect.forkChild)
+          const read = stored(chat.id, msg.id).pipe(Effect.provideService(Database.Service, database))
+          yield* poll(read, (info) => info.timing?.firstToken !== undefined)
+          yield* Effect.sleep("100 millis")
+          expect((yield* read).finish).toBeUndefined()
           yield* Fiber.interrupt(run)
         }),
       { config: cfg },
@@ -437,20 +531,57 @@ it.live(
 )
 
 it.live(
-  "tokens delivered in one burst show no rate",
+  "tokens delivered all at once show no rate",
   () =>
     provideTmpdirInstance(
       (dir) =>
         Effect.gen(function* () {
-          // A non-streaming proxy: everything arrives at once after the provider finished.
+          // A non-streaming proxy: everything arrives at once after the provider finished. Whether it reads as
+          // a burst or as too short a window depends on the machine; either way no number is shown.
           reset([{ steps: [...opening, ...text(40, 0, 900), ...finish({ output: 300 })] }])
           const { chat, msg, handle, streamInput } = yield* setup(dir)
           yield* handle.process(streamInput)
           const info = yield* stored(chat.id, msg.id)
 
-          expect(info.timing?.burst).toBe(true)
           expect(info.timing?.ttftMs).toBeGreaterThanOrEqual(890)
-          expect(GenerationTiming.meter([info])?.step.speed).toEqual({ type: "burst" })
+          expect(["burst", "short"]).toContain(GenerationTiming.meter([info])?.step.speed?.type ?? "missing")
+        }),
+      { config: cfg },
+    ),
+  20_000,
+)
+
+it.live(
+  "reasoning that only streamed as a summary rates the visible output alone",
+  () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          // 1,200 reasoning tokens happen before the first byte; only a one-line summary streams, then 80 text
+          // tokens over about 400 ms. Rating all 1,280 tokens over that window would show thousands of tk/s.
+          reset([
+            {
+              steps: [
+                { event: LLMEvent.stepStart({ index: 0 }) },
+                { event: LLMEvent.reasoningStart({ id: "r-1" }) },
+                { after: 1200, event: LLMEvent.reasoningDelta({ id: "r-1", text: "**Planning the change**" }) },
+                { event: LLMEvent.reasoningEnd({ id: "r-1" }) },
+                { event: LLMEvent.textStart({ id: "text-1" }) },
+                ...text(10, 40, 20),
+                ...finish({ output: 80, reasoning: 1200 }),
+              ],
+            },
+          ])
+          const { chat, msg, handle, streamInput } = yield* setup(dir)
+          yield* handle.process(streamInput)
+          const info = yield* stored(chat.id, msg.id)
+          const speed = GenerationTiming.meter([info])?.step.speed
+
+          expect(info.timing).toMatchObject({ outputTokens: 80, reasoningTokens: 1200, reasoningChars: 23 })
+          expect(speed).toMatchObject({ type: "rate", hidden: true })
+          const value = speed?.type === "rate" ? speed.value : 0
+          expect(value).toBeGreaterThan(80)
+          expect(value).toBeLessThan(400)
         }),
       { config: cfg },
     ),
@@ -480,49 +611,6 @@ it.live(
           expect(info.timing).toEqual({ replayed: true })
           expect(info.time.first).toBeUndefined()
           expect(GenerationTiming.meter([info])).toBeUndefined()
-        }),
-      { config: cfg },
-    ),
-  20_000,
-)
-
-it.live(
-  "exclusive reasoning usage feeds the rate instead of collapsing output to zero",
-  () =>
-    provideTmpdirInstance(
-      (dir) =>
-        Effect.gen(function* () {
-          reset([
-            {
-              steps: [
-                { event: LLMEvent.stepStart({ index: 0 }) },
-                { event: LLMEvent.reasoningStart({ id: "r-1" }) },
-                ...Array.from({ length: 10 }, (_, index) => ({
-                  after: 40,
-                  event: LLMEvent.reasoningDelta({ id: "r-1", text: `thought${index}` }),
-                })),
-                { event: LLMEvent.reasoningEnd({ id: "r-1" }) },
-                { event: LLMEvent.textStart({ id: "text-1" }) },
-                ...text(5, 40),
-                { event: LLMEvent.textEnd({ id: "text-1" }) },
-                // xAI through a proxy: output excludes reasoning, so reasoning is larger than output.
-                {
-                  event: LLMEvent.stepFinish({
-                    index: 0,
-                    reason: "stop",
-                    usage: usage({ inputTokens: 10, outputTokens: 50, reasoningTokens: 200 }),
-                  }),
-                },
-              ],
-            },
-          ])
-          const { chat, msg, handle, streamInput } = yield* setup(dir)
-          yield* handle.process(streamInput)
-          const info = yield* stored(chat.id, msg.id)
-
-          expect(info.tokens.output).toBe(50)
-          expect(info.tokens.reasoning).toBe(200)
-          expect(info.timing?.tokens).toBe(250)
         }),
       { config: cfg },
     ),

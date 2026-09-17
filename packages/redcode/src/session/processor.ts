@@ -131,8 +131,8 @@ interface ProcessorContext extends Input {
    * would ask for that tool again and its side effect would happen twice.
    */
   attemptExecuted: boolean
-  /** Output plus reasoning tokens of the step once the provider reported usage: the rate's numerator. */
-  stepTokens: number | undefined
+  /** The step's visible output and reasoning tokens once the provider reported usage. */
+  stepUsage: { output: number; reasoning: number } | undefined
 }
 
 type StreamEvent = LLMEvent
@@ -177,12 +177,13 @@ const layer = Layer.effect(
         lastEventAt: Date.now(),
         attemptParts: [],
         attemptExecuted: false,
-        stepTokens: undefined,
+        stepUsage: undefined,
       }
       let aborted = false
       // Stamped as events are read: the generation window, the provider's wait and the local work
       // before the request, per attempt. See GenerationTiming for what each number covers.
       const timing = GenerationTiming.recorder({ created: input.assistantMessage.time.created })
+      const arrived = GenerationTiming.arrivals()
 
       /** A fresh part id, remembered so the attempt's output can be discarded if it is retried. */
       const nextPartID = () => {
@@ -354,11 +355,20 @@ const layer = Layer.effect(
         }
       }
 
+      /**
+       * The message as written before cleanup: a summary never publishes its `finish` early, because
+       * compaction owns validating and publishing a successful history boundary.
+       */
+      const unsettled = () => ({
+        ...ctx.assistantMessage,
+        finish: ctx.assistantMessage.summary && !ctx.assistantMessage.error ? undefined : ctx.assistantMessage.finish,
+      })
+
       /** The first token is written at once, so a client shows the provider's latency while it streams. */
       const recordFirstToken = Effect.fn("SessionProcessor.recordFirstToken")(function* () {
         ctx.assistantMessage.timing = timing.snapshot()
         ctx.assistantMessage.time.first = ctx.assistantMessage.timing?.firstToken
-        yield* session.updateMessage(ctx.assistantMessage)
+        yield* session.updateMessage(unsettled())
       })
 
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
@@ -520,8 +530,8 @@ const layer = Layer.effect(
             if (!ctx.assistantMessage.summary) ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
-            ctx.stepTokens = usage.tokens.output + usage.tokens.reasoning
-            if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepTokens)
+            ctx.stepUsage = { output: usage.tokens.output, reasoning: usage.tokens.reasoning }
+            if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepUsage)
             yield* Verbose.log("provider.response", () => ({
               sessionID: ctx.sessionID,
               providerID: ctx.model.providerID,
@@ -695,12 +705,9 @@ const layer = Layer.effect(
         }
         ctx.toolcalls = {}
         ctx.assistantMessage.time.completed = Date.now()
-        if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepTokens)
+        if (!ctx.assistantMessage.timing?.replayed) ctx.assistantMessage.timing = timing.snapshot(ctx.stepUsage)
         // Compaction owns validation and publication of a successful history boundary.
-        yield* session.updateMessage({
-          ...ctx.assistantMessage,
-          finish: ctx.assistantMessage.summary && !ctx.assistantMessage.error ? undefined : ctx.assistantMessage.finish,
-        })
+        yield* session.updateMessage(unsettled())
       })
 
       const discardAttempt = Effect.fn("SessionProcessor.discardAttempt")(function* () {
@@ -718,11 +725,12 @@ const layer = Layer.effect(
         ctx.reasoningMap = {}
         // A failed attempt's first token is not the answer's: the next attempt measures its own.
         timing.discard()
-        ctx.stepTokens = undefined
+        arrived.clear()
+        ctx.stepUsage = undefined
         if (ctx.assistantMessage.timing === undefined && ctx.assistantMessage.time.first === undefined) return
         ctx.assistantMessage.timing = undefined
         ctx.assistantMessage.time.first = undefined
-        yield* session.updateMessage(ctx.assistantMessage)
+        yield* session.updateMessage(unsettled())
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
@@ -784,6 +792,7 @@ const layer = Layer.effect(
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
             timing.attempt()
+            arrived.clear()
             if (input.beforeAttempt && !(yield* input.beforeAttempt())) {
               ctx.blocked = true
               ctx.assistantMessage.finish = "stop"
@@ -801,17 +810,23 @@ const layer = Layer.effect(
             if (preparedEvents) ctx.assistantMessage.timing = { replayed: true }
             const stream = preparedEvents
               ? Stream.fromIterable(preparedEvents)
-              : llm.stream({ ...streamInput, onRequest: () => timing.request() })
+              : llm.stream({
+                  ...streamInput,
+                  timing: { request: () => timing.request(), arrived: () => arrived.arrived() },
+                })
 
             ctx.lastEventAt = Date.now()
             yield* stream.pipe(
               Stream.tap((event) => {
                 ctx.lastEventAt = Date.now()
                 if (preparedEvents) return handleEvent(event)
+                // Timed by when the event arrived, which llm.ts stamped while reading the provider;
+                // the time spent here handling it is what the window must not count as generation.
                 return Effect.gen(function* () {
-                  if (timing.observe(event)) yield* recordFirstToken()
+                  const start = performance.now()
+                  if (timing.observe(event, arrived.take(event))) yield* recordFirstToken()
                   yield* handleEvent(event)
-                  timing.handled()
+                  timing.busy(event, start, performance.now())
                 })
               }),
               Stream.takeUntil(() => ctx.needsCompaction),

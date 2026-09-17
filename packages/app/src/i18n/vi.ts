@@ -600,6 +600,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Đã tạo phiên",
   "context.stats.lastActivity": "Hoạt động cuối cùng",
   "context.usage.tokens": "Token",

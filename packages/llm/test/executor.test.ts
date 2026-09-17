@@ -148,6 +148,26 @@ describe("RequestExecutor", () => {
     }).pipe(Effect.provide(responsesLayer([new Response("request too large", { status: 413 })]))),
   )
 
+  it.effect("announces every HTTP attempt, retries included, so a caller times the one that answered", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const started: number[] = []
+      const response = yield* executor
+        .execute(request)
+        .pipe(Effect.provideService(RequestExecutor.AttemptStarted, () => started.push(started.length)))
+
+      expect(response.status).toBe(200)
+      expect(started).toEqual([0, 1])
+    }).pipe(
+      Effect.provide(
+        responsesLayer([
+          new Response("rate limited", { status: 429, headers: { "retry-after-ms": "0" } }),
+          new Response("ok", { status: 200 }),
+        ]),
+      ),
+    ),
+  )
+
   it.effect("does not classify ordinary invalid requests as context overflow", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service

@@ -590,6 +590,8 @@ export const dict: Record<string, string> = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "সেশন তৈরি হয়েছে",
   "context.stats.lastActivity": "শেষ কার্যকলাপ",
   "context.usage.tokens": "টোকেন",

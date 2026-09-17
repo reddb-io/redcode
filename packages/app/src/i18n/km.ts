@@ -589,6 +589,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "សម័យត្រូវបានបង្កើត",
   "context.stats.lastActivity": "សកម្មភាពចុងក្រោយ",
   "context.usage.tokens": "សញ្ញាសម្ងាត់",

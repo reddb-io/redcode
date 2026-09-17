@@ -590,6 +590,8 @@ export const dict = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "Vytvorenie relácie",
   "context.stats.lastActivity": "Posledná aktivita",
   "context.usage.tokens": "Tokeny",

@@ -599,6 +599,8 @@ export const dict: Record<string, string> = {
   "context.stats.stale": "last step",
   "context.stats.aborted": "aborted",
   "context.stats.burst": "Not streamed (burst)",
+  "context.stats.reasoningHidden": "reasoning hidden",
+  "context.stats.rated": "{{rated}}/{{steps}} steps rated",
   "context.stats.sessionCreated": "ལཱ་ཡུན་གསར་བསྐྲུན་འབད་ཡོདཔ།",
   "context.stats.lastActivity": "ལས་རིམ།",
   "context.usage.tokens": "ཊོ་ཀེན་ཚུ།",
