@@ -503,6 +503,75 @@ describe("session.llm.ai-sdk adapter", () => {
     expect(result.tokens.cache.read).toBe(200)
   })
 
+  describe("reasoning counted apart from output", () => {
+    const model = {
+      id: "grok",
+      providerID: "proxy",
+      name: "Grok via proxy",
+      limit: { context: 200_000, output: 8_000 },
+      cost: { input: 0, output: 10, cache: { read: 0, write: 0 } },
+      capabilities: {
+        toolcall: true,
+        attachment: false,
+        reasoning: true,
+        temperature: true,
+        input: { text: true, image: false, audio: false, video: false },
+        output: { text: true, image: false, audio: false, video: false },
+      },
+      api: { npm: "@ai-sdk/openai-compatible" },
+      options: {},
+    } as never
+    const step = (completion: number, reasoning: number, total: number | undefined) =>
+      adapt([
+        {
+          type: "finish-step",
+          response: { id: "chatcmpl", timestamp: new Date(0), modelId: "grok" },
+          finishReason: "stop",
+          rawFinishReason: "stop",
+          // @ai-sdk/openai-compatible 2.0.41: outputTokens is completion_tokens, text is completion - reasoning.
+          usage: {
+            inputTokens: 1000,
+            outputTokens: completion,
+            totalTokens: 1000 + completion,
+            inputTokenDetails: { noCacheTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: undefined },
+            outputTokenDetails: { textTokens: completion - reasoning, reasoningTokens: reasoning },
+            raw: {
+              prompt_tokens: 1000,
+              completion_tokens: completion,
+              ...(total === undefined ? {} : { total_tokens: total }),
+              completion_tokens_details: { reasoning_tokens: reasoning },
+            },
+          },
+          providerMetadata: undefined,
+        },
+      ]).then((events) => {
+        const finish = events[0]
+        if (finish?.type !== "step-finish") throw new Error("expected step-finish")
+        return SessionNs.getUsage({ model, usage: finish.usage!, metadata: undefined })
+      })
+
+    test("a total that adds reasoning on top keeps the visible answer and bills every token", async () => {
+      // 120 visible tokens and 800 reasoning tokens, total 1920: reasoning was not inside completion.
+      const result = await step(120, 800, 1920)
+      expect(result.tokens.output).toBe(120)
+      expect(result.tokens.reasoning).toBe(800)
+      expect(result.tokens.total).toBe(1920)
+      expect(result.cost).toBeCloseTo((920 * 10) / 1_000_000, 10)
+    })
+
+    test("the same counts with an inclusive total are left alone, on either side of the answer size", async () => {
+      // No threshold: 499 and 501 reasoning tokens around a 500-token completion are treated alike.
+      expect((await step(500, 499, 1500)).tokens).toMatchObject({ output: 1, reasoning: 499 })
+      expect((await step(500, 501, 1500)).tokens).toMatchObject({ output: 0, reasoning: 501 })
+      expect((await step(500, 501, 2001)).tokens).toMatchObject({ output: 500, reasoning: 501 })
+      expect((await step(500, 499, 1999)).tokens).toMatchObject({ output: 500, reasoning: 499 })
+    })
+
+    test("without a provider total nothing is guessed", async () => {
+      expect((await step(120, 800, undefined)).tokens).toMatchObject({ output: 0, reasoning: 800 })
+    })
+  })
+
   test("captures Copilot billed usage from raw Anthropic message deltas per step", async () => {
     const events = await adapt([
       uncheckedAdapterEvent({

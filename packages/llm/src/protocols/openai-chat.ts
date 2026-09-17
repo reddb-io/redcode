@@ -383,11 +383,36 @@ const mapFinishReason = (reason: string | null | undefined): FinishReason => {
   return "unknown"
 }
 
+/**
+ * Whether an OpenAI Chat usage payload counts reasoning apart from `completion_tokens`.
+ *
+ * OpenAI reports `reasoning_tokens` as a subset of `completion_tokens`, so `total_tokens` is
+ * `prompt_tokens + completion_tokens`. Some OpenAI-compatible servers and the proxies in front of
+ * them report `completion_tokens` as the visible answer only and add reasoning on top, and their
+ * `total_tokens` says so: `prompt_tokens + completion_tokens + reasoning_tokens`. Only that total
+ * decides; comparing reasoning with completion alone would flip at an arbitrary boundary (499 vs
+ * 501 reasoning tokens around a 500-token answer), and a payload without a total is left as the
+ * provider sent it.
+ */
+export const countsReasoningApart = (usage: {
+  readonly prompt_tokens?: number | null
+  readonly completion_tokens?: number | null
+  readonly total_tokens?: number | null
+  readonly completion_tokens_details?: { readonly reasoning_tokens?: number | null } | null
+}) => {
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens
+  if (typeof reasoning !== "number" || reasoning <= 0) return false
+  if (typeof usage.prompt_tokens !== "number" || typeof usage.completion_tokens !== "number") return false
+  if (typeof usage.total_tokens !== "number") return false
+  return usage.total_tokens === usage.prompt_tokens + usage.completion_tokens + reasoning
+}
+
 // OpenAI Chat reports `prompt_tokens` (inclusive total) with a
 // `cached_tokens` subset, and `completion_tokens` (inclusive total) with
 // a `reasoning_tokens` subset. We pass the inclusive totals through and
 // derive the non-cached breakdown so the `LLM.Usage` contract is
-// satisfied on both sides.
+// satisfied on both sides. A server that counts reasoning apart is
+// normalized to the same inclusive shape.
 const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
   if (!usage) return undefined
   const cached = usage.prompt_tokens_details?.cached_tokens
@@ -395,7 +420,10 @@ const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
   const nonCached = ProviderShared.subtractTokens(usage.prompt_tokens, cached)
   return new Usage({
     inputTokens: usage.prompt_tokens,
-    outputTokens: usage.completion_tokens,
+    outputTokens:
+      countsReasoningApart(usage) && usage.completion_tokens !== undefined
+        ? usage.completion_tokens + (reasoning ?? 0)
+        : usage.completion_tokens,
     nonCachedInputTokens: nonCached,
     cacheReadInputTokens: cached,
     reasoningTokens: reasoning,
