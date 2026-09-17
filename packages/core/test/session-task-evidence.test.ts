@@ -199,6 +199,24 @@ it.effect("binds requirements to real requests and rejects fabricated, failed or
   }),
 )
 
+it.effect("a contentless evidence-only update is refused with the existing tasks named", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] })).find(
+      (entry) => entry.content === task.content,
+    )!
+    // The shape a model sends when it means "complete that task" but names neither id nor content.
+    const refused = yield* todos
+      .update({ sessionID, todos: [{ priority: "medium", evidence: { callID: "passing", explanation: "Passed" } }] })
+      .pipe(Effect.flip)
+    expect(refused.message).toStartWith("Task content is required to create a task")
+    expect(refused.message).toContain(`Existing tasks: ${created.id} r${created.revision} "${task.content}"`)
+    expect(SessionTodoStore.refusalKind(refused.message)).toBe("content")
+  }),
+)
+
 it.effect("accepts every documented partial shape: no status, bare evidence, and a scopeChange without an id", () =>
   Effect.gen(function* () {
     yield* setup

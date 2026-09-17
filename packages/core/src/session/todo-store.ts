@@ -81,8 +81,7 @@ const make = Effect.gen(function* () {
                 })
               if (!before && !supplied)
                 return yield* new SessionTodo.Error({
-                  message:
-                    "Task content is required to create a task; supply id and revision to update an existing one",
+                  message: `Task content is required to create a task; supply id and revision to update an existing one. Existing tasks: ${listTasks(previous)}`,
                 })
               const content = supplied ?? before!.content
               const priority =
