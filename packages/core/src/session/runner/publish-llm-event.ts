@@ -29,9 +29,7 @@ export const usageTokens = (usage: Usage | undefined) => {
   const write = safe(usage?.cacheWriteInputTokens)
   return {
     input: safe(usage?.nonCachedInputTokens),
-    // Reasoning larger than output means the provider counted them apart (xAI, and proxies that
-    // forward it): output is already the visible part, not something to subtract down to zero.
-    output: reasoning > safe(usage?.outputTokens) ? safe(usage?.outputTokens) : safe(usage?.visibleOutputTokens),
+    output: safe(usage?.visibleOutputTokens),
     reasoning,
     cache: { read, write },
   }

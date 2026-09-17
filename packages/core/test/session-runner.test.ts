@@ -1,4 +1,5 @@
 import { SessionGuardTripTable } from "@reddb-io/redcode-core/session/sql"
+import { RequestExecutor } from "@reddb-io/redcode-llm/route"
 import { describe, expect } from "bun:test"
 import {
   LLMClient,
@@ -4994,7 +4995,8 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       expect(first!.visibleMs! - first!.ttftMs!).toBeGreaterThanOrEqual(30)
       expect(first?.genMs).toBeGreaterThanOrEqual(310)
       expect(first?.genMs).toBeLessThan(850)
-      expect(first?.tokens).toBe(120)
+      // 120 output tokens of which 20 were reasoning; only "Plan" of that reasoning streamed.
+      expect(first).toMatchObject({ outputTokens: 100, reasoningTokens: 20, reasoningChars: 4 })
       expect(first?.burst).toBeUndefined()
       expect(first!.firstToken! - first!.requestStarted!).toBeCloseTo(first!.ttftMs!, -1)
 
@@ -5032,30 +5034,35 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
     }),
   )
 
-  it.effect("keeps output when the provider counts reasoning apart from it", () =>
+  it.live("a status retry inside the provider client is not part of time to first token", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Think a lot" }), resume: false })
-      response = [
-        LLMEvent.stepStart({ index: 0 }),
-        LLMEvent.textStart({ id: "short" }),
-        LLMEvent.textDelta({ id: "short", text: "Short answer" }),
-        LLMEvent.textEnd({ id: "short" }),
-        LLMEvent.stepFinish({
-          index: 0,
-          reason: "stop",
-          usage: { inputTokens: 10, nonCachedInputTokens: 10, outputTokens: 50, reasoningTokens: 200 },
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Rate limited once" }), resume: false })
+      // What the native RequestExecutor does on a 429 with retry-after: announce the attempt, wait out
+      // the backoff, announce the next attempt, and only then stream.
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const attempt = yield* RequestExecutor.AttemptStarted
+          attempt()
+          yield* Effect.sleep(Duration.millis(400))
+          attempt()
+          return paced([
+            [0, LLMEvent.stepStart({ index: 0 })],
+            [0, LLMEvent.textStart({ id: "answer" })],
+            [120, LLMEvent.textDelta({ id: "answer", text: "After the backoff" })],
+            [0, LLMEvent.textEnd({ id: "answer" })],
+            [0, LLMEvent.stepFinish({ index: 0, reason: "stop" })],
+            [0, LLMEvent.finish({ reason: "stop" })],
+          ])
         }),
-        LLMEvent.finish({ reason: "stop" }),
-      ]
+      )
 
       yield* session.resume(sessionID)
 
-      expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "user" },
-        { type: "assistant", tokens: { output: 50, reasoning: 200 }, timing: { tokens: 250 } },
-      ])
+      const [timing] = assistantTiming(yield* session.context(sessionID))
+      expect(timing?.ttftMs).toBeGreaterThanOrEqual(110)
+      expect(timing?.ttftMs).toBeLessThan(380)
     }),
   )
 })

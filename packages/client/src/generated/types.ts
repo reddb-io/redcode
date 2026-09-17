@@ -875,7 +875,11 @@ export type SessionsContextOutput = {
           readonly ttftMs?: number
           readonly visibleMs?: number
           readonly genMs?: number
-          readonly tokens?: number
+          readonly visibleGenMs?: number
+          readonly idleMs?: number
+          readonly outputTokens?: number
+          readonly reasoningTokens?: number
+          readonly reasoningChars?: number
           readonly burst?: boolean
           readonly replayed?: boolean
         }
@@ -1104,7 +1108,11 @@ export type SessionsHistoryOutput = {
             readonly ttftMs?: number
             readonly visibleMs?: number
             readonly genMs?: number
-            readonly tokens?: number
+            readonly visibleGenMs?: number
+            readonly idleMs?: number
+            readonly outputTokens?: number
+            readonly reasoningTokens?: number
+            readonly reasoningChars?: number
             readonly burst?: boolean
             readonly replayed?: boolean
           }
@@ -1589,7 +1597,11 @@ export type SessionsEventsOutput =
           readonly ttftMs?: number
           readonly visibleMs?: number
           readonly genMs?: number
-          readonly tokens?: number
+          readonly visibleGenMs?: number
+          readonly idleMs?: number
+          readonly outputTokens?: number
+          readonly reasoningTokens?: number
+          readonly reasoningChars?: number
           readonly burst?: boolean
           readonly replayed?: boolean
         }
@@ -2021,7 +2033,11 @@ export type SessionsMessageOutput = {
           readonly ttftMs?: number
           readonly visibleMs?: number
           readonly genMs?: number
-          readonly tokens?: number
+          readonly visibleGenMs?: number
+          readonly idleMs?: number
+          readonly outputTokens?: number
+          readonly reasoningTokens?: number
+          readonly reasoningChars?: number
           readonly burst?: boolean
           readonly replayed?: boolean
         }
@@ -5877,7 +5893,11 @@ export type MessagesListOutput = {
           readonly ttftMs?: number
           readonly visibleMs?: number
           readonly genMs?: number
-          readonly tokens?: number
+          readonly visibleGenMs?: number
+          readonly idleMs?: number
+          readonly outputTokens?: number
+          readonly reasoningTokens?: number
+          readonly reasoningChars?: number
           readonly burst?: boolean
           readonly replayed?: boolean
         }
