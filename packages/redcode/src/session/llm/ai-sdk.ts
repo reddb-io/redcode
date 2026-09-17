@@ -1,4 +1,5 @@
 import { FinishReason, LLMEvent, ProviderMetadata, ToolResultValue } from "@reddb-io/redcode-llm"
+import { countsReasoningApart } from "@reddb-io/redcode-llm/protocols/openai-chat"
 import { Effect, Schema } from "effect"
 import { type streamText } from "ai"
 import { errorMessage } from "@/util/error"
@@ -52,12 +53,24 @@ function usage(value: unknown) {
     cachedInputTokens?: number
     inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number }
     outputTokenDetails?: { reasoningTokens?: number }
+    raw?: unknown
   }
+  const reasoning = item.outputTokenDetails?.reasoningTokens ?? item.reasoningTokens
+  // The session counts reasoning as part of output. An OpenAI-compatible server that counted it apart
+  // is normalized here, where its raw payload still shows it, so cost and totals see all of it.
+  const raw =
+    item.raw !== null && typeof item.raw === "object"
+      ? (item.raw as Parameters<typeof countsReasoningApart>[0])
+      : undefined
+  const apart = raw !== undefined && countsReasoningApart(raw)
   const entries = Object.entries({
     inputTokens: item.inputTokens,
-    outputTokens: item.outputTokens,
-    totalTokens: item.totalTokens,
-    reasoningTokens: item.outputTokenDetails?.reasoningTokens ?? item.reasoningTokens,
+    outputTokens:
+      apart && item.outputTokens !== undefined && reasoning !== undefined
+        ? item.outputTokens + reasoning
+        : item.outputTokens,
+    totalTokens: apart ? (raw?.total_tokens ?? item.totalTokens) : item.totalTokens,
+    reasoningTokens: reasoning,
     cacheReadInputTokens: item.inputTokenDetails?.cacheReadTokens ?? item.cachedInputTokens,
     cacheWriteInputTokens: item.inputTokenDetails?.cacheWriteTokens,
   }).filter((entry) => entry[1] !== undefined)

@@ -526,6 +526,53 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  it.effect("normalizes usage that counts reasoning apart from completion tokens", () =>
+    Effect.gen(function* () {
+      const generate = (usage: object) =>
+        LLMClient.generate(request).pipe(
+          Effect.provide(
+            fixedResponse(
+              sseEvents(deltaChunk({ role: "assistant", content: "Hi" }), deltaChunk({}, "stop"), usageChunk(usage)),
+            ),
+          ),
+          Effect.map((response) => response.usage),
+        )
+      // The total adds reasoning on top of completion: completion is the visible answer only.
+      const apart = yield* generate({
+        prompt_tokens: 10,
+        completion_tokens: 120,
+        total_tokens: 930,
+        completion_tokens_details: { reasoning_tokens: 800 },
+      })
+      expect(apart).toMatchObject({ outputTokens: 920, reasoningTokens: 800, totalTokens: 930 })
+      expect(apart?.visibleOutputTokens).toBe(120)
+      expect(
+        OpenAIChat.countsReasoningApart({
+          prompt_tokens: 10,
+          completion_tokens: 120,
+          total_tokens: 930,
+          completion_tokens_details: { reasoning_tokens: 800 },
+        }),
+      ).toBe(true)
+
+      // The OpenAI shape, reasoning inside completion, is untouched whatever the sizes.
+      const inside = yield* generate({
+        prompt_tokens: 10,
+        completion_tokens: 500,
+        total_tokens: 510,
+        completion_tokens_details: { reasoning_tokens: 501 },
+      })
+      expect(inside).toMatchObject({ outputTokens: 500, reasoningTokens: 501 })
+      expect(
+        OpenAIChat.countsReasoningApart({
+          prompt_tokens: 10,
+          completion_tokens: 120,
+          completion_tokens_details: { reasoning_tokens: 800 },
+        }),
+      ).toBe(false)
+    }),
+  )
+
   it.effect("parses OpenAI-compatible reasoning content deltas", () =>
     Effect.gen(function* () {
       const body = sseEvents(
