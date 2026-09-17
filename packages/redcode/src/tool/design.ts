@@ -343,7 +343,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_read", {
       description:
-        "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval; use file for exact snapshot source. Section snapshot returns the page text captured with a browser review note (optionally a specific feedback id) and needs no approval. Available during Plan and Build without reopening Design.",
+        "Read the immutable approved Design: summary, decisions, scenarios, feedback, assets, evidence or prototype. Omit revision for the current approval, or for the latest published revision while nothing is approved yet (draft data, labelled as such); use file for exact snapshot source. Section snapshot returns the page text captured with a browser review note (optionally a specific feedback id) and needs no approval. Available during Plan and Build without reopening Design.",
       parameters: DesignApproval.Read,
       execute: (input, ctx) =>
         run(

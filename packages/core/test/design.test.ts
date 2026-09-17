@@ -166,6 +166,47 @@ describe("Design revisions and review", () => {
     }),
   )
 
+  it.effect("read sections from the latest published revision before any approval exists", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      yield* store.update(document.id, {
+        brief: { objective: "Prototyping read", audience: "", content: "", constraints: "", references: [] },
+        decisions: [{ id: "palette", text: "Use the Stone palette" }],
+      })
+      yield* Effect.promise(() => Bun.write(`${document.root}/index.html`, "<section>Draft</section>"))
+      const first = yield* store.publish(document.id, "Draft one")
+      const feedback = {
+        id: SessionMessage.ID.create(),
+        revision: first.id,
+        text: "Widen the buttons",
+        items: [],
+        assets: [],
+        snapshot: "",
+        delivery: "queue" as const,
+        end: false,
+      }
+      yield* store.prepareFeedback(document.id, feedback)
+      yield* store.acknowledge(document.id, feedback)
+      // Prototyping: nothing is approved, yet every section reads the current revision.
+      const feedbackRead = yield* store.readApproval({ id: document.id, section: "feedback" })
+      expect(feedbackRead).toContain("Widen the buttons")
+      expect(feedbackRead).toContain("not approved")
+      const decisions = yield* store.readApproval({ id: document.id, section: "decisions" })
+      expect(decisions).toContain("Use the Stone palette")
+      expect(decisions).toContain("not approved")
+      const file = yield* store.readApproval({ id: document.id, file: "index.html" })
+      expect(file).toContain("Draft")
+      expect(file).toContain("not approved")
+      // The snapshot section keeps its own rule: no capture, not-found.
+      expect(
+        (yield* store.readApproval({ id: document.id, section: "snapshot" }).pipe(Effect.flip)).code,
+      ).toBe("not-found")
+      // Approval freezes the same revision and the wording flips to the approved one.
+      yield* store.approve(document.id, first.id)
+      expect(yield* store.readApproval({ id: document.id, section: "feedback" })).toContain("Approved revision")
+    }),
+  )
+
   it.effect("approval retries cannot change the selected direction and legacy packages remain untouched", () =>
     Effect.gen(function* () {
       const { store, document } = yield* setup
