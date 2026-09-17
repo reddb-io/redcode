@@ -2213,6 +2213,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
             title={summary().title}
             duration={isDone() ? Locale.duration(duration()) : undefined}
             encrypted={opaque()}
+            tokens={props.message.tokens.reasoning}
           />
         </box>
         <Show when={!opaque() && (!inMinimal() || expanded()) && summary().body}>
@@ -2233,6 +2234,10 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
   )
 }
 
+function formatThinkingTokens(count: number) {
+  return `${Locale.number(count)} token${count === 1 ? "" : "s"}`
+}
+
 function ReasoningHeader(props: {
   toggleable: boolean
   open: boolean
@@ -2240,6 +2245,7 @@ function ReasoningHeader(props: {
   title: string | null
   duration?: string
   encrypted?: boolean
+  tokens?: number
 }) {
   const { theme } = useTheme()
   const fg = () =>
@@ -2248,15 +2254,21 @@ function ReasoningHeader(props: {
       : theme.warning
   const completed = () => {
     if (props.encrypted) return `Thought${props.duration ? ` · ${props.duration}` : ""}`
-    const detail = [props.title, props.duration].filter(Boolean).join(" · ")
+    const detail = [props.title, props.duration, props.tokens ? formatThinkingTokens(props.tokens) : null]
+      .filter(Boolean)
+      .join(" · ")
     return `${props.toggleable ? (props.open ? "- " : "+ ") : ""}Thought${detail ? `: ${detail}` : ""}`
+  }
+  const streaming = () => {
+    const detail = [props.title, props.tokens ? formatThinkingTokens(props.tokens) : null].filter(Boolean).join(" · ")
+    return detail ? `Thinking: ${detail}` : "Thinking"
   }
 
   return (
     <Switch>
       <Match when={!props.done}>
         <box flexDirection="row">
-          <Spinner color={fg()}>{props.title ? "Thinking: " + props.title : "Thinking"}</Spinner>
+          <Spinner color={fg()}>{streaming()}</Spinner>
         </box>
       </Match>
       <Match when={true}>
