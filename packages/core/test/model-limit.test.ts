@@ -177,13 +177,14 @@ describe("ModelLimit store", () => {
 
 describe("SessionCompaction bounds", () => {
   test("the learned limit caps both the threshold and the limit", () => {
+    // The 5% margin (6,400 for a 128k window) keeps the threshold below the refusal boundary.
     expect(SessionCompaction.bounds({ context: 128_000, output: 8_000, buffer: 20_000 })).toEqual({
-      threshold: 108_000,
+      threshold: 101_600,
       limit: 120_000,
     })
     expect(
       SessionCompaction.bounds({ context: 128_000, output: 8_000, buffer: 20_000, observed: lesson(90_000) }),
-    ).toEqual({ threshold: 70_000, limit: 90_000 })
+    ).toEqual({ threshold: 63_600, limit: 90_000 })
     expect(
       SessionCompaction.bounds({
         context: 128_000,
@@ -191,7 +192,7 @@ describe("SessionCompaction bounds", () => {
         buffer: 20_000,
         observed: lesson(90_000, { includesOutput: true }),
       }),
-    ).toEqual({ threshold: 62_000, limit: 82_000 })
+    ).toEqual({ threshold: 55_600, limit: 82_000 })
   })
 
   test("declaredLimit reads the model's configured limit", () => {

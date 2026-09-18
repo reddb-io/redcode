@@ -349,12 +349,18 @@ export const bounds = (input: {
   readonly buffer: number
   readonly observed?: ModelLimit.Observed
 }) => {
-  const byContext = input.context - Math.max(input.output, input.buffer)
+  // The margin keeps compaction starting below the provider's refusal boundary: the character
+  // estimate runs low against the provider's own count (observed about one percent low on a
+  // 1M-token window), and a threshold at the exact boundary lets a request overflow first.
+  const margin = Math.floor(input.context * 0.05)
+  const byContext = input.context - Math.max(input.output, input.buffer) - margin
   const learned = input.observed === undefined ? undefined : ModelLimit.inputOf(input.observed, input.output)
   // A learned limit smaller than the buffer still leaves a positive window, so a compaction that
   // does not fit under it counts as ineffective instead of as an unknown window.
   const threshold =
-    learned === undefined ? byContext : Math.min(byContext, Math.max(learned - input.buffer, Math.floor(learned / 2)))
+    learned === undefined
+      ? Math.max(0, byContext)
+      : Math.min(Math.max(0, byContext), Math.max(learned - input.buffer - margin, Math.floor(learned / 2)))
   const limit = learned === undefined ? input.context - input.output : Math.min(input.context - input.output, learned)
   return { threshold, limit: Math.max(0, limit) }
 }
@@ -381,9 +387,14 @@ export const make = (dependencies: Dependencies) => {
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
+    // A catalog context can overstate what the provider enforces; when the provider has taught us
+    // its real limit, the summary request has to fit inside that window instead.
+    const observed = yield* observedFor(input.model)
+    const learned = observed === undefined ? undefined : ModelLimit.inputOf(observed, output)
+    const window = learned !== undefined && learned > 0 ? Math.min(context, learned) : context
     // As in legacy: the kept tail is a tenth of the usable window clamped to [8k, 60k] unless
     // `keep.tokens` is configured.
-    const usable = context - Math.max(output, config.buffer)
+    const usable = window - Math.max(output, config.buffer)
     const budget = CompactionPolicy.tailBudget({ usable, configured: config.tokens })
     // A preserved request is never cut below a quarter of the usable window clamped to [2k, 15k],
     // even when a small `keep.tokens` is configured.
@@ -406,15 +417,27 @@ export const make = (dependencies: Dependencies) => {
     // Up to 16k, and never so much of a small window that the prompt no longer fits beside it.
     const summaryOutput = Math.min(
       CompactionPolicy.summaryMaxTokens(output || undefined),
-      Math.max(1, Math.floor(context / 4)),
+      Math.max(1, Math.floor(window / 4)),
     )
-    if (Token.estimate(systemPrompt + summaryPrompt) > context - summaryOutput) return
+    // The summary request has to fit inside the window, measured as the provider will read it (as
+    // sizeOf does). Instead of giving up when the transcript does not, keep the newest part and
+    // elide the middle: a summary missing old detail beats a session that can only repeat the
+    // provider's refusal.
+    const fits = (prompt: string) =>
+      estimate({ system: systemPrompt, messages: [Message.user(prompt)], tools: [] }) + summaryOutput <= window
+    const clamped = fits(summaryPrompt)
+      ? summaryPrompt
+      : elideMiddle(
+          summaryPrompt,
+          Math.max(0, Math.floor((window - summaryOutput - Token.estimate(systemPrompt)) * 0.98)),
+        )
+    if (!fits(clamped)) return
     const hook = yield* dependencies.beforeCompact({ sessionID: input.sessionID, reason: "auto" })
     if (!hook.continue || hook.decision === "deny") return
     return {
       input,
       selected,
-      summaryPrompt,
+      summaryPrompt: clamped,
       summaryOutput,
       // A checkpoint may only replace this exact prefix, never a rewritten transcript.
       ...snapshot(input),
