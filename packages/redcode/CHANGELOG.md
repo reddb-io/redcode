@@ -1,5 +1,13 @@
 # opencode
 
+## 0.38.2
+
+### Patch Changes
+
+- bf722a9: Make compaction survivable when the context is already at the provider's limit. The compaction threshold now starts 5% below the refusal boundary so a small estimation error cannot overflow first, the summary request is sized by the limit the provider taught us instead of the catalog's (which can overstate it — z-ai/glm-5.3-flash claims 1.3M while OpenRouter enforces 1.05M), and a transcript that no longer fits beside its summary is compacted by keeping the newest part and eliding the middle instead of giving up — a session the provider already refused once now recovers instead of looping on 400s.
+- bf722a9: `todowrite` updates addressed by `id` no longer require the revision: an update without one applies against the stored revision, so a batch where one item omits it is no longer refused outright. A supplied revision that no longer matches is still refused, and the refusal now quotes the current revision with the exact update to resend.
+- bf722a9: The TUI context sidebar shows only the current step's latency and tokens per second. The time-to-output breakdown, the turn totals and the aborted, burst and reasoning-hidden markers are gone; when there is no real rate, nothing is shown instead of an explanation.
+
 ## 0.38.1
 
 ### Patch Changes
