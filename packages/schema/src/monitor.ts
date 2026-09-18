@@ -1,6 +1,8 @@
 export * as Monitor from "./monitor"
 
 import { Schema } from "effect"
+import { define } from "./event"
+import { SessionID } from "./session-id"
 
 const Milliseconds = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(86_400_000))
 const WaitMs = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 60_000 }))
@@ -211,7 +213,7 @@ export const Info = Schema.Struct({
   workdir: Schema.String,
   options: Options,
   probe: Schema.optional(Probe),
-  status: Schema.Literals(["running", "succeeded", "failed", "timed_out", "cancelled", "interrupted"]),
+  status: Schema.Literals(["running", "succeeded", "failed", "timed_out", "cancelled", "interrupted", "expired"]),
   created: Schema.Finite,
   updated: Schema.Finite,
   attempts: Schema.Int,
@@ -251,7 +253,7 @@ You receive one automatic completion message. While waiting, do independent work
  * whose shell tool has no such parameter must not advertise it.
  */
 export const probeInstructions = [
-  'To wait on an HTTP endpoint, a file or a process, call action "probe". It checks natively, without a shell, on every platform, every interval_ms until deadline_ms. A long command of your own cannot be monitored here: run it with a bounded timeout, or check its result once and report it.',
+  'To wait on an HTTP endpoint, a file or a process, call action "probe". It checks natively, without a shell, on every platform, every interval_ms until deadline_ms. Point the success condition at the final state that matters (a version in a registry, a field of a health endpoint), not at an intermediate process, and size interval_ms so deadline_ms / interval_ms is the number of checks you are willing to pay for. A long command of your own cannot be monitored here: run it with a bounded timeout, or check its result once and report it.',
   ...instructions.split("\n").slice(1),
 ].join("\n")
 
@@ -469,3 +471,19 @@ const CONTROL = new RegExp(`[${code(0)}-${code(8)}${code(11)}-${code(31)}${code(
 export function printable(text: string) {
   return text.replace(CSI, "").replace(OSC, "").replace(CONTROL, "")
 }
+
+/** Monitor lifecycle events on the session event bus: what is watched, and when it ends. Kept out of
+ * the protocol manifest until a client surface asks for them - internal first. */
+const Started = define({
+  type: "monitor.started",
+  schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
+})
+const Finished = define({
+  type: "monitor.finished",
+  schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String, status: Schema.String },
+})
+const Expired = define({
+  type: "monitor.expired",
+  schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
+})
+export const Event = { Started, Finished, Expired }
