@@ -322,8 +322,8 @@ describe("Monitors", () => {
       const [recovered] = yield* monitors.list(sessionID)
       expect(recovered).toMatchObject({
         id: row.id,
-        status: "interrupted",
-        delivery: "suppressed",
+        status: "expired",
+        delivery: "pending",
         attempts: 0,
         options: { jitter: true },
         probe: { type: "process" },
@@ -440,14 +440,14 @@ describe("Monitors", () => {
     }),
   )
 
-  it.live("records a crashed owner's monitor as interrupted, once, and never replays its command", () =>
+  it.live("records a crashed owner's monitor as expired, once, and never replays its command", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service
       const sessionID = yield* setup
       const left = yield* orphan(sessionID)
       const recovered = yield* Monitor.make
       const seen = yield* recovered.get(sessionID, left.id)
-      expect(seen).toMatchObject({ status: "interrupted", delivery: "suppressed", attempts: 0 })
+      expect(seen).toMatchObject({ status: "expired", delivery: "pending", attempts: 0 })
       expect(seen?.interruptedBy).toBeString()
       // Persisted by the runtime that noticed, so every later reader agrees without judging again.
       const row = yield* database.db
@@ -456,7 +456,7 @@ describe("Monitors", () => {
         .where(eq(MonitorTable.id, left.id))
         .get()
         .pipe(Effect.orDie)
-      expect(row?.data).toMatchObject({ status: "interrupted", interruptedBy: seen?.interruptedBy })
+      expect(row?.data).toMatchObject({ status: "expired", interruptedBy: seen?.interruptedBy })
       expect((yield* (yield* Monitor.make).get(sessionID, left.id))?.interruptedBy).toBe(seen?.interruptedBy)
     }),
   )
@@ -481,9 +481,9 @@ describe("Monitors", () => {
         expect(exited(stranger)).toBe(false)
         const [reaped, spared] = [yield* recovered.list(sessionID)].flat().toSorted((a) => (a.process?.pid === leftover ? -1 : 1))
         // Both outcomes are recorded on the row, with the pid and command to act on.
-        expect(reaped).toMatchObject({ status: "interrupted", cleanup: "reaped" })
+        expect(reaped).toMatchObject({ status: "expired", cleanup: "reaped" })
         expect(reaped?.error).toContain(`process group ${leftover} (status) was stopped`)
-        expect(spared).toMatchObject({ status: "interrupted", cleanup: "left-running" })
+        expect(spared).toMatchObject({ status: "expired", cleanup: "left-running" })
         expect(spared?.error).toContain(`${stranger} (status)`)
       } finally {
         for (const pid of [leftover, stranger])
@@ -526,7 +526,7 @@ describe("Monitors", () => {
       const sessionID = yield* setup
       const left = yield* orphan(sessionID, { command: "bun run dev", process: { pid: 999_999_999, started: "" } })
       const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
-      expect(settled?.status).toBe("interrupted")
+      expect(settled?.status).toBe("expired")
       if (Monitor.identifiable) {
         expect(settled?.cleanup).toBe("exited")
       } else {
@@ -547,6 +547,7 @@ describe("Monitors", () => {
         yield* Effect.promise(() => new Promise((resolve) => leader.once("exit", resolve)))
         const left = yield* orphan(sessionID, { command: "./serve.sh", process: { pid, started } })
         const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+        expect(settled?.status).toBe("expired")
         expect(settled?.cleanup).toBe("left-running")
         expect(settled?.error).toContain(`The leader of process group ${pid} (./serve.sh) exited`)
       } finally {
@@ -583,14 +584,49 @@ describe("Monitors", () => {
     }),
   )
 
-  it.live("a dead owner past its deadline is interrupted", () =>
+  it.live("a dead owner past its deadline is settled as expired and queued for delivery", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup
       expect(Monitor.ownerStatus(GONE)).toBe("dead")
       const left = yield* orphan(sessionID, { created: Date.now() - 2 * 3_600_000 })
       const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
-      expect(settled).toMatchObject({ status: "interrupted", delivery: "suppressed" })
+      expect(settled).toMatchObject({ status: "expired", delivery: "pending" })
       expect(settled?.error).toContain("Execution ownership was lost")
+    }),
+  )
+
+  it.live("delivers a recovered expiry to the registered delivery, once", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      const left = yield* orphan(sessionID, { created: Date.now() - 2 * 3_600_000 })
+      const delivered: Monitor.Info[] = []
+      const remove = Monitor.registerDelivery((info) => Effect.sync(() => void delivered.push(info)))
+      try {
+        const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+        expect(settled).toMatchObject({ status: "expired", delivery: "delivered" })
+        expect(delivered.map((info) => info.id)).toEqual([left.id])
+        // A second reader agrees without delivering again.
+        expect(((yield* (yield* Monitor.make).get(sessionID, left.id))?.delivery)).toBe("delivered")
+        expect(delivered).toHaveLength(1)
+      } finally {
+        remove()
+      }
+    }),
+  )
+
+  it.live("an owner lost mid-flight delivers its interruption too", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup
+      const left = yield* orphan(sessionID, { created: Date.now() })
+      const delivered: Monitor.Info[] = []
+      const remove = Monitor.registerDelivery((info) => Effect.sync(() => void delivered.push(info)))
+      try {
+        const settled = yield* (yield* Monitor.make).get(sessionID, left.id)
+        expect(settled).toMatchObject({ status: "interrupted", delivery: "delivered" })
+        expect(delivered.map((info) => info.status)).toEqual(["interrupted"])
+      } finally {
+        remove()
+      }
     }),
   )
 
@@ -613,7 +649,7 @@ describe("Monitors", () => {
         const monitors = yield* Monitor.make
         expect((yield* monitors.get(sessionID, fresh.id))?.status).toBe("running")
         const expiredRow = yield* monitors.get(sessionID, stale.id)
-        expect(expiredRow?.status).toBe("interrupted")
+        expect(expiredRow?.status).toBe("expired")
         expect(expiredRow?.error).toContain("its owner could not be verified")
         expect(expiredRow?.cleanup).not.toBe("reaped")
         expect(expiredRow?.error).toContain(`${command.pid} (pnpm build)`)

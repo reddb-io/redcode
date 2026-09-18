@@ -70,7 +70,11 @@ const finished = (sessionID: SessionSchema.ID): MonitorSchema.Info => ({
 })
 
 /** Delivery with a recorded wake, so a test can tell "queued" from "queued and resumed". */
-const delivery = (goalStatus?: string) =>
+const delivery = (
+  goalStatus?: string,
+  originState?: MonitorTool.DeliveryDeps["originState"],
+  newerPersonInput?: MonitorTool.DeliveryDeps["newerPersonInput"],
+) =>
   Effect.gen(function* () {
     const { db } = yield* Database.Service
     const events = yield* EventV2.Service
@@ -80,6 +84,8 @@ const delivery = (goalStatus?: string) =>
       events,
       goal: () => Effect.succeed(goalStatus === undefined ? undefined : { status: goalStatus }),
       wake: (sessionID) => Effect.sync(() => void woken.push(sessionID)),
+      originState,
+      newerPersonInput,
     })
     return { db, deliver, woken }
   })
@@ -100,6 +106,67 @@ it.effect("queues a finished monitor and resumes the session", () =>
     expect(pending).toHaveLength(1)
     expect(pending[0]!.prompt.text).toContain("A monitor finished")
     expect(pending[0]!.prompt.text).toContain("status 200")
+  }),
+)
+
+it.effect("carries the origin state as lines when the delivery provides it", () =>
+  Effect.gen(function* () {
+    const sessionID = yield* session
+    const { db, deliver, woken } = yield* delivery(undefined, () =>
+      Effect.succeed(["1 session task(s) closed since this monitor started"]),
+    )
+
+    expect(yield* deliver(sessionID)(finished(sessionID))).toBe(true)
+
+    const pending = yield* SessionInput.listPending(db, sessionID)
+    expect(pending[0]!.prompt.text).toContain("Origin: 1 session task(s) closed since this monitor started")
+    expect(woken).toEqual([sessionID])
+  }),
+)
+
+it.effect("stays neutral about the origin when nothing changed since the monitor started", () =>
+  Effect.gen(function* () {
+    const sessionID = yield* session
+    const { db, deliver } = yield* delivery(undefined, () => Effect.succeed([]))
+
+    yield* deliver(sessionID)(finished(sessionID))
+
+    const pending = yield* SessionInput.listPending(db, sessionID)
+    expect(pending[0]!.prompt.text).not.toContain("Origin:")
+  }),
+)
+
+it.effect("names tasks closed and newer instructions as origin lines", () =>
+  Effect.sync(() => {
+    const info = { ...finished(SessionSchema.ID.make("ses_lines")), created: 1_000 }
+    const lines = MonitorTool.originLines({
+      info,
+      todos: [
+        { status: "completed", closedAt: 2_000, content: "Wire the probe" },
+        { status: "pending", content: "Still open" },
+        { status: "cancelled", closedAt: 500, content: "Closed before it started" },
+      ],
+      messages: [
+        { type: "user", createdMs: 3_000 },
+        { type: "user", createdMs: 500 },
+        { type: "assistant", createdMs: 3_100 },
+      ],
+    })
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain("1 session task(s) closed since this monitor started")
+    expect(lines[0]).toContain("Wire the probe")
+    expect(lines[1]).toContain("1 newer instruction(s) since this monitor started")
+  }),
+)
+
+it.effect("keeps the origin lines empty when nothing changed since the monitor started", () =>
+  Effect.sync(() => {
+    const lines = MonitorTool.originLines({
+      info: { ...finished(SessionSchema.ID.make("ses_lines")), created: 5_000 },
+      todos: [{ status: "completed", closedAt: 2_000, content: "Closed earlier" }],
+      messages: [{ type: "user", createdMs: 100 }],
+    })
+    expect(lines).toEqual([])
   }),
 )
 
@@ -143,6 +210,39 @@ it.effect("admits one input however often the same monitor is delivered", () =>
     const rows = yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).all().pipe(Effect.orDie)
     expect(rows).toHaveLength(1)
     expect(yield* SessionInput.listPending(db, sessionID)).toHaveLength(1)
+  }),
+)
+
+it.effect("queues an expired monitor with its reason and gates the wake as usual", () =>
+  Effect.gen(function* () {
+    const sessionID = yield* session
+    const { db, deliver, woken } = yield* delivery()
+    const info: MonitorSchema.Info = {
+      ...finished(sessionID),
+      status: "expired",
+      evidence: undefined,
+      error: "The monitor passed its deadline without a verifiable owner.",
+    }
+
+    expect(yield* deliver(sessionID)(info)).toBe(true)
+
+    const pending = yield* SessionInput.listPending(db, sessionID)
+    expect(pending).toHaveLength(1)
+    expect(pending[0]!.prompt.text).toContain("ended without a result")
+    expect(pending[0]!.prompt.text).toContain('"status":"expired"')
+    expect(woken).toEqual([sessionID])
+  }),
+)
+
+it.effect("does not wake when the person has spoken since the monitor started", () =>
+  Effect.gen(function* () {
+    const sessionID = yield* session
+    const { db, deliver, woken } = yield* delivery(undefined, undefined, () => Effect.succeed(true))
+
+    // The result is always queued: only the wake is gated.
+    expect(yield* deliver(sessionID)(finished(sessionID))).toBe(true)
+    expect(yield* SessionInput.hasPending(db, sessionID, "queue")).toBe(true)
+    expect(woken).toEqual([])
   }),
 )
 
@@ -346,6 +446,99 @@ it.live(
           const { db } = yield* Database.Service
           // The result is still recorded; only the resume is missing.
           expect(yield* SessionInput.hasPending(db, sessionID, "queue")).toBe(true)
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  15_000,
+)
+
+const listCall = (sessionID: SessionSchema.ID, id = "call-list") => ({
+  sessionID,
+  ...toolIdentity,
+  call: { type: "tool-call" as const, id, name: "monitor", input: { action: "list" } },
+})
+
+/**
+ * The lifecycle events ride the same EventV2 instance the tool publishes on: the listener is
+ * registered inside the body, where that instance is in context.
+ */
+it.live(
+  "emits monitor.started and monitor.finished on the session event bus",
+  () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const sessionID = yield* session
+          yield* withMonitorTool(
+            tmp.path,
+            (registry) =>
+              Effect.gen(function* () {
+                const events = yield* EventV2.Service
+                const types: string[] = []
+                yield* events.listen((event) => Effect.sync(() => void types.push(event.type)))
+                const materialized = yield* registry.materialize()
+                yield* materialized.settle(probeCall(sessionID, "call-events"))
+                // The probe times out at its deadline; delivery forks, then emits finished.
+                for (let spin = 0; !types.includes("monitor.finished") && spin < 400; spin++)
+                  yield* Effect.sleep("20 millis")
+                expect(types).toContain("monitor.started")
+                expect(types).toContain("monitor.finished")
+              }),
+          )
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  15_000,
+)
+
+it.live(
+  "emits monitor.expired when recovery settles an orphaned monitor",
+  () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const sessionID = yield* session
+          const { db } = yield* Database.Service
+          // An orphan whose runtime is gone and whose deadline passed: recovery settles it as
+          // expired, and the tool's next read delivers it, emitting the event.
+          const id = `monitor_${crypto.randomUUID()}`
+          yield* db
+            .insert(MonitorTable)
+            .values({
+              id,
+              session_id: sessionID,
+              owner: "999999999:1:gone",
+              data: {
+                id,
+                sessionID,
+                command: "status",
+                workdir: "/project",
+                options: { mode: "once" },
+                status: "running",
+                created: Date.now() - 2 * 3_600_000,
+                updated: Date.now() - 2 * 3_600_000,
+                attempts: 0,
+                delivery: "pending",
+              },
+            })
+            .run()
+            .pipe(Effect.orDie)
+          yield* withMonitorTool(
+            tmp.path,
+            (registry) =>
+              Effect.gen(function* () {
+                const events = yield* EventV2.Service
+                const types: string[] = []
+                yield* events.listen((event) => Effect.sync(() => void types.push(event.type)))
+                const materialized = yield* registry.materialize()
+                yield* materialized.settle(listCall(sessionID))
+                for (let spin = 0; !types.includes("monitor.expired") && spin < 400; spin++)
+                  yield* Effect.sleep("20 millis")
+                expect(types).toContain("monitor.expired")
+              }),
+          )
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),

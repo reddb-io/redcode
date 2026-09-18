@@ -181,6 +181,23 @@ export function expired(info: Monitor.Info, now: number) {
 }
 
 /**
+ * How a recovered monitor's terminal result reaches its session: the monitor tool registers its
+ * queue-and-wake here, which the layer graph cannot pass down (this service builds beneath the
+ * tool, and hosts compose it without any tool layer at all). Module state rather than a service,
+ * like `SessionWake`. Without a registration a recovered row still records its terminal status;
+ * only the delivery is missing.
+ */
+let recoverDelivery: ((info: Monitor.Info) => Effect.Effect<unknown>) | undefined
+
+/** Registers the delivery used when recovery settles a running monitor. The disposer removes it. */
+export function registerDelivery(deliver: (info: Monitor.Info) => Effect.Effect<unknown>) {
+  recoverDelivery = deliver
+  return () => {
+    if (recoverDelivery === deliver) recoverDelivery = undefined
+  }
+}
+
+/**
  * What to do about the process an interrupted monitor left behind. Its group is stopped only when
  * `kill` is allowed (the owner is provably gone) and the recorded leader provably still runs;
  * anything that may still be running is named, pid and command, so the person can stop it.
@@ -284,10 +301,41 @@ export const make = Effect.gen(function* () {
   const row = (id: string) =>
     database.db.select().from(MonitorTable).where(eq(MonitorTable.id, id)).get().pipe(Effect.orDie)
 
+  const record = (info: Monitor.Info) =>
+    database.db
+      .update(MonitorTable)
+      .set({ data: info })
+      .where(eq(MonitorTable.id, info.id))
+      .run()
+      .pipe(Effect.orDie, Effect.as(info))
+
+  /** Hands a terminal row to the registered delivery, recording what came of it. */
+  const deliverPending = Effect.fn("Monitor.deliverPending")(function* (info: Monitor.Info) {
+    const deliver = recoverDelivery
+    if (!deliver) return info
+    return yield* deliver(info).pipe(
+      Effect.matchCauseEffect({
+        onSuccess: (delivered) => record({ ...info, delivery: delivered === false ? "suppressed" : "delivered" }),
+        onFailure: (cause) =>
+          record({
+            ...info,
+            delivery: "failed",
+            error: `${info.error ?? ""} Completion delivery failed: ${Cause.pretty(cause).slice(0, 500)}`.trim(),
+          }),
+      }),
+    )
+  })
+
   const recover = Effect.fn("Monitor.recover")(function* (found: typeof MonitorTable.$inferSelect) {
-    if (found.data.status !== "running") return found.data
-    // Our own rows settle through their job's exit.
+    // Our own rows settle through their job's exit, and the delivery forked after start owns the
+    // handover: recovery must never race it with a second delivery of the same result.
     if (found.owner === owner) return found.data
+    if (found.data.status !== "running") {
+      // A row a dead runtime settled but could not hand over: retry the delivery here, where the
+      // registered sink may now exist. Idempotent - the session input is keyed by the monitor id.
+      if (found.data.delivery === "pending") return yield* deliverPending(found.data)
+      return found.data
+    }
     const status = ownerStatus(found.owner)
     // A verified-live owner enforces its own deadline; this clock may have jumped past it (a laptop
     // that slept, an NTP correction) while the owner's timer did not. No answer is not a verdict.
@@ -296,10 +344,13 @@ export const make = Effect.gen(function* () {
     // Without a verifiable identity (Windows) the pid may be anyone's: expire at the deadline, never kill.
     if (status === "unverified" && !expired(found.data, now)) return found.data
     // A durable identity is not a durable process handle. Never repeat a command during recovery.
+    // Past its deadline the observation is expired; before it, ownership was lost mid-flight. Either
+    // way the row settles as pending delivery, so the session hears that it will never report.
+    const expiry = expired(found.data, now)
     const interrupted: Monitor.Info = {
       ...found.data,
-      status: "interrupted",
-      delivery: "suppressed",
+      status: expiry ? "expired" : "interrupted",
+      delivery: "pending",
       updated: now,
       interruptedBy: owner,
       error: `${status === "unverified" ? "The monitor passed its deadline and its owner could not be verified." : "Execution ownership was lost."} Inspect the external operation before explicitly starting a new observation.`,
@@ -314,25 +365,20 @@ export const make = Effect.gen(function* () {
     // Another runtime got there first: its record, and its cleanup, stand.
     if (current?.interruptedBy !== owner || current.updated !== now) return current ?? interrupted
     const cleanup = settle(found.data.process, found.data.command, { kill: status === "dead" })
-    if (!cleanup) return interrupted
+    if (!cleanup) return yield* deliverPending(interrupted)
     const settled: Monitor.Info = {
       ...interrupted,
       cleanup: cleanup.cleanup,
       error: `${interrupted.error} ${cleanup.note}`,
     }
-    yield* database.db
-      .update(MonitorTable)
-      .set({ data: settled })
-      .where(eq(MonitorTable.id, found.id))
-      .run()
-      .pipe(Effect.orDie)
+    yield* record(settled)
     if (cleanup.cleanup !== "exited")
       yield* Effect.logWarning("interrupted monitor left a process behind", {
         id: found.id,
         cleanup: cleanup.cleanup,
         detail: cleanup.note,
       })
-    return settled
+    return yield* deliverPending(settled)
   })
 
   const get = Effect.fn("Monitor.get")(function* (sessionID: string, id: string) {
