@@ -10,6 +10,7 @@ import { CompactionGuardStore } from "@reddb-io/redcode-core/session/compaction-
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
 import { SessionSchema } from "@reddb-io/redcode-core/session/schema"
+import { Token } from "@reddb-io/redcode-core/util/token"
 import { it } from "./lib/effect"
 
 const time = { created: DateTime.makeUnsafe(0) }
@@ -128,6 +129,23 @@ it.effect("a single fitting turn has nothing before it to summarize", () =>
     const test = yield* setup({ context: 400_000, output: 8_000, messages })
     expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(false)
     expect(test.requests).toHaveLength(0)
+  }),
+)
+
+it.effect("a transcript larger than the window still compacts by eliding its middle", () =>
+  Effect.gen(function* () {
+    // About 600k tokens of conversation against a 400k window: prepare used to give up, so a
+    // session the provider had already refused could only repeat the refusal. The summary request
+    // now keeps the newest part, elides the middle, and stays inside the window.
+    const test = yield* setup({ context: 400_000, output: 8_000, messages: conversation(400, 2_000) })
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    const request = test.requests[0]
+    expect(request).toBeDefined()
+    // Input plus the completion it asks for stays inside the window, measured as sizeOf does.
+    const size = Token.estimate(
+      JSON.stringify({ system: request!.system, messages: request!.messages, tools: request!.tools }),
+    )
+    expect(size + (request?.generation?.maxTokens ?? 0)).toBeLessThanOrEqual(400_000)
   }),
 )
 
