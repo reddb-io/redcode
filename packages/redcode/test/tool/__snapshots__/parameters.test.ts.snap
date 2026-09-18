@@ -478,6 +478,7 @@ exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
             "type": "string",
           },
           "revision": {
+            "description": "The revision you were shown for this task; omit it from an update to apply against the stored revision, and a supplied revision that no longer matches is refused",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
