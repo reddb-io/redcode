@@ -1,6 +1,6 @@
 export * as ExternalTools from "./external"
 
-import { Ajv } from "ajv"
+import { Ajv, type ValidateFunction } from "ajv"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { ToolSpec } from "@reddb-io/redcode-plugin/v2/effect"
 import { makeLocationNode } from "../effect/app-node"
@@ -13,14 +13,32 @@ const make = Effect.gen(function* () {
   const tools = yield* Tools.Service
   const permissions = yield* PermissionV2.Service
   const validator = new Ajv({ strict: false, allErrors: true })
+  const compile = (inputSchema: unknown): ValidateFunction | null => {
+    if (typeof inputSchema !== "object" || inputSchema === null || Array.isArray(inputSchema)) return null
+    // Servers advertise dialects the draft-07 Ajv build does not register (zod v4 emits
+    // `$schema: .../draft/2020-12/schema`); the keywords used in tool inputs validate the same
+    // under the default draft, so the advisory meta keys are dropped before compiling.
+    const { $schema: _meta, $id: _id, ...rest } = inputSchema as Record<string, unknown>
+    try {
+      return validator.compile(rest)
+    } catch {
+      return null
+    }
+  }
   return {
     register: (entries: Readonly<Record<string, ToolSpec>>) =>
-      Effect.suspend(() =>
-        tools.register(
+      Effect.gen(function* () {
+        const prepared = Object.entries(entries).map(([name, spec]) => ({ name, spec, validate: compile(spec.inputSchema) }))
+        const skipped = prepared.filter((entry) => entry.validate === null)
+        if (skipped.length > 0)
+          yield* Effect.logWarning("tool(s) skipped: input schema could not be compiled", {
+            tools: skipped.map((entry) => entry.name),
+          })
+        yield* tools.register(
           Object.fromEntries(
-            Object.entries(entries).map(([name, spec]) => {
-              const validate = validator.compile(spec.inputSchema)
-              return [
+            prepared
+              .filter((entry): entry is typeof entry & { validate: ValidateFunction } => entry.validate !== null)
+              .map(({ name, spec, validate }) => [
                 name,
                 Tool.external(Tool.make({
                   description: spec.description,
@@ -70,11 +88,10 @@ const make = Effect.gen(function* () {
                       part.type === "text" ? part : { type: "file", data: part.data, mime: part.mimeType },
                     ),
                 })),
-              ]
-            }),
-          ),
+              ]),
         ),
-      ),
+      )
+    })
   }
 })
 

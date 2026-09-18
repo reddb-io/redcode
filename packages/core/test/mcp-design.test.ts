@@ -17,6 +17,10 @@ const info = Schema.decodeUnknownSync(Config.Info)({
         command: [process.execPath, `${import.meta.dir}/fixture/design-mcp.ts`],
         media: { create_image: { operations: ["generate"], formats: ["image/png"], transparency: true } },
       },
+      broken: {
+        type: "remote",
+        url: "not-a-url",
+      },
     },
   },
 })
@@ -43,6 +47,20 @@ it.live(
           capability: { operations: ["generate"], formats: ["image/png"], transparency: true },
         },
       ])
+    }),
+  30000,
+)
+
+it.live(
+  "pauses a broken MCP server without breaking the others",
+  () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const names = (yield* registry.materialize()).definitions.map((tool) => tool.name)
+      // The malformed `url` on the `broken` server throws while its registration is built; the
+      // layer must keep that failure contained to the one server.
+      expect(names).toContain("fixture_create_image")
+      expect(names.some((name) => name.startsWith("broken_"))).toBe(false)
     }),
   30000,
 )
