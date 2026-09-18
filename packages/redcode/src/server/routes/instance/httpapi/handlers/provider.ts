@@ -13,6 +13,7 @@ import { ProviderAuthApiError, ProviderConnectApiError, ProviderDiscoveryApiErro
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
 import { NineRouter } from "@/provider/nine-router"
+import { RedRouter } from "@/provider/red-router"
 import { OpenAICompatible } from "@/provider/openai-compatible"
 import { InstanceStore } from "@/project/instance-store"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
@@ -204,10 +205,22 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       return result
     })
 
+    const connectRedRouter = Effect.fn("ProviderHttpApi.connectRedRouter")(function* (ctx: {
+      payload: typeof ProviderDiscovery.Input.Type
+    }) {
+      const catalog = ProviderDiscovery.catalogLimits(yield* ModelsDev.Service.use((s) => s.get()))
+      const result = yield* RedRouter.connect({ http, config: cfg, auth: authStore, catalog }, ctx.payload).pipe(
+        Effect.mapError((error) => new ProviderDiscoveryApiError({ message: error.message })),
+      )
+      yield* reloadBeforeResponse()
+      return result
+    })
+
     return handlers
       .handle("discover", discover)
       .handle("connectOpenAICompatible", connectOpenAICompatible)
       .handle("connectNineRouter", connectNineRouter)
+      .handle("connectRedRouter", connectRedRouter)
       .handle("list", list)
       .handle("auth", auth)
       .handleRaw("authorize", authorizeRaw)
