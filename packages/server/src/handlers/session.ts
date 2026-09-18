@@ -1,6 +1,7 @@
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionGoal } from "@reddb-io/redcode-core/session/goal"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { ServerError } from "@reddb-io/redcode-core/util/server-error"
 import { Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -267,7 +268,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                   Effect.andThen(
                     Effect.fail(
                       new UnknownError({
-                        message: "Unexpected server error. Check server logs for details.",
+                        message: ServerError.message(ref, error),
                         ref,
                       }),
                     ),
@@ -296,7 +297,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 Effect.andThen(
                   Effect.fail(
                     new UnknownError({
-                      message: "Unexpected server error. Check server logs for details.",
+                      message: ServerError.message(ref, error),
                       ref,
                     }),
                   ),
@@ -342,7 +343,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                   Effect.annotateLogs({ ref, sessionID: error.sessionID, messageID: error.messageID }),
                   Effect.andThen(
                     Effect.fail(
-                      new UnknownError({ message: "Unexpected server error. Check server logs for details.", ref }),
+                      new UnknownError({ message: ServerError.message(ref, error), ref }),
                     ),
                   ),
                 )

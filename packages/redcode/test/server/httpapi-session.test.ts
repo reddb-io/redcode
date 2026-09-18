@@ -676,10 +676,11 @@ describe("session HttpApi", () => {
         })
         const messagesBody = yield* responseJson(messages)
         expect(messages.status).toBe(500)
-        expect(messagesBody).toMatchObject({
-          _tag: "UnknownError",
-          message: "Unexpected server error. Check server logs for details.",
-        })
+        expect(messagesBody).toMatchObject({ _tag: "UnknownError" })
+        const messagesMessage = String((messagesBody as { message?: unknown }).message)
+        expect(messagesMessage).toContain("Unexpected server error")
+        expect(messagesMessage).toContain("Failed to decode message")
+        expect(messagesMessage).toMatch(/Details in .+redcode\.log/)
         expect((messagesBody as { ref?: unknown }).ref).toMatch(/^err_[0-9a-f-]{8}$/)
         expect(JSON.stringify(messagesBody)).not.toContain("assistant")
 
@@ -688,10 +689,9 @@ describe("session HttpApi", () => {
         })
         const contextBody = yield* responseJson(context)
         expect(context.status).toBe(500)
-        expect(contextBody).toMatchObject({
-          _tag: "UnknownError",
-          message: "Unexpected server error. Check server logs for details.",
-        })
+        expect(contextBody).toMatchObject({ _tag: "UnknownError" })
+        expect(String((contextBody as { message?: unknown }).message)).toContain("Unexpected server error")
+        expect(String((contextBody as { message?: unknown }).message)).toMatch(/Details in .+redcode\.log/)
         expect((contextBody as { ref?: unknown }).ref).toMatch(/^err_[0-9a-f-]{8}$/)
         expect(JSON.stringify(contextBody)).not.toContain("assistant")
       }),
