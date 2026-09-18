@@ -63,7 +63,7 @@ const layer = Layer.effectDiscard(
         [name]: Tool.make({
           description:
             SessionTodo.guidance +
-            " Supply id and revision from the last result when updating. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
+            " Supply the id when updating; revision is optional and checked when supplied. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
           input: ModelInput,
           inputSchema: inputSchema(),
           formatInputError: SessionTodo.validationHint,

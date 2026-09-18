@@ -56,7 +56,12 @@ export type PlanTask = typeof PlanTask.Type
 
 const tracking = {
   id: optional(Schema.String),
-  revision: optional(PositiveInt),
+  revision: optional(
+    PositiveInt.annotate({
+      description:
+        "The revision you were shown for this task; omit it from an update to apply against the stored revision, and a supplied revision that no longer matches is refused",
+    }),
+  ),
   reason: optional(Schema.String),
 }
 

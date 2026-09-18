@@ -51,7 +51,8 @@ test("shows the latest step, skipping a compaction summary written after it", as
   ])
   try {
     const frame = app.captureCharFrame()
-    expect(frame).toContain("820ms latency · 2.4s to output")
+    expect(frame).toContain("820ms latency")
+    expect(frame).not.toContain("to output")
     expect(frame).toContain("160 tk/s")
     expect(frame).not.toContain("turn")
   } finally {
@@ -59,7 +60,7 @@ test("shows the latest step, skipping a compaction summary written after it", as
   }
 })
 
-test("a burst shows a marker instead of a local write speed", async () => {
+test("a burst shows no rate at all", async () => {
   const app = await renderSidebar([
     user("u1"),
     assistant("a1", { timing: { firstToken: 5, ttftMs: 3_100, outputTokens: 400, genMs: 6, burst: true } }),
@@ -67,7 +68,7 @@ test("a burst shows a marker instead of a local write speed", async () => {
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("3.1s latency")
-    expect(frame).toContain("burst · not streamed")
+    expect(frame).not.toContain("burst")
     expect(frame).not.toContain("tk/s")
   } finally {
     app.renderer.destroy()
@@ -85,7 +86,7 @@ test("messages recorded before timing existed show nothing", async () => {
   }
 })
 
-test("reasoning that did not stream is labelled, and the turn says how many steps it rated", async () => {
+test("reasoning that did not stream is rated over the streamed window only, and the turn is not shown", async () => {
   const app = await renderSidebar([
     user("u1"),
     assistant("a1", { timing: { firstToken: 5, ttftMs: 640, outputTokens: 400, genMs: 6, burst: true } }),
@@ -104,9 +105,10 @@ test("reasoning that did not stream is labelled, and the turn says how many step
   ])
   try {
     const frame = app.captureCharFrame()
-    expect(frame).toContain("103 tk/s (reasoning hidden)")
+    expect(frame).toContain("103 tk/s")
     expect(frame).not.toContain("1641")
-    expect(frame).toContain("turn · 640ms · 103 tk/s · 1/2 rated")
+    expect(frame).not.toContain("reasoning hidden")
+    expect(frame).not.toContain("turn")
   } finally {
     app.renderer.destroy()
   }
@@ -120,7 +122,8 @@ test("the streaming step is bright, a finished or aborted one is muted", async (
   ])
   try {
     expect(colorOf(live, "510ms latency")).toEqual(bright)
-    expect(live.captureCharFrame()).toContain("turn · 640ms · 100 tk/s")
+    // The streaming step has no usage yet: latency only, no rate.
+    expect(live.captureCharFrame()).not.toContain("tk/s")
   } finally {
     live.renderer.destroy()
   }
@@ -135,9 +138,9 @@ test("the streaming step is bright, a finished or aborted one is muted", async (
   ])
   try {
     const frame = aborted.captureCharFrame()
-    // Fits the 36-column sidebar: the marker has its own line.
-    expect(frame).toMatch(/^45s latency · 52s to output\s*$/m)
-    expect(frame).toMatch(/^\s*aborted\s*$/m)
+    expect(frame).toMatch(/^45s latency\s*$/m)
+    expect(frame).not.toContain("to output")
+    expect(frame).not.toContain("aborted")
     expect(colorOf(aborted, "45s latency")).toEqual(muted)
   } finally {
     aborted.renderer.destroy()

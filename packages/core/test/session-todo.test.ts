@@ -303,7 +303,7 @@ describe("SessionTodo", () => {
         [{ content: " ", status: "pending" as const, priority: "high" as const }],
         [{ content: "New", status: "blocked" as const, priority: "high" as const }],
         [0, 1].map(() => ({ content: "Duplicate", status: "pending" as const, priority: "high" as const })),
-        [{ id: first[0].id, content: "Keep", status: "completed" as const, priority: "high" as const }],
+        [{ id: first[0].id, revision: 999, content: "Keep", status: "completed" as const, priority: "high" as const }],
       ]) {
         expect(yield* todos.update({ sessionID, todos: incoming }).pipe(Effect.result)).toMatchObject({
           _tag: "Failure",
