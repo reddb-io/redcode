@@ -31,6 +31,7 @@ type Setup = {
   readonly output: number
   readonly messages: readonly SessionMessage.Message[]
   readonly keep?: number
+  readonly summaryMaxTokens?: number
   readonly system?: string
   readonly store?: SessionCompaction.GuardStore
   readonly sessionID?: SessionSchema.ID
@@ -58,6 +59,9 @@ const setup = (options: Setup) =>
             compaction: new ConfigCompaction.Info({
               background: false,
               ...(options.keep === undefined ? {} : { keep: new ConfigCompaction.Keep({ tokens: options.keep }) }),
+              ...(options.summaryMaxTokens === undefined
+                ? {}
+                : { summary_max_tokens: options.summaryMaxTokens }),
             }),
           }),
         }),
@@ -149,15 +153,28 @@ it.effect("a transcript larger than the window still compacts by eliding its mid
   }),
 )
 
-it.effect("the summary may use up to 16k output tokens", () =>
+it.effect("the summary may use up to 32k output tokens", () =>
   Effect.gen(function* () {
-    const test = yield* setup({ context: 400_000, output: 32_000, messages: conversation(4, 2_000) })
+    const test = yield* setup({ context: 400_000, output: 64_000, messages: conversation(4, 2_000) })
     expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
-    expect(test.requests[0]?.generation?.maxTokens).toBe(16_000)
+    expect(test.requests[0]?.generation?.maxTokens).toBe(32_000)
   }),
 )
 
-it.effect("a summary cut off by the length limit is rejected", () =>
+it.effect("a configured summary_max_tokens raises the summary's output budget", () =>
+  Effect.gen(function* () {
+    const test = yield* setup({
+      context: 400_000,
+      output: 32_000,
+      messages: conversation(4, 2_000),
+      summaryMaxTokens: 32_000,
+    })
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    expect(test.requests[0]?.generation?.maxTokens).toBe(32_000)
+  }),
+)
+
+it.effect("a summary cut off by the length limit is still committed", () =>
   Effect.gen(function* () {
     const test = yield* setup({
       context: 400_000,
@@ -165,13 +182,29 @@ it.effect("a summary cut off by the length limit is rejected", () =>
       messages: conversation(4, 2_000),
       reply: [LLMEvent.textDelta({ id: "s", text: "Partial" }), LLMEvent.finish({ reason: "length" })],
     })
+    expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(true)
+    expect(test.ended()).toBeDefined()
+  }),
+)
+
+it.effect("a length finish with no summary text is rejected", () =>
+  Effect.gen(function* () {
+    const test = yield* setup({
+      context: 400_000,
+      output: 8_000,
+      messages: conversation(4, 2_000),
+      reply: [LLMEvent.finish({ reason: "length" })],
+    })
     expect(yield* test.compaction.compactAfterOverflow(test.input)).toBe(false)
     expect(test.ended()).toBeUndefined()
   }),
 )
 
-test("summaryError names a length finish", () => {
-  expect(SessionCompaction.summaryError({ summary: "Partial", source: "x".repeat(1_000), finish: "length" })).toContain(
+test("summaryError only rejects a length finish that wrote nothing", () => {
+  expect(
+    SessionCompaction.summaryError({ summary: "Partial", source: "x".repeat(1_000), finish: "length" }),
+  ).toBeUndefined()
+  expect(SessionCompaction.summaryError({ summary: " ", source: "x".repeat(1_000), finish: "length" })).toContain(
     "length",
   )
 })

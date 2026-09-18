@@ -11,7 +11,7 @@ export const MAX_TAIL_TOKENS = 60_000
 /** In a small window the kept tail never takes more than this share, or nothing is summarized. */
 export const MAX_TAIL_SHARE = 0.25
 /** Upper bound on the summary's output tokens, below the model's own output limit. */
-export const SUMMARY_MAX_TOKENS = 16_000
+export const SUMMARY_MAX_TOKENS = 32_000
 /** Trimming old tool output is only worth a cache miss when it frees at least this much. */
 export const PRUNE_MINIMUM_SAVINGS = 20_000
 /** The last user turns whose tool output is never trimmed. */
@@ -29,9 +29,11 @@ export const tailBudget = (input: { readonly usable: number; readonly configured
   return Math.max(0, Math.min(proportional, Math.floor(input.usable * MAX_TAIL_SHARE)))
 }
 
-/** The summary's output budget: the model's output limit, capped at 16k. */
-export const summaryMaxTokens = (output: number | undefined) =>
-  output !== undefined && output > 0 ? Math.min(output, SUMMARY_MAX_TOKENS) : SUMMARY_MAX_TOKENS
+/** The summary's output budget: `summary_max_tokens` when configured, otherwise capped at 16k. */
+export const summaryMaxTokens = (output: number | undefined, configured?: number) => {
+  const cap = configured !== undefined && configured > 0 ? configured : SUMMARY_MAX_TOKENS
+  return output !== undefined && output > 0 ? Math.min(output, cap) : cap
+}
 
 /**
  * What the model reads in place of a trimmed tool result. The trim is permanent, and running the

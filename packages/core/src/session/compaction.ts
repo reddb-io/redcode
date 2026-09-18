@@ -74,6 +74,8 @@ type Settings = {
   readonly buffer: number
   /** `keep.tokens` when configured; otherwise the tail is sized from the window per request. */
   readonly tokens?: number
+  /** `summary_max_tokens` when configured; otherwise the summary budget is capped at 16k. */
+  readonly summary?: number
 }
 
 /** What the guard keeps across a restart: the request it served and whether it paused on it. */
@@ -227,8 +229,9 @@ const settings = (documents: readonly Config.Entry[]) => {
       background: current.background ?? result.background,
       buffer: current.buffer ?? result.buffer,
       tokens: current.keep?.tokens ?? result.tokens,
+      summary: current.summary_max_tokens ?? result.summary,
     }),
-    { auto: true, background: true, buffer: DEFAULT_BUFFER, tokens: undefined },
+    { auto: true, background: true, buffer: DEFAULT_BUFFER, tokens: undefined, summary: undefined },
   )
 }
 
@@ -301,7 +304,14 @@ export const buildPrompt = (input: { readonly previousSummary?: string; readonly
 }
 
 export const summaryError = (input: { summary: string; source: string; finish?: string; retained?: string }) => {
-  if (input.finish !== "stop" && input.finish !== "end_turn")
+  // A `length` finish only cut the summary off at the output budget, which reasoning models mostly
+  // spend thinking: the text written so far is still a usable summary, so it is kept rather than
+  // discarding the whole compaction. An empty answer under `length` is still a failure.
+  if (
+    input.finish !== "stop" &&
+    input.finish !== "end_turn" &&
+    !(input.finish === "length" && input.summary.trim())
+  )
     return `Compaction summary did not finish successfully (${input.finish ?? "missing finish"}). Original history was preserved.`
   if (!input.summary.trim()) return "Compaction summary was empty. Original history was preserved."
   if (Token.estimate(input.summary + (input.retained ?? "")) >= Token.estimate(input.source))
@@ -414,9 +424,10 @@ export const make = (dependencies: Dependencies) => {
         previousSummary?.type === "compaction" ? CompactionAnchors.strip(previousSummary.summary) : undefined,
       context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
     })
-    // Up to 16k, and never so much of a small window that the prompt no longer fits beside it.
+    // Up to `summary_max_tokens` when configured, else 32k, and never so much of a small window
+    // that the prompt no longer fits beside it.
     const summaryOutput = Math.min(
-      CompactionPolicy.summaryMaxTokens(output || undefined),
+      CompactionPolicy.summaryMaxTokens(output || undefined, config.summary),
       Math.max(1, Math.floor(window / 4)),
     )
     // The summary request has to fit inside the window, measured as the provider will read it (as
@@ -476,7 +487,7 @@ export const make = (dependencies: Dependencies) => {
       .pipe(
         Stream.runForEach((event) => {
           if (LLMEvent.is.providerError(event)) failed = true
-          if (LLMEvent.is.stepFinish(event) && event.reason !== "stop") failed = true
+          if (LLMEvent.is.stepFinish(event) && event.reason !== "stop" && event.reason !== "length") failed = true
           if (LLMEvent.is.finish(event)) finish = event.reason
           if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
           return Effect.void

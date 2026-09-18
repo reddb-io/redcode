@@ -798,6 +798,7 @@ const layer = Layer.effect(
         .join("\n\n")
       const summaryOutput = CompactionPolicy.summaryMaxTokens(
         ProviderTransform.maxOutputTokens(model, flags.outputTokenMax),
+        (yield* config.get()).compaction?.summary_max_tokens,
       )
       const inputLimit = model.limit.input || model.limit.context
 
@@ -1063,7 +1064,10 @@ const layer = Layer.effect(
       const finish = outcome.events.findLast(LLMEvent.is.finish)?.reason
       if (outcome.events.some(LLMEvent.is.toolCall))
         return { ok: false as const, overflow: false, error: undefined, reason: "tool call" }
-      if (finish !== "stop" || !text.trim())
+      // A `length` finish cut the summary off at the output budget, most of which reasoning models
+      // spend thinking: the text so far is still a usable summary, and rejecting it fails the whole
+      // compaction. Anything else but a complete answer stays a failed attempt.
+      if ((finish !== "stop" && finish !== "length") || !text.trim())
         return { ok: false as const, overflow: false, error: undefined, reason: `finish ${finish ?? "missing"}` }
       return { ok: true as const, events: outcome.events }
     })

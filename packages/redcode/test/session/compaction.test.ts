@@ -1062,14 +1062,14 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
   })
 
-  for (const invalid of ["unfinished", "length", "growing", "empty"] as const) {
+  for (const invalid of ["unfinished", "growing", "empty"] as const) {
     itCompaction.instance(`rejects ${invalid} summaries without hiding original messages`, () => {
       const stub = llm()
       stub.push(
         reply(
           invalid === "empty" ? " " : invalid === "growing" ? "summary ".repeat(5_000) : "Partial checkpoint",
           undefined,
-          invalid === "length" ? "length" : "stop",
+          "stop",
           invalid !== "unfinished",
         ),
       )
@@ -1099,6 +1099,31 @@ describe("session.compaction.process", () => {
       }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
     })
   }
+
+  itCompaction.instance("commits a summary cut off by the output limit", () => {
+    const stub = llm()
+    stub.push(reply("Partial checkpoint", undefined, "length"))
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      const original = yield* createUserMessage(session.id, "Preserve my instructions. ".repeat(100))
+      yield* createSummaryCompaction(session.id)
+      const messages = yield* ssn.messages({ sessionID: session.id })
+      const result = yield* SessionCompaction.use.process({
+        parentID: messages.at(-1)!.info.id,
+        messages,
+        sessionID: session.id,
+        auto: true,
+      })
+      expect(result).toBe("continue")
+      const all = yield* ssn.messages({ sessionID: session.id })
+      const checkpoint = all.find((message) => message.info.role === "assistant" && message.info.summary)
+      expect(checkpoint?.info).toMatchObject({ finish: "length", summary: true })
+      expect((checkpoint?.info as { error?: unknown }).error).toBeUndefined()
+      const visible = MessageV2.filterCompacted([...all].reverse())
+      expect(visible.some((message) => message.info.id === original.id)).toBe(false)
+    }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
+  })
 
   it.instance(
     "throws when parent is not a user message",
