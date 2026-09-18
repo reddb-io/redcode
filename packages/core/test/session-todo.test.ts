@@ -147,6 +147,35 @@ describe("SessionTodo", () => {
     }),
   )
 
+  it.effect("stamps closedAt when a task closes and clears it on reopen", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const todos = yield* SessionTodo.Service
+      const [created] = yield* todos.update({
+        sessionID,
+        todos: [{ content: "Close me", status: "pending", priority: "high" }],
+      })
+      expect(created.closedAt).toBeUndefined()
+      const [done] = yield* todos.update({
+        sessionID,
+        todos: [{ id: created.id, revision: created.revision, status: "completed" }],
+      })
+      expect(typeof done.closedAt).toBe("number")
+      // An exact retry keeps the stamp without churning the revision.
+      const retry = yield* todos.update({
+        sessionID,
+        todos: [{ id: created.id, revision: done.revision, status: "completed" }],
+      })
+      expect(retry[0]!.closedAt).toBe(done.closedAt)
+      expect(retry[0]!.revision).toBe(done.revision)
+      const [reopened] = yield* todos.update({
+        sessionID,
+        todos: [{ id: created.id, revision: retry[0]!.revision, status: "pending" }],
+      })
+      expect(reopened.closedAt).toBeUndefined()
+    }),
+  )
+
   it.effect("rejects cancellation without a reason, preserves blockers and resumes other work", () =>
     Effect.gen(function* () {
       yield* setup

@@ -444,7 +444,7 @@ export type TuiSidebarMcpItem = {
 
 export type TuiSidebarLspItem = Pick<LspStatus, "id" | "root" | "status" | "error">
 
-export type TuiSidebarTodoItem = Pick<Todo, "content" | "status" | "reason">
+export type TuiSidebarTodoItem = Pick<Todo, "content" | "status" | "reason" | "closedAt">
 
 export type TuiSidebarFileItem = {
   file: string

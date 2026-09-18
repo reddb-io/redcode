@@ -236,6 +236,9 @@ const make = Effect.gen(function* () {
                     : {}),
                 ...(capped ? { reason: capped } : reason ? { reason } : {}),
                 ...(before?.legacyStatus ? { legacyStatus: before.legacyStatus } : {}),
+                // When the task closed, so a live panel can keep closed tasks only while fresh.
+                // Reopening drops the stamp.
+                closedAt: status === "completed" || status === "cancelled" ? (before?.closedAt ?? Date.now()) : undefined,
               }
             }),
           )
@@ -260,7 +263,8 @@ const make = Effect.gen(function* () {
               SessionTaskFacts.hash(before.source) === SessionTaskFacts.hash(task.source) &&
               SessionTaskFacts.hash(before.criterion) === SessionTaskFacts.hash(task.criterion) &&
               SessionTaskFacts.hash(before.evidence) === SessionTaskFacts.hash(task.evidence) &&
-              SessionTaskFacts.hash(before.scopeChange) === SessionTaskFacts.hash(task.scopeChange)
+              SessionTaskFacts.hash(before.scopeChange) === SessionTaskFacts.hash(task.scopeChange) &&
+              before.closedAt === task.closedAt
             return unchanged ? before : { ...task, status, revision: before ? before.revision + 1 : 1 }
           })
           // Compare against the reconciled state, including automatic promotion, for exact retries.
@@ -312,6 +316,7 @@ const make = Effect.gen(function* () {
                     criterion: task.criterion,
                     evidence: task.evidence,
                     scopeChange: task.scopeChange,
+                    closedAt: task.closedAt,
                   },
                 })
                 .onConflictDoUpdate({
@@ -329,6 +334,7 @@ const make = Effect.gen(function* () {
                       criterion: task.criterion,
                       evidence: task.evidence,
                       scopeChange: task.scopeChange,
+                      closedAt: task.closedAt,
                     },
                   },
                 })

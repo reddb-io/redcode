@@ -155,6 +155,9 @@ export const Info = Schema.Struct({
   priority: Schema.String.annotate({
     description: "Priority level of the task: high, medium, low",
   }),
+  // When the task closed (completed or cancelled), so a live panel can keep closed tasks only
+  // while they are fresh and let the older ones fall away.
+  closedAt: optional(Schema.Finite),
 }).annotate({ identifier: "Todo" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
