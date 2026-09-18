@@ -813,18 +813,31 @@ const layer = Layer.effect(
       modelID: ModelV2.ID,
       sessionID: SessionID,
     ) {
-      const exit = yield* provider.getModel(providerID, modelID).pipe(Effect.exit)
+      // Transient provider-catalog failures (network, models.dev fetch) must not kill the turn: a
+      // couple of short retries ride the blip out, and the provider's typed not-found is never
+      // retried. A failure that survives publishes the provider's message as a session error, so
+      // the person sees the real cause instead of an opaque defect.
+      const attempt = () => provider.getModel(providerID, modelID).pipe(Effect.exit)
+      let exit = yield* attempt()
+      for (let retries = 2; Exit.isFailure(exit); retries--) {
+        const candidate = Cause.squash(exit.cause)
+        if (Provider.ModelNotFoundError.isInstance(candidate)) break
+        if (Cause.hasInterrupts(exit.cause) || retries <= 0) break
+        yield* Effect.sleep(250)
+        exit = yield* attempt()
+      }
       if (Exit.isSuccess(exit)) return exit.value
       const err = Cause.squash(exit.cause)
-      if (Provider.ModelNotFoundError.isInstance(err)) {
-        const hint = err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""
-        yield* events.publish(Session.Event.Error, {
+      const message =
+        Provider.ModelNotFoundError.isInstance(err)
+          ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
+          : errorMessage(err)
+      yield* events
+        .publish(Session.Event.Error, {
           sessionID,
-          error: new NamedError.Unknown({
-            message: `Model not found: ${err.providerID}/${err.modelID}.${hint}`,
-          }).toObject(),
+          error: new NamedError.Unknown({ message }).toObject(),
         })
-      }
+        .pipe(Effect.ignore)
       return yield* Effect.die(err)
     })
 
