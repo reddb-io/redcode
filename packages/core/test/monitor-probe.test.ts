@@ -14,6 +14,11 @@ const decodeOptions = Schema.decodeUnknownSync(Monitor.Options)
 const decodeProbe = Schema.decodeUnknownSync(Monitor.Probe)
 
 describe("monitor schema", () => {
+  test("teaches the final-state condition and the interval budget", () => {
+    expect(Monitor.probeInstructions).toContain("the final state that matters")
+    expect(Monitor.probeInstructions).toContain("deadline_ms / interval_ms is the number of checks")
+  })
+
   test("accepts valid probes and conditions", () => {
     expect(
       decodeProbe({ type: "http", url: "http://localhost:1/health", json_path: "$.data[0].state", equals: "ok" }),
