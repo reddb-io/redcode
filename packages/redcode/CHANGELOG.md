@@ -1,5 +1,16 @@
 # opencode
 
+## 0.38.0
+
+### Minor Changes
+
+- cc9c97d: Add a RedRouter provider preset: `POST /provider/red-router/connect` connects a RedRouter instance like the 9Router preset, and discovery stores the router-reported context/output limits on each model so compaction and request sizing use real limits instead of guesses.
+
+### Patch Changes
+
+- 490a323: `design_read` no longer refuses with "No approved Design revision is recorded" while prototyping. Before any approval, every section (decisions, scenarios, feedback, assets, evidence, prototype, files) reads the requested or latest published revision and labels the output as not approved; after approval, the frozen package answers as before.
+- 52b3128: Make prompt failures visible and survivable. Model resolution now retries transient provider-catalog failures (network, models.dev fetch) a couple of times before giving up, and publishes the provider's real message as a session error when resolution fails — instead of dying with an opaque defect that rendered as "unexpected server error. check server logs for details." with nothing behind it. The /api server also logs every uncaught defect with an `err_xxxxxxxx` ref (and returns the ref in the 500 body), so an intermittent failure is diagnosable from the logs.
+
 ## 0.37.0
 
 ### Minor Changes
