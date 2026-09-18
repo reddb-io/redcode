@@ -100,6 +100,11 @@ describe("contextOverflowNumbers", () => {
     ).toEqual({ limit: 128_000, counted: 130_500, includesOutput: true })
     expect(
       contextOverflowNumbers(
+        'This model\'s maximum context length is 1048576 tokens, but the request resolved to 1064559 input tokens (including image/vision expansion). Reduce the input length, image resolution, or the number of images."',
+      ),
+    ).toEqual({ limit: 1_048_576, counted: 1_064_559 })
+    expect(
+      contextOverflowNumbers(
         "Requested token count exceeds the model's maximum context length of 131072 tokens. You requested a total of 140000 tokens: 130000 tokens from the input messages and 10000 tokens for the completion.",
       ),
     ).toEqual({ limit: 131_072, counted: 130_000, output: 10_000, includesOutput: true })
