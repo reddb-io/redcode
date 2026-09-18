@@ -796,6 +796,7 @@ it.instance(
         build: { disable: true },
         plan: { disable: true },
         design: { disable: true },
+        question: { disable: true },
       },
     },
   },
