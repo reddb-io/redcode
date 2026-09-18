@@ -1,4 +1,5 @@
 import { NamedError } from "@reddb-io/redcode-core/util/error"
+import { ServerError } from "@reddb-io/redcode-core/util/server-error"
 import { ConfigErrorV1 } from "@reddb-io/redcode-core/v1/config/error"
 import { Cause, Effect } from "effect"
 import {
@@ -48,7 +49,7 @@ export const defectErrorLayer = HttpRouter.middleware<{ handles: unknown }>()((e
         Effect.as(
           HttpServerResponse.jsonUnsafe(
             new NamedError.Unknown({
-              message: "Unexpected server error. Check server logs for details.",
+              message: ServerError.message(ref, error),
               ref,
             }).toObject(),
             { status: 500 },

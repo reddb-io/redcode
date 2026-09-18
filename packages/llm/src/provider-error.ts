@@ -145,6 +145,15 @@ const shapes: readonly Shape[] = [
     ),
     read: (m) => ({ limit: number(m[1]), counted: number(m[2]), includesOutput: true }),
   },
+  // OpenRouter and OpenAI-compatible gateways that report the resolved input alone, with the
+  // image expansion the provider counted in. The limit is the whole window; the count is input.
+  {
+    pattern: new RegExp(
+      String.raw`maximum context length is ${N} tokens\b.*?resolved to ${N} input tokens`,
+      "is",
+    ),
+    read: (m) => ({ limit: number(m[1]), counted: number(m[2]) }),
+  },
   // Azure OpenAI and vLLM variants.
   {
     pattern: new RegExp(

@@ -689,6 +689,9 @@ export type Pty = {
 
 export type Todo = {
   id?: string
+  /**
+   * The revision you were shown for this task; omit it from an update to apply against the stored revision, and a supplied revision that no longer matches is refused
+   */
   revision?: number
   reason?: string
   legacyStatus?: string
@@ -713,6 +716,7 @@ export type Todo = {
    * Priority level of the task: high, medium, low
    */
   priority: string
+  closedAt?: number
 }
 
 export type SessionStatus =
@@ -10861,6 +10865,52 @@ export type ProviderNineRouterConnectResponses = {
 
 export type ProviderNineRouterConnectResponse =
   ProviderNineRouterConnectResponses[keyof ProviderNineRouterConnectResponses]
+
+export type ProviderRedRouterConnectData = {
+  body?: {
+    baseURL: string
+    apiKey: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/red-router/connect"
+}
+
+export type ProviderRedRouterConnectErrors = {
+  /**
+   * ProviderDiscoveryApiError | InvalidRequestError
+   */
+  400: ProviderDiscoveryApiError | InvalidRequestError
+}
+
+export type ProviderRedRouterConnectError = ProviderRedRouterConnectErrors[keyof ProviderRedRouterConnectErrors]
+
+export type ProviderRedRouterConnectResponses = {
+  /**
+   * Success
+   */
+  200: {
+    baseURL: string
+    models: Array<{
+      id: string
+      name: string
+      limit: {
+        context: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        output: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      /**
+       * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
+       */
+      estimated: boolean
+    }>
+  }
+}
+
+export type ProviderRedRouterConnectResponse =
+  ProviderRedRouterConnectResponses[keyof ProviderRedRouterConnectResponses]
 
 export type ProviderListData = {
   body?: never

@@ -175,6 +175,8 @@ import type {
   ProviderOauthCallbackResponses,
   ProviderOpenaiCompatibleConnectErrors,
   ProviderOpenaiCompatibleConnectResponses,
+  ProviderRedRouterConnectErrors,
+  ProviderRedRouterConnectResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyConnectTokenErrors,
@@ -3659,6 +3661,51 @@ export class NineRouter extends HeyApiClient {
   }
 }
 
+export class RedRouter extends HeyApiClient {
+  /**
+   * Connect RedRouter
+   *
+   * Connect the RedRouter preset of the OpenAI-compatible connection: discover RedRouter models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.
+   */
+  public connect<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      baseURL?: string
+      apiKey?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "baseURL" },
+            { in: "body", key: "apiKey" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderRedRouterConnectResponses,
+      ProviderRedRouterConnectErrors,
+      ThrowOnError
+    >({
+      url: "/provider/red-router/connect",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * Start OAuth authorization
@@ -3861,6 +3908,11 @@ export class Provider extends HeyApiClient {
   private _nineRouter?: NineRouter
   get nineRouter(): NineRouter {
     return (this._nineRouter ??= new NineRouter({ client: this.client }))
+  }
+
+  private _redRouter?: RedRouter
+  get redRouter(): RedRouter {
+    return (this._redRouter ??= new RedRouter({ client: this.client }))
   }
 
   private _oauth?: Oauth

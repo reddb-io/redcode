@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { InvalidCursorError, SessionNotFoundError, UnknownError } from "@reddb-io/redcode-protocol/errors"
+import { ServerError } from "@reddb-io/redcode-core/util/server-error"
 
 const DefaultMessagesLimit = 50
 
@@ -60,7 +61,7 @@ export const MessageHandler = HttpApiBuilder.group(Api, "server.message", (handl
                 Effect.annotateLogs({ ref, sessionID: error.sessionID, messageID: error.messageID }),
                 Effect.andThen(
                   Effect.fail(
-                    new UnknownError({ message: "Unexpected server error. Check server logs for details.", ref }),
+                    new UnknownError({ message: ServerError.message(ref, error), ref }),
                   ),
                 ),
               )

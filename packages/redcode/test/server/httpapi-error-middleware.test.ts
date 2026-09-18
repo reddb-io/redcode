@@ -10,18 +10,23 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(Layer.mergeAll(NodeHttpServer.layerTest, NodeServices.layer))
 
-function expectUnknownErrorBody(body: unknown) {
-  expect(body).toMatchObject({
-    name: "UnknownError",
-    data: { message: "Unexpected server error. Check server logs for details." },
-  })
-  expect((body as { data?: { ref?: unknown } }).data?.ref).toMatch(/^err_[0-9a-f-]{8}$/)
+function expectUnknownErrorBody(body: unknown, cause: string) {
+  expect(body).toMatchObject({ name: "UnknownError" })
+  const data = (body as { data?: { message?: unknown; ref?: unknown } }).data
+  const message = String(data?.message)
+  expect(message).toContain("Unexpected server error")
+  expect(message).toContain(cause)
+  // The response names the file the full cause lives in.
+  expect(message).toMatch(/Details in .+redcode\.log/)
+  expect(data?.ref).toMatch(/^err_[0-9a-f-]{8}$/)
 }
 
 describe("HttpApi error middleware", () => {
-  it.live("returns a safe body for unknown 500 defects", () =>
+  it.live("returns the cause and the log file for unknown 500 defects", () =>
     Effect.gen(function* () {
-      yield* HttpRouter.add("GET", "/boom", Effect.die(new Error("secret stack marker"))).pipe(
+      const boom = new Error("boom cause")
+      boom.stack = "Error: boom cause\n    at secretStackFrame (/tmp/boom.ts:1:1)"
+      yield* HttpRouter.add("GET", "/boom", Effect.die(boom)).pipe(
         Layer.provide(errorLayer),
         HttpRouter.serve,
         Layer.build,
@@ -31,25 +36,25 @@ describe("HttpApi error middleware", () => {
       const body = yield* response.json
 
       expect(response.status).toBe(500)
-      expectUnknownErrorBody(body)
-      expect(JSON.stringify(body)).not.toContain("secret stack marker")
+      expectUnknownErrorBody(body, "boom cause")
+      // The message may carry the cause, never the stack behind it.
+      expect(JSON.stringify(body)).not.toContain("secretStackFrame")
     }),
   )
 
-  it.live("returns a safe body for named defects", () =>
+  it.live("returns the named cause for named defects", () =>
     Effect.gen(function* () {
       yield* HttpRouter.add(
         "GET",
         "/named",
-        Effect.die(new NamedError.Unknown({ message: "secret named marker" })),
+        Effect.die(new NamedError.Unknown({ message: "named failure cause" })),
       ).pipe(Layer.provide(errorLayer), HttpRouter.serve, Layer.build)
 
       const response = yield* HttpClientRequest.get("/named").pipe(HttpClient.execute)
       const body = yield* response.json
 
       expect(response.status).toBe(500)
-      expectUnknownErrorBody(body)
-      expect(JSON.stringify(body)).not.toContain("secret named marker")
+      expectUnknownErrorBody(body, "named failure cause")
     }),
   )
 
@@ -95,7 +100,7 @@ describe("HttpApi error middleware", () => {
       const body = yield* response.json
 
       expect(response.status).toBe(500)
-      expectUnknownErrorBody(body)
+      expectUnknownErrorBody(body, "Resource not found: secret")
     }),
   )
 })
