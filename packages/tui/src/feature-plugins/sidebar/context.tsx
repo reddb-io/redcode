@@ -65,11 +65,8 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
             <Show when={latencyLine(current().step)}>
               {(line) => <text fg={current().step.stale ? theme().textMuted : theme().text}>{line()}</text>}
             </Show>
-            <Show when={stepSpeedLine(current().step)}>
+            <Show when={speedLine(current().step)}>
               {(line) => <text fg={current().step.stale ? theme().textMuted : theme().text}>{line()}</text>}
-            </Show>
-            <Show when={current().turn.steps > 1 ? turnLine(current().turn) : undefined}>
-              {(line) => <text fg={theme().textMuted}>{line()}</text>}
             </Show>
           </box>
         )}
@@ -80,40 +77,14 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
 
 function latencyLine(step: GenerationTiming.Step) {
   if (step.latency === undefined) return undefined
-  const parts = [`${GenerationTiming.formatLatency(step.latency)} latency`]
-  // Thinking first: the visible answer starts noticeably later than the first token.
-  if (step.visible !== undefined && step.visible - step.latency >= 100) {
-    parts.push(`${GenerationTiming.formatLatency(step.visible)} to output`)
-  }
-  return parts.join(" · ")
+  return `${GenerationTiming.formatLatency(step.latency)} latency`
 }
 
-// The sidebar is 36 columns wide: the latency line keeps to its numbers, and the markers go here.
-function stepSpeedLine(step: GenerationTiming.Step) {
-  const speed = speedLine(step.speed, true)
-  if (step.aborted) return speed ? `${speed} · aborted` : "aborted"
-  return speed
-}
-
-function speedLine(speed: GenerationTiming.Speed | undefined, label: boolean) {
-  if (speed?.type === "rate")
-    return `${GenerationTiming.formatRate(speed.value)}${speed.hidden && label ? " (reasoning hidden)" : ""}`
-  if (speed?.type === "burst") return "burst · not streamed"
-  return undefined
-}
-
-function turnLine(turn: GenerationTiming.Turn) {
-  const speed = speedLine(turn.speed, false)
-  if (turn.latency === undefined && !speed) return undefined
-  return [
-    "turn",
-    turn.latency === undefined ? undefined : GenerationTiming.formatLatency(turn.latency),
-    speed,
-    // Some steps were bursts, too short or unfinished; subagents are never part of the turn.
-    speed && turn.rated < turn.steps ? `${turn.rated}/${turn.steps} rated` : undefined,
-  ]
-    .filter(Boolean)
-    .join(" · ")
+// Only a real rate is shown: a burst, a window too short to mean anything and a step still waiting
+// on its usage show nothing at all.
+function speedLine(step: GenerationTiming.Step) {
+  if (step.speed?.type !== "rate") return undefined
+  return GenerationTiming.formatRate(step.speed.value)
 }
 
 const tui: TuiPlugin = async (api) => {
