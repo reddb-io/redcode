@@ -1,7 +1,7 @@
 export * as MCPTools from "./mcp"
 
 import path from "node:path"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Layer } from "effect"
 import { makeLocationNode } from "../effect/app-node"
 import { Config } from "../config"
 import { Location } from "../location"
@@ -122,7 +122,17 @@ const layer = Layer.effectDiscard(
               ]),
             ),
           )
-        }).pipe(Effect.catch((error) => Effect.logWarning(`MCP ${name} unavailable`, error))),
+        }).pipe(
+          // One broken server is paused, not fatal: `catchCause` also contains the defects a
+          // malformed config throws synchronously (an invalid `url`, for example), so the other
+          // servers keep registering and the session never sees the failure.
+          Effect.catchCause((cause) =>
+            Effect.logWarning(`MCP ${name} unavailable; its tools stay unavailable until it recovers`, {
+              server: name,
+              error: Cause.squash(cause),
+            }),
+          ),
+        ),
       { concurrency: 4, discard: true },
     )
   }),
