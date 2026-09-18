@@ -75,10 +75,6 @@ const make = Effect.gen(function* () {
               // An update names only what changes, so a status left out is the stored one; a new task
               // without one starts pending.
               const status = item.status ?? (before ? storedStatus(before) : "pending")
-              if (item.id && item.revision === undefined)
-                return yield* new SessionTodo.Error({
-                  message: `Supply the current revision for task ${item.id}, e.g. {"todos":[{"id":"${item.id}","revision":${before!.revision},"status":"${status}"}]}`,
-                })
               if (!before && !supplied)
                 return yield* new SessionTodo.Error({
                   message: `Task content is required to create a task; supply id and revision to update an existing one. Existing tasks: ${listTasks(previous)}`,
@@ -278,7 +274,7 @@ const make = Effect.gen(function* () {
               const after = result.find((task) => task.id === before.id)!
               if (item.revision !== before.revision && after.revision !== before.revision)
                 return yield* new SessionTodo.Error({
-                  message: `Task ${before.id} changed; read its current revision before updating`,
+                  message: `Task ${before.id} changed; its current revision is ${before.revision}. Resend with that revision, e.g. {"todos":[{"id":"${before.id}","revision":${before.revision},"status":"${storedStatus(before)}"}]}`,
                 })
             }),
           )
@@ -499,8 +495,7 @@ export function refusalKind(message: string) {
   )
     return "schema"
   if (message.startsWith("Task content")) return "content"
-  if (message.startsWith("Supply the current revision") || message.includes("read its current revision"))
-    return "revision"
+  if (message.includes("its current revision is")) return "revision"
   if (message.startsWith("Unknown task")) return "unknown-task"
   if (message.startsWith("Multiple tasks match") || message.startsWith("Duplicate task update")) return "ambiguous"
   if (message.startsWith(SCOPE_CHANGE_REQUIRED)) return "scope-change"

@@ -259,6 +259,22 @@ it.effect("accepts every documented partial shape: no status, bare evidence, and
       status: "completed",
       evidence: { callID: "passing", tool: "bash", explanation: "the retry suite passed twice" },
     })
+    // An update addressed by id may omit the revision: it applies against the stored one.
+    const revisionless = yield* todos.update({
+      sessionID,
+      todos: [{ id: created.id, reason: "no revision needed" }],
+    })
+    expect(revisionless[0]).toMatchObject({
+      id: created.id,
+      revision: explained[0]!.revision! + 1,
+      reason: "no revision needed",
+    })
+    // A supplied revision that no longer matches is refused with the current one, so the resend is exact.
+    const stale = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, revision: 1, reason: "stale" }] })
+      .pipe(Effect.flip)
+    expect(stale.message).toContain(`its current revision is ${revisionless[0]!.revision}`)
+    expect(SessionTodoStore.refusalKind(stale.message)).toBe("revision")
     // A scope change that names no message is linked to the latest request, its words kept.
     const [other] = (yield* todos.update({
       sessionID,
