@@ -1,5 +1,13 @@
 # opencode
 
+## 0.38.3
+
+### Patch Changes
+
+- e656083: Context-overflow refusals in the OpenRouter phrasing ("the request resolved to N input tokens (including image/vision expansion)") now teach the session the provider's real limit. Without the number extraction the learned limit stayed empty, the compaction threshold kept sizing against the catalog's overstated window, and the session could repeat the same 400 on every attempt instead of compacting preventively.
+- e656083: Unexpected server errors are transparent now. The 500 body carries the real cause's first line, the `err_xxxxxxxx` correlation ref and the exact log file (`~/.red/code/data/log/redcode.log`) instead of a bare "check server logs for details", so a failed prompt can be diagnosed from what the UI already shows. The response never includes the stack.
+- e656083: The TUI todo panel keeps the thread's work in view instead of its whole history: open tasks always show, while completed and cancelled ones stay only for 15 minutes after they closed (the store now stamps each task with `closedAt`) and then fall away.
+
 ## 0.38.2
 
 ### Patch Changes
