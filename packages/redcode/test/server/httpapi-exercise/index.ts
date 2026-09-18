@@ -357,6 +357,14 @@ const scenarios: Scenario[] = [
     }))
     .status(400),
   http.protected
+    .post("/provider/red-router/connect", "provider.redRouter.connect")
+    .at((ctx) => ({
+      path: "/provider/red-router/connect",
+      headers: ctx.headers(),
+      body: { baseURL: "ftp://invalid", apiKey: "test" },
+    }))
+    .status(400),
+  http.protected
     .post("/provider/{providerID}/oauth/authorize", "provider.oauth.authorize")
     .at((ctx) => ({
       path: route("/provider/{providerID}/oauth/authorize", { providerID: "httpapi" }),
