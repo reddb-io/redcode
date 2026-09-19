@@ -1,5 +1,17 @@
 # opencode
 
+## 0.39.0
+
+### Minor Changes
+
+- d84a175: Compaction summaries survive an output-limit cut and the summary budget is configurable. A summary whose provider finish was `length` (common with reasoning models that spend the output budget thinking, e.g. GLM-5.3-Flash) is now committed instead of failing the compaction and preserving the full history. The summary output budget defaults to 32k tokens (was 16k) and can be changed with `compaction.summary_max_tokens` in config; the model's own output limit still caps it.
+- 572b04f: Add the green Question mode to the current session engine for focused investigative questions, with read-only tools and no shell, editing or delegation by default. Align the legacy mode with the same behavior.
+- 887de9c: Add a fourth built-in mode: `question`. It can only read — its mission is to explain how something works, citing files and line numbers, never writing code or editing files. Selectable alongside build, plan and design.
+
+### Patch Changes
+
+- 35e9ec3: RedRouter is now offered as a provider in the TUI connect dialog, like 9Router: picking it opens the wizard with the id, name and default API URL (`http://127.0.0.1:25050/v1`) prefilled, and a configured RedRouter connection pointing elsewhere offers to move to its own id. Model discovery already picks up the per-model and per-combo context and output limits RedRouter reports in its OpenAI-compatible model list.
+
 ## 0.38.4
 
 ### Patch Changes
