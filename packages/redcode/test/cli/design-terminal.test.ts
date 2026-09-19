@@ -176,6 +176,8 @@ test("Design terminal adopts authoritative mode, replays durable history, and re
     expect(test.requests.every((request) => request.method === "GET")).toBe(true)
     await test.terminal.line("/mode build")
     expect(test.modes.at(-1)).toBe("build")
+    await test.terminal.line("/mode question")
+    expect(test.modes.at(-1)).toBe("question")
     await test.terminal.line("/review")
     expect(test.reviews).toEqual(["ses_design_test"])
   } finally {

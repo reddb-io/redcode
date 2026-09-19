@@ -664,7 +664,13 @@ describe("Config", () => {
                     },
                   },
                 },
-                compaction: { auto: true, tail_turns: 3, preserve_recent_tokens: 2000, reserved: 10000 },
+                compaction: {
+                  auto: true,
+                  tail_turns: 3,
+                  preserve_recent_tokens: 2000,
+                  summary_max_tokens: 32000,
+                  reserved: 10000,
+                },
                 experimental: { mcp_timeout: 5000 },
                 mcp: {
                   local: { type: "local", command: ["node", "server.js"], enabled: false, timeout: 10000 },
@@ -747,6 +753,7 @@ describe("Config", () => {
               auto: true,
               prune: undefined,
               keep: { tokens: 2000 },
+              summary_max_tokens: 32000,
               buffer: 10000,
             })
             expect(documents[0]?.info.mcp).toMatchObject({

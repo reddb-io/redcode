@@ -168,6 +168,10 @@ export const Info = Schema.Struct({
       preserve_recent_tokens: Schema.optional(NonNegativeInt).annotate({
         description: "Maximum number of tokens from recent turns to preserve verbatim after compaction",
       }),
+      summary_max_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Maximum output tokens for the compaction summary itself (default: 32000). Raise it for reasoning models that spend the budget thinking before writing the summary.",
+      }),
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),

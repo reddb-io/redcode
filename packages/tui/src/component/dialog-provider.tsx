@@ -20,9 +20,13 @@ import {
   COMPATIBLE_NPM,
   connectionProblem,
   isNineRouterDefaultURL,
+  isRedRouterDefaultURL,
   NINE_ROUTER_DEFAULT_URL,
   NINE_ROUTER_ID,
   NINE_ROUTER_NAME,
+  RED_ROUTER_DEFAULT_URL,
+  RED_ROUTER_ID,
+  RED_ROUTER_NAME,
 } from "../util/openai-compatible"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
@@ -42,6 +46,14 @@ const NINE_ROUTER_PRESET: ProviderPreset = {
   defaultURL: NINE_ROUTER_DEFAULT_URL,
   urlHint: "Start 9Router, then confirm its API URL, such as localhost:20128.",
   keyHint: "Copy a key from the 9Router dashboard.",
+}
+
+const RED_ROUTER_PRESET: ProviderPreset = {
+  providerID: RED_ROUTER_ID,
+  name: RED_ROUTER_NAME,
+  defaultURL: RED_ROUTER_DEFAULT_URL,
+  urlHint: "Start RedRouter, then confirm its API URL, such as localhost:25050.",
+  keyHint: "Copy a key from the RedRouter dashboard.",
 }
 
 type ProviderOptionBase = {
@@ -75,6 +87,10 @@ export function providerOptions(
     list.some((provider) => provider.id === NINE_ROUTER_ID) || disabled.includes(NINE_ROUTER_ID)
       ? list
       : [...list, { id: NINE_ROUTER_ID, name: "9Router" }],
+    (list) =>
+      list.some((provider) => provider.id === RED_ROUTER_ID) || disabled.includes(RED_ROUTER_ID)
+        ? list
+        : [...list, { id: RED_ROUTER_ID, name: RED_ROUTER_NAME }],
     sortBy(
       (x) => PROVIDER_PRIORITY[x.id] ?? 99,
       (x) => x.name.toLowerCase(),
@@ -91,6 +107,7 @@ export function providerOptions(
         openai: "(ChatGPT Plus/Pro or API key)",
         "opencode-go": "Low cost subscription for everyone",
         "9router": "Local router · automatic model setup",
+        "red-router": "Local router · automatic model setup",
       }[provider.id],
       category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
     })),
@@ -197,6 +214,18 @@ export function createDialogProviderOptions() {
                 <DialogOpenAICompatible
                   preset={NINE_ROUTER_PRESET}
                   offerMove={!!configured && !isNineRouterDefaultURL(configured)}
+                  lookup={lookup}
+                  onConnected={afterConnect}
+                />
+              ))
+            }
+
+            if (providerID === RED_ROUTER_ID) {
+              const configured = lookup(providerID).existing?.baseURL
+              return dialog.replace(() => (
+                <DialogOpenAICompatible
+                  preset={RED_ROUTER_PRESET}
+                  offerMove={!!configured && !isRedRouterDefaultURL(configured)}
                   lookup={lookup}
                   onConnected={afterConnect}
                 />

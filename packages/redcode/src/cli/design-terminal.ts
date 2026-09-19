@@ -6,7 +6,7 @@ import { withTimeout } from "@/util/timeout"
 
 export const help = [
   "Write a message to steer the session; /queue text waits until its current work finishes.",
-  "/mode design|plan|build · /model provider/model · /status · /stop · /resume · /review · /quit",
+  "/mode design|plan|build|question · /model provider/model · /status · /stop · /resume · /review · /quit",
   "/goal objective · /goal-status · /goal-pause · /goal-resume · /goal-budget N · /goal-drop",
   "/allow request-id once|always|reject · /answer request-id 1; 2,3 · /reject request-id",
   "For questions, separate answers with semicolons and multiple option numbers with commas.",
@@ -174,7 +174,8 @@ export async function create(input: {
       return
     }
     if (command === "/mode") {
-      if (!["design", "plan", "build"].includes(argument)) throw new Error("Usage: /mode design|plan|build")
+      if (!["design", "plan", "build", "question"].includes(argument))
+        throw new Error("Usage: /mode design|plan|build|question")
       await input.client.sessions.switchAgent({ ...ref, agent: argument }, options())
       await status(true)
       return

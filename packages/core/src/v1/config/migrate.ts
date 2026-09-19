@@ -57,6 +57,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
       keep: {
         tokens: info.compaction.preserve_recent_tokens,
       },
+      summary_max_tokens: info.compaction.summary_max_tokens,
       buffer: info.compaction.reserved,
     },
     design: info.design,
