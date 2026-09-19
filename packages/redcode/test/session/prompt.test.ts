@@ -7942,7 +7942,12 @@ it.instance(
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) =>
-        sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }),
+        sdkCfg(
+          url,
+          "@ai-sdk/openai",
+          { context: 100_000, output: 32_000 },
+          { compaction: { summary_max_tokens: 16_000 } },
+        ),
       )
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
@@ -7991,7 +7996,12 @@ it.instance(
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) =>
-        sdkCfg(url, "@ai-sdk/anthropic", { context: 100_000, output: 32_000 }),
+        sdkCfg(
+          url,
+          "@ai-sdk/anthropic",
+          { context: 100_000, output: 32_000 },
+          { compaction: { summary_max_tokens: 16_000 } },
+        ),
       )
       const { chat, prompt, sessions } = yield* startChat("Find the config files.")
       yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))
@@ -8028,7 +8038,12 @@ it.instance(
   () =>
     Effect.gen(function* () {
       const { llm } = yield* useServerConfig((url) =>
-        sdkCfg(url, "@ai-sdk/openai", { context: 100_000, output: 32_000 }),
+        sdkCfg(
+          url,
+          "@ai-sdk/openai",
+          { context: 100_000, output: 32_000 },
+          { compaction: { summary_max_tokens: 16_000 } },
+        ),
       )
       const { chat, prompt, sessions } = yield* startChat("Find the config files.")
       yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-here" }).usage({ input: 68_500, output: 10 }))

@@ -1761,12 +1761,37 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("accepts a useful length-cut compaction and continues the original request", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      responses = [
+        [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
+        [LLMEvent.textDelta({ id: "summary", text: "Partial checkpoint" }), LLMEvent.finish({ reason: "length" })],
+        fragmentFixture("text", "continued", ["Work continued"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      const context = yield* session.context(sessionID)
+      expect(context).toContainEqual(
+        expect.objectContaining({ type: "compaction", summary: expect.stringContaining("Partial checkpoint") }),
+      )
+      expect(userTexts(requests[2]).join("\n")).toContain("Keep this exact request")
+      expect(context.at(-1)).toMatchObject({ type: "assistant", finish: "stop" })
+    }),
+  )
+
   for (const invalid of ["unfinished", "length", "growing", "empty"] as const) {
     it.effect(`rejects ${invalid} compaction without replacing durable history`, () =>
       Effect.gen(function* () {
         const session = yield* setupOverflowRecovery
         const text =
-          invalid === "empty" ? " " : invalid === "growing" ? "summary ".repeat(10_000) : "Partial checkpoint"
+          invalid === "empty" || invalid === "length"
+            ? " "
+            : invalid === "growing"
+              ? "summary ".repeat(10_000)
+              : "Partial checkpoint"
         responses = [
           [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
           [

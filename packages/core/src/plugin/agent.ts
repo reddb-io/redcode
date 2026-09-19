@@ -10,6 +10,7 @@ import { PermissionV2 } from "../permission"
 import { ProjectDir } from "../project-dir"
 import { DESIGN_INSTRUCTIONS } from "../design/instructions"
 import { RepositoryGuard } from "../repository-guard"
+import { QUESTION_INSTRUCTIONS } from "../question-instructions"
 
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
@@ -214,6 +215,21 @@ export const Plugin = define({
             ),
             { action: "external_directory", resource: RepositoryGuard.worktreePattern(worktree), effect: "allow" },
           ]),
+        )
+      })
+
+      draft.update(AgentV2.ID.make("question"), (item) => {
+        item.system = QUESTION_INSTRUCTIONS
+        item.color = "success"
+        item.description = "Question mode. Asks focused investigative questions with read-only access."
+        item.mode = "primary"
+        item.permissions.push(
+          { action: "*", resource: "*", effect: "deny" },
+          ...readonlyExternalDirectory,
+          ...defaults.filter((rule) => rule.action === "read"),
+          ...["glob", "grep", "list", "session_history", "question"].map(
+            (action): PermissionV2.Rule => ({ action, resource: "*", effect: "allow" }),
+          ),
         )
       })
 
