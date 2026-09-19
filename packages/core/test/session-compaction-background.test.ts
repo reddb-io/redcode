@@ -199,10 +199,7 @@ it.effect("cancels a stalled preparation at its deadline without publishing it",
 it.effect("falls back to a fresh summary after speculative output is rejected", () =>
   Effect.gen(function* () {
     const test = yield* setup()
-    test.outputs.push([
-      LLMEvent.textDelta({ id: "s", text: "Truncated summary" }),
-      LLMEvent.finish({ reason: "length" }),
-    ])
+    test.outputs.push([LLMEvent.textDelta({ id: "s", text: " " }), LLMEvent.finish({ reason: "length" })])
     yield* test.compaction.compactIfNeeded(test.input)
     yield* Deferred.await(test.started)
     yield* Deferred.succeed(test.gate, undefined)

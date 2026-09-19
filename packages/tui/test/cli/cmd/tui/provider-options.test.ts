@@ -14,6 +14,7 @@ describe("providerOptions", () => {
       "__openai_compatible_provider__",
       "9router",
       "mistral",
+      "red-router",
     ])
     expect(options[2]).toMatchObject({
       type: "compatible",
@@ -42,7 +43,16 @@ describe("providerOptions", () => {
         { id: "mistral", name: "Mistral" },
         { id: "aws", name: "AWS Bedrock" },
       ]).map((option) => option.value),
-    ).toEqual(["openai", "anthropic", "__openai_compatible_provider__", "9router", "aws", "mistral", "custom-z"])
+    ).toEqual([
+      "openai",
+      "anthropic",
+      "__openai_compatible_provider__",
+      "9router",
+      "aws",
+      "mistral",
+      "red-router",
+      "custom-z",
+    ])
   })
 
   test("offers 9Router before configuration without duplicating a configured provider", () => {
@@ -56,6 +66,16 @@ describe("providerOptions", () => {
 
   test("hides 9Router when disabled_providers contains it", () => {
     expect(providerOptions([], ["9router"]).some((option) => option.value === "9router")).toBe(false)
+  })
+
+  test("offers RedRouter without duplicates and respects disabled providers", () => {
+    expect(providerOptions([]).find((option) => option.value === "red-router")?.title).toBe("RedRouter")
+    const options = providerOptions([{ id: "red-router", name: "My RedRouter" }]).filter(
+      (option) => option.value === "red-router",
+    )
+    expect(options).toHaveLength(1)
+    expect(options[0].title).toBe("My RedRouter")
+    expect(providerOptions([], ["red-router"]).some((option) => option.value === "red-router")).toBe(false)
   })
 
   test("does not collide with a configured provider named other", () => {

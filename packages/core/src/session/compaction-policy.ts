@@ -29,7 +29,7 @@ export const tailBudget = (input: { readonly usable: number; readonly configured
   return Math.max(0, Math.min(proportional, Math.floor(input.usable * MAX_TAIL_SHARE)))
 }
 
-/** The summary's output budget: `summary_max_tokens` when configured, otherwise capped at 16k. */
+/** The summary's output budget: `summary_max_tokens` when configured, otherwise capped at 32k. */
 export const summaryMaxTokens = (output: number | undefined, configured?: number) => {
   const cap = configured !== undefined && configured > 0 ? configured : SUMMARY_MAX_TOKENS
   return output !== undefined && output > 0 ? Math.min(output, cap) : cap
