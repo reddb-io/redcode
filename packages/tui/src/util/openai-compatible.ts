@@ -1,6 +1,9 @@
 export const NINE_ROUTER_ID = "9router"
 export const NINE_ROUTER_NAME = "9Router"
 export const NINE_ROUTER_DEFAULT_URL = "http://127.0.0.1:20128/v1"
+export const RED_ROUTER_ID = "red-router"
+export const RED_ROUTER_NAME = "RedRouter"
+export const RED_ROUTER_DEFAULT_URL = "http://127.0.0.1:25050/v1"
 export const DEFAULT_PROVIDER_ID = "openai-compatible"
 export const COMPATIBLE_NPM = ["@ai-sdk/openai-compatible", "@ai-sdk/openai"] as const
 export type CompatibleNpm = (typeof COMPATIBLE_NPM)[number]
@@ -52,6 +55,12 @@ export function normalizeProviderID(value: string) {
 export function isNineRouterDefaultURL(baseURL: string) {
   const url = URL.parse(normalizeBaseURL(baseURL) ?? "")
   return !!url && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) && url.port === "20128"
+}
+
+/** True for the addresses RedRouter listens on by default, where a `red-router` provider belongs. */
+export function isRedRouterDefaultURL(baseURL: string) {
+  const url = URL.parse(normalizeBaseURL(baseURL) ?? "")
+  return !!url && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) && url.port === "25050"
 }
 
 /**
