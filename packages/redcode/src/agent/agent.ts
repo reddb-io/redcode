@@ -13,7 +13,7 @@ import { ProviderTransform } from "@/provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
-import PROMPT_QUESTION from "./prompt/question.txt"
+import { QUESTION_INSTRUCTIONS } from "@reddb-io/redcode-core/question-instructions"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_GOAL_JUDGE from "./prompt/goal-judge.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
@@ -266,30 +266,23 @@ const layer = Layer.effect(
           },
           question: {
             name: "question",
-            color: "warning",
-            description:
-              "Question mode. Explains how something works; it cannot write code, edit files or change anything.",
+            color: "success",
+            description: "Question mode. Asks focused investigative questions with read-only access.",
             options: {},
             permission: Permission.merge(
-              defaults.map((rule) => (rule.permission === "*" ? { ...rule, action: "deny" as const } : rule)),
+              Permission.fromConfig({ "*": "deny" }),
+              defaults.filter((rule) => rule.permission === "read"),
               Permission.fromConfig({
                 glob: "allow",
                 grep: "allow",
                 list: "allow",
-                read: "allow",
-                webfetch: "allow",
-                websearch: "allow",
                 session_history: "allow",
-                bash: "deny",
-                task: {
-                  "*": "deny",
-                  explore: "allow",
-                },
+                question: "allow",
                 external_directory: readonlyExternalDirectory,
               }),
               user,
             ),
-            prompt: PROMPT_QUESTION,
+            prompt: QUESTION_INSTRUCTIONS,
             mode: "primary",
             native: true,
           },

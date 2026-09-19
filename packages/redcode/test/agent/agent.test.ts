@@ -61,6 +61,35 @@ it.instance("returns default native agents when no config", () =>
   }),
 )
 
+it.instance("question is a green primary agent with read-only investigation permissions", () =>
+  Effect.gen(function* () {
+    const question = yield* load((svc) => svc.get("question"))
+    expect(question.mode).toBe("primary")
+    expect(question.color).toBe("success")
+    for (const action of ["read", "glob", "grep", "list", "session_history", "question"]) {
+      expect(evalPerm(question, action)).toBe("allow")
+    }
+    for (const action of [
+      "edit",
+      "bash",
+      "task",
+      "worktree_prepare",
+      "plan_enter",
+      "plan_exit",
+      "design_exit",
+      "design_preview",
+      "project_tooling",
+      "todowrite",
+      "external_write",
+      "mcp_write",
+    ]) {
+      expect(evalPerm(question, action)).toBe("deny")
+    }
+    expect(Permission.evaluate("read", ".env", question.permission).action).toBe("ask")
+    expect(Permission.evaluate("task", "explore", question.permission).action).toBe("deny")
+  }),
+)
+
 it.instance("build agent has correct default properties", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))

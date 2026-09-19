@@ -123,9 +123,40 @@ describe("AgentV2", () => {
         "general",
         "goal_judge",
         "plan",
+        "question",
         "summary",
         "title",
       ])
+      expect(agents.filter((item) => item.mode === "primary" && !item.hidden).map((item) => String(item.id))).toEqual([
+        "build",
+        "plan",
+        "design",
+        "question",
+      ])
+      const question = agents.find((item) => item.id === "question")!
+      expect(question.color).toBe("success")
+      for (const action of ["read", "glob", "grep", "list", "session_history", "question"]) {
+        expect(PermissionV2.evaluate(action, "src/index.ts", question.permissions).effect).toBe("allow")
+      }
+      for (const action of [
+        "edit",
+        "bash",
+        "task",
+        "worktree_prepare",
+        "plan_enter",
+        "plan_exit",
+        "design_exit",
+        "design_preview",
+        "project_tooling",
+        "todowrite",
+        "external_write",
+        "mcp_write",
+      ]) {
+        expect(PermissionV2.evaluate(action, "*", question.permissions).effect).toBe("deny")
+      }
+      expect(PermissionV2.evaluate("read", ".env", question.permissions).effect).toBe("ask")
+      expect(PermissionV2.evaluate("task", "explore", question.permissions).effect).toBe("deny")
+      expect(PermissionV2.evaluate("edit", ".red/code/plans/proposal.md", question.permissions).effect).toBe("deny")
       for (const name of ["plan", "design"]) {
         const rules = agents.find((item) => item.id === name)!.permissions
         expect(PermissionV2.evaluate("bash", "touch src/index.ts", rules).effect).toBe("deny")
