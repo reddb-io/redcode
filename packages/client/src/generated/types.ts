@@ -6929,7 +6929,7 @@ export type HooksImportOutput = {
   readonly data: { readonly imported: number; readonly target: string; readonly restart_required: boolean }
 }
 
-export type ServerIntelligenceGetOutput = {
+export type IntelligenceGetOutput = {
   readonly settings: {
     readonly enabled: boolean
     readonly onboarding: "pending" | "deferred" | "completed"
@@ -6945,7 +6945,7 @@ export type ServerIntelligenceGetOutput = {
   readonly environment: string
 }
 
-export type ServerIntelligenceSaveInput = {
+export type IntelligenceSaveInput = {
   readonly settings: {
     readonly settings: {
       readonly enabled: boolean
@@ -6978,7 +6978,7 @@ export type ServerIntelligenceSaveInput = {
   }["apiKey"]
 }
 
-export type ServerIntelligenceSaveOutput = {
+export type IntelligenceSaveOutput = {
   readonly enabled: boolean
   readonly onboarding: "pending" | "deferred" | "completed"
   readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -6991,7 +6991,7 @@ export type ServerIntelligenceSaveOutput = {
   }
 }
 
-export type ServerIntelligenceDiscoverInput = {
+export type IntelligenceDiscoverInput = {
   readonly evaluator: {
     readonly evaluator: {
       readonly transport: "opencode-zen" | "typesafe" | "red-router"
@@ -7012,12 +7012,12 @@ export type ServerIntelligenceDiscoverInput = {
   }["apiKey"]
 }
 
-export type ServerIntelligenceDiscoverOutput = {
+export type IntelligenceDiscoverOutput = {
   readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly manual: boolean
 }
 
-export type ServerIntelligenceProbeInput = {
+export type IntelligenceProbeInput = {
   readonly evaluator: {
     readonly evaluator: {
       readonly transport: "opencode-zen" | "typesafe" | "red-router"
@@ -7038,11 +7038,11 @@ export type ServerIntelligenceProbeInput = {
   }["apiKey"]
 }
 
-export type ServerIntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
+export type IntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
 
-export type ServerIntelligenceHistoryInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+export type IntelligenceHistoryInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
-export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
+export type IntelligenceHistoryOutput = ReadonlyArray<{
   readonly id: string
   readonly fingerprint: string
   readonly sessionID: string
@@ -7085,10 +7085,10 @@ export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
   readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
 }>
 
-export type ServerIntelligenceModelTestInput = {
+export type IntelligenceModelsTestInput = {
   readonly id: { readonly id: string; readonly providerID: string; readonly variant?: string }["id"]
   readonly providerID: { readonly id: string; readonly providerID: string; readonly variant?: string }["providerID"]
   readonly variant?: { readonly id: string; readonly providerID: string; readonly variant?: string }["variant"]
 }
 
-export type ServerIntelligenceModelTestOutput = { readonly ok: boolean; readonly message: string }
+export type IntelligenceModelsTestOutput = { readonly ok: boolean; readonly message: string }

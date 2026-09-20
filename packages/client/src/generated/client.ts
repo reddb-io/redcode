@@ -174,17 +174,17 @@ import type {
   HooksRevokeOutput,
   HooksImportInput,
   HooksImportOutput,
-  ServerIntelligenceGetOutput,
-  ServerIntelligenceSaveInput,
-  ServerIntelligenceSaveOutput,
-  ServerIntelligenceDiscoverInput,
-  ServerIntelligenceDiscoverOutput,
-  ServerIntelligenceProbeInput,
-  ServerIntelligenceProbeOutput,
-  ServerIntelligenceHistoryInput,
-  ServerIntelligenceHistoryOutput,
-  ServerIntelligenceModelTestInput,
-  ServerIntelligenceModelTestOutput,
+  IntelligenceGetOutput,
+  IntelligenceSaveInput,
+  IntelligenceSaveOutput,
+  IntelligenceDiscoverInput,
+  IntelligenceDiscoverOutput,
+  IntelligenceProbeInput,
+  IntelligenceProbeOutput,
+  IntelligenceHistoryInput,
+  IntelligenceHistoryOutput,
+  IntelligenceModelsTestInput,
+  IntelligenceModelsTestOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1493,14 +1493,14 @@ export function make(options: ClientOptions) {
           requestOptions,
         ),
     },
-    "server.intelligence": {
+    intelligence: {
       get: (requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceGetOutput>(
+        request<IntelligenceGetOutput>(
           { method: "GET", path: `/api/intelligence`, successStatus: 200, declaredStatuses: [400, 401], empty: false },
           requestOptions,
         ),
-      save: (input: ServerIntelligenceSaveInput, requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceSaveOutput>(
+      save: (input: IntelligenceSaveInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceSaveOutput>(
           {
             method: "PUT",
             path: `/api/intelligence`,
@@ -1511,8 +1511,8 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      discover: (input: ServerIntelligenceDiscoverInput, requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceDiscoverOutput>(
+      discover: (input: IntelligenceDiscoverInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceDiscoverOutput>(
           {
             method: "POST",
             path: `/api/intelligence/models`,
@@ -1523,8 +1523,8 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      probe: (input: ServerIntelligenceProbeInput, requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceProbeOutput>(
+      probe: (input: IntelligenceProbeInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceProbeOutput>(
           {
             method: "POST",
             path: `/api/intelligence/test`,
@@ -1535,8 +1535,8 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      history: (input: ServerIntelligenceHistoryInput, requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceHistoryOutput>(
+      history: (input: IntelligenceHistoryInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceHistoryOutput>(
           {
             method: "GET",
             path: `/api/intelligence/evaluations`,
@@ -1548,9 +1548,9 @@ export function make(options: ClientOptions) {
           requestOptions,
         ),
     },
-    "server.intelligence.model": {
-      test: (input: ServerIntelligenceModelTestInput, requestOptions?: RequestOptions) =>
-        request<ServerIntelligenceModelTestOutput>(
+    intelligenceModels: {
+      test: (input: IntelligenceModelsTestInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceModelsTestOutput>(
           {
             method: "POST",
             path: `/api/intelligence/test-model`,

@@ -37,6 +37,8 @@ export const groupNames = {
   "server.reference": "references",
   "server.projectCopy": "projectCopies",
   "server.hook": "hooks",
+  "server.intelligence": "intelligence",
+  "server.intelligence.model": "intelligenceModels",
 } as const
 
 export const endpointNames = {
