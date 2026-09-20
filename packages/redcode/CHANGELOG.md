@@ -1,5 +1,15 @@
 # opencode
 
+## 0.40.0
+
+### Minor Changes
+
+- 5df51fd: Add optional global System One evaluator and principal/fast System Two roles, with CLI, TUI and app onboarding. The TUI can connect a generative provider inside setup, return to the preserved step, choose or reuse the System Two models, and later edit System One or System Two independently. Validate task completion, plans, design feedback and compaction against source evidence using native TypeSafe or RedRouter System One requests, preserving existing state when checks cannot approve a change.
+
+### Patch Changes
+
+- 5df51fd: Recommend OpenCode Zen with Jev Free in global CLI, TUI and app onboarding. Preserve configured evaluators, test availability before activation, and never automatically fall back to a paid model. Keep Jev out of generative role selection.
+
 ## 0.39.0
 
 ### Minor Changes
