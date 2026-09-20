@@ -13,7 +13,7 @@ export const dict = {
   "settings.intelligence.connectZen": "Connect OpenCode Zen / get an API key",
   "settings.intelligence.zenUnavailable":
     "The selected Zen evaluator could not be verified. Check its availability and your Zen API key, or choose another evaluator. No paid fallback was used; previous settings are preserved.",
-  "settings.intelligence.connect": "Connect generative providers",
+  "settings.intelligence.connect": "Connect providers",
   "settings.intelligence.operation.todos": "Tasks",
   "settings.intelligence.operation.plan": "Plan",
   "settings.intelligence.operation.feedback": "Design feedback",

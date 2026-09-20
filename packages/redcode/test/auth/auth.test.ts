@@ -1,10 +1,12 @@
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Credential } from "@reddb-io/redcode-core/credential"
+import { Integration } from "@reddb-io/redcode-schema/integration"
 import { Effect } from "effect"
 import { Auth } from "../../src/auth"
 import { testEffect } from "../lib/effect"
 
-const it = testEffect(LayerNode.compile(Auth.node))
+const it = testEffect(LayerNode.compile(LayerNode.group([Auth.node, Credential.node])))
 
 describe("Auth", () => {
   it.instance("set normalizes trailing slashes in keys", () =>
@@ -61,15 +63,21 @@ describe("Auth", () => {
   it.instance("set and remove are no-ops on keys without trailing slashes", () =>
     Effect.gen(function* () {
       const auth = yield* Auth.Service
+      const credentials = yield* Credential.Service
       yield* auth.set("anthropic", {
         type: "api",
         key: "sk-test",
       })
       const data = yield* auth.all()
       expect(data["anthropic"]).toBeDefined()
+      expect((yield* credentials.list(Integration.ID.make("anthropic")))[0]?.value).toMatchObject({
+        type: "key",
+        key: "sk-test",
+      })
       yield* auth.remove("anthropic")
       const after = yield* auth.all()
       expect(after["anthropic"]).toBeUndefined()
+      expect(yield* credentials.list(Integration.ID.make("anthropic"))).toEqual([])
     }),
   )
 })

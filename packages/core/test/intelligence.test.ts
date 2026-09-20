@@ -338,6 +338,10 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
     model: "jev-1.13-free",
   })
   expect(Intelligence.evaluatorPreset("typesafe").model).toBe("jev-1.13.0")
+  expect(Intelligence.evaluatorPreset("cloudflare-ai-gateway").model).toBe("typesafe/jev")
+  expect(Intelligence.evaluatorPreset("vercel").model).toBe("typesafe-ai/jev")
+  expect(Intelligence.evaluatorPreset("vivgrid").model).toBe("jev")
+  expect(Intelligence.evaluatorPreset("nano-gpt").model).toBe("typesafe/jev-latest")
   expect(Intelligence.defaults).toEqual({ enabled: false, onboarding: "pending" })
   expect(Intelligence.isJev("typesafe-ai/jev")).toBe(true)
   expect(Intelligence.isJev("jev-1.13-free")).toBe(true)
@@ -366,6 +370,102 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
       expect(yield* service.read()).toEqual(settings)
     }),
   )
+})
+
+test("System One onboarding lists configured catalog providers first", async () => {
+  await using dir = await tmpdir()
+  const cloudflare = new Credential.Info({
+    id: Credential.ID.create(),
+    integrationID: Integration.ID.make("cloudflare-ai-gateway"),
+    label: "Cloudflare",
+    value: { type: "key", key: "fixture", metadata: { accountId: "account", gatewayId: "gateway" } },
+  })
+  const providers = ["opencode", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"]
+  const catalog = Object.fromEntries(providers.map((id) => [id, { id, name: id, env: [], models: {} }]))
+  const service = await Effect.runPromise(
+    Intelligence.make(
+      dir.path,
+      {
+        get: (id) => Effect.succeed(id === cloudflare.id ? cloudflare : undefined),
+        list: (id) => Effect.succeed(id === cloudflare.integrationID ? [cloudflare] : []),
+        create: () => Effect.die("unused"),
+      },
+      fetch,
+      catalog,
+    ),
+  )
+  const options = await Effect.runPromise(service.options())
+  expect(options[0]).toMatchObject({
+    name: "cloudflare-ai-gateway",
+    configured: true,
+    evaluator: { transport: "cloudflare-ai-gateway", model: "typesafe/jev", credentialID: cloudflare.id },
+  })
+  expect(options.map((option) => option.evaluator.transport)).toEqual(
+    expect.arrayContaining(["opencode-zen", "typesafe", "red-router", "vercel", "vivgrid", "nano-gpt"]),
+  )
+})
+
+test("Cloudflare and Vercel use their native System One envelopes", async () => {
+  await using dir = await tmpdir()
+  const calls: { url: URL; headers: Headers; body: unknown }[] = []
+  const fetcher: typeof fetch = Object.assign(
+    async (request: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(request instanceof Request ? request.url : request)
+      const headers = new Headers(init?.headers)
+      const body: unknown = JSON.parse(String(init?.body))
+      calls.push({ url, headers, body })
+      if (url.pathname.endsWith("/evaluation-model"))
+        return Response.json({
+          answers: { check: { type: "boolean", probability: 0.99 } },
+          usage: { inputTokens: 8, outputTokens: 1 },
+        })
+      return Response.json({
+        model: "jev-1.13.0",
+        answers: { check: { type: "noul", noul: 0.99 } },
+        usage: { input_tokens: 8, output_tokens: 1 },
+      })
+    },
+    { preconnect: fetch.preconnect },
+  )
+  const cloudflare = new Credential.Info({
+    id: Credential.ID.create(),
+    integrationID: Integration.ID.make("cloudflare-ai-gateway"),
+    label: "Cloudflare",
+    value: { type: "key", key: "cloudflare-key", metadata: { accountId: "account", gatewayId: "gateway" } },
+  })
+  const service = await Effect.runPromise(
+    Intelligence.make(
+      dir.path,
+      {
+        get: (id) => Effect.succeed(id === cloudflare.id ? cloudflare : undefined),
+        list: () => Effect.succeed([]),
+        create: () => Effect.die("unused"),
+      },
+      fetcher,
+    ),
+  )
+  expect(
+    (
+      await Effect.runPromise(
+        service.probe({
+          evaluator: { ...Intelligence.evaluatorPreset("cloudflare-ai-gateway"), credentialID: cloudflare.id },
+        }),
+      )
+    ).ok,
+  ).toBe(true)
+  expect(
+    (
+      await Effect.runPromise(
+        service.probe({ evaluator: Intelligence.evaluatorPreset("vercel"), apiKey: "vercel-key" }),
+      )
+    ).ok,
+  ).toBe(true)
+  expect(calls[0].url.pathname).toBe("/client/v4/accounts/account/ai/run")
+  expect(calls[0].headers.get("cf-aig-gateway-id")).toBe("gateway")
+  expect(calls[0].body).toMatchObject({ model: "typesafe/jev", input: { questions: { check: { type: "noul" } } } })
+  expect(calls[1].url.pathname).toBe("/v4/ai/evaluation-model")
+  expect(calls[1].headers.get("ai-model-id")).toBe("typesafe-ai/jev")
+  expect(calls[1].body).toMatchObject({ questions: { check: { type: "boolean" } } })
 })
 
 test("Zen discovery excludes chat models and never falls back from free to paid Jev", async () => {

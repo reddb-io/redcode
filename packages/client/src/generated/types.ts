@@ -6936,13 +6936,37 @@ export type IntelligenceGetOutput = {
     readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly evaluator?: {
-      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
     }
   }
   readonly environment: string
+  readonly evaluators: ReadonlyArray<{
+    readonly name: string
+    readonly configured: boolean
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+  }>
 }
 
 export type IntelligenceSaveInput = {
@@ -6953,7 +6977,14 @@ export type IntelligenceSaveInput = {
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
-        readonly transport: "opencode-zen" | "typesafe" | "red-router"
+        readonly transport:
+          | "opencode-zen"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: string
@@ -6968,7 +6999,14 @@ export type IntelligenceSaveInput = {
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
-        readonly transport: "opencode-zen" | "typesafe" | "red-router"
+        readonly transport:
+          | "opencode-zen"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: string
@@ -6984,7 +7022,14 @@ export type IntelligenceSaveOutput = {
   readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
   readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
   readonly evaluator?: {
-    readonly transport: "opencode-zen" | "typesafe" | "red-router"
+    readonly transport:
+      | "opencode-zen"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
     readonly baseURL: string
     readonly model: string
     readonly credentialID?: string
@@ -6994,7 +7039,14 @@ export type IntelligenceSaveOutput = {
 export type IntelligenceDiscoverInput = {
   readonly evaluator: {
     readonly evaluator: {
-      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
@@ -7003,7 +7055,14 @@ export type IntelligenceDiscoverInput = {
   }["evaluator"]
   readonly apiKey?: {
     readonly evaluator: {
-      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
@@ -7020,7 +7079,14 @@ export type IntelligenceDiscoverOutput = {
 export type IntelligenceProbeInput = {
   readonly evaluator: {
     readonly evaluator: {
-      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
@@ -7029,7 +7095,14 @@ export type IntelligenceProbeInput = {
   }["evaluator"]
   readonly apiKey?: {
     readonly evaluator: {
-      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly transport:
+        | "opencode-zen"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
@@ -7078,7 +7151,14 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
   readonly created: number
   readonly duration: number
   readonly evaluator?: {
-    readonly transport: "opencode-zen" | "typesafe" | "red-router"
+    readonly transport:
+      | "opencode-zen"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
     readonly baseURL: string
     readonly model: string
   }

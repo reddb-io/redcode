@@ -8,7 +8,15 @@ import { optional } from "./schema"
 const Text = Schema.String.check(Schema.isMinLength(1))
 const Probability = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
 export const Evaluator = Schema.Struct({
-  transport: Schema.Literals(["opencode-zen", "typesafe", "red-router"]),
+  transport: Schema.Literals([
+    "opencode-zen",
+    "typesafe",
+    "red-router",
+    "cloudflare-ai-gateway",
+    "vercel",
+    "vivgrid",
+    "nano-gpt",
+  ]),
   baseURL: Text,
   model: Text,
   credentialID: Credential.ID.pipe(optional),
@@ -103,7 +111,17 @@ export const Evaluation = Schema.Struct({
 }).annotate({ identifier: "Intelligence.Evaluation" })
 export interface Evaluation extends Schema.Schema.Type<typeof Evaluation> {}
 export interface Status extends Schema.Schema.Type<typeof Status> {}
-export const Status = Schema.Struct({ settings: Settings, environment: Schema.String }).annotate({
+export const EvaluatorOption = Schema.Struct({
+  name: Text,
+  configured: Schema.Boolean,
+  evaluator: Evaluator,
+}).annotate({ identifier: "Intelligence.EvaluatorOption" })
+export interface EvaluatorOption extends Schema.Schema.Type<typeof EvaluatorOption> {}
+export const Status = Schema.Struct({
+  settings: Settings,
+  environment: Schema.String,
+  evaluators: Schema.Array(EvaluatorOption),
+}).annotate({
   identifier: "Intelligence.Status",
 })
 export interface Models extends Schema.Schema.Type<typeof Models> {}

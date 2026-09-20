@@ -27,6 +27,11 @@ test("global intelligence setup is available through the CLI server composition"
     expect(probe.status).toBe(200)
     expect((await probe.json()).ok).toBe(false)
     const before = await initial.json()
+    expect(
+      before.evaluators.some(
+        (option: { evaluator: { transport: string } }) => option.evaluator.transport === "opencode-zen",
+      ),
+    ).toBe(true)
     try {
       const saved = await request("PUT", { settings: { enabled: false, onboarding: "deferred" } })
       expect(saved.status).toBe(200)

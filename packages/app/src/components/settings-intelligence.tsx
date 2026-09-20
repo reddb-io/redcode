@@ -49,6 +49,7 @@ function IntelligenceForm() {
     evaluations: [] as Intelligence.Evaluation[],
     message: "",
     discovered: [] as { id: string; name: string }[],
+    evaluators: [] as Intelligence.EvaluatorOption[],
   })
   const value = (ref?: Model.Ref) => (ref ? `${ref.providerID}/${ref.id}` : "")
   const ref = (text: string) => ({
@@ -83,6 +84,7 @@ function IntelligenceForm() {
       if (!active) return
       set("settings", result.settings)
       set("environment", result.environment)
+      set("evaluators", result.evaluators)
       set("principal", value(result.settings.principal))
       set("fast", value(result.settings.fast))
       set("transport", result.settings.evaluator?.transport ?? IntelligenceClient.evaluatorPreset().transport)
@@ -171,19 +173,26 @@ function IntelligenceForm() {
             class={inputClass}
             value={state.transport}
             onChange={(event) => {
-              const transport = event.currentTarget.value
-              if (transport !== "opencode-zen" && transport !== "typesafe" && transport !== "red-router") return
-              const preset = IntelligenceClient.evaluatorPreset(transport)
-              set("transport", preset.transport)
-              set("baseURL", preset.baseURL)
-              set("model", preset.model)
+              const selected = state.evaluators.find(
+                (option) => option.evaluator.transport === event.currentTarget.value,
+              )
+              if (!selected) return
+              set("transport", selected.evaluator.transport)
+              set("baseURL", selected.evaluator.baseURL)
+              set("model", selected.evaluator.model)
+              set("settings", (settings) => ({ ...settings, evaluator: selected.evaluator }))
               set("key", "")
               set("discovered", [])
             }}
           >
-            <option value="opencode-zen">{language.t("settings.intelligence.zen")}</option>
-            <option value="typesafe">TypeSafe</option>
-            <option value="red-router">RedRouter</option>
+            <For each={state.evaluators}>
+              {(option) => (
+                <option value={option.evaluator.transport}>
+                  {option.configured ? "Connected · " : ""}
+                  {option.name}
+                </option>
+              )}
+            </For>
           </select>
         </label>
         <Show when={state.transport === "opencode-zen"}>

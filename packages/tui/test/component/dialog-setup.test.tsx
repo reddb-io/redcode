@@ -65,6 +65,35 @@ const provider = {
 const intelligence = {
   settings: { enabled: false, onboarding: "pending" } as Intelligence.Settings,
   environment: "/global",
+  evaluators: [
+    {
+      name: "Cloudflare AI Gateway",
+      configured: true,
+      evaluator: {
+        transport: "cloudflare-ai-gateway",
+        baseURL: "https://api.cloudflare.com/client/v4",
+        model: "typesafe/jev",
+      },
+    },
+    {
+      name: "OpenCode Zen — Jev Free (recommended)",
+      configured: false,
+      evaluator: {
+        transport: "opencode-zen",
+        baseURL: "https://opencode.ai/zen/v1",
+        model: "jev-1.13-free",
+      },
+    },
+    {
+      name: "Vercel AI Gateway",
+      configured: false,
+      evaluator: {
+        transport: "vercel",
+        baseURL: "https://ai-gateway.vercel.sh/v4/ai",
+        model: "typesafe-ai/jev",
+      },
+    },
+  ] satisfies Intelligence.EvaluatorOption[],
 }
 
 test("global setup selects System Two models and offers provider connection in the same flow", async () => {
@@ -99,6 +128,10 @@ test("global setup selects System Two models and offers provider connection in t
     )
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("System One connection"))
+    const evaluators = setup.app.captureCharFrame()
+    expect(evaluators).toContain("Cloudflare AI Gateway")
+    expect(evaluators).toContain("Configured connection")
+    expect(evaluators).toContain("Vercel AI Gateway")
   } finally {
     setup.app.renderer.destroy()
   }
@@ -183,6 +216,7 @@ test("configured setup can edit System Two without walking through System One", 
       },
     } as Intelligence.Settings,
     environment: "/global",
+    evaluators: intelligence.evaluators,
   }
   const setup = await mount(
     (url) => {

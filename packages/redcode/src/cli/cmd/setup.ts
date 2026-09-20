@@ -37,6 +37,7 @@ export const SetupCommand = effectCmd({
         Effect.provide(locationServiceMapLayer),
       )
       const providers = yield* provider.list()
+      const evaluators = yield* service.options()
       const choices = Object.values(providers).flatMap((provider) =>
         Object.values(provider.models)
           .filter((model) => model.capabilities.protocol !== "systemone")
@@ -61,40 +62,40 @@ export const SetupCommand = effectCmd({
       const transport = yield* answer(
         yield* select<Evaluator["transport"]>({
           message: "System One connection",
-          options: [
-            { value: "opencode-zen" as const, label: "OpenCode Zen — Jev Free (recommended)" },
-            { value: "typesafe" as const, label: "TypeSafe directly" },
-            { value: "red-router" as const, label: "RedRouter" },
-          ],
+          options: evaluators.map((option) => ({
+            value: option.evaluator.transport,
+            label: `${option.configured ? "Configured · " : ""}${option.name}`,
+          })),
         }),
       )
+      const selected = evaluators.find((option) => option.evaluator.transport === transport)!
       const baseURL = yield* answer(
         yield* text({
           message: "API base URL",
           initialValue:
-            previous.evaluator?.transport === transport
-              ? previous.evaluator.baseURL
-              : Intelligence.evaluatorPreset(transport).baseURL,
+            previous.evaluator?.transport === transport ? previous.evaluator.baseURL : selected.evaluator.baseURL,
         }),
       )
       const key = yield* answer(
         yield* password({
-          message:
-            transport === "opencode-zen"
+          message: selected.configured
+            ? "API key (empty reuses the configured provider connection)"
+            : transport === "opencode-zen"
               ? "Zen API key (empty reuses OpenCode connection, OPENCODE_API_KEY, or public free access)"
               : "System One API key (leave empty to reuse saved credentials or environment)",
         }),
       )
+      const credentialID =
+        previous.evaluator?.transport === transport && previous.evaluator.baseURL === baseURL
+          ? previous.evaluator.credentialID
+          : selected.evaluator.baseURL === baseURL
+            ? selected.evaluator.credentialID
+            : undefined
       const evaluator = {
         transport,
         baseURL,
-        model:
-          previous.evaluator?.transport === transport
-            ? previous.evaluator.model
-            : Intelligence.evaluatorPreset(transport).model,
-        ...(previous.evaluator?.transport === transport && previous.evaluator.baseURL === baseURL
-          ? { credentialID: previous.evaluator.credentialID }
-          : {}),
+        model: previous.evaluator?.transport === transport ? previous.evaluator.model : selected.evaluator.model,
+        ...(credentialID ? { credentialID } : {}),
       }
       const discovered = yield* service.discover({ evaluator, ...(key ? { apiKey: key } : {}) })
       const model = discovered.models.length

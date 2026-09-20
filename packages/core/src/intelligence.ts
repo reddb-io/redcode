@@ -9,14 +9,23 @@ import { Credential } from "./credential"
 import { Global } from "./global"
 import { Integration } from "@reddb-io/redcode-schema/integration"
 import { makeGlobalNode } from "./effect/app-node"
+import { ModelsDev } from "./models-dev"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 export const POLICY = "semantic-v1-experimental"
 /** Defaults are offered by onboarding only; existing settings are never migrated implicitly. */
-export function evaluatorPreset(transport: Intelligence.Evaluator["transport"] = "opencode-zen"): Intelligence.Evaluator {
+export function evaluatorPreset(
+  transport: Intelligence.Evaluator["transport"] = "opencode-zen",
+): Intelligence.Evaluator {
   if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1", model: "jev-1.13-free" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
-  return { transport, baseURL: "http://localhost:25050/v1", model: "jev-1.13.0" }
+  if (transport === "red-router") return { transport, baseURL: "http://localhost:25050/v1", model: "jev-1.13.0" }
+  if (transport === "cloudflare-ai-gateway")
+    return { transport, baseURL: "https://api.cloudflare.com/client/v4", model: "typesafe/jev" }
+  if (transport === "vercel")
+    return { transport, baseURL: "https://ai-gateway.vercel.sh/v4/ai", model: "typesafe-ai/jev" }
+  if (transport === "vivgrid") return { transport, baseURL: "https://api.vivgrid.com/v1", model: "jev" }
+  return { transport, baseURL: "https://nano-gpt.com/api/v1", model: "typesafe/jev-latest" }
 }
 const JevIDs = new Set([
   "jev",
@@ -26,6 +35,8 @@ const JevIDs = new Set([
   "jev-1.13-free",
   "jev-1.13.0",
   "typesafe/jev",
+  "typesafe/jev-latest",
+  "typesafe/jev-1.13",
   "typesafe-ai/jev",
 ])
 /** Persistence safeguard for old settings; live catalogs classify execution protocol explicitly. */
@@ -53,6 +64,7 @@ export interface GenerationInput {
 export interface Interface {
   read(): Effect.Effect<Intelligence.Settings, Error>
   save(input: typeof Intelligence.Save.Type): Effect.Effect<Intelligence.Settings, Error>
+  options(): Effect.Effect<Intelligence.EvaluatorOption[], Error>
   request(
     evaluator: Intelligence.Evaluator,
     suffix: string,
@@ -102,6 +114,7 @@ export const make = (
   root: string,
   credentials: Pick<Credential.Interface, "get" | "create" | "list">,
   fetcher: typeof fetch = fetch,
+  catalog: Record<string, ModelsDev.Provider> = {},
 ) =>
   Effect.gen(function* () {
     const lock = yield* Semaphore.make(1)
@@ -132,16 +145,52 @@ export const make = (
       const credential = yield* credentials.get(Credential.ID.make(evaluator.credentialID))
       const metadata = credential?.value.metadata
       const baseURL = validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined
+      const owned = credential?.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`)
+      const shared =
+        credential?.integrationID === Integration.ID.make(providerIntegration(evaluator.transport)) &&
+        baseURL === evaluatorPreset(evaluator.transport).baseURL
       if (
         !credential ||
-        credential.integrationID !== Integration.ID.make(`intelligence:${evaluator.transport}`) ||
-        metadata?.intelligenceTransport !== evaluator.transport ||
-        metadata.intelligenceBaseURL !== baseURL
+        (!owned && !shared) ||
+        (owned && (metadata?.intelligenceTransport !== evaluator.transport || metadata.intelligenceBaseURL !== baseURL))
       )
         return yield* new Error({
           message: "Stored System One credential does not belong to this transport and API origin",
         })
       return credential
+    })
+    const options = Effect.fn("Intelligence.options")(function* () {
+      const offers = new Map(
+        ModelsDev.systemOneOffers(catalog).map((offer) => [
+          offer.providerID,
+          { name: offer.provider, model: offer.model },
+        ]),
+      )
+      const entries = [
+        { transport: "opencode-zen" as const, name: "OpenCode Zen — Jev Free" },
+        { transport: "typesafe" as const, name: "TypeSafe" },
+        { transport: "red-router" as const, name: "RedRouter" },
+        ...(["cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"] as const).flatMap((transport) => {
+          const offer = offers.get(transport)
+          return offer ? [{ transport, name: offer.name, model: offer.model }] : []
+        }),
+      ]
+      return yield* Effect.forEach(entries, (entry) =>
+        Effect.gen(function* () {
+          const preset = evaluatorPreset(entry.transport)
+          const connections = yield* credentials.list(Integration.ID.make(providerIntegration(entry.transport)))
+          const credential = connections.toReversed().find((item) => credentialValue(item.value))
+          return {
+            name: entry.transport === "opencode-zen" ? `${entry.name} (recommended)` : entry.name,
+            configured: Boolean(credential || providerEnvironment(entry.transport).some((name) => process.env[name])),
+            evaluator: {
+              ...preset,
+              ...("model" in entry ? { model: entry.model } : {}),
+              ...(credential ? { credentialID: credential.id } : {}),
+            },
+          }
+        }),
+      ).pipe(Effect.map((items) => items.toSorted((a, b) => Number(b.configured) - Number(a.configured))))
     })
     const save = Effect.fn("Intelligence.save")(function* (input: typeof Intelligence.Save.Type) {
       const settings = yield* Schema.decodeUnknownEffect(Intelligence.Settings)(input.settings).pipe(
@@ -211,17 +260,41 @@ export const make = (
           ? officialZen
             ? (process.env.OPENCODE_API_KEY ?? "public")
             : undefined
-          : process.env[evaluator.transport === "typesafe" ? "TYPESAFE_API_KEY" : "RED_ROUTER_API_KEY"])
+          : providerEnvironment(evaluator.transport)
+              .map((name) => process.env[name])
+              .find(Boolean))
+      const metadata = stored?.value.metadata
+      const accountID = stringMetadata(metadata, "accountId") ?? process.env.CLOUDFLARE_ACCOUNT_ID
+      const gatewayID = stringMetadata(metadata, "gatewayId") ?? process.env.CLOUDFLARE_GATEWAY_ID
+      if (evaluator.transport === "cloudflare-ai-gateway" && body !== undefined && !accountID)
+        return yield* new Error({ message: "Cloudflare Account ID is required; connect Cloudflare AI Gateway first" })
       return yield* attempt(async (signal) => {
-        const response = await fetcher(`${url.href.replace(/\/$/, "")}/${suffix}`, {
-          method: body === undefined ? "GET" : "POST",
-          redirect: "error",
-          signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-          headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        })
+        const vercel = evaluator.transport === "vercel" && body !== undefined
+        const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
+        const response = await fetcher(
+          cloudflare
+            ? `${url.href.replace(/\/$/, "")}/accounts/${accountID}/ai/run`
+            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : suffix}`,
+          {
+            method: body === undefined ? "GET" : "POST",
+            redirect: "error",
+            signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+            headers: {
+              "Content-Type": "application/json",
+              ...(key ? { Authorization: `Bearer ${key}` } : {}),
+              ...(gatewayID ? { "cf-aig-gateway-id": gatewayID } : {}),
+              ...(vercel ? { "ai-evaluation-model-specification-version": "4", "ai-model-id": evaluator.model } : {}),
+            },
+            ...(body === undefined
+              ? {}
+              : {
+                  body: JSON.stringify(cloudflare ? cloudflareBody(body) : vercel ? vercelBody(body) : body),
+                }),
+          },
+        )
         if (!response.ok) throw new Error({ message: `System One HTTP ${response.status}`, status: response.status })
-        return response.json() as Promise<unknown>
+        const result: unknown = await response.json()
+        return vercel ? vercelResponse(evaluator.model, body, result) : result
       }).pipe(
         Effect.retry({
           times: 1,
@@ -231,6 +304,8 @@ export const make = (
       )
     })
     const discover = Effect.fn("Intelligence.discover")(function* (input: typeof Intelligence.Probe.Type) {
+      if (["cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
+        return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
       const result = yield* request(
         input.evaluator,
         input.evaluator.transport === "red-router" ? "models/systemone" : "models",
@@ -248,7 +323,9 @@ export const make = (
         models: [
           ...(parsed.data ?? []).map((model) => ({ id: model.id, name: model.id })),
           ...(parsed.models ?? []).map((model) => ({ id: model.name, name: model.name })),
-        ].filter((model) => input.evaluator.transport !== "opencode-zen" || isJev(model.id)),
+        ].filter((model) =>
+          ["opencode-zen", "vivgrid", "nano-gpt"].includes(input.evaluator.transport) ? isJev(model.id) : true,
+        ),
         manual: false,
       }
     })
@@ -412,7 +489,7 @@ export const make = (
     })
     const generation = (record: GenerationInput) =>
       write(path.join(root, "generations", `${randomUUID()}.json`), { ...record, created: Date.now() })
-    return { read, save, request, discover, probe, evaluate, history, generation, environment: root }
+    return { read, save, options, request, discover, probe, evaluate, history, generation, environment: root }
   })
 export class Service extends Context.Service<Service, Interface>()("@redcode/Intelligence") {}
 export const node = makeGlobalNode({
@@ -422,10 +499,11 @@ export const node = makeGlobalNode({
     Effect.gen(function* () {
       const global = yield* Global.Service
       const credentials = yield* Credential.Service
-      return yield* make(global.config, credentials)
+      const models = yield* ModelsDev.Service
+      return yield* make(global.config, credentials, fetch, yield* models.get())
     }),
   ),
-  deps: [Global.node, Credential.node],
+  deps: [Global.node, Credential.node, ModelsDev.node],
 })
 export function questions(checks: Record<string, string>): Record<string, Intelligence.Question> {
   return Object.fromEntries(
@@ -457,4 +535,93 @@ function validURL(value: string) {
 function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "key") return value.key
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
+}
+
+function providerIntegration(transport: Intelligence.Evaluator["transport"]) {
+  if (transport === "opencode-zen") return "opencode"
+  return transport
+}
+
+function providerEnvironment(transport: Intelligence.Evaluator["transport"]) {
+  if (transport === "opencode-zen") return ["OPENCODE_API_KEY"]
+  if (transport === "typesafe") return ["TYPESAFE_API_KEY"]
+  if (transport === "red-router") return ["RED_ROUTER_API_KEY"]
+  if (transport === "cloudflare-ai-gateway") return ["CLOUDFLARE_API_TOKEN", "CF_AIG_TOKEN"]
+  if (transport === "vercel") return ["AI_GATEWAY_API_KEY"]
+  if (transport === "vivgrid") return ["VIVGRID_API_KEY"]
+  return ["NANO_GPT_API_KEY"]
+}
+
+function stringMetadata(metadata: Record<string, unknown> | undefined, key: string) {
+  return typeof metadata?.[key] === "string" ? metadata[key] : undefined
+}
+
+function cloudflareBody(body: unknown) {
+  if (!record(body)) return body
+  return { model: body.model, input: { state: body.state, questions: body.questions } }
+}
+
+function vercelBody(body: unknown) {
+  if (!record(body) || !record(body.questions)) return body
+  return {
+    state: body.state,
+    questions: Object.fromEntries(
+      Object.entries(body.questions).map(([id, question]) => [
+        id,
+        record(question) && question.type === "noul" ? { ...question, type: "boolean" } : question,
+      ]),
+    ),
+  }
+}
+
+function vercelResponse(model: string, request: unknown, response: unknown) {
+  if (!record(request) || !record(request.questions) || !record(response) || !record(response.answers)) return response
+  const questions = request.questions
+  const answers = Object.fromEntries(
+    Object.entries(response.answers).map(([id, answer]) => {
+      const question = questions[id]
+      if (!record(question) || !record(answer)) return [id, answer]
+      if (question.type === "noul" && answer.type === "boolean") return [id, { type: "noul", noul: answer.probability }]
+      if (question.type === "choice" && answer.type === "choice") {
+        const probabilities = record(answer.probabilities) ? answer.probabilities : { [String(answer.choice)]: 1 }
+        return [id, { ...answer, probabilities, confidence: distributionConfidence(probabilities) }]
+      }
+      if (question.type === "score" && answer.type === "score") {
+        const probabilities = record(answer.probabilities)
+          ? answer.probabilities
+          : { [String(Math.round(Number(answer.score)))]: 1 }
+        const criteria = Array.isArray(question.criteria) ? question.criteria : []
+        return [
+          id,
+          {
+            ...answer,
+            probabilities,
+            confidence: distributionConfidence(probabilities),
+            legend: Object.fromEntries(criteria.map((level, index) => [String(index), level])),
+          },
+        ]
+      }
+      return [id, answer]
+    }),
+  )
+  const usage = record(response.usage) ? response.usage : {}
+  return {
+    model,
+    answers,
+    usage: {
+      input_tokens: typeof usage.inputTokens === "number" ? usage.inputTokens : 0,
+      output_tokens: typeof usage.outputTokens === "number" ? usage.outputTokens : 0,
+    },
+  }
+}
+
+function distributionConfidence(probabilities: Record<string, unknown>) {
+  const values = Object.values(probabilities).filter((value): value is number => typeof value === "number" && value > 0)
+  if (values.length <= 1) return 1
+  const entropy = -values.reduce((total, value) => total + value * Math.log(value), 0)
+  return Math.max(0, Math.min(1, 1 - entropy / Math.log(values.length)))
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
