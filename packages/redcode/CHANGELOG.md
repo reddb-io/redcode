@@ -1,5 +1,11 @@
 # opencode
 
+## 0.40.3
+
+### Patch Changes
+
+- 28ac03e: Offer OpenRouter as a System One connection and route JEV through its Decisions API.
+
 ## 0.40.2
 
 ### Patch Changes
