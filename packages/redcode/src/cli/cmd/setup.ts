@@ -1,7 +1,10 @@
 import type { Evaluator } from "@reddb-io/redcode-schema/intelligence"
 import { Effect, Option } from "effect"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Location } from "@reddb-io/redcode-core/location"
+import { LocationServiceMap, locationServiceMapLayer } from "@reddb-io/redcode-core/location-services"
 import { Semantic } from "@reddb-io/redcode-core/semantic"
+import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { CliError, effectCmd, fail } from "../effect-cmd"
@@ -12,6 +15,7 @@ const answer = <A>(value: Option.Option<A>) =>
 export const SetupCommand = effectCmd({
   command: "setup",
   describe: "configure global System One and System Two roles",
+  instance: false,
   builder: (yargs) =>
     yargs.option("defer", { type: "boolean", describe: "defer global onboarding without opening prompts" }),
   handler: Effect.fn("Cli.setup")(
@@ -26,7 +30,12 @@ export const SetupCommand = effectCmd({
         return yield* fail("Interactive setup requires a terminal. Use --defer or the global intelligence API.")
       const { Provider } = yield* Effect.promise(() => import("../../provider/provider"))
       const provider = yield* Provider.Service
-      const semantic = yield* Semantic.Service
+      const semantic = yield* Semantic.Service.pipe(
+        Effect.provide(
+          LocationServiceMap.Service.get(Location.Ref.make({ directory: AbsolutePath.make(process.cwd()) })),
+        ),
+        Effect.provide(locationServiceMapLayer),
+      )
       const providers = yield* provider.list()
       const choices = Object.values(providers).flatMap((provider) =>
         Object.values(provider.models)
