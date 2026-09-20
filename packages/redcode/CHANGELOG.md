@@ -1,5 +1,14 @@
 # opencode
 
+## 0.40.1
+
+### Patch Changes
+
+- a319817: Automatically continue provider turns after transient connection resets. Preserve partial output and completed tool results, retry up to three times, and avoid repeating side effects.
+- 9b06bcb: Render plan approval previews as Markdown in the TUI so headings, lists, tables and code blocks remain readable before execution.
+- 6f18801: List configured providers first in the TUI connection picker and let `/connect` and `/setup` reuse an established provider without repeating authentication.
+- ccd8b84: Stop provider turns that repeat the same progress update and unchanged tool result while varying command syntax. Preserve polling when tool results continue to change.
+
 ## 0.40.0
 
 ### Minor Changes
