@@ -60,6 +60,7 @@ export interface Part {
   readonly type: string
   readonly tool?: string
   readonly synthetic?: boolean
+  readonly text?: string
   readonly state?: {
     readonly status: string
     readonly input?: unknown
@@ -119,6 +120,46 @@ const stable = (value: unknown): string =>
 const settled = (part: Part) =>
   part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")
 const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
+
+const progressText = (part: Part) =>
+  part.type === "text" && !part.synthetic && part.text
+    ? part.text.replace(/\s+/g, " ").trim()
+    : undefined
+
+/**
+ * Repeated visible progress followed by the same empty or unchanged tool result.
+ *
+ * Small models often vary shell quoting or whitespace while repeating the same action. Comparing
+ * tool input byte-for-byte cannot see that loop, but the unchanged user-facing update and result
+ * can. Short acknowledgements are ignored because they are common between legitimate steps.
+ */
+export function progress(parts: readonly Part[], next: { tool: string }): { count: number; text: string } | undefined {
+  const current = parts.findLastIndex((part) => progressText(part) !== undefined)
+  if (current === -1) return
+  const text = progressText(parts[current]!)!
+  if (text.length < 24) return
+  let count = 1
+  let boundary = current
+  let expected: string | undefined
+  for (let i = current - 1; i >= 0; i--) {
+    const previous = progressText(parts[i]!)
+    if (previous === undefined) continue
+    if (previous !== text) break
+    const tool = parts.slice(i + 1, boundary).findLast(settled)
+    if (!tool || tool.tool !== next.tool) break
+    const output = result(tool)
+    if (refused(output)) {
+      count++
+      boundary = i
+      continue
+    }
+    if (expected !== undefined && output !== expected) break
+    expected = output
+    count++
+    boundary = i
+  }
+  return { count, text }
+}
 
 /**
  * How many times in a row this exact call has already been made and answered the same way.
@@ -229,6 +270,7 @@ export function assess(input: {
   if (!input.limits) return { type: "ok" }
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
   const same = streak(input.parts, input.next) + 1
+  const repeatedProgress = progress(input.parts, input.next)
   // A same-failure streak only corrects: the task gate blocks the task on its own after two genuine
   // refusals, so ending the turn over it would stop work the model could still do. What does end the
   // turn is a long run of todowrite failures of any kind, which no correction has broken.
@@ -239,6 +281,13 @@ export function assess(input: {
       streak: same,
       message: stopped(input.next, same),
       summary: `${LOOP_GUARD_PAUSE}the same \`${input.next.tool}\` call repeated ${same} times`,
+    }
+  if (repeatedProgress && repeatedProgress.count >= input.limits.stopAt)
+    return {
+      type: "stop",
+      streak: repeatedProgress.count,
+      message: progressStopped(input.next, repeatedProgress.count, repeatedProgress.text),
+      summary: `${LOOP_GUARD_PAUSE}the same progress update repeated ${repeatedProgress.count} times`,
     }
   if (FAILURE_STREAK_TOOLS.has(input.next.tool)) {
     const run = todoFailures(input.parts)
@@ -256,6 +305,12 @@ export function assess(input: {
       type: "correct",
       streak: count,
       message: correction(input.parts, input.next, count, failed > same),
+    }
+  if (repeatedProgress && repeatedProgress.count >= input.limits.correctAt)
+    return {
+      type: "correct",
+      streak: repeatedProgress.count,
+      message: progressCorrection(input.next, repeatedProgress.count, repeatedProgress.text),
     }
   // Said once, at the threshold rather than after it: a call whose answer keeps changing is
   // allowed to be made again, and being told about it every time from then on would be noise.
@@ -326,6 +381,18 @@ export function nudge(next: { tool: string; input: unknown }, count: number) {
 
 export function stopped(next: { tool: string }, count: number) {
   return `Stopped: \`${next.tool}\` was called ${count} times in a row with the same result, and the earlier warning did not change anything.`
+}
+
+export function progressCorrection(next: { tool: string }, count: number, text: string) {
+  return [
+    `${REFUSAL}${count} with the same progress update before \`${next.tool}\`, and the previous calls returned the same thing.`,
+    `update: ${JSON.stringify(text)}`,
+    `The call was not run this time. Changing command syntax without changing the result is not progress. Inspect the current state with a different tool, take a different action, or tell the user what is blocking you and stop.`,
+  ].join("\n")
+}
+
+export function progressStopped(next: { tool: string }, count: number, text: string) {
+  return `Stopped: the same progress update before \`${next.tool}\` appeared ${count} times with no change in the tool result: ${JSON.stringify(text)}`
 }
 
 export function failureStopped(count: number) {

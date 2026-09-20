@@ -208,6 +208,7 @@ describe("session.retry.retryable", () => {
     "terminated",
     "fetch failed",
     "connection refused",
+    "connection reset by server",
     "connect ECONNREFUSED",
     "request ETIMEDOUT",
     "failed to fetch",

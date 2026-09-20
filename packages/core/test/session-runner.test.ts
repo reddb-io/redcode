@@ -37,6 +37,7 @@ import { ContextSnapshotDecodeError } from "@reddb-io/redcode-core/session/error
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { SessionRetry } from "@reddb-io/redcode-core/session/retry"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -150,7 +151,7 @@ const echo = Layer.effectDiscard(
     registry.register({
       echo: Tool.make({
         description: "Echo text",
-        input: Schema.Struct({ text: Schema.String }),
+        input: Schema.Struct({ text: Schema.String, variant: Schema.String.pipe(Schema.optional) }),
         output: Schema.Struct({ text: Schema.String }),
         toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
         execute: ({ text }, context) =>
@@ -2087,6 +2088,42 @@ describe("SessionRunnerLLM", () => {
         },
         { type: "assistant", finish: "stop", content: [{ type: "text", id: "text-final", text: "Done" }] },
       ])
+    }),
+  )
+
+  it.effect("stops repeated progress with varying tool arguments and the same result", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.steps = 20
+        }),
+      )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Append the missing test lines" }), resume: false })
+
+      requests.length = 0
+      executions.length = 0
+      const progress = "Continuando o append do provider.test.ts via printf curto (linhas 43-44 do SSE):"
+      responses = Array.from({ length: 8 }, (_, index) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: `text-loop-${index}` }),
+        LLMEvent.textDelta({ id: `text-loop-${index}`, text: progress }),
+        LLMEvent.textEnd({ id: `text-loop-${index}` }),
+        LLMEvent.toolCall({
+          id: `call-loop-${index}`,
+          name: "echo",
+          input: { text: "same result", variant: `${index}` },
+        }),
+        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+        LLMEvent.finish({ reason: "tool-calls" }),
+      ])
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(5)
+      expect(executions).toEqual(["same result", "same result"])
     }),
   )
 
@@ -4890,7 +4927,7 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
     ),
   )
 
-  it.live("does not retry once output has streamed, and leaves exactly one failed assistant", () =>
+  it.live("continues automatically after output has streamed without replaying the partial answer", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -4907,15 +4944,56 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       )
       response = fragmentFixture("text", "unrequested", ["Never requested"]).completeEvents
 
-      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+      yield* session.resume(sessionID)
 
-      // No second request would replay the partial answer as a trailing assistant prefill.
-      expect(requests).toHaveLength(1)
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1]!)).toContain(SessionRetry.CONNECTION_CONTINUATION_PROMPT)
       const context = yield* session.context(sessionID)
-      expect(context.filter((message) => message.type === "assistant")).toHaveLength(1)
+      expect(context.filter((message) => message.type === "assistant")).toHaveLength(2)
       expect(context).toMatchObject([
         { type: "user", text: "Cut off" },
         { type: "assistant", finish: "error", content: [{ type: "text", text: "Half an ans" }] },
+        { type: "synthetic", text: SessionRetry.CONNECTION_CONTINUATION_PROMPT },
+        { type: "assistant", finish: "stop", content: [{ type: "text", text: "Never requested" }] },
+      ])
+    }),
+  )
+
+  it.live("continues after a reset without executing a completed local tool twice", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Run then reconnect" }), resume: false })
+      requests.length = 0
+      executions.length = 0
+      const failure = new LLMError({
+        module: "test",
+        method: "stream",
+        reason: new TransportReason({ message: "connection reset by server" }),
+      })
+      responseStream = Stream.concat(
+        Stream.fromIterable([
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "call-reconnect", name: "echo", input: { text: "once" } }),
+        ]),
+        Stream.fail(failure),
+      )
+      response = fragmentFixture("text", "continued", ["Done after reconnect"]).completeEvents
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(executions).toEqual(["once"])
+      expect(userTexts(requests[1]!)).toContain(SessionRetry.CONNECTION_CONTINUATION_PROMPT)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Run then reconnect" },
+        {
+          type: "assistant",
+          finish: "error",
+          content: [{ type: "tool", id: "call-reconnect", state: { status: "completed" } }],
+        },
+        { type: "synthetic", text: SessionRetry.CONNECTION_CONTINUATION_PROMPT },
+        { type: "assistant", finish: "stop", content: [{ type: "text", text: "Done after reconnect" }] },
       ])
     }),
   )

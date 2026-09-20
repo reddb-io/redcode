@@ -576,7 +576,7 @@ it.live("session.processor effect tests discard the failed attempt's parts befor
   ),
 )
 
-it.live("session.processor effect tests do not retry after a tool call already ran", () =>
+it.live("session.processor effect tests continue after a reset without repeating a completed tool", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -626,15 +626,16 @@ it.live("session.processor effect tests do not retry after a tool call already r
         const parts = yield* MessageV2.parts(msg.id)
         const calls = parts.filter((part): part is SessionV1.ToolPart => part.type === "tool")
 
-        expect(value).toBe("stop")
+        expect(value).toBe("reconnect")
         expect(yield* llm.calls).toBe(1)
         expect(executed).toBe(1)
         expect(calls).toHaveLength(1)
         expect(calls[0]?.state.status).toBe("completed")
-        expect(handle.message.error).toBeDefined()
+        expect(handle.message.error).toBeUndefined()
       }),
     { config: (url) => providerCfg(url) },
   ),
+  10_000,
 )
 
 it.live("session.processor effect tests do not retry unknown json errors", () =>

@@ -92,7 +92,7 @@ export function DialogSetup(
           category: provider.name,
         })),
     ),
-    { title: "Connect another provider…", value: "connect" as const, category: "Providers" },
+    { title: "Choose or connect provider…", value: "connect" as const, category: "Providers" },
   ]
   const evaluator = () => state.settings.evaluator!
   const finish = async () => {
@@ -149,7 +149,7 @@ export function DialogSetup(
                   },
                 ]
               : []),
-            { title: "Connect a generative provider", value: "connect" },
+            { title: "Choose or connect a generative provider", value: "connect" },
             { title: "Later", value: "defer", description: "Keep existing behavior" },
             { title: "Disable semantic evaluation", value: "disable" },
           ]}

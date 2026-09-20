@@ -336,7 +336,7 @@ const layer = Layer.effect(
       | { readonly _tag: "ContinueAfterCompaction"; readonly step: number; readonly retry?: Retry }
       // Overflow compaction completed; rebuild once through the path without overflow recovery.
       | { readonly _tag: "ContinueAfterOverflowCompaction"; readonly step: number; readonly retry?: Retry }
-      // A retryable provider failure before anything streamed; wait, then replay the same step.
+      // A retryable provider failure; wait, then replay an empty attempt or continue durable output.
       | {
           readonly _tag: "RetryProvider"
           readonly step: number
@@ -444,7 +444,7 @@ const layer = Layer.effect(
           yield* goals.save(goal, { ...goal, status: "paused", reason }).pipe(Effect.orDie)
       })
 
-    // The legacy loop guard over projected v2 history: same tool, same arguments, same result.
+    // The shared loop guard over projected v2 history: repeated calls and repeated progress.
     const guardLoop = Effect.fn("SessionRunner.guardLoop")(function* (
       sessionID: SessionSchema.ID,
       permissions: PermissionV2.Ruleset | undefined,
@@ -464,6 +464,7 @@ const layer = Layer.effect(
         message.type !== "assistant"
           ? []
           : message.content.flatMap((item): LoopGuard.Part[] => {
+              if (item.type === "text") return [{ type: "text", text: item.text }]
               if (item.type !== "tool" || item.provider?.executed === true) return []
               if (item.state.status === "completed")
                 return [
@@ -954,20 +955,33 @@ const layer = Layer.effect(
               }),
             )
           }
-          // Legacy retry policy: bounded, never for context overflow, never once a local tool ran.
-          // Durable v2 events cannot discard a partial attempt the way legacy does, so only an attempt
-          // that streamed nothing and reported no provider error is retried: nothing to replay or hide.
-          const retryable =
+          const retryReason =
             llmFailure &&
             !(llmFailure.reason._tag === "Transport" && llmFailure.reason.kind === stallKind) &&
-            attempt <= SessionRetry.RETRY_MAX_RETRIES &&
-            !needsContinuation &&
-            completionTools.length === 0 &&
-            !publisher.hasAssistantStarted() &&
             !publisher.hasProviderError() &&
             stream._tag === "Failure" &&
             !Cause.hasInterrupts(stream.cause)
               ? SessionRetry.retryableLLM(llmFailure)
+              : undefined
+          // An empty failed attempt can replay the same request. Once output is durable, the next
+          // request instead sees that output plus a continuation instruction, so completed tools
+          // and already streamed text are not repeated.
+          const retryable =
+            llmFailure &&
+            attempt <= SessionRetry.RETRY_MAX_RETRIES &&
+            !needsContinuation &&
+            completionTools.length === 0 &&
+            !publisher.hasAssistantStarted() &&
+            retryReason
+              ? retryReason
+              : undefined
+          const reconnect =
+            llmFailure &&
+            attempt <= SessionRetry.CONNECTION_CONTINUATION_MAX_RETRIES &&
+            publisher.hasAssistantStarted() &&
+            SessionRetry.connectionInterruptedLLM(llmFailure) &&
+            retryReason
+              ? retryReason
               : undefined
           if (llmFailure && !publisher.hasProviderError() && !retryable) {
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
@@ -1041,16 +1055,25 @@ const layer = Layer.effect(
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           if (stream._tag === "Failure") {
-            if (llmFailure && retryable)
+            const retry = retryable ?? reconnect
+            if (llmFailure && retry) {
+              if (reconnect)
+                yield* events.publish(SessionEvent.Synthetic, {
+                  sessionID: session.id,
+                  messageID: SessionMessage.ID.create(),
+                  timestamp: yield* DateTime.now,
+                  text: SessionRetry.CONNECTION_CONTINUATION_PROMPT,
+                })
               return yield* Effect.die(
                 new TurnTransitionError({
                   _tag: "RetryProvider",
                   step: currentStep,
                   retry: { attempt, goalID },
                   failure: llmFailure,
-                  message: retryable.message,
+                  message: retry.message,
                 }),
               )
+            }
             if (goalID)
               yield* goals
                 .settle(sessionID, { goalID, tokens: 0, failed: true, interrupted: Cause.hasInterrupts(stream.cause) })

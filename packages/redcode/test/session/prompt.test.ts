@@ -6791,6 +6791,51 @@ it.instance(
 )
 
 unix(
+  "repeated progress text stops a shell append loop even when the command syntax drifts",
+  () =>
+    Effect.gen(function* () {
+      const { llm, dir } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        agent: { build: { steps: 20 } },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Drifting append loop" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Append the missing test lines" }],
+      })
+      const progress = "Continuando o append do provider.test.ts via printf curto (linhas 43-44 do SSE):"
+      for (let i = 0; i < 8; i++) {
+        yield* llm.push(
+          reply()
+            .text(progress)
+            .tool("bash", { command: `printf 'line\\n'${" ".repeat(i + 1)}>> provider.test.ts` }),
+        )
+      }
+      yield* llm.text("never reached")
+
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the append loop never stopped", "30 seconds")
+
+      const output = yield* Effect.promise(() => Bun.file(path.join(dir, "provider.test.ts")).text())
+      expect(output.split("\n").filter(Boolean)).toHaveLength(2)
+      expect(yield* guards.recent()).toContainEqual(
+        expect.objectContaining({
+          sessionID: chat.id,
+          guard: "loop",
+          action: "stop",
+          subject: "bash",
+        }),
+      )
+      expect(yield* llm.calls).toBe(5)
+    }),
+  60_000,
+)
+
+unix(
   "a shell monitor parks the goal and resumes once with synthetic evidence",
   () =>
     Effect.gen(function* () {

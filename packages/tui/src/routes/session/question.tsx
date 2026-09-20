@@ -37,7 +37,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const exit = useExit()
   const sync = useSync()
   const toast = useToast()
-  const { theme } = useTheme()
+  const { theme, syntax } = useTheme()
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
   const tuiConfig = useTuiConfig()
@@ -430,10 +430,15 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               maxHeight={Math.max(3, Math.min(dimensions().height - 16, Math.floor(dimensions().height * 0.45)))}
               flexShrink={0}
             >
-              <text fg={theme.text}>
-                {question()?.question}
-                {multi() ? " (select all that apply)" : ""}
-              </text>
+              <markdown
+                syntaxStyle={syntax()}
+                streaming={true}
+                content={`${question()?.question ?? ""}${multi() ? " (select all that apply)" : ""}`}
+                internalBlockMode="top-level"
+                tableOptions={{ style: "grid" }}
+                fg={theme.markdownText}
+                bg={theme.backgroundPanel}
+              />
             </scrollbox>
             <box flexShrink={0}>
               <For each={options()}>

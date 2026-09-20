@@ -1289,6 +1289,10 @@ const layer = Layer.effect(
         Effect.suspend(() => giveUp(processor.message, compactionMs!)),
       )
 
+      // Compaction requests have no tools to resume after, so a reconnect continuation cannot
+      // produce a valid checkpoint. Keep the original history and let a later compaction retry.
+      if (result === "reconnect") return "stop"
+
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({
           message: prepared.replay

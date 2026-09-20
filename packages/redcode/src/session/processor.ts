@@ -3,7 +3,7 @@ import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
-import { Cause, DateTime, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
+import { Cause, DateTime, Deferred, Duration, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
@@ -35,7 +35,7 @@ import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timi
 
 /** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
 const LOOP_WINDOW = 16
-export type Result = "compact" | "stop" | "continue"
+export type Result = "compact" | "stop" | "continue" | "reconnect"
 
 export interface Handle {
   readonly message: SessionV1.Assistant
@@ -86,6 +86,8 @@ type Input = {
   model: Provider.Model
   /** Which step of the turn this handle serves, counting from 1. Reported in the busy status. */
   step?: number
+  /** Consecutive safe continuations after a provider connection failure, counting from 1. */
+  reconnectAttempt?: number
   /** Admit every primary provider attempt, including retries, before starting the stream. */
   beforeAttempt?: () => Effect.Effect<boolean>
   onFailure?: (reason: string) => Effect.Effect<void>
@@ -131,6 +133,8 @@ interface ProcessorContext extends Input {
    * would ask for that tool again and its side effect would happen twice.
    */
   attemptExecuted: boolean
+  /** A retryable failure after a tool ran must continue from history instead of replaying the call. */
+  reconnect: boolean
   /** The step's visible output and reasoning tokens once the provider reported usage. */
   stepUsage: { output: number; reasoning: number } | undefined
 }
@@ -177,6 +181,7 @@ const layer = Layer.effect(
         lastEventAt: Date.now(),
         attemptParts: [],
         attemptExecuted: false,
+        reconnect: false,
         stepUsage: undefined,
       }
       let aborted = false
@@ -802,6 +807,7 @@ const layer = Layer.effect(
             ctx.reasoningMap = {}
             ctx.attemptParts = []
             ctx.attemptExecuted = false
+            ctx.reconnect = false
             ctx.phase = undefined
             ctx.phaseTool = undefined
             yield* phase("preparing")
@@ -845,9 +851,43 @@ const layer = Layer.effect(
               (cause) => !Cause.hasInterruptsOnly(cause),
               (cause) => {
                 const error = Cause.squash(cause)
-                // A tool already ran in this attempt: retrying would replay the request and run it
-                // again, so the failure ends the turn instead and the model sees what happened.
-                if (ctx.attemptExecuted) return halt(error)
+                // A tool already ran in this attempt. Replaying this request would run it again;
+                // preserve its result and ask the next provider turn to continue from history.
+                if (ctx.attemptExecuted) {
+                  const parsed = parse(error)
+                  const retry = SessionRetry.retryable(parsed, input.model.providerID)
+                  const attempt = input.reconnectAttempt ?? 1
+                  if (
+                    !retry ||
+                    !SessionRetry.connectionInterrupted(parsed) ||
+                    attempt > SessionRetry.CONNECTION_CONTINUATION_MAX_RETRIES
+                  )
+                    return halt(error)
+                  const wait = SessionRetry.delay(
+                    attempt,
+                    SessionV1.APIError.isInstance(parsed) ? parsed : undefined,
+                  )
+                  ctx.reconnect = true
+                  return Verbose.log("provider.reconnect", () => ({
+                    sessionID: ctx.sessionID,
+                    providerID: input.model.providerID,
+                    modelID: input.model.id,
+                    attempt,
+                    waitMs: wait,
+                    reason: retry.message.length > 80 ? retry.message.slice(0, 77) + "..." : retry.message,
+                  })).pipe(
+                    Effect.andThen(
+                      status.set(ctx.sessionID, {
+                        type: "retry",
+                        attempt,
+                        message: retry.message,
+                        action: retry.action,
+                        next: Date.now() + wait,
+                      }),
+                    ),
+                    Effect.andThen(Effect.sleep(Duration.millis(wait))),
+                  )
+                }
                 return Effect.fail(error)
               },
             ),
@@ -888,6 +928,7 @@ const layer = Layer.effect(
           )
 
           if (ctx.needsCompaction) return "compact"
+          if (ctx.reconnect) return "reconnect"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           return "continue"
         })
