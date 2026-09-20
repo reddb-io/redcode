@@ -243,10 +243,12 @@ export function DialogSetup(
       </Match>
       <Match when={state.step === "key"}>
         <DialogPrompt
-          title={evaluator().transport === "opencode-zen" ? "Zen API key — opencode.ai/zen" : "System One API key"}
+          title={
+            evaluator().transport === "opencode-zen" ? "Zen API key — https://opencode.ai/zen" : "System One API key"
+          }
           placeholder={
             evaluator().transport === "opencode-zen"
-              ? "Empty reuses OpenCode connection, OPENCODE_API_KEY, or public free access"
+              ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
               : "API key, or empty to use the server environment"
           }
           busy={state.busy}
