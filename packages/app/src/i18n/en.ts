@@ -9,7 +9,7 @@ import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 export const dict = {
   "settings.intelligence.zen": "OpenCode Zen — Jev Free (recommended)",
   "settings.intelligence.zenNotice":
-    "Jev Free is a temporary offer. Session sources are sent to Zen after activation. If it becomes unavailable, choose another evaluator; Redcode never switches to a paid model automatically. A blank key reuses an existing OpenCode connection, OPENCODE_API_KEY, or Zen's public free access.",
+    "Jev Free is a temporary offer. Session sources are sent to Zen after activation. If it becomes unavailable, choose another evaluator; Redcode never switches to a paid model automatically. A blank key reuses an existing OpenCode Zen connection, OPENCODE_API_KEY, or Zen's public free access.",
   "settings.intelligence.connectZen": "Connect OpenCode Zen / get an API key",
   "settings.intelligence.zenUnavailable":
     "The selected Zen evaluator could not be verified. Check its availability and your Zen API key, or choose another evaluator. No paid fallback was used; previous settings are preserved.",

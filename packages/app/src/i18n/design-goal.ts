@@ -30,6 +30,9 @@ export const designGoalKeys = [
 ]
 
 const english = Object.fromEntries(Object.entries(dict).filter(([key]) => designGoalKeys.includes(key)))
+const intelligenceEnglish = Object.fromEntries(
+  Object.entries(dict).filter(([key]) => key.startsWith("settings.intelligence.")),
+)
 const plurals = ["session.goal.evidenceCount", "session.goal.tokenCount"]
 
 export function designGoalSourceLocale(locale: DesktopNativeLocale) {
@@ -48,6 +51,9 @@ export function designGoalDictionary(locale: DesktopNativeLocale): Record<string
   const source = locale === "br" ? designGoalPortuguese : english
   return {
     ...source,
+    // Intelligence is a new global settings domain. Keep every locale usable while
+    // translations are introduced, following the existing explicit English fallback policy.
+    ...intelligenceEnglish,
     ...Object.fromEntries(
       plurals.flatMap((key) =>
         desktopNativePluralCategories(locale).map((category) => [

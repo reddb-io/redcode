@@ -16,17 +16,15 @@ import { mount, wait, json } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 
-function Dialogs() {
+function Dialogs(props: { resume?: { settings: Intelligence.Settings; step: "principal" | "fast" } } = {}) {
   const renderer = useRenderer()
   const keymap = createDefaultOpenTuiKeymap(renderer)
   const config = createTuiResolvedConfig({ keybinds: {}, leader_timeout: 1000 })
   onCleanup(registerOpencodeKeymap(keymap, renderer, config))
   function Open() {
     const dialog = useDialog()
-    const state = createDialogSetupState({ settings: intelligence.settings, step: "principal" })
-    onMount(() =>
-      dialog.replace(() => <DialogSetup state={state} onModelSelected={() => {}} />),
-    )
+    const state = createDialogSetupState(props.resume)
+    onMount(() => dialog.replace(() => <DialogSetup state={state} onModelSelected={() => {}} />))
     return null
   }
   return (
@@ -78,7 +76,7 @@ test("global setup selects System Two models and offers provider connection in t
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
     },
     tmp.path,
-    () => <Dialogs />,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
   )
   try {
     await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
@@ -112,7 +110,7 @@ test("global setup can open provider connection when no generative model is conn
   const setup = await mount(
     (url) => (url.pathname === "/api/intelligence" ? json(intelligence) : undefined),
     tmp.path,
-    () => <Dialogs />,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
   )
   try {
     await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
@@ -129,6 +127,50 @@ test("global setup can open provider connection when no generative model is conn
     )
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("configured setup can edit System Two without walking through System One", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const configured = {
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: "mock", id: "model" },
+      evaluator: {
+        transport: "opencode-zen",
+        baseURL: "https://opencode.ai/zen/v1",
+        model: "jev-1.13-free",
+      },
+    } as Intelligence.Settings,
+    environment: "/global",
+  }
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json(configured)
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+    },
+    tmp.path,
+    () => <Dialogs />,
+  )
+  try {
+    await wait(() => setup.app.captureCharFrame().includes("Change System Two models"))
+    const welcome = setup.app.captureCharFrame()
+    expect(welcome).toContain("Change System One evaluator")
+    expect(welcome).toContain("mock/model")
+    expect(welcome).toContain("opencode-zen/jev-1.13-fr")
+
+    await setup.app.mockInput.pressArrow("down")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("Reuse System Two principal"))
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
+    expect(setup.app.captureCharFrame()).not.toContain("System One connection")
   } finally {
     setup.app.renderer.destroy()
   }

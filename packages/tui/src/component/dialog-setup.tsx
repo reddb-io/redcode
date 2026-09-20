@@ -14,11 +14,13 @@ import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
 
 type Step = "welcome" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
-type ModelChoice = Model.Ref | "connect"
+type Scope = "all" | "system-one" | "system-two"
+type ModelChoice = Model.Ref | "connect" | "reuse"
 
 export function createDialogSetupState(resume?: { settings: Intelligence.Settings; step: "principal" | "fast" }) {
   return createStore({
     step: (resume?.step ?? "welcome") as Step,
+    scope: "all" as Scope,
     settings: resume?.settings ?? ({ enabled: false, onboarding: "pending" } as Intelligence.Settings),
     key: "",
     busy: false,
@@ -61,16 +63,26 @@ export function DialogSetup(
       })
       .catch(fail)
   })
-  const connect = () =>
+  const connect = (resume: "welcome" | "principal" | "fast") =>
     dialog.replace(() => (
       <DialogProvider
         onConnected={() => {
-          set("step", "principal")
+          set("step", resume)
           dialog.replace(() => <DialogSetup state={setup} onModelSelected={props.onModelSelected} />)
         }}
       />
     ))
   const options = (): DialogSelectOption<ModelChoice>[] => [
+    ...(state.step === "fast" && state.settings.principal
+      ? [
+          {
+            title: "Reuse System Two principal",
+            value: "reuse" as const,
+            description: `${state.settings.principal.providerID}/${state.settings.principal.id}`,
+            category: "Recommended",
+          },
+        ]
+      : []),
     ...sync.data.provider.flatMap((provider) =>
       Object.values(provider.models)
         .filter((model) => model.capabilities.protocol !== "systemone")
@@ -119,17 +131,31 @@ export function DialogSetup(
           locked={!state.loaded}
           options={[
             {
-              title: "Configure System One and System Two",
-              value: "principal",
+              title: "Configure all roles",
+              value: "all",
               description: "Principal, transformations and semantic evaluator",
             },
+            ...(state.settings.onboarding === "completed" && state.settings.principal && state.settings.evaluator
+              ? [
+                  {
+                    title: "Change System Two models",
+                    value: "system-two",
+                    description: `Principal: ${state.settings.principal.providerID}/${state.settings.principal.id}`,
+                  },
+                  {
+                    title: "Change System One evaluator",
+                    value: "system-one",
+                    description: `${state.settings.evaluator.transport}/${state.settings.evaluator.model}`,
+                  },
+                ]
+              : []),
             { title: "Connect a generative provider", value: "connect" },
             { title: "Later", value: "defer", description: "Keep existing behavior" },
             { title: "Disable semantic evaluation", value: "disable" },
           ]}
           onSelect={(option) => {
             if (!state.loaded) return
-            if (option.value === "connect") return connect()
+            if (option.value === "connect") return connect("welcome")
             if (option.value === "defer" || option.value === "disable") {
               void api
                 .save({
@@ -143,6 +169,12 @@ export function DialogSetup(
                 .catch(fail)
               return
             }
+            if (option.value === "system-one") {
+              set("scope", "system-one")
+              set("step", "transport")
+              return
+            }
+            set("scope", option.value === "system-two" ? "system-two" : "all")
             set("step", "principal")
           }}
         />
@@ -156,12 +188,13 @@ export function DialogSetup(
           }
           options={options()}
           onSelect={(option) => {
-            if (option.value === "connect") return connect()
+            if (option.value === "connect") return connect(state.step === "fast" ? "fast" : "principal")
             const role = state.step === "principal" ? "principal" : "fast"
+            const model = option.value === "reuse" ? undefined : option.value
             set((current) => ({
               ...current,
-              settings: { ...current.settings, [role]: option.value },
-              step: role === "principal" ? "fast" : "transport",
+              settings: { ...current.settings, [role]: model },
+              step: role === "principal" ? "fast" : current.scope === "system-two" ? "confirm" : "transport",
             }))
           }}
         />
@@ -265,22 +298,25 @@ export function DialogSetup(
       </Match>
       <Match when={state.step === "confirm"}>
         <DialogSelect
-          title={state.busy ? "Testing connection…" : "Activate semantic evaluation"}
+          title={state.busy ? "Testing configuration…" : "Save global intelligence setup"}
           locked={state.busy}
           options={[
             {
-              title: "Test and activate",
+              title: "Test and save",
               value: "save",
               description:
                 evaluator().transport === "opencode-zen"
                   ? "Sends sources to Zen. Free offer is temporary; no automatic paid fallback."
                   : "Sources and candidates will be sent to the selected evaluator",
             },
-            { title: "Back to connection", value: "back" },
+            {
+              title: state.scope === "system-two" ? "Back to System Two models" : "Back to connection",
+              value: "back",
+            },
           ]}
           onSelect={(option) => {
             if (state.busy) return
-            if (option.value === "back") return set("step", "transport")
+            if (option.value === "back") return set("step", state.scope === "system-two" ? "principal" : "transport")
             void finish().catch(fail)
           }}
         />
