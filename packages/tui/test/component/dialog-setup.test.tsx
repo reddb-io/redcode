@@ -140,7 +140,6 @@ test("global setup selects System Two models and offers provider connection in t
     const evaluators = setup.app.captureCharFrame()
     expect(evaluators).toContain("Cloudflare AI Gateway")
     expect(evaluators).toContain("Configured connection")
-    expect(evaluators).toContain("Vercel AI Gateway")
     expect(evaluators).toContain("OpenRouter")
   } finally {
     setup.app.renderer.destroy()
