@@ -75,6 +75,7 @@ type ProviderOption =
 export function providerOptions(
   list: { id: string; name: string }[],
   disabled: readonly string[] = [],
+  connected: readonly string[] = [],
 ): ProviderOption[] {
   const compatible: ProviderOption = {
     type: "compatible",
@@ -112,9 +113,14 @@ export function providerOptions(
       category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
     })),
   )
+  const established = new Set(connected)
+  const configured = providers
+    .filter((option) => established.has(option.providerID))
+    .map((option) => ({ ...option, category: "Connected" }))
+  const available = providers.filter((option) => !established.has(option.providerID))
   // Right after the popular providers, before the long alphabetical list.
-  const popular = providers.filter((option) => option.category === "Popular").length
-  return [...providers.slice(0, popular), compatible, ...providers.slice(popular)]
+  const popular = available.filter((option) => option.category === "Popular").length
+  return [...configured, ...available.slice(0, popular), compatible, ...available.slice(popular)]
 }
 
 type Connected = (providerID: string) => void | Promise<void>
@@ -186,7 +192,11 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
 
   const options = createMemo(() => {
     return pipe(
-      providerOptions(sync.data.provider_next.all, sync.data.config.disabled_providers),
+      providerOptions(
+        sync.data.provider_next.all,
+        sync.data.config.disabled_providers,
+        sync.data.provider_next.connected,
+      ),
       map((provider) => {
         if (provider.type === "compatible") {
           return {
@@ -212,6 +222,10 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
           category: provider.category,
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,
           async onSelect() {
+            if (connected) {
+              if (props.onConnected) return props.onConnected(providerID)
+              return dialog.replace(() => <DialogModel providerID={providerID} />)
+            }
             if (consoleManaged) return
 
             if (providerID === NINE_ROUTER_ID) {

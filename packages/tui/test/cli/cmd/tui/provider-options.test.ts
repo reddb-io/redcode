@@ -55,6 +55,30 @@ describe("providerOptions", () => {
     ])
   })
 
+  test("lists configured providers first without duplicating them", () => {
+    const options = providerOptions(
+      [
+        { id: "openai", name: "OpenAI" },
+        { id: "anthropic", name: "Anthropic" },
+        { id: "mistral", name: "Mistral" },
+      ],
+      [],
+      ["mistral", "anthropic"],
+    )
+
+    expect(options.map((option) => option.value)).toEqual([
+      "anthropic",
+      "mistral",
+      "openai",
+      "__openai_compatible_provider__",
+      "9router",
+      "red-router",
+    ])
+    expect(options.slice(0, 2).map((option) => option.category)).toEqual(["Connected", "Connected"])
+    expect(options.filter((option) => option.value === "anthropic")).toHaveLength(1)
+    expect(options.filter((option) => option.value === "mistral")).toHaveLength(1)
+  })
+
   test("offers 9Router before configuration without duplicating a configured provider", () => {
     expect(providerOptions([]).find((option) => option.value === "9router")?.title).toBe("9Router")
     const options = providerOptions([{ id: "9router", name: "My Router" }]).filter(

@@ -87,7 +87,7 @@ test("global setup selects System Two models and offers provider connection in t
     )
     const principal = setup.app.captureCharFrame()
     expect(principal).toContain("Mock Model")
-    expect(principal).toContain("Connect another provider…")
+    expect(principal).toContain("Choose or connect provider…")
 
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
@@ -119,7 +119,7 @@ test("global setup can open provider connection when no generative model is conn
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
-    await wait(() => setup.app.captureCharFrame().includes("Connect another provider…"))
+    await wait(() => setup.app.captureCharFrame().includes("Choose or connect provider…"))
     await wait(
       () =>
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
@@ -127,6 +127,42 @@ test("global setup can open provider connection when no generative model is conn
     )
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("global setup can reuse an established provider connection without authenticating again", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json(intelligence)
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/provider") {
+        return json({
+          all: [{ id: "mock", name: "Mock Provider", env: [] }],
+          default: { mock: "model" },
+          connected: ["mock"],
+        })
+      }
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
+  )
+  try {
+    await wait(() => setup.app.captureCharFrame().includes("Choose or connect provider…"))
+    await setup.app.mockInput.pressArrow("down")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
+    const providers = setup.app.captureCharFrame()
+    expect(providers).toContain("Connected")
+    expect(providers).toContain("Mock Provider")
+
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    expect(setup.app.captureCharFrame()).toContain("Mock Model")
+    expect(setup.app.captureCharFrame()).not.toContain("API key")
   } finally {
     setup.app.renderer.destroy()
   }
