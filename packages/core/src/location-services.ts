@@ -1,3 +1,4 @@
+import { Semantic } from "./semantic"
 import { Effect, Layer, LayerMap } from "effect"
 import { AgentV2 } from "./agent"
 import { AISDK } from "./aisdk"
@@ -53,6 +54,7 @@ export const runtimeInspectionNode = RuntimeInspection.makeNode(() => serviceInv
 
 export const locationServices = LayerNode.group([
   Location.node,
+  Semantic.node,
   Policy.node,
   Config.node,
   AgentV2.node,

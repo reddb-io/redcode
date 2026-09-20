@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { httpClient } from "@reddb-io/redcode-core/effect/app-node-platform"
@@ -39,6 +40,7 @@ const applicationServices = LayerNode.group([
   PermissionSaved.node,
   PtyTicket.node,
   Credential.node,
+  Intelligence.node,
   PtyEnvironment.node,
   LocationServiceMap.node,
 ])

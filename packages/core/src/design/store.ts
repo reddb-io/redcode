@@ -1,3 +1,4 @@
+import { Intelligence } from "../intelligence"
 import { DesignParams } from "./params"
 export * as DesignStore from "./store"
 
@@ -47,6 +48,7 @@ const make = Effect.gen(function* () {
   const location = yield* Location.Service
   const sessions = yield* SessionStore.Service
   const config = yield* Config.Service
+  const intelligence = yield* Intelligence.Service
   const lock = yield* Semaphore.make(1)
   const storage = path.join(location.directory, ".red", "code", "design")
   const blobs = path.join(storage, "blobs")
@@ -234,6 +236,27 @@ const make = Effect.gen(function* () {
     for (const status of statuses ?? []) {
       const refusal = DesignRounds.gate(document, status, verifies, recorder)
       if (refusal) return yield* new Design.Error({ code: "invalid", message: refusal })
+    }
+    if (statuses?.length && recorder === "agent") {
+      const evaluation = yield* intelligence
+        .evaluate({
+          sessionID: document.sessionID,
+          operation: "design_completion",
+          sources: { notes: document.notes, verifies },
+          candidate: statuses,
+          questions: Intelligence.questions(
+            Object.fromEntries(
+              statuses.map((_, index) => [
+                `note_${index}`,
+                `Does candidate[${index}] claim resolved or partial without relevant textual verification of the original note in sources.notes? Do not infer visual correctness from an image filename or successful export alone.`,
+              ]),
+            ),
+          ),
+        })
+        .pipe(Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })))
+      yield* Intelligence.requireAccepted(evaluation).pipe(
+        Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
+      )
     }
     const recorded = statuses?.length
       ? DesignRounds.apply(document, statuses, verifies, Date.now(), recorder)
@@ -461,6 +484,24 @@ const make = Effect.gen(function* () {
     })
     yield* db.insert(FeedbackTable).values({ id: input.id, design_id: id, data: input }).run().pipe(Effect.orDie)
     return { document, feedback: input, admitted: false }
+  }, lock.withPermits(1))
+
+  // Freeze the entire rendered prompt before admission. Concurrent callers and crash retries
+  // must reuse exactly the same interpretation and round, even if models/settings change.
+  const feedbackPrompt = Effect.fn("Design.feedbackPrompt")(function* (
+    id: Design.ID,
+    feedbackID: string,
+    text?: string,
+  ) {
+    if (!/^msg_[A-Za-z0-9_-]{1,128}$/.test(feedbackID))
+      return yield* new Design.Error({ code: "invalid", message: "Invalid feedback identifier" })
+    yield* get(id)
+    const target = path.join(storage, id, "feedback", `${feedbackID}.prompt.txt`)
+    const file = Bun.file(target)
+    if (yield* io(() => file.exists())) return yield* io(() => file.text())
+    if (text === undefined) return undefined
+    yield* io(() => DesignFiles.atomic(target, text))
+    return text
   }, lock.withPermits(1))
 
   const acknowledge = Effect.fn("Design.acknowledge")(function* (id: Design.ID, feedback: Design.Feedback) {
@@ -728,6 +769,7 @@ const make = Effect.gen(function* () {
     assets,
     importAsset,
     prepareFeedback,
+    feedbackPrompt,
     acknowledge,
     approve,
     approval,
@@ -747,5 +789,5 @@ export const layer = Layer.effect(Service, make)
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Database.node, Location.node, SessionStore.node, Config.node],
+  deps: [Database.node, Location.node, SessionStore.node, Config.node, Intelligence.node],
 })

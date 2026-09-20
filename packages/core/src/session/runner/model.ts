@@ -1,3 +1,4 @@
+import { Intelligence } from "../../intelligence"
 export * as SessionRunnerModel from "./model"
 
 import { makeLocationNode } from "../../effect/app-node"
@@ -70,6 +71,7 @@ export type Error =
   | VariantUnavailableError
   | UnsupportedApiError
   | Integration.AuthorizationError
+  | Intelligence.Error
 
 export interface Interface {
   readonly resolve: (session: SessionSchema.Info) => Effect.Effect<Model, Error>
@@ -173,6 +175,7 @@ export const resolve = (session: SessionSchema.Info, model: ModelV2.Info, creden
   withVariant(model, session.model?.variant).pipe(Effect.flatMap((model) => fromCatalogModel(model, credential)))
 
 export const supported = (model: ModelV2.Info) =>
+  model.capabilities.protocol !== "systemone" &&
   model.api.type === "aisdk" &&
   (model.api.package === "@ai-sdk/openai" ||
     model.api.package === "@ai-sdk/anthropic" ||
@@ -184,13 +187,18 @@ export const locationLayer = Layer.effect(
   Effect.gen(function* () {
     const catalog = yield* Catalog.Service
     const integrations = yield* Integration.Service
+    const intelligence = yield* Intelligence.Service
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session) {
+        const settings = yield* intelligence.read()
+        if (settings.enabled && !session.model && settings.principal)
+          session = { ...session, model: settings.principal }
         // Location plugins populate and filter the catalog asynchronously during layer startup.
         const defaultModel = session.model ? undefined : yield* catalog.model.default()
         const selected = session.model
           ? (yield* catalog.model.available()).find(
-              (model) => model.providerID === session.model?.providerID && model.id === session.model.id,
+              (model) =>
+                model.providerID === session.model?.providerID && model.id === session.model.id && supported(model),
             )
           : defaultModel && supported(defaultModel)
             ? defaultModel
@@ -215,4 +223,8 @@ export const locationLayer = Layer.effect(
   }),
 )
 
-export const node = makeLocationNode({ service: Service, layer: locationLayer, deps: [Catalog.node, Integration.node] })
+export const node = makeLocationNode({
+  service: Service,
+  layer: locationLayer,
+  deps: [Catalog.node, Integration.node, Intelligence.node],
+})

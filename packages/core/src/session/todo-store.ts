@@ -1,3 +1,4 @@
+import { Intelligence } from "../intelligence"
 export * as SessionTodoStore from "./todo-store"
 
 import { createHash } from "node:crypto"
@@ -14,6 +15,7 @@ import { TodoHistoryTable, TodoTable } from "./sql"
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
   const facts = yield* SessionTaskFacts.Service
+  const intelligence = yield* Intelligence.Service
   // Both runtimes hold this lock through publication so an older list cannot arrive last.
   const lock = yield* Semaphore.make(1)
 
@@ -39,249 +41,295 @@ const make = Effect.gen(function* () {
     )
     if (!incoming.length) return yield* get(input.sessionID)
     const observed = yield* facts.load(input.sessionID)
-    // Read, reconcile and write under the same DB transaction, including legacy callers.
+    const baseline = yield* get(input.sessionID)
+    const previous = baseline
+    const seen = new Set<string>()
+    const changes = yield* Effect.forEach(incoming, (item) =>
+      Effect.gen(function* () {
+        const supplied = item.content?.trim()
+        if (item.content !== undefined && !supplied)
+          return yield* new SessionTodo.Error({ message: "Task content must not be empty" })
+        const matches = previous.filter((task) =>
+          item.id
+            ? task.id === item.id
+            : input.origin
+              ? task.source?.id === input.origin.id && task.source?.key === item.planKey
+              : task.content === supplied,
+        )
+        if (matches.length > 1)
+          return yield* new SessionTodo.Error({
+            message: `Multiple tasks match ${supplied}; use the task id and revision`,
+          })
+        const before = matches[0]
+        if (item.id && !before)
+          return yield* new SessionTodo.Error({
+            message: `Unknown task ${item.id}; omit id when creating a task. Existing tasks: ${listTasks(previous)}`,
+          })
+        // An update names only what changes, so a status left out is the stored one; a new task
+        // without one starts pending.
+        const status = item.status ?? (before ? storedStatus(before) : "pending")
+        if (!before && !supplied)
+          return yield* new SessionTodo.Error({
+            message: `Task content is required to create a task; supply id and revision to update an existing one. Existing tasks: ${listTasks(previous)}`,
+          })
+        const content = supplied ?? before!.content
+        const priority =
+          item.priority ?? (before && Schema.is(SessionTodo.Priority)(before.priority) ? before.priority : "medium")
+        const key = before?.id ?? (input.origin?.type === "plan" ? (item.planKey ?? content) : content)
+        if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
+        seen.add(key)
+        if (input.origin?.type === "plan" && before) return before
+        const reason = item.reason?.trim() || (before?.status === status ? before.reason : undefined)
+        if ((status === "blocked" || status === "cancelled") && !reason)
+          return yield* new SessionTodo.Error({
+            message: `${status} requires a concrete reason; do not discard remaining work`,
+          })
+        const requirement = item.requirement?.trim()
+        const requests = observed.requests.toSorted((a, b) => b.created - a.created)
+        const latest = requests.find((entry) => !entry.pending)
+        const quoted = requirement ? requests.find((entry) => quotes(entry.text, requirement)) : latest
+        // A quote never decides whether an update is accepted: the user may write in any language
+        // and the model may paraphrase or translate. A requirement that quotes no request is
+        // attached to the latest real request, verbatim, and the model's wording is kept as the
+        // criterion; the completion gate is unchanged, since it hangs on real verification.
+        const paraphrased = requirement && !quoted ? latest : undefined
+        const request = quoted ?? paraphrased
+        const source =
+          before?.source ??
+          (input.origin
+            ? { ...input.origin, quote: item.requirement ?? input.origin.quote, key: item.planKey }
+            : undefined) ??
+          (request
+            ? {
+                type: "request" as const,
+                id: request.id,
+                quote: quoted && requirement ? requirement : request.text,
+                created: request.created,
+                ...(paraphrased && requirement ? { paraphrase: requirement } : {}),
+              }
+            : undefined)
+        const criterion =
+          item.criterion?.trim() ||
+          before?.criterion ||
+          // With no request to attach at all, the requirement still says what the task must show.
+          (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
+          (source ? content : undefined)
+        // Evidence is a claim only when it cites a result; an explanation on its own asks for the
+        // newest verification to be selected and says what it shows.
+        const claim = item.evidence?.callID ? { ...item.evidence, callID: item.evidence.callID } : undefined
+        // A task that is already complete keeps its stored evidence when re-sent without new
+        // evidence; review() is what reopens it when later edits made that evidence stale.
+        const kept = before?.status === "completed" && !claim ? before.evidence : undefined
+        const resolved =
+          status === "completed" && source && !kept
+            ? resolve({
+                observed,
+                claim,
+                source,
+                content,
+                messageID: input.messageID,
+                task: before ? { id: before.id, revision: before.revision } : undefined,
+                reason: item.reason?.trim() || undefined,
+                // A criterion that only restates the task explains nothing about a check.
+                fallback:
+                  item.reason?.trim() ||
+                  (claim ? undefined : item.evidence?.explanation?.trim()) ||
+                  explains(item.criterion, content) ||
+                  // A paraphrase kept as the criterion restates the request; it explains no check.
+                  explains(before?.criterion === before?.source?.paraphrase ? undefined : before?.criterion, content),
+              })
+            : undefined
+        // Two failed completion attempts in a row for one task inside a turn is a loop, not a
+        // request for a third message; the task blocks with the last error instead.
+        // A missing explanation is a format problem with a genuine proof: it is refused every
+        // time until the model supplies one, and never counts toward blocking the task.
+        if (resolved && "error" in resolved && resolved.error.startsWith(NEEDS_EXPLANATION))
+          return yield* new SessionTodo.Error({ message: resolved.error })
+        const attempts =
+          resolved && "error" in resolved && before
+            ? failedAttempts(
+                observed.results,
+                before,
+                observed.requests.reduce((max, entry) => Math.max(max, entry.created), 0),
+              )
+            : 0
+        if (resolved && "error" in resolved && !attempts)
+          return yield* new SessionTodo.Error({ message: resolved.error })
+        const capped =
+          resolved && "error" in resolved
+            ? `completion evidence could not be verified after ${attempts + 1} attempts: ${resolved.error}`
+            : undefined
+        const proof = resolved && "proof" in resolved ? resolved : undefined
+        // A scope change follows the same policy as a requirement: a quote of a real user message
+        // links it, anything else is attached to the latest real request with the model's words
+        // kept as the paraphrase. What it cannot do without is the concrete reason checked above.
+        const changeQuote = item.scopeChange?.quote?.trim()
+        const changeLinked =
+          item.scopeChange && changeQuote
+            ? observed.requests.find(
+                (entry) =>
+                  !entry.pending && entry.id === item.scopeChange?.messageID && quotes(entry.text, changeQuote),
+              )
+            : undefined
+        const changeRequest = changeLinked ?? (item.scopeChange ? latest : undefined)
+        if (status === "cancelled" && source && before?.status !== "cancelled" && !item.scopeChange)
+          return yield* new SessionTodo.Error({
+            message: `${SCOPE_CHANGE_REQUIRED} include scopeChange naming the user message that removed this work, e.g. {"scopeChange":{"messageID":"<user message id>","quote":"<the instruction, quoted or paraphrased>"},"reason":"<concrete reason>"}`,
+          })
+        return {
+          id:
+            before?.id ??
+            (input.origin?.type === "plan"
+              ? `todo_${createHash("sha256")
+                  .update(`${input.sessionID}:${input.origin.id}:${item.planKey ?? content}`)
+                  .digest("hex")
+                  .slice(0, 24)}`
+              : `todo_${crypto.randomUUID()}`),
+          revision: before?.revision ?? 1,
+          content,
+          status: capped ? ("blocked" as const) : status,
+          priority,
+          ...(source ? { source } : {}),
+          ...(criterion ? { criterion } : {}),
+          ...(status === "completed" && kept ? { evidence: kept } : {}),
+          ...(status === "completed" && proof
+            ? {
+                evidence: {
+                  callID: proof.proof.callID,
+                  messageID: proof.proof.messageID,
+                  tool: proof.proof.tool,
+                  hash: proof.proof.hash,
+                  observed: proof.proof.completed,
+                  explanation: proof.explanation,
+                },
+              }
+            : {}),
+          ...(item.scopeChange
+            ? {
+                scopeChange: changeRequest
+                  ? {
+                      messageID: changeRequest.id,
+                      quote: changeLinked ? changeQuote! : changeRequest.text,
+                      created: changeRequest.created,
+                      ...(!changeLinked && changeQuote ? { paraphrase: changeQuote } : {}),
+                    }
+                  : {
+                      // No user request to link to at all: the change stands on the model's words.
+                      messageID: item.scopeChange.messageID ?? "",
+                      quote: changeQuote ?? "",
+                      ...(changeQuote ? { paraphrase: changeQuote } : {}),
+                    },
+              }
+            : before?.scopeChange
+              ? { scopeChange: before.scopeChange }
+              : {}),
+          ...(capped ? { reason: capped } : reason ? { reason } : {}),
+          ...(before?.legacyStatus ? { legacyStatus: before.legacyStatus } : {}),
+          // When the task closed, so a live panel can keep closed tasks only while fresh.
+          // Reopening drops the stamp.
+          closedAt: status === "completed" || status === "cancelled" ? (before?.closedAt ?? Date.now()) : undefined,
+        }
+      }),
+    )
+    const merged = previous
+      .map((task) => changes.find((item) => item.id === task.id) ?? task)
+      .concat(changes.filter((task) => !previous.some((item) => item.id === task.id)))
+    // Updating one task never removes another. The first actionable task advances automatically.
+    const current =
+      changes.find((task) => task.status === "in_progress") ??
+      merged.find((task) => task.status === "in_progress") ??
+      merged.find((task) => task.status === "pending")
+    const result = merged.map((task) => {
+      const status = task.id === current?.id ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
+      const before = previous.find((item) => item.id === task.id)
+      const unchanged =
+        before &&
+        before.content === task.content &&
+        before.status === status &&
+        before.priority === task.priority &&
+        before.reason === task.reason &&
+        SessionTaskFacts.hash(before.source) === SessionTaskFacts.hash(task.source) &&
+        SessionTaskFacts.hash(before.criterion) === SessionTaskFacts.hash(task.criterion) &&
+        SessionTaskFacts.hash(before.evidence) === SessionTaskFacts.hash(task.evidence) &&
+        SessionTaskFacts.hash(before.scopeChange) === SessionTaskFacts.hash(task.scopeChange) &&
+        before.closedAt === task.closedAt
+      return unchanged ? before : { ...task, status, revision: before ? before.revision + 1 : 1 }
+    })
+    // Compare against the reconciled state, including automatic promotion, for exact retries.
+    yield* Effect.forEach(incoming, (item) =>
+      Effect.gen(function* () {
+        if (item.revision === undefined) return
+        const before = previous.find((task) => (item.id ? task.id === item.id : task.content === item.content?.trim()))
+        if (!before) return
+        const after = result.find((task) => task.id === before.id)!
+        if (item.revision !== before.revision && after.revision !== before.revision)
+          return yield* new SessionTodo.Error({
+            message: `Task ${before.id} changed; its current revision is ${before.revision}. Resend with that revision, e.g. {"todos":[{"id":"${before.id}","revision":${before.revision},"status":"${storedStatus(before)}"}]}`,
+          })
+      }),
+    )
+    const candidate = changes
+    const semantic = yield* intelligence
+      .evaluate({
+        sessionID: input.sessionID,
+        operation: incoming.some((item) => item.status === "completed") ? "task_completion" : "todos",
+        sources: {
+          requests: observed.requests.filter((request) => !request.pending),
+          previous: baseline,
+          origin: input.origin,
+          results: observed.results.filter((result) => result.settled && result.kind === "verification"),
+        },
+        candidate,
+        questions: Intelligence.questions(
+          Object.fromEntries(
+            candidate.flatMap((task, index) => [
+              [
+                `task_${index}_scope`,
+                `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
+              ],
+              [
+                `task_${index}_criterion`,
+                `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
+              ],
+              ...(task.status === "completed"
+                ? [
+                    [
+                      `task_${index}_evidence`,
+                      `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
+                    ],
+                  ]
+                : []),
+            ]),
+          ),
+        ),
+      })
+      .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
+    yield* Intelligence.requireAccepted(semantic).pipe(
+      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+    )
+    if (
+      semantic &&
+      (Intelligence.fingerprint(baseline) !== Intelligence.fingerprint(yield* get(input.sessionID)) ||
+        Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID)))
+    )
+      return yield* new SessionTodo.Error({
+        message: "Task sources changed during evaluation; retry with current evidence",
+      })
+    // Network evaluation is outside the transaction; recheck the baseline before writing.
     return yield* db
       .transaction((tx) =>
         Effect.gen(function* () {
-          const previous = (yield* tx
+          const persisted = (yield* tx
             .select()
             .from(TodoTable)
             .where(eq(TodoTable.session_id, input.sessionID))
             .orderBy(asc(TodoTable.position))
             .all()
             .pipe(Effect.orDie)).map(read)
-          const seen = new Set<string>()
-          const changes = yield* Effect.forEach(incoming, (item) =>
-            Effect.gen(function* () {
-              const supplied = item.content?.trim()
-              if (item.content !== undefined && !supplied)
-                return yield* new SessionTodo.Error({ message: "Task content must not be empty" })
-              const matches = previous.filter((task) =>
-                item.id
-                  ? task.id === item.id
-                  : input.origin
-                    ? task.source?.id === input.origin.id && task.source?.key === item.planKey
-                    : task.content === supplied,
-              )
-              if (matches.length > 1)
-                return yield* new SessionTodo.Error({
-                  message: `Multiple tasks match ${supplied}; use the task id and revision`,
-                })
-              const before = matches[0]
-              if (item.id && !before)
-                return yield* new SessionTodo.Error({
-                  message: `Unknown task ${item.id}; omit id when creating a task. Existing tasks: ${listTasks(previous)}`,
-                })
-              // An update names only what changes, so a status left out is the stored one; a new task
-              // without one starts pending.
-              const status = item.status ?? (before ? storedStatus(before) : "pending")
-              if (!before && !supplied)
-                return yield* new SessionTodo.Error({
-                  message: `Task content is required to create a task; supply id and revision to update an existing one. Existing tasks: ${listTasks(previous)}`,
-                })
-              const content = supplied ?? before!.content
-              const priority =
-                item.priority ??
-                (before && Schema.is(SessionTodo.Priority)(before.priority) ? before.priority : "medium")
-              const key = before?.id ?? (input.origin?.type === "plan" ? (item.planKey ?? content) : content)
-              if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
-              seen.add(key)
-              if (input.origin?.type === "plan" && before) return before
-              const reason = item.reason?.trim() || (before?.status === status ? before.reason : undefined)
-              if ((status === "blocked" || status === "cancelled") && !reason)
-                return yield* new SessionTodo.Error({
-                  message: `${status} requires a concrete reason; do not discard remaining work`,
-                })
-              const requirement = item.requirement?.trim()
-              const requests = observed.requests.toSorted((a, b) => b.created - a.created)
-              const latest = requests.find((entry) => !entry.pending)
-              const quoted = requirement ? requests.find((entry) => quotes(entry.text, requirement)) : latest
-              // A quote never decides whether an update is accepted: the user may write in any language
-              // and the model may paraphrase or translate. A requirement that quotes no request is
-              // attached to the latest real request, verbatim, and the model's wording is kept as the
-              // criterion; the completion gate is unchanged, since it hangs on real verification.
-              const paraphrased = requirement && !quoted ? latest : undefined
-              const request = quoted ?? paraphrased
-              const source =
-                before?.source ??
-                (input.origin
-                  ? { ...input.origin, quote: item.requirement ?? input.origin.quote, key: item.planKey }
-                  : undefined) ??
-                (request
-                  ? {
-                      type: "request" as const,
-                      id: request.id,
-                      quote: quoted && requirement ? requirement : request.text,
-                      created: request.created,
-                      ...(paraphrased && requirement ? { paraphrase: requirement } : {}),
-                    }
-                  : undefined)
-              const criterion =
-                item.criterion?.trim() ||
-                before?.criterion ||
-                // With no request to attach at all, the requirement still says what the task must show.
-                (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
-                (source ? content : undefined)
-              // Evidence is a claim only when it cites a result; an explanation on its own asks for the
-              // newest verification to be selected and says what it shows.
-              const claim = item.evidence?.callID ? { ...item.evidence, callID: item.evidence.callID } : undefined
-              // A task that is already complete keeps its stored evidence when re-sent without new
-              // evidence; review() is what reopens it when later edits made that evidence stale.
-              const kept = before?.status === "completed" && !claim ? before.evidence : undefined
-              const resolved =
-                status === "completed" && source && !kept
-                  ? resolve({
-                      observed,
-                      claim,
-                      source,
-                      content,
-                      messageID: input.messageID,
-                      task: before ? { id: before.id, revision: before.revision } : undefined,
-                      reason: item.reason?.trim() || undefined,
-                      // A criterion that only restates the task explains nothing about a check.
-                      fallback:
-                        item.reason?.trim() ||
-                        (claim ? undefined : item.evidence?.explanation?.trim()) ||
-                        explains(item.criterion, content) ||
-                        // A paraphrase kept as the criterion restates the request; it explains no check.
-                        explains(
-                          before?.criterion === before?.source?.paraphrase ? undefined : before?.criterion,
-                          content,
-                        ),
-                    })
-                  : undefined
-              // Two failed completion attempts in a row for one task inside a turn is a loop, not a
-              // request for a third message; the task blocks with the last error instead.
-              // A missing explanation is a format problem with a genuine proof: it is refused every
-              // time until the model supplies one, and never counts toward blocking the task.
-              if (resolved && "error" in resolved && resolved.error.startsWith(NEEDS_EXPLANATION))
-                return yield* new SessionTodo.Error({ message: resolved.error })
-              const attempts =
-                resolved && "error" in resolved && before
-                  ? failedAttempts(
-                      observed.results,
-                      before,
-                      observed.requests.reduce((max, entry) => Math.max(max, entry.created), 0),
-                    )
-                  : 0
-              if (resolved && "error" in resolved && !attempts)
-                return yield* new SessionTodo.Error({ message: resolved.error })
-              const capped =
-                resolved && "error" in resolved
-                  ? `completion evidence could not be verified after ${attempts + 1} attempts: ${resolved.error}`
-                  : undefined
-              const proof = resolved && "proof" in resolved ? resolved : undefined
-              // A scope change follows the same policy as a requirement: a quote of a real user message
-              // links it, anything else is attached to the latest real request with the model's words
-              // kept as the paraphrase. What it cannot do without is the concrete reason checked above.
-              const changeQuote = item.scopeChange?.quote?.trim()
-              const changeLinked =
-                item.scopeChange && changeQuote
-                  ? observed.requests.find(
-                      (entry) =>
-                        !entry.pending && entry.id === item.scopeChange?.messageID && quotes(entry.text, changeQuote),
-                    )
-                  : undefined
-              const changeRequest = changeLinked ?? (item.scopeChange ? latest : undefined)
-              if (status === "cancelled" && source && before?.status !== "cancelled" && !item.scopeChange)
-                return yield* new SessionTodo.Error({
-                  message: `${SCOPE_CHANGE_REQUIRED} include scopeChange naming the user message that removed this work, e.g. {"scopeChange":{"messageID":"<user message id>","quote":"<the instruction, quoted or paraphrased>"},"reason":"<concrete reason>"}`,
-                })
-              return {
-                id:
-                  before?.id ??
-                  (input.origin?.type === "plan"
-                    ? `todo_${createHash("sha256")
-                        .update(`${input.sessionID}:${input.origin.id}:${item.planKey ?? content}`)
-                        .digest("hex")
-                        .slice(0, 24)}`
-                    : `todo_${crypto.randomUUID()}`),
-                revision: before?.revision ?? 1,
-                content,
-                status: capped ? ("blocked" as const) : status,
-                priority,
-                ...(source ? { source } : {}),
-                ...(criterion ? { criterion } : {}),
-                ...(status === "completed" && kept ? { evidence: kept } : {}),
-                ...(status === "completed" && proof
-                  ? {
-                      evidence: {
-                        callID: proof.proof.callID,
-                        messageID: proof.proof.messageID,
-                        tool: proof.proof.tool,
-                        hash: proof.proof.hash,
-                        observed: proof.proof.completed,
-                        explanation: proof.explanation,
-                      },
-                    }
-                  : {}),
-                ...(item.scopeChange
-                  ? {
-                      scopeChange: changeRequest
-                        ? {
-                            messageID: changeRequest.id,
-                            quote: changeLinked ? changeQuote! : changeRequest.text,
-                            created: changeRequest.created,
-                            ...(!changeLinked && changeQuote ? { paraphrase: changeQuote } : {}),
-                          }
-                        : {
-                            // No user request to link to at all: the change stands on the model's words.
-                            messageID: item.scopeChange.messageID ?? "",
-                            quote: changeQuote ?? "",
-                            ...(changeQuote ? { paraphrase: changeQuote } : {}),
-                          },
-                    }
-                  : before?.scopeChange
-                    ? { scopeChange: before.scopeChange }
-                    : {}),
-                ...(capped ? { reason: capped } : reason ? { reason } : {}),
-                ...(before?.legacyStatus ? { legacyStatus: before.legacyStatus } : {}),
-                // When the task closed, so a live panel can keep closed tasks only while fresh.
-                // Reopening drops the stamp.
-                closedAt: status === "completed" || status === "cancelled" ? (before?.closedAt ?? Date.now()) : undefined,
-              }
-            }),
-          )
-          const merged = previous
-            .map((task) => changes.find((item) => item.id === task.id) ?? task)
-            .concat(changes.filter((task) => !previous.some((item) => item.id === task.id)))
-          // Updating one task never removes another. The first actionable task advances automatically.
-          const current =
-            changes.find((task) => task.status === "in_progress") ??
-            merged.find((task) => task.status === "in_progress") ??
-            merged.find((task) => task.status === "pending")
-          const result = merged.map((task) => {
-            const status =
-              task.id === current?.id ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
-            const before = previous.find((item) => item.id === task.id)
-            const unchanged =
-              before &&
-              before.content === task.content &&
-              before.status === status &&
-              before.priority === task.priority &&
-              before.reason === task.reason &&
-              SessionTaskFacts.hash(before.source) === SessionTaskFacts.hash(task.source) &&
-              SessionTaskFacts.hash(before.criterion) === SessionTaskFacts.hash(task.criterion) &&
-              SessionTaskFacts.hash(before.evidence) === SessionTaskFacts.hash(task.evidence) &&
-              SessionTaskFacts.hash(before.scopeChange) === SessionTaskFacts.hash(task.scopeChange) &&
-              before.closedAt === task.closedAt
-            return unchanged ? before : { ...task, status, revision: before ? before.revision + 1 : 1 }
-          })
-          // Compare against the reconciled state, including automatic promotion, for exact retries.
-          yield* Effect.forEach(incoming, (item) =>
-            Effect.gen(function* () {
-              if (item.revision === undefined) return
-              const before = previous.find((task) =>
-                item.id ? task.id === item.id : task.content === item.content?.trim(),
-              )
-              if (!before) return
-              const after = result.find((task) => task.id === before.id)!
-              if (item.revision !== before.revision && after.revision !== before.revision)
-                return yield* new SessionTodo.Error({
-                  message: `Task ${before.id} changed; its current revision is ${before.revision}. Resend with that revision, e.g. {"todos":[{"id":"${before.id}","revision":${before.revision},"status":"${storedStatus(before)}"}]}`,
-                })
-            }),
-          )
+          if (Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline))
+            return yield* new SessionTodo.Error({
+              message: "Tasks changed during evaluation; retry with current revisions",
+            })
           yield* Effect.forEach(result, (task, position) =>
             Effect.gen(function* () {
               const before = previous.find((item) => item.id === task.id)
@@ -766,5 +814,5 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, SessionTaskFacts.node],
+  deps: [Database.node, SessionTaskFacts.node, Intelligence.node],
 })

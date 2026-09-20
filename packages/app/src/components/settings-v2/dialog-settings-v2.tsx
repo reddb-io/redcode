@@ -1,3 +1,4 @@
+import { SettingsIntelligence } from "../settings-intelligence"
 import { Component, createMemo, createSignal, startTransition } from "solid-js"
 import { Dialog } from "@reddb-io/redcode-ui/v2/dialog-v2"
 import { TabsV2 } from "@reddb-io/redcode-ui/v2/tabs-v2"
@@ -79,6 +80,10 @@ export const DialogSettings: Component<{
                       <Icon name="providers" />
                       {language.t("settings.providers.title")}
                     </TabsV2.Trigger>
+                    <TabsV2.Trigger value="intelligence">
+                      <Icon name="models" />
+                      {language.t("settings.intelligence.title")}
+                    </TabsV2.Trigger>
                     <TabsV2.Trigger value="models">
                       <Icon name="models" />
                       {language.t("settings.models.title")}
@@ -104,6 +109,9 @@ export const DialogSettings: Component<{
         </TabsV2.Content>
         <TabsV2.Content value="providers" class="settings-v2-panel">
           <SettingsProvidersV2 directory={directory} onBack={showProviders} />
+        </TabsV2.Content>
+        <TabsV2.Content value="intelligence" class="settings-v2-panel">
+          <SettingsIntelligence />
         </TabsV2.Content>
         <TabsV2.Content value="models" class="settings-v2-panel">
           <SettingsModelsV2 />

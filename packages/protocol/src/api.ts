@@ -1,3 +1,4 @@
+import { IntelligenceGroup, IntelligenceModelGroup } from "./groups/intelligence"
 import { Context } from "effect"
 import { HttpApi, HttpApiGroup, HttpApiMiddleware, OpenApi } from "effect/unstable/httpapi"
 import { SchemaErrorMiddleware } from "./middleware/schema-error"
@@ -57,6 +58,8 @@ const makeApiFromGroup = <
     .add(ReferenceGroup.middleware(locationMiddleware))
     .add(ProjectCopyGroup.middleware(locationMiddleware))
     .add(HookGroup.middleware(locationMiddleware))
+    .add(IntelligenceGroup)
+    .add(IntelligenceModelGroup.middleware(locationMiddleware))
     .annotateMerge(
       OpenApi.annotations({
         title: "Redcode HttpApi",

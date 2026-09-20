@@ -1,3 +1,6 @@
+import { Intelligence } from "../src/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { describe, expect } from "bun:test"
 import { asc } from "drizzle-orm"
 import { Effect, Schema } from "effect"
@@ -13,7 +16,9 @@ import { SessionTable, TodoTable, TodoHistoryTable } from "@reddb-io/redcode-cor
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { testEffect } from "./lib/effect"
 
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, EventV2.node, SessionTodo.node])))
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([Database.node, EventV2.node, SessionTodo.node, Intelligence.node])),
+)
 const sessionID = SessionV2.ID.make("ses_todo_test")
 
 const setup = Effect.gen(function* () {
@@ -362,3 +367,52 @@ describe("SessionTodo", () => {
     }),
   )
 })
+
+it.live("semantic rejection preserves the stored task revision", () =>
+  Effect.gen(function* () {
+    yield* setup
+    const todos = yield* SessionTodo.Service
+    const intelligence = yield* Intelligence.Service
+    const previous = yield* intelligence.read()
+    const initial = yield* todos.update({
+      sessionID,
+      todos: [{ content: "Preserve filters", criterion: "Filters survive pagination", priority: "high" }],
+    })
+    const calls: unknown[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const body = await request.json()
+        calls.push(body)
+        return Response.json({
+          model: "jev-1.13.0",
+          answers: Object.fromEntries(Object.keys(body.questions).map((key) => [key, { type: "noul", noul: 0.99 }])),
+          usage: { input_tokens: 10, output_tokens: 2 },
+        })
+      },
+    })
+    yield* Effect.gen(function* () {
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+          evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-1.13.0" },
+        },
+      })
+      const malformed = yield* todos
+        .update({ sessionID, todos: [{ id: "missing", status: "completed" }] })
+        .pipe(Effect.result)
+      expect(malformed._tag).toBe("Failure")
+      expect(calls).toHaveLength(0)
+      const result = yield* todos
+        .update({ sessionID, todos: [{ id: initial[0].id, content: "Delete filters" }] })
+        .pipe(Effect.result)
+      expect(result._tag).toBe("Failure")
+      expect(yield* todos.get(sessionID)).toEqual(initial)
+    }).pipe(
+      Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)),
+      Effect.ensuring(Effect.sync(() => server.stop(true))),
+    )
+  }),
+)

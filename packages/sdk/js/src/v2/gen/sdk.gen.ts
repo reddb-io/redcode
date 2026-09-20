@@ -100,6 +100,20 @@ import type {
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
   InstanceDisposeResponses,
+  IntelligenceDiscoverErrors,
+  IntelligenceDiscoverResponses,
+  IntelligenceGetErrors,
+  IntelligenceGetResponses,
+  IntelligenceHistoryErrors,
+  IntelligenceHistoryResponses,
+  IntelligenceModelTestErrors,
+  IntelligenceModelTestResponses,
+  IntelligenceProbe,
+  IntelligenceProbeErrors,
+  IntelligenceProbeResponses,
+  IntelligenceSave,
+  IntelligenceSaveErrors,
+  IntelligenceSaveResponses,
   LocationRef,
   LspStatusErrors,
   LspStatusResponses,
@@ -9208,6 +9222,138 @@ export class Server extends HeyApiClient {
   }
 }
 
+export class Model2 extends HeyApiClient {
+  /**
+   * Test a generative role with a synthetic prompt
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters: {
+      modelRef: ModelRef
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "modelRef", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      IntelligenceModelTestResponses,
+      IntelligenceModelTestErrors,
+      ThrowOnError
+    >({
+      url: "/api/intelligence/test-model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Intelligence extends HeyApiClient {
+  /**
+   * Get global intelligence setup
+   */
+  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<IntelligenceGetResponses, IntelligenceGetErrors, ThrowOnError>({
+      url: "/api/intelligence",
+      ...options,
+    })
+  }
+
+  /**
+   * Save global intelligence setup
+   */
+  public save<ThrowOnError extends boolean = false>(
+    parameters: {
+      intelligenceSave: IntelligenceSave
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "intelligenceSave", map: "body" }] }])
+    return (options?.client ?? this.client).put<IntelligenceSaveResponses, IntelligenceSaveErrors, ThrowOnError>({
+      url: "/api/intelligence",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Discover System One models
+   */
+  public discover<ThrowOnError extends boolean = false>(
+    parameters: {
+      intelligenceProbe: IntelligenceProbe
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "intelligenceProbe", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      IntelligenceDiscoverResponses,
+      IntelligenceDiscoverErrors,
+      ThrowOnError
+    >({
+      url: "/api/intelligence/models",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Test System One connection
+   */
+  public probe<ThrowOnError extends boolean = false>(
+    parameters: {
+      intelligenceProbe: IntelligenceProbe
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "intelligenceProbe", map: "body" }] }])
+    return (options?.client ?? this.client).post<IntelligenceProbeResponses, IntelligenceProbeErrors, ThrowOnError>({
+      url: "/api/intelligence/test",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read session semantic evaluations
+   */
+  public history<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<IntelligenceHistoryResponses, IntelligenceHistoryErrors, ThrowOnError>({
+      url: "/api/intelligence/evaluations",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _model?: Model2
+  get model(): Model2 {
+    return (this._model ??= new Model2({ client: this.client }))
+  }
+}
+
 export class RedcodeClient extends HeyApiClient {
   public static readonly __registry = new HeyApiRegistry<RedcodeClient>()
 
@@ -9359,5 +9505,10 @@ export class RedcodeClient extends HeyApiClient {
   private _server?: Server
   get server(): Server {
     return (this._server ??= new Server({ client: this.client }))
+  }
+
+  private _intelligence?: Intelligence
+  get intelligence(): Intelligence {
+    return (this._intelligence ??= new Intelligence({ client: this.client }))
   }
 }

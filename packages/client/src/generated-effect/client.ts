@@ -1130,6 +1130,65 @@ const adaptGroup19 = (raw: RawClient["server.hook"]) => ({
   import: Endpoint19_3(raw),
 })
 
+const Endpoint20_0 = (raw: RawClient["server.intelligence"]) => () =>
+  raw["intelligence.get"]({}).pipe(Effect.mapError(mapClientError))
+
+type Endpoint20_1Request = Parameters<RawClient["server.intelligence"]["intelligence.save"]>[0]
+type Endpoint20_1Input = {
+  readonly settings: Endpoint20_1Request["payload"]["settings"]
+  readonly apiKey?: Endpoint20_1Request["payload"]["apiKey"]
+}
+const Endpoint20_1 = (raw: RawClient["server.intelligence"]) => (input: Endpoint20_1Input) =>
+  raw["intelligence.save"]({ payload: { settings: input["settings"], apiKey: input["apiKey"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+type Endpoint20_2Request = Parameters<RawClient["server.intelligence"]["intelligence.discover"]>[0]
+type Endpoint20_2Input = {
+  readonly evaluator: Endpoint20_2Request["payload"]["evaluator"]
+  readonly apiKey?: Endpoint20_2Request["payload"]["apiKey"]
+}
+const Endpoint20_2 = (raw: RawClient["server.intelligence"]) => (input: Endpoint20_2Input) =>
+  raw["intelligence.discover"]({ payload: { evaluator: input["evaluator"], apiKey: input["apiKey"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+type Endpoint20_3Request = Parameters<RawClient["server.intelligence"]["intelligence.probe"]>[0]
+type Endpoint20_3Input = {
+  readonly evaluator: Endpoint20_3Request["payload"]["evaluator"]
+  readonly apiKey?: Endpoint20_3Request["payload"]["apiKey"]
+}
+const Endpoint20_3 = (raw: RawClient["server.intelligence"]) => (input: Endpoint20_3Input) =>
+  raw["intelligence.probe"]({ payload: { evaluator: input["evaluator"], apiKey: input["apiKey"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+type Endpoint20_4Request = Parameters<RawClient["server.intelligence"]["intelligence.history"]>[0]
+type Endpoint20_4Input = { readonly sessionID: Endpoint20_4Request["query"]["sessionID"] }
+const Endpoint20_4 = (raw: RawClient["server.intelligence"]) => (input: Endpoint20_4Input) =>
+  raw["intelligence.history"]({ query: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup20 = (raw: RawClient["server.intelligence"]) => ({
+  get: Endpoint20_0(raw),
+  save: Endpoint20_1(raw),
+  discover: Endpoint20_2(raw),
+  probe: Endpoint20_3(raw),
+  history: Endpoint20_4(raw),
+})
+
+type Endpoint21_0Request = Parameters<RawClient["server.intelligence.model"]["intelligence.model.test"]>[0]
+type Endpoint21_0Input = {
+  readonly id: Endpoint21_0Request["payload"]["id"]
+  readonly providerID: Endpoint21_0Request["payload"]["providerID"]
+  readonly variant?: Endpoint21_0Request["payload"]["variant"]
+}
+const Endpoint21_0 = (raw: RawClient["server.intelligence.model"]) => (input: Endpoint21_0Input) =>
+  raw["intelligence.model.test"]({
+    payload: { id: input["id"], providerID: input["providerID"], variant: input["variant"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup21 = (raw: RawClient["server.intelligence.model"]) => ({ test: Endpoint21_0(raw) })
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -1151,6 +1210,8 @@ const adaptClient = (raw: RawClient) => ({
   references: adaptGroup17(raw["server.reference"]),
   projectCopies: adaptGroup18(raw["server.projectCopy"]),
   hooks: adaptGroup19(raw["server.hook"]),
+  "server.intelligence": adaptGroup20(raw["server.intelligence"]),
+  "server.intelligence.model": adaptGroup21(raw["server.intelligence.model"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

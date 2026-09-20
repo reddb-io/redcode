@@ -1,3 +1,4 @@
+import { IntelligenceHandler, IntelligenceModelHandler } from "./handlers/intelligence"
 import { Layer } from "effect"
 import { MessageHandler } from "./handlers/message"
 import { ModelHandler } from "./handlers/model"
@@ -22,6 +23,8 @@ import { DesignHandler } from "./handlers/design"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
+  IntelligenceHandler,
+  IntelligenceModelHandler,
   LocationHandler,
   AgentHandler,
   SessionHandler,

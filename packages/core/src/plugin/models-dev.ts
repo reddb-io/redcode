@@ -98,6 +98,7 @@ function applyModel(
         settings: {},
       }
   draft.capabilities = {
+    protocol: model.format ?? "language",
     tools: model.tool_call,
     input: [...(model.modalities?.input ?? [])],
     output: [...(model.modalities?.output ?? [])],

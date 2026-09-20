@@ -7,6 +7,53 @@ const designCopy = Object.fromEntries(
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "settings.intelligence.zen": "OpenCode Zen — Jev Free (recommended)",
+  "settings.intelligence.zenNotice":
+    "Jev Free is a temporary offer. Session sources are sent to Zen after activation. If it becomes unavailable, choose another evaluator; Redcode never switches to a paid model automatically. A blank key reuses an existing OpenCode connection, OPENCODE_API_KEY, or Zen's public free access.",
+  "settings.intelligence.connectZen": "Connect OpenCode Zen / get an API key",
+  "settings.intelligence.zenUnavailable":
+    "The selected Zen evaluator could not be verified. Check its availability and your Zen API key, or choose another evaluator. No paid fallback was used; previous settings are preserved.",
+  "settings.intelligence.connect": "Connect generative providers",
+  "settings.intelligence.operation.todos": "Tasks",
+  "settings.intelligence.operation.plan": "Plan",
+  "settings.intelligence.operation.feedback": "Design feedback",
+  "settings.intelligence.operation.design_completion": "Design completion",
+  "settings.intelligence.operation.compaction": "Checkpoint summary",
+  "settings.intelligence.operation.compact_now": "Compaction timing",
+  "settings.intelligence.operation.task_completion": "Task completion",
+  "settings.intelligence.decision.accepted": "Accepted",
+  "settings.intelligence.decision.needs_revision": "Needs revision",
+  "settings.intelligence.decision.inconclusive": "Inconclusive",
+  "settings.intelligence.decision.unavailable": "Unavailable",
+
+  "settings.intelligence.configure": "Configure",
+  "settings.intelligence.later": "Later",
+  "settings.intelligence.history": "Recent semantic evaluations",
+  "settings.intelligence.details": "Evaluation details",
+  "settings.intelligence.usage": "{{input}} input tokens · {{output}} output tokens · {{duration}} ms",
+  "settings.intelligence.title": "Intelligence",
+  "settings.intelligence.environment": "Global setup on {{environment}}",
+  "settings.intelligence.description":
+    "Configure System Two for generation and System One for semantic decisions. These roles are shared across projects on this server.",
+  "settings.intelligence.principal": "System Two — principal",
+  "settings.intelligence.fast": "System Two — transformations",
+  "settings.intelligence.select": "Select a connected model",
+  "settings.intelligence.reuse": "Reuse principal",
+  "settings.intelligence.connection": "System One connection",
+  "settings.intelligence.url": "API base URL",
+  "settings.intelligence.key": "API key (empty keeps saved credentials or server environment)",
+  "settings.intelligence.discover": "Discover evaluator models",
+  "settings.intelligence.evaluator": "System One — evaluator model",
+  "settings.intelligence.disclosure":
+    "Sources and candidates are sent to this evaluator. Activation tests the connection with a synthetic example. Model judgments can be uncertain or incorrect.",
+  "settings.intelligence.activate": "Test and activate",
+  "settings.intelligence.defer": "Disable or set up later",
+  "settings.intelligence.checking": "Checking configuration…",
+  "settings.intelligence.saved": "Global intelligence setup saved.",
+  "settings.intelligence.error":
+    "Setup failed. Check your connection and model selections, then retry. Previous settings are preserved.",
+  "settings.intelligence.manual": "Model discovery is unavailable. Enter a model ID and test the connection.",
+  "settings.intelligence.disabled": "Semantic evaluation is disabled. Existing model behavior is preserved.",
   ...designCopy,
   ...DESKTOP_NATIVE_ENGLISH,
   "command.category.suggested": "Suggested",
