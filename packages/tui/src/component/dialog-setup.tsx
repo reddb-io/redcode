@@ -27,6 +27,7 @@ export function createDialogSetupState(resume?: { settings: Intelligence.Setting
     loaded: !!resume,
     environment: "",
     models: [] as { id: string; name: string }[],
+    evaluators: [] as Intelligence.EvaluatorOption[],
   })
 }
 
@@ -59,6 +60,7 @@ export function DialogSetup(
       .then((result) => {
         if (state.step === "welcome") set("settings", result.settings)
         set("environment", result.environment)
+        set("evaluators", result.evaluators)
         set("loaded", true)
       })
       .catch(fail)
@@ -203,19 +205,26 @@ export function DialogSetup(
         <DialogSelect
           title="3/3 · System One connection"
           current={state.settings.evaluator?.transport ?? "opencode-zen"}
-          options={[
-            { title: "OpenCode Zen — Jev Free (recommended)", value: "opencode-zen" as const },
-            { title: "TypeSafe directly", value: "typesafe" as const },
-            { title: "RedRouter", value: "red-router" as const },
-          ]}
+          options={state.evaluators.map((option) => ({
+            title: option.name,
+            value: option.evaluator.transport,
+            description: option.configured ? "Configured connection" : undefined,
+            category: option.configured ? "Connected" : "Available",
+          }))}
           onSelect={(option) => {
+            const selected = state.evaluators.find((item) => item.evaluator.transport === option.value)!
             batch(() => {
               set("settings", (settings) => ({
                 ...settings,
                 evaluator:
                   settings.evaluator?.transport === option.value
-                    ? settings.evaluator
-                    : IntelligenceClient.evaluatorPreset(option.value),
+                    ? {
+                        ...settings.evaluator,
+                        ...(settings.evaluator.baseURL === selected.evaluator.baseURL && selected.evaluator.credentialID
+                          ? { credentialID: selected.evaluator.credentialID }
+                          : {}),
+                      }
+                    : selected.evaluator,
               }))
               set("step", "url")
             })
@@ -247,9 +256,11 @@ export function DialogSetup(
             evaluator().transport === "opencode-zen" ? "Zen API key — https://opencode.ai/zen" : "System One API key"
           }
           placeholder={
-            evaluator().transport === "opencode-zen"
-              ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
-              : "API key, or empty to use the server environment"
+            evaluator().credentialID
+              ? "Empty reuses the configured provider connection"
+              : evaluator().transport === "opencode-zen"
+                ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
+                : "API key, or empty to use the server environment"
           }
           busy={state.busy}
           onConfirm={(value) => {

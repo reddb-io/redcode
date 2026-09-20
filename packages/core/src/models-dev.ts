@@ -129,6 +129,15 @@ const SYSTEM_ONE_OFFERS: Readonly<Record<string, ReadonlySet<string>>> = {
   "cloudflare-ai-gateway": new Set(["typesafe/jev"]),
   vercel: new Set(["typesafe-ai/jev"]),
   vivgrid: new Set(["jev"]),
+  "nano-gpt": new Set(["typesafe/jev-latest"]),
+}
+
+export function systemOneOffers(catalog: Record<string, Provider>) {
+  return Object.entries(SYSTEM_ONE_OFFERS).flatMap(([providerID, modelIDs]) => {
+    const provider = Object.values(catalog).find((candidate) => candidate.id === providerID)
+    if (!provider) return []
+    return [...modelIDs].map((model) => ({ providerID, provider: provider.name, model }))
+  })
 }
 
 function classify(catalog: Record<string, Provider>): Record<string, Provider> {

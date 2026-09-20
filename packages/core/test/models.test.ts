@@ -1,4 +1,4 @@
-import { describe, expect, beforeAll, beforeEach, afterAll } from "bun:test"
+import { describe, expect, beforeAll, beforeEach, afterAll, test } from "bun:test"
 import { Effect, Layer, Ref } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -172,6 +172,20 @@ describe("ModelsDev Service", () => {
       expect(result.opencode.models["my-jev-wrapper"].format).toBeUndefined()
     }),
   )
+
+  test("lists every catalog provider with a curated System One offer", () => {
+    const providers = ["opencode", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"]
+    const catalog = Object.fromEntries(providers.map((id) => [id, { ...fixture.acme, id, name: id, models: {} }]))
+    expect(ModelsDev.systemOneOffers(catalog)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ providerID: "opencode", model: "jev-1.13-free" }),
+        expect.objectContaining({ providerID: "cloudflare-ai-gateway", model: "typesafe/jev" }),
+        expect.objectContaining({ providerID: "vercel", model: "typesafe-ai/jev" }),
+        expect.objectContaining({ providerID: "vivgrid", model: "jev" }),
+        expect.objectContaining({ providerID: "nano-gpt", model: "typesafe/jev-latest" }),
+      ]),
+    )
+  })
 
   it.live("get() returns empty catalog when disk empty, fetch disabled, and no bundled snapshot is injected", () =>
     Effect.gen(function* () {

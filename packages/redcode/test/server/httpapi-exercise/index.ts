@@ -875,6 +875,7 @@ const scenarios: Scenario[] = [
     .json(200, (body) => {
       object(body)
       object(body.settings)
+      array(body.evaluators)
       check(typeof body.environment === "string", "intelligence setup should identify its global environment")
     }),
   http.protected

@@ -8,7 +8,7 @@ Select three roles:
 - **Fast / System Two**: structured transformations; can reuse the principal.
 - **Evaluator / System One**: native TypeSafe questions. New onboarding recommends OpenCode Zen with `jev-1.13-free`; existing evaluator settings are preserved.
 
-Connect generative providers using the existing provider setup first. Setup tests selected generative models and a synthetic Noul question before activation. Configuration and API-key storage are separate. Switching evaluator URLs does not implicitly forward the previous connection's key. API clients may explicitly supply an existing `credentialID`; a blank key otherwise reuses this evaluator's saved key or `TYPESAFE_API_KEY` / `RED_ROUTER_API_KEY`.
+Connect providers using `/connect` or the provider settings first. System One setup lists compatible configured connections before the other available providers and reuses their stored credential. It then tests the selected generative models and a synthetic Noul question before activation. Configuration and API-key storage are separate. Switching evaluator URLs does not implicitly forward the previous connection's key. API clients may explicitly supply an existing `credentialID`; a blank key otherwise reuses this evaluator's saved key or provider environment variable.
 
 ## OpenCode Zen default
 
@@ -16,11 +16,22 @@ New setup preselects `https://opencode.ai/zen/v1` and `jev-1.13-free`. The free 
 
 Use a Zen API key from https://opencode.ai/zen if required. For the official Zen URL, a blank key reuses this evaluator's saved credential, an existing OpenCode connection, `OPENCODE_API_KEY`, or Zen's public free access. Activating sends session sources and candidates to Zen. You can select a supported transport and override its compatible base URL and model during setup or later. System One models are excluded from the setup's generative role selectors through catalog protocol capabilities.
 
-## Direct TypeSafe or RedRouter
+## Other JEV providers
 
-For direct access use `https://api.typesafe.ai/v1`. For a local router use `http://localhost:25050/v1` (or your deployed URL), configure its TypeSafe provider, and use a router client key. Both transports send the same native `POST /v1/systemone` body: `model`, `state`, `questions`. They never translate evaluators into chat completion models.
+Redcode combines the live models.dev catalog with explicit System One protocol metadata. Besides OpenCode Zen, onboarding can offer:
 
-Cloudflare's `/ai/run` API uses a different request envelope and is not a compatible base URL override. It needs its own transport adapter before it can appear in onboarding.
+- **TypeSafe** directly at `https://api.typesafe.ai/v1`.
+- **RedRouter** at `http://localhost:25050/v1` or a deployed URL.
+- **Cloudflare AI Gateway**, using `typesafe/jev` through the documented `/accounts/{account}/ai/run` envelope. Connect it first so Redcode can reuse the account ID, gateway ID and API token.
+- **Vercel AI Gateway**, using `typesafe-ai/jev` through its evaluation-model v4 endpoint.
+- **Vivgrid**, using `jev` through its native System One endpoint.
+- **NanoGPT**, using `typesafe/jev-latest` through its native System One endpoint.
+
+Configured compatible providers are sorted first in CLI, TUI and app setup. The free Zen connection remains the default for a fresh installation.
+
+TypeSafe, RedRouter, Zen, Vivgrid and NanoGPT use the native System One body: `model`, `state`, `questions`. Cloudflare wraps `state` and `questions` under `input`. Vercel uses its evaluation-model protocol; Redcode translates Noul to the protocol's Boolean question and normalizes its response back to the TypeSafe answer shape. None of these evaluators is sent through chat completions.
+
+OpenRouter is not offered as a System One connection. As of 2026-09-20, neither `https://models.dev/api.json` nor OpenRouter's public model catalog contains a JEV model, and the models.dev OpenRouter history has never carried one. Add it only after OpenRouter publishes a concrete evaluation model and transport contract.
 
 Router discovery uses `GET /v1/models/systemone`. Direct discovery uses `/v1/models`; when unavailable, enter the model name manually. The sibling red-router changes classify `systemOne` entries separately and dispatch the discovery endpoint to its native handler.
 
