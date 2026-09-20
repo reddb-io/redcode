@@ -6938,6 +6938,7 @@ export type IntelligenceGetOutput = {
     readonly evaluator?: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -6956,6 +6957,7 @@ export type IntelligenceGetOutput = {
     readonly evaluator: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -6979,6 +6981,7 @@ export type IntelligenceSaveInput = {
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"
+          | "openrouter"
           | "typesafe"
           | "red-router"
           | "cloudflare-ai-gateway"
@@ -7001,6 +7004,7 @@ export type IntelligenceSaveInput = {
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"
+          | "openrouter"
           | "typesafe"
           | "red-router"
           | "cloudflare-ai-gateway"
@@ -7024,6 +7028,7 @@ export type IntelligenceSaveOutput = {
   readonly evaluator?: {
     readonly transport:
       | "opencode-zen"
+      | "openrouter"
       | "typesafe"
       | "red-router"
       | "cloudflare-ai-gateway"
@@ -7041,6 +7046,7 @@ export type IntelligenceDiscoverInput = {
     readonly evaluator: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -7057,6 +7063,7 @@ export type IntelligenceDiscoverInput = {
     readonly evaluator: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -7081,6 +7088,7 @@ export type IntelligenceProbeInput = {
     readonly evaluator: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -7097,6 +7105,7 @@ export type IntelligenceProbeInput = {
     readonly evaluator: {
       readonly transport:
         | "opencode-zen"
+        | "openrouter"
         | "typesafe"
         | "red-router"
         | "cloudflare-ai-gateway"
@@ -7153,6 +7162,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
   readonly evaluator?: {
     readonly transport:
       | "opencode-zen"
+      | "openrouter"
       | "typesafe"
       | "red-router"
       | "cloudflare-ai-gateway"

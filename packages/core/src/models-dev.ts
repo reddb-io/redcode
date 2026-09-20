@@ -126,6 +126,7 @@ export type Model = Schema.Schema.Type<typeof Model>
 
 const SYSTEM_ONE_OFFERS: Readonly<Record<string, ReadonlySet<string>>> = {
   opencode: new Set(["jev-1.13", "jev-1.13-free", "jev-latest"]),
+  openrouter: new Set(["typesafe/jev-1.13"]),
   "cloudflare-ai-gateway": new Set(["typesafe/jev"]),
   vercel: new Set(["typesafe-ai/jev"]),
   vivgrid: new Set(["jev"]),

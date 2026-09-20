@@ -21,6 +21,7 @@ Use a Zen API key from https://opencode.ai/zen if required. For the official Zen
 Redcode combines the live models.dev catalog with explicit System One protocol metadata. Besides OpenCode Zen, onboarding can offer:
 
 - **TypeSafe** directly at `https://api.typesafe.ai/v1`.
+- **OpenRouter**, using `typesafe/jev-1.13` through `POST https://openrouter.ai/api/alpha/decisions`. JEV is a Decisions model and is intentionally absent from OpenRouter's chat-model catalog.
 - **RedRouter** at `http://localhost:25050/v1` or a deployed URL.
 - **Cloudflare AI Gateway**, using `typesafe/jev` through the documented `/accounts/{account}/ai/run` envelope. Connect it first so Redcode can reuse the account ID, gateway ID and API token.
 - **Vercel AI Gateway**, using `typesafe-ai/jev` through its evaluation-model v4 endpoint.
@@ -29,9 +30,7 @@ Redcode combines the live models.dev catalog with explicit System One protocol m
 
 Configured compatible providers are sorted first in CLI, TUI and app setup. The free Zen connection remains the default for a fresh installation.
 
-TypeSafe, RedRouter, Zen, Vivgrid and NanoGPT use the native System One body: `model`, `state`, `questions`. Cloudflare wraps `state` and `questions` under `input`. Vercel uses its evaluation-model protocol; Redcode translates Noul to the protocol's Boolean question and normalizes its response back to the TypeSafe answer shape. None of these evaluators is sent through chat completions.
-
-OpenRouter is not offered as a System One connection. As of 2026-09-20, neither `https://models.dev/api.json` nor OpenRouter's public model catalog contains a JEV model, and the models.dev OpenRouter history has never carried one. Add it only after OpenRouter publishes a concrete evaluation model and transport contract.
+TypeSafe, OpenRouter, RedRouter, Zen, Vivgrid and NanoGPT use the native System One body: `model`, `state`, `questions`. OpenRouter receives that body through its Decisions API rather than `/chat/completions`. Cloudflare wraps `state` and `questions` under `input`. Vercel uses its evaluation-model protocol; Redcode translates Noul to the protocol's Boolean question and normalizes its response back to the TypeSafe answer shape. None of these evaluators is sent through chat completions.
 
 Router discovery uses `GET /v1/models/systemone`. Direct discovery uses `/v1/models`; when unavailable, enter the model name manually. The sibling red-router changes classify `systemOne` entries separately and dispatch the discovery endpoint to its native handler.
 

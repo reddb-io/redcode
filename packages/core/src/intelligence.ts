@@ -18,6 +18,8 @@ export function evaluatorPreset(
   transport: Intelligence.Evaluator["transport"] = "opencode-zen",
 ): Intelligence.Evaluator {
   if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1", model: "jev-1.13-free" }
+  if (transport === "openrouter")
+    return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
   if (transport === "red-router") return { transport, baseURL: "http://localhost:25050/v1", model: "jev-1.13.0" }
   if (transport === "cloudflare-ai-gateway")
@@ -170,7 +172,7 @@ export const make = (
         { transport: "opencode-zen" as const, name: "OpenCode Zen — Jev Free" },
         { transport: "typesafe" as const, name: "TypeSafe" },
         { transport: "red-router" as const, name: "RedRouter" },
-        ...(["cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"] as const).flatMap((transport) => {
+        ...(["openrouter", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"] as const).flatMap((transport) => {
           const offer = offers.get(transport)
           return offer ? [{ transport, name: offer.name, model: offer.model }] : []
         }),
@@ -270,11 +272,12 @@ export const make = (
         return yield* new Error({ message: "Cloudflare Account ID is required; connect Cloudflare AI Gateway first" })
       return yield* attempt(async (signal) => {
         const vercel = evaluator.transport === "vercel" && body !== undefined
+        const openrouter = evaluator.transport === "openrouter" && body !== undefined
         const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
         const response = await fetcher(
           cloudflare
             ? `${url.href.replace(/\/$/, "")}/accounts/${accountID}/ai/run`
-            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : suffix}`,
+            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : openrouter ? "decisions" : suffix}`,
           {
             method: body === undefined ? "GET" : "POST",
             redirect: "error",
@@ -304,7 +307,7 @@ export const make = (
       )
     })
     const discover = Effect.fn("Intelligence.discover")(function* (input: typeof Intelligence.Probe.Type) {
-      if (["cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
+      if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
         return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
       const result = yield* request(
         input.evaluator,
@@ -544,6 +547,7 @@ function providerIntegration(transport: Intelligence.Evaluator["transport"]) {
 
 function providerEnvironment(transport: Intelligence.Evaluator["transport"]) {
   if (transport === "opencode-zen") return ["OPENCODE_API_KEY"]
+  if (transport === "openrouter") return ["OPENROUTER_API_KEY"]
   if (transport === "typesafe") return ["TYPESAFE_API_KEY"]
   if (transport === "red-router") return ["RED_ROUTER_API_KEY"]
   if (transport === "cloudflare-ai-gateway") return ["CLOUDFLARE_API_TOKEN", "CF_AIG_TOKEN"]

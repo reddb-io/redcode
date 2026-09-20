@@ -338,6 +338,11 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
     model: "jev-1.13-free",
   })
   expect(Intelligence.evaluatorPreset("typesafe").model).toBe("jev-1.13.0")
+  expect(Intelligence.evaluatorPreset("openrouter")).toEqual({
+    transport: "openrouter",
+    baseURL: "https://openrouter.ai/api/alpha",
+    model: "typesafe/jev-1.13",
+  })
   expect(Intelligence.evaluatorPreset("cloudflare-ai-gateway").model).toBe("typesafe/jev")
   expect(Intelligence.evaluatorPreset("vercel").model).toBe("typesafe-ai/jev")
   expect(Intelligence.evaluatorPreset("vivgrid").model).toBe("jev")
@@ -374,20 +379,20 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
 
 test("System One onboarding lists configured catalog providers first", async () => {
   await using dir = await tmpdir()
-  const cloudflare = new Credential.Info({
+  const openrouter = new Credential.Info({
     id: Credential.ID.create(),
-    integrationID: Integration.ID.make("cloudflare-ai-gateway"),
-    label: "Cloudflare",
-    value: { type: "key", key: "fixture", metadata: { accountId: "account", gatewayId: "gateway" } },
+    integrationID: Integration.ID.make("openrouter"),
+    label: "OpenRouter",
+    value: { type: "key", key: "fixture" },
   })
-  const providers = ["opencode", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"]
+  const providers = ["opencode", "openrouter", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"]
   const catalog = Object.fromEntries(providers.map((id) => [id, { id, name: id, env: [], models: {} }]))
   const service = await Effect.runPromise(
     Intelligence.make(
       dir.path,
       {
-        get: (id) => Effect.succeed(id === cloudflare.id ? cloudflare : undefined),
-        list: (id) => Effect.succeed(id === cloudflare.integrationID ? [cloudflare] : []),
+        get: (id) => Effect.succeed(id === openrouter.id ? openrouter : undefined),
+        list: (id) => Effect.succeed(id === openrouter.integrationID ? [openrouter] : []),
         create: () => Effect.die("unused"),
       },
       fetch,
@@ -396,16 +401,16 @@ test("System One onboarding lists configured catalog providers first", async () 
   )
   const options = await Effect.runPromise(service.options())
   expect(options[0]).toMatchObject({
-    name: "cloudflare-ai-gateway",
+    name: "openrouter",
     configured: true,
-    evaluator: { transport: "cloudflare-ai-gateway", model: "typesafe/jev", credentialID: cloudflare.id },
+    evaluator: { transport: "openrouter", model: "typesafe/jev-1.13", credentialID: openrouter.id },
   })
   expect(options.map((option) => option.evaluator.transport)).toEqual(
-    expect.arrayContaining(["opencode-zen", "typesafe", "red-router", "vercel", "vivgrid", "nano-gpt"]),
+    expect.arrayContaining(["opencode-zen", "openrouter", "typesafe", "red-router", "vercel", "vivgrid", "nano-gpt"]),
   )
 })
 
-test("Cloudflare and Vercel use their native System One envelopes", async () => {
+test("Cloudflare, Vercel and OpenRouter use their native System One endpoints", async () => {
   await using dir = await tmpdir()
   const calls: { url: URL; headers: Headers; body: unknown }[] = []
   const fetcher: typeof fetch = Object.assign(
@@ -460,12 +465,22 @@ test("Cloudflare and Vercel use their native System One envelopes", async () => 
       )
     ).ok,
   ).toBe(true)
+  expect(
+    (
+      await Effect.runPromise(
+        service.probe({ evaluator: Intelligence.evaluatorPreset("openrouter"), apiKey: "openrouter-key" }),
+      )
+    ).ok,
+  ).toBe(true)
   expect(calls[0].url.pathname).toBe("/client/v4/accounts/account/ai/run")
   expect(calls[0].headers.get("cf-aig-gateway-id")).toBe("gateway")
   expect(calls[0].body).toMatchObject({ model: "typesafe/jev", input: { questions: { check: { type: "noul" } } } })
   expect(calls[1].url.pathname).toBe("/v4/ai/evaluation-model")
   expect(calls[1].headers.get("ai-model-id")).toBe("typesafe-ai/jev")
   expect(calls[1].body).toMatchObject({ questions: { check: { type: "boolean" } } })
+  expect(calls[2].url.pathname).toBe("/api/alpha/decisions")
+  expect(calls[2].headers.get("authorization")).toBe("Bearer openrouter-key")
+  expect(calls[2].body).toMatchObject({ model: "typesafe/jev-1.13", questions: { check: { type: "noul" } } })
 })
 
 test("Zen discovery excludes chat models and never falls back from free to paid Jev", async () => {
