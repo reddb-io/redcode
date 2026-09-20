@@ -40,6 +40,12 @@ const RETRYABLE_MESSAGE_PATTERNS = [
   /\btry again (later|in)\b|\b(currently|temporarily) at capacity\b/i,
 ]
 
+const CONNECTION_INTERRUPTION_PATTERNS = [
+  /connection (?:was )?(?:lost|reset)/i,
+  /socket connection was closed|socket hang up|reset before headers|econnreset/i,
+  /stream (?:closed|terminated)|terminated during response/i,
+]
+
 function cap(ms: number) {
   return Math.min(ms, RETRY_MAX_DELAY)
 }
@@ -108,8 +114,18 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
   return undefined
 }
 
+export function connectionInterrupted(error: Err) {
+  if (SessionV1.APIError.isInstance(error))
+    return matchesConnectionInterruption(error.data.message) || matchesConnectionInterruption(error.data.responseBody)
+  return isRecord(error.data) && matchesConnectionInterruption(error.data.message)
+}
+
 function matchesRetryableMessage(value: unknown) {
   return typeof value === "string" && RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(value))
+}
+
+function matchesConnectionInterruption(value: unknown) {
+  return typeof value === "string" && CONNECTION_INTERRUPTION_PATTERNS.some((pattern) => pattern.test(value))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -133,6 +149,13 @@ export function retryableLLM(error: LLMError): Retryable | undefined {
   )
     return undefined
   return { message: reason.message.includes("Overloaded") ? "Provider is overloaded" : reason.message }
+}
+
+export function connectionInterruptedLLM(error: LLMError) {
+  return (
+    matchesConnectionInterruption(error.reason.message) ||
+    ("http" in error.reason && matchesConnectionInterruption(error.reason.http?.body))
+  )
 }
 
 /** Legacy `delay` over an `LLMError`: honours retry-after(-ms) headers and the typed `retryAfterMs`. */

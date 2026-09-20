@@ -979,6 +979,7 @@ const layer = Layer.effect(
             llmFailure &&
             attempt <= SessionRetry.CONNECTION_CONTINUATION_MAX_RETRIES &&
             publisher.hasAssistantStarted() &&
+            SessionRetry.connectionInterruptedLLM(llmFailure) &&
             retryReason
               ? retryReason
               : undefined

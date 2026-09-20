@@ -857,7 +857,12 @@ const layer = Layer.effect(
                   const parsed = parse(error)
                   const retry = SessionRetry.retryable(parsed, input.model.providerID)
                   const attempt = input.reconnectAttempt ?? 1
-                  if (!retry || attempt > SessionRetry.CONNECTION_CONTINUATION_MAX_RETRIES) return halt(error)
+                  if (
+                    !retry ||
+                    !SessionRetry.connectionInterrupted(parsed) ||
+                    attempt > SessionRetry.CONNECTION_CONTINUATION_MAX_RETRIES
+                  )
+                    return halt(error)
                   const wait = SessionRetry.delay(
                     attempt,
                     SessionV1.APIError.isInstance(parsed) ? parsed : undefined,
