@@ -1,5 +1,11 @@
 # opencode
 
+## 0.40.2
+
+### Patch Changes
+
+- 2a7bf1f: List every cataloged JEV provider in global System One setup, put configured connections first, reuse existing `/connect` credentials, and add native Cloudflare, Vercel, Vivgrid, and NanoGPT evaluation transports.
+
 ## 0.40.1
 
 ### Patch Changes
