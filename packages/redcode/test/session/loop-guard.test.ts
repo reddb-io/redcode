@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { assess, failures, LIMITS, limits, repeats, streak, turn, type Part } from "@/session/loop-guard"
+import { assess, failures, LIMITS, limits, progress, repeats, streak, turn, type Part } from "@/session/loop-guard"
 
 const call = (tool: string, input: unknown, output: string, status = "completed"): Part => ({
   type: "tool",
   tool,
   state: { status, input, ...(status === "error" ? { error: output } : { output }) },
 })
-const text = (value: string): Part => ({ type: "text", state: { status: "completed", output: value } })
+const text = (value: string): Part => ({ type: "text", text: value })
 const reasoning: Part = { type: "reasoning" }
 
 describe("loop guard", () => {
@@ -46,6 +46,39 @@ describe("loop guard", () => {
       call("grep", { pattern: "y" }, "no matches"),
     ]
     expect(streak(parts, { tool: "read", input: { path: "/a" } })).toBe(0)
+  })
+
+  test("catches repeated progress around syntactically different calls with the same result", () => {
+    const update = "Continuando o append do provider.test.ts via printf curto (linhas 43-44 do SSE):"
+    const parts = [
+      text(update),
+      call("bash", { command: "printf line >> provider.test.ts" }, ""),
+      text(update),
+      call("bash", { command: "printf 'line'  >> provider.test.ts" }, ""),
+      text(update),
+    ]
+    const next = { tool: "bash", input: { command: "printf %s line >> provider.test.ts" } }
+
+    expect(progress(parts, next)).toEqual({ count: 3, text: update })
+    expect(assess({ parts, next, limits: LIMITS })).toMatchObject({
+      type: "correct",
+      message: expect.stringContaining("Changing command syntax without changing the result is not progress"),
+    })
+  })
+
+  test("leaves repeated progress alone when the tool result changes", () => {
+    const update = "Waiting for the deployment status to change before continuing."
+    const parts = [
+      text(update),
+      call("bash", { command: "status --format one" }, "pending 1"),
+      text(update),
+      call("bash", { command: "status --format two" }, "pending 2"),
+      text(update),
+    ]
+    const next = { tool: "bash", input: { command: "status --format three" } }
+
+    expect(progress(parts, next)).toEqual({ count: 2, text: update })
+    expect(assess({ parts, next, limits: LIMITS }).type).toBe("ok")
   })
 
   test("corrects first and only stops if the correction changed nothing", () => {

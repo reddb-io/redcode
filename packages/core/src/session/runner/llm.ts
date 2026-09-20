@@ -444,7 +444,7 @@ const layer = Layer.effect(
           yield* goals.save(goal, { ...goal, status: "paused", reason }).pipe(Effect.orDie)
       })
 
-    // The legacy loop guard over projected v2 history: same tool, same arguments, same result.
+    // The shared loop guard over projected v2 history: repeated calls and repeated progress.
     const guardLoop = Effect.fn("SessionRunner.guardLoop")(function* (
       sessionID: SessionSchema.ID,
       permissions: PermissionV2.Ruleset | undefined,
@@ -464,6 +464,7 @@ const layer = Layer.effect(
         message.type !== "assistant"
           ? []
           : message.content.flatMap((item): LoopGuard.Part[] => {
+              if (item.type === "text") return [{ type: "text", text: item.text }]
               if (item.type !== "tool" || item.provider?.executed === true) return []
               if (item.state.status === "completed")
                 return [
