@@ -8,6 +8,7 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { SessionRetry } from "@reddb-io/redcode-core/session/retry"
 import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { EventV2 } from "@reddb-io/redcode-core/event"
 import os from "os"
@@ -1409,6 +1410,7 @@ const layer = Layer.effect(
         let structured: unknown
         let step = 0
         let todoContinuations = 0
+        let reconnects = 0
         // The task list as reviewed since the last provider turn. A continuation reads it to decide
         // whether to keep going; the step it starts reuses that read instead of reviewing again.
         let reviewed: ReadonlyArray<Todo.Info> | undefined
@@ -1439,6 +1441,7 @@ const layer = Layer.effect(
         const restart = () => {
           step = 0
           todoContinuations = 0
+          reconnects = 0
           reviewed = undefined
           ineffectiveCompactions = 0
           overflowRecoveries = 0
@@ -2108,6 +2111,7 @@ const layer = Layer.effect(
               // Already incremented for this iteration, so this is the 1-based step number.
               model,
               step,
+              reconnectAttempt: reconnects + 1,
               beforeAttempt: () => goals.beginTurn(sessionID),
               onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
             })
@@ -2343,6 +2347,29 @@ const layer = Layer.effect(
               toolChoice: format.type === "json_schema" ? "required" : undefined,
               estimate: requestEstimate,
             })
+
+            if (result === "reconnect") {
+              reconnects++
+              const message: SessionV1.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(message)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                sessionID,
+                messageID: message.id,
+                type: "text",
+                text: SessionRetry.CONNECTION_CONTINUATION_PROMPT,
+                synthetic: true,
+              })
+              return "continue" as const
+            }
+            reconnects = 0
 
             if (structured !== undefined) {
               handle.message.structured = structured
