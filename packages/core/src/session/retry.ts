@@ -42,6 +42,7 @@ const RETRYABLE_MESSAGE_PATTERNS = [
 
 const CONNECTION_INTERRUPTION_PATTERNS = [
   /connection (?:was )?(?:lost|reset)/i,
+  /network[-_\s]error/i,
   /socket connection was closed|socket hang up|reset before headers|econnreset/i,
   /stream (?:closed|terminated)|terminated during response/i,
 ]
