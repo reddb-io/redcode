@@ -1,6 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import path from "path"
-import { Effect, Layer, Record, Result, Schema, Context } from "effect"
+import { Effect, Layer, Option, Record, Result, Schema, Context } from "effect"
 import { NonNegativeInt } from "@reddb-io/redcode-core/schema"
 import { Global } from "@reddb-io/redcode-core/global"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -57,12 +57,16 @@ const layer = Layer.effect(
     const fsys = yield* FSUtil.Service
     const credentials = yield* Credential.Service
     const decode = Schema.decodeUnknownOption(Info)
+    const decodeContent = Schema.decodeUnknownOption(
+      Schema.UnknownFromJsonString.pipe(Schema.decodeTo(Schema.Record(Schema.String, Schema.Unknown))),
+    )
 
     const all = Effect.fn("Auth.all")(function* () {
       if (process.env.REDCODE_AUTH_CONTENT) {
-        try {
-          return JSON.parse(process.env.REDCODE_AUTH_CONTENT)
-        } catch (err) {}
+        const content = decodeContent(process.env.REDCODE_AUTH_CONTENT)
+        if (Option.isSome(content)) {
+          return Record.filterMap(content.value, (value) => Result.fromOption(decode(value), () => undefined))
+        }
       }
 
       const data = (yield* fsys.readJson(file).pipe(Effect.orElseSucceed(() => ({})))) as Record<string, unknown>
