@@ -342,6 +342,14 @@ describe("SessionRunnerModel", () => {
         ),
       ).toBe(false)
       expect(SessionRunnerModel.supported(model({ type: "native", settings: {} }))).toBe(false)
+      expect(
+        SessionRunnerModel.supported(
+          ModelV2.Info.make({
+            ...model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }),
+            capabilities: { protocol: "systemone", tools: false, input: ["text"], output: ["text"] },
+          }),
+        ),
+      ).toBe(false)
     }),
   )
 })

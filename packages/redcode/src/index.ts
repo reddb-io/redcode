@@ -1,3 +1,4 @@
+import { SetupCommand } from "./cli/cmd/setup"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
@@ -121,6 +122,7 @@ const cli = yargs(args)
   .command(ServeCommand)
   .command(WebCommand)
   .command(ModelsCommand)
+  .command(SetupCommand)
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)

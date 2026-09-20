@@ -117,7 +117,9 @@ export function providerOptions(
   return [...providers.slice(0, popular), compatible, ...providers.slice(popular)]
 }
 
-export function createDialogProviderOptions() {
+type Connected = (providerID: string) => void | Promise<void>
+
+export function createDialogProviderOptions(props: { onConnected?: Connected } = {}) {
   const sync = useSync()
   const dialog = useDialog()
   const sdk = useSDK()
@@ -169,6 +171,10 @@ export function createDialogProviderOptions() {
           ? ` These files still mention "${result.movedFrom}" and were not changed: ${result.projectReferences.join(", ")}.`
           : ""),
     })
+    if (props.onConnected) {
+      await sync.bootstrap()
+      return props.onConnected(result.providerID)
+    }
     dialog.replace(() => <DialogModel providerID={result.providerID} />)
   }
 
@@ -290,12 +296,24 @@ export function createDialogProviderOptions() {
               }
               if (result.data?.method === "code") {
                 dialog.replace(() => (
-                  <CodeMethod providerID={providerID} title={method.label} index={index} authorization={result.data!} />
+                  <CodeMethod
+                    providerID={providerID}
+                    title={method.label}
+                    index={index}
+                    authorization={result.data!}
+                    onConnected={props.onConnected}
+                  />
                 ))
               }
               if (result.data?.method === "auto") {
                 dialog.replace(() => (
-                  <AutoMethod providerID={providerID} title={method.label} index={index} authorization={result.data!} />
+                  <AutoMethod
+                    providerID={providerID}
+                    title={method.label}
+                    index={index}
+                    authorization={result.data!}
+                    onConnected={props.onConnected}
+                  />
                 ))
               }
             }
@@ -307,7 +325,12 @@ export function createDialogProviderOptions() {
                 metadata = value
               }
               return dialog.replace(() => (
-                <ApiMethod providerID={providerID} title={method.label} metadata={metadata} />
+                <ApiMethod
+                  providerID={providerID}
+                  title={method.label}
+                  metadata={metadata}
+                  onConnected={props.onConnected}
+                />
               ))
             }
           },
@@ -318,8 +341,8 @@ export function createDialogProviderOptions() {
   return options
 }
 
-export function DialogProvider() {
-  const options = createDialogProviderOptions()
+export function DialogProvider(props: { onConnected?: Connected } = {}) {
+  const options = createDialogProviderOptions(props)
   return <DialogSelect title="Connect a provider" options={options()} />
 }
 
@@ -328,6 +351,7 @@ interface AutoMethodProps {
   providerID: string
   title: string
   authorization: ProviderAuthAuthorization
+  onConnected?: Connected
 }
 function AutoMethod(props: AutoMethodProps) {
   const { theme } = useTheme()
@@ -373,6 +397,7 @@ function AutoMethod(props: AutoMethodProps) {
     }
     await sdk.client.instance.dispose()
     await sync.bootstrap()
+    if (props.onConnected) return props.onConnected(props.providerID)
     dialog.replace(() => <DialogModel providerID={props.providerID} />)
   })
 
@@ -403,6 +428,7 @@ interface CodeMethodProps {
   title: string
   providerID: string
   authorization: ProviderAuthAuthorization
+  onConnected?: Connected
 }
 function CodeMethod(props: CodeMethodProps) {
   const { theme } = useTheme()
@@ -424,7 +450,8 @@ function CodeMethod(props: CodeMethodProps) {
         if (!error) {
           await sdk.client.instance.dispose()
           await sync.bootstrap()
-          dialog.replace(() => <DialogModel providerID={props.providerID} />)
+          if (props.onConnected) await props.onConnected(props.providerID)
+          else dialog.replace(() => <DialogModel providerID={props.providerID} />)
           return
         }
         setError(true)
@@ -446,6 +473,7 @@ interface ApiMethodProps {
   providerID: string
   title: string
   metadata?: Record<string, string>
+  onConnected?: Connected
 }
 function ApiMethod(props: ApiMethodProps) {
   const dialog = useDialog()
@@ -517,7 +545,8 @@ function ApiMethod(props: ApiMethodProps) {
         } finally {
           setBusy(false)
         }
-        dialog.replace(() => <DialogModel providerID={props.providerID} />)
+        if (props.onConnected) await props.onConnected(props.providerID)
+        else dialog.replace(() => <DialogModel providerID={props.providerID} />)
       }}
     />
   )

@@ -23,6 +23,7 @@ export type Family = typeof Family.Type
 
 export interface Capabilities extends Schema.Schema.Type<typeof Capabilities> {}
 export const Capabilities = Schema.Struct({
+  protocol: Schema.Literals(["language", "systemone"]).pipe(optional),
   tools: Schema.Boolean,
   input: Schema.Array(Schema.String),
   output: Schema.Array(Schema.String),
@@ -93,7 +94,7 @@ export const Info = Schema.Struct({
           providerID,
           name: modelID,
           api: { id: modelID, type: "native", settings: {} },
-          capabilities: { tools: false, input: [], output: [] },
+          capabilities: { protocol: "language", tools: false, input: [], output: [] },
           request: { headers: {}, body: {} },
           variants: [],
           time: { released: 0 },

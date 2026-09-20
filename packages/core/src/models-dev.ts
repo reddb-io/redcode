@@ -76,6 +76,7 @@ export const Model = Schema.Struct({
   reasoning: Schema.Boolean,
   temperature: Schema.Boolean,
   tool_call: Schema.Boolean,
+  format: Schema.Literals(["language", "systemone"]).pipe(Schema.optional),
   reasoning_options: Schema.optional(Schema.Array(ReasoningOption)),
   interleaved: Schema.optional(
     Schema.Union([
@@ -122,6 +123,36 @@ export const Model = Schema.Struct({
   ),
 })
 export type Model = Schema.Schema.Type<typeof Model>
+
+const SYSTEM_ONE_OFFERS: Readonly<Record<string, ReadonlySet<string>>> = {
+  opencode: new Set(["jev-1.13", "jev-1.13-free", "jev-latest"]),
+  "cloudflare-ai-gateway": new Set(["typesafe/jev"]),
+  vercel: new Set(["typesafe-ai/jev"]),
+  vivgrid: new Set(["jev"]),
+}
+
+function classify(catalog: Record<string, Provider>): Record<string, Provider> {
+  return Object.fromEntries(
+    Object.entries(catalog).map(([key, provider]) => {
+      const offers = SYSTEM_ONE_OFFERS[provider.id]
+      return [
+        key,
+        {
+          ...provider,
+          models: Object.fromEntries(
+            Object.entries(provider.models).map(([modelKey, model]) => [
+              modelKey,
+              {
+                ...model,
+                ...(offers?.has(model.id) ? { format: "systemone" as const } : {}),
+              },
+            ]),
+          ),
+        },
+      ]
+    }),
+  )
+}
 
 export const Provider = Schema.Struct({
   api: Schema.optional(Schema.String),
@@ -483,6 +514,7 @@ const layer = Layer.effect(
     // Where the catalog came from and how old it is, for the boot trace. The state file is read
     // only when the trace is on: on the plain path this costs nothing.
     const traced = populate.pipe(
+      Effect.map(classify),
       Effect.tap((catalog: Record<string, Provider>) =>
         Effect.sync(() => {
           const models = Object.values(catalog).reduce((sum, provider) => sum + Object.keys(provider.models).length, 0)

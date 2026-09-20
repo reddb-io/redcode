@@ -1,3 +1,4 @@
+import { IntelligenceOnboarding } from "@/components/settings-intelligence"
 import { createEffect, Suspense, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
 import { DebugBar } from "@/components/debug-bar"
@@ -30,6 +31,7 @@ export default function NewLayout(props: ParentProps) {
         "padding-bottom": "env(safe-area-inset-bottom, 0px)",
       }}
     >
+      <IntelligenceOnboarding />
       <Titlebar
         update={update}
         debugTools={

@@ -1,3 +1,5 @@
+import type { Semantic } from "../semantic"
+import { Intelligence } from "../intelligence"
 export * as SessionCompaction from "./compaction"
 
 import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@reddb-io/redcode-llm"
@@ -87,6 +89,8 @@ export type GuardStore = {
 }
 
 type Dependencies = {
+  readonly intelligence?: Intelligence.Interface
+  readonly semantic?: Semantic.Interface
   /** Durable guard state; without it a pause lasts as long as this instance. */
   readonly guardStore?: GuardStore
   readonly scope: Scope.Scope
@@ -307,11 +311,7 @@ export const summaryError = (input: { summary: string; source: string; finish?: 
   // A `length` finish only cut the summary off at the output budget, which reasoning models mostly
   // spend thinking: the text written so far is still a usable summary, so it is kept rather than
   // discarding the whole compaction. An empty answer under `length` is still a failure.
-  if (
-    input.finish !== "stop" &&
-    input.finish !== "end_turn" &&
-    !(input.finish === "length" && input.summary.trim())
-  )
+  if (input.finish !== "stop" && input.finish !== "end_turn" && !(input.finish === "length" && input.summary.trim()))
     return `Compaction summary did not finish successfully (${input.finish ?? "missing finish"}). Original history was preserved.`
   if (!input.summary.trim()) return "Compaction summary was empty. Original history was preserved."
   if (Token.estimate(input.summary + (input.retained ?? "")) >= Token.estimate(input.source))
@@ -449,6 +449,7 @@ export const make = (dependencies: Dependencies) => {
       input,
       selected,
       summaryPrompt: clamped,
+      evaluationSources: [summaryPrompt],
       summaryOutput,
       // A checkpoint may only replace this exact prefix, never a rewritten transcript.
       ...snapshot(input),
@@ -470,6 +471,45 @@ export const make = (dependencies: Dependencies) => {
 
   const summarize = Effect.fn("SessionCompaction.summarize")(function* (prepared: Prepared) {
     const input = prepared.input
+    const transformed = dependencies.semantic
+      ? yield* dependencies.semantic
+          .transform({
+            sessionID: input.sessionID,
+            operation: "compaction",
+            sources: prepared.evaluationSources,
+            prompt: systemPrompt + "\n\n" + prepared.summaryPrompt,
+            decode: (text) => {
+              const error = summaryError({
+                summary: text,
+                source: prepared.summaryPrompt,
+                retained: prepared.selected.tail,
+                finish: "stop",
+              })
+              return error ? Effect.fail(new Intelligence.Error({ message: error })) : Effect.succeed(text)
+            },
+            checks: () =>
+              Intelligence.questions({
+                omission:
+                  "Does candidate omit a still-applicable user constraint, decision, pending deliverable or blocker present in sources?",
+                contradiction: "Does candidate contradict sources or present unverified work as completed?",
+              }),
+          })
+          .pipe(Effect.catchTag("IntelligenceError", (error) => Effect.logWarning(error.message).pipe(Effect.as(null))))
+      : undefined
+    if (transformed === null) return
+    if (transformed !== undefined) {
+      const error = summaryError({
+        summary: transformed,
+        source: prepared.summaryPrompt,
+        retained: prepared.selected.tail,
+        finish: "stop",
+      })
+      if (error) {
+        yield* Effect.logWarning(error)
+        return
+      }
+      return { prepared, summary: transformed }
+    }
     const chunks: string[] = []
     let failed = false
     let finish: string | undefined
@@ -646,6 +686,7 @@ export const make = (dependencies: Dependencies) => {
   const sizeOf = (request: LLMRequest) =>
     estimate({ system: request.system, messages: request.messages, tools: request.tools })
 
+  const semanticChecked = new Map<SessionSchema.ID, string>()
   const send: Preflight = { action: "send" }
   const compacted: Preflight = { action: "compacted" }
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
@@ -666,6 +707,32 @@ export const make = (dependencies: Dependencies) => {
     if (size <= threshold) {
       const previous = pending.get(input.sessionID)
       if (previous && !matches(previous.snapshot, input)) yield* discard(input.sessionID)
+      const turns = input.entries.filter((entry) => entry.message.type === "user")
+      const lastCompaction = input.entries.findLastIndex((entry) => entry.message.type === "compaction")
+      const since = input.entries.slice(lastCompaction + 1).filter((entry) => entry.message.type === "user").length
+      const key = turns.at(-1)?.message.id
+      if (
+        dependencies.intelligence &&
+        size >= threshold * 0.5 &&
+        since >= 4 &&
+        key &&
+        semanticChecked.get(input.sessionID) !== key
+      ) {
+        semanticChecked.set(input.sessionID, key)
+        const decision = yield* dependencies.intelligence
+          .evaluate({
+            sessionID: input.sessionID,
+            operation: "compact_now",
+            sources: input.entries.slice(-12).map((entry) => serialize(entry.message)),
+            candidate: "Compact at this provider-turn boundary",
+            questions: Intelligence.questions({
+              unsafe:
+                "Is this an unsuitable boundary to compact because a work phase is still actively unfolding or its relevant evidence is incomplete? Answer no only when a phase has clearly ended and its state can be summarized.",
+            }),
+          })
+          .pipe(Effect.catchTag("IntelligenceError", () => Effect.succeed(undefined)))
+        if (decision?.decision === "accepted" && (yield* compactAfterOverflow(input))) return compacted
+      }
       // Prepare only near the limit; below that, the extra provider call is unlikely to help.
       if (
         config.background &&

@@ -22,27 +22,8 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)).map((row) => row.data)
   })
   const record = Effect.fn("SessionPlan.record")(function* (input: SessionPlan.Info) {
-    if (!input.content.trim()) return yield* new SessionPlan.Error({ message: "The plan is empty" })
-    if (input.tasks) {
-      const keys = new Set<string>()
-      const contents = new Set<string>()
-      for (const task of input.tasks) {
-        if (
-          !task.key.trim() ||
-          !task.content.trim() ||
-          !task.criterion.trim() ||
-          !task.quote.trim() ||
-          !input.content.includes(task.quote)
-        )
-          return yield* new SessionPlan.Error({
-            message: "Each plan task needs a key, content, acceptance criterion and exact quote from the plan",
-          })
-        if (keys.has(task.key) || contents.has(task.content.trim()))
-          return yield* new SessionPlan.Error({ message: "Plan task keys and contents must be unique" })
-        keys.add(task.key)
-        contents.add(task.content.trim())
-      }
-    }
+    const problem = validationError(input)
+    if (problem) return yield* new SessionPlan.Error({ message: problem })
     const existing = (yield* list(input.sessionID)).find((plan) => plan.revision === input.revision)
     if (existing?.tasks?.length && input.tasks && JSON.stringify(existing.tasks) !== JSON.stringify(input.tasks))
       return yield* new SessionPlan.Error({
@@ -80,4 +61,23 @@ export function guidance(plans: ReadonlyArray<SessionPlan.Info>) {
   const plan = plans.find((plan) => plan.status === "approved") ?? plans[0]
   if (!plan) return ""
   return `Plan ${plan.revision} (${plan.status}), source ${plan.path}. Use this recorded content, not a later unapproved draft.${plans[0]?.revision !== plan.revision ? ` A newer draft ${plans[0].revision} exists and has not been approved.` : ""}\n${plan.content}`
+}
+
+export function validationError(input: Pick<SessionPlan.Info, "content" | "tasks">) {
+  if (!input.content.trim()) return "The plan is empty"
+  const keys = new Set<string>()
+  const contents = new Set<string>()
+  for (const task of input.tasks ?? []) {
+    if (
+      !task.key.trim() ||
+      !task.content.trim() ||
+      !task.criterion.trim() ||
+      !task.quote.trim() ||
+      !input.content.includes(task.quote)
+    )
+      return "Each plan task needs a key, content, acceptance criterion and exact quote from the plan"
+    if (keys.has(task.key) || contents.has(task.content.trim())) return "Plan task keys and contents must be unique"
+    keys.add(task.key)
+    contents.add(task.content.trim())
+  }
 }

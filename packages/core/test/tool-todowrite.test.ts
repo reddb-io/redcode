@@ -1,3 +1,5 @@
+import { Location } from "../src/location"
+import { tempLocationLayer } from "./fixture/location"
 import { describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -48,6 +50,7 @@ const it = testEffect(
     ]),
     [
       [PermissionV2.node, permission],
+      [Location.node, tempLocationLayer],
       [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
     ],
   ),

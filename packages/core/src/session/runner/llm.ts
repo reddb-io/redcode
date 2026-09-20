@@ -1,3 +1,5 @@
+import { Intelligence } from "../../intelligence"
+import { Semantic } from "../../semantic"
 import {
   LLM,
   LLMClient,
@@ -194,8 +196,12 @@ const layer = Layer.effect(
     const monitors = yield* Monitor.Service
     const db = (yield* Database.Service).db
     const limits = yield* ModelLimit.Service
+    const intelligence = yield* Intelligence.Service
+    const semantic = yield* Semantic.Service
     const configEntriesAtStart = yield* config.entries()
     const compaction = SessionCompaction.make({
+      intelligence,
+      semantic,
       scope: yield* Scope.Scope,
       latestUser: (sessionID, beforeSeq) => SessionHistory.latestUser(db, sessionID, beforeSeq).pipe(Effect.orDie),
       events,
@@ -1338,6 +1344,8 @@ export const node = makeLocationNode({
   deps: [
     EventV2.node,
     llmClient,
+    Intelligence.node,
+    Semantic.node,
     AgentV2.node,
     ToolRegistry.node,
     SessionRunnerModel.node,

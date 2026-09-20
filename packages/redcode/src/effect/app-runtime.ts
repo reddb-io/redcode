@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { attach } from "./run-service"
 import { Shutdown } from "./shutdown"
@@ -61,6 +62,7 @@ import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 
 const nodes = [
+  Intelligence.node,
   Npm.node,
   FSUtil.node,
   Database.node,

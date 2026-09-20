@@ -9,7 +9,7 @@ const compatibilityAllowlist = [
   {
     reason: "internal protocol, provider, theme, and command identifiers",
     pattern:
-      /^(?:opencode|opencode-go|opencode\.default|opencode\.(?:status|debug|mode)|opencode-plain-text|opencode-clipboard\.png|__opencode_custom_provider__|opencode-version)$/,
+      /^(?:opencode|opencode-go|opencode-zen|opencode\.default|opencode\.(?:status|debug|mode)|opencode-plain-text|opencode-clipboard\.png|__opencode_custom_provider__|opencode-version)$/,
   },
   {
     reason: "real external OpenCode services",

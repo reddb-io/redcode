@@ -5948,6 +5948,7 @@ export type ModelsListOutput = {
           readonly settings: { readonly [x: string]: JsonValue }
         }
     readonly capabilities: {
+      readonly protocol?: "language" | "systemone"
       readonly tools: boolean
       readonly input: ReadonlyArray<string>
       readonly output: ReadonlyArray<string>
@@ -6927,3 +6928,167 @@ export type HooksImportOutput = {
   }
   readonly data: { readonly imported: number; readonly target: string; readonly restart_required: boolean }
 }
+
+export type IntelligenceGetOutput = {
+  readonly settings: {
+    readonly enabled: boolean
+    readonly onboarding: "pending" | "deferred" | "completed"
+    readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly evaluator?: {
+      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+  }
+  readonly environment: string
+}
+
+export type IntelligenceSaveInput = {
+  readonly settings: {
+    readonly settings: {
+      readonly enabled: boolean
+      readonly onboarding: "pending" | "deferred" | "completed"
+      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly evaluator?: {
+        readonly transport: "opencode-zen" | "typesafe" | "red-router"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: string
+      }
+    }
+    readonly apiKey?: string
+  }["settings"]
+  readonly apiKey?: {
+    readonly settings: {
+      readonly enabled: boolean
+      readonly onboarding: "pending" | "deferred" | "completed"
+      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly evaluator?: {
+        readonly transport: "opencode-zen" | "typesafe" | "red-router"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: string
+      }
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceSaveOutput = {
+  readonly enabled: boolean
+  readonly onboarding: "pending" | "deferred" | "completed"
+  readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+  readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+  readonly evaluator?: {
+    readonly transport: "opencode-zen" | "typesafe" | "red-router"
+    readonly baseURL: string
+    readonly model: string
+    readonly credentialID?: string
+  }
+}
+
+export type IntelligenceDiscoverInput = {
+  readonly evaluator: {
+    readonly evaluator: {
+      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["evaluator"]
+  readonly apiKey?: {
+    readonly evaluator: {
+      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceDiscoverOutput = {
+  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly manual: boolean
+}
+
+export type IntelligenceProbeInput = {
+  readonly evaluator: {
+    readonly evaluator: {
+      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["evaluator"]
+  readonly apiKey?: {
+    readonly evaluator: {
+      readonly transport: "opencode-zen" | "typesafe" | "red-router"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
+
+export type IntelligenceHistoryInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type IntelligenceHistoryOutput = ReadonlyArray<{
+  readonly id: string
+  readonly fingerprint: string
+  readonly sessionID: string
+  readonly operation:
+    | "todos"
+    | "plan"
+    | "feedback"
+    | "design_completion"
+    | "compaction"
+    | "compact_now"
+    | "task_completion"
+  readonly policy: string
+  readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+  readonly model: string
+  readonly answers: {
+    readonly [x: string]:
+      | { readonly type: "noul"; readonly noul: number }
+      | {
+          readonly type: "choice"
+          readonly choice: string
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+      | {
+          readonly type: "score"
+          readonly score: number
+          readonly legend: { readonly [x: string]: JsonValue }
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+  }
+  readonly issues: ReadonlyArray<string>
+  readonly created: number
+  readonly duration: number
+  readonly evaluator?: {
+    readonly transport: "opencode-zen" | "typesafe" | "red-router"
+    readonly baseURL: string
+    readonly model: string
+  }
+  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
+}>
+
+export type IntelligenceModelsTestInput = {
+  readonly id: { readonly id: string; readonly providerID: string; readonly variant?: string }["id"]
+  readonly providerID: { readonly id: string; readonly providerID: string; readonly variant?: string }["providerID"]
+  readonly variant?: { readonly id: string; readonly providerID: string; readonly variant?: string }["variant"]
+}
+
+export type IntelligenceModelsTestOutput = { readonly ok: boolean; readonly message: string }

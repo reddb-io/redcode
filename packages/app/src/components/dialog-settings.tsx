@@ -1,3 +1,4 @@
+import { SettingsIntelligence } from "./settings-intelligence"
 import { Component, createSignal, startTransition } from "solid-js"
 import { Dialog } from "@reddb-io/redcode-ui/dialog"
 import { Tabs } from "@reddb-io/redcode-ui/tabs"
@@ -59,6 +60,10 @@ export const DialogSettings: Component<{ defaultValue?: string }> = (props) => {
                       <Icon name="providers" />
                       {language.t("settings.providers.title")}
                     </Tabs.Trigger>
+                    <Tabs.Trigger value="intelligence">
+                      <Icon name="models" />
+                      {language.t("settings.intelligence.title")}
+                    </Tabs.Trigger>
                     <Tabs.Trigger value="models">
                       <Icon name="models" />
                       {language.t("settings.models.title")}
@@ -84,6 +89,9 @@ export const DialogSettings: Component<{ defaultValue?: string }> = (props) => {
         </Tabs.Content>
         <Tabs.Content value="providers" class="no-scrollbar">
           <SettingsProviders onBack={showProviders} />
+        </Tabs.Content>
+        <Tabs.Content value="intelligence" class="no-scrollbar">
+          <SettingsIntelligence />
         </Tabs.Content>
         <Tabs.Content value="models" class="no-scrollbar">
           <SettingsModels />

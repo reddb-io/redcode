@@ -1,3 +1,5 @@
+import { createDialogSetupState, DialogSetup } from "./component/dialog-setup"
+import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { registerOpencodeSpinner } from "./component/register-spinner"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -496,6 +498,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
   const args = useArgs()
   onMount(() => {
+    void IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers })
+      .get()
+      .then((result) => {
+        if (result.settings.onboarding === "pending")
+          toast.show({
+            variant: "info",
+            message: "Configure System One and System Two with /setup. You can also choose Later there.",
+            duration: 10000,
+          })
+      })
+      .catch(() => {})
     // Said once on screen as well as in the footer: the trace left stderr before this rendered.
     if (BootTrace.enabled()) {
       toast.show({ variant: "info", message: `verbose: boot trace at ${BootTrace.filePath()}`, duration: 6000 })
@@ -792,6 +805,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         hidden: true,
         run: () => {
           local.agent.move(-1)
+        },
+      },
+      {
+        name: "intelligence.setup",
+        title: "Global intelligence setup",
+        category: "Provider",
+        slashName: "setup",
+        run: () => {
+          const state = createDialogSetupState()
+          dialog.replace(() => <DialogSetup state={state} />)
         },
       },
       {

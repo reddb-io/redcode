@@ -869,6 +869,53 @@ const scenarios: Scenario[] = [
     object(body)
     check(body.healthy === true, "v2 server should report healthy")
   }),
+  http.protected
+    .get("/api/intelligence", "intelligence.get")
+    .global()
+    .json(200, (body) => {
+      object(body)
+      object(body.settings)
+      check(typeof body.environment === "string", "intelligence setup should identify its global environment")
+    }),
+  http.protected
+    .put("/api/intelligence", "intelligence.save")
+    .global()
+    .mutating()
+    .at(() => ({
+      path: "/api/intelligence",
+      body: { settings: { enabled: false, onboarding: "deferred" } },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.enabled === false, "intelligence setup should remain disabled")
+      check(body.onboarding === "deferred", "intelligence setup should persist onboarding state")
+    }),
+  http.protected
+    .post("/api/intelligence/models", "intelligence.discover")
+    .global()
+    .at(() => ({ path: "/api/intelligence/models", body: {} }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/api/intelligence/test", "intelligence.probe")
+    .global()
+    .at(() => ({ path: "/api/intelligence/test", body: {} }))
+    .json(400, object, "status"),
+  http.protected
+    .get("/api/intelligence/evaluations", "intelligence.history")
+    .global()
+    .at(() => ({ path: "/api/intelligence/evaluations?sessionID=missing" }))
+    .json(200, array),
+  http.protected
+    .post("/api/intelligence/test-model", "intelligence.model.test")
+    .at((ctx) => ({
+      path: "/api/intelligence/test-model",
+      headers: ctx.headers(),
+      body: { providerID: "missing-provider", id: "missing-model" },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.ok === false, "missing generative model should fail its connection check")
+    }),
   http.protected.get("/api/location", "v2.location.get").json(200, object),
   http.protected.get("/api/agent", "v2.agent.list").json(200, locationData(array)),
   http.protected.get("/api/model", "v2.model.list").json(200, locationData(array)),

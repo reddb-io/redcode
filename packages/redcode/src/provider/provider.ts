@@ -1048,6 +1048,7 @@ const ProviderInterleaved = Schema.Union([
 ])
 
 const ProviderCapabilities = Schema.Struct({
+  protocol: optional(Schema.Literals(["language", "systemone"])),
   temperature: Schema.Boolean,
   reasoning: Schema.Boolean,
   attachment: Schema.Boolean,
@@ -1313,6 +1314,7 @@ function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model
       output: model.limit.output,
     },
     capabilities: {
+      protocol: model.format ?? "language",
       temperature: model.temperature ?? false,
       reasoning: model.reasoning ?? false,
       attachment: model.attachment ?? false,

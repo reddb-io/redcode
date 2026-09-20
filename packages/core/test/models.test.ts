@@ -150,6 +150,29 @@ describe("ModelsDev Service", () => {
     }),
   )
 
+  it.live("classifies known System One offers without guessing from model names", () =>
+    Effect.gen(function* () {
+      yield* writeCache({
+        opencode: {
+          ...fixture.acme,
+          id: "opencode",
+          models: {
+            "jev-1.13-free": { ...fixture.acme.models["acme-1"], id: "jev-1.13-free", name: "Jev free" },
+            "my-jev-wrapper": { ...fixture.acme.models["acme-1"], id: "my-jev-wrapper", name: "Jev wrapper" },
+          },
+        },
+      })
+      const state = yield* Ref.make(initialState)
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((service) => service.get()),
+      )
+
+      expect(result.opencode.models["jev-1.13-free"].format).toBe("systemone")
+      expect(result.opencode.models["my-jev-wrapper"].format).toBeUndefined()
+    }),
+  )
+
   it.live("get() returns empty catalog when disk empty, fetch disabled, and no bundled snapshot is injected", () =>
     Effect.gen(function* () {
       const state = yield* Ref.make(initialState)

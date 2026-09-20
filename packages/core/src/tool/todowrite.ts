@@ -1,3 +1,5 @@
+import { Semantic } from "../semantic"
+import { Intelligence } from "../intelligence"
 export * as TodoWriteTool from "./todowrite"
 
 import { ToolFailure } from "@reddb-io/redcode-llm"
@@ -13,13 +15,17 @@ import { Tools } from "./tools"
 export const name = "todowrite"
 
 export const Input = Schema.Struct({
+  sourceMessageID: Schema.String.pipe(Schema.optional),
   todos: Schema.Array(SessionTodo.Input).annotate({
     description: "Tasks to create or update; omitted tasks are preserved. Empty array reads the current list.",
   }),
 })
 // Decoded from the model's spelling (text, title or task fold into content) while the advertised
 // JSON schema stays the canonical Input.
-const ModelInput = Schema.Struct({ todos: Schema.Array(SessionTodo.ModelInput) })
+const ModelInput = Schema.Struct({
+  sourceMessageID: Schema.String.pipe(Schema.optional),
+  todos: Schema.Array(SessionTodo.ModelInput),
+})
 
 export const Output = Schema.Struct({
   todos: Schema.Array(SessionTodo.Info),
@@ -57,12 +63,14 @@ const layer = Layer.effectDiscard(
     const todos = yield* SessionTodo.Service
     const facts = yield* SessionTaskFacts.Service
     const permission = yield* PermissionV2.Service
+    const semantic = yield* Semantic.Service
 
     yield* tools
       .register({
         [name]: Tool.make({
           description:
             SessionTodo.guidance +
+            " When intelligence is enabled, sourceMessageID with todos: [] delegates decomposition of that user request to the configured transformation model. " +
             " Supply the id when updating; revision is optional and checked when supplied. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
           input: ModelInput,
           inputSchema: inputSchema(),
@@ -79,9 +87,48 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
+              const observed = input.sourceMessageID ? yield* facts.load(context.sessionID) : undefined
+              const source = observed?.requests.find(
+                (request) => request.id === input.sourceMessageID && !request.pending,
+              )
+              if (input.sourceMessageID && (!source || input.todos.length))
+                return yield* new ToolFailure({
+                  message: "Use sourceMessageID with todos: [] and an existing promoted request",
+                })
+              const generated = source
+                ? yield* semantic
+                    .transform<ReadonlyArray<SessionTodo.Input>>({
+                      sessionID: context.sessionID,
+                      operation: "todos",
+                      sources: source,
+                      prompt: `Decompose this user request into tasks covering every requested deliverable and verification. Return only a JSON array with content, priority (high/medium/low), requirement (exact source quote), criterion (observable acceptance condition). Source: ${JSON.stringify(source)}`,
+                      decode: Semantic.json(Schema.Array(SessionTodo.Input).check(Schema.isMinLength(1))),
+                      checks: (candidate) =>
+                        Intelligence.questions(
+                          Object.fromEntries(
+                            candidate
+                              .map((_, index) => [
+                                `task_${index}`,
+                                `Does candidate[${index}] misrepresent sources.text or lack a verifiable acceptance criterion?`,
+                              ])
+                              .concat([
+                                [
+                                  "coverage",
+                                  "Does candidate omit a requested deliverable or verification from sources.text?",
+                                ],
+                              ]),
+                          ),
+                        ),
+                    })
+                    .pipe(Effect.mapError((error) => new ToolFailure({ message: error.message })))
+                : undefined
+              if (source && !generated)
+                return yield* new ToolFailure({
+                  message: "Enable global intelligence setup to extract tasks from a request",
+                })
               const updated = yield* todos.update({
                 sessionID: context.sessionID,
-                todos: input.todos,
+                todos: generated ?? input.todos,
                 messageID: context.assistantMessageID,
               })
               const notes = SessionTodo.notes(
@@ -117,5 +164,5 @@ function inputSchema(): JsonSchema.JsonSchema {
 export const node = makeLocationNode({
   name: "tool/todowrite",
   layer,
-  deps: [ToolRegistry.node, PermissionV2.node, SessionTodo.node, SessionTaskFacts.node],
+  deps: [ToolRegistry.node, PermissionV2.node, SessionTodo.node, SessionTaskFacts.node, Semantic.node],
 })

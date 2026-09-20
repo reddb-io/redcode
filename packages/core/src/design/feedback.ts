@@ -1,3 +1,5 @@
+import { Semantic } from "../semantic"
+import { Intelligence } from "../intelligence"
 export * as DesignFeedback from "./feedback"
 
 import { Effect, Schema } from "effect"
@@ -312,13 +314,50 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
       })),
     ),
   )
+  const frozen = yield* store.feedbackPrompt(id, input.id)
+  const text =
+    frozen ??
+    (yield* Effect.gen(function* () {
+      const semantic = yield* Semantic.Service
+      const interpretation = yield* semantic
+        .transform({
+          sessionID,
+          operation: "feedback",
+          sources: input.items,
+          prompt: `Extract requested design actions from these feedback notes. Return only JSON array of {note:number,action:string,target:string}. Preserve each note index and its target; do not evaluate images. Notes: ${JSON.stringify(input.items)}`,
+          decode: Semantic.json(
+            Schema.Array(Schema.Struct({ note: Schema.Int, action: Schema.String, target: Schema.String })),
+          ),
+          checks: () =>
+            Intelligence.questions(
+              Object.fromEntries(
+                input.items.map((_, index) => [
+                  `note_${index}`,
+                  `Does candidate omit or misinterpret the action or target requested by sources[${index}]?`,
+                ]),
+              ),
+            ),
+        })
+        .pipe(Effect.result)
+      const supplement =
+        interpretation._tag === "Success" && interpretation.success
+          ? `\n<feedback-interpretation>\n${JSON.stringify(interpretation.success).replaceAll("<", "\\u003c")}\n</feedback-interpretation>`
+          : interpretation._tag === "Failure"
+            ? "\n[Semantic interpretation unavailable. Original feedback is preserved; do not treat it as evaluated.]"
+            : ""
+      return yield* store.feedbackPrompt(
+        id,
+        input.id,
+        render(input, { id, storage: store.storage, attachments: files.map((file) => file.name), round }) + supplement,
+      )
+    }))
   yield* sessions
     .prompt({
       id: input.id,
       sessionID,
       delivery: input.delivery,
       prompt: {
-        text: render(input, { id, storage: store.storage, attachments: files.map((file) => file.name), round }),
+        text: text!,
         files,
       },
     })

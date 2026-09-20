@@ -1,3 +1,6 @@
+import { Semantic } from "../semantic"
+import { Intelligence } from "../intelligence"
+import { SessionTaskFacts } from "../session/task-facts"
 export * as PlanTools from "./plan"
 
 import { SessionTodo } from "../session/todo"
@@ -29,6 +32,9 @@ const layer = Layer.effectDiscard(
     const plans = yield* SessionPlan.Service
     const goals = yield* SessionGoal.Service
     const todos = yield* SessionTodo.Service
+    const semantic = yield* Semantic.Service
+    const intelligence = yield* Intelligence.Service
+    const facts = yield* SessionTaskFacts.Service
     yield* tools
       .register({
         worktree_prepare: Tool.make({
@@ -75,12 +81,64 @@ const layer = Layer.effectDiscard(
               const savedGoal = yield* goals.get(context.sessionID)
               const goal = savedGoal?.status === "active" || savedGoal?.status === "waiting" ? savedGoal : null
               const previous = (yield* plans.list(context.sessionID)).find((plan) => plan.revision === evidence.hash)
+              const requests = (yield* facts.load(context.sessionID)).requests.filter((request) => !request.pending)
+              const decomposition =
+                input.tasks ??
+                previous?.tasks ??
+                (yield* semantic.transform({
+                  sessionID: context.sessionID,
+                  operation: "plan",
+                  sources: { requests, plan: evidence.content },
+                  prompt: `Extract tasks from this implementation plan. Return only a JSON array of {key,content,criterion,quote}; quote must occur verbatim in the plan. Cover every deliverable and verification. Plan: ${evidence.content}`,
+                  decode: (text) =>
+                    Semantic.json(Schema.Array(SessionTodo.PlanTask).check(Schema.isMinLength(1)))(text).pipe(
+                      Effect.flatMap((tasks) => {
+                        const problem = SessionPlan.validationError({ content: evidence.content, tasks })
+                        return problem
+                          ? Effect.fail(new Intelligence.Error({ message: problem }))
+                          : Effect.succeed(tasks)
+                      }),
+                    ),
+                  checks: () =>
+                    Intelligence.questions({
+                      coverage: "Does candidate omit a deliverable or verification stated in sources.plan?",
+                      fidelity: "Does candidate contradict or add scope unrelated to sources.plan?",
+                    }),
+                }))
+              const problem = SessionPlan.validationError({ content: evidence.content, tasks: decomposition })
+              if (problem) return yield* new ToolFailure({ message: problem })
+              const evaluation = yield* intelligence.evaluate({
+                sessionID: context.sessionID,
+                operation: "plan",
+                sources: requests,
+                candidate: { plan: evidence.content, tasks: decomposition },
+                questions: Intelligence.questions({
+                  decomposition:
+                    "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
+                  ...Object.fromEntries(
+                    requests.map((_, index) => [
+                      `request_${index}`,
+                      `Does candidate.plan omit or contradict an applicable requirement in sources[${index}].text, accounting for later corrections in sources?`,
+                    ]),
+                  ),
+                }),
+              })
+              yield* Intelligence.requireAccepted(evaluation)
+              const currentEvidence = yield* SessionEvidence.read(input.path, context, permissions, location)
+              if (
+                currentEvidence.hash !== evidence.hash ||
+                Intelligence.fingerprint(requests) !==
+                  Intelligence.fingerprint(
+                    (yield* facts.load(context.sessionID)).requests.filter((request) => !request.pending),
+                  )
+              )
+                return yield* new ToolFailure({ message: "Plan sources changed during evaluation; retry" })
               const ready = yield* plans.record({
                 sessionID: context.sessionID,
                 revision: evidence.hash,
                 path: evidence.path,
                 content: evidence.content,
-                tasks: input.tasks ?? previous?.tasks,
+                tasks: decomposition,
                 status: "ready",
                 created: Date.now(),
               })
@@ -163,5 +221,8 @@ export const node = makeLocationNode({
     SessionPlan.node,
     SessionGoal.node,
     SessionTodo.node,
+    Semantic.node,
+    Intelligence.node,
+    SessionTaskFacts.node,
   ],
 })

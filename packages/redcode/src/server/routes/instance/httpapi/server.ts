@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignFeed } from "@/design/feed"
@@ -300,6 +301,7 @@ const app = LayerNode.group([
   SessionSpend.node,
   SessionGoal.node,
   SessionPlan.node,
+  Intelligence.node,
 ])
 
 export function createRoutes(

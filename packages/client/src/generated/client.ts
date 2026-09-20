@@ -174,6 +174,17 @@ import type {
   HooksRevokeOutput,
   HooksImportInput,
   HooksImportOutput,
+  IntelligenceGetOutput,
+  IntelligenceSaveInput,
+  IntelligenceSaveOutput,
+  IntelligenceDiscoverInput,
+  IntelligenceDiscoverOutput,
+  IntelligenceProbeInput,
+  IntelligenceProbeOutput,
+  IntelligenceHistoryInput,
+  IntelligenceHistoryOutput,
+  IntelligenceModelsTestInput,
+  IntelligenceModelsTestOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1475,6 +1486,75 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/hook/import/claude`,
             query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    intelligence: {
+      get: (requestOptions?: RequestOptions) =>
+        request<IntelligenceGetOutput>(
+          { method: "GET", path: `/api/intelligence`, successStatus: 200, declaredStatuses: [400, 401], empty: false },
+          requestOptions,
+        ),
+      save: (input: IntelligenceSaveInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceSaveOutput>(
+          {
+            method: "PUT",
+            path: `/api/intelligence`,
+            body: { settings: input["settings"], apiKey: input["apiKey"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      discover: (input: IntelligenceDiscoverInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceDiscoverOutput>(
+          {
+            method: "POST",
+            path: `/api/intelligence/models`,
+            body: { evaluator: input["evaluator"], apiKey: input["apiKey"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      probe: (input: IntelligenceProbeInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceProbeOutput>(
+          {
+            method: "POST",
+            path: `/api/intelligence/test`,
+            body: { evaluator: input["evaluator"], apiKey: input["apiKey"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      history: (input: IntelligenceHistoryInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceHistoryOutput>(
+          {
+            method: "GET",
+            path: `/api/intelligence/evaluations`,
+            query: { sessionID: input["sessionID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    intelligenceModels: {
+      test: (input: IntelligenceModelsTestInput, requestOptions?: RequestOptions) =>
+        request<IntelligenceModelsTestOutput>(
+          {
+            method: "POST",
+            path: `/api/intelligence/test-model`,
+            body: { id: input["id"], providerID: input["providerID"], variant: input["variant"] },
             successStatus: 200,
             declaredStatuses: [400, 401],
             empty: false,

@@ -2128,6 +2128,7 @@ export type Config = {
     prune?: boolean
     tail_turns?: number
     preserve_recent_tokens?: number
+    summary_max_tokens?: number
     reserved?: number
   }
   design?: ConfigV2Design
@@ -2244,6 +2245,7 @@ export type Model = {
   name: string
   family?: string
   capabilities: {
+    protocol?: "language" | "systemone"
     temperature: boolean
     reasoning: boolean
     attachment: boolean
@@ -4392,7 +4394,7 @@ export type MonitorInfo = {
   workdir: string
   options: MonitorOptions
   probe?: MonitorProbe
-  status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted"
+  status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted" | "expired"
   created: number
   updated: number
   attempts: number
@@ -5904,6 +5906,7 @@ export type ModelApi =
     }
 
 export type ModelCapabilities = {
+  protocol?: "language" | "systemone"
   tools: boolean
   input: Array<string>
   output: Array<string>
@@ -7302,6 +7305,99 @@ export type ReferenceInfo = {
 
 export type ProjectCopyCopy = {
   directory: string
+}
+
+export type IntelligenceEvaluator = {
+  transport: "opencode-zen" | "typesafe" | "red-router"
+  baseURL: string
+  model: string
+  credentialID?: string
+}
+
+export type IntelligenceSettings = {
+  enabled: boolean
+  onboarding: "pending" | "deferred" | "completed"
+  principal?: ModelRef
+  fast?: ModelRef
+  evaluator?: IntelligenceEvaluator
+}
+
+export type IntelligenceStatus = {
+  settings: IntelligenceSettings
+  environment: string
+}
+
+export type IntelligenceSave = {
+  settings: IntelligenceSettings
+  apiKey?: string
+}
+
+export type IntelligenceProbe = {
+  evaluator: IntelligenceEvaluator
+  apiKey?: string
+}
+
+export type IntelligenceModels = {
+  models: Array<{
+    id: string
+    name: string
+  }>
+  manual: boolean
+}
+
+export type IntelligenceCheck = {
+  ok: boolean
+  message: string
+}
+
+export type IntelligenceAnswer =
+  | {
+      type: "noul"
+      noul: number
+    }
+  | {
+      type: "choice"
+      choice: string
+      probabilities: {
+        [key: string]: number
+      }
+      confidence: number
+    }
+  | {
+      type: "score"
+      score: number
+      legend: {
+        [key: string]: unknown
+      }
+      probabilities: {
+        [key: string]: number
+      }
+      confidence: number
+    }
+
+export type IntelligenceEvaluation = {
+  id: string
+  fingerprint: string
+  sessionID: string
+  operation: "todos" | "plan" | "feedback" | "design_completion" | "compaction" | "compact_now" | "task_completion"
+  policy: string
+  decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+  model: string
+  answers: {
+    [key: string]: IntelligenceAnswer
+  }
+  issues: Array<string>
+  created: number
+  duration: number
+  evaluator?: {
+    transport: "opencode-zen" | "typesafe" | "red-router"
+    baseURL: string
+    model: string
+  }
+  usage: {
+    input_tokens: number
+    output_tokens: number
+  }
 }
 
 export type EventModelsDevRefreshed = {
@@ -17799,6 +17895,182 @@ export type V2HookImportResponses = {
 }
 
 export type V2HookImportResponse = V2HookImportResponses[keyof V2HookImportResponses]
+
+export type IntelligenceGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/intelligence"
+}
+
+export type IntelligenceGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceGetError = IntelligenceGetErrors[keyof IntelligenceGetErrors]
+
+export type IntelligenceGetResponses = {
+  /**
+   * Intelligence.Status
+   */
+  200: IntelligenceStatus
+}
+
+export type IntelligenceGetResponse = IntelligenceGetResponses[keyof IntelligenceGetResponses]
+
+export type IntelligenceSaveData = {
+  body: IntelligenceSave
+  path?: never
+  query?: never
+  url: "/api/intelligence"
+}
+
+export type IntelligenceSaveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceSaveError = IntelligenceSaveErrors[keyof IntelligenceSaveErrors]
+
+export type IntelligenceSaveResponses = {
+  /**
+   * Intelligence.Settings
+   */
+  200: IntelligenceSettings
+}
+
+export type IntelligenceSaveResponse = IntelligenceSaveResponses[keyof IntelligenceSaveResponses]
+
+export type IntelligenceDiscoverData = {
+  body: IntelligenceProbe
+  path?: never
+  query?: never
+  url: "/api/intelligence/models"
+}
+
+export type IntelligenceDiscoverErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceDiscoverError = IntelligenceDiscoverErrors[keyof IntelligenceDiscoverErrors]
+
+export type IntelligenceDiscoverResponses = {
+  /**
+   * Intelligence.Models
+   */
+  200: IntelligenceModels
+}
+
+export type IntelligenceDiscoverResponse = IntelligenceDiscoverResponses[keyof IntelligenceDiscoverResponses]
+
+export type IntelligenceProbeData = {
+  body: IntelligenceProbe
+  path?: never
+  query?: never
+  url: "/api/intelligence/test"
+}
+
+export type IntelligenceProbeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceProbeError = IntelligenceProbeErrors[keyof IntelligenceProbeErrors]
+
+export type IntelligenceProbeResponses = {
+  /**
+   * Intelligence.Check
+   */
+  200: IntelligenceCheck
+}
+
+export type IntelligenceProbeResponse = IntelligenceProbeResponses[keyof IntelligenceProbeResponses]
+
+export type IntelligenceHistoryData = {
+  body?: never
+  path?: never
+  query: {
+    sessionID: string
+  }
+  url: "/api/intelligence/evaluations"
+}
+
+export type IntelligenceHistoryErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceHistoryError = IntelligenceHistoryErrors[keyof IntelligenceHistoryErrors]
+
+export type IntelligenceHistoryResponses = {
+  /**
+   * Success
+   */
+  200: Array<IntelligenceEvaluation>
+}
+
+export type IntelligenceHistoryResponse = IntelligenceHistoryResponses[keyof IntelligenceHistoryResponses]
+
+export type IntelligenceModelTestData = {
+  body: ModelRef
+  path?: never
+  query?: never
+  url: "/api/intelligence/test-model"
+}
+
+export type IntelligenceModelTestErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type IntelligenceModelTestError = IntelligenceModelTestErrors[keyof IntelligenceModelTestErrors]
+
+export type IntelligenceModelTestResponses = {
+  /**
+   * Intelligence.Check
+   */
+  200: IntelligenceCheck
+}
+
+export type IntelligenceModelTestResponse = IntelligenceModelTestResponses[keyof IntelligenceModelTestResponses]
 
 export type PtyConnectData = {
   body?: never
