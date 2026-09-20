@@ -85,6 +85,15 @@ const intelligence = {
       },
     },
     {
+      name: "OpenRouter",
+      configured: false,
+      evaluator: {
+        transport: "openrouter",
+        baseURL: "https://openrouter.ai/api/alpha",
+        model: "typesafe/jev-1.13",
+      },
+    },
+    {
       name: "Vercel AI Gateway",
       configured: false,
       evaluator: {
@@ -132,6 +141,7 @@ test("global setup selects System Two models and offers provider connection in t
     expect(evaluators).toContain("Cloudflare AI Gateway")
     expect(evaluators).toContain("Configured connection")
     expect(evaluators).toContain("Vercel AI Gateway")
+    expect(evaluators).toContain("OpenRouter")
   } finally {
     setup.app.renderer.destroy()
   }

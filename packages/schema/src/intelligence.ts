@@ -10,6 +10,7 @@ const Probability = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 
 export const Evaluator = Schema.Struct({
   transport: Schema.Literals([
     "opencode-zen",
+    "openrouter",
     "typesafe",
     "red-router",
     "cloudflare-ai-gateway",
