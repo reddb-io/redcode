@@ -904,7 +904,7 @@ const scenarios: Scenario[] = [
   http.protected
     .get("/api/intelligence/evaluations", "intelligence.history")
     .global()
-    .at(() => ({ path: "/api/intelligence/evaluations?sessionID=missing" }))
+    .at(() => ({ path: "/api/intelligence/evaluations?sessionID=ses_httpapi_missing" }))
     .json(200, array),
   http.protected
     .post("/api/intelligence/test-model", "intelligence.model.test")

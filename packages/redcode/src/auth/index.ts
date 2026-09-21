@@ -7,7 +7,7 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { Credential } from "@reddb-io/redcode-core/credential"
 import { Integration } from "@reddb-io/redcode-schema/integration"
 
-export const OAUTH_DUMMY_KEY = "opencode-oauth-dummy-key"
+export { OAUTH_DUMMY_KEY } from "./dummy-key"
 
 const file = path.join(Global.Path.data, "auth.json")
 

@@ -1,8 +1,8 @@
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
-import { which } from "@reddb-io/redcode-core/util/which"
+import { whichSystem } from "@reddb-io/redcode-core/util/which-system"
 import type { Hooks } from "@reddb-io/redcode-plugin"
 import { Schema } from "effect"
-import { OAUTH_DUMMY_KEY } from "../auth"
+import { OAUTH_DUMMY_KEY } from "../auth/dummy-key"
 import { Process } from "../util/process"
 
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
@@ -18,7 +18,7 @@ const decodeAzureCliToken = Schema.decodeUnknownPromise(AzureCliToken)
 type AzureCommand = (args: string[]) => Promise<unknown>
 
 export async function AzureAuthPlugin(): Promise<Hooks> {
-  const available = Boolean(which("az"))
+  const available = Boolean(whichSystem("az"))
   return createAzureAuthHooks(runAzure, fetch, available)
 }
 
@@ -109,7 +109,7 @@ export function createAzureAuthHooks(
 }
 
 async function runAzure(args: string[]): Promise<unknown> {
-  const result = await Process.run([which("az") ?? "az", ...args])
+  const result = await Process.run([whichSystem("az") ?? "az", ...args])
   return JSON.parse(result.stdout.toString())
 }
 
