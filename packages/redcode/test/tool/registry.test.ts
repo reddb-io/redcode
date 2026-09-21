@@ -254,6 +254,29 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("skips a custom tool whose module cannot be imported", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const tool = path.join(test.directory, ".opencode", "tool")
+      yield* Effect.promise(() => fs.mkdir(tool, { recursive: true }))
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(tool, "broken.ts"),
+          [
+            "import { tool } from '@package-that-does-not-exist/redcode-regression'",
+            "export default tool({ description: 'broken', args: {}, execute: async () => 'never' })",
+            "",
+          ].join("\n"),
+        ),
+      )
+
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+      expect(ids).toContain("read")
+      expect(ids).not.toContain("broken")
+    }),
+  )
+
   // Regression for #27451 / #27630: a custom tool that omits `args` must not
   // crash registry initialization with
   // `Object.entries requires that input parameter not be null or undefined`.

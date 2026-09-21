@@ -61,6 +61,15 @@ it.instance("returns default native agents when no config", () =>
   }),
 )
 
+it.instance("lists native primary agents in TUI cycle order", () =>
+  Effect.gen(function* () {
+    const agents = yield* load((svc) => svc.list())
+    expect(
+      agents.filter((agent) => agent.mode === "primary" && !agent.hidden).map((agent) => agent.name),
+    ).toEqual(["build", "plan", "design", "question"])
+  }),
+)
+
 it.instance("question is a green primary agent with read-only investigation permissions", () =>
   Effect.gen(function* () {
     const question = yield* load((svc) => svc.get("question"))
@@ -498,12 +507,12 @@ it.instance(
 )
 
 it.instance(
-  "Agent.list keeps the default agent first and sorts the rest by name",
+  "Agent.list keeps the configured default first and preserves native cycle order",
   () =>
     Effect.gen(function* () {
       const names = (yield* load((svc) => svc.list())).map((a) => a.name)
       expect(names[0]).toBe("plan")
-      expect(names.slice(1)).toEqual(names.slice(1).toSorted((a, b) => a.localeCompare(b)))
+      expect(names.slice(1, 4)).toEqual(["build", "design", "question"])
     }),
   {
     config: {
