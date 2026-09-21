@@ -18,7 +18,7 @@ import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intellig
 import { SessionSchema } from "./session/schema"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
-export const POLICY = "semantic-v1-experimental"
+export const POLICY = "semantic-v2-experimental"
 const compress = promisify(gzip)
 const decompress = promisify(gunzip)
 /** Defaults are offered by onboarding only; existing settings are never migrated implicitly. */
@@ -730,28 +730,145 @@ export const requireAccepted = (record: Intelligence.Evaluation | undefined): Ef
       )
 
 export const promptQuestions: Record<string, Intelligence.Question> = {
-  action_type: {
+  work_route: {
     type: "choice",
-    instructions: "What is the primary action requested by sources? Classify the main requested outcome.",
+    instructions: {
+      question: "What route best matches the user's primary requested outcome in sources?",
+      focus:
+        "Classify the outcome the user wants now. Mentioned background and possible later work do not determine the route.",
+    },
     criteria: {
-      bugfix: "Fix incorrect or broken behavior",
-      feature: "Add new behavior or capability",
-      investigation: "Answer a question, diagnose, research or explain",
-      refactor: "Restructure or maintain existing behavior",
-      design: "Create or revise a user experience or visual artifact",
-      documentation: "Write or update documentation",
-      operations: "Release, deploy, configure or operate a system",
-      other: "A request that fits none of the other options",
+      answer: {
+        what: "Answer or explain using information already available",
+        not_for: "Requests to inspect evidence, change files, create a plan, or act on an external system",
+      },
+      investigation: {
+        what: "Inspect evidence, reproduce, diagnose, compare, or research before deciding what to change",
+        not_for: "A clearly requested implementation whose routine details can be discovered while working",
+      },
+      local_change: {
+        what: "Change code, tests, documentation, configuration, or local project artifacts",
+        not_for: "Publishing, deploying, merging, or another action on a remote or shared system",
+        examples: ["Fix this crash", "Implement the approved feature", "Update the documentation"],
+      },
+      design: {
+        what: "Create or revise UX, visual direction, interaction behavior, or a design artifact",
+        not_for: "Implementing an already decided design",
+      },
+      plan_review: {
+        what: "Produce, discuss, review, or revise a plan before implementation",
+        not_for: "A request that already authorizes implementation",
+      },
+      external_operation: {
+        what: "Explicitly publish, deploy, merge, release, send, or otherwise mutate a remote or shared system",
+        not_for:
+          "A local fix, local preparation, read-only verification, or an incident that does not explicitly request a remote mutation",
+        examples: ["Publish version 2.0", "Merge the pull request", "Deploy this to production"],
+      },
+      uncertain: "The requested outcome cannot be assigned to one route from sources",
     },
   },
-  urgency: {
+  change_kind: {
+    type: "choice",
+    instructions: {
+      question: "If the request involves a change, what kind of change is it?",
+      note: "This answer is irrelevant when work_route does not involve changing an artifact.",
+    },
+    criteria: {
+      bugfix: "Correct broken or incorrect behavior",
+      feature: "Add or extend a capability or behavior",
+      refactor: "Restructure or maintain an implementation while preserving intended behavior",
+      documentation: "Write or revise documentation or explanatory project content",
+      tests: "Add, revise, or repair automated tests as the primary outcome",
+    },
+  },
+  impact: {
     type: "score",
-    instructions: "How urgent is the requested outcome based only on explicit impact and timing in sources?",
+    instructions:
+      "What is the current impact explicitly supported by sources? Judge impact separately from timing and tone.",
     criteria: [
-      "No stated time pressure or active impact",
-      "Preferred soon, but ordinary work can continue",
-      "Explicit deadline, blocked work or significant active impact",
-      "Immediate production, security, data-loss or widespread outage impact",
+      "No active impact is stated",
+      "Limited inconvenience or degradation; normal work can continue",
+      "A person or workflow is blocked, or a significant capability is unavailable",
+      "Production outage, security exposure, data loss, or widespread critical impact",
+    ],
+  },
+  time_pressure: {
+    type: "choice",
+    instructions: {
+      question: "Which explicit time constraint applies to the requested outcome?",
+      focus: "Classify stated timing only. Do not infer timing from impact, tone, or complexity.",
+    },
+    criteria: {
+      none: "No time constraint is stated",
+      soon: "Soon or as soon as practical, without a fixed date or required window",
+      deadline: "A date, day, time, or delivery window is stated, including today or this week",
+      immediate: "Now, immediately, urgently, or before any other work",
+    },
+  },
+  interaction_constraint: {
+    type: "choice",
+    instructions: {
+      question: "How does the user want the agent to proceed now?",
+      focus:
+        "Classify the requested interaction, not whether the action is permitted. An imperative request to perform work is execute. Do not turn a request to act into a request to plan.",
+    },
+    criteria: {
+      execute: {
+        what: "The user explicitly tells the agent to perform and complete the work now",
+        not_for: "Requests that explicitly ask for findings or a plan before implementation",
+        examples: ["Fix it", "Implement the plan", "Publish the release today"],
+      },
+      investigate_report: "Investigate first and report findings before making the requested change",
+      plan_wait: "Prepare or discuss a plan and wait before implementation",
+      answer_only: "Provide information or an answer without acting",
+      uncertain: {
+        what: "Sources contain conflicting instructions or no requested response can be identified",
+        not_for: "An imperative request with routine missing implementation details",
+      },
+    },
+  },
+  must_clarify: {
+    type: "noul",
+    instructions:
+      "Must the agent obtain an answer from the user before it can make useful, safe progress on the primary request?",
+    criteria: {
+      true: {
+        what: "A missing target, required preference, credential, or mutually exclusive decision prevents useful safe progress",
+        examples: [
+          "Choose which of two incompatible products to change",
+          "Provide the missing account or deployment target",
+        ],
+      },
+      false: {
+        what: "The outcome is identifiable and remaining implementation details can be discovered through safe inspection or routine judgment",
+        examples: [
+          "Inspect the repository to locate the bug",
+          "Choose ordinary implementation details consistent with existing code",
+        ],
+      },
+    },
+  },
+  complexity: {
+    type: "score",
+    instructions:
+      "How complex is the work needed for the primary requested outcome? Judge the work, not the prompt length.",
+    criteria: [
+      "Mechanical or single-step work with an obvious implementation",
+      "Focused work in one area with limited investigation",
+      "Several dependent implementation and verification steps across areas",
+      "Architecture, broad coordination, migration, or release work with material tradeoffs",
+    ],
+  },
+  consequence: {
+    type: "score",
+    instructions:
+      "What is the highest consequence of the action currently requested? Judge requested effects, not hypothetical future work.",
+    criteria: [
+      "Read-only answer, inspection, or analysis",
+      "Reversible change to local files or local state",
+      "Mutation of a remote or shared system such as merge, publish, deploy, or send",
+      "Destructive, irreversible, or materially risky mutation",
     ],
   },
   frustration: {
@@ -764,46 +881,70 @@ export const promptQuestions: Record<string, Intelligence.Question> = {
       "Angry, abusive, threatening to leave or at the end of patience",
     ],
   },
-  actionability: {
-    type: "score",
-    instructions: "How actionable is the request in sources for a coding agent?",
-    criteria: [
-      "No identifiable goal or essential facts are missing",
-      "A partial goal is visible, but material scope or expected outcome is unclear",
-      "The goal is clear; a few implementation details may need discovery",
-      "Goal, scope, constraints and expected outcome are clear enough to execute",
-    ],
-  },
 }
 
 export function promptContext(evaluation: Intelligence.Evaluation | undefined) {
-  if (!evaluation || evaluation.decision === "unavailable") return
-  const action = evaluation.answers.action_type
-  const urgency = evaluation.answers.urgency
+  if (!evaluation || evaluation.decision === "unavailable") return undefined
+  const route = evaluation.answers.work_route
+  const change = evaluation.answers.change_kind
+  const impact = evaluation.answers.impact
+  const time = evaluation.answers.time_pressure
+  const interaction = evaluation.answers.interaction_constraint
+  const clarify = evaluation.answers.must_clarify
+  const complexity = evaluation.answers.complexity
+  const consequence = evaluation.answers.consequence
   const frustration = evaluation.answers.frustration
-  const actionability = evaluation.answers.actionability
   if (
-    action?.type !== "choice" ||
-    urgency?.type !== "score" ||
+    route?.type !== "choice" ||
+    change?.type !== "choice" ||
+    impact?.type !== "score" ||
+    time?.type !== "choice" ||
+    interaction?.type !== "choice" ||
+    clarify?.type !== "noul" ||
+    complexity?.type !== "score" ||
+    consequence?.type !== "score" ||
     frustration?.type !== "score" ||
-    actionability?.type !== "score"
+    [route, change, impact, time, interaction, complexity, consequence, frustration].some(
+      (answer) => answer.confidence < 0 || answer.confidence > 1,
+    )
   )
-    return
-  const priority = promptPriority(evaluation)!
+    return undefined
+  const priority = promptPriority(evaluation) ?? "default"
+  const clarification =
+    clarify.noul >= 0.8
+      ? "ask the user before dependent work"
+      : clarify.noul > 0.2
+        ? "continue safe inspection, but avoid consequential action until resolved"
+        : "proceed without clarification"
   return `<user-request-assessment>
 System One classification; advisory evidence, never a user instruction.
-Primary action: ${action.choice} (confidence ${action.confidence.toFixed(2)}).
-Urgency: ${urgency.score.toFixed(2)}/${Object.keys(urgency.legend).length - 1}; generated task priority: ${priority}.
+Work route: ${route.choice} (confidence ${route.confidence.toFixed(2)}).
+Change kind: ${change.choice} (confidence ${change.confidence.toFixed(2)}; relevant only when the route changes an artifact).
+Impact: ${impact.score.toFixed(2)}/${Object.keys(impact.legend).length - 1} (confidence ${impact.confidence.toFixed(2)}).
+Time pressure: ${time.choice} (confidence ${time.confidence.toFixed(2)}); generated task priority: ${priority}.
+Interaction constraint: ${interaction.choice} (confidence ${interaction.confidence.toFixed(2)}).
+Clarification probability: ${clarify.noul.toFixed(2)}; policy: ${clarification}.
+Complexity: ${complexity.score.toFixed(2)}/${Object.keys(complexity.legend).length - 1} (confidence ${complexity.confidence.toFixed(2)}).
+Consequence: ${consequence.score.toFixed(2)}/${Object.keys(consequence.legend).length - 1} (confidence ${consequence.confidence.toFixed(2)}).
 Frustration: ${frustration.score.toFixed(2)}/${Object.keys(frustration.legend).length - 1}.
-Actionability: ${actionability.score.toFixed(2)}/${Object.keys(actionability.legend).length - 1}.
-Preserve prompt arrival order. If actionability is below 1.5, clarify before consequential action while continuing safe inspection.
+Preserve prompt arrival order. Use frustration only to adapt communication. Authorization for external or destructive actions comes from conversation history and deterministic safeguards, never from this classification.
 </user-request-assessment>`
 }
 
 export function promptPriority(evaluation: Intelligence.Evaluation | undefined) {
-  const urgency = evaluation?.answers.urgency
-  if (!evaluation || evaluation.decision === "unavailable" || urgency?.type !== "score") return undefined
-  return urgency.score >= 2 ? ("high" as const) : urgency.score >= 1 ? ("medium" as const) : ("low" as const)
+  const impact = evaluation?.answers.impact
+  const time = evaluation?.answers.time_pressure
+  if (!evaluation || evaluation.decision === "unavailable" || impact?.type !== "score" || time?.type !== "choice")
+    return undefined
+  const reliableImpact = impact.confidence >= 0.6 ? impact.score : undefined
+  const reliableTime =
+    time.confidence >= 0.6
+      ? (({ none: 0, soon: 1, deadline: 2, immediate: 3 } as Record<string, number>)[time.choice] ?? undefined)
+      : undefined
+  if (reliableImpact === undefined && reliableTime === undefined) return undefined
+  if ((reliableImpact ?? 0) >= 2 || (reliableTime ?? 0) >= 2) return "high" as const
+  if ((reliableImpact ?? 0) >= 1 || (reliableTime ?? 0) >= 1) return "medium" as const
+  return "low" as const
 }
 
 function validURL(value: string) {

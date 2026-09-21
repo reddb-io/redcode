@@ -586,18 +586,54 @@ const evaluated = (
 })
 
 const promptAnswers: Evaluation["answers"] = {
-  action_type: {
+  work_route: {
+    type: "choice",
+    choice: "local_change",
+    confidence: 0.9,
+    probabilities: { local_change: 0.9, investigation: 0.1 },
+  },
+  change_kind: {
     type: "choice",
     choice: "bugfix",
     confidence: 0.9,
     probabilities: { bugfix: 0.9, feature: 0.1 },
   },
-  urgency: {
+  impact: {
     type: "score",
     score: 2,
     confidence: 0.8,
     probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 },
-    legend: { "0": "none", "1": "soon", "2": "blocked", "3": "incident" },
+    legend: { "0": "none", "1": "limited", "2": "blocked", "3": "critical" },
+  },
+  time_pressure: {
+    type: "choice",
+    choice: "none",
+    confidence: 1,
+    probabilities: { none: 1, soon: 0, deadline: 0, immediate: 0 },
+  },
+  interaction_constraint: {
+    type: "choice",
+    choice: "execute",
+    confidence: 1,
+    probabilities: { execute: 1, investigate_report: 0, plan_wait: 0, answer_only: 0, uncertain: 0 },
+  },
+  must_clarify: {
+    type: "noul",
+    noul: 0.05,
+  },
+  complexity: {
+    type: "score",
+    score: 1,
+    confidence: 1,
+    probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+    legend: { "0": "mechanical", "1": "focused", "2": "multi-step", "3": "architecture" },
+  },
+  consequence: {
+    type: "score",
+    score: 1,
+    confidence: 1,
+    probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+    legend: { "0": "read", "1": "local", "2": "remote", "3": "destructive" },
   },
   frustration: {
     type: "score",
@@ -605,13 +641,6 @@ const promptAnswers: Evaluation["answers"] = {
     confidence: 1,
     probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
     legend: { "0": "calm", "1": "concerned", "2": "frustrated", "3": "angry" },
-  },
-  actionability: {
-    type: "score",
-    score: 3,
-    confidence: 1,
-    probabilities: { "0": 0, "1": 0, "2": 0, "3": 1 },
-    legend: { "0": "missing", "1": "partial", "2": "clear", "3": "executable" },
   },
 }
 

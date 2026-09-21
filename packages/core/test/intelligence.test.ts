@@ -6,7 +6,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { Intelligence } from "../src/intelligence"
 import { Credential } from "../src/credential"
-import { Answer } from "@reddb-io/redcode-schema/intelligence"
+import { Answer, Evaluation } from "@reddb-io/redcode-schema/intelligence"
 import { Integration } from "@reddb-io/redcode-schema/integration"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
@@ -29,6 +29,78 @@ const credentials = {
   list: () => Effect.succeed([]),
   create: () => Effect.die("Credential creation not expected"),
 }
+
+const classification = (
+  impact: { score: number; confidence: number },
+  time: { choice: string; confidence: number },
+  mustClarify = 0.05,
+): typeof Evaluation.Type => ({
+  id: "evaluation",
+  fingerprint: "fingerprint",
+  sessionID: "session",
+  operation: "prompt_classification",
+  kind: "classification",
+  policy: Intelligence.POLICY,
+  decision: "accepted",
+  model: "jev-test",
+  answers: {
+    work_route: {
+      type: "choice",
+      choice: "local_change",
+      confidence: 0.95,
+      probabilities: { local_change: 0.95, investigation: 0.05 },
+    },
+    change_kind: {
+      type: "choice",
+      choice: "bugfix",
+      confidence: 0.9,
+      probabilities: { bugfix: 0.9, feature: 0.1 },
+    },
+    impact: {
+      type: "score",
+      ...impact,
+      probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 },
+      legend: { "0": "none", "1": "limited", "2": "blocked", "3": "critical" },
+    },
+    time_pressure: {
+      type: "choice",
+      ...time,
+      probabilities: { none: 1, soon: 0, deadline: 0, immediate: 0 },
+    },
+    interaction_constraint: {
+      type: "choice",
+      choice: "execute",
+      confidence: 1,
+      probabilities: { execute: 1 },
+    },
+    must_clarify: { type: "noul", noul: mustClarify },
+    complexity: {
+      type: "score",
+      score: 1,
+      confidence: 1,
+      probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+      legend: { "0": "mechanical", "1": "focused", "2": "multi-step", "3": "architecture" },
+    },
+    consequence: {
+      type: "score",
+      score: 1,
+      confidence: 1,
+      probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+      legend: { "0": "read", "1": "local", "2": "remote", "3": "destructive" },
+    },
+    frustration: {
+      type: "score",
+      score: 0,
+      confidence: 1,
+      probabilities: { "0": 1, "1": 0, "2": 0, "3": 0 },
+      legend: { "0": "calm", "1": "concerned", "2": "frustrated", "3": "angry" },
+    },
+  },
+  issues: [],
+  created: 1,
+  duration: 1,
+  usage: { input_tokens: 1, output_tokens: 1 },
+})
 
 test("experimental thresholds distinguish rejection from uncertainty without averaging failures", () => {
   expect(Intelligence.decide(questions, response(0.1)).decision).toBe("accepted")
@@ -63,6 +135,54 @@ test("semantic gates retain Score telemetry without treating it as an error ques
       usage: { input_tokens: 30, output_tokens: 4 },
     }).decision,
   ).toBe("accepted")
+})
+
+test("prompt classification v2 separates route, impact, timing, interaction, and consequence", () => {
+  expect(Object.keys(Intelligence.promptQuestions)).toEqual([
+    "work_route",
+    "change_kind",
+    "impact",
+    "time_pressure",
+    "interaction_constraint",
+    "must_clarify",
+    "complexity",
+    "consequence",
+    "frustration",
+  ])
+  expect(Intelligence.promptQuestions).not.toHaveProperty("urgency")
+  expect(Intelligence.promptQuestions).not.toHaveProperty("actionability")
+})
+
+test("prompt priority uses only confident impact and time pressure", () => {
+  expect(
+    Intelligence.promptPriority(classification({ score: 2, confidence: 0.8 }, { choice: "none", confidence: 1 })),
+  ).toBe("high")
+  expect(
+    Intelligence.promptPriority(classification({ score: 0, confidence: 1 }, { choice: "soon", confidence: 0.9 })),
+  ).toBe("medium")
+  expect(
+    Intelligence.promptPriority(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })),
+  ).toBe("low")
+  expect(
+    Intelligence.promptPriority(
+      classification({ score: 3, confidence: 0.59 }, { choice: "immediate", confidence: 0.59 }),
+    ),
+  ).toBeUndefined()
+})
+
+test("clarification policy permits inspection under uncertainty and never grants external authorization", () => {
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.8)),
+  ).toContain("ask the user before dependent work")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.5)),
+  ).toContain("continue safe inspection, but avoid consequential action until resolved")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.2)),
+  ).toContain("proceed without clarification")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })),
+  ).toContain("Authorization for external or destructive actions comes from conversation history")
 })
 
 test("global setup survives reload, leaves credentials out of public settings, and defaults to disabled", async () => {
