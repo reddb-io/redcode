@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "d6e03711-0b6c-4751-b511-ae3c46598b95",
+  "id": "1534dc3e-7837-4d0e-85ca-a6a08556410f",
   "prevIds": [
-    "5a669587-317a-4684-93b9-67c1f42ab43e"
+    "d6e03711-0b6c-4751-b511-ae3c46598b95"
   ],
   "ddl": [
     {
@@ -12,6 +12,14 @@
     },
     {
       "name": "data_migration",
+      "entityType": "tables"
+    },
+    {
+      "name": "intelligence_answer",
+      "entityType": "tables"
+    },
+    {
+      "name": "intelligence_evaluation",
       "entityType": "tables"
     },
     {
@@ -225,6 +233,296 @@
       "name": "time_completed",
       "entityType": "columns",
       "table": "data_migration"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluation_id",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "question_id",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "noul",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "choice",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "score",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "confidence",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "probabilities",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "legend",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operation",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluation_kind",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "candidate_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attempt",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "fingerprint",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "policy",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "decision",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "model",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluator",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issues",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_tokens",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "output_tokens",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "duration",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "artifact",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_hash",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "candidate_hash",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
     },
     {
       "type": "text",
@@ -2093,6 +2391,36 @@
     },
     {
       "columns": [
+        "evaluation_id"
+      ],
+      "tableTo": "intelligence_evaluation",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_intelligence_answer_evaluation_id_intelligence_evaluation_id_fk",
+      "entityType": "fks",
+      "table": "intelligence_answer"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_intelligence_evaluation_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
         "session_id"
       ],
       "tableTo": "session",
@@ -2408,6 +2736,16 @@
     },
     {
       "columns": [
+        "evaluation_id",
+        "question_id"
+      ],
+      "nameExplicit": false,
+      "name": "intelligence_answer_pk",
+      "entityType": "pks",
+      "table": "intelligence_answer"
+    },
+    {
+      "columns": [
         "session_id",
         "revision"
       ],
@@ -2473,6 +2811,15 @@
       "nameExplicit": false,
       "name": "data_migration_pk",
       "table": "data_migration",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "intelligence_evaluation_pk",
+      "table": "intelligence_evaluation",
       "entityType": "pks"
     },
     {
@@ -2681,6 +3028,88 @@
       "name": "session_share_pk",
       "table": "session_share",
       "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "fingerprint",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_fingerprint_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_session_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "operation",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_operation_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "decision",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_decision_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "subject_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_subject_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
     },
     {
       "columns": [

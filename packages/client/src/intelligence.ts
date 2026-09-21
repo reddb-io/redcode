@@ -28,8 +28,15 @@ export function make(options: Parameters<typeof makeClient>[0]) {
     save: (input: Intelligence.Save) => client.intelligence.save(input) as Promise<Intelligence.Settings>,
     discover: (input: Intelligence.Probe) => client.intelligence.discover(input) as Promise<Intelligence.Models>,
     probe: (input: Intelligence.Probe) => client.intelligence.probe(input) as Promise<Intelligence.Check>,
-    history: (sessionID: string) =>
-      client.intelligence.history({ sessionID }) as Promise<ReadonlyArray<Intelligence.Evaluation>>,
+    history: (
+      input: {
+        sessionID?: string
+        operation?: Intelligence.Operation
+        decision?: Intelligence.Evaluation["decision"]
+        limit?: number
+        offset?: number
+      } = {},
+    ) => client.intelligence.history(input) as Promise<ReadonlyArray<Intelligence.Evaluation>>,
   }
 }
 export * as IntelligenceClient from "./intelligence"

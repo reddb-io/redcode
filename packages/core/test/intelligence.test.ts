@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
+import { SqliteClient } from "@effect/sql-sqlite-bun"
+import { EffectDrizzleSqlite } from "@reddb-io/redcode-effect-drizzle-sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Intelligence } from "../src/intelligence"
@@ -9,6 +11,12 @@ import { Integration } from "@reddb-io/redcode-schema/integration"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
 import { tmpdir } from "./fixture/tmpdir"
+import { DatabaseMigration } from "../src/database/migration"
+import { Project } from "../src/project"
+import { ProjectTable } from "../src/project/sql"
+import { AbsolutePath } from "../src/schema"
+import { SessionSchema } from "../src/session/schema"
+import { SessionTable } from "../src/session/sql"
 
 const questions = Intelligence.questions({ omitted: "Does candidate omit a requested requirement from sources?" })
 const response = (value: number) => ({
@@ -28,6 +36,33 @@ test("experimental thresholds distinguish rejection from uncertainty without ave
   expect(Intelligence.decide(questions, response(0.9)).decision).toBe("needs_revision")
   expect(() => Intelligence.decide(questions, { ...response(0), answers: {} })).toThrow()
   expect(() => Schema.decodeUnknownSync(Answer)(response(1.01).answers.omitted)).toThrow()
+})
+
+test("semantic gates retain Score telemetry without treating it as an error question", () => {
+  const mixed = {
+    ...questions,
+    quality: {
+      type: "score" as const,
+      instructions: "How clear is candidate?",
+      criteria: ["unclear", "clear"],
+    },
+  }
+  expect(
+    Intelligence.decide(mixed, {
+      model: "jev-1.13.0",
+      answers: {
+        omitted: { type: "noul", noul: 0.02 },
+        quality: {
+          type: "score",
+          score: 0.2,
+          confidence: 0.8,
+          probabilities: { "0": 0.8, "1": 0.2 },
+          legend: { "0": "unclear", "1": "clear" },
+        },
+      },
+      usage: { input_tokens: 30, output_tokens: 4 },
+    }).decision,
+  ).toBe("accepted")
 })
 
 test("global setup survives reload, leaves credentials out of public settings, and defaults to disabled", async () => {
@@ -93,12 +128,65 @@ test("native HTTP evaluation persists candidate and source references and fails 
         expect(yield* service.history("session")).toHaveLength(2)
         const files = yield* Effect.promise(() => fs.readdir(path.join(dir.path, "evaluations")))
         expect(files).toHaveLength(2)
+        expect(files.every((file) => file.endsWith(".json.gz"))).toBe(true)
+        expect(
+          Array.from(
+            (yield* Effect.promise(() => fs.readFile(path.join(dir.path, "evaluations", files[0]!)))).subarray(0, 2),
+          ),
+        ).toEqual([0x1f, 0x8b])
         expect(yield* service.history("different-session")).toHaveLength(0)
       }),
     )
   } finally {
     server.stop(true)
   }
+})
+
+test("database history preserves typed answers independently of compressed artifacts", async () => {
+  await using dir = await tmpdir()
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const db = yield* EffectDrizzleSqlite.makeWithDefaults()
+      yield* DatabaseMigration.apply(db)
+      yield* db.insert(ProjectTable).values({
+        id: Project.ID.global,
+        worktree: AbsolutePath.make("/project"),
+        sandboxes: [],
+      })
+      const sessionID = SessionSchema.ID.make("ses_intelligence_database")
+      yield* db.insert(SessionTable).values({
+        id: sessionID,
+        project_id: Project.ID.global,
+        slug: "intelligence",
+        directory: "/project",
+        title: "intelligence",
+        version: "test",
+      })
+      const fetcher: typeof fetch = Object.assign(() => Promise.resolve(Response.json(response(0.02))), {
+        preconnect() {},
+      })
+      const service = yield* Intelligence.make(dir.path, credentials, fetcher, {}, db)
+      yield* service.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+          evaluator: { transport: "typesafe", baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" },
+        },
+      })
+      yield* service.evaluate({
+        sessionID,
+        operation: "todos",
+        sources: "request",
+        candidate: "candidate",
+        questions,
+      })
+      const history = yield* service.history(sessionID)
+      expect(history).toHaveLength(1)
+      expect(history[0]?.answers.omitted).toEqual({ type: "noul", noul: 0.02 })
+      expect(history[0]?.operation).toBe("todos")
+    }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", disableWAL: true })), Effect.scoped),
+  )
 })
 
 test("disabled mode makes no provider calls; oversized sources cannot be silently approved", async () => {

@@ -19,6 +19,7 @@ import * as OpenAIChat from "@reddb-io/redcode-llm/protocols/openai-chat"
 import * as AnthropicMessages from "@reddb-io/redcode-llm/protocols/anthropic-messages"
 import { NativeToolSearch } from "@reddb-io/redcode-core/tool/native-tool-search"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { makeLocationNode } from "@reddb-io/redcode-core/effect/app-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -269,6 +270,39 @@ const withExperimental = <A, E, R>(
       }),
   )
 const modelLimits = ModelLimit.memoryLayer()
+type Evaluation = NonNullable<Effect.Success<ReturnType<Intelligence.Interface["evaluate"]>>>
+let intelligenceEvaluations: Evaluation[] = []
+let intelligenceInputs: Intelligence.EvaluationInput[] = []
+let intelligenceEvaluate: Intelligence.Interface["evaluate"] = () => Effect.succeed(undefined)
+const intelligence = Layer.succeed(
+  Intelligence.Service,
+  Intelligence.Service.of({
+    read: () => Effect.succeed(Intelligence.defaults),
+    save: (input) => Effect.succeed(input.settings),
+    options: () => Effect.succeed([]),
+    request: () => Effect.die("unused"),
+    discover: () => Effect.die("unused"),
+    probe: () => Effect.die("unused"),
+    evaluate: (input) =>
+      intelligenceEvaluate(input).pipe(
+        Effect.tap((evaluation) =>
+          Effect.sync(() => {
+            intelligenceInputs.push(input)
+            if (evaluation) intelligenceEvaluations.push(evaluation)
+          }),
+        ),
+      ),
+    history: (id, options = {}) =>
+      Effect.succeed(
+        intelligenceEvaluations
+          .filter((evaluation) => !id || evaluation.sessionID === id)
+          .filter((evaluation) => !options.operation || evaluation.operation === options.operation)
+          .filter((evaluation) => !options.decision || evaluation.decision === options.decision),
+      ),
+    generation: () => Effect.void,
+    environment: "test",
+  }),
+)
 const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
   [Snapshot.node, Snapshot.noopLayer],
   [ModelLimit.node, modelLimits],
@@ -280,6 +314,7 @@ const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
   [ReferenceGuidance.node, referenceGuidance],
   [PermissionV2.node, permission],
   [Config.node, config],
+  [Intelligence.node, intelligence],
 ])
 const execution = Layer.effect(
   SessionExecution.Service,
@@ -336,6 +371,7 @@ const it = testEffect(
       [Snapshot.node, Snapshot.noopLayer],
       [SessionExecution.node, execution],
       [Config.node, config],
+      [Intelligence.node, intelligence],
     ],
   ),
 )
@@ -381,6 +417,9 @@ const setup = Effect.gen(function* () {
   toolExecutionsReady = 5
   activeToolExecutions = 0
   maxActiveToolExecutions = 0
+  intelligenceEvaluations = []
+  intelligenceInputs = []
+  intelligenceEvaluate = () => Effect.succeed(undefined)
   // A provider rejection is remembered for the process; tests must not inherit each other's.
   NativeToolSearch.reset()
   yield* db
@@ -522,6 +561,74 @@ const fragmentFixture = (kind: FragmentKind, id: string, chunks: readonly string
   }
 }
 
+const evaluated = (
+  input: Intelligence.EvaluationInput,
+  decision: Evaluation["decision"],
+  answers: Evaluation["answers"],
+  issues: string[] = [],
+): Evaluation => ({
+  id: `evaluation-${intelligenceEvaluations.length + 1}`,
+  fingerprint: `fingerprint-${intelligenceEvaluations.length + 1}`,
+  sessionID: input.sessionID,
+  operation: input.operation,
+  kind: input.kind ?? "gate",
+  ...(input.subjectID ? { subjectID: input.subjectID } : {}),
+  ...(input.candidateID ? { candidateID: input.candidateID } : {}),
+  attempt: input.attempt ?? 0,
+  policy: Intelligence.POLICY,
+  decision,
+  model: "jev-test",
+  answers,
+  issues,
+  created: Date.now(),
+  duration: 1,
+  usage: { input_tokens: 1, output_tokens: 1 },
+})
+
+const promptAnswers: Evaluation["answers"] = {
+  action_type: {
+    type: "choice",
+    choice: "bugfix",
+    confidence: 0.9,
+    probabilities: { bugfix: 0.9, feature: 0.1 },
+  },
+  urgency: {
+    type: "score",
+    score: 2,
+    confidence: 0.8,
+    probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 },
+    legend: { "0": "none", "1": "soon", "2": "blocked", "3": "incident" },
+  },
+  frustration: {
+    type: "score",
+    score: 1,
+    confidence: 1,
+    probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+    legend: { "0": "calm", "1": "concerned", "2": "frustrated", "3": "angry" },
+  },
+  actionability: {
+    type: "score",
+    score: 3,
+    confidence: 1,
+    probabilities: { "0": 0, "1": 0, "2": 0, "3": 1 },
+    legend: { "0": "missing", "1": "partial", "2": "clear", "3": "executable" },
+  },
+}
+
+const responseAnswers = (noul: number): Evaluation["answers"] => ({
+  omission: { type: "noul", noul },
+  unsupported: { type: "noul", noul: 0 },
+  premature: { type: "noul", noul: 0 },
+  writing: { type: "noul", noul: 0 },
+  writing_quality: {
+    type: "score",
+    score: noul > 0.1 ? 1 : 3,
+    confidence: 1,
+    probabilities: noul > 0.1 ? { "0": 0, "1": 1, "2": 0, "3": 0 } : { "0": 0, "1": 0, "2": 0, "3": 1 },
+    legend: { "0": "bad", "1": "weak", "2": "clear", "3": "excellent" },
+  },
+})
+
 const verifyEphemeralDeltas = (kind: FragmentKind) =>
   Effect.gen(function* () {
     yield* setup
@@ -662,6 +769,66 @@ describe("SessionRunnerLLM", () => {
           ],
         },
       ])
+    }),
+  )
+
+  it.effect("classifies each promoted prompt and reviews only the final response", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(input, "accepted", responseAnswers(0)),
+        )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep the existing behavior" }), resume: false })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "The build is blocked; fix the crash" }),
+        resume: false,
+      })
+      requests.length = 0
+      response = fragmentFixture("text", "classified", ["Fixed and verified."]).completeEvents
+
+      yield* session.resume(sessionID)
+
+      expect(intelligenceInputs.map((input) => input.operation)).toEqual([
+        "prompt_classification",
+        "prompt_classification",
+        "response_quality",
+      ])
+      expect(JSON.stringify(requests[0]?.system)).toContain("<user-request-assessment>")
+      expect(JSON.stringify(requests[0]?.system)).toContain("generated task priority: high")
+    }),
+  )
+
+  it.effect("allows one tool-free corrective continuation and never loops on another rejection", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(input, "needs_revision", responseAnswers(0.99), ["omission"]),
+        )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fix the crash" }), resume: false })
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "weak-final", ["Done."]).completeEvents,
+        fragmentFixture("text", "repair-final", ["The crash was fixed and verified."]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(requests[1]?.tools).toEqual([])
+      expect(requests[1]?.toolChoice).toMatchObject({ type: "none" })
+      expect(JSON.stringify(requests[1]?.system)).toContain("corrective follow-up")
+      expect(
+        intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
+      ).toEqual([0, 1])
     }),
   )
 
@@ -2101,7 +2268,11 @@ describe("SessionRunnerLLM", () => {
         }),
       )
       const session = yield* SessionV2.Service
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Append the missing test lines" }), resume: false })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Append the missing test lines" }),
+        resume: false,
+      })
 
       requests.length = 0
       executions.length = 0

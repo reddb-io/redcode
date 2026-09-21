@@ -30,7 +30,7 @@
     },
     "packages/app": {
       "name": "@reddb-io/redcode-app",
-      "version": "1.21.3",
+      "version": "1.21.6",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -99,7 +99,7 @@
     },
     "packages/cli": {
       "name": "@reddb-io/redcode-cli",
-      "version": "1.18.27",
+      "version": "1.18.30",
       "bin": {
         "lildax": "./bin/lildax.cjs",
       },
@@ -125,7 +125,7 @@
     },
     "packages/client": {
       "name": "@reddb-io/redcode-client",
-      "version": "1.18.21",
+      "version": "1.18.24",
       "dependencies": {
         "@reddb-io/redcode-protocol": "workspace:*",
         "@reddb-io/redcode-schema": "workspace:*",
@@ -293,7 +293,7 @@
     },
     "packages/core": {
       "name": "@reddb-io/redcode-core",
-      "version": "1.23.1",
+      "version": "1.25.1",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.166",
@@ -332,6 +332,7 @@
         "@opentelemetry/exporter-trace-otlp-http": "0.214.0",
         "@opentelemetry/sdk-trace-base": "2.6.1",
         "@parcel/watcher": "2.5.1",
+        "@reddb-io/client": "1.23.4",
         "@reddb-io/redcode-codemode": "workspace:*",
         "@reddb-io/redcode-design": "workspace:*",
         "@reddb-io/redcode-effect-drizzle-sqlite": "workspace:*",
@@ -407,7 +408,7 @@
     },
     "packages/design": {
       "name": "@reddb-io/redcode-design",
-      "version": "0.0.0",
+      "version": "0.0.3",
       "dependencies": {
         "@reddb-io/redcode-schema": "workspace:*",
       },
@@ -499,7 +500,7 @@
     },
     "packages/enterprise": {
       "name": "@reddb-io/redcode-enterprise",
-      "version": "1.18.27",
+      "version": "1.18.30",
       "dependencies": {
         "@hono/standard-validator": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -579,7 +580,7 @@
     },
     "packages/llm": {
       "name": "@reddb-io/redcode-llm",
-      "version": "1.18.21",
+      "version": "1.19.2",
       "dependencies": {
         "@reddb-io/redcode-schema": "workspace:*",
         "@smithy/eventstream-codec": "4.2.14",
@@ -627,7 +628,7 @@
     },
     "packages/protocol": {
       "name": "@reddb-io/redcode-protocol",
-      "version": "1.18.21",
+      "version": "1.18.24",
       "dependencies": {
         "@reddb-io/redcode-schema": "workspace:*",
         "effect": "catalog:",
@@ -640,7 +641,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.31.2",
+      "version": "0.40.4",
       "bin": {
         "redcode": "./bin/redcode",
       },
@@ -784,7 +785,7 @@
     },
     "packages/schema": {
       "name": "@reddb-io/redcode-schema",
-      "version": "1.20.1",
+      "version": "1.23.0",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -807,7 +808,7 @@
     },
     "packages/sdk-next": {
       "name": "@reddb-io/redcode-sdk-next",
-      "version": "1.18.27",
+      "version": "1.18.30",
       "dependencies": {
         "@reddb-io/redcode-client": "workspace:*",
         "@reddb-io/redcode-core": "workspace:*",
@@ -837,7 +838,7 @@
     },
     "packages/server": {
       "name": "@reddb-io/redcode-server",
-      "version": "1.18.27",
+      "version": "1.18.30",
       "dependencies": {
         "@reddb-io/multi-rpc": "0.29.6",
         "@reddb-io/redcode-core": "workspace:*",
@@ -859,7 +860,7 @@
     },
     "packages/session-ui": {
       "name": "@reddb-io/redcode-session-ui",
-      "version": "1.18.27",
+      "version": "1.18.30",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@opencode-ai/client": "file:../app/vendor/opencode-ai-client-1.17.13-v2.tgz",
@@ -1008,7 +1009,7 @@
     },
     "packages/tui": {
       "name": "@reddb-io/redcode-tui",
-      "version": "1.21.3",
+      "version": "1.22.2",
       "dependencies": {
         "@opentui/core": "catalog:",
         "@opentui/keymap": "catalog:",
@@ -1133,11 +1134,11 @@
     "@scriptc/runtime@0.0.35": "patches/@scriptc%2Fruntime@0.0.35.patch",
     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
     "@opentui/solid@0.4.5": "patches/@opentui%2Fsolid@0.4.5.patch",
-    "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "@ai-sdk/openai@3.0.88": "patches/@ai-sdk%2Fopenai@3.0.88.patch",
     "@ai-sdk/xai@3.0.102": "patches/@ai-sdk%2Fxai@3.0.102.patch",
     "@modelcontextprotocol/sdk@1.29.0": "patches/@modelcontextprotocol%2Fsdk@1.29.0.patch",
     "gcp-metadata@8.1.2": "patches/gcp-metadata@8.1.2.patch",
+    "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "@standard-community/standard-openapi@0.2.9": "patches/@standard-community%2Fstandard-openapi@0.2.9.patch",
     "@ai-sdk/anthropic@3.0.111": "patches/@ai-sdk%2Fanthropic@3.0.111.patch",
     "@ai-sdk/mistral@3.0.51": "patches/@ai-sdk%2Fmistral@3.0.51.patch",
@@ -2474,6 +2475,8 @@
     "@radix-ui/react-visually-hidden": ["@radix-ui/react-visually-hidden@1.0.3", "", { "dependencies": { "@babel/runtime": "^7.13.10", "@radix-ui/react-primitive": "1.0.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0", "react-dom": "^16.8 || ^17.0 || ^18.0" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-D4w41yN5YRKtu464TLnByKzMDG/JlMPHtfZgQAu9v6mNakUqGUI9vUrfQKz8NK41VMm/xbZbh76NUTVtIYqOMA=="],
 
     "@radix-ui/rect": ["@radix-ui/rect@1.0.1", "", { "dependencies": { "@babel/runtime": "^7.13.10" } }, "sha512-fyrgCaedtvMg9NK3en0pnOYJdtfwxUcNolezkNPUsoX57X8oQk+NkqcvzHXD2uKNij6GXmWU9NDru2IWjrO4BQ=="],
+
+    "@reddb-io/client": ["@reddb-io/client@1.23.4", "", {}, "sha512-k0kJZzkob58XoxgZhJAXAgM5ffcD9/ih1+Ay1yLs0XQ4xkIGG456rGY3z+j2ynTwdHV/GTks7UycaIDfTwpWvg=="],
 
     "@reddb-io/multi-rpc": ["@reddb-io/multi-rpc@0.29.6", "", { "dependencies": { "@reddb-io/toon": "0.29.6", "@reddb-io/toon-rpc": "0.29.6" } }, "sha512-OljioOTUEf6LlNXA0MbhwNO8V9q0W96GCh3y1u36ZAAfZxAhKDXgwu6Ato8hhO0hp5WRHlkW649sOWrIm9VKYg=="],
 

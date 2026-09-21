@@ -38,7 +38,15 @@ export const IntelligenceGroup = HttpApiGroup.make("server.intelligence")
   )
   .add(
     HttpApiEndpoint.get("intelligence.history", "/api/intelligence/evaluations", {
-      query: Schema.Struct({ sessionID: Schema.String }),
+      query: Schema.Struct({
+        sessionID: Schema.String.pipe(Schema.optional),
+        operation: Intelligence.Operation.pipe(Schema.optional),
+        decision: Intelligence.Decision.pipe(Schema.optional),
+        limit: Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })).pipe(
+          Schema.optional,
+        ),
+        offset: Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)).pipe(Schema.optional),
+      }),
       success: Schema.Array(Intelligence.Evaluation),
       error: InvalidRequestError,
     }).annotateMerge(

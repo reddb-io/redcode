@@ -1535,12 +1535,18 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      history: (input: IntelligenceHistoryInput, requestOptions?: RequestOptions) =>
+      history: (input?: IntelligenceHistoryInput, requestOptions?: RequestOptions) =>
         request<IntelligenceHistoryOutput>(
           {
             method: "GET",
             path: `/api/intelligence/evaluations`,
-            query: { sessionID: input["sessionID"] },
+            query: {
+              sessionID: input?.["sessionID"],
+              operation: input?.["operation"],
+              decision: input?.["decision"],
+              limit: input?.["limit"],
+              offset: input?.["offset"],
+            },
             successStatus: 200,
             declaredStatuses: [400, 401],
             empty: false,

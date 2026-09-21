@@ -81,6 +81,9 @@ export const Response = Schema.Struct({
   }),
 }).annotate({ identifier: "Intelligence.Response" })
 export const Operation = Schema.Literals([
+  "prompt_classification",
+  "response_quality",
+  "task_quality",
   "todos",
   "plan",
   "feedback",
@@ -96,6 +99,10 @@ export const Evaluation = Schema.Struct({
   fingerprint: Text,
   sessionID: Schema.String,
   operation: Operation,
+  kind: Schema.Literals(["classification", "gate"]).pipe(optional),
+  subjectID: Schema.String.pipe(optional),
+  candidateID: Schema.String.pipe(optional),
+  attempt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
   policy: Schema.String,
   decision: Decision,
   model: Schema.String,

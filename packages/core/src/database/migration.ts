@@ -10,6 +10,7 @@ type Database = EffectDrizzleSqlite.EffectSQLiteDatabase
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0]
 // Orders this process's own openers; processes order themselves on the database write lock below.
 const lock = Semaphore.makeUnsafe(1)
+const REMOTE_BOOTSTRAP = "__redcode_schema_bootstrap__"
 
 export type Migration = {
   id: string
@@ -33,9 +34,25 @@ const immediate = {
   },
 } as const
 
-export function apply(db: Database) {
+export function apply(db: Database, options: { remote?: boolean } = {}) {
   return lock.withPermit(
     Effect.gen(function* () {
+      if (options.remote) {
+        const completed = yield* db
+          .all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`)
+          .pipe(Effect.result)
+        if (completed._tag === "Success") {
+          if (completed.success.some((migration) => migration.id === REMOTE_BOOTSTRAP))
+            return yield* bootstrapRemote(db)
+          if (completed.success.length > 0) return yield* applyOnly(db, migrations, options)
+        }
+        const existing = yield* db.all(sql`SELECT id FROM ${sql.identifier("session")} LIMIT 1`).pipe(Effect.result)
+        if (existing._tag === "Success")
+          return yield* Effect.die(
+            "Remote RedDB has Redcode tables but no migration journal; migrate it explicitly from a supported source",
+          )
+        return yield* bootstrapRemote(db)
+      }
       const created = yield* db.transaction(
         (tx) =>
           Effect.gen(function* () {
@@ -57,14 +74,38 @@ export function apply(db: Database) {
           }),
         immediate,
       )
-      if (!created) yield* applyOnly(db, migrations)
+      if (!created) yield* applyOnly(db, migrations, options)
     }),
   )
 }
 
-export function applyOnly(db: Database, input: Migration[]) {
+function bootstrapRemote(db: Database) {
   return Effect.gen(function* () {
-    yield* db.transaction((tx) => journal(tx, input), immediate)
+    // RedDB keeps DDL from a failed transaction. Commit this marker first so the next boot resumes
+    // the idempotent schema bootstrap instead of replaying historical migrations over a partial schema.
+    yield* db.run(
+      sql`CREATE TABLE IF NOT EXISTS ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`,
+    )
+    yield* db.run(
+      sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${REMOTE_BOOTSTRAP}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`,
+    )
+    yield* db.transaction((tx) => schema.up(tx))
+    yield* db.transaction((tx) =>
+      Effect.gen(function* () {
+        yield* Effect.forEach(migrations, (migration) =>
+          tx.run(
+            sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`,
+          ),
+        )
+        yield* tx.run(sql`DELETE FROM ${sql.identifier("migration")} WHERE id = ${REMOTE_BOOTSTRAP}`)
+      }),
+    )
+  })
+}
+
+export function applyOnly(db: Database, input: Migration[], options: { remote?: boolean } = {}) {
+  return Effect.gen(function* () {
+    if (!options.remote) yield* db.transaction((tx) => journal(tx, input), immediate)
     const completed = new Set(
       (yield* db.all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`)).map((row) => row.id),
     )
@@ -80,7 +121,7 @@ export function applyOnly(db: Database, input: Migration[]) {
               sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()})`,
             )
           }),
-        immediate,
+        options.remote ? undefined : immediate,
       )
     }
   })
