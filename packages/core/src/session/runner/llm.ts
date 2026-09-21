@@ -673,7 +673,6 @@ const layer = Layer.effect(
               kind: "classification",
               subjectID: message.id,
               sources: { text: message.text, files: message.files },
-              candidate: "Classify this promoted user request",
               questions: Intelligence.promptQuestions,
             })
             .pipe(

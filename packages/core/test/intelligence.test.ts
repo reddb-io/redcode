@@ -201,14 +201,27 @@ test("global setup survives reload, leaves credentials out of public settings, a
   )
 })
 
-test("native HTTP evaluation persists candidate and source references and fails closed on incomplete responses", async () => {
+test("native HTTP evaluation preserves real candidates, omits absent ones, and fails closed", async () => {
   await using dir = await tmpdir()
   const calls: unknown[] = []
   const server = Bun.serve({
     port: 0,
     fetch: async (request) => {
       calls.push(await request.json())
-      return Response.json(calls.length === 1 ? response(0.02) : { ...response(0), answers: {} })
+      if (calls.length === 1) return Response.json(response(0.02))
+      if (calls.length === 2) return Response.json({ ...response(0), answers: {} })
+      return Response.json({
+        model: "jev-1.13.0",
+        answers: {
+          route: {
+            type: "choice",
+            choice: "local_change",
+            confidence: 1,
+            probabilities: { local_change: 1 },
+          },
+        },
+        usage: { input_tokens: 20, output_tokens: 2 },
+      })
     },
   })
   try {
@@ -245,9 +258,25 @@ test("native HTTP evaluation persists candidate and source references and fails 
         const unavailable = yield* service.evaluate({ ...input, candidate: { criterion: "Changed" } })
         expect(unavailable?.decision).toBe("unavailable")
         expect(yield* Intelligence.requireAccepted(unavailable).pipe(Effect.result)).toMatchObject({ _tag: "Failure" })
-        expect(yield* service.history("session")).toHaveLength(2)
+        const classified = yield* service.evaluate({
+          sessionID: "session",
+          operation: "prompt_classification",
+          kind: "classification",
+          sources: { text: "Fix the crash" },
+          questions: {
+            route: {
+              type: "choice",
+              instructions: "What work is requested?",
+              criteria: { local_change: "Change local files", answer: "Answer only" },
+            },
+          },
+        })
+        expect(classified?.decision).toBe("accepted")
+        expect(calls[2]).toMatchObject({ state: { sources: { text: "Fix the crash" } } })
+        expect(calls[2]).not.toHaveProperty("state.candidate")
+        expect(yield* service.history("session")).toHaveLength(3)
         const files = yield* Effect.promise(() => fs.readdir(path.join(dir.path, "evaluations")))
-        expect(files).toHaveLength(2)
+        expect(files).toHaveLength(3)
         expect(files.every((file) => file.endsWith(".json.gz"))).toBe(true)
         expect(
           Array.from(

@@ -827,6 +827,14 @@ describe("SessionRunnerLLM", () => {
         "prompt_classification",
         "response_quality",
       ])
+      expect(
+        intelligenceInputs
+          .filter((input) => input.operation === "prompt_classification")
+          .map((input) => ({ sources: input.sources, candidate: input.candidate })),
+      ).toEqual([
+        { sources: { text: "Keep the existing behavior", files: undefined }, candidate: undefined },
+        { sources: { text: "The build is blocked; fix the crash", files: undefined }, candidate: undefined },
+      ])
       expect(JSON.stringify(requests[0]?.system)).toContain("<user-request-assessment>")
       expect(JSON.stringify(requests[0]?.system)).toContain("generated task priority: high")
     }),

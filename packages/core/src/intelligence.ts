@@ -63,7 +63,7 @@ export interface EvaluationInput {
   candidateID?: string
   attempt?: number
   sources: unknown
-  candidate: unknown
+  candidate?: unknown
   questions: Record<string, Intelligence.Question>
 }
 export interface GenerationInput {
@@ -437,7 +437,8 @@ export const make = (
       if (cached) return cached
       const id = randomUUID()
       const created = Date.now()
-      const state = { sources: input.sources, candidate: input.candidate }
+      const candidate = input.candidate === undefined ? {} : { candidate: input.candidate }
+      const state = { sources: input.sources, ...candidate }
       // Large checkpoints are checked against every source chunk; no omitted chunk can approve.
       const parts =
         input.operation === "compaction" && Array.isArray(input.sources)
@@ -451,7 +452,7 @@ export const make = (
       const states =
         JSON.stringify({ state, questions: input.questions }).length <= 80000
           ? [state]
-          : (parts?.map((sources) => ({ sources, candidate: input.candidate })) ?? [state])
+          : (parts?.map((sources) => ({ sources, ...candidate })) ?? [state])
       const evaluator = settings.evaluator
       const response =
         !evaluator ||
@@ -532,7 +533,7 @@ export const make = (
       yield* writeArtifact(artifact, {
         evaluation: record,
         sources: input.sources,
-        candidate: input.candidate,
+        ...candidate,
         questions: input.questions,
       })
       if (database) {
