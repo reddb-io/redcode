@@ -436,6 +436,8 @@ database tools
 Commands:
   redcode db [query]     open an interactive sqlite3 shell or run a query                  [default]
   redcode db path        print the database path
+  redcode db status      show the selected database backend and verify connectivity
+  redcode db migrate     copy the current SQLite database to RedDB and verify every table
 
 Positionals:
   query  SQL query to execute                                                               [string]

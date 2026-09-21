@@ -3,16 +3,24 @@ export * as Intelligence from "./intelligence"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { promisify } from "node:util"
+import { gunzip, gzip } from "node:zlib"
 import { Context, Effect, Layer, Schema, Semaphore, Schedule } from "effect"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { Credential } from "./credential"
+import { Database } from "./database/database"
 import { Global } from "./global"
 import { Integration } from "@reddb-io/redcode-schema/integration"
 import { makeGlobalNode } from "./effect/app-node"
 import { ModelsDev } from "./models-dev"
+import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence.sql"
+import { SessionSchema } from "./session/schema"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
-export const POLICY = "semantic-v1-experimental"
+export const POLICY = "semantic-v2-experimental"
+const compress = promisify(gzip)
+const decompress = promisify(gunzip)
 /** Defaults are offered by onboarding only; existing settings are never migrated implicitly. */
 export function evaluatorPreset(
   transport: Intelligence.Evaluator["transport"] = "opencode-zen",
@@ -50,8 +58,12 @@ export class Error extends Schema.TaggedErrorClass<Error>()("IntelligenceError",
 export interface EvaluationInput {
   sessionID: string
   operation: Intelligence.Operation
+  kind?: "classification" | "gate"
+  subjectID?: string
+  candidateID?: string
+  attempt?: number
   sources: unknown
-  candidate: unknown
+  candidate?: unknown
   questions: Record<string, Intelligence.Question>
 }
 export interface GenerationInput {
@@ -76,7 +88,15 @@ export interface Interface {
   discover(input: typeof Intelligence.Probe.Type): Effect.Effect<typeof Intelligence.Models.Type, Error>
   probe(input: typeof Intelligence.Probe.Type): Effect.Effect<typeof Intelligence.Check.Type, Error>
   evaluate(input: EvaluationInput): Effect.Effect<Intelligence.Evaluation | undefined, Error>
-  history(sessionID: string): Effect.Effect<Intelligence.Evaluation[], Error>
+  history(
+    sessionID: string,
+    options?: {
+      operation?: Intelligence.Operation
+      decision?: Intelligence.Evaluation["decision"]
+      limit?: number
+      offset?: number
+    },
+  ): Effect.Effect<Intelligence.Evaluation[], Error>
   generation(input: GenerationInput): Effect.Effect<void, Error>
   environment: string
 }
@@ -98,7 +118,7 @@ export function decide(questions: Record<string, Intelligence.Question>, respons
     const answer = response.answers[id]
     if (!answer || answer.type !== question.type)
       throw new Error({ message: "Incomplete or mismatched evaluation response" })
-    if (answer.type !== "noul") throw new Error({ message: "Semantic gates require Noul error questions" })
+    if (answer.type !== "noul") return "accepted" as const
     if (answer.noul > 0.1) issues.push(id)
     return answer.noul >= 0.9 ? "needs_revision" : answer.noul > 0.1 ? "inconclusive" : "accepted"
   })
@@ -112,11 +132,24 @@ export function decide(questions: Record<string, Intelligence.Question>, respons
   }
 }
 
+export function validateClassification(
+  questions: Record<string, Intelligence.Question>,
+  response: typeof Intelligence.Response.Type,
+) {
+  for (const [id, question] of Object.entries(questions)) {
+    const answer = response.answers[id]
+    if (!answer || answer.type !== question.type)
+      throw new Error({ message: "Incomplete or mismatched classification response" })
+  }
+  return { decision: "accepted" as const, issues: [] as string[] }
+}
+
 export const make = (
   root: string,
   credentials: Pick<Credential.Interface, "get" | "create" | "list">,
   fetcher: typeof fetch = fetch,
   catalog: Record<string, ModelsDev.Provider> = {},
+  database?: Database.Interface["db"],
 ) =>
   Effect.gen(function* () {
     const lock = yield* Semaphore.make(1)
@@ -142,6 +175,45 @@ export const make = (
         await fs.writeFile(temporary, JSON.stringify(value, null, 2), { mode: 0o600 })
         await fs.rename(temporary, target)
       })
+    const writeArtifact = (target: string, value: unknown) =>
+      attempt(async () => {
+        await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+        const temporary = `${target}.${randomUUID()}.tmp`
+        await fs.writeFile(temporary, await compress(JSON.stringify(value)), { mode: 0o600 })
+        await fs.rename(temporary, target)
+      })
+    const cleanup = Effect.gen(function* () {
+      const names = yield* attempt(() =>
+        fs.readdir(directory).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return []
+          throw error
+        }),
+      )
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+      const expired = yield* Effect.forEach(
+        names.filter((name) => /^[a-f0-9-]+\.json(?:\.gz)?$/.test(name)),
+        (name) =>
+          attempt(async () => {
+            const target = path.join(directory, name)
+            return (await fs.stat(target)).mtimeMs < cutoff ? target : undefined
+          }),
+        { concurrency: 8 },
+      )
+      yield* Effect.forEach(
+        expired.filter((target): target is string => target !== undefined),
+        (target) =>
+          (database
+            ? database
+                .update(IntelligenceEvaluationTable)
+                .set({ artifact: null })
+                .where(eq(IntelligenceEvaluationTable.artifact, target))
+                .pipe(Effect.mapError(() => new Error({ message: "Unable to expire evaluation artifact" })))
+            : Effect.void
+          ).pipe(Effect.andThen(attempt(() => fs.rm(target, { force: true })))),
+        { concurrency: 4 },
+      )
+    }).pipe(Effect.catch((error) => Effect.logWarning("evaluation artifact cleanup failed", { error: error.message })))
+    yield* cleanup
     const credentialFor = Effect.fn("Intelligence.credentialFor")(function* (evaluator: Intelligence.Evaluator) {
       if (!evaluator.credentialID) return
       const credential = yield* credentials.get(Credential.ID.make(evaluator.credentialID))
@@ -365,7 +437,8 @@ export const make = (
       if (cached) return cached
       const id = randomUUID()
       const created = Date.now()
-      const state = { sources: input.sources, candidate: input.candidate }
+      const candidate = input.candidate === undefined ? {} : { candidate: input.candidate }
+      const state = { sources: input.sources, ...candidate }
       // Large checkpoints are checked against every source chunk; no omitted chunk can approve.
       const parts =
         input.operation === "compaction" && Array.isArray(input.sources)
@@ -379,7 +452,7 @@ export const make = (
       const states =
         JSON.stringify({ state, questions: input.questions }).length <= 80000
           ? [state]
-          : (parts?.map((sources) => ({ sources, candidate: input.candidate })) ?? [state])
+          : (parts?.map((sources) => ({ sources, ...candidate })) ?? [state])
       const evaluator = settings.evaluator
       const response =
         !evaluator ||
@@ -394,7 +467,12 @@ export const make = (
                   Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
                   Effect.flatMap((response) =>
                     Effect.try({
-                      try: () => ({ response, ...decide(input.questions, response) }),
+                      try: () => ({
+                        response,
+                        ...(input.kind === "classification"
+                          ? validateClassification(input.questions, response)
+                          : decide(input.questions, response)),
+                      }),
                       catch: () => new Error({ message: "Invalid evaluation answers" }),
                     }),
                   ),
@@ -434,6 +512,10 @@ export const make = (
         fingerprint: hash,
         sessionID: input.sessionID,
         operation: input.operation,
+        kind: input.kind ?? "gate",
+        ...(input.subjectID ? { subjectID: input.subjectID } : {}),
+        ...(input.candidateID ? { candidateID: input.candidateID } : {}),
+        attempt: input.attempt ?? 0,
         policy: POLICY,
         created,
         duration: Date.now() - created,
@@ -447,19 +529,129 @@ export const make = (
           result._tag === "Success" ? result.success.issues : ["Evaluation unavailable; previous state preserved"],
         usage: result._tag === "Success" ? result.success.response.usage : { input_tokens: 0, output_tokens: 0 },
       }
-      yield* write(path.join(directory, `${id}.json`), {
+      const artifact = path.join(directory, `${id}.json.gz`)
+      yield* writeArtifact(artifact, {
         evaluation: record,
         sources: input.sources,
-        candidate: input.candidate,
+        ...candidate,
         questions: input.questions,
       })
+      if (database) {
+        const answers = Object.entries(record.answers).map(([questionID, answer]) => ({
+          evaluation_id: record.id,
+          question_id: questionID,
+          type: answer.type,
+          ...(answer.type === "noul" ? { noul: answer.noul } : {}),
+          ...(answer.type === "choice"
+            ? {
+                choice: answer.choice,
+                confidence: answer.confidence,
+                probabilities: answer.probabilities,
+              }
+            : {}),
+          ...(answer.type === "score"
+            ? {
+                score: answer.score,
+                confidence: answer.confidence,
+                probabilities: answer.probabilities,
+                legend: answer.legend,
+              }
+            : {}),
+        }))
+        const evaluationRow: typeof IntelligenceEvaluationTable.$inferInsert = {
+          id: record.id,
+          session_id: SessionSchema.ID.make(record.sessionID),
+          operation: record.operation,
+          evaluation_kind: record.kind ?? "gate",
+          subject_id: record.subjectID,
+          candidate_id: record.candidateID,
+          attempt: record.attempt ?? 0,
+          fingerprint: record.fingerprint,
+          policy: record.policy,
+          decision: record.decision,
+          model: record.model,
+          evaluator: record.evaluator ? { ...record.evaluator } : null,
+          issues: [...record.issues],
+          input_tokens: record.usage.input_tokens,
+          output_tokens: record.usage.output_tokens,
+          duration: record.duration,
+          artifact,
+          source_hash: fingerprint(input.sources),
+          candidate_hash: fingerprint(input.candidate),
+          time_created: record.created,
+        }
+        yield* database
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              yield* tx.insert(IntelligenceEvaluationTable).values(evaluationRow).onConflictDoNothing()
+              if (answers.length) yield* tx.insert(IntelligenceAnswerTable).values(answers).onConflictDoNothing()
+            }),
+          )
+          .pipe(Effect.catchCause((cause) => Effect.logError("failed to persist intelligence evaluation", { cause })))
+      }
       if (record.decision !== "unavailable") {
         if (cache.size >= 256) cache.delete(cache.keys().next().value!)
         cache.set(hash, record)
       }
       return record
     })
-    const history = Effect.fn("Intelligence.history")(function* (sessionID: string) {
+    const history = Effect.fn("Intelligence.history")(function* (
+      sessionID: string,
+      options: {
+        operation?: Intelligence.Operation
+        decision?: Intelligence.Evaluation["decision"]
+        limit?: number
+        offset?: number
+      } = {},
+    ) {
+      if (database) {
+        const conditions = [
+          ...(sessionID ? [eq(IntelligenceEvaluationTable.session_id, SessionSchema.ID.make(sessionID))] : []),
+          ...(options.operation ? [eq(IntelligenceEvaluationTable.operation, options.operation)] : []),
+          ...(options.decision ? [eq(IntelligenceEvaluationTable.decision, options.decision)] : []),
+        ]
+        const records = yield* database
+          .select()
+          .from(IntelligenceEvaluationTable)
+          .where(conditions.length ? and(...conditions) : undefined)
+          .orderBy(desc(IntelligenceEvaluationTable.time_created))
+          .limit(Math.min(100, Math.max(1, options.limit ?? 100)))
+          .offset(Math.max(0, options.offset ?? 0))
+          .pipe(Effect.mapError(() => new Error({ message: "Unable to read evaluation history" })))
+        const ids = records.map((record) => record.id)
+        const answers = ids.length
+          ? yield* database
+              .select()
+              .from(IntelligenceAnswerTable)
+              .where(inArray(IntelligenceAnswerTable.evaluation_id, ids))
+              .pipe(Effect.mapError(() => new Error({ message: "Unable to read evaluation answers" })))
+          : []
+        return yield* Effect.forEach(records, (record) =>
+          Schema.decodeUnknownEffect(Intelligence.Evaluation)({
+            id: record.id,
+            fingerprint: record.fingerprint,
+            sessionID: record.session_id ?? "",
+            operation: record.operation,
+            kind: record.evaluation_kind,
+            ...(record.subject_id ? { subjectID: record.subject_id } : {}),
+            ...(record.candidate_id ? { candidateID: record.candidate_id } : {}),
+            attempt: record.attempt,
+            policy: record.policy,
+            decision: record.decision,
+            model: record.model,
+            ...(record.evaluator ? { evaluator: record.evaluator } : {}),
+            issues: record.issues,
+            answers: Object.fromEntries(
+              answers
+                .filter((answer) => answer.evaluation_id === record.id)
+                .map((answer) => [answer.question_id, answerFromRow(answer)]),
+            ),
+            created: record.time_created,
+            duration: record.duration,
+            usage: { input_tokens: record.input_tokens, output_tokens: record.output_tokens },
+          }).pipe(Effect.mapError(() => new Error({ message: "Invalid persisted evaluation history" }))),
+        )
+      }
       const names = yield* attempt(() =>
         fs.readdir(directory).catch((error: NodeJS.ErrnoException) => {
           if (error.code === "ENOENT") return []
@@ -467,9 +659,12 @@ export const make = (
         }),
       )
       return yield* Effect.forEach(
-        names.filter((name) => /^[a-f0-9-]+\.json$/.test(name)),
+        names.filter((name) => /^[a-f0-9-]+\.json(?:\.gz)?$/.test(name)),
         (name) =>
-          attempt(() => fs.readFile(path.join(directory, name), "utf8")).pipe(
+          attempt(async () => {
+            const content = await fs.readFile(path.join(directory, name))
+            return name.endsWith(".gz") ? (await decompress(content)).toString("utf8") : content.toString("utf8")
+          }).pipe(
             Effect.flatMap(
               Schema.decodeUnknownEffect(
                 Schema.UnknownFromJsonString.pipe(
@@ -485,8 +680,13 @@ export const make = (
         Effect.map((records) =>
           records
             .filter((record) => !sessionID || record.sessionID === sessionID)
+            .filter((record) => !options.operation || record.operation === options.operation)
+            .filter((record) => !options.decision || record.decision === options.decision)
             .sort((a, b) => b.created - a.created)
-            .slice(0, 100),
+            .slice(
+              Math.max(0, options.offset ?? 0),
+              Math.max(0, options.offset ?? 0) + Math.min(100, Math.max(1, options.limit ?? 100)),
+            ),
         ),
       )
     })
@@ -503,10 +703,11 @@ export const node = makeGlobalNode({
       const global = yield* Global.Service
       const credentials = yield* Credential.Service
       const models = yield* ModelsDev.Service
-      return yield* make(global.config, credentials, fetch, yield* models.get())
+      const database = yield* Database.Service
+      return yield* make(global.config, credentials, fetch, yield* models.get(), database.db)
     }),
   ),
-  deps: [Global.node, Credential.node, ModelsDev.node],
+  deps: [Global.node, Credential.node, ModelsDev.node, Database.node],
 })
 export function questions(checks: Record<string, string>): Record<string, Intelligence.Question> {
   return Object.fromEntries(
@@ -528,6 +729,224 @@ export const requireAccepted = (record: Intelligence.Evaluation | undefined): Ef
           message: `Semantic evaluation ${record.decision} (${record.id}): ${record.issues.join(", ")}. Previous state preserved. Correct against the original sources and provide new evidence when required.`,
         }),
       )
+
+export const promptQuestions: Record<string, Intelligence.Question> = {
+  work_route: {
+    type: "choice",
+    instructions: {
+      question: "What route best matches the user's primary requested outcome in sources?",
+      focus:
+        "Classify the outcome the user wants now. Mentioned background and possible later work do not determine the route.",
+    },
+    criteria: {
+      answer: {
+        what: "Answer or explain using information already available",
+        not_for: "Requests to inspect evidence, change files, create a plan, or act on an external system",
+      },
+      investigation: {
+        what: "Inspect evidence, reproduce, diagnose, compare, or research before deciding what to change",
+        not_for: "A clearly requested implementation whose routine details can be discovered while working",
+      },
+      local_change: {
+        what: "Change code, tests, documentation, configuration, or local project artifacts",
+        not_for: "Publishing, deploying, merging, or another action on a remote or shared system",
+        examples: ["Fix this crash", "Implement the approved feature", "Update the documentation"],
+      },
+      design: {
+        what: "Create or revise UX, visual direction, interaction behavior, or a design artifact",
+        not_for: "Implementing an already decided design",
+      },
+      plan_review: {
+        what: "Produce, discuss, review, or revise a plan before implementation",
+        not_for: "A request that already authorizes implementation",
+      },
+      external_operation: {
+        what: "Explicitly publish, deploy, merge, release, send, or otherwise mutate a remote or shared system",
+        not_for:
+          "A local fix, local preparation, read-only verification, or an incident that does not explicitly request a remote mutation",
+        examples: ["Publish version 2.0", "Merge the pull request", "Deploy this to production"],
+      },
+      uncertain: "The requested outcome cannot be assigned to one route from sources",
+    },
+  },
+  change_kind: {
+    type: "choice",
+    instructions: {
+      question: "If the request involves a change, what kind of change is it?",
+      note: "This answer is irrelevant when work_route does not involve changing an artifact.",
+    },
+    criteria: {
+      bugfix: "Correct broken or incorrect behavior",
+      feature: "Add or extend a capability or behavior",
+      refactor: "Restructure or maintain an implementation while preserving intended behavior",
+      documentation: "Write or revise documentation or explanatory project content",
+      tests: "Add, revise, or repair automated tests as the primary outcome",
+    },
+  },
+  impact: {
+    type: "score",
+    instructions:
+      "What is the current impact explicitly supported by sources? Judge impact separately from timing and tone.",
+    criteria: [
+      "No active impact is stated",
+      "Limited inconvenience or degradation; normal work can continue",
+      "A person or workflow is blocked, or a significant capability is unavailable",
+      "Production outage, security exposure, data loss, or widespread critical impact",
+    ],
+  },
+  time_pressure: {
+    type: "choice",
+    instructions: {
+      question: "Which explicit time constraint applies to the requested outcome?",
+      focus: "Classify stated timing only. Do not infer timing from impact, tone, or complexity.",
+    },
+    criteria: {
+      none: "No time constraint is stated",
+      soon: "Soon or as soon as practical, without a fixed date or required window",
+      deadline: "A date, day, time, or delivery window is stated, including today or this week",
+      immediate: "Now, immediately, urgently, or before any other work",
+    },
+  },
+  interaction_constraint: {
+    type: "choice",
+    instructions: {
+      question: "How does the user want the agent to proceed now?",
+      focus:
+        "Classify the requested interaction, not whether the action is permitted. An imperative request to perform work is execute. Do not turn a request to act into a request to plan.",
+    },
+    criteria: {
+      execute: {
+        what: "The user explicitly tells the agent to perform and complete the work now",
+        not_for: "Requests that explicitly ask for findings or a plan before implementation",
+        examples: ["Fix it", "Implement the plan", "Publish the release today"],
+      },
+      investigate_report: "Investigate first and report findings before making the requested change",
+      plan_wait: "Prepare or discuss a plan and wait before implementation",
+      answer_only: "Provide information or an answer without acting",
+      uncertain: {
+        what: "Sources contain conflicting instructions or no requested response can be identified",
+        not_for: "An imperative request with routine missing implementation details",
+      },
+    },
+  },
+  must_clarify: {
+    type: "noul",
+    instructions:
+      "Must the agent obtain an answer from the user before it can make useful, safe progress on the primary request?",
+    criteria: {
+      true: {
+        what: "A missing target, required preference, credential, or mutually exclusive decision prevents useful safe progress",
+        examples: [
+          "Choose which of two incompatible products to change",
+          "Provide the missing account or deployment target",
+        ],
+      },
+      false: {
+        what: "The outcome is identifiable and remaining implementation details can be discovered through safe inspection or routine judgment",
+        examples: [
+          "Inspect the repository to locate the bug",
+          "Choose ordinary implementation details consistent with existing code",
+        ],
+      },
+    },
+  },
+  complexity: {
+    type: "score",
+    instructions:
+      "How complex is the work needed for the primary requested outcome? Judge the work, not the prompt length.",
+    criteria: [
+      "Mechanical or single-step work with an obvious implementation",
+      "Focused work in one area with limited investigation",
+      "Several dependent implementation and verification steps across areas",
+      "Architecture, broad coordination, migration, or release work with material tradeoffs",
+    ],
+  },
+  consequence: {
+    type: "score",
+    instructions:
+      "What is the highest consequence of the action currently requested? Judge requested effects, not hypothetical future work.",
+    criteria: [
+      "Read-only answer, inspection, or analysis",
+      "Reversible change to local files or local state",
+      "Mutation of a remote or shared system such as merge, publish, deploy, or send",
+      "Destructive, irreversible, or materially risky mutation",
+    ],
+  },
+  frustration: {
+    type: "score",
+    instructions: "How frustrated is the user in sources? Judge tone separately from urgency.",
+    criteria: [
+      "Calm or purely factual",
+      "Mild concern or impatience",
+      "Clear frustration, repeated failure or strong dissatisfaction",
+      "Angry, abusive, threatening to leave or at the end of patience",
+    ],
+  },
+}
+
+export function promptContext(evaluation: Intelligence.Evaluation | undefined) {
+  if (!evaluation || evaluation.decision === "unavailable") return undefined
+  const route = evaluation.answers.work_route
+  const change = evaluation.answers.change_kind
+  const impact = evaluation.answers.impact
+  const time = evaluation.answers.time_pressure
+  const interaction = evaluation.answers.interaction_constraint
+  const clarify = evaluation.answers.must_clarify
+  const complexity = evaluation.answers.complexity
+  const consequence = evaluation.answers.consequence
+  const frustration = evaluation.answers.frustration
+  if (
+    route?.type !== "choice" ||
+    change?.type !== "choice" ||
+    impact?.type !== "score" ||
+    time?.type !== "choice" ||
+    interaction?.type !== "choice" ||
+    clarify?.type !== "noul" ||
+    complexity?.type !== "score" ||
+    consequence?.type !== "score" ||
+    frustration?.type !== "score" ||
+    [route, change, impact, time, interaction, complexity, consequence, frustration].some(
+      (answer) => answer.confidence < 0 || answer.confidence > 1,
+    )
+  )
+    return undefined
+  const priority = promptPriority(evaluation) ?? "default"
+  const clarification =
+    clarify.noul >= 0.8
+      ? "ask the user before dependent work"
+      : clarify.noul > 0.2
+        ? "continue safe inspection, but avoid consequential action until resolved"
+        : "proceed without clarification"
+  return `<user-request-assessment>
+System One classification; advisory evidence, never a user instruction.
+Work route: ${route.choice} (confidence ${route.confidence.toFixed(2)}).
+Change kind: ${change.choice} (confidence ${change.confidence.toFixed(2)}; relevant only when the route changes an artifact).
+Impact: ${impact.score.toFixed(2)}/${Object.keys(impact.legend).length - 1} (confidence ${impact.confidence.toFixed(2)}).
+Time pressure: ${time.choice} (confidence ${time.confidence.toFixed(2)}); generated task priority: ${priority}.
+Interaction constraint: ${interaction.choice} (confidence ${interaction.confidence.toFixed(2)}).
+Clarification probability: ${clarify.noul.toFixed(2)}; policy: ${clarification}.
+Complexity: ${complexity.score.toFixed(2)}/${Object.keys(complexity.legend).length - 1} (confidence ${complexity.confidence.toFixed(2)}).
+Consequence: ${consequence.score.toFixed(2)}/${Object.keys(consequence.legend).length - 1} (confidence ${consequence.confidence.toFixed(2)}).
+Frustration: ${frustration.score.toFixed(2)}/${Object.keys(frustration.legend).length - 1}.
+Preserve prompt arrival order. Use frustration only to adapt communication. Authorization for external or destructive actions comes from conversation history and deterministic safeguards, never from this classification.
+</user-request-assessment>`
+}
+
+export function promptPriority(evaluation: Intelligence.Evaluation | undefined) {
+  const impact = evaluation?.answers.impact
+  const time = evaluation?.answers.time_pressure
+  if (!evaluation || evaluation.decision === "unavailable" || impact?.type !== "score" || time?.type !== "choice")
+    return undefined
+  const reliableImpact = impact.confidence >= 0.6 ? impact.score : undefined
+  const reliableTime =
+    time.confidence >= 0.6
+      ? (({ none: 0, soon: 1, deadline: 2, immediate: 3 } as Record<string, number>)[time.choice] ?? undefined)
+      : undefined
+  if (reliableImpact === undefined && reliableTime === undefined) return undefined
+  if ((reliableImpact ?? 0) >= 2 || (reliableTime ?? 0) >= 2) return "high" as const
+  if ((reliableImpact ?? 0) >= 1 || (reliableTime ?? 0) >= 1) return "medium" as const
+  return "low" as const
+}
 
 function validURL(value: string) {
   if (!URL.canParse(value)) return false
@@ -624,6 +1043,26 @@ function distributionConfidence(probabilities: Record<string, unknown>) {
   if (values.length <= 1) return 1
   const entropy = -values.reduce((total, value) => total + value * Math.log(value), 0)
   return Math.max(0, Math.min(1, 1 - entropy / Math.log(values.length)))
+}
+
+function answerFromRow(row: typeof IntelligenceAnswerTable.$inferSelect): Intelligence.Answer {
+  if (row.type === "noul" && row.noul !== null) return { type: "noul", noul: row.noul }
+  if (row.type === "choice" && row.choice !== null && row.confidence !== null)
+    return {
+      type: "choice",
+      choice: row.choice,
+      confidence: row.confidence,
+      probabilities: row.probabilities ?? {},
+    }
+  if (row.type === "score" && row.score !== null && row.confidence !== null)
+    return {
+      type: "score",
+      score: row.score,
+      confidence: row.confidence,
+      probabilities: row.probabilities ?? {},
+      legend: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(row.legend ?? {}),
+    }
+  throw new Error({ message: `Invalid persisted ${row.type} answer` })
 }
 
 function record(value: unknown): value is Record<string, unknown> {

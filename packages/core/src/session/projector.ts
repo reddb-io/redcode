@@ -13,8 +13,23 @@ import { SessionMessageUpdater } from "./message-updater"
 import { SessionInput } from "./input"
 import { WorkspaceV2 } from "../workspace"
 import { Usage } from "../usage/usage"
-import { MessageTable, PartTable, SessionInputTable, SessionMessageTable, SessionTable } from "./sql"
+import {
+  MessageTable,
+  PartTable,
+  SessionContextEpochTable,
+  SessionGuardTripTable,
+  SessionInputTable,
+  SessionMessageTable,
+  SessionTable,
+  TodoHistoryTable,
+  TodoTable,
+} from "./sql"
 import type { DeepMutable } from "../schema"
+import { MonitorTable } from "../monitor.sql"
+import { SessionGoalReviewTable, SessionGoalTable, SessionPlanTable } from "./goal.sql"
+import { SessionShareTable } from "../share/sql"
+import { IntelligenceEvaluationTable } from "../intelligence.sql"
+import { SessionSchema } from "./schema"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -258,9 +273,7 @@ const layer = Layer.effectDiscard(
           .pipe(Effect.orDie)
       }),
     )
-    yield* events.project(SessionV1.Event.Deleted, (event) =>
-      db.delete(SessionTable).where(eq(SessionTable.id, event.data.sessionID)).run().pipe(Effect.orDie),
-    )
+    yield* events.project(SessionV1.Event.Deleted, (event) => deleteSession(db, event.data.sessionID))
     yield* events.project(SessionV1.Event.MessageUpdated, (event) =>
       Effect.gen(function* () {
         const time_created = event.data.info.time.created
@@ -503,3 +516,32 @@ const layer = Layer.effectDiscard(
 )
 
 export const node = makeGlobalNode({ name: "session-projector", layer, deps: [EventV2.node, Database.node] })
+
+function deleteSession(db: DatabaseService, sessionID: SessionSchema.ID) {
+  return db
+    .transaction((tx) =>
+      Effect.gen(function* () {
+        // RedDB does not implement foreign keys yet, so mirror the SQLite cascade explicitly.
+        yield* tx
+          .update(IntelligenceEvaluationTable)
+          .set({ session_id: null })
+          .where(eq(IntelligenceEvaluationTable.session_id, sessionID))
+          .run()
+        yield* tx.delete(PartTable).where(eq(PartTable.session_id, sessionID)).run()
+        yield* tx.delete(MessageTable).where(eq(MessageTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionMessageTable).where(eq(SessionMessageTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionInputTable).where(eq(SessionInputTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionContextEpochTable).where(eq(SessionContextEpochTable.session_id, sessionID)).run()
+        yield* tx.delete(TodoHistoryTable).where(eq(TodoHistoryTable.session_id, sessionID)).run()
+        yield* tx.delete(TodoTable).where(eq(TodoTable.session_id, sessionID)).run()
+        yield* tx.delete(MonitorTable).where(eq(MonitorTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionGoalReviewTable).where(eq(SessionGoalReviewTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionGoalTable).where(eq(SessionGoalTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionPlanTable).where(eq(SessionPlanTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionShareTable).where(eq(SessionShareTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionGuardTripTable).where(eq(SessionGuardTripTable.session_id, sessionID)).run()
+        yield* tx.delete(SessionTable).where(eq(SessionTable.id, sessionID)).run()
+      }),
+    )
+    .pipe(Effect.orDie)
+}

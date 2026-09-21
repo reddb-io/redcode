@@ -487,12 +487,23 @@ export const make = (dependencies: Dependencies) => {
               })
               return error ? Effect.fail(new Intelligence.Error({ message: error })) : Effect.succeed(text)
             },
-            checks: () =>
-              Intelligence.questions({
+            checks: () => ({
+              ...Intelligence.questions({
                 omission:
                   "Does candidate omit a still-applicable user constraint, decision, pending deliverable or blocker present in sources?",
                 contradiction: "Does candidate contradict sources or present unverified work as completed?",
               }),
+              checkpoint_quality: {
+                type: "score",
+                instructions: "How useful is candidate as a faithful checkpoint for another coding agent?",
+                criteria: [
+                  "Unusable because essential state is absent or misleading",
+                  "Some useful state, but important context is hard to recover",
+                  "Faithful and sufficient to continue the work",
+                  "Precise, compact, evidence-linked and immediately actionable",
+                ],
+              },
+            }),
           })
           .pipe(Effect.catchTag("IntelligenceError", (error) => Effect.logWarning(error.message).pipe(Effect.as(null))))
       : undefined

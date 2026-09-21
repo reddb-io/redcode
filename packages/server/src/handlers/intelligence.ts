@@ -40,7 +40,7 @@ export const IntelligenceHandler = HttpApiBuilder.group(Api, "server.intelligenc
     .handle("intelligence.history", (ctx) =>
       Effect.gen(function* () {
         const service = yield* Intelligence.Service
-        return yield* checked(service.history(ctx.query.sessionID))
+        return yield* checked(service.history(ctx.query.sessionID ?? "", ctx.query))
       }),
     ),
 )

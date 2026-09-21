@@ -1,14 +1,22 @@
 import { expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
+import { SqliteClient } from "@effect/sql-sqlite-bun"
+import { EffectDrizzleSqlite } from "@reddb-io/redcode-effect-drizzle-sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Intelligence } from "../src/intelligence"
 import { Credential } from "../src/credential"
-import { Answer } from "@reddb-io/redcode-schema/intelligence"
+import { Answer, Evaluation } from "@reddb-io/redcode-schema/intelligence"
 import { Integration } from "@reddb-io/redcode-schema/integration"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
 import { tmpdir } from "./fixture/tmpdir"
+import { DatabaseMigration } from "../src/database/migration"
+import { Project } from "../src/project"
+import { ProjectTable } from "../src/project/sql"
+import { AbsolutePath } from "../src/schema"
+import { SessionSchema } from "../src/session/schema"
+import { SessionTable } from "../src/session/sql"
 
 const questions = Intelligence.questions({ omitted: "Does candidate omit a requested requirement from sources?" })
 const response = (value: number) => ({
@@ -22,12 +30,159 @@ const credentials = {
   create: () => Effect.die("Credential creation not expected"),
 }
 
+const classification = (
+  impact: { score: number; confidence: number },
+  time: { choice: string; confidence: number },
+  mustClarify = 0.05,
+): typeof Evaluation.Type => ({
+  id: "evaluation",
+  fingerprint: "fingerprint",
+  sessionID: "session",
+  operation: "prompt_classification",
+  kind: "classification",
+  policy: Intelligence.POLICY,
+  decision: "accepted",
+  model: "jev-test",
+  answers: {
+    work_route: {
+      type: "choice",
+      choice: "local_change",
+      confidence: 0.95,
+      probabilities: { local_change: 0.95, investigation: 0.05 },
+    },
+    change_kind: {
+      type: "choice",
+      choice: "bugfix",
+      confidence: 0.9,
+      probabilities: { bugfix: 0.9, feature: 0.1 },
+    },
+    impact: {
+      type: "score",
+      ...impact,
+      probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 },
+      legend: { "0": "none", "1": "limited", "2": "blocked", "3": "critical" },
+    },
+    time_pressure: {
+      type: "choice",
+      ...time,
+      probabilities: { none: 1, soon: 0, deadline: 0, immediate: 0 },
+    },
+    interaction_constraint: {
+      type: "choice",
+      choice: "execute",
+      confidence: 1,
+      probabilities: { execute: 1 },
+    },
+    must_clarify: { type: "noul", noul: mustClarify },
+    complexity: {
+      type: "score",
+      score: 1,
+      confidence: 1,
+      probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+      legend: { "0": "mechanical", "1": "focused", "2": "multi-step", "3": "architecture" },
+    },
+    consequence: {
+      type: "score",
+      score: 1,
+      confidence: 1,
+      probabilities: { "0": 0, "1": 1, "2": 0, "3": 0 },
+      legend: { "0": "read", "1": "local", "2": "remote", "3": "destructive" },
+    },
+    frustration: {
+      type: "score",
+      score: 0,
+      confidence: 1,
+      probabilities: { "0": 1, "1": 0, "2": 0, "3": 0 },
+      legend: { "0": "calm", "1": "concerned", "2": "frustrated", "3": "angry" },
+    },
+  },
+  issues: [],
+  created: 1,
+  duration: 1,
+  usage: { input_tokens: 1, output_tokens: 1 },
+})
+
 test("experimental thresholds distinguish rejection from uncertainty without averaging failures", () => {
   expect(Intelligence.decide(questions, response(0.1)).decision).toBe("accepted")
   expect(Intelligence.decide(questions, response(0.5)).decision).toBe("inconclusive")
   expect(Intelligence.decide(questions, response(0.9)).decision).toBe("needs_revision")
   expect(() => Intelligence.decide(questions, { ...response(0), answers: {} })).toThrow()
   expect(() => Schema.decodeUnknownSync(Answer)(response(1.01).answers.omitted)).toThrow()
+})
+
+test("semantic gates retain Score telemetry without treating it as an error question", () => {
+  const mixed = {
+    ...questions,
+    quality: {
+      type: "score" as const,
+      instructions: "How clear is candidate?",
+      criteria: ["unclear", "clear"],
+    },
+  }
+  expect(
+    Intelligence.decide(mixed, {
+      model: "jev-1.13.0",
+      answers: {
+        omitted: { type: "noul", noul: 0.02 },
+        quality: {
+          type: "score",
+          score: 0.2,
+          confidence: 0.8,
+          probabilities: { "0": 0.8, "1": 0.2 },
+          legend: { "0": "unclear", "1": "clear" },
+        },
+      },
+      usage: { input_tokens: 30, output_tokens: 4 },
+    }).decision,
+  ).toBe("accepted")
+})
+
+test("prompt classification v2 separates route, impact, timing, interaction, and consequence", () => {
+  expect(Object.keys(Intelligence.promptQuestions)).toEqual([
+    "work_route",
+    "change_kind",
+    "impact",
+    "time_pressure",
+    "interaction_constraint",
+    "must_clarify",
+    "complexity",
+    "consequence",
+    "frustration",
+  ])
+  expect(Intelligence.promptQuestions).not.toHaveProperty("urgency")
+  expect(Intelligence.promptQuestions).not.toHaveProperty("actionability")
+})
+
+test("prompt priority uses only confident impact and time pressure", () => {
+  expect(
+    Intelligence.promptPriority(classification({ score: 2, confidence: 0.8 }, { choice: "none", confidence: 1 })),
+  ).toBe("high")
+  expect(
+    Intelligence.promptPriority(classification({ score: 0, confidence: 1 }, { choice: "soon", confidence: 0.9 })),
+  ).toBe("medium")
+  expect(
+    Intelligence.promptPriority(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })),
+  ).toBe("low")
+  expect(
+    Intelligence.promptPriority(
+      classification({ score: 3, confidence: 0.59 }, { choice: "immediate", confidence: 0.59 }),
+    ),
+  ).toBeUndefined()
+})
+
+test("clarification policy permits inspection under uncertainty and never grants external authorization", () => {
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.8)),
+  ).toContain("ask the user before dependent work")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.5)),
+  ).toContain("continue safe inspection, but avoid consequential action until resolved")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.2)),
+  ).toContain("proceed without clarification")
+  expect(
+    Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })),
+  ).toContain("Authorization for external or destructive actions comes from conversation history")
 })
 
 test("global setup survives reload, leaves credentials out of public settings, and defaults to disabled", async () => {
@@ -46,14 +201,27 @@ test("global setup survives reload, leaves credentials out of public settings, a
   )
 })
 
-test("native HTTP evaluation persists candidate and source references and fails closed on incomplete responses", async () => {
+test("native HTTP evaluation preserves real candidates, omits absent ones, and fails closed", async () => {
   await using dir = await tmpdir()
   const calls: unknown[] = []
   const server = Bun.serve({
     port: 0,
     fetch: async (request) => {
       calls.push(await request.json())
-      return Response.json(calls.length === 1 ? response(0.02) : { ...response(0), answers: {} })
+      if (calls.length === 1) return Response.json(response(0.02))
+      if (calls.length === 2) return Response.json({ ...response(0), answers: {} })
+      return Response.json({
+        model: "jev-1.13.0",
+        answers: {
+          route: {
+            type: "choice",
+            choice: "local_change",
+            confidence: 1,
+            probabilities: { local_change: 1 },
+          },
+        },
+        usage: { input_tokens: 20, output_tokens: 2 },
+      })
     },
   })
   try {
@@ -90,15 +258,84 @@ test("native HTTP evaluation persists candidate and source references and fails 
         const unavailable = yield* service.evaluate({ ...input, candidate: { criterion: "Changed" } })
         expect(unavailable?.decision).toBe("unavailable")
         expect(yield* Intelligence.requireAccepted(unavailable).pipe(Effect.result)).toMatchObject({ _tag: "Failure" })
-        expect(yield* service.history("session")).toHaveLength(2)
+        const classified = yield* service.evaluate({
+          sessionID: "session",
+          operation: "prompt_classification",
+          kind: "classification",
+          sources: { text: "Fix the crash" },
+          questions: {
+            route: {
+              type: "choice",
+              instructions: "What work is requested?",
+              criteria: { local_change: "Change local files", answer: "Answer only" },
+            },
+          },
+        })
+        expect(classified?.decision).toBe("accepted")
+        expect(calls[2]).toMatchObject({ state: { sources: { text: "Fix the crash" } } })
+        expect(calls[2]).not.toHaveProperty("state.candidate")
+        expect(yield* service.history("session")).toHaveLength(3)
         const files = yield* Effect.promise(() => fs.readdir(path.join(dir.path, "evaluations")))
-        expect(files).toHaveLength(2)
+        expect(files).toHaveLength(3)
+        expect(files.every((file) => file.endsWith(".json.gz"))).toBe(true)
+        expect(
+          Array.from(
+            (yield* Effect.promise(() => fs.readFile(path.join(dir.path, "evaluations", files[0]!)))).subarray(0, 2),
+          ),
+        ).toEqual([0x1f, 0x8b])
         expect(yield* service.history("different-session")).toHaveLength(0)
       }),
     )
   } finally {
     server.stop(true)
   }
+})
+
+test("database history preserves typed answers independently of compressed artifacts", async () => {
+  await using dir = await tmpdir()
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const db = yield* EffectDrizzleSqlite.makeWithDefaults()
+      yield* DatabaseMigration.apply(db)
+      yield* db.insert(ProjectTable).values({
+        id: Project.ID.global,
+        worktree: AbsolutePath.make("/project"),
+        sandboxes: [],
+      })
+      const sessionID = SessionSchema.ID.make("ses_intelligence_database")
+      yield* db.insert(SessionTable).values({
+        id: sessionID,
+        project_id: Project.ID.global,
+        slug: "intelligence",
+        directory: "/project",
+        title: "intelligence",
+        version: "test",
+      })
+      const fetcher: typeof fetch = Object.assign(() => Promise.resolve(Response.json(response(0.02))), {
+        preconnect() {},
+      })
+      const service = yield* Intelligence.make(dir.path, credentials, fetcher, {}, db)
+      yield* service.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+          evaluator: { transport: "typesafe", baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" },
+        },
+      })
+      yield* service.evaluate({
+        sessionID,
+        operation: "todos",
+        sources: "request",
+        candidate: "candidate",
+        questions,
+      })
+      const history = yield* service.history(sessionID)
+      expect(history).toHaveLength(1)
+      expect(history[0]?.answers.omitted).toEqual({ type: "noul", noul: 0.02 })
+      expect(history[0]?.operation).toBe("todos")
+    }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", disableWAL: true })), Effect.scoped),
+  )
 })
 
 test("disabled mode makes no provider calls; oversized sources cannot be silently approved", async () => {

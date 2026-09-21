@@ -42,6 +42,7 @@ const make = Effect.gen(function* () {
     if (!incoming.length) return yield* get(input.sessionID)
     const observed = yield* facts.load(input.sessionID)
     const baseline = yield* get(input.sessionID)
+    const assessments = yield* intelligence.history(input.sessionID).pipe(Effect.orElseSucceed(() => []))
     const previous = baseline
     const seen = new Set<string>()
     const changes = yield* Effect.forEach(incoming, (item) =>
@@ -73,8 +74,6 @@ const make = Effect.gen(function* () {
             message: `Task content is required to create a task; supply id and revision to update an existing one. Existing tasks: ${listTasks(previous)}`,
           })
         const content = supplied ?? before!.content
-        const priority =
-          item.priority ?? (before && Schema.is(SessionTodo.Priority)(before.priority) ? before.priority : "medium")
         const key = before?.id ?? (input.origin?.type === "plan" ? (item.planKey ?? content) : content)
         if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
         seen.add(key)
@@ -108,6 +107,16 @@ const make = Effect.gen(function* () {
                 ...(paraphrased && requirement ? { paraphrase: requirement } : {}),
               }
             : undefined)
+        const assessment = request
+          ? assessments.find(
+              (evaluation) => evaluation.operation === "prompt_classification" && evaluation.subjectID === request.id,
+            )
+          : undefined
+        const priority =
+          item.priority ??
+          (before && Schema.is(SessionTodo.Priority)(before.priority) ? before.priority : undefined) ??
+          Intelligence.promptPriority(assessment) ??
+          "medium"
         const criterion =
           item.criterion?.trim() ||
           before?.criterion ||
@@ -272,7 +281,7 @@ const make = Effect.gen(function* () {
     const semantic = yield* intelligence
       .evaluate({
         sessionID: input.sessionID,
-        operation: incoming.some((item) => item.status === "completed") ? "task_completion" : "todos",
+        operation: incoming.some((item) => item.status === "completed") ? "task_completion" : "task_quality",
         sources: {
           requests: observed.requests.filter((request) => !request.pending),
           previous: baseline,
@@ -280,28 +289,45 @@ const make = Effect.gen(function* () {
           results: observed.results.filter((result) => result.settled && result.kind === "verification"),
         },
         candidate,
-        questions: Intelligence.questions(
-          Object.fromEntries(
-            candidate.flatMap((task, index) => [
-              [
-                `task_${index}_scope`,
-                `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
-              ],
-              [
-                `task_${index}_criterion`,
-                `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
-              ],
-              ...(task.status === "completed"
-                ? [
-                    [
-                      `task_${index}_evidence`,
-                      `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
-                    ],
-                  ]
-                : []),
+        questions: {
+          ...Intelligence.questions(
+            Object.fromEntries(
+              candidate.flatMap((task, index) => [
+                [
+                  `task_${index}_scope`,
+                  `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
+                ],
+                [
+                  `task_${index}_criterion`,
+                  `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
+                ],
+                ...(task.status === "completed"
+                  ? [
+                      [
+                        `task_${index}_evidence`,
+                        `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
+                      ],
+                    ]
+                  : []),
+              ]),
+            ),
+          ),
+          ...Object.fromEntries(
+            candidate.map((_, index) => [
+              `task_${index}_quality`,
+              {
+                type: "score" as const,
+                instructions: `How clear, scoped and verifiable is candidate[${index}] as a task?`,
+                criteria: [
+                  "Unclear, unscoped or unverifiable",
+                  "Goal is visible but scope or acceptance is ambiguous",
+                  "Clear scope and observable acceptance criterion",
+                  "Precise, concise, traceable to its requirement and independently verifiable",
+                ],
+              },
             ]),
           ),
-        ),
+        },
       })
       .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
     yield* Intelligence.requireAccepted(semantic).pipe(

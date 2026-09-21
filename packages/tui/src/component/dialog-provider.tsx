@@ -190,6 +190,85 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
     return !!lookup(providerID).existing && !sync.data.provider_auth[providerID] && !provider?.env.length
   }
 
+  async function authenticate(providerID: string, onConnected = props.onConnected) {
+    const methods = sync.data.provider_auth[providerID] ?? [
+      {
+        type: "api" as const,
+        label: "API key",
+      },
+    ]
+    const index =
+      methods.length === 1
+        ? 0
+        : await new Promise<number | null>((resolve) => {
+            dialog.replace(
+              () => (
+                <DialogSelect
+                  title="Select auth method"
+                  options={methods.map((method, index) => ({
+                    title: method.label,
+                    value: index,
+                  }))}
+                  onSelect={(option) => resolve(option.value)}
+                />
+              ),
+              () => resolve(null),
+            )
+          })
+    if (index == null) return
+    const method = methods[index]
+    if (method.type === "oauth") {
+      const inputs = method.prompts?.length ? await PromptsMethod({ dialog, prompts: method.prompts }) : undefined
+      if (inputs === null) return
+      const result = await sdk.client.provider.oauth.authorize({
+        providerID,
+        method: index,
+        inputs,
+      })
+      if (result.error) {
+        toast.show({
+          variant: "error",
+          message: JSON.stringify(result.error),
+        })
+        dialog.clear()
+        return
+      }
+      if (result.data?.method === "code") {
+        dialog.replace(() => (
+          <CodeMethod
+            providerID={providerID}
+            title={method.label}
+            index={index}
+            authorization={result.data}
+            onConnected={onConnected}
+          />
+        ))
+      }
+      if (result.data?.method === "auto") {
+        dialog.replace(() => (
+          <AutoMethod
+            providerID={providerID}
+            title={method.label}
+            index={index}
+            authorization={result.data}
+            onConnected={onConnected}
+          />
+        ))
+      }
+      return
+    }
+    const metadata = method.prompts?.length ? await PromptsMethod({ dialog, prompts: method.prompts }) : undefined
+    if (metadata === null) return
+    dialog.replace(() => (
+      <ApiMethod
+        providerID={providerID}
+        title={method.label}
+        metadata={metadata}
+        onConnected={onConnected}
+      />
+    ))
+  }
+
   const options = createMemo(() => {
     return pipe(
       providerOptions(
@@ -224,7 +303,32 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
           async onSelect() {
             if (connected) {
               if (props.onConnected) return props.onConnected(providerID)
-              return dialog.replace(() => <DialogModel providerID={providerID} />)
+              return dialog.replace(() => (
+                <DialogSelect
+                  title={`Manage ${provider.title}`}
+                  options={[
+                    {
+                      title: "Choose a model",
+                      value: "model",
+                      onSelect: () => dialog.replace(() => <DialogModel providerID={providerID} />),
+                    },
+                    ...(!consoleManaged
+                      ? [
+                          {
+                            title: "Replace API key or login",
+                            value: "authenticate",
+                            description: "Enter new credentials for this provider",
+                            onSelect: () =>
+                              authenticate(providerID, () => {
+                                toast.show({ variant: "info", message: `${provider.title} credentials replaced.` })
+                                dialog.clear()
+                              }),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              ))
             }
             if (consoleManaged) return
 
@@ -258,95 +362,7 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
               ))
             }
 
-            const methods = sync.data.provider_auth[providerID] ?? [
-              {
-                type: "api",
-                label: "API key",
-              },
-            ]
-            let index: number | null = 0
-            if (methods.length > 1) {
-              index = await new Promise<number | null>((resolve) => {
-                dialog.replace(
-                  () => (
-                    <DialogSelect
-                      title="Select auth method"
-                      options={methods.map((x, index) => ({
-                        title: x.label,
-                        value: index,
-                      }))}
-                      onSelect={(option) => resolve(option.value)}
-                    />
-                  ),
-                  () => resolve(null),
-                )
-              })
-            }
-            if (index == null) return
-            const method = methods[index]
-            if (method.type === "oauth") {
-              let inputs: Record<string, string> | undefined
-              if (method.prompts?.length) {
-                const value = await PromptsMethod({
-                  dialog,
-                  prompts: method.prompts,
-                })
-                if (!value) return
-                inputs = value
-              }
-
-              const result = await sdk.client.provider.oauth.authorize({
-                providerID,
-                method: index,
-                inputs,
-              })
-              if (result.error) {
-                toast.show({
-                  variant: "error",
-                  message: JSON.stringify(result.error),
-                })
-                dialog.clear()
-                return
-              }
-              if (result.data?.method === "code") {
-                dialog.replace(() => (
-                  <CodeMethod
-                    providerID={providerID}
-                    title={method.label}
-                    index={index}
-                    authorization={result.data!}
-                    onConnected={props.onConnected}
-                  />
-                ))
-              }
-              if (result.data?.method === "auto") {
-                dialog.replace(() => (
-                  <AutoMethod
-                    providerID={providerID}
-                    title={method.label}
-                    index={index}
-                    authorization={result.data!}
-                    onConnected={props.onConnected}
-                  />
-                ))
-              }
-            }
-            if (method.type === "api") {
-              let metadata: Record<string, string> | undefined
-              if (method.prompts?.length) {
-                const value = await PromptsMethod({ dialog, prompts: method.prompts })
-                if (!value) return
-                metadata = value
-              }
-              return dialog.replace(() => (
-                <ApiMethod
-                  providerID={providerID}
-                  title={method.label}
-                  metadata={metadata}
-                  onConnected={props.onConnected}
-                />
-              ))
-            }
+            return authenticate(providerID)
           },
         }
       }),

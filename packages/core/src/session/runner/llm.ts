@@ -88,6 +88,8 @@ import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { HookV2 } from "../../hook"
 
+const RESPONSE_REPAIR = "[system:response-quality-repair]"
+
 /** Events that only carry content: publishing them persists what the provider sent and runs nothing. */
 const CONTENT_EVENTS = new Set([
   "step-start",
@@ -549,6 +551,69 @@ const layer = Layer.effect(
         },
       ).pipe(Effect.map(SystemContext.combine))
 
+    const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
+      sessionID: SessionSchema.ID,
+      attempt: number,
+    ) {
+      const entries = yield* SessionHistory.entriesForRunner(db, sessionID, 0).pipe(Effect.orDie)
+      const candidate = entries.map((entry) => entry.message).findLast((message) => message.type === "assistant")
+      if (!candidate) return undefined
+      const text = candidate.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+      if (!text.trim()) return undefined
+      const previous = (yield* intelligence.history(sessionID).pipe(Effect.orElseSucceed(() => []))).find(
+        (evaluation) => evaluation.operation === "response_quality" && evaluation.candidateID === candidate.id,
+      )
+      if (previous) return previous
+      const messages = entries.map((entry) => entry.message)
+      const requests = messages
+        .filter((message) => message.type === "user")
+        .map((message) => ({ id: message.id, text: message.text }))
+      return yield* intelligence
+        .evaluate({
+          sessionID,
+          operation: "response_quality",
+          kind: "gate",
+          subjectID: requests.at(-1)?.id,
+          candidateID: candidate.id,
+          attempt,
+          sources: {
+            requests,
+            checkpoints: messages.filter((message) => message.type === "compaction").slice(-1),
+            tasks: yield* todos.get(sessionID),
+            goal: yield* goals.get(sessionID),
+          },
+          candidate: text,
+          questions: {
+            ...Intelligence.questions({
+              omission: "Does candidate fail to answer an applicable user request or question in sources?",
+              unsupported:
+                "Does candidate claim work, verification or completion that is not supported by sources.tasks or sources.goal?",
+              premature:
+                "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
+              writing:
+                "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
+            }),
+            writing_quality: {
+              type: "score",
+              instructions: "How clear, concise and useful is candidate as a final response to sources.requests?",
+              criteria: [
+                "Unclear, misleading or missing the usable result",
+                "Understandable but confusing, repetitive or missing useful context",
+                "Clear, direct and actionable",
+                "Exceptionally clear, concise and well matched to the user's context",
+              ],
+            },
+          },
+        })
+        .pipe(
+          Effect.catchTag("IntelligenceError", (error) =>
+            Effect.logWarning("response quality evaluation unavailable", { error: error.message }).pipe(
+              Effect.as(undefined),
+            ),
+          ),
+        )
+    })
+
     const runTurnAttempt = Effect.fn("SessionRunner.runTurn")(function* (
       sessionID: SessionSchema.ID,
       promotion: SessionInput.Delivery | undefined,
@@ -570,9 +635,9 @@ const layer = Layer.effect(
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       let needsContinuation = false
       let currentStep = step
+      let promoted = 0
       if (promotion) {
         const cutoff = yield* EventV2.latestSequence(db, session.id)
-        let promoted = 0
         if (promotion === "steer") promoted = yield* SessionInput.promoteSteers(db, events, session.id, cutoff)
         if (promotion === "queue") {
           promoted += Number(yield* SessionInput.promoteNextQueued(db, events, session.id))
@@ -586,6 +651,43 @@ const layer = Layer.effect(
       const model = yield* models.resolve(session)
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
+      const lastContext = context.at(-1)
+      const responseRepair = lastContext?.type === "synthetic" && lastContext.text.startsWith(RESPONSE_REPAIR)
+      const latestUser = context.findLast((message) => message.type === "user")
+      const previousEvaluations = latestUser
+        ? yield* intelligence.history(session.id).pipe(Effect.orElseSucceed(() => []))
+        : []
+      const promotedUsers = promoted > 0 ? context.filter((message) => message.type === "user").slice(-promoted) : []
+      const newAssessments = yield* Effect.forEach(
+        promotedUsers.filter(
+          (message) =>
+            !previousEvaluations.some(
+              (evaluation) => evaluation.operation === "prompt_classification" && evaluation.subjectID === message.id,
+            ),
+        ),
+        (message) =>
+          intelligence
+            .evaluate({
+              sessionID: session.id,
+              operation: "prompt_classification",
+              kind: "classification",
+              subjectID: message.id,
+              sources: { text: message.text, files: message.files },
+              questions: Intelligence.promptQuestions,
+            })
+            .pipe(
+              Effect.catchTag("IntelligenceError", (error) =>
+                Effect.logWarning("prompt classification unavailable", { error: error.message }).pipe(
+                  Effect.as(undefined),
+                ),
+              ),
+            ),
+        { concurrency: 2 },
+      )
+      const assessment = [...newAssessments, ...previousEvaluations].find(
+        (evaluation) => evaluation?.operation === "prompt_classification" && evaluation.subjectID === latestUser?.id,
+      )
+      const assessmentContext = Intelligence.promptContext(assessment)
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
       const configEntries = yield* config.entries()
@@ -605,9 +707,10 @@ const layer = Layer.effect(
         loaded: ToolSearch.loadedFromHistory(context, ToolSearch.namesInHistory(context)),
         ...(native ? { native } : {}),
       }
-      const toolMaterialization = isLastStep
-        ? undefined
-        : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
+      const toolMaterialization =
+        isLastStep || responseRepair
+          ? undefined
+          : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
       const request = LLM.request({
         model,
@@ -623,13 +726,20 @@ const layer = Layer.effect(
           // Native search: the provider carries the deferred definitions and its own search tool.
           ...(toolMaterialization?.native === "anthropic" ? { anthropic: { toolSearch: "bm25" } } : {}),
         },
-        system: [agent.info?.system, system.baseline]
+        system: [agent.info?.system, system.baseline, assessmentContext]
           .concat(
             toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [],
           )
           // The index of tools behind `tool_search` is sent as its own system part rather than in
           // the tool's description, so the tools block keeps its cached bytes when servers change.
           .concat(toolMaterialization?.toolIndex ?? [])
+          .concat(
+            responseRepair
+              ? [
+                  "Write only a corrective follow-up to the preceding final response. Address the listed evaluation issues without repeating completed work, calling tools or claiming new evidence.",
+                ]
+              : [],
+          )
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [
@@ -640,7 +750,7 @@ const layer = Layer.effect(
           ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
         ],
         tools: toolMaterialization?.definitions ?? [],
-        toolChoice: isLastStep ? "none" : undefined,
+        toolChoice: isLastStep || responseRepair ? "none" : undefined,
       })
       const preflight = yield* compaction.compactIfNeeded({
         sessionID: session.id,
@@ -1240,6 +1350,7 @@ const layer = Layer.effect(
           let needsContinuation = true
           let step = 1
           let todoContinuations = 0
+          let responseRepairs = 0
           while (needsContinuation) {
             const result = yield* runTurn(input.sessionID, promotion, step)
             if (result.goalStopped) return
@@ -1328,6 +1439,30 @@ const layer = Layer.effect(
                   timestamp: yield* DateTime.now,
                   text: `Goal is still active: ${goal.objective}. ${goal.reason}. Continue within scope, verify completion with goal_complete, or report a concrete blocker with goal_status.`,
                 })
+                needsContinuation = true
+              }
+            }
+            if (!needsContinuation) {
+              const evaluation = yield* reviewResponse(input.sessionID, responseRepairs).pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("response quality review failed", { error: String(error) }).pipe(
+                    Effect.as(undefined),
+                  ),
+                ),
+              )
+              if (
+                evaluation &&
+                evaluation.decision !== "accepted" &&
+                evaluation.decision !== "unavailable" &&
+                responseRepairs < 1
+              ) {
+                yield* events.publish(SessionEvent.Synthetic, {
+                  sessionID: input.sessionID,
+                  messageID: SessionMessage.ID.create(),
+                  timestamp: yield* DateTime.now,
+                  text: `${RESPONSE_REPAIR}\nCorrect the final response for these evaluation issues: ${evaluation.issues.join(", ")}.`,
+                })
+                responseRepairs++
                 needsContinuation = true
               }
             }

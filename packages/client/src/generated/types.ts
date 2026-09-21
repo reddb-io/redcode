@@ -7122,13 +7122,107 @@ export type IntelligenceProbeInput = {
 
 export type IntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
 
-export type IntelligenceHistoryInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+export type IntelligenceHistoryInput = {
+  readonly sessionID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["sessionID"]
+  readonly operation?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["operation"]
+  readonly decision?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["decision"]
+  readonly limit?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["limit"]
+  readonly offset?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["offset"]
+}
 
 export type IntelligenceHistoryOutput = ReadonlyArray<{
   readonly id: string
   readonly fingerprint: string
   readonly sessionID: string
   readonly operation:
+    | "prompt_classification"
+    | "response_quality"
+    | "task_quality"
     | "todos"
     | "plan"
     | "feedback"
@@ -7136,6 +7230,10 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "compaction"
     | "compact_now"
     | "task_completion"
+  readonly kind?: "classification" | "gate"
+  readonly subjectID?: string
+  readonly candidateID?: string
+  readonly attempt?: number
   readonly policy: string
   readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
   readonly model: string

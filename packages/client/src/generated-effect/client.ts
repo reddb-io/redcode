@@ -1164,9 +1164,23 @@ const Endpoint20_3 = (raw: RawClient["server.intelligence"]) => (input: Endpoint
   )
 
 type Endpoint20_4Request = Parameters<RawClient["server.intelligence"]["intelligence.history"]>[0]
-type Endpoint20_4Input = { readonly sessionID: Endpoint20_4Request["query"]["sessionID"] }
-const Endpoint20_4 = (raw: RawClient["server.intelligence"]) => (input: Endpoint20_4Input) =>
-  raw["intelligence.history"]({ query: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError))
+type Endpoint20_4Input = {
+  readonly sessionID?: Endpoint20_4Request["query"]["sessionID"]
+  readonly operation?: Endpoint20_4Request["query"]["operation"]
+  readonly decision?: Endpoint20_4Request["query"]["decision"]
+  readonly limit?: Endpoint20_4Request["query"]["limit"]
+  readonly offset?: Endpoint20_4Request["query"]["offset"]
+}
+const Endpoint20_4 = (raw: RawClient["server.intelligence"]) => (input?: Endpoint20_4Input) =>
+  raw["intelligence.history"]({
+    query: {
+      sessionID: input?.["sessionID"],
+      operation: input?.["operation"],
+      decision: input?.["decision"],
+      limit: input?.["limit"],
+      offset: input?.["offset"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
 
 const adaptGroup20 = (raw: RawClient["server.intelligence"]) => ({
   get: Endpoint20_0(raw),

@@ -47,6 +47,10 @@ function IntelligenceForm() {
     busy: false,
     loaded: false,
     evaluations: [] as Intelligence.Evaluation[],
+    operation: "" as "" | Intelligence.Operation,
+    decision: "" as "" | Intelligence.Evaluation["decision"],
+    historyOffset: 0,
+    historyMore: false,
     message: "",
     discovered: [] as { id: string; name: string }[],
     evaluators: [] as Intelligence.EvaluatorOption[],
@@ -71,6 +75,18 @@ function IntelligenceForm() {
     await action().catch(() => set("message", language.t("settings.intelligence.error")))
     set("busy", false)
   }
+  const loadHistory = async (reset: boolean) => {
+    const offset = reset ? 0 : state.historyOffset
+    const evaluations = await api().history({
+      ...(state.operation ? { operation: state.operation } : {}),
+      ...(state.decision ? { decision: state.decision } : {}),
+      limit: 20,
+      offset,
+    })
+    set("evaluations", reset ? evaluations : [...state.evaluations, ...evaluations])
+    set("historyOffset", offset + evaluations.length)
+    set("historyMore", evaluations.length === 20)
+  }
   createEffect(() => {
     const client = api()
     let active = true
@@ -91,8 +107,12 @@ function IntelligenceForm() {
       set("baseURL", result.settings.evaluator?.baseURL ?? IntelligenceClient.evaluatorPreset().baseURL)
       set("model", result.settings.evaluator?.model ?? IntelligenceClient.evaluatorPreset().model)
       set("loaded", true)
-      const history = await client.history("")
-      if (active) set("evaluations", history)
+      const history = await client.history({ limit: 20 })
+      if (active) {
+        set("evaluations", history)
+        set("historyOffset", history.length)
+        set("historyMore", history.length === 20)
+      }
     })
   })
   const save = () =>
@@ -265,9 +285,47 @@ function IntelligenceForm() {
           {language.t("settings.intelligence.defer")}
         </Button>
       </fieldset>
-      <Show when={state.evaluations.length}>
+      <Show when={state.loaded}>
         <details>
           <summary>{language.t("settings.intelligence.history")}</summary>
+          <div class="flex gap-2 py-2">
+            <select
+              class={inputClass}
+              value={state.operation}
+              onChange={(event) => {
+                set(
+                  "operation",
+                  Intelligence.Operation.literals.find((operation) => operation === event.currentTarget.value) ?? "",
+                )
+                void run(() => loadHistory(true))
+              }}
+            >
+              <option value="">All operations</option>
+              <For each={Intelligence.Operation.literals}>
+                {(operation) => (
+                  <option value={operation}>{language.t(`settings.intelligence.operation.${operation}`)}</option>
+                )}
+              </For>
+            </select>
+            <select
+              class={inputClass}
+              value={state.decision}
+              onChange={(event) => {
+                set(
+                  "decision",
+                  Intelligence.Decision.literals.find((decision) => decision === event.currentTarget.value) ?? "",
+                )
+                void run(() => loadHistory(true))
+              }}
+            >
+              <option value="">All decisions</option>
+              <For each={Intelligence.Decision.literals}>
+                {(decision) => (
+                  <option value={decision}>{language.t(`settings.intelligence.decision.${decision}`)}</option>
+                )}
+              </For>
+            </select>
+          </div>
           <For each={state.evaluations}>
             {(evaluation) => (
               <div class="border-b border-border-base py-2 text-12-regular">
@@ -275,6 +333,9 @@ function IntelligenceForm() {
                   {language.t(`settings.intelligence.operation.${evaluation.operation}`)} ·{" "}
                   {language.t(`settings.intelligence.decision.${evaluation.decision}`)} · {evaluation.model}
                 </div>
+                <Show when={(evaluation.attempt ?? 0) > 0}>
+                  <div>Corrective review attempt {evaluation.attempt}</div>
+                </Show>
                 <div>
                   {language.t("settings.intelligence.usage", {
                     input: evaluation.usage.input_tokens,
@@ -284,11 +345,40 @@ function IntelligenceForm() {
                 </div>
                 <details>
                   <summary>{language.t("settings.intelligence.details")}</summary>
-                  <pre class="whitespace-pre-wrap">{JSON.stringify(evaluation.answers, null, 2)}</pre>
+                  <For each={Object.entries(evaluation.answers)}>
+                    {([id, answer]) => (
+                      <div class="py-1">
+                        <strong>{id}</strong>
+                        <Show when={answer.type === "noul"}>
+                          : yes {(answer.type === "noul" ? answer.noul * 100 : 0).toFixed(0)}%
+                        </Show>
+                        <Show when={answer.type === "choice"}>
+                          : {answer.type === "choice" ? answer.choice : ""} · confidence{" "}
+                          {answer.type === "choice" ? answer.confidence.toFixed(2) : ""}
+                        </Show>
+                        <Show when={answer.type === "score"}>
+                          : score {answer.type === "score" ? answer.score.toFixed(2) : ""} · confidence{" "}
+                          {answer.type === "score" ? answer.confidence.toFixed(2) : ""}
+                        </Show>
+                        <Show when={answer.type !== "noul"}>
+                          <div class="text-text-weak">
+                            {Object.entries(answer.type === "noul" ? {} : answer.probabilities)
+                              .map(([level, probability]) => `${level}: ${(probability * 100).toFixed(0)}%`)
+                              .join(" · ")}
+                          </div>
+                        </Show>
+                      </div>
+                    )}
+                  </For>
                 </details>
               </div>
             )}
           </For>
+          <Show when={state.historyMore}>
+            <Button variant="secondary" onClick={() => void run(() => loadHistory(false))}>
+              Load more
+            </Button>
+          </Show>
         </details>
       </Show>
       <Show when={state.busy}>

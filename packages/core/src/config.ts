@@ -14,6 +14,7 @@ import { ConfigAgent } from "./config/agent"
 import { ConfigAttachments } from "./config/attachments"
 import { ConfigCompaction } from "./config/compaction"
 import { ConfigDesign } from "./config/design"
+import { ConfigDatabase } from "./config/database"
 import { ConfigCommand } from "./config/command"
 import { ConfigExperimental } from "./config/experimental"
 import { ConfigFormatter } from "./config/formatter"
@@ -94,6 +95,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   design: ConfigDesign.Info.pipe(Schema.optional).annotate({
     description: "Design mode: the project's design system reused by previews",
+  }),
+  database: ConfigDatabase.Info.pipe(Schema.optional).annotate({
+    description: "Shared RedDB connection used for all durable Redcode state",
   }),
   session: ConfigSession.Info.pipe(Schema.optional).annotate({
     description: "Session behaviour: an optional spend budget. Nothing is limited unless set.",

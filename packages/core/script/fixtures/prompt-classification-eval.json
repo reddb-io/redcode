@@ -1,0 +1,642 @@
+{
+  "version": 1,
+  "language": "en",
+  "cases": [
+    {
+      "id": "answer-retry-explanation",
+      "prompt": "Explain how the connection retry logic works.",
+      "expected": {
+        "work_route": "answer",
+        "time_pressure": "none",
+        "interaction_constraint": "answer_only",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.6 },
+        "complexity": { "min": 0, "max": 1.5 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "answer-api-difference",
+      "prompt": "What is the difference between the streaming and non-streaming APIs?",
+      "expected": {
+        "work_route": "answer",
+        "time_pressure": "none",
+        "interaction_constraint": "answer_only",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.5 },
+        "complexity": { "min": 0, "max": 1.5 },
+        "consequence": { "min": 0, "max": 0.3 },
+        "frustration": { "min": 0, "max": 0.4 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "investigate-login-failure",
+      "prompt": "Investigate why login fails and report the diagnosis before changing any files.",
+      "expected": {
+        "work_route": "investigation",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "inspect",
+        "impact": { "min": 1, "max": 2.4 },
+        "complexity": { "min": 0.8, "max": 2.2 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.7 }
+      }
+    },
+    {
+      "id": "investigate-provider-comparison",
+      "prompt": "Compare the three provider implementations and tell me which behavior differs. Do not edit anything yet.",
+      "expected": {
+        "work_route": "investigation",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.6 },
+        "complexity": { "min": 1, "max": 2.6 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "bugfix-crash",
+      "prompt": "Fix the crash that happens when a user opens an empty project and verify the fix.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1, "max": 2.4 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.8 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "feature-export",
+      "prompt": "Add CSV export to the reports page, following the existing JSON export behavior.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "feature",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.6 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "refactor-parser",
+      "prompt": "Refactor the parser to remove the duplicated branches without changing its behavior.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "refactor",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.6 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "documentation-installation",
+      "prompt": "Update the installation guide with the new environment variables and a working example.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "documentation",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.3, "max": 1.8 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "tests-pagination",
+      "prompt": "Add regression tests for pagination preserving the selected filters. The implementation is already correct.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "tests",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.5, "max": 1.8 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "design-settings-flow",
+      "prompt": "Design a clearer settings flow for choosing providers and models, including the empty and error states.",
+      "expected": {
+        "work_route": "design",
+        "change_kind": "feature",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 1.5, "max": 3 },
+        "consequence": { "min": 0.5, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.6 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "design-review-first",
+      "prompt": "Review the current onboarding UX and bring me the problems you find before proposing changes.",
+      "expected": {
+        "work_route": "design",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0, "max": 0.5 },
+        "frustration": { "min": 0, "max": 0.6 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "plan-session-migration",
+      "prompt": "Write a migration plan for the session store and wait for my approval before implementing it.",
+      "expected": {
+        "work_route": "plan_review",
+        "time_pressure": "none",
+        "interaction_constraint": "plan_wait",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 2, "max": 3 },
+        "consequence": { "min": 0, "max": 0.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "review-existing-plan",
+      "prompt": "Review this implementation plan for missing risks. Do not start the work.",
+      "expected": {
+        "work_route": "plan_review",
+        "time_pressure": "none",
+        "interaction_constraint": "plan_wait",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.7 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "publish-release-today",
+      "prompt": "Publish version 0.41.0 today.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "deadline",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 0, "max": 0.5 },
+        "complexity": { "min": 0.5, "max": 2.5 },
+        "consequence": { "min": 1.5, "max": 2.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "deploy-production",
+      "prompt": "Deploy the verified build to production now.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 0.5, "max": 2.5 },
+        "consequence": { "min": 1.5, "max": 2.7 },
+        "frustration": { "min": 0, "max": 0.6 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "merge-pull-request",
+      "prompt": "Merge pull request 418 after its required checks pass.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.7 },
+        "complexity": { "min": 0, "max": 1.8 },
+        "consequence": { "min": 1.5, "max": 2.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "send-review-summary",
+      "prompt": "Send the completed review summary to the engineering channel.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 0, "max": 0.5 },
+        "complexity": { "min": 0, "max": 1.2 },
+        "consequence": { "min": 1.5, "max": 2.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "production-outage",
+      "prompt": "Production is down for every customer. Fix it and verify recovery immediately.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 2.7, "max": 3 },
+        "complexity": { "min": 1, "max": 3 },
+        "consequence": { "min": 1, "max": 2.8 },
+        "frustration": { "min": 0.5, "max": 2.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "blocked-ci",
+      "prompt": "The release is blocked because CI fails on every run. Fix the failing workflow.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1.7, "max": 2.6 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.5 },
+        "frustration": { "min": 0.3, "max": 1.8 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "feature-deadline-friday",
+      "prompt": "Add the audit log filter by Friday afternoon.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "feature",
+        "time_pressure": "deadline",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.7 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "docs-soon",
+      "prompt": "Please update the API examples soon; there is no fixed deadline.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "documentation",
+        "time_pressure": "soon",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.3, "max": 1.8 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.6 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "frustrated-repeat-bug",
+      "prompt": "This is the third time the reconnect loop has broken. Fix it properly and test it this time.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1, "max": 2.5 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.5 },
+        "frustration": { "min": 1.7, "max": 3 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "angry-outage",
+      "prompt": "This is unacceptable. Everything is still offline and customers are furious. Restore service now.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 2.7, "max": 3 },
+        "complexity": { "min": 1, "max": 3 },
+        "consequence": { "min": 1.5, "max": 3 },
+        "frustration": { "min": 2, "max": 3 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "ambiguous-improve",
+      "prompt": "Make it better.",
+      "expected": {
+        "work_route": "uncertain",
+        "time_pressure": "none",
+        "interaction_constraint": "uncertain",
+        "clarification": "ask",
+        "impact": { "min": 0, "max": 0.5 },
+        "complexity": { "min": 0, "max": 2.5 },
+        "consequence": { "min": 0, "max": 1.5 },
+        "frustration": { "min": 0, "max": 0.8 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "missing-framework-choice",
+      "prompt": "Build the authentication layer, but I have not decided whether it must use Auth0 or Keycloak. Ask me before choosing either one.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "feature",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "ask",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 2, "max": 3 },
+        "consequence": { "min": 0.7, "max": 1.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "missing-deployment-target",
+      "prompt": "Deploy the release, but no environment has been selected. Ask me which environment to use before deploying.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "ask",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.5, "max": 2.5 },
+        "consequence": { "min": 1.5, "max": 3 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "routine-discovery",
+      "prompt": "Fix the cache invalidation bug. Inspect the repository to find the affected module and follow its existing patterns.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1, "max": 2.5 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.5 },
+        "frustration": { "min": 0, "max": 0.8 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "security-audit-readonly",
+      "prompt": "Audit the authentication code for security issues and report findings. Do not make changes.",
+      "expected": {
+        "work_route": "investigation",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1.5 },
+        "complexity": { "min": 1.5, "max": 3 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "destructive-production-delete",
+      "prompt": "Delete every production customer record immediately. There is no backup and this cannot be undone.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "ask",
+        "impact": { "min": 2.5, "max": 3 },
+        "complexity": { "min": 0, "max": 2 },
+        "consequence": { "min": 2.7, "max": 3 },
+        "frustration": { "min": 0, "max": 1 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "rollback-deployment",
+      "prompt": "The new deployment is returning 500 errors. Roll it back now and confirm recovery.",
+      "expected": {
+        "work_route": "external_operation",
+        "change_kind": "bugfix",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 2, "max": 3 },
+        "complexity": { "min": 0.5, "max": 2.5 },
+        "consequence": { "min": 1.7, "max": 3 },
+        "frustration": { "min": 0.5, "max": 2.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "data-loss-incident",
+      "prompt": "Users are losing saved documents in production. Diagnose and fix the issue immediately.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "immediate",
+        "interaction_constraint": "execute",
+        "clarification": "inspect",
+        "impact": { "min": 2.8, "max": 3 },
+        "complexity": { "min": 1.5, "max": 3 },
+        "consequence": { "min": 1, "max": 3 },
+        "frustration": { "min": 0.5, "max": 2.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "documentation-deadline",
+      "prompt": "Finish the migration documentation by 3 PM tomorrow.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "documentation",
+        "time_pressure": "deadline",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.3, "max": 2 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "high"
+      }
+    },
+    {
+      "id": "repair-tests-only",
+      "prompt": "Repair the flaky session tests without changing production behavior.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "tests",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1, "max": 2.3 },
+        "complexity": { "min": 1, "max": 2.5 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 1 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "plan-and-implement",
+      "prompt": "Plan the database migration, implement it, run the tests, and report the result.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "feature",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1.5 },
+        "complexity": { "min": 2.3, "max": 3 },
+        "consequence": { "min": 0.8, "max": 2 },
+        "frustration": { "min": 0, "max": 0.6 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "investigate-while-fixing",
+      "prompt": "Find the cause of the memory leak, fix it, and verify memory use under load.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 1, "max": 2.5 },
+        "complexity": { "min": 2, "max": 3 },
+        "consequence": { "min": 0.7, "max": 1.8 },
+        "frustration": { "min": 0, "max": 0.8 },
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "diagnose-before-fix",
+      "prompt": "Diagnose the memory leak and show me the evidence before you change the implementation.",
+      "expected": {
+        "work_route": "investigation",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "inspect",
+        "impact": { "min": 1, "max": 2.5 },
+        "complexity": { "min": 1.5, "max": 3 },
+        "consequence": { "min": 0, "max": 0.5 },
+        "frustration": { "min": 0, "max": 0.8 }
+      }
+    },
+    {
+      "id": "release-question",
+      "prompt": "Can this release be published safely with the current test results? Just answer the question.",
+      "expected": {
+        "work_route": "answer",
+        "time_pressure": "none",
+        "interaction_constraint": "answer_only",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 0.5, "max": 2 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "verify-release-readonly",
+      "prompt": "Verify that version 0.41.0 is available on npm and GitHub. Do not publish or modify anything.",
+      "expected": {
+        "work_route": "investigation",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.5, "max": 2 },
+        "consequence": { "min": 0, "max": 0.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "local-configuration",
+      "prompt": "Configure the local development server to use port 3100 and update its example environment file.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "documentation",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 0.8 },
+        "complexity": { "min": 0.3, "max": 1.8 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "architecture-proposal",
+      "prompt": "Prepare an architecture proposal for multi-region execution, explain the tradeoffs, and wait for review.",
+      "expected": {
+        "work_route": "plan_review",
+        "time_pressure": "none",
+        "interaction_constraint": "plan_wait",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 2.5, "max": 3 },
+        "consequence": { "min": 0, "max": 0.5 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "low"
+      }
+    },
+    {
+      "id": "calm-cosmetic-bug",
+      "prompt": "The settings icon is misaligned by two pixels. Please fix it when convenient.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "soon",
+        "interaction_constraint": "execute",
+        "clarification": "proceed",
+        "impact": { "min": 0, "max": 1 },
+        "complexity": { "min": 0, "max": 1.2 },
+        "consequence": { "min": 0.7, "max": 1.4 },
+        "frustration": { "min": 0, "max": 0.5 },
+        "priority": "medium"
+      }
+    }
+  ]
+}

@@ -7,6 +7,7 @@
   "private": true,
   "scripts": {
     "db": "bun drizzle-kit",
+    "eval:classification": "bun run script/evaluate-prompt-classification.ts",
     "migration": "bun run script/migration.ts",
     "fix-node-pty": "bun run script/fix-node-pty.ts",
     "test": "bun test --timeout 30000 --only-failures",
@@ -109,6 +110,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "0.214.0",
     "@opentelemetry/sdk-trace-base": "2.6.1",
     "@parcel/watcher": "2.5.1",
+    "@reddb-io/client": "1.23.4",
     "@reddb-io/redcode-codemode": "workspace:*",
     "@reddb-io/redcode-design": "workspace:*",
     "@reddb-io/redcode-effect-drizzle-sqlite": "workspace:*",

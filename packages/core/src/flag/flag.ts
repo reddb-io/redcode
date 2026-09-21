@@ -34,9 +34,7 @@ export const Flag = {
   REDCODE_DISABLE_FFF: fff === undefined ? process.platform === "win32" : truthy("REDCODE_DISABLE_FFF"),
 
   // Experimental
-  REDCODE_EXPERIMENTAL_FILEWATCHER: Config.boolean("REDCODE_EXPERIMENTAL_FILEWATCHER").pipe(
-    Config.withDefault(false),
-  ),
+  REDCODE_EXPERIMENTAL_FILEWATCHER: Config.boolean("REDCODE_EXPERIMENTAL_FILEWATCHER").pipe(Config.withDefault(false)),
   REDCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: Config.boolean("REDCODE_EXPERIMENTAL_DISABLE_FILEWATCHER").pipe(
     Config.withDefault(false),
   ),
@@ -45,6 +43,12 @@ export const Flag = {
   REDCODE_MODELS_URL: process.env["REDCODE_MODELS_URL"],
   REDCODE_MODELS_PATH: process.env["REDCODE_MODELS_PATH"],
   REDCODE_DB: process.env["REDCODE_DB"],
+  get REDCODE_DATABASE_URL() {
+    return process.env["REDCODE_DATABASE_URL"]
+  },
+  get REDCODE_DATABASE_TOKEN() {
+    return process.env["REDCODE_DATABASE_TOKEN"]
+  },
   REDCODE_LSP_OPEN_FILE_LIMIT: process.env["REDCODE_LSP_OPEN_FILE_LIMIT"],
   REDCODE_LSP_MAX_CLIENTS: process.env["REDCODE_LSP_MAX_CLIENTS"],
 
