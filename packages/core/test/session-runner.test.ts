@@ -318,6 +318,7 @@ const intelligence = Layer.succeed(
           .slice(options.offset ?? 0, (options.offset ?? 0) + (options.limit ?? 100)),
       ),
     generation: () => Effect.void,
+    router: () => Effect.succeed(undefined),
     environment: "test",
   }),
 )

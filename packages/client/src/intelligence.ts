@@ -10,7 +10,7 @@ export function evaluatorPreset(
   if (transport === "openrouter")
     return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
-  if (transport === "red-router") return { transport, baseURL: "http://localhost:25050/v1", model: "jev-1.13.0" }
+  if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1", model: "jev-1.13.0" }
   if (transport === "cloudflare-ai-gateway")
     return { transport, baseURL: "https://api.cloudflare.com/client/v4", model: "typesafe/jev" }
   if (transport === "vercel")

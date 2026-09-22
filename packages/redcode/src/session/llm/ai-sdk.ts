@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect"
 import { type streamText } from "ai"
 import { errorMessage } from "@/util/error"
 import { ProviderError } from "@/provider/error"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 type Result = Awaited<ReturnType<typeof streamText>>
 type AISDKEvent = Result["fullStream"] extends AsyncIterable<infer T> ? T : never
@@ -106,15 +107,18 @@ export function toLLMEvents(
         return Effect.fail(new ProviderError.ResponseStreamError("Provider finish_reason: network_error"))
       return Effect.sync(() => {
         const original = providerMetadata(event.providerMetadata)
+        // RedRouter prices what it served (a combo included): the cost header on a whole response,
+        // `usage.cost` in a stream's final usage.
+        const router = ProviderRouter.reported(event.response?.headers, event.usage?.raw)
         const metadata =
-          state.copilotTotalNanoAiu === undefined
+          state.copilotTotalNanoAiu === undefined && router === undefined
             ? original
             : {
                 ...original,
-                copilot: {
-                  ...original?.copilot,
-                  totalNanoAiu: state.copilotTotalNanoAiu,
-                },
+                ...(state.copilotTotalNanoAiu === undefined
+                  ? {}
+                  : { copilot: { ...original?.copilot, totalNanoAiu: state.copilotTotalNanoAiu } }),
+                ...(router ? { [ProviderRouter.METADATA]: router } : {}),
               }
         state.copilotTotalNanoAiu = undefined
         return [

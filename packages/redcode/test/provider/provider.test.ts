@@ -585,6 +585,39 @@ it.instance(
 )
 
 it.instance(
+  "a router's thinking levels become the model's variants and mark it as reasoning",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const model = providers[ProviderV2.ID.make("red-router")].models["fast-combo"]
+    expect(model.capabilities.reasoning).toBe(true)
+    expect(model.variants).toEqual({
+      none: { reasoningEffort: "none" },
+      low: { reasoningEffort: "low" },
+      high: { reasoningEffort: "high" },
+    })
+  }),
+  {
+    config: {
+      provider: {
+        "red-router": {
+          name: "RedRouter",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          options: { apiKey: "test-key", baseURL: "http://127.0.0.1:25050/v1" },
+          models: {
+            "fast-combo": {
+              name: "fast-combo",
+              limit: { context: 128000, output: 8192 },
+              router: { owned_by: "combo", strategy: "fallback", thinking_levels: ["none", "low", "high"] },
+            },
+          },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "model config preserves explicitly empty models.dev variants",
   Effect.gen(function* () {
     yield* set("OPENAI_API_KEY", "test-api-key")

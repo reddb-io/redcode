@@ -446,3 +446,43 @@ describe("session.message-v2.fromError", () => {
     })
   })
 })
+
+describe("router retry headers", () => {
+  const routerError = (statusCode: number, headers: Record<string, string>) =>
+    new APICallError({
+      message: "Upstream provider request failed",
+      url: "http://127.0.0.1:25050/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode,
+      responseHeaders: headers,
+      responseBody: '{"error":{"message":"Upstream provider request failed"}}',
+      isRetryable: false,
+    })
+
+  test("waits until the instant X-9Router-Retry-At names", () => {
+    const at = new Date(Date.now() + 42_000).toISOString()
+    const delay = SessionRetry.delay(1, apiError({ "x-9router-retry-at": at, "retry-after": "44" }))
+    expect(delay).toBeGreaterThan(40_000)
+    expect(delay).toBeLessThanOrEqual(42_000)
+  })
+
+  test("a cooling-down account is retried and says why", () => {
+    const at = new Date(Date.now() + 60_000).toISOString()
+    const parsed = ProviderError.parseAPICallError({
+      providerID,
+      error: routerError(429, { "x-9router-reason": "quota_exhausted", "x-9router-retry-at": at }),
+    })
+    expect(parsed).toMatchObject({ type: "api_error", isRetryable: true })
+    expect(parsed.message).toContain(`router: quota exhausted until ${at}`)
+  })
+
+  test("no active credentials is not retried, whatever the status", () => {
+    const error = MessageV2.fromError(routerError(503, { "x-9router-reason": "no_active_credentials" }), {
+      providerID,
+    })
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(error.data.isRetryable).toBe(false)
+    expect(error.data.message).toContain("no active account")
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+})

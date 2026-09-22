@@ -1741,7 +1741,8 @@ export function reasoningVariants(model: ModelsDev.Model, target: Provider.Model
   })
 }
 
-function effortVariants(model: Provider.Model, values: readonly unknown[]) {
+/** Variants for a list of effort names, mapped onto the model's own reasoning option; `null` is `none`. */
+export function effortVariants(model: Provider.Model, values: readonly unknown[]) {
   return Object.fromEntries(
     values.flatMap((value) => {
       const id = (() => {

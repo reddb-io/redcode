@@ -2178,6 +2178,13 @@ describe("util.token.estimate", () => {
 })
 
 describe("SessionNs.getUsage", () => {
+  test("a cost RedRouter reported wins over the model's price, even when it is zero", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const counted = usage({ inputTokens: 1000, outputTokens: 500, totalTokens: 1500 })
+    expect(SessionNs.getUsage({ model, usage: counted, metadata: { redrouter: { costUSD: 0.042 } } }).cost).toBe(0.042)
+    expect(SessionNs.getUsage({ model, usage: counted, metadata: { redrouter: { costUSD: 0 } } }).cost).toBe(0)
+  })
+
   test("normalizes standard usage to token format", () => {
     const model = createModel({ context: 100_000, output: 32_000 })
     const result = SessionNs.getUsage({

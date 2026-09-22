@@ -72,6 +72,17 @@ export const Model = Schema.Struct({
   ),
   options: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  router: Schema.optional(
+    Schema.Struct({
+      owned_by: Schema.optional(Schema.String),
+      strategy: Schema.optional(Schema.String),
+      thinking_levels: Schema.optional(Schema.Array(Schema.String)),
+      capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
+    }),
+  ).annotate({
+    description:
+      "What the router reported about this model, written by provider discovery. Its thinking levels become the model's variants.",
+  }),
   variants: Schema.optional(
     Schema.Record(
       Schema.String,

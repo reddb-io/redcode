@@ -24,6 +24,7 @@ import { LLMAISDK } from "@/session/llm/ai-sdk"
 import { Session as SessionNs } from "@/session/session"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { LayerNodePlatform } from "@reddb-io/redcode-core/effect/app-node-platform"
@@ -621,6 +622,35 @@ describe("session.llm.ai-sdk adapter", () => {
     expect(events[1]).toMatchObject({ type: "step-finish", providerMetadata: { anthropic: {} } })
     if (events[1].type !== "step-finish") throw new Error("expected step-finish")
     expect(events[1].providerMetadata?.copilot).toBeUndefined()
+  })
+
+  test("keeps what RedRouter billed and which model served, from headers or a stream's usage.cost", async () => {
+    const finish = (headers: Record<string, string>, raw: Record<string, unknown>) =>
+      uncheckedAdapterEvent({
+        type: "finish-step",
+        response: { id: "chatcmpl", timestamp: new Date(0), modelId: "fast-combo", headers },
+        finishReason: "stop",
+        rawFinishReason: "stop",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          outputTokenDetails: { textTokens: 10, reasoningTokens: undefined },
+          raw,
+        },
+        providerMetadata: undefined,
+      })
+    const events = await adapt([
+      finish({ "x-redrouter-served-model": "cc/claude-sonnet" }, { total_tokens: 110, cost: 0.0031 }),
+      finish({ "x-redrouter-cost-usd": "0.25" }, { total_tokens: 110 }),
+      finish({}, { total_tokens: 110, cost: 7 }),
+    ])
+    expect(events.map((event) => (event.type === "step-finish" ? event.providerMetadata : undefined))).toEqual([
+      { redrouter: { servedModel: "cc/claude-sonnet", costUSD: 0.0031 } },
+      { redrouter: { costUSD: 0.25 } },
+      undefined,
+    ])
   })
 })
 
@@ -2460,6 +2490,91 @@ describe("session.llm.stream", () => {
         provider: {
           [geminiFixture.providerID]: {
             options: { apiKey: "test-google-key", baseURL: `${state.server!.url.origin}/v1beta` },
+          },
+        },
+      }),
+    },
+  )
+})
+
+describe("session.llm RedRouter cooperation", () => {
+  const seen: Headers[] = []
+  const routerState = { server: null as ReturnType<typeof Bun.serve> | null }
+
+  beforeAll(() => {
+    routerState.server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/v1/capabilities")
+          return Response.json({
+            product: "red-router",
+            version: "3.2.0",
+            decision: { header: "x-red-router-decision" },
+            token_saver_header: "x-red-router-token-saver",
+          })
+        if (url.pathname !== "/v1/chat/completions") return new Response("not found", { status: 404 })
+        seen.push(request.headers)
+        return new Response(createChatStream("Hello"), { headers: { "Content-Type": "text/event-stream" } })
+      },
+    })
+  })
+
+  afterAll(() => {
+    ProviderRouter.forget()
+    void routerState.server?.stop(true)
+  })
+
+  it.instance(
+    "asks a detected RedRouter to stand down only when the request calls for it",
+    () =>
+      Effect.gen(function* () {
+        const model = yield* Provider.use.getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("fast-combo"))
+        const sessionID = SessionID.make("session-router")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: MessageID.make("msg_user-router"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make("red-router"), modelID: model.id },
+        } satisfies SessionV1.User
+        const input = {
+          user,
+          sessionID,
+          model,
+          agent,
+          system: ["You are a helpful assistant."],
+          messages: [{ role: "user" as const, content: "Hello" }],
+          tools: {},
+        }
+        yield* drain({ ...input, router: { decision: false } })
+        yield* drain(input)
+        yield* drain({ ...input, router: { tokenSaver: false } })
+        expect(
+          seen.map((headers) => [headers.get("x-red-router-decision"), headers.get("x-red-router-token-saver")]),
+        ).toEqual([
+          ["off", null],
+          [null, null],
+          [null, "off"],
+        ])
+      }),
+    {
+      config: () => ({
+        enabled_providers: ["red-router"],
+        provider: {
+          "red-router": {
+            name: "RedRouter",
+            npm: "@ai-sdk/openai-compatible",
+            options: { apiKey: "test-key", baseURL: `${routerState.server!.url.origin}/v1` },
+            models: { "fast-combo": { name: "fast-combo", tool_call: true, limit: { context: 128000, output: 8192 } } },
           },
         },
       }),

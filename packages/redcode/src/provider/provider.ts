@@ -1548,6 +1548,8 @@ const layer = Layer.effect(
               if (model.id && model.id !== modelID) return modelID
               return existingModel?.name ?? modelID
             })
+            // A router that lists the model's thinking levels knows them better than the heuristics.
+            const levels = model.router?.thinking_levels?.length ? model.router.thinking_levels : undefined
             const parsedModel: Model = {
               id: ModelV2.ID.make(modelID),
               api: {
@@ -1560,7 +1562,11 @@ const layer = Layer.effect(
               providerID: ProviderV2.ID.make(providerID),
               capabilities: {
                 temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-                reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
+                reasoning:
+                  model.reasoning ??
+                  (levels ? levels.some((level) => level !== "none") : undefined) ??
+                  existingModel?.capabilities.reasoning ??
+                  false,
                 attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
                 toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
                 input: {
@@ -1610,8 +1616,9 @@ const layer = Layer.effect(
               release_date: model.release_date ?? existingModel?.release_date ?? "",
               variants: {},
             }
-            const variants =
-              existingModel?.api.npm === parsedModel.api.npm
+            const variants = levels
+              ? ProviderTransform.effortVariants(parsedModel, levels)
+              : existingModel?.api.npm === parsedModel.api.npm
                 ? (existingModel.variants ?? ProviderTransform.variants(parsedModel))
                 : ProviderTransform.variants(parsedModel)
             const merged = mergeDeep(variants, model.variants ?? {})

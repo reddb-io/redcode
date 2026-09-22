@@ -6971,6 +6971,43 @@ export type IntelligenceGetOutput = {
     }
   }>
   readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
+  readonly router?: {
+    readonly providerID: string
+    readonly baseURL: string
+    readonly detection: {
+      readonly kind: "red-router" | "9router" | "none"
+      readonly version?: string
+      readonly instanceID?: string
+      readonly features: ReadonlyArray<
+        | "capabilities"
+        | "systemone"
+        | "combos"
+        | "decision"
+        | "hint"
+        | "token-saver"
+        | "session-affinity"
+        | "served-model"
+        | "cost"
+        | "stream-usage-cost"
+      >
+      readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
+      readonly checkedAt: number
+    }
+    readonly evaluator?: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+  }
 }
 
 export type IntelligenceSaveInput = {

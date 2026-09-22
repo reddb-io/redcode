@@ -3,6 +3,7 @@ import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import type { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { isContextOverflow, isContextOverflowBody, isContextOverflowCode } from "@reddb-io/redcode-llm"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 export class HeaderTimeoutError extends Error {
   public override readonly name = "ProviderHeaderTimeoutError"
@@ -213,15 +214,42 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
   }
 
   const metadata = input.error.url ? { url: input.error.url } : undefined
+  const routed = routerRetry(input.error.responseHeaders)
   return {
     type: "api_error",
-    message: m,
+    message: routed?.message ? `${m} (${routed.message})` : m,
     statusCode: input.error.statusCode,
-    isRetryable: input.providerID.startsWith("openai") ? isOpenAiErrorRetryable(input.error) : input.error.isRetryable,
+    isRetryable:
+      routed?.retryable ??
+      (input.providerID.startsWith("openai") ? isOpenAiErrorRetryable(input.error) : input.error.isRetryable),
     responseHeaders: input.error.responseHeaders,
     responseBody: input.error.responseBody,
     metadata,
   }
 }
+
+/**
+ * What a 9Router-family router (RedRouter included) says about a failed request: why it failed and
+ * whether waiting helps. Every account for the model is cooling down or overloaded: retry, at the
+ * instant `X-9Router-Retry-At` names (see SessionRetry.delay). No active credentials: connecting an
+ * account is the fix, so it is not retried.
+ */
+function routerRetry(headers: Record<string, string> | undefined) {
+  const reason = ProviderRouter.header(headers, ProviderRouter.Header.reason)
+  const retryAt = ProviderRouter.header(headers, ProviderRouter.Header.retryAt)
+  if (!reason && !retryAt) return
+  if (reason === "no_active_credentials")
+    return {
+      retryable: false,
+      message: "the router has no active account for this model; connect one in its dashboard",
+    }
+  const waits = retryAt !== undefined || ROUTER_WAITS.has(reason ?? "")
+  return {
+    retryable: waits || undefined,
+    message: reason ? `router: ${reason.replaceAll("_", " ")}${retryAt ? ` until ${retryAt}` : ""}` : undefined,
+  }
+}
+
+const ROUTER_WAITS = new Set(["quota_exhausted", "overloaded", "temporarily_unavailable"])
 
 export * as ProviderError from "./error"

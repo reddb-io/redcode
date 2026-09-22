@@ -2612,6 +2612,7 @@ const layer = Layer.effect(
               toolAssessments.set(selectionID, evaluation)
             }
             const mcpContext = Intelligence.toolContext(toolAssessments.get(selectionID))
+            const skillContext = Intelligence.skillContext(assessment)
 
             // The safe provider-turn boundary: the epoch's baseline is reused verbatim, and any
             // source that changed since is admitted as one durable system message here rather
@@ -2660,7 +2661,7 @@ const layer = Layer.effect(
                 (assessment?.decision === "unavailable"
                   ? `System One prompt classification unavailable (${assessment.id}). Use the original user request and conversation; no classification has been verified.`
                   : undefined),
-              Intelligence.skillContext(assessment),
+              skillContext,
               toolContext,
               mcpContext,
               ...(responseRepair
@@ -2787,6 +2788,8 @@ const layer = Layer.effect(
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
               estimate: requestEstimate,
+              // System One already chose this turn's tools and skills; a RedRouter must not choose again.
+              ...(mcpContext || skillContext ? { router: { decision: false } } : {}),
             })
 
             if (result === "reconnect") {

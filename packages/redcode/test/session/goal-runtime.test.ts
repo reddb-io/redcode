@@ -46,6 +46,8 @@ const setup = Effect.gen(function* () {
       Bun.serve({
         port: 0,
         fetch: async (request) => {
+          // The goal judge asks a RedRouter to keep its prompt whole, which probes this address first.
+          if (request.method === "GET") return new Response("not found", { status: 404 })
           if (new URL(request.url).pathname === "/v1/chat/completions") {
             const text = JSON.stringify({ verdict: "done", reason: "the saved artifact was verified" })
             return new Response(
