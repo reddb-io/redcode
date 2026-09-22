@@ -41,6 +41,11 @@ function IntelligenceForm() {
   const [state, set] = createStore({
     settings: { enabled: false, onboarding: "pending" } as Intelligence.Settings,
     environment: "",
+    reasoning: "single" as Intelligence.Reasoning,
+    // The --reasoning flag overrides the saved mode for the server's current run only.
+    flag: "" as "" | Intelligence.Reasoning,
+    // Editing the S1 fields rewrites `settings.evaluator`; single reasoning keeps the last saved one.
+    saved: undefined as Intelligence.Evaluator | undefined,
     principal: "",
     fast: "",
     ...IntelligenceClient.evaluatorPreset(),
@@ -99,7 +104,11 @@ function IntelligenceForm() {
     void run(async () => {
       const result = await client.get()
       if (!active) return
+      const mode = result.effective ?? effective(result.settings, undefined)
       set("settings", result.settings)
+      set("saved", result.settings.evaluator)
+      set("reasoning", mode.reasoning)
+      set("flag", mode.source === "flag" ? mode.reasoning : "")
       set("environment", result.environment)
       set("evaluators", result.evaluators)
       set("principal", value(result.settings.principal))
@@ -119,22 +128,23 @@ function IntelligenceForm() {
   const save = () =>
     run(async () => {
       if (!state.principal) {
-        set("message", language.t("intelligence.setupRequired"))
+        set("message", language.t("settings.intelligence.principalRequired"))
         return
       }
       const client = api()
       const serverURL = server().url
+      // Single reasoning keeps the saved S1 evaluator for a later switch back to dual, without probing it.
+      const dual = state.reasoning === "dual"
       const input = {
         settings: {
           enabled: true,
-          // Saving a tested S1 evaluator here is the explicit choice of dual reasoning.
-          reasoning: "dual" as const,
+          reasoning: state.reasoning,
           onboarding: "completed" as const,
           principal: ref(state.principal),
           ...(state.fast ? { fast: ref(state.fast) } : {}),
-          evaluator: evaluator(),
+          evaluator: dual ? evaluator() : state.saved,
         },
-        ...(state.key ? { apiKey: state.key } : {}),
+        ...(dual && state.key ? { apiKey: state.key } : {}),
       }
       const refs = [input.settings.principal, ...(input.settings.fast ? [input.settings.fast] : [])]
       for (const model of refs.filter((model, index) => index === 0 || value(model) !== value(refs[0]))) {
@@ -144,15 +154,18 @@ function IntelligenceForm() {
           return
         }
       }
-      const check = await client.probe({ evaluator: input.settings.evaluator, apiKey: input.apiKey })
-      if (!check.ok) {
-        set("message", check.message)
-        return
+      if (dual) {
+        const check = await client.probe({ evaluator: evaluator(), apiKey: input.apiKey })
+        if (!check.ok) {
+          set("message", check.message)
+          return
+        }
       }
       if (server().url !== serverURL) return
       const settings = await client.save(input)
       if (server().url !== serverURL) return
       set("settings", settings)
+      set("saved", settings.evaluator)
       server().intelligence.accept(settings)
       set("key", "")
       set("message", language.t("settings.intelligence.saved"))
@@ -170,6 +183,27 @@ function IntelligenceForm() {
         {language.t("settings.intelligence.connect")}
       </Button>
       <fieldset disabled={state.busy || !state.loaded} class="flex flex-col gap-4">
+        <label class="flex flex-col gap-1">
+          <span>{language.t("settings.intelligence.reasoning")}</span>
+          <select
+            class={inputClass}
+            value={state.reasoning}
+            onChange={(event) =>
+              set(
+                "reasoning",
+                Intelligence.Reasoning.literals.find((mode) => mode === event.currentTarget.value) ?? "single",
+              )
+            }
+          >
+            <option value="single">{language.t("settings.intelligence.single")}</option>
+            <option value="dual">{language.t("settings.intelligence.dual")}</option>
+          </select>
+        </label>
+        <Show when={state.flag}>
+          <p class="text-12-regular text-text-weak">
+            {language.t("settings.intelligence.flag", { mode: state.flag })}
+          </p>
+        </Show>
         <For each={["principal", "fast"] as const}>
           {(role) => (
             <label class="flex flex-col gap-1">
@@ -191,88 +225,90 @@ function IntelligenceForm() {
             </label>
           )}
         </For>
-        <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.connection")}</span>
-          <select
-            class={inputClass}
-            value={state.transport}
-            onChange={(event) => {
-              const selected = state.evaluators.find(
-                (option) => option.evaluator.transport === event.currentTarget.value,
-              )
-              if (!selected) return
-              set("transport", selected.evaluator.transport)
-              set("baseURL", selected.evaluator.baseURL)
-              set("model", selected.evaluator.model)
-              set("settings", (settings) => ({ ...settings, evaluator: selected.evaluator }))
-              set("key", "")
-              set("discovered", [])
-            }}
+        <Show when={state.reasoning === "dual"}>
+          <label class="flex flex-col gap-1">
+            <span>{language.t("settings.intelligence.connection")}</span>
+            <select
+              class={inputClass}
+              value={state.transport}
+              onChange={(event) => {
+                const selected = state.evaluators.find(
+                  (option) => option.evaluator.transport === event.currentTarget.value,
+                )
+                if (!selected) return
+                set("transport", selected.evaluator.transport)
+                set("baseURL", selected.evaluator.baseURL)
+                set("model", selected.evaluator.model)
+                set("settings", (settings) => ({ ...settings, evaluator: selected.evaluator }))
+                set("key", "")
+                set("discovered", [])
+              }}
+            >
+              <For each={state.evaluators}>
+                {(option) => (
+                  <option value={option.evaluator.transport}>
+                    {option.configured ? "Connected · " : ""}
+                    {option.name}
+                  </option>
+                )}
+              </For>
+            </select>
+          </label>
+          <Show when={state.transport === "opencode-zen"}>
+            <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.zenNotice")}</p>
+            <a
+              href="https://opencode.ai/zen"
+              target="_blank"
+              rel="noreferrer"
+              class="text-text-interactive-base underline"
+            >
+              {language.t("settings.intelligence.connectZen")}
+            </a>
+          </Show>
+          <label class="flex flex-col gap-1">
+            <span>{language.t("settings.intelligence.url")}</span>
+            <input
+              class={inputClass}
+              value={state.baseURL}
+              onInput={(event) => set("baseURL", event.currentTarget.value)}
+            />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span>{language.t("settings.intelligence.key")}</span>
+            <input
+              type="password"
+              autocomplete="off"
+              class={inputClass}
+              value={state.key}
+              onInput={(event) => set("key", event.currentTarget.value)}
+            />
+          </label>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void run(async () => {
+                const result = await api().discover(probe())
+                set("discovered", result.models)
+                if (result.manual) set("message", language.t("settings.intelligence.manual"))
+              })
+            }
           >
-            <For each={state.evaluators}>
-              {(option) => (
-                <option value={option.evaluator.transport}>
-                  {option.configured ? "Connected · " : ""}
-                  {option.name}
-                </option>
-              )}
-            </For>
-          </select>
-        </label>
-        <Show when={state.transport === "opencode-zen"}>
-          <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.zenNotice")}</p>
-          <a
-            href="https://opencode.ai/zen"
-            target="_blank"
-            rel="noreferrer"
-            class="text-text-interactive-base underline"
-          >
-            {language.t("settings.intelligence.connectZen")}
-          </a>
+            {language.t("settings.intelligence.discover")}
+          </Button>
+          <label class="flex flex-col gap-1">
+            <span>{language.t("settings.intelligence.evaluator")}</span>
+            <input
+              class={inputClass}
+              list="system-one-models"
+              value={state.model}
+              onInput={(event) => set("model", event.currentTarget.value)}
+            />
+            <datalist id="system-one-models">
+              <For each={state.discovered}>{(model) => <option value={model.id}>{model.name}</option>}</For>
+            </datalist>
+          </label>
+          <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.disclosure")}</p>
         </Show>
-        <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.url")}</span>
-          <input
-            class={inputClass}
-            value={state.baseURL}
-            onInput={(event) => set("baseURL", event.currentTarget.value)}
-          />
-        </label>
-        <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.key")}</span>
-          <input
-            type="password"
-            autocomplete="off"
-            class={inputClass}
-            value={state.key}
-            onInput={(event) => set("key", event.currentTarget.value)}
-          />
-        </label>
-        <Button
-          variant="secondary"
-          onClick={() =>
-            void run(async () => {
-              const result = await api().discover(probe())
-              set("discovered", result.models)
-              if (result.manual) set("message", language.t("settings.intelligence.manual"))
-            })
-          }
-        >
-          {language.t("settings.intelligence.discover")}
-        </Button>
-        <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.evaluator")}</span>
-          <input
-            class={inputClass}
-            list="system-one-models"
-            value={state.model}
-            onInput={(event) => set("model", event.currentTarget.value)}
-          />
-          <datalist id="system-one-models">
-            <For each={state.discovered}>{(model) => <option value={model.id}>{model.name}</option>}</For>
-          </datalist>
-        </label>
-        <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.disclosure")}</p>
         <Button onClick={() => void save()}>{language.t("settings.intelligence.activate")}</Button>
       </fieldset>
       <Show when={state.loaded}>
