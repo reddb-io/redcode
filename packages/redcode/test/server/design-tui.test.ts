@@ -1,8 +1,36 @@
+import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { HttpRouter } from "effect/unstable/http"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { tmpdir } from "../fixture/fixture"
+
+const evaluateFixture = (input: { model: string; questions: Record<string, Intelligence.Question> }) => ({
+  model: input.model,
+  usage: { input_tokens: 1, output_tokens: 1 },
+  answers: Object.fromEntries(
+    Object.entries(input.questions).map(([id, question]) => {
+      if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+      if (question.type === "score") {
+        const score = question.criteria.length - 1
+        return [
+          id,
+          {
+            type: "score",
+            score,
+            confidence: 1,
+            probabilities: { [score]: 1 },
+            legend: Object.fromEntries(question.criteria.map((criterion, index) => [index, criterion])),
+          },
+        ]
+      }
+      const choice =
+        Object.keys(question.criteria).find((label) => label.startsWith("no_matching_")) ??
+        Object.keys(question.criteria)[0]!
+      return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+    }),
+  ),
+})
 
 /** Exercises the legacy session HTTP boundary used by the fullscreen TUI. */
 test("TUI session creates, reviews and approves the new Design artifacts in the same conversation", async () => {
@@ -11,6 +39,7 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     hostname: "127.0.0.1",
     async fetch(request) {
       const input = await request.json()
+      if (new URL(request.url).pathname === "/v1/systemone") return Response.json(evaluateFixture(input))
       if (!input.stream)
         return Response.json({
           id: "fixture",
@@ -47,7 +76,17 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
       }),
       HttpApiApp.context,
     )
+  const previous = await (await request("/api/intelligence")).json()
   try {
+    const configured = await request("/api/intelligence", "PUT", {
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: "fixture", id: "fixture" },
+        evaluator: { transport: "typesafe", model: "jev-test", baseURL: model.url.origin + "/v1" },
+      },
+    })
+    expect(configured.status).toBe(200)
     const created = await request("/session", "POST", { agent: "design" })
     expect(created.status).toBe(200)
     const session = await created.json()
@@ -207,6 +246,7 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
       ),
     ).toBe(true)
   } finally {
+    await request("/api/intelligence", "PUT", { settings: previous.settings })
     await server.dispose()
     await model.stop(true)
   }
@@ -363,6 +403,7 @@ test("legacy feed reports a variant operation pending while an earlier turn work
     hostname: "127.0.0.1",
     async fetch(request) {
       const input = await request.json()
+      if (new URL(request.url).pathname === "/v1/systemone") return Response.json(evaluateFixture(input))
       if (!input.stream)
         return Response.json({
           id: "fixture",
@@ -439,7 +480,18 @@ test("legacy feed reports a variant operation pending while an earlier turn work
     }
   }
   const feeds: { close: () => Promise<void> }[] = []
+  const previous = await (await request("/api/intelligence")).json()
   try {
+    const configured = await request("/api/intelligence", "PUT", {
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: "fixture", id: "fixture" },
+        evaluator: { transport: "typesafe", model: "jev-test", baseURL: model.url.origin + "/v1" },
+      },
+    })
+    expect(configured.status).toBe(200)
+
     const session = await (await request("/session", "POST", { agent: "design" })).json()
     const root = `/design/session/${session.id}`
     const document = await (
@@ -505,6 +557,7 @@ test("legacy feed reports a variant operation pending while an earlier turn work
   } finally {
     release.resolve()
     for (const feed of feeds) await feed.close()
+    await request("/api/intelligence", "PUT", { settings: previous.settings })
     await server.dispose()
     await model.stop(true)
   }

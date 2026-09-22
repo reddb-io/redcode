@@ -91,7 +91,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
+        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
 
       - name: Check generated client
         working-directory: packages/client
@@ -145,7 +145,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
+        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
 
   # The largest suite, split by recorded per-file durations (packages/redcode/test/timings.json)
   # so the three shards finish together. Refresh the file with

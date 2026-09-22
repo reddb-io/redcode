@@ -273,6 +273,7 @@ const modelLimits = ModelLimit.memoryLayer()
 type Evaluation = NonNullable<Effect.Success<ReturnType<Intelligence.Interface["evaluate"]>>>
 let intelligenceEvaluations: Evaluation[] = []
 let intelligenceInputs: Intelligence.EvaluationInput[] = []
+let intelligenceModel = "jev-test"
 const acceptRequiredGate: Intelligence.Interface["evaluate"] = (input) =>
   Effect.succeed(
     input.kind === "classification" || input.operation === "response_quality" || input.operation === "tool_usage"
@@ -288,7 +289,7 @@ const intelligence = Layer.succeed(
         enabled: true,
         onboarding: "completed",
         principal: { providerID: ProviderV2.ID.make("fake"), id: ModelV2.ID.make("fake-model") },
-        evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },
+        evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: intelligenceModel },
       }),
     save: (input) => Effect.succeed(input.settings),
     options: () => Effect.succeed([]),
@@ -435,6 +436,7 @@ const setup = Effect.gen(function* () {
   maxActiveToolExecutions = 0
   intelligenceEvaluations = []
   intelligenceInputs = []
+  intelligenceModel = "jev-test"
   intelligenceEvaluate = acceptRequiredGate
   // A provider rejection is remembered for the process; tests must not inherit each other's.
   NativeToolSearch.reset()
@@ -584,7 +586,9 @@ const evaluated = (
   issues: string[] = [],
 ): Evaluation => ({
   id: `evaluation-${intelligenceEvaluations.length + 1}`,
-  fingerprint: `fingerprint-${intelligenceEvaluations.length + 1}`,
+  fingerprint: Intelligence.evaluationFingerprint(input, {
+    evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: intelligenceModel },
+  }),
   sessionID: input.sessionID,
   operation: input.operation,
   kind: input.kind ?? "gate",
@@ -1026,6 +1030,43 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
       expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(2)
       expect(JSON.stringify(requests.at(-1)?.system)).toContain("<user-request-assessment>")
+    }),
+  )
+
+  it.effect("reuses exact durable classification and invalidates changed evaluators or policy fingerprints", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          evaluated(
+            input,
+            "accepted",
+            input.operation === "prompt_classification" ? promptAnswers : responseAnswers(0),
+          ),
+        )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Review this implementation" }), resume: false })
+      responses = [fragmentFixture("text", "first-evaluation", ["Reviewed."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(1)
+
+      responses = [fragmentFixture("text", "reused-evaluation", ["Still reviewed."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(1)
+
+      intelligenceModel = "jev-updated"
+      responses = [fragmentFixture("text", "changed-evaluator", ["Reviewed again."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(2)
+
+      intelligenceEvaluations = intelligenceEvaluations.map((evaluation) =>
+        evaluation.operation === "prompt_classification"
+          ? { ...evaluation, fingerprint: "obsolete-policy-fingerprint", policy: "obsolete-policy" }
+          : evaluation,
+      )
+      responses = [fragmentFixture("text", "changed-policy", ["Rechecked current policy."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(3)
     }),
   )
 

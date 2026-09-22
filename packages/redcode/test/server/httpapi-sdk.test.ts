@@ -8,6 +8,7 @@ import { ChildProcessSpawner } from "effect/unstable/process"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { createRedcodeClient } from "@reddb-io/redcode-sdk/v2"
@@ -33,7 +34,14 @@ import { httpApiLayer } from "./httpapi-layer"
 
 const noopBootstrapLayer = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const appLayer = AppNodeBuilder.build(
-  LayerNode.group([FSUtil.node, CrossSpawnSpawner.node, InstanceStore.node, Database.node, SessionNs.node]),
+  LayerNode.group([
+    FSUtil.node,
+    CrossSpawnSpawner.node,
+    InstanceStore.node,
+    Database.node,
+    SessionNs.node,
+    Intelligence.node,
+  ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
 )
 const it = testEffect(Layer.mergeAll(appLayer, httpApiLayer))
@@ -54,6 +62,7 @@ type TestServices =
   | ChildProcessSpawner.ChildProcessSpawner
   | InstanceStore.Service
   | SessionNs.Service
+  | Intelligence.Service
   | HttpServer.HttpServer
 type TestScope = Scope.Scope | TestServices
 
@@ -251,6 +260,7 @@ function withStandardProject<A, E>(
 function withFakeLlm<A, E>(serverPath: ServerPath, run: (input: LlmProjectFixture) => Effect.Effect<A, E, TestScope>) {
   return Effect.gen(function* () {
     const llm = yield* TestLLMServer
+    yield* configureIntelligence(llm.url)
     return yield* withProject(serverPath, { config: testProviderConfig(llm.url) }, (input) => run({ ...input, llm }))
   }).pipe(Effect.provide(TestLLMServer.layer))
 }
@@ -262,6 +272,7 @@ function withFakeLlmProject<A, E>(
 ) {
   return Effect.gen(function* () {
     const llm = yield* TestLLMServer
+    yield* configureIntelligence(llm.url)
     return yield* withProject(
       serverPath,
       {
@@ -271,6 +282,21 @@ function withFakeLlmProject<A, E>(
       (input) => run({ ...input, llm }),
     )
   }).pipe(Effect.provide(TestLLMServer.layer))
+}
+
+function configureIntelligence(url: string) {
+  return Effect.gen(function* () {
+    const intelligence = yield* Intelligence.Service
+    yield* Effect.acquireRelease(intelligence.read(), (settings) => intelligence.save({ settings }).pipe(Effect.orDie))
+    yield* intelligence.save({
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+        evaluator: { transport: "typesafe", model: "jev-test", baseURL: url },
+      },
+    })
+  })
 }
 
 function writeStandardFiles(dir: string) {

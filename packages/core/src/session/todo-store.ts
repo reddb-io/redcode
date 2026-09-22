@@ -40,7 +40,8 @@ const make = Effect.gen(function* () {
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
     if (!incoming.length) return yield* get(input.sessionID)
-    yield* Intelligence.requireConfigured(yield* intelligence.read()).pipe(
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     const observed = yield* facts.load(input.sessionID)
@@ -400,7 +401,8 @@ const make = Effect.gen(function* () {
       return yield* new SessionTodo.Error({
         message: "Task sources changed during evaluation; retry with current evidence",
       })
-    yield* Intelligence.requireConfigured(yield* intelligence.read()).pipe(
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     // Network evaluation is outside the transaction; recheck the baseline before writing.

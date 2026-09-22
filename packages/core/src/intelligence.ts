@@ -119,6 +119,9 @@ export const fingerprint = (value: unknown) =>
     .update(JSON.stringify(value) ?? "undefined")
     .digest("hex")
 
+export const evaluationFingerprint = (input: EvaluationInput, settings: Pick<Intelligence.Settings, "evaluator">) =>
+  fingerprint({ ...input, evaluator: settings.evaluator, policy: POLICY })
+
 export const isReady = (settings: Intelligence.Settings) =>
   Boolean(
     settings.enabled &&
@@ -529,7 +532,7 @@ export const make = (
     const evaluate = Effect.fn("Intelligence.evaluate")(function* (input: EvaluationInput) {
       const settings = yield* read()
       if (!settings.enabled) return undefined
-      const hash = fingerprint({ ...input, evaluator: settings.evaluator, policy: POLICY })
+      const hash = evaluationFingerprint(input, settings)
       const cached = cache.get(hash)
       if (cached) return cached
       const id = randomUUID()

@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { LLM } from "@reddb-io/redcode-llm"
+import { LLM, ModelID } from "@reddb-io/redcode-llm"
 import { LLMClient } from "@reddb-io/redcode-llm/route"
 import { DateTime, Effect, Layer } from "effect"
 import { Headers } from "effect/unstable/http"
@@ -425,8 +425,8 @@ resolver.effect("requires both roles in the real resolver and honors System Two 
           evaluator: { transport: "typesafe", baseURL: "https://resolver.test/v1", model: "jev-test" },
         },
       })
-      expect((yield* models.resolve(session)).id).toBe("api-system-two")
-      expect((yield* models.resolve({ ...session, model: override })).id).toBe("api-explicit")
+      expect((yield* models.resolve(session)).id).toBe(ModelID.make("api-system-two"))
+      expect((yield* models.resolve({ ...session, model: override })).id).toBe(ModelID.make("api-explicit"))
     }).pipe(Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)))
   }),
 )

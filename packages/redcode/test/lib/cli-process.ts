@@ -23,8 +23,9 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppProcess } from "@reddb-io/redcode-core/process"
+import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { decode, encode } from "@reddb-io/toon"
-import { Deferred, Duration, Effect, Layer, Queue, Schedule, Scope, Stream } from "effect"
+import { Deferred, Duration, Effect, Layer, Queue, Schedule, Schema, Scope, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
 import path from "node:path"
@@ -224,6 +225,7 @@ export type CliFixture = {
 // the surrounding Scope.
 export function withCliFixture<A, E>(
   fn: (input: CliFixture) => Effect.Effect<A, E, Scope.Scope | HttpClient.HttpClient>,
+  options?: { intelligence?: boolean },
 ): Effect.Effect<A, E | unknown, Scope.Scope> {
   return Effect.gen(function* () {
     const llm = yield* TestLLMServer
@@ -239,6 +241,22 @@ export function withCliFixture<A, E>(
 
     const configJson = JSON.stringify(testProviderConfig(llm.url))
     const env = isolatedEnv(home, configJson)
+    // Prompt scenarios opt into configured roles in the child's isolated home. Setup and
+    // onboarding scenarios keep the unconfigured default, so the production gate stays real.
+    if (options?.intelligence) {
+      const directory = path.join(home, ".red", "code")
+      yield* fs.ensureDir(directory)
+      yield* fs.writeJson(
+        path.join(directory, "intelligence.json"),
+        Schema.decodeUnknownSync(Intelligence.Settings)({
+          enabled: true,
+          onboarding: "completed",
+          principal: { providerID: "test", id: "test-model" },
+          evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },
+        }),
+        0o600,
+      )
+    }
 
     const spawn = Effect.fn("opencode.spawn")(function* (args: string[], opts?: SpawnOpts) {
       const start = Date.now()
@@ -607,6 +625,11 @@ function expectExit(result: RunResult, expected: number, label = "opencode") {
 // resources (e.g. `opencode.serve`) without an extra `Effect.scoped` wrapper —
 // `withCliFixture`'s outer scope is the natural lifetime.
 export const cliIt = {
+  withIntelligence: <A, E>(
+    name: string,
+    body: (input: CliFixture) => Effect.Effect<A, E, Scope.Scope | HttpClient.HttpClient>,
+    opts?: number | TestOptions,
+  ) => it.live(name, () => withCliFixture(body, { intelligence: true }), opts),
   live: <A, E>(
     name: string,
     body: (input: CliFixture) => Effect.Effect<A, E, Scope.Scope | HttpClient.HttpClient>,

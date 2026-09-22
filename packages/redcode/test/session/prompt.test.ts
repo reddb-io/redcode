@@ -7,6 +7,7 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -122,14 +123,15 @@ const intelligence = Layer.effect(
                     id,
                     {
                       type: "score",
-                      score: 1,
+                      score: question.criteria.length - 1,
                       confidence: 1,
-                      probabilities: { "1": 1 },
+                      probabilities: { [question.criteria.length - 1]: 1 },
                       legend: Object.fromEntries(question.criteria.map((text, index) => [index, text])),
                     },
                   ]
                 const choice =
-                  "no_matching_skill" in question.criteria ? "no_matching_skill" : Object.keys(question.criteria)[0]!
+                  Object.keys(question.criteria).find((label) => label.startsWith("no_matching_")) ??
+                  Object.keys(question.criteria)[0]!
                 return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
               }),
             ),
@@ -152,7 +154,7 @@ const intelligence = Layer.effect(
   }),
 )
 
-const intelligenceNode = LayerNode.make({ service: Intelligence.Service, layer: intelligence, deps: [Database.node] })
+const intelligenceNode = makeGlobalNode({ service: Intelligence.Service, layer: intelligence, deps: [Database.node] })
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -309,6 +311,7 @@ const flakyContext = LayerNode.make({
 const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
 
 const promptRoot = LayerNode.group([
+  Intelligence.node,
   DesignStudio.node,
   SessionPlan.node,
   SessionPrompt.node,

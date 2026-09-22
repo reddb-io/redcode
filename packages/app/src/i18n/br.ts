@@ -1,6 +1,7 @@
 import { designGoalDictionary } from "./design-goal"
 
 export const dict = {
+  ...designGoalDictionary("br"),
   "intelligence.details": "System One / System Two",
   "intelligence.systemOne": "S1 · avaliador",
   "intelligence.systemTwo": "S2 · modelo em uso",
@@ -21,7 +22,6 @@ export const dict = {
   "intelligence.subject": "Prompt: {{id}}",
   "settings.intelligence.operation.tool_usage": "Uso de ferramentas",
   "settings.intelligence.operation.goal_completion": "Conclusão do objetivo",
-  ...designGoalDictionary("br"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Arquivo",
   "desktop.menu.edit": "Editar",

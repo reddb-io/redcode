@@ -1228,7 +1228,7 @@ describe("session.compaction.process", () => {
     })
   }
 
-  itCompaction.instance("commits a summary cut off by the output limit", () => {
+  itCompaction.instance("rejects output-limited checkpoints missing required sections", () => {
     const stub = llm()
     stub.push(reply("Partial checkpoint", undefined, "length"))
     return Effect.gen(function* () {
@@ -1243,13 +1243,13 @@ describe("session.compaction.process", () => {
         sessionID: session.id,
         auto: true,
       })
-      expect(result).toBe("continue")
+      expect(result).toBe("stop")
       const all = yield* ssn.messages({ sessionID: session.id })
       const checkpoint = all.find((message) => message.info.role === "assistant" && message.info.summary)
-      expect(checkpoint?.info).toMatchObject({ finish: "length", summary: true })
-      expect((checkpoint?.info as { error?: unknown }).error).toBeUndefined()
+      expect(checkpoint?.info).toMatchObject({ finish: "error", summary: true })
+      expect((checkpoint?.info as { error?: unknown }).error).toBeDefined()
       const visible = MessageV2.filterCompacted([...all].reverse())
-      expect(visible.some((message) => message.info.id === original.id)).toBe(false)
+      expect(visible.some((message) => message.info.id === original.id)).toBe(true)
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
   })
 
@@ -1283,7 +1283,7 @@ describe("session.compaction.process", () => {
     }),
   )
 
-  it.instance(
+  itCompaction.instance(
     "publishes compacted event on continue",
     Effect.gen(function* () {
       const events = yield* EventV2Bridge.Service
@@ -1315,7 +1315,7 @@ describe("session.compaction.process", () => {
       expect(result).toBe("continue")
       expect(seen).toContain(SessionCompaction.Event.Compacted.type)
       expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
-    }),
+    }).pipe(withCompaction()),
   )
 
   itCompaction.instance(
@@ -1346,7 +1346,7 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ result: "compact" })),
   )
 
-  it.instance(
+  itCompaction.instance(
     "adds synthetic continue prompt when auto is enabled",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1375,7 +1375,7 @@ describe("session.compaction.process", () => {
       if (last?.parts[0]?.type === "text") {
         expect(last.parts[0].text).toContain("Continue the user's latest request.")
       }
-    }),
+    }).pipe(withCompaction()),
   )
 
   itCompaction.instance(
@@ -1578,7 +1578,7 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ plugin: autocontinue(false) })),
   )
 
-  it.instance(
+  itCompaction.instance(
     "replays the prior user turn on overflow when earlier context exists",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1613,10 +1613,10 @@ describe("session.compaction.process", () => {
       expect(
         last?.parts.some((part) => part.type === "text" && part.text.includes("Attached image/png: cat.png")),
       ).toBe(true)
-    }),
+    }).pipe(withCompaction()),
   )
 
-  it.instance(
+  itCompaction.instance(
     "falls back to overflow guidance when no replayable turn exists",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1646,8 +1646,55 @@ describe("session.compaction.process", () => {
       if (last?.parts[0]?.type === "text") {
         expect(last.parts[0].text).toContain("previous request exceeded the provider's context limit")
       }
-    }),
+    }).pipe(withCompaction()),
   )
+
+  itCompaction.instance("retries a transient summary failure before evaluating and publishing the checkpoint", () => {
+    const stub = llm()
+    stub.push(
+      Stream.fail(
+        new APICallError({
+          message: "temporarily unavailable",
+          url: "https://example.com/v1/chat/completions",
+          requestBodyValues: {},
+          statusCode: 503,
+          responseHeaders: { "retry-after-ms": "1" },
+          responseBody: '{"error":"temporarily unavailable"}',
+          isRetryable: true,
+        }),
+      ),
+    )
+    stub.push(reply("Parser inspected; tests remain pending."))
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const events = yield* EventV2Bridge.Service
+      const session = yield* ssn.create({})
+      const retries: number[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type !== SessionStatus.Event.Status.type) return Effect.void
+        const data = event.data as typeof SessionStatus.Event.Status.data.Type
+        if (data.sessionID === session.id && data.status.type === "retry") retries.push(data.status.attempt)
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => off)
+      yield* createUserMessage(session.id, "Inspect the parser and preserve its tests. ".repeat(100))
+      yield* createSummaryCompaction(session.id)
+      const messages = yield* ssn.messages({ sessionID: session.id })
+      expect(
+        yield* SessionCompaction.use.process({
+          parentID: messages.at(-1)!.info.id,
+          messages,
+          sessionID: session.id,
+          auto: true,
+        }),
+      ).toBe("continue")
+      expect(retries).toEqual([1])
+      const intelligence = yield* Intelligence.Service
+      expect(
+        (yield* intelligence.history(session.id)).filter((record) => record.operation === "compaction"),
+      ).toHaveLength(1)
+    }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
+  })
 
   itCompaction.instance(
     "stops quickly when aborted during retry backoff",

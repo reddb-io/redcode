@@ -46,7 +46,8 @@ const make = Effect.gen(function* () {
   })
 
   const propose = Effect.fn("SessionGoalCompletion.propose")(function* (input: Candidate) {
-    yield* Intelligence.requireConfigured(yield* intelligence.read()).pipe(
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new ToolFailure({ message: error.message })),
     )
     const current = yield* goals.get(input.goal.sessionID)
@@ -81,7 +82,8 @@ const make = Effect.gen(function* () {
         message: "Evidence changed before the turn settled. Verify the current files again.",
       })
     yield* check(sessionID)
-    yield* Intelligence.requireConfigured(yield* intelligence.read()).pipe(
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new ToolFailure({ message: error.message })),
     )
     return yield* goals.save(candidate.goal, {

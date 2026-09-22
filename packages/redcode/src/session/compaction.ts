@@ -11,6 +11,7 @@ import { Provider } from "@/provider/provider"
 import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
+import { SessionRetry } from "./retry"
 import { LLM } from "./llm"
 import { LLMEvent, isContextOverflowFailure } from "@reddb-io/redcode-llm"
 import { AuxDeadline } from "./aux-deadline"
@@ -1072,9 +1073,23 @@ const layer = Layer.effect(
      * a cut-off answer. An interruption is not caught, so a person's abort still stops it.
      */
     const collect = Effect.fnUntraced(function* (stream: LLM.StreamInput, model: Provider.Model) {
-      const outcome = yield* llm.stream(stream).pipe(
-        Stream.runCollect,
-        Effect.map((events) => ({ events: Array.from(events), error: undefined as unknown })),
+      const outcome = yield* Effect.suspend(() =>
+        llm.stream(stream).pipe(
+          Stream.runCollect,
+          Effect.flatMap((events) => {
+            const error = events.find(LLMEvent.is.providerError)
+            return error ? Effect.fail(error) : Effect.succeed(Array.from(events))
+          }),
+        ),
+      ).pipe(
+        Effect.retry(
+          SessionRetry.policy({
+            provider: model.providerID,
+            parse: (error) => MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id }),
+            set: (info) => status.set(SessionID.make(stream.sessionID), { type: "retry", ...info }),
+          }),
+        ),
+        Effect.map((events) => ({ events, error: undefined as unknown })),
         Effect.catch((error: unknown) => Effect.succeed({ events: [] as LLMEvent[], error })),
       )
       const rejected = outcome.error ?? outcome.events.find(LLMEvent.is.providerError)

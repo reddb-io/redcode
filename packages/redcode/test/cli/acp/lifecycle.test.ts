@@ -49,7 +49,7 @@ describe("opencode acp lifecycle subprocess", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "governed child cancellation stays bound to the parent session",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {

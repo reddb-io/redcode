@@ -6,7 +6,7 @@ import { reply } from "../../lib/llm-server"
 import { cliIt } from "../../lib/cli-process"
 
 describe("redcode run --verbose", () => {
-  cliIt.live(
+  cliIt.withIntelligence(
     "prints the boot trace, then the activity trace, and never a credential",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -83,7 +83,7 @@ describe("redcode run --verbose", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "a permission ask names the program, never the command a credential may be in",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
@@ -115,7 +115,7 @@ describe("redcode run --verbose", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "the trace's environment never reaches a process the bash tool spawns",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
@@ -143,7 +143,7 @@ describe("redcode run --verbose", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "REDCODE_VERBOSE=1 enables the same trace as the flag, and a stricter log level does not hide it",
     ({ llm, opencode }) =>
       Effect.gen(function* () {

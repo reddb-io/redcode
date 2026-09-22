@@ -211,6 +211,7 @@ const lsp = Layer.succeed(
   }),
 )
 const promptRoot = LayerNode.group([
+  Intelligence.node,
   DesignStudio.node,
   SessionPlan.node,
   SessionPrompt.node,
