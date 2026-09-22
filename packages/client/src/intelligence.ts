@@ -34,6 +34,8 @@ export function make(options: Parameters<typeof makeClient>[0] & { signal?: Abor
       input: {
         sessionID?: string
         operation?: Intelligence.Operation
+        subjectID?: string
+        candidateID?: string
         decision?: Intelligence.Evaluation["decision"]
         limit?: number
         offset?: number

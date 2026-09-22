@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { DesignStudio } from "../../src/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
@@ -94,6 +95,64 @@ import { Location } from "@reddb-io/redcode-core/location"
 import { PluginV2 } from "@reddb-io/redcode-core/plugin"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { define, Operation } from "@reddb-io/redcode-plugin/v2/effect"
+
+const intelligence = Layer.effect(
+  Intelligence.Service,
+  Effect.gen(function* () {
+    const directory = path.join(process.env.XDG_CACHE_HOME!, "prompt-intelligence", crypto.randomUUID())
+    const database = yield* Database.Service
+    const service = yield* Intelligence.make(
+      path.join(directory, ".test-intelligence"),
+      {
+        get: () => Effect.succeed(undefined),
+        list: () => Effect.succeed([]),
+        create: () => Effect.die("unused"),
+      },
+      Object.assign(
+        async (_request: string | URL | Request, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body)) as { questions: typeof Intelligence.promptQuestions }
+          return Response.json({
+            model: "jev-test",
+            usage: { input_tokens: 1, output_tokens: 1 },
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => {
+                if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+                if (question.type === "score")
+                  return [
+                    id,
+                    {
+                      type: "score",
+                      score: 1,
+                      confidence: 1,
+                      probabilities: { "1": 1 },
+                      legend: Object.fromEntries(question.criteria.map((text, index) => [index, text])),
+                    },
+                  ]
+                const choice =
+                  "no_matching_skill" in question.criteria ? "no_matching_skill" : Object.keys(question.criteria)[0]!
+                return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+              }),
+            ),
+          })
+        },
+        { preconnect() {} },
+      ),
+      {},
+      database.db,
+    )
+    yield* service.save({
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+        evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },
+      },
+    })
+    return service
+  }),
+)
+
+const intelligenceNode = LayerNode.make({ service: Intelligence.Service, layer: intelligence, deps: [Database.node] })
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -299,6 +358,7 @@ const promptRoot = LayerNode.group([
 
 function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
   const replacements = [
+    [Intelligence.node, intelligenceNode],
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions)],
@@ -320,6 +380,7 @@ function makeHttp(input?: {
 }) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
+    [Intelligence.node, intelligenceNode],
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure, input?.mcpTools)],
@@ -555,6 +616,64 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
 })
 
 // Loop semantics
+
+it.instance("requires both model roles before execution while retaining admitted prompts", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const settings = yield* service.read()
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* service.save({ settings: { ...settings, enabled: false } })
+    yield* Effect.gen(function* () {
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        noReply: true,
+        parts: [{ type: "text", text: "Keep this request until setup completes" }],
+      })
+      const result = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.exit)
+      expect(Exit.isFailure(result)).toBe(true)
+      expect(Exit.isFailure(result) ? Cause.pretty(result.cause) : "").toContain("System One")
+      expect(yield* llm.calls).toBe(0)
+      expect(
+        (yield* sessions.messages({ sessionID: chat.id })).some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text === "Keep this request until setup completes"),
+        ),
+      ).toBe(true)
+    }).pipe(Effect.ensuring(service.save({ settings })))
+  }),
+)
+
+it.instance("persists classifications for every promoted legacy prompt using real intelligence storage", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const first = yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "Inspect this implementation" }],
+    })
+    const second = yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "Report your findings before changing it" }],
+    })
+    yield* llm.text("The implementation was inspected.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const history = yield* service.history(chat.id)
+    expect(
+      history
+        .filter((evaluation) => evaluation.operation === "prompt_classification")
+        .map((evaluation) => evaluation.subjectID)
+        .toSorted(),
+    ).toEqual([first.info.id, second.info.id].toSorted())
+    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(true)
+  }),
+)
 
 noLLMServer.instance(
   "loop exits immediately when last assistant has stop finish",
@@ -6366,6 +6485,7 @@ STORED BASELINE MARKER`,
     // A second service graph on the same database, the way a restarted process would build one.
     const restarted = yield* Layer.build(
       AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [Intelligence.node, intelligenceNode],
         [SessionSummary.node, summary],
         [LSP.node, lsp],
         [MCP.node, makeMcp()],
@@ -6614,6 +6734,7 @@ it.instance("a restart between a compaction and the next turn still replaces the
 
     const restarted = yield* Layer.build(
       AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [Intelligence.node, intelligenceNode],
         [SessionSummary.node, summary],
         [LSP.node, lsp],
         [MCP.node, makeMcp()],
@@ -7573,6 +7694,7 @@ it.instance(
       // instead of compacting again.
       const restarted = yield* Layer.build(
         AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+          [Intelligence.node, intelligenceNode],
           [SessionSummary.node, summary],
           [LSP.node, lsp],
           [MCP.node, makeMcp()],

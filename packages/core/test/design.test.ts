@@ -2,6 +2,8 @@ import { describe, expect } from "bun:test"
 import path from "node:path"
 import { Effect } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import { chromium } from "playwright-core"
 import { designDependencies } from "./fixture/design-dependencies"
@@ -26,13 +28,15 @@ import { ProjectTable } from "../src/project/sql"
 import { SessionTable } from "../src/session/sql"
 import { SessionV2 } from "../src/session"
 import { SessionMessage } from "../src/session/message"
+import { Intelligence } from "../src/intelligence"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([DesignStore.node, DesignRenderer.node, Database.node, Location.node]), [
-    [Location.node, tempLocationLayer],
-  ]),
+  AppNodeBuilder.build(
+    LayerNode.group([DesignStore.node, DesignRenderer.node, Database.node, Location.node, Intelligence.node]),
+    [[Location.node, tempLocationLayer]],
+  ),
 )
 const setup = Effect.gen(function* () {
   const database = yield* Database.Service
@@ -198,9 +202,9 @@ describe("Design revisions and review", () => {
       expect(file).toContain("Draft")
       expect(file).toContain("not approved")
       // The snapshot section keeps its own rule: no capture, not-found.
-      expect(
-        (yield* store.readApproval({ id: document.id, section: "snapshot" }).pipe(Effect.flip)).code,
-      ).toBe("not-found")
+      expect((yield* store.readApproval({ id: document.id, section: "snapshot" }).pipe(Effect.flip)).code).toBe(
+        "not-found",
+      )
       // Approval freezes the same revision and the wording flips to the approved one.
       yield* store.approve(document.id, first.id)
       expect(yield* store.readApproval({ id: document.id, section: "feedback" })).toContain("Approved revision")
@@ -467,6 +471,42 @@ describe("Design revisions and review", () => {
       }),
     240000,
   )
+  it.effect("disabled S1 preserves notes when an agent update is blocked and allows reviewer acceptance", () =>
+    Effect.gen(function* () {
+      const { store, document } = yield* setup
+      const intelligence = yield* Intelligence.Service
+      yield* Effect.acquireRelease(intelligence.read(), (settings) =>
+        intelligence.save({ settings }).pipe(Effect.orDie),
+      )
+      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      const revision = yield* store.publish(document.id, "Review")
+      const feedback: Design.Feedback = {
+        id: SessionMessage.ID.create(),
+        revision: revision.id,
+        text: "",
+        items: [{ target: "#checkout", text: "Keep the current layout", label: "Checkout" }],
+        assets: [],
+        snapshot: "",
+        delivery: "queue",
+        end: false,
+      }
+      yield* store.prepareFeedback(document.id, feedback)
+      yield* store.acknowledge(document.id, feedback)
+      const before = yield* store.get(document.id)
+      const notes = [
+        { feedback: feedback.id, index: 1, status: "accepted" as const, reason: "Keep the current layout" },
+      ]
+      const refused = yield* store.update(document.id, { notes }).pipe(Effect.result)
+      expect(refused).toMatchObject({ _tag: "Failure" })
+      expect(JSON.stringify(refused)).toContain("Semantic evaluation unavailable")
+      expect((yield* store.get(document.id)).notes).toEqual(before.notes)
+      expect((yield* store.update(document.id, { notes, by: "reviewer" })).notes?.[0]).toMatchObject({
+        status: "accepted",
+        reason: "Keep the current layout",
+        by: "reviewer",
+      })
+    }),
+  )
   it.live(
     "verifies a feedback round note by note: focused before/after captures, scoped checks and a missing element",
     () =>
@@ -597,6 +637,38 @@ describe("Design revisions and review", () => {
           .pipe(Effect.result)
         expect(JSON.stringify(missing)).toContain("did not find its element")
         expect((yield* store.get(document.id)).notes?.every((note) => note.status === "open")).toBe(true)
+        const intelligence = yield* Intelligence.Service
+        yield* Effect.acquireRelease(intelligence.read(), (settings) =>
+          intelligence.save({ settings }).pipe(Effect.orDie),
+        )
+        const calls: string[] = []
+        const evaluator = yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            Bun.serve({
+              port: 0,
+              fetch: async (request) => {
+                const body = (await request.json()) as { questions: Record<string, unknown> }
+                calls.push(JSON.stringify(body))
+                return Response.json({
+                  model: "jev",
+                  answers: Object.fromEntries(
+                    Object.keys(body.questions).map((id) => [id, { type: "noul", noul: 0.01 }]),
+                  ),
+                  usage: { input_tokens: 10, output_tokens: 0 },
+                })
+              },
+            }),
+          ),
+          (server) => Effect.sync(() => server.stop(true)),
+        )
+        yield* intelligence.save({
+          settings: {
+            enabled: true,
+            onboarding: "completed",
+            principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("fixture") },
+            evaluator: { transport: "typesafe", model: "jev", baseURL: `${evaluator.url}v1` },
+          },
+        })
         // Statuses cite the job; the evidence records what it saw for each note.
         const updated = yield* store.update(document.id, {
           notes: [
@@ -612,6 +684,13 @@ describe("Design revisions and review", () => {
         expect(updated.notes?.[0]).toMatchObject({
           status: "resolved",
           evidence: { job: job.id, revision: second.id, capture: title.after, findings: title.findings },
+        })
+        expect(calls).toHaveLength(1)
+        expect(calls[0]).toContain("Say whose checkout it is")
+        expect(calls[0]).toContain(job.id)
+        expect((yield* intelligence.history(document.sessionID))[0]).toMatchObject({
+          operation: "design_completion",
+          decision: "accepted",
         })
         // Restoring an older revision keeps the review's rounds and statuses: they are not part of the snapshot.
         const restored = yield* store.restore(document.id, first.id)

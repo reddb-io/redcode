@@ -240,6 +240,8 @@ test("configured setup can edit System Two without walking through System One", 
     await wait(() => setup.app.captureCharFrame().includes("Change System Two models"))
     const welcome = setup.app.captureCharFrame()
     expect(welcome).toContain("Change System One evaluator")
+    expect(welcome).not.toContain("Later")
+    expect(welcome).not.toContain("Disable semantic evaluation")
     expect(welcome).toContain("mock/model")
     expect(welcome).toContain("opencode-zen/jev-1.13-fr")
 
@@ -293,7 +295,9 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
     await setup.app.mockInput.pressEnter()
     await wait(
-      () => setup.app.captureCharFrame().includes("System One connection") && setup.app.captureCharFrame().includes("OpenRouter"),
+      () =>
+        setup.app.captureCharFrame().includes("System One connection") &&
+        setup.app.captureCharFrame().includes("OpenRouter"),
     )
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()

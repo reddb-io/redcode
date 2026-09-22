@@ -1,6 +1,7 @@
 import { NodeHttpServer, NodeHttpServerRequest } from "@effect/platform-node"
 import * as Http from "node:http"
-import { Deferred, Effect, Layer, Context, Stream } from "effect"
+import { Deferred, Effect, Layer, Context, Stream, Schema } from "effect"
+import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import * as HttpServer from "effect/unstable/http/HttpServer"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 
@@ -824,6 +825,56 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
       yield* router.add("POST", "/v1/chat/completions", handle("chat"))
       yield* router.add("POST", "/v1/responses", handle("responses"))
       yield* router.add("POST", "/v1/messages", handle("messages"))
+      // Explicitly configured integration fixtures use the real S1 HTTP protocol. These calls
+      // have their own role and must not consume S2 replies or advance its request counter.
+      yield* router.add(
+        "POST",
+        "/v1/systemone",
+        Effect.gen(function* () {
+          const req = yield* HttpServerRequest.HttpServerRequest
+          const body = yield* req.json.pipe(
+            Effect.flatMap(
+              Schema.decodeUnknownEffect(
+                Schema.Struct({
+                  model: Schema.String,
+                  questions: Schema.Record(Schema.String, Intelligence.Question),
+                }),
+              ),
+            ),
+            Effect.orDie,
+          )
+          return HttpServerResponse.text(
+            JSON.stringify({
+              model: body.model,
+              answers: Object.fromEntries(
+                Object.entries(body.questions).map(([id, question]) => {
+                  if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+                  if (question.type === "score") {
+                    const score = question.criteria.length - 1
+                    return [
+                      id,
+                      {
+                        type: "score",
+                        score,
+                        confidence: 1,
+                        probabilities: { [score]: 1 },
+                        legend: Object.fromEntries(
+                          question.criteria.map((criterion, index) => [String(index), criterion]),
+                        ),
+                      },
+                    ]
+                  }
+                  const labels = Object.keys(question.criteria)
+                  const choice = labels.find((label) => label.startsWith("no_matching_")) ?? labels[0]
+                  return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice!]: 1 } }]
+                }),
+              ),
+              usage: { input_tokens: 10, output_tokens: 1 },
+            }),
+            { contentType: "application/json" },
+          )
+        }),
+      )
 
       yield* server.serve(router.asHttpEffect())
 

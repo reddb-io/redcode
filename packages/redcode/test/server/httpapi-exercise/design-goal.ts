@@ -470,6 +470,7 @@ export const designGoalScenarios: Scenario[] = [
     ),
   http.protected
     .post(`${item}/job`, "v2.design.render.verify")
+    .withLlm()
     .seeded((ctx) =>
       Effect.gen(function* () {
         const current = yield* published(ctx)

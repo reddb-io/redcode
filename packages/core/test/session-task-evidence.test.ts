@@ -22,13 +22,60 @@ import { SessionTodoStore } from "@reddb-io/redcode-core/session/todo-store"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { testEffect } from "./lib/effect"
+import { Intelligence } from "../src/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 
 /** Paths as stored, without the drive letter a Windows session directory adds. */
 const driveless = (entries: ReadonlyArray<string> | undefined) => entries?.map((entry) => entry.replace(/^[a-z]:/, ""))
 
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, SessionTodo.node, SessionTaskFacts.node])))
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([Database.node, SessionTodo.node, SessionTaskFacts.node, Intelligence.node])),
+)
 const sessionID = SessionSchema.ID.make("ses_task_evidence")
 const setup = Effect.gen(function* () {
+  const intelligence = yield* Intelligence.Service
+  const previous = yield* intelligence.read()
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const body = await request.json()
+          return Response.json({
+            model: "jev",
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => [
+                id,
+                (question as { type: string }).type === "score"
+                  ? {
+                      type: "score",
+                      score: 3,
+                      confidence: 1,
+                      probabilities: { "3": 1 },
+                      legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                    }
+                  : { type: "noul", noul: 0.01 },
+              ]),
+            ),
+            usage: { input_tokens: 10, output_tokens: 0 },
+          })
+        },
+      }),
+    ),
+    (server) =>
+      intelligence
+        .save({ settings: previous })
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+  )
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+    },
+  })
   const database = yield* Database.Service
   yield* database.db
     .insert(ProjectTable)
@@ -134,6 +181,77 @@ const task = {
   priority: "high" as const,
 }
 
+it.live("semantic completion selects the cited proof without resending unrelated long history", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Old unrelated topic. ".repeat(10000), 1)
+    yield* request()
+    yield* result("bash", "unrelated", 20, 0, "completed", { command: "old-noise " + "x".repeat(100000) })
+    yield* result("bash", "passing", 30)
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]!
+    const intelligence = yield* Intelligence.Service
+    const previous = yield* intelligence.read()
+    const calls: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const body = await request.json()
+        calls.push(JSON.stringify(body))
+        return Response.json({
+          model: "jev",
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, value]) => [
+              id,
+              (value as { type: string }).type === "score"
+                ? {
+                    type: "score",
+                    score: 3,
+                    confidence: 1,
+                    probabilities: { "3": 1 },
+                    legend: { "0": "unclear", "1": "ambiguous", "2": "clear", "3": "precise" },
+                  }
+                : { type: "noul", noul: 0.01 },
+            ]),
+          ),
+          usage: { input_tokens: 10, output_tokens: 0 },
+        })
+      },
+    })
+    yield* Effect.gen(function* () {
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("fixture") },
+          evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+        },
+      })
+      const completed = yield* todos.update({
+        sessionID,
+        todos: [
+          {
+            id: created.id,
+            status: "completed",
+            evidence: { callID: "passing", explanation: "Duplicate requests charge once in the passing suite" },
+          },
+        ],
+      })
+      expect(completed[0]?.status).toBe("completed")
+      expect(calls).toHaveLength(1)
+      expect(calls[0]!.length).toBeLessThan(10000)
+      expect(calls[0]).toContain("passing")
+      expect(calls[0]).toContain("excludedRequests")
+      expect(calls[0]).not.toContain("Old unrelated topic")
+      expect(calls[0]).not.toContain("old-noise")
+      expect((yield* intelligence.history(sessionID))[0]?.decision).toBe("accepted")
+    }).pipe(
+      Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)),
+      Effect.ensuring(Effect.sync(() => server.stop(true))),
+    )
+  }),
+)
+
 it.effect("binds requirements to real requests and rejects fabricated, failed or bookkeeping evidence", () =>
   Effect.gen(function* () {
     yield* setup
@@ -204,9 +322,7 @@ it.effect("a contentless evidence-only update is refused with the existing tasks
     yield* setup
     yield* request()
     const todos = yield* SessionTodo.Service
-    const created = (yield* todos.update({ sessionID, todos: [task] })).find(
-      (entry) => entry.content === task.content,
-    )!
+    const created = (yield* todos.update({ sessionID, todos: [task] })).find((entry) => entry.content === task.content)!
     // The shape a model sends when it means "complete that task" but names neither id nor content.
     const refused = yield* todos
       .update({ sessionID, todos: [{ priority: "medium", evidence: { callID: "passing", explanation: "Passed" } }] })

@@ -16,18 +16,14 @@ export const SetupCommand = effectCmd({
   command: "setup",
   describe: "configure global System One and System Two roles",
   instance: false,
-  builder: (yargs) =>
-    yargs.option("defer", { type: "boolean", describe: "defer global onboarding without opening prompts" }),
   handler: Effect.fn("Cli.setup")(
-    function* (args) {
+    function* () {
       const service = yield* Intelligence.Service
       const previous = yield* service.read()
-      if (args.defer) {
-        yield* service.save({ settings: { ...previous, onboarding: "deferred" } })
-        return
-      }
       if (!process.stdin.isTTY || !process.stdout.isTTY)
-        return yield* fail("Interactive setup requires a terminal. Use --defer or the global intelligence API.")
+        return yield* fail(
+          "Interactive setup requires a terminal. Configure S1 and S2 with the global intelligence API.",
+        )
       const { Provider } = yield* Effect.promise(() => import("../../provider/provider"))
       const provider = yield* Provider.Service
       const semantic = yield* Semantic.Service.pipe(
@@ -131,7 +127,7 @@ export const SetupCommand = effectCmd({
           enabled: true,
           onboarding: "completed",
           principal: ref(principal),
-          fast: ref(fast),
+          ...(fast === principal ? {} : { fast: ref(fast) }),
           evaluator: { ...evaluator, model },
         },
         ...(key ? { apiKey: key } : {}),

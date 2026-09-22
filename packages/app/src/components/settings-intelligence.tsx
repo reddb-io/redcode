@@ -117,7 +117,10 @@ function IntelligenceForm() {
   })
   const save = () =>
     run(async () => {
-      if (!state.principal) throw new Error("principal required")
+      if (!state.principal) {
+        set("message", language.t("intelligence.setupRequired"))
+        return
+      }
       const client = api()
       const serverURL = server().url
       const input = {
@@ -125,31 +128,29 @@ function IntelligenceForm() {
           enabled: true,
           onboarding: "completed" as const,
           principal: ref(state.principal),
-          fast: ref(state.fast || state.principal),
+          ...(state.fast ? { fast: ref(state.fast) } : {}),
           evaluator: evaluator(),
         },
         ...(state.key ? { apiKey: state.key } : {}),
       }
-      const refs = [input.settings.principal, input.settings.fast]
+      const refs = [input.settings.principal, ...(input.settings.fast ? [input.settings.fast] : [])]
       for (const model of refs.filter((model, index) => index === 0 || value(model) !== value(refs[0]))) {
-        if (!(await client.probeModel(model)).ok) throw new Error("model probe failed")
+        const check = await client.probeModel(model)
+        if (!check.ok) {
+          set("message", check.message)
+          return
+        }
       }
       const check = await client.probe({ evaluator: input.settings.evaluator, apiKey: input.apiKey })
       if (!check.ok) {
-        set(
-          "message",
-          language.t(
-            input.settings.evaluator.transport === "opencode-zen"
-              ? "settings.intelligence.zenUnavailable"
-              : "settings.intelligence.error",
-          ),
-        )
+        set("message", check.message)
         return
       }
       if (server().url !== serverURL) return
       const settings = await client.save(input)
       if (server().url !== serverURL) return
       set("settings", settings)
+      server().intelligence.accept(settings)
       set("key", "")
       set("message", language.t("settings.intelligence.saved"))
     })
@@ -270,20 +271,6 @@ function IntelligenceForm() {
         </label>
         <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.disclosure")}</p>
         <Button onClick={() => void save()}>{language.t("settings.intelligence.activate")}</Button>
-        <Button
-          variant="secondary"
-          onClick={() =>
-            void run(async () => {
-              const settings = await api().save({
-                settings: { ...state.settings, enabled: false, onboarding: "deferred" },
-              })
-              set("settings", settings)
-              set("message", language.t("settings.intelligence.disabled"))
-            })
-          }
-        >
-          {language.t("settings.intelligence.defer")}
-        </Button>
       </fieldset>
       <Show when={state.loaded}>
         <details>
@@ -333,6 +320,7 @@ function IntelligenceForm() {
                   {language.t(`settings.intelligence.operation.${evaluation.operation}`)} ·{" "}
                   {language.t(`settings.intelligence.decision.${evaluation.decision}`)} · {evaluation.model}
                 </div>
+                <For each={evaluation.issues}>{(issue) => <p class="text-icon-warning-base">{issue}</p>}</For>
                 <Show when={(evaluation.attempt ?? 0) > 0}>
                   <div>Corrective review attempt {evaluation.attempt}</div>
                 </Show>
@@ -391,7 +379,7 @@ function IntelligenceForm() {
   )
 }
 
-/** Offered per server; the durable Later action prevents repeating onboarding across projects. */
+/** Configuration is required for execution; navigation and provider setup stay available. */
 export function IntelligenceOnboarding() {
   const server = useServerSDK()
   const platform = usePlatform()
@@ -412,23 +400,19 @@ export function IntelligenceOnboarding() {
     void api
       .get()
       .then((result) => {
-        if (result.settings.onboarding !== "pending" || server().url !== http.url) return
+        if (
+          (result.settings.enabled && result.settings.principal && result.settings.evaluator) ||
+          server().url !== http.url
+        )
+          return
         showToast({
           title: language.t("settings.intelligence.title"),
-          description: language.t("settings.intelligence.description"),
+          description: language.t("intelligence.setupDescription"),
           persistent: true,
           actions: [
             {
               label: language.t("settings.intelligence.configure"),
               onClick: configure,
-            },
-            {
-              label: language.t("settings.intelligence.later"),
-              onClick: () => {
-                void api
-                  .save({ settings: { ...result.settings, onboarding: "deferred" } })
-                  .catch(() => showToast({ title: language.t("settings.intelligence.error") }))
-              },
             },
           ],
         })

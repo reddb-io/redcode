@@ -109,31 +109,70 @@ const prefixLength = <A>(items: ReadonlyArray<A>, keep: (item: A) => boolean) =>
   return index < 0 ? items.length : index
 }
 
+// Evaluator history contains text and references, never attachment payloads or provider metadata.
+const intelligenceHistory = (messages: ReadonlyArray<SessionMessage.Message>) =>
+  messages.map((message) => ({
+    id: message.id,
+    type: message.type,
+    text:
+      "text" in message
+        ? message.text
+        : message.type === "assistant"
+          ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+          : message.type === "compaction"
+            ? `${message.summary}\n${message.recent}`
+            : message.type === "shell"
+              ? `${message.command}\n${message.output}`
+              : undefined,
+    files:
+      message.type === "user"
+        ? message.files?.map((file, index) => ({
+            name: file.name,
+            mime: file.mime,
+            description: file.description,
+            reference: `${message.id}/files/${index}`,
+            contentReviewed: false,
+          }))
+        : undefined,
+    tools:
+      message.type === "assistant"
+        ? message.content.flatMap((part) =>
+            part.type === "tool"
+              ? [
+                  {
+                    callID: part.id,
+                    tool: part.name,
+                    status: part.state.status,
+                    reference: `${message.id}/${part.id}/result`,
+                  },
+                ]
+              : [],
+          )
+        : undefined,
+  }))
+
 const responseToolResults = (messages: ReadonlyArray<SessionMessage.Message>) => {
   const lastUser = messages.findLastIndex((message) => message.type === "user")
-  return messages
-    .slice(lastUser + 1)
-    .flatMap((message) =>
-      message.type === "assistant"
-        ? message.content.flatMap((part) => {
-            if (part.type !== "tool" || (part.state.status !== "completed" && part.state.status !== "error")) return []
-            const state = part.state
-            return [
-              {
-                tool: part.name,
-                status: state.status,
-                input: state.input,
-                output: JSON.stringify({
-                  content: state.content,
-                  structured: state.structured,
-                  ...(state.status === "error" ? { error: state.error } : {}),
-                }).slice(0, 4_000),
-              },
-            ]
-          })
-        : [],
-    )
-    .slice(-20)
+  return messages.slice(lastUser + 1).flatMap((message) =>
+    message.type === "assistant"
+      ? message.content.flatMap((part) => {
+          if (part.type !== "tool" || (part.state.status !== "completed" && part.state.status !== "error")) return []
+          return [
+            {
+              messageID: message.id,
+              callID: part.id,
+              tool: part.name,
+              status: part.state.status,
+              input: Intelligence.evidence(part.state.input, {
+                reference: `${message.id}/${part.id}/input`,
+                limit: 2000,
+              }),
+              output: Intelligence.evidence(part.state, { reference: `${message.id}/${part.id}/result`, limit: 4000 }),
+            },
+          ]
+        })
+      : [],
+  )
 }
 
 /** The latest user message follows a turn that was cancelled or cut off with tool calls unsettled. */
@@ -580,6 +619,20 @@ const layer = Layer.effect(
         },
       ).pipe(Effect.map(SystemContext.combine))
 
+    const reportIntelligenceFailure = (sessionID: SessionSchema.ID, operation: string, message: string) =>
+      Effect.gen(function* () {
+        const detail = `System One ${operation} unavailable: ${message}. Completion has not been verified.`
+        yield* recordGuard({ sessionID, guard: "intelligence", action: "warn", subject: operation, detail })
+        yield* events.publish(SessionEvent.Synthetic, {
+          sessionID,
+          messageID: SessionMessage.ID.create(),
+          timestamp: yield* DateTime.now,
+          text: detail,
+        })
+      })
+
+    const promptAttempts = new Map<SessionSchema.ID, Map<string, Intelligence.Evaluation | undefined>>()
+
     const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
       sessionID: SessionSchema.ID,
       attempt: number,
@@ -589,10 +642,10 @@ const layer = Layer.effect(
       if (!candidate) return undefined
       const text = candidate.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
       if (!text.trim()) return undefined
-      const previous = (yield* intelligence.history(sessionID).pipe(Effect.orElseSucceed(() => []))).find(
-        (evaluation) => evaluation.operation === "response_quality" && evaluation.candidateID === candidate.id,
-      )
-      if (previous) return previous
+      const previous = (yield* intelligence
+        .history(sessionID, { operation: "response_quality", candidateID: candidate.id, limit: 1 })
+        .pipe(Effect.orElseSucceed(() => [])))[0]
+      if (previous && previous.decision !== "unavailable" && previous.decision !== "inconclusive") return previous
       const messages = entries.map((entry) => entry.message)
       const requests = messages
         .filter((message) => message.type === "user")
@@ -607,20 +660,22 @@ const layer = Layer.effect(
           candidateID: candidate.id,
           attempt,
           sources: {
-            requests,
-            checkpoints: messages.filter((message) => message.type === "compaction").slice(-1),
-            tasks: yield* todos.get(sessionID),
-            goal: yield* goals.get(sessionID),
-            tool_results: toolResults,
+            requests: Intelligence.evidence(requests, { reference: `${sessionID}/requests`, limit: 3000 }),
+            latest_request: Intelligence.evidence(requests.at(-1), { reference: requests.at(-1)?.id, limit: 4000 }),
+            checkpoints: Intelligence.evidence(messages.filter((message) => message.type === "compaction").slice(-1), {
+              reference: `${sessionID}/checkpoint`,
+              limit: 3000,
+            }),
+            tasks: Intelligence.evidence(yield* todos.get(sessionID), { reference: `${sessionID}/tasks`, limit: 3000 }),
+            goal: Intelligence.evidence(yield* goals.get(sessionID), { reference: `${sessionID}/goal`, limit: 2000 }),
+            tool_results: Intelligence.evidence(toolResults, { reference: `${sessionID}/tool-results`, limit: 8000 }),
           },
-          candidate: text,
+          candidate: Intelligence.evidence(text, { reference: candidate.id, limit: 6000 }),
           questions: Intelligence.responseQuestions,
         })
         .pipe(
           Effect.catchTag("IntelligenceError", (error) =>
-            Effect.logWarning("response quality evaluation unavailable", { error: error.message }).pipe(
-              Effect.as(undefined),
-            ),
+            reportIntelligenceFailure(sessionID, "response_quality", error.message).pipe(Effect.as(undefined)),
           ),
         )
     })
@@ -665,10 +720,22 @@ const layer = Layer.effect(
       const lastContext = context.at(-1)
       const responseRepair = lastContext?.type === "synthetic" && lastContext.text.startsWith(RESPONSE_REPAIR)
       const latestUser = context.findLast((message) => message.type === "user")
-      const previousEvaluations = latestUser
-        ? yield* intelligence.history(session.id).pipe(Effect.orElseSucceed(() => []))
-        : []
-      const promotedUsers = promoted > 0 ? context.filter((message) => message.type === "user").slice(-promoted) : []
+      // Reconcile visible prompts too: a resume, monitor promotion or prior unavailable
+      // evaluator must not leave a durable user input permanently unclassified.
+      const users = context.filter((message) => message.type === "user")
+      const attempted = promptAttempts.get(session.id) ?? new Map<string, Intelligence.Evaluation | undefined>()
+      promptAttempts.set(session.id, attempted)
+      const classificationState = {
+        mode: agent.id,
+        goal: Intelligence.evidence(yield* goals.get(session.id).pipe(Effect.orDie), {
+          reference: `${session.id}/goal`,
+          limit: 4000,
+        }),
+        plan: Intelligence.evidence(SessionPlan.guidance(yield* plans.list(session.id)), {
+          reference: `${session.id}/plans`,
+          limit: 6000,
+        }),
+      }
       const availableSkills = agent.info
         ? SkillV2.available(yield* skills.list(), agent.info)
             .flatMap((skill) =>
@@ -676,37 +743,165 @@ const layer = Layer.effect(
             )
             .toSorted((left, right) => left.name.localeCompare(right.name))
         : []
-      const newAssessments = yield* Effect.forEach(
-        promotedUsers.filter(
-          (message) =>
-            !previousEvaluations.some(
-              (evaluation) => evaluation.operation === "prompt_classification" && evaluation.subjectID === message.id,
-            ),
-        ),
+      const assessments = yield* Effect.forEach(
+        users,
         (message) =>
-          intelligence
-            .evaluate({
+          Effect.gen(function* () {
+            if (attempted.has(message.id)) return attempted.get(message.id)
+            const previous = (yield* intelligence
+              .history(session.id, { operation: "prompt_classification", subjectID: message.id, limit: 1 })
+              .pipe(Effect.orElseSucceed(() => [])))[0]
+            if (previous?.decision === "accepted") {
+              attempted.set(message.id, previous)
+              return previous
+            }
+            const preceding = context.slice(0, context.indexOf(message))
+            yield* Effect.logInfo("Using System One to choose relevant skills and classify the user request", {
               sessionID: session.id,
-              operation: "prompt_classification",
-              kind: "classification",
               subjectID: message.id,
-              sources: { text: message.text, files: message.files },
-              questions: Intelligence.promptQuestionsFor(availableSkills),
+              skills: availableSkills.length,
             })
-            .pipe(
-              Effect.catchTag("IntelligenceError", (error) =>
-                Effect.logWarning("prompt classification unavailable", { error: error.message }).pipe(
-                  Effect.as(undefined),
+            const evaluation = yield* intelligence
+              .evaluate({
+                sessionID: session.id,
+                operation: "prompt_classification",
+                kind: "classification",
+                subjectID: message.id,
+                sources: {
+                  text: Intelligence.evidence(message.text, { reference: message.id, limit: 12000 }),
+                  files: Intelligence.evidence(
+                    message.files?.map((file, index) => ({
+                      name: file.name,
+                      mime: file.mime,
+                      description: file.description,
+                      reference: `${message.id}/files/${index}`,
+                      contentReviewed: false,
+                    })),
+                    { reference: `${message.id}/files`, limit: 2000 },
+                  ),
+                  session: classificationState,
+                  history: Intelligence.evidence(
+                    {
+                      messages: intelligenceHistory(preceding.slice(-12)),
+                      omittedMessages: Math.max(0, preceding.length - 12),
+                    },
+                    {
+                      reference: `${session.id}/before/${message.id}`,
+                      limit: 12000,
+                    },
+                  ),
+                },
+                questions: Intelligence.promptQuestionsFor(availableSkills),
+              })
+              .pipe(
+                Effect.catchTag("IntelligenceError", (error) =>
+                  reportIntelligenceFailure(session.id, "prompt_classification", error.message).pipe(
+                    Effect.as(undefined),
+                  ),
                 ),
-              ),
-            ),
+              )
+            yield* Effect.logInfo("System One skill recommendation complete", {
+              sessionID: session.id,
+              subjectID: message.id,
+              evaluationID: evaluation?.id,
+              decision: evaluation?.decision ?? "unavailable",
+              recommendations: Intelligence.recommendations(evaluation, "skill"),
+              reason:
+                evaluation?.decision === "accepted"
+                  ? "evaluated"
+                  : "evaluation unavailable or confidence insufficient; original request remains authoritative",
+            })
+            attempted.set(message.id, evaluation)
+            return evaluation
+          }),
         { concurrency: 2 },
       )
-      const assessment = [...newAssessments, ...previousEvaluations].find(
-        (evaluation) => evaluation?.operation === "prompt_classification" && evaluation.subjectID === latestUser?.id,
-      )
-      const assessmentContext = Intelligence.promptContext(assessment)
+      const assessment = assessments.find((evaluation) => evaluation?.subjectID === latestUser?.id)
+      const assessmentContext =
+        Intelligence.promptContext(assessment) ??
+        (assessment?.decision === "unavailable"
+          ? `System One prompt classification unavailable (${assessment.id}). Use the original user request and conversation; no classification has been verified.`
+          : undefined)
       const skillContext = Intelligence.skillContext(assessment)
+      const batch = context.findLast((message) => message.type === "assistant")
+      const settledTools =
+        batch && (!latestUser || context.indexOf(batch) > context.indexOf(latestUser))
+          ? responseToolResults([batch])
+          : []
+      const previousToolReview = batch
+        ? (attempted.get(`tool:${batch.id}`) ??
+          (yield* intelligence
+            .history(session.id, { operation: "tool_usage", candidateID: batch.id, limit: 1 })
+            .pipe(Effect.orElseSucceed(() => [])))[0])
+        : undefined
+      const toolReview =
+        settledTools.length &&
+        batch &&
+        !attempted.has(`tool:${batch.id}`) &&
+        previousToolReview?.decision !== "accepted"
+          ? yield* Effect.gen(function* () {
+              yield* Effect.logInfo("Using System One to review settled tool results", {
+                sessionID: session.id,
+                candidateID: batch.id,
+                tools: settledTools.map((tool) => tool.tool),
+              })
+              const evaluation = yield* intelligence
+                .evaluate({
+                  sessionID: session.id,
+                  operation: "tool_usage",
+                  kind: "gate",
+                  subjectID: latestUser?.id,
+                  candidateID: batch.id,
+                  sources: {
+                    request: Intelligence.evidence(latestUser ? intelligenceHistory([latestUser])[0] : undefined, {
+                      reference: latestUser?.id,
+                      limit: 12000,
+                    }),
+                    session: classificationState,
+                  },
+                  candidate: Intelligence.evidence(settledTools, {
+                    reference: `${session.id}/${batch.id}/tools`,
+                    limit: 24000,
+                  }),
+                  questions: Intelligence.questions({
+                    failed_result:
+                      "Does this batch contain a failed or incomplete result that still prevents satisfying sources.request? Do not treat a later successful verification as failure.",
+                    missing_evidence:
+                      "Does this batch leave a claimed outcome unverified? Truncated evidence is incomplete: request a focused verification instead of assuming missing content succeeded.",
+                    scope:
+                      "Does this batch show work outside the user's requested scope? This evaluation never grants permission for further actions.",
+                  }),
+                })
+                .pipe(
+                  Effect.catchTag("IntelligenceError", (error) =>
+                    reportIntelligenceFailure(session.id, "tool_usage", error.message).pipe(Effect.as(undefined)),
+                  ),
+                )
+              yield* Effect.logInfo("System One tool review complete", {
+                sessionID: session.id,
+                evaluationID: evaluation?.id,
+                decision: evaluation?.decision ?? "unavailable",
+                reason:
+                  evaluation?.decision === "accepted"
+                    ? "verified"
+                    : "review unresolved; inspect missing evidence before claiming completion",
+              })
+              attempted.set(`tool:${batch.id}`, evaluation)
+              return evaluation
+            })
+          : previousToolReview
+      const toolContext =
+        toolReview && toolReview.decision !== "accepted"
+          ? `System One tool review ${toolReview.decision} (${toolReview.id}): ${toolReview.issues.join(", ")}. Verify missing evidence and correct failed work within the user's scope and existing permissions. An unavailable or inconclusive evaluation is not approval.`
+          : undefined
+      if (toolContext && toolReview !== previousToolReview)
+        yield* recordGuard({
+          sessionID: session.id,
+          guard: "intelligence",
+          action: "warn",
+          subject: "tool_usage",
+          detail: toolContext,
+        })
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
       const configEntries = yield* config.entries()
@@ -726,10 +921,70 @@ const layer = Layer.effect(
         loaded: ToolSearch.loadedFromHistory(context, ToolSearch.namesInHistory(context)),
         ...(native ? { native } : {}),
       }
-      const toolMaterialization =
-        isLastStep || responseRepair
-          ? undefined
-          : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
+      const toolMaterialization = isLastStep
+        ? undefined
+        : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
+      const mcpCatalog = toolMaterialization?.mcpTools ?? []
+      const selectionID = `mcp-selection:${Intelligence.fingerprint({ tools: mcpCatalog, request: latestUser?.id, batch: batch?.id })}`
+      const mcpSelection =
+        mcpCatalog.length && latestUser
+          ? yield* Effect.gen(function* () {
+              if (attempted.has(selectionID)) return attempted.get(selectionID)
+              const previous = (yield* intelligence
+                .history(session.id, {
+                  operation: "tool_usage",
+                  subjectID: latestUser.id,
+                  candidateID: selectionID,
+                  limit: 1,
+                })
+                .pipe(Effect.orElseSucceed(() => [])))[0]
+              if (previous?.decision === "accepted") {
+                attempted.set(selectionID, previous)
+                return previous
+              }
+              yield* Effect.logInfo("Using System One to select MCP tools", {
+                sessionID: session.id,
+                subjectID: latestUser.id,
+                tools: mcpCatalog.length,
+              })
+              const evaluation = yield* intelligence
+                .evaluate({
+                  sessionID: session.id,
+                  operation: "tool_usage",
+                  kind: "classification",
+                  subjectID: latestUser.id,
+                  candidateID: selectionID,
+                  sources: {
+                    request: Intelligence.evidence(latestUser.text, { reference: latestUser.id, limit: 6000 }),
+                    session: classificationState,
+                    history: Intelligence.evidence(intelligenceHistory(context.slice(-6)), {
+                      reference: `${session.id}/recent`,
+                      limit: 6000,
+                    }),
+                    tool_results: Intelligence.evidence(settledTools, { reference: batch?.id, limit: 4000 }),
+                  },
+                  questions: Intelligence.toolQuestionsFor(mcpCatalog),
+                })
+                .pipe(
+                  Effect.catchTag("IntelligenceError", (error) =>
+                    reportIntelligenceFailure(session.id, "MCP selection", error.message).pipe(Effect.as(undefined)),
+                  ),
+                )
+              yield* Effect.logInfo("System One MCP tool selection complete", {
+                sessionID: session.id,
+                evaluationID: evaluation?.id,
+                decision: evaluation?.decision ?? "unavailable",
+                recommendations: Intelligence.recommendations(evaluation, "mcp_tool"),
+                reason:
+                  evaluation?.decision === "accepted"
+                    ? "evaluated"
+                    : "no confident recommendation; use the original request and existing permissions",
+              })
+              attempted.set(selectionID, evaluation)
+              return evaluation
+            })
+          : undefined
+      const mcpContext = Intelligence.toolContext(mcpSelection)
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
       const request = LLM.request({
         model,
@@ -745,7 +1000,7 @@ const layer = Layer.effect(
           // Native search: the provider carries the deferred definitions and its own search tool.
           ...(toolMaterialization?.native === "anthropic" ? { anthropic: { toolSearch: "bm25" } } : {}),
         },
-        system: [agent.info?.system, system.baseline, assessmentContext, skillContext]
+        system: [agent.info?.system, system.baseline, assessmentContext, skillContext, toolContext, mcpContext]
           .concat(
             toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [],
           )
@@ -755,7 +1010,7 @@ const layer = Layer.effect(
           .concat(
             responseRepair
               ? [
-                  "Write only a corrective follow-up to the preceding final response. Address the listed evaluation issues without repeating completed work, calling tools or claiming new evidence.",
+                  "Correct the evaluated response and any unfinished work it reveals. Use tools when needed to obtain missing evidence or finish already authorized work. Preserve existing permissions and scope; evaluation never authorizes new actions. Do not repeat completed work or claim verification without evidence.",
                 ]
               : [],
           )
@@ -769,7 +1024,7 @@ const layer = Layer.effect(
           ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
         ],
         tools: toolMaterialization?.definitions ?? [],
-        toolChoice: isLastStep || responseRepair ? "none" : undefined,
+        toolChoice: isLastStep ? "none" : undefined,
       })
       const preflight = yield* compaction.compactIfNeeded({
         sessionID: session.id,
@@ -1355,6 +1610,7 @@ const layer = Layer.effect(
       readonly sessionID: SessionSchema.ID
       readonly force: boolean
     }) {
+      promptAttempts.set(input.sessionID, new Map())
       const runGoal = yield* goals.get(input.sessionID).pipe(Effect.orDie)
       yield* completion.discard(input.sessionID)
       yield* compaction.beginTurn(input.sessionID)
@@ -1464,7 +1720,7 @@ const layer = Layer.effect(
             if (!needsContinuation) {
               const evaluation = yield* reviewResponse(input.sessionID, responseRepairs).pipe(
                 Effect.catch((error) =>
-                  Effect.logWarning("response quality review failed", { error: String(error) }).pipe(
+                  reportIntelligenceFailure(input.sessionID, "response_quality", String(error)).pipe(
                     Effect.as(undefined),
                   ),
                 ),
@@ -1473,7 +1729,7 @@ const layer = Layer.effect(
                 evaluation &&
                 evaluation.decision !== "accepted" &&
                 evaluation.decision !== "unavailable" &&
-                responseRepairs < 1
+                responseRepairs < 2
               ) {
                 yield* events.publish(SessionEvent.Synthetic, {
                   sessionID: input.sessionID,
@@ -1483,6 +1739,21 @@ const layer = Layer.effect(
                 })
                 responseRepairs++
                 needsContinuation = true
+              } else if (evaluation && evaluation.decision !== "accepted") {
+                const detail = `System One response review ${evaluation.decision} (${evaluation.id}). Unresolved issues: ${evaluation.issues.join(", ") || "evaluation could not verify completion"}. Completion has not been verified; preserve outstanding work and report these limits.`
+                yield* events.publish(SessionEvent.Synthetic, {
+                  sessionID: input.sessionID,
+                  messageID: SessionMessage.ID.create(),
+                  timestamp: yield* DateTime.now,
+                  text: detail,
+                })
+                yield* recordGuard({
+                  sessionID: input.sessionID,
+                  guard: "intelligence",
+                  action: "warn",
+                  subject: "response_quality",
+                  detail,
+                })
               }
             }
           }
@@ -1491,6 +1762,7 @@ const layer = Layer.effect(
         }
         yield* continueAfterStop(input.sessionID, 0)
       }).pipe(
+        Effect.ensuring(Effect.sync(() => promptAttempts.delete(input.sessionID))),
         Effect.ensuring(completion.discard(input.sessionID)),
         Effect.ensuring(compaction.discard(input.sessionID)),
         Effect.ensuring(setIdle(input.sessionID)),

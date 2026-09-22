@@ -1,5 +1,8 @@
 // Code mode through the legacy loop: fake OpenAI-compatible provider, in-memory MCP server.
 import { DesignStudio } from "../../src/design/studio"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { ProviderV2 } from "@reddb-io/redcode-core/provider"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -286,6 +289,17 @@ const setup = (codeMode?: Record<string, unknown>, experimental?: Record<string,
     yield* connect
     const { directory } = yield* TestInstance
     const llm = yield* TestLLMServer
+    const intelligence = yield* Intelligence.Service
+    const previous = yield* intelligence.read()
+    yield* intelligence.save({
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+        evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },
+      },
+    })
+    yield* Effect.addFinalizer(() => intelligence.save({ settings: previous }).pipe(Effect.orDie))
     const fsu = yield* FSUtil.Service
     yield* fsu.writeWithDirs(
       path.join(directory, "opencode.json"),

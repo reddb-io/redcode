@@ -49,5 +49,6 @@ export const migrations = (
     import("./migration/20260911200056_context_epoch_replacement"),
     import("./migration/20260915002032_session_monitors"),
     import("./migration/20260921115403_intelligence-evaluations"),
+    import("./migration/20260922120923_intelligence-attempts"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

@@ -57,6 +57,36 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     if (url.port !== targetPort && url.port !== appPort) return route.fallback()
 
     const path = url.pathname
+    if (path === "/api/intelligence") {
+      const catalog = (typeof config.provider === "function" ? config.provider() : config.provider) as {
+        default?: Record<string, string>
+        all?: { id: string; models?: Record<string, unknown> }[]
+      }
+      const configured = Object.entries(catalog.default ?? {})[0]
+      const provider = catalog.all?.find((item) => Object.keys(item.models ?? {}).length > 0)
+      const principal = configured
+        ? { providerID: configured[0], id: configured[1] }
+        : provider
+          ? { providerID: provider.id, id: Object.keys(provider.models!)[0] }
+          : undefined
+      // Non-onboarding scenarios start with both roles configured, matching prompt admission.
+      // A test can override this route after installing the fixture to exercise incomplete setup.
+      return json(route, {
+        settings: {
+          enabled: Boolean(principal),
+          onboarding: principal ? "completed" : "pending",
+          ...(principal
+            ? {
+                principal,
+                evaluator: { transport: "typesafe", baseURL: "https://api.typesafe.ai/v1", model: "jev-test" },
+              }
+            : {}),
+        },
+        environment: config.directory,
+        evaluators: [],
+      })
+    }
+    if (path === "/api/intelligence/evaluations") return json(route, [])
     if (path === "/global/event" || path === "/event" || path === "/api/event") {
       const events = config.events?.()
       return sse(

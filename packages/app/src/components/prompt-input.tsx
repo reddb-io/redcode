@@ -1,4 +1,5 @@
 import { useFilteredList } from "@reddb-io/redcode-ui/hooks"
+import { IntelligenceIndicator } from "./intelligence-indicator"
 import { useSpring } from "@reddb-io/redcode-ui/motion-spring"
 import {
   createEffect,
@@ -1676,6 +1677,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Show when={!providersLoading()}>
                   <Show when={store.mode !== "shell"}>
+                    <IntelligenceIndicator
+                      model={props.controls.model.selection}
+                      sessionID={props.controls.session.id}
+                    />
                     <div
                       data-component="prompt-model-control"
                       classList={{ "animate-in fade-in duration-300": providersShouldFadeIn() }}
@@ -1708,6 +1713,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                 />
                               </Show>
                               <span class="truncate">
+                                <span class="text-text-weak">S2 </span>
                                 {props.controls.model.selection.current()?.name ??
                                   language.t("dialog.model.select.title")}
                               </span>
@@ -1741,6 +1747,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                   />
                                 </Show>
                                 <span class="truncate">
+                                  <span class="text-text-weak">S2 </span>
                                   {props.controls.model.selection.current()?.name ??
                                     language.t("dialog.model.select.title")}
                                 </span>

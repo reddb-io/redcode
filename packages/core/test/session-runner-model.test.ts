@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
 import { LLM } from "@reddb-io/redcode-llm"
 import { LLMClient } from "@reddb-io/redcode-llm/route"
-import { DateTime, Effect } from "effect"
+import { DateTime, Effect, Layer } from "effect"
 import { Headers } from "effect/unstable/http"
 import { Credential } from "@reddb-io/redcode-core/credential"
 import { Integration } from "@reddb-io/redcode-core/integration"
@@ -11,7 +11,13 @@ import { ProjectV2 } from "@reddb-io/redcode-core/project"
 import { SessionRunnerModel } from "@reddb-io/redcode-core/session/runner/model"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
-import { it } from "./lib/effect"
+import { it, testEffect } from "./lib/effect"
+import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
+import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Catalog } from "@reddb-io/redcode-core/catalog"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Location } from "@reddb-io/redcode-core/location"
+import { location } from "./fixture/location"
 
 type Api =
   | {
@@ -353,3 +359,74 @@ describe("SessionRunnerModel", () => {
     }),
   )
 })
+
+const resolver = testEffect(
+  AppNodeBuilder.build(LayerNode.group([SessionRunnerModel.node, Catalog.node, Intelligence.node]), [
+    [
+      Location.node,
+      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make("/project") }))),
+    ],
+  ]),
+)
+
+resolver.effect("requires both roles in the real resolver and honors System Two with explicit overrides", () =>
+  Effect.gen(function* () {
+    const intelligence = yield* Intelligence.Service
+    const previous = yield* intelligence.read()
+    const catalog = yield* Catalog.Service
+    const models = yield* SessionRunnerModel.Service
+    const principal = { providerID: ProviderV2.ID.make("resolver-test"), id: ModelV2.ID.make("system-two") }
+    const override = { providerID: principal.providerID, id: ModelV2.ID.make("explicit") }
+    const session = SessionV2.Info.make({
+      id: SessionV2.ID.make("ses_resolver_roles"),
+      projectID: ProjectV2.ID.global,
+      title: "test",
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+      location: { directory: AbsolutePath.make("/project") },
+    })
+    yield* Effect.gen(function* () {
+      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      expect(yield* models.resolve({ ...session, model: override }).pipe(Effect.flip)).toMatchObject({
+        _tag: "IntelligenceError",
+      })
+      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending", principal } })
+      expect(yield* models.resolve({ ...session, model: override }).pipe(Effect.flip)).toMatchObject({
+        _tag: "IntelligenceError",
+      })
+      yield* catalog.transform((editor) => {
+        editor.provider.update(principal.providerID, (provider) => {
+          provider.request.body.apiKey = "fixture"
+          provider.api = { type: "aisdk", package: "@ai-sdk/openai", url: "https://resolver.test/v1", settings: {} }
+        })
+        ;[principal, override].forEach((ref) =>
+          editor.model.update(ref.providerID, ref.id, (entry) => {
+            Object.assign(entry, model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://resolver.test/v1" }), {
+              id: ref.id,
+              providerID: ref.providerID,
+              api: {
+                id: ModelV2.ID.make(`api-${ref.id}`),
+                type: "aisdk",
+                package: "@ai-sdk/openai",
+                url: "https://resolver.test/v1",
+                settings: {},
+              },
+            })
+          }),
+        )
+        editor.model.default.set(override.providerID, override.id)
+      })
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal,
+          evaluator: { transport: "typesafe", baseURL: "https://resolver.test/v1", model: "jev-test" },
+        },
+      })
+      expect((yield* models.resolve(session)).id).toBe("api-system-two")
+      expect((yield* models.resolve({ ...session, model: override })).id).toBe("api-explicit")
+    }).pipe(Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)))
+  }),
+)

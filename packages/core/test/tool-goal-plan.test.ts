@@ -1,12 +1,15 @@
+import { Intelligence } from "../src/intelligence"
+import { Semantic } from "../src/semantic"
 import { AgentV2 } from "../src/agent"
 import { expect } from "bun:test"
 import path from "node:path"
 import { Effect, Layer } from "effect"
-import { LLMClient, LLMEvent, LLMResponse, Message, Model, Usage, type LLMRequest } from "@reddb-io/redcode-llm"
+import { Model } from "@reddb-io/redcode-llm"
+import { ModelV2 } from "../src/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { OpenAIChat } from "@reddb-io/redcode-llm/protocols/openai-chat"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { LayerNode } from "../src/effect/layer-node"
-import { llmClient } from "../src/effect/app-node-platform"
 import { Database } from "../src/database/database"
 import { Location } from "../src/location"
 import { PermissionV2 } from "../src/permission"
@@ -35,10 +38,11 @@ import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { executeTool, toolIdentity } from "./lib/tool"
 
-const requests: LLMRequest[] = []
+const requests: Intelligence.EvaluationInput[] = []
 const questions: QuestionV2.AskInput[] = []
 const assertions: string[] = []
 let review = "PASS\nVerified"
+let configured = true
 let duringReview = Effect.void
 let duringApproval = Effect.void
 let deny = ""
@@ -79,6 +83,7 @@ const it = testEffect(
     ]),
     [
       [Location.node, tempLocationLayer],
+      [Semantic.node, Layer.mock(Semantic.Service, { transform: (input) => input.decode(JSON.stringify(planTasks)) })],
       [PermissionV2.node, permission],
       [
         QuestionV2.node,
@@ -104,27 +109,39 @@ const it = testEffect(
         ),
       ],
       [
-        llmClient,
-        Layer.succeed(
-          LLMClient.Service,
-          LLMClient.Service.of({
-            prepare: () => Effect.die("unused"),
-            stream: () => {
-              throw new Error("unused")
-            },
-            generate: (request) =>
-              Effect.gen(function* () {
-                requests.push(request)
+        Intelligence.node,
+        Layer.mock(Intelligence.Service, {
+          environment: "fixture",
+          read: () =>
+            Effect.sync(() => ({
+              enabled: configured,
+              onboarding: "completed",
+              principal: { providerID: Provider.ID.make("fixture"), id: ModelV2.ID.make("principal") },
+              evaluator: { transport: "typesafe", baseURL: "http://localhost/v1", model: "jev" },
+            })),
+          history: () => Effect.succeed([]),
+          evaluate: (input) =>
+            Effect.gen(function* () {
+              if (input.operation === "goal_completion" || input.operation === "plan") {
+                requests.push(input)
                 yield* duringReview
-                return new LLMResponse({
-                  message: Message.assistant(review),
-                  events: [LLMEvent.textDelta({ id: "review", text: review })],
-                  finishReason: "stop",
-                  usage: new Usage({ inputTokens: 10, outputTokens: 5, totalTokens: 15 }),
-                })
-              }),
-          }),
-        ),
+              }
+              return {
+                id: crypto.randomUUID(),
+                fingerprint: "fixture",
+                sessionID: input.sessionID,
+                operation: input.operation,
+                policy: "fixture",
+                decision: review.startsWith("PASS") ? "accepted" : "needs_revision",
+                model: "jev",
+                answers: {},
+                issues: review.startsWith("PASS") ? [] : [review],
+                created: Date.now(),
+                duration: 1,
+                usage: { input_tokens: 10, output_tokens: 5 },
+              }
+            }),
+        }),
       ],
     ],
   ),
@@ -140,6 +157,7 @@ const planTasks = [
 ]
 
 const setup = Effect.gen(function* () {
+  configured = true
   requests.length = 0
   questions.length = 0
   assertions.length = 0
@@ -194,9 +212,10 @@ it.live("completion reads real artifacts and executes gates before a bounded rev
       "error",
     )
     expect(requests).toHaveLength(1)
-    expect(JSON.stringify(requests[0].messages)).toContain("Exit 0")
-    expect(JSON.stringify(requests[0].messages)).toContain("# Plan")
-    expect(requests[0].tools).toEqual([])
+    expect(JSON.stringify(requests[0].sources)).toContain('"exitCode":0')
+    expect(JSON.stringify(requests[0].sources)).toContain("# Plan")
+    expect(requests[0].operation).toBe("goal_completion")
+    expect(requests[0].questions).toHaveProperty("objective")
     expect((yield* goals.get(test.sessionID))?.status).toBe("active")
     const completion = yield* SessionGoalCompletion.Service
     yield* completion.settle(test.sessionID)
@@ -218,6 +237,47 @@ it.live("missing evidence or a failing gate cannot reach the reviewer", () =>
     expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Done" })).type).toBe("error")
     expect(requests).toHaveLength(0)
     expect((yield* goals.get(test.sessionID))?.status).toBe("active")
+  }),
+)
+
+it.live("disabling S1 during goal review or before settlement preserves the active goal", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const goals = yield* SessionGoal.Service
+    const completion = yield* SessionGoalCompletion.Service
+    yield* goals.start(test.sessionID, { objective: "Record a plan" })
+    duringReview = Effect.sync(() => {
+      configured = false
+    })
+    expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Ready" })).type).toBe("error")
+    expect((yield* goals.get(test.sessionID))?.status).toBe("active")
+    configured = true
+    duringReview = Effect.void
+    expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Ready" })).type).not.toBe("error")
+    configured = false
+    expect((yield* completion.settle(test.sessionID).pipe(Effect.result))._tag).toBe("Failure")
+    expect((yield* goals.get(test.sessionID))?.status).toBe("active")
+  }),
+)
+
+it.live("disabling S1 during plan evaluation or approval cannot authorize Build", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const plans = yield* SessionPlan.Service
+    duringReview = Effect.sync(() => {
+      configured = false
+    })
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+    expect(yield* plans.list(test.sessionID)).toEqual([])
+    configured = true
+    duringReview = Effect.void
+    duringApproval = Effect.sync(() => {
+      configured = false
+    })
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+    expect((yield* plans.list(test.sessionID)).every((plan) => plan.status === "ready")).toBe(true)
+    const todos = yield* SessionTodo.Service
+    expect(yield* todos.get(test.sessionID)).toEqual([])
   }),
 )
 

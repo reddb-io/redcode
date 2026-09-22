@@ -1,6 +1,8 @@
 import { SessionTodo } from "@reddb-io/redcode-schema/session-todo"
 import { Todo } from "../session/todo"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import path from "path"
 import { createHash } from "node:crypto"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
@@ -54,12 +56,15 @@ export const PlanExitTool = Tool.define(
     const goals = yield* GoalRuntime.Service
     const question = yield* Question.Service
     const provider = yield* Provider.Service
+    const intelligence = yield* Intelligence.Service
+    const facts = yield* SessionTaskFacts.Service
 
     return {
       description: EXIT_DESCRIPTION,
       parameters: PlanParameters,
       execute: (params: typeof PlanParameters.Type, ctx: Tool.Context) =>
         Effect.gen(function* () {
+          yield* Intelligence.requireConfigured(yield* intelligence.read())
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(instance.worktree, yield* Session.preparePlan(info, instance))
@@ -67,12 +72,48 @@ export const PlanExitTool = Tool.define(
           if (!content.trim()) return yield* Effect.die("The plan file is empty; finish it before requesting approval")
           const revision = createHash("sha256").update(content).digest("hex")
           const previous = (yield* plans.list(ctx.sessionID)).find((entry) => entry.revision === revision)
+          const tasks = params.tasks ?? previous?.tasks
+          const problem = SessionPlan.validationError({ content, tasks })
+          if (problem) return yield* Effect.die(problem)
+          const requests = (yield* facts.load(ctx.sessionID)).requests.filter((request) => !request.pending)
+          yield* Intelligence.requireAccepted(
+            yield* intelligence.evaluate({
+              sessionID: ctx.sessionID,
+              operation: "plan",
+              candidateID: revision,
+              sources: {
+                requests: Intelligence.evidence(requests, { reference: ctx.sessionID, limit: 24000 }),
+                coverage:
+                  "All applicable request text must be visible to approve the plan; truncated history is incomplete coverage.",
+              },
+              candidate: { plan: Intelligence.evidence(content, { reference: plan, limit: 24000 }), tasks },
+              questions: Intelligence.questions({
+                coverage:
+                  "Are sources.requests or candidate.plan truncated, so full requirements or plan coverage cannot be verified? Missing content cannot be assumed covered.",
+                decomposition:
+                  "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
+                requirements:
+                  "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
+              }),
+            }),
+          )
+          if (
+            createHash("sha256")
+              .update(yield* readPlan(path.resolve(instance.worktree, plan)))
+              .digest("hex") !== revision ||
+            Intelligence.fingerprint(requests) !==
+              Intelligence.fingerprint(
+                (yield* facts.load(ctx.sessionID)).requests.filter((request) => !request.pending),
+              )
+          )
+            return yield* Effect.die("Plan sources changed during evaluation; retry")
+          yield* Intelligence.requireConfigured(yield* intelligence.read())
           const ready = yield* plans.record({
             sessionID: ctx.sessionID,
             revision,
             path: plan,
             content,
-            tasks: params.tasks ?? previous?.tasks,
+            tasks,
             status: "ready",
             created: Date.now(),
           })
@@ -114,6 +155,7 @@ export const PlanExitTool = Tool.define(
           const latestGoal = yield* goals.get(ctx.sessionID)
           if (latestGoal?.id !== goal?.id || latestGoal?.updated !== goal?.updated)
             return yield* Effect.die("Goal changed during plan approval; inspect the current goal before executing")
+          yield* Intelligence.requireConfigured(yield* intelligence.read())
           const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
           yield* todos.update({
             sessionID: ctx.sessionID,

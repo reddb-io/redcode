@@ -77,6 +77,7 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
               const evidence = yield* SessionEvidence.read(input.path, context, permissions, location)
               const savedGoal = yield* goals.get(context.sessionID)
               const goal = savedGoal?.status === "active" || savedGoal?.status === "waiting" ? savedGoal : null
@@ -110,17 +111,22 @@ const layer = Layer.effectDiscard(
               const evaluation = yield* intelligence.evaluate({
                 sessionID: context.sessionID,
                 operation: "plan",
-                sources: requests,
-                candidate: { plan: evidence.content, tasks: decomposition },
+                sources: {
+                  requests: Intelligence.evidence(requests, { reference: context.sessionID, limit: 24000 }),
+                  coverage:
+                    "All applicable request text must be visible to approve the plan; truncated history is incomplete coverage.",
+                },
+                candidate: {
+                  plan: Intelligence.evidence(evidence.content, { reference: evidence.path, limit: 24000 }),
+                  tasks: decomposition,
+                },
                 questions: Intelligence.questions({
+                  coverage:
+                    "Are sources.requests or candidate.plan truncated, so full requirements or plan coverage cannot be verified? Missing content cannot be assumed covered.",
                   decomposition:
                     "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
-                  ...Object.fromEntries(
-                    requests.map((_, index) => [
-                      `request_${index}`,
-                      `Does candidate.plan omit or contradict an applicable requirement in sources[${index}].text, accounting for later corrections in sources?`,
-                    ]),
-                  ),
+                  requirements:
+                    "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
                 }),
               })
               yield* Intelligence.requireAccepted(evaluation)
@@ -133,6 +139,7 @@ const layer = Layer.effectDiscard(
                   )
               )
                 return yield* new ToolFailure({ message: "Plan sources changed during evaluation; retry" })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
               const ready = yield* plans.record({
                 sessionID: context.sessionID,
                 revision: evidence.hash,
@@ -176,6 +183,7 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({
                   message: "Goal changed during plan approval. Inspect the current goal before executing.",
                 })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
               const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
               yield* todos.update({
                 sessionID: context.sessionID,

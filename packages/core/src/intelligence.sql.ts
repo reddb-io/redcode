@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { SessionTable } from "./session/sql"
 
 export const IntelligenceEvaluationTable = sqliteTable(
@@ -26,7 +26,7 @@ export const IntelligenceEvaluationTable = sqliteTable(
     time_created: integer().notNull(),
   },
   (table) => [
-    uniqueIndex("intelligence_evaluation_fingerprint_idx").on(table.fingerprint),
+    index("intelligence_evaluation_fingerprint_lookup_idx").on(table.fingerprint),
     index("intelligence_evaluation_session_created_idx").on(table.session_id, table.time_created),
     index("intelligence_evaluation_operation_created_idx").on(table.operation, table.time_created),
     index("intelligence_evaluation_decision_created_idx").on(table.decision, table.time_created),

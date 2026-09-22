@@ -52,6 +52,8 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { DialogSetup } from "../dialog-setup"
+import { IntelligenceIndicator } from "../dialog-intelligence"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive } from "../../keymap"
 import { useTuiConfig } from "../../config"
@@ -253,6 +255,11 @@ export function Prompt(props: PromptProps) {
   const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
   const [cursorVersion, setCursorVersion] = createSignal(0)
   const currentProviderLabel = createMemo(() => local.model.parsed().provider)
+  const intelligenceOverride = createMemo(() => {
+    const principal = local.intelligence.state.status?.settings.principal
+    const current = local.model.current()
+    return principal && current && (principal.providerID !== current.providerID || principal.id !== current.modelID)
+  })
   const hasRightContent = createMemo(() => Boolean(props.right))
 
   function promptModelWarning() {
@@ -1159,6 +1166,10 @@ export function Prompt(props: PromptProps) {
       void exit()
       return true
     }
+    if (!(await local.intelligence.refresh())) {
+      dialog.replace(() => <DialogSetup />)
+      return false
+    }
     const selectedModel = local.model.current()
     if (!selectedModel) {
       void promptModelWarning()
@@ -1723,9 +1734,13 @@ export function Prompt(props: PromptProps) {
                             flexShrink={0}
                             fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
                           >
-                            {local.model.parsed().model}
+                            S2 {Locale.truncate(local.model.parsed().model, dimensions().width < 100 ? 22 : 40)}
+                            {intelligenceOverride() ? "*" : ""}
                           </text>
-                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                          <Show when={dimensions().width >= 100}>
+                            <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                          </Show>
+                          <IntelligenceIndicator sessionID={props.sessionID} />
                           <Show when={showVariant()}>
                             <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>

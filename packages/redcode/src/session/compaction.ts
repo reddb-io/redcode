@@ -1,4 +1,6 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { CompactionEvaluation } from "@reddb-io/redcode-core/session/compaction-evaluation"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
@@ -449,6 +451,8 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const outputs = yield* ToolOutputBridge.Service
     const status = yield* SessionStatus.Service
+    const intelligence = yield* Intelligence.Service
+    const evaluateBoundary = CompactionEvaluation.boundary(intelligence)
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
@@ -644,6 +648,24 @@ const layer = Layer.effect(
         input.tokens.total ||
         input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
       const target = Math.floor(room * CompactionGuard.EFFECTIVE_RATIO)
+      const messages = yield* visible(input.sessionID)
+      if (!over && cfg.compaction?.auto !== false && room > 0 && count >= room * 0.5) {
+        const requests = messages.filter(isRealRequest)
+        const latest = requests.at(-1)
+        const since = messages.slice(
+          messages.findLastIndex((message) => message.info.role === "assistant" && message.info.summary) + 1,
+        ).length
+        if (
+          latest &&
+          since >= 4 &&
+          (yield* evaluateBoundary({
+            sessionID: input.sessionID,
+            userID: latest.info.id,
+            sources: messages.slice(-12).map(serialize),
+          }))
+        )
+          return "compact" as const
+      }
       // Over the threshold the cached prefix is lost to the summary anyway. Below it, trimming is
       // only worth it once the provider has already dropped the cache and the context is near full.
       const cold =
@@ -653,7 +675,6 @@ const layer = Layer.effect(
         count >= target &&
         CompactionPolicy.cacheCold({ lastRequestAt: input.at, now: Date.now() })
       if (!over && !cold) return "none" as const
-      const messages = yield* visible(input.sessionID)
       // Measured against the provider's own count, not a character estimate.
       const need = count - target
       const freeable = yield* trim({ sessionID: input.sessionID, model: input.model, messages, need, commit: false })
@@ -721,9 +742,14 @@ const layer = Layer.effect(
       }
 
       const agent = yield* agents.get("compaction")
-      const model = agent.model
-        ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
-        : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+      const settings = yield* intelligence.read()
+      yield* Intelligence.requireConfigured(settings)
+      const transformation = settings.fast ?? settings.principal
+      const model = transformation
+        ? yield* provider.getModel(transformation.providerID, transformation.id).pipe(Effect.orDie)
+        : agent.model
+          ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
+          : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
       const cfg = yield* config.get()
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
@@ -1148,6 +1174,9 @@ const layer = Layer.effect(
       yield* session.setCompacting({ sessionID: input.sessionID, time: Date.now() })
       yield* status.set(input.sessionID, { type: "busy", phase: "compacting", since: Date.now() })
       return yield* runCompaction(input).pipe(
+        Effect.catchTag("IntelligenceError", (error) =>
+          Effect.logWarning(error.message).pipe(Effect.as("stop" as const)),
+        ),
         Effect.ensuring(session.setCompacting({ sessionID: input.sessionID }).pipe(Effect.ignore)),
       )
     })
@@ -1278,14 +1307,102 @@ const layer = Layer.effect(
         yield* session.updateMessage(msg)
         return "stop"
       }
+      // Buffer and verify the checkpoint before the processor makes it eligible to replace history.
+      const checked = yield* deadline(
+        Effect.gen(function* () {
+          yield* Intelligence.requireConfigured(yield* intelligence.read())
+          const generated = settled.events
+            ? { ok: true as const, events: settled.events }
+            : yield* collect(settled.stream, prepared.model)
+          if (!generated.ok) return { error: generated.error ?? tooLarge() }
+          const inspect = (events: readonly LLMEvent[], attempt: number) =>
+            Effect.gen(function* () {
+              const text = events
+                .filter(LLMEvent.is.textDelta)
+                .map((event) => event.text)
+                .join("")
+              const finish = events.findLast(LLMEvent.is.finish)?.reason
+              const structural =
+                summaryError({ summary: text, source: settled.source, finish }) ??
+                (finish === "length" ? CompactionEvaluation.partialError(text) : undefined)
+              if (structural) return { issue: structural, unavailable: false }
+              const evaluation = yield* intelligence.evaluate({
+                sessionID: input.sessionID,
+                operation: "compaction",
+                attempt,
+                sources: [prepared.source],
+                candidate: text,
+                questions: CompactionEvaluation.questions,
+              })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
+              return {
+                issue:
+                  evaluation?.decision === "accepted"
+                    ? undefined
+                    : `Checkpoint evaluation ${evaluation?.decision ?? "unavailable"}: ${evaluation?.issues.join(", ") ?? "No evaluation"}`,
+                unavailable: !evaluation || evaluation.decision === "unavailable",
+              }
+            })
+          const first = yield* inspect(generated.events, 0)
+          if (!first.issue) return { ...settled, events: generated.events }
+          if (first.unavailable)
+            return {
+              error: new SessionV1.ContextOverflowError({
+                message: `${first.issue}. Original history preserved.`,
+              }).toObject(),
+            }
+          const settings = yield* intelligence.read()
+          yield* Intelligence.requireConfigured(settings)
+          const principal = settings.principal
+            ? yield* provider.getModel(settings.principal.providerID, settings.principal.id).pipe(Effect.orDie)
+            : prepared.model
+          const repairStream = {
+            ...prepared.stream,
+            model: principal,
+            system: [
+              ...prepared.stream.system,
+              `Correct the checkpoint against the original history. Validation: ${first.issue}. Include every required section; do not invent evidence.`,
+            ],
+          }
+          const repaired = yield* collect(repairStream, principal)
+          if (!repaired.ok) return { error: repaired.error ?? tooLarge() }
+          const second = yield* inspect(repaired.events, 1)
+          return second.issue
+            ? {
+                error: new SessionV1.ContextOverflowError({
+                  message: `${second.issue}. Original history preserved.`,
+                }).toObject(),
+              }
+            : { ...settled, stream: repairStream, events: repaired.events }
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.succeed({
+              error: new SessionV1.ContextOverflowError({
+                message: `${String(error)}. Original history preserved.`,
+              }).toObject(),
+            }),
+          ),
+        ),
+        Effect.succeed("timeout" as const),
+      )
+      if (checked === "timeout") return yield* giveUp(msg, compactionMs!)
+      if ("error" in checked) {
+        msg.error = checked.error
+        msg.finish = "error"
+        yield* session.updateMessage(msg)
+        return "stop"
+      }
+      msg.modelID = checked.stream.model.id
+      msg.providerID = checked.stream.model.providerID
+      yield* session.updateMessage(msg)
       const processor = yield* processors.create({
         assistantMessage: msg,
         sessionID: input.sessionID,
-        model: prepared.model,
+        model: checked.stream.model,
         compacting: true,
       })
       const result = yield* deadline(
-        processor.process({ ...settled.stream, user: prepared.userMessage }, settled.events),
+        processor.process({ ...checked.stream, user: prepared.userMessage }, checked.events),
         Effect.suspend(() => giveUp(processor.message, compactionMs!)),
       )
 
@@ -1371,6 +1488,15 @@ const layer = Layer.effect(
         })
       }
       // The summary becomes a history boundary only after validation and tail persistence.
+      const configured = yield* intelligence.read().pipe(Effect.flatMap(Intelligence.requireConfigured), Effect.result)
+      if (configured._tag === "Failure") {
+        processor.message.error = new SessionV1.ContextOverflowError({
+          message: `${configured.failure.message}. Original history preserved.`,
+        }).toObject()
+        processor.message.finish = "error"
+        yield* session.updateMessage(processor.message)
+        return "stop"
+      }
       yield* session.updateMessage(processor.message)
 
       // Sized the way the next request will be: the system prompt, everything history now shows,
@@ -1601,6 +1727,7 @@ export const node = LayerNode.make({
     RuntimeFlags.node,
     ToolOutputBridge.node,
     SessionStatus.node,
+    Intelligence.node,
   ],
 })
 

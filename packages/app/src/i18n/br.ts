@@ -1,6 +1,26 @@
 import { designGoalDictionary } from "./design-goal"
 
 export const dict = {
+  "intelligence.details": "System One / System Two",
+  "intelligence.systemOne": "S1 · avaliador",
+  "intelligence.systemTwo": "S2 · modelo em uso",
+  "intelligence.setup": "Configurar",
+  "intelligence.setupRequired": "Configure S1 e S2 para continuar",
+  "intelligence.setupDescription":
+    "Escolha um avaliador System One e um modelo System Two antes de enviar prompts. Seu rascunho será preservado.",
+  "intelligence.loading": "Verificando…",
+  "intelligence.connectionFailed": "Não foi possível verificar a configuração de S1/S2. Reconecte e tente novamente.",
+  "intelligence.configured": "Configurado. Cada avaliação informa o estado da conexão.",
+  "intelligence.override": "Modelo definido para a sessão ou o agente",
+  "intelligence.globalDefault": "Modelo S2 padrão global",
+  "intelligence.transformations": "Transformações",
+  "intelligence.reuseS2": "Reutilizar S2 global",
+  "intelligence.sessionHistory": "Avaliações da sessão",
+  "intelligence.emptyHistory": "Nenhuma avaliação registrada para esta sessão.",
+  "intelligence.historyFailed": "Não foi possível carregar as avaliações. Reabra para tentar novamente.",
+  "intelligence.subject": "Prompt: {{id}}",
+  "settings.intelligence.operation.tool_usage": "Uso de ferramentas",
+  "settings.intelligence.operation.goal_completion": "Conclusão do objetivo",
   ...designGoalDictionary("br"),
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Arquivo",

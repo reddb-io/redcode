@@ -191,6 +191,7 @@ export const locationLayer = Layer.effect(
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session) {
         const settings = yield* intelligence.read()
+        yield* Intelligence.requireConfigured(settings)
         if (settings.enabled && !session.model && settings.principal)
           session = { ...session, model: settings.principal }
         // Location plugins populate and filter the catalog asynchronously during layer startup.

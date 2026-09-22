@@ -417,7 +417,7 @@ const make = Effect.gen(function* () {
                     part.state.status === "completed"
                       ? part.state.content.filter((item) => item.type === "text")
                       : undefined,
-                }).slice(0, 1000),
+                }),
               },
             ]
           })
@@ -518,7 +518,7 @@ const make = Effect.gen(function* () {
               input: part.state.input,
               status: part.state.status,
               output: part.state.status === "completed" ? part.state.output : undefined,
-            }).slice(0, 1000),
+            }),
           },
         ]
       }),
@@ -540,7 +540,11 @@ const make = Effect.gen(function* () {
           messageID: result.messageID,
           tool: result.tool,
           successful: result.successful,
-          summary: result.summary,
+          summary:
+            result.summary.length > 12000
+              ? result.summary.slice(0, 12000) +
+                "\n[Result truncated; inspect the original tool result before claiming completion.]"
+              : result.summary,
         })),
     }
   })

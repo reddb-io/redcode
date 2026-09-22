@@ -63,6 +63,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sdk = useSDK()
     const sync = useSync()
     const serverSDK = useServerSDK()
+    createEffect(() => void serverSDK().intelligence.refresh())
     const providers = useProviders(() => sdk().directory)
     const models = useModels()
     const settings = useSettings()
@@ -177,7 +178,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
-    const fallback = createMemo<ModelKey | undefined>(() => configuredModel() ?? recentModel() ?? defaultModel())
+    const fallback = createMemo<ModelKey | undefined>(() => {
+      const settings = serverSDK().intelligence.state.status?.settings
+      if (settings?.enabled && settings.principal)
+        return { providerID: settings.principal.providerID, modelID: settings.principal.id }
+      return configuredModel() ?? recentModel() ?? defaultModel()
+    })
 
     const agent = {
       list,

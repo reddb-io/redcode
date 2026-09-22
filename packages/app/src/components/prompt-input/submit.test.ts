@@ -33,6 +33,8 @@ const promptInputs: unknown[] = []
 const sentCommands: unknown[] = []
 const commands: Array<{ name: string }> = []
 let serverSessionSyncs = 0
+let intelligenceReady = true
+let setupOpened = 0
 
 let params: { id?: string } = {}
 let search: { draftId?: string } = {}
@@ -117,6 +119,14 @@ const clientFor = (directory: string) => {
 
 beforeAll(async () => {
   const rootClient = clientFor("/repo/main")
+  const serverSDK = await import("@/context/server-sdk")
+  const intelligenceServer = { intelligence: { refresh: async () => intelligenceReady } }
+  mock.module("@/context/server-sdk", () => ({ ...serverSDK, useServerSDK: () => () => intelligenceServer }))
+  mock.module("@/components/settings-dialog", () => ({
+    useSettingsDialog: () => () => {
+      setupOpened++
+    },
+  }))
 
   mock.module("@solidjs/router", () => ({
     useNavigate: () => () => undefined,
@@ -135,6 +145,7 @@ beforeAll(async () => {
   mock.module("@reddb-io/redcode-ui/toast", () => ({
     Toast: { Region: () => null },
     showToast: () => 0,
+    toaster: { dismiss: () => undefined },
   }))
 
   mock.module("@reddb-io/redcode-core/util/encode", () => ({
@@ -279,6 +290,8 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  intelligenceReady = true
+  setupOpened = 0
   createdClients.length = 0
   createdSessions.length = 0
   sessionCreateInputs.length = 0
@@ -305,6 +318,32 @@ beforeEach(() => {
 })
 
 describe("prompt submit worktree selection", () => {
+  test("preserves the draft and opens setup before creating sessions when S1/S2 are incomplete", async () => {
+    intelligenceReady = false
+    const submit = createPromptSubmit({
+      prompt,
+      info: () => undefined,
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: () => 2,
+      addToHistory: () => {
+        throw new Error("draft must not be consumed")
+      },
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+    })
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    expect(setupOpened).toBe(1)
+    expect(createdSessions).toEqual([])
+    expect(sentPrompts).toEqual([])
+    expect(promptValue[0]).toMatchObject({ content: "ls" })
+  })
   test("reads the latest worktree accessor value per submit", async () => {
     const submit = createPromptSubmit({
       prompt,

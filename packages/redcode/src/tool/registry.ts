@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { DesignReviewServer } from "@/design/review-server"
@@ -517,6 +518,7 @@ export const node = LayerNode.make({
     Question.node,
     Todo.node,
     SessionTaskFacts.node,
+    Intelligence.node,
     Agent.node,
     Skill.node,
     Session.node,

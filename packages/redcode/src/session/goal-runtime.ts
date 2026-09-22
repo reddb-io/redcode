@@ -1,16 +1,10 @@
-import { Context, Duration, Effect, Layer } from "effect"
-import * as Stream from "effect/Stream"
+import { Context, Effect, Layer } from "effect"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Shell } from "@reddb-io/redcode-core/shell"
-import { LLMEvent } from "@reddb-io/redcode-llm"
-import { Agent } from "@/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
-import { Provider } from "@/provider/provider"
-import { LLM } from "./llm"
-import { AuxDeadline } from "./aux-deadline"
 import { SessionGoal } from "./goal"
 import { SessionGuardLog } from "./guard-log"
 import type { SessionID } from "./schema"
@@ -18,14 +12,15 @@ import { Session } from "./session"
 import { SessionBudget } from "./budget"
 import { SessionSpend } from "./spend"
 import { Process } from "@/util/process"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 
 /**
  * The goal loop's impure half: where the goal is kept, how the judge is asked, how gates run.
  *
  * The decisions themselves are in `goal.ts` and take values; this file only fetches those
- * values and writes the results back. Everything here fails open: a judge that cannot answer
- * is a CONTINUE with a warning on the guard log, a gate that cannot run is a failed gate with
- * the error as its output, and none of it can fail the turn it hangs off.
+ * values and writes the results back. An unavailable evaluator cannot approve completion.
+ * Unanswered checks follow the bounded judge-failure policy; failed gates preserve their
+ * output and keep the goal unfinished.
  */
 
 export interface AfterTurnInput {
@@ -76,9 +71,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const sessions = yield* Session.Service
-    const agents = yield* Agent.Service
-    const provider = yield* Provider.Service
-    const llm = yield* LLM.Service
+    const intelligence = yield* Intelligence.Service
     const config = yield* Config.Service
     const guards = yield* SessionGuardLog.Service
     const jobs = yield* BackgroundJob.Service
@@ -184,7 +177,10 @@ const layer = Layer.effect(
       for (const command of goal.gates) {
         const result = yield* Effect.promise(() =>
           Process.text([command], { shell: sh, cwd: ctx.directory, nothrow: true, timeout }).then(
-            (r) => ({ ok: r.code === 0, output: (r.text + "\n" + r.stderr.toString()).slice(-GATE_OUTPUT_CHARS) }),
+            (r) => ({
+              ok: r.code === 0,
+              output: Intelligence.evidence(r.text + "\n" + r.stderr.toString(), { limit: GATE_OUTPUT_CHARS }).content,
+            }),
             (error: unknown) => ({ ok: false, output: error instanceof Error ? error.message : String(error) }),
           ),
         )
@@ -194,7 +190,7 @@ const layer = Layer.effect(
       return out
     })
 
-    /** One short request against a small model. Unreadable or unanswered is `undefined`. */
+    /** Verify an explicit completion claim against observed evidence using typed S1 questions. */
     const judge = Effect.fn("GoalRuntime.judge")(function* (input: {
       session: Session.Info
       goal: SessionGoal.Goal
@@ -203,78 +199,38 @@ const layer = Layer.effect(
       background: readonly string[]
       evidence: string
     }) {
-      const ag = yield* agents.get("goal_judge")
-      if (!ag) return undefined
-      const mdl = ag.model
-        ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
-        : ((yield* provider.getSmallModel(input.lastUser.model.providerID)) ??
-          (yield* provider.getModel(input.lastUser.model.providerID, input.lastUser.model.modelID)))
-      const cfg = yield* config.get()
-      const ms = AuxDeadline.deadlineMs("judge", cfg.experimental?.goal?.judge_timeout)
-      const { goal } = input
-      const content = [
-        "<goal>",
-        `Objective: ${goal.objective}`,
-        ...(goal.contract.outcome ? [`Outcome: ${goal.contract.outcome}`] : []),
-        ...(goal.contract.verification ? [`Verification: ${goal.contract.verification}`] : []),
-        ...(goal.contract.constraints ? [`Constraints: ${goal.contract.constraints}`] : []),
-        ...(goal.contract.boundaries ? [`Boundaries: ${goal.contract.boundaries}`] : []),
-        ...(goal.contract.stop_when ? [`Stop when: ${goal.contract.stop_when}`] : []),
-        ...(goal.gates.length ? [`Gates (all passed this turn): ${goal.gates.join(" && ")}`] : []),
-        `Turn ${goal.turns.used + 1} of ${goal.turns.max}.`,
-        "</goal>",
-        "",
-        goal.claimed
-          ? `<claim>\nThe agent called goal_complete with this evidence:\n${goal.claimed.evidence}\n</claim>`
-          : "<claim>The agent did not claim completion this turn.</claim>",
-        "",
-        `<observed-evidence>\n${input.evidence || "No executed checks or completed tools."}\n</observed-evidence>`,
-        `<last-turn>\n${input.answer || "(the agent produced no text this turn)"}\n</last-turn>`,
-        "",
-        input.background.length
-          ? `<background>Work still running for this session: ${input.background.join("; ")}</background>`
-          : "<background>No background work is running.</background>",
-        "",
-        'Reply with one JSON object: {"verdict": "done|continue|blocked|wait", "reason": "..."}',
-      ].join("\n")
-
-      const text = yield* llm
-        .stream({
-          agent: ag,
-          user: input.lastUser,
-          system: [],
-          small: true,
-          tools: {},
-          model: mdl,
-          sessionID: input.session.id,
-          retries: 2,
-          messages: [{ role: "user", content }],
-        })
-        .pipe(
-          Stream.filter(LLMEvent.is.textDelta),
-          Stream.map((e) => e.text),
-          Stream.mkString,
-          // A judge that errors is a judge that did not answer: the loop continues and says so.
-          Effect.catchCause((cause) =>
-            Effect.logWarning("goal judge failed", { "session.id": input.session.id, cause }).pipe(Effect.as("")),
-          ),
-          ms === undefined
-            ? (self) => self
-            : Effect.timeoutOrElse({
-                duration: Duration.millis(ms),
-                orElse: () =>
-                  guards
-                    .record({
-                      sessionID: input.session.id,
-                      guard: "goal",
-                      action: "warn",
-                      subject: "judge",
-                      detail: AuxDeadline.message("judge", ms),
-                    })
-                    .pipe(Effect.as("")),
-              }),
-        )
-      return SessionGoal.parseVerdict(text)
+      if (!input.goal.claimed)
+        return {
+          verdict: "continue" as const,
+          reason: "The agent has not proposed completion. Continue within the goal's scope.",
+        }
+      yield* Intelligence.requireConfigured(yield* intelligence.read())
+      const evaluation = yield* intelligence.evaluate({
+        sessionID: input.session.id,
+        operation: "goal_completion",
+        subjectID: input.goal.id,
+        sources: {
+          objective: input.goal.objective,
+          contract: input.goal.contract,
+          gates: input.goal.gates,
+          evidence: Intelligence.evidence(input.evidence, { reference: "executed-tools-and-gates", limit: 32000 }),
+          lastAnswer: Intelligence.evidence(input.answer, { limit: 8000 }),
+          background: input.background,
+        },
+        candidate: input.goal.claimed,
+        questions: Intelligence.questions({
+          unsupported:
+            "Does the proposed completion lack observed evidence proving the objective and every contract requirement within its scope? A confident claim or unexecuted test file does not prove runtime behavior.",
+          incomplete:
+            "Does completion depend on missing or truncated evidence, failed checks or background work? Omitted evidence must never be assumed successful.",
+        }),
+      })
+      yield* Intelligence.requireConfigured(yield* intelligence.read())
+      if (!evaluation || evaluation.decision === "unavailable" || evaluation.decision === "inconclusive")
+        return undefined
+      return evaluation.decision === "accepted"
+        ? { verdict: "done" as const, reason: `System One verified the proposed completion (${evaluation.id})` }
+        : { verdict: "continue" as const, reason: `System One requires correction: ${evaluation.issues.join(", ")}` }
     })
 
     const afterTurn = (input: AfterTurnInput): Effect.Effect<AfterTurnResult | undefined> =>
@@ -310,7 +266,10 @@ const layer = Layer.effect(
                 : [],
             ),
           )
-        const evidence = SessionGoal.evidence(gateResults, observed)
+        const evidence = [
+          ...observed,
+          ...gateResults.map((check) => `${check.command}: ${check.ok ? "PASS" : "FAIL"}\n${check.output}`),
+        ].join("\n\n")
         const verdict = failed
           ? undefined
           : yield* judge({
@@ -350,6 +309,10 @@ const layer = Layer.effect(
           const current = yield* get(sessionID)
           if (!current || current.id !== base.id || current.updated !== base.updated || current.status !== "active")
             return undefined
+          if (next.status === "done" && !Intelligence.isReady(yield* intelligence.read().pipe(Effect.orDie))) {
+            const paused = yield* pause(sessionID, "Configure S1 and S2 again before completing this goal")
+            return paused ? { action: "pause" as const, goal: paused } : undefined
+          }
           yield* set(sessionID, next)
           yield* guards.record({
             sessionID,
@@ -381,7 +344,10 @@ const layer = Layer.effect(
         yield* Effect.logWarning("goal record changed twice during judgement; pausing the goal", {
           "session.id": sessionID,
         })
-        const paused = yield* pause(sessionID, "the goal record changed while the turn was being judged; nothing was recorded")
+        const paused = yield* pause(
+          sessionID,
+          "the goal record changed while the turn was being judged; nothing was recorded",
+        )
         if (!paused) return undefined
         return { action: "pause" as const, goal: paused }
       }).pipe(Effect.withSpan("GoalRuntime.afterTurn"))
@@ -393,16 +359,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [
-    Session.node,
-    Agent.node,
-    Provider.node,
-    LLM.node,
-    Config.node,
-    SessionGuardLog.node,
-    BackgroundJob.node,
-    SessionSpend.node,
-  ],
+  deps: [Session.node, Intelligence.node, Config.node, SessionGuardLog.node, BackgroundJob.node, SessionSpend.node],
 })
 
 export * as GoalRuntime from "./goal-runtime"

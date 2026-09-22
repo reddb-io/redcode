@@ -8,6 +8,7 @@ import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 import type { ReferenceInfo } from "@reddb-io/redcode-sdk/v2/client"
 import { createEffect, createMemo, on, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
+import { IntelligenceIndicator } from "./intelligence-indicator"
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
 import { normalizePromptHistoryEntry, promptLength, type PromptHistoryComment } from "@/components/prompt-input/history"
@@ -59,19 +60,22 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
         modelControl={
-          <PromptInputV2ModelControl
-            loading={props.controller.model.loading}
-            paid={props.controller.model.paid}
-            title={language.t("command.model.choose")}
-            keybind={command.keybindParts("model.choose")}
-            model={props.controller.model.selection}
-            providerID={props.controller.model.selection.current()?.provider?.id}
-            modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
-            onClose={props.controller.restoreFocus}
-            onUnpaidClick={() =>
-              dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
-            }
-          />
+          <>
+            <IntelligenceIndicator model={props.controller.model.selection} />
+            <PromptInputV2ModelControl
+              loading={props.controller.model.loading}
+              paid={props.controller.model.paid}
+              title={language.t("command.model.choose")}
+              keybind={command.keybindParts("model.choose")}
+              model={props.controller.model.selection}
+              providerID={props.controller.model.selection.current()?.provider?.id}
+              modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+              onClose={props.controller.restoreFocus}
+              onUnpaidClick={() =>
+                dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
+              }
+            />
+          </>
         }
       />
     </div>
@@ -491,7 +495,10 @@ function PromptInputV2ModelControl(props: {
           />
         )}
       </Show>
-      <span class="truncate leading-4">{props.modelName}</span>
+      <span class="truncate leading-4">
+        <span class="text-text-weak">S2 </span>
+        {props.modelName}
+      </span>
       <span class="-ml-0.5 -mr-1 flex shrink-0">
         <Icon name="chevron-down" />
       </span>

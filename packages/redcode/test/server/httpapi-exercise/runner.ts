@@ -18,6 +18,7 @@ import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
 import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { EventV2Bridge } from "../../../src/event-v2-bridge"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 
 export function runScenario(options: Options) {
   return (scenario: Scenario) => {
@@ -120,6 +121,23 @@ function withContext<A, E>(
           : undefined
         const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(Effect.provideService(modules.InstanceRef, instance), Effect.provide(app))
+        if (context.llm) {
+          yield* run(
+            Effect.gen(function* () {
+              const intelligence = yield* Intelligence.Service
+              const previous = yield* intelligence.read()
+              yield* intelligence.save({
+                settings: {
+                  enabled: true,
+                  onboarding: "completed",
+                  principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+                  evaluator: { transport: "typesafe", model: "jev-test", baseURL: context.llm!.url },
+                },
+              })
+              yield* Effect.addFinalizer(() => intelligence.save({ settings: previous }).pipe(Effect.orDie))
+            }),
+          )
+        }
         const directory = () => {
           if (!context.dir?.path) throw new Error("scenario needs a project directory")
           return context.dir.path

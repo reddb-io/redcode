@@ -22,6 +22,48 @@ const it = testEffect(
 const sessionID = SessionV2.ID.make("ses_todo_test")
 
 const setup = Effect.gen(function* () {
+  const intelligence = yield* Intelligence.Service
+  const previous = yield* intelligence.read()
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const body = await request.json()
+          return Response.json({
+            model: "jev",
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => [
+                id,
+                (question as { type: string }).type === "score"
+                  ? {
+                      type: "score",
+                      score: 3,
+                      confidence: 1,
+                      probabilities: { "3": 1 },
+                      legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                    }
+                  : { type: "noul", noul: 0.01 },
+              ]),
+            ),
+            usage: { input_tokens: 10, output_tokens: 0 },
+          })
+        },
+      }),
+    ),
+    (server) =>
+      intelligence
+        .save({ settings: previous })
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+  )
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+    },
+  })
   const { db } = yield* Database.Service
   yield* db
     .insert(ProjectTable)
@@ -40,6 +82,7 @@ const setup = Effect.gen(function* () {
     })
     .run()
     .pipe(Effect.orDie)
+  return { server }
 })
 
 describe("SessionTodo", () => {
@@ -368,6 +411,57 @@ describe("SessionTodo", () => {
   )
 })
 
+it.live("disabled intelligence and a configuration change during evaluation preserve task revisions", () =>
+  Effect.gen(function* () {
+    const fixture = yield* setup
+    const todos = yield* SessionTodo.Service
+    const intelligence = yield* Intelligence.Service
+    const settings = yield* intelligence.read()
+    const initial = yield* todos.update({
+      sessionID,
+      todos: [{ content: "Preserve filters", criterion: "Filters survive pagination", priority: "high" }],
+    })
+    yield* intelligence.save({ settings: { ...settings, enabled: false } })
+    expect(
+      (yield* todos
+        .update({ sessionID, todos: [{ id: initial[0].id, content: "Revise filters" }] })
+        .pipe(Effect.result))._tag,
+    ).toBe("Failure")
+    yield* intelligence.save({ settings })
+    fixture.server.reload({
+      fetch: async (request) => {
+        const body = await request.json()
+        await Effect.runPromise(intelligence.save({ settings: { ...settings, enabled: false } }))
+        return Response.json({
+          model: "jev",
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => [
+              id,
+              (question as { type: string }).type === "score"
+                ? {
+                    type: "score",
+                    score: 3,
+                    confidence: 1,
+                    probabilities: { "3": 1 },
+                    legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                  }
+                : { type: "noul", noul: 0.01 },
+            ]),
+          ),
+          usage: { input_tokens: 10, output_tokens: 0 },
+        })
+      },
+    })
+    expect(
+      (yield* todos
+        .update({ sessionID, todos: [{ id: initial[0].id, content: "Revise filters" }] })
+        .pipe(Effect.result))._tag,
+    ).toBe("Failure")
+    expect(yield* todos.get(sessionID)).toEqual(initial)
+    expect((yield* intelligence.history(sessionID))[0]?.decision).toBe("accepted")
+  }),
+)
+
 it.live("semantic rejection preserves the stored task revision", () =>
   Effect.gen(function* () {
     yield* setup
@@ -386,7 +480,20 @@ it.live("semantic rejection preserves the stored task revision", () =>
         calls.push(body)
         return Response.json({
           model: "jev-1.13.0",
-          answers: Object.fromEntries(Object.keys(body.questions).map((key) => [key, { type: "noul", noul: 0.99 }])),
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([key, question]) => [
+              key,
+              (question as { type: string }).type === "score"
+                ? {
+                    type: "score",
+                    score: 2,
+                    confidence: 1,
+                    probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 },
+                    legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                  }
+                : { type: "noul", noul: 0.99 },
+            ]),
+          ),
           usage: { input_tokens: 10, output_tokens: 2 },
         })
       },
@@ -410,6 +517,8 @@ it.live("semantic rejection preserves the stored task revision", () =>
         .pipe(Effect.result)
       expect(result._tag).toBe("Failure")
       expect(yield* todos.get(sessionID)).toEqual(initial)
+      expect(calls).toHaveLength(1)
+      expect((yield* intelligence.history(sessionID))[0]?.decision).toBe("needs_revision")
     }).pipe(
       Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)),
       Effect.ensuring(Effect.sync(() => server.stop(true))),

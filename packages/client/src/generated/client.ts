@@ -1543,6 +1543,8 @@ export function make(options: ClientOptions) {
             query: {
               sessionID: input?.["sessionID"],
               operation: input?.["operation"],
+              subjectID: input?.["subjectID"],
+              candidateID: input?.["candidateID"],
               decision: input?.["decision"],
               limit: input?.["limit"],
               offset: input?.["offset"],

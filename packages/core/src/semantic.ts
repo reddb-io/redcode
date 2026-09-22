@@ -10,6 +10,7 @@ import { SessionRunnerModel } from "./session/runner/model"
 import { SessionStore } from "./session/store"
 import { SessionSchema } from "./session/schema"
 import { makeLocationNode } from "./effect/app-node"
+import { CompactionEvaluation } from "./session/compaction-evaluation"
 import { llmClient } from "./effect/app-node-platform"
 import type { Operation, Question } from "@reddb-io/redcode-schema/intelligence"
 
@@ -51,8 +52,10 @@ const make = Effect.gen(function* () {
     sessionID: SessionSchema.ID,
     prompt: string,
     strong = false,
+    partial = false,
   ) {
     const settings = yield* intelligence.read()
+    yield* Intelligence.requireConfigured(settings)
     const session = yield* sessions.get(sessionID)
     if (!session) return yield* new Intelligence.Error({ message: "Session unavailable for semantic transformation" })
     const model = yield* models
@@ -92,12 +95,15 @@ const make = Effect.gen(function* () {
         ? { inputTokens: usage.usage?.inputTokens, outputTokens: usage.usage?.outputTokens }
         : {}),
     })
+    const text = events.flatMap((event) => (LLMEvent.is.textDelta(event) ? [event.text] : [])).join("")
     if (
       events.some((event) => LLMEvent.is.providerError(event)) ||
-      !events.some((event) => LLMEvent.is.finish(event) && event.reason === "stop")
+      !(
+        finish?.reason === "stop" ||
+        (partial && finish?.reason === "length" && !CompactionEvaluation.partialError(text))
+      )
     )
       return yield* new Intelligence.Error({ message: "Transformation did not finish; previous state preserved" })
-    const text = events.flatMap((event) => (LLMEvent.is.textDelta(event) ? [event.text] : [])).join("")
     if (!text.trim()) return yield* new Intelligence.Error({ message: "Transformation was empty" })
     return text
   })
@@ -125,6 +131,7 @@ export function transformer(
     sessionID: SessionSchema.ID,
     prompt: string,
     strong?: boolean,
+    partial?: boolean,
   ) => Effect.Effect<string, Intelligence.Error>,
 ) {
   return Effect.fn("Semantic.transform")(function* <A>(input: {
@@ -136,8 +143,11 @@ export function transformer(
     checks: (candidate: A) => Record<string, Question>
   }) {
     const settings = yield* intelligence.read()
-    if (!settings.enabled) return undefined
-    const candidate = yield* generate(input.sessionID, input.prompt).pipe(Effect.flatMap(input.decode), Effect.result)
+    yield* Intelligence.requireConfigured(settings)
+    const candidate = yield* generate(input.sessionID, input.prompt, false, input.operation === "compaction").pipe(
+      Effect.flatMap(input.decode),
+      Effect.result,
+    )
     const first =
       candidate._tag === "Success"
         ? yield* intelligence.evaluate({
@@ -146,17 +156,22 @@ export function transformer(
             questions: input.checks(candidate.success),
           })
         : undefined
+    yield* Intelligence.requireConfigured(yield* intelligence.read())
     if (candidate._tag === "Success" && first?.decision === "accepted") return candidate.success
+    if (candidate._tag === "Success" && !first)
+      return yield* Intelligence.requireAccepted(first).pipe(Effect.as(undefined))
     if (first?.decision === "unavailable") return yield* Intelligence.requireAccepted(first).pipe(Effect.as(undefined))
     const checks = candidate._tag === "Success" ? input.checks(candidate.success) : {}
     const repaired = yield* generate(
       input.sessionID,
       `${input.prompt}\n\nRevise against original sources. Previous candidate:\n${candidate._tag === "Success" ? JSON.stringify(candidate.success) : "Invalid structured output"}\nChecks requiring correction:\n${first ? JSON.stringify(first.issues.map((id) => checks[id])) : "Output did not satisfy the schema"}`,
       true,
+      input.operation === "compaction",
     ).pipe(Effect.flatMap(input.decode))
     yield* Intelligence.requireAccepted(
       yield* intelligence.evaluate({ ...input, candidate: repaired, questions: input.checks(repaired) }),
     )
+    yield* Intelligence.requireConfigured(yield* intelligence.read())
     return repaired
   })
 }

@@ -1,3 +1,6 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -15,7 +18,9 @@ import { Todo } from "@/session/todo"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(
-  LayerNode.compile(LayerNode.group([Todo.node, SessionTaskFacts.node, Database.node, EventV2Bridge.node])),
+  LayerNode.compile(
+    LayerNode.group([Todo.node, SessionTaskFacts.node, Database.node, EventV2Bridge.node, Intelligence.node]),
+  ),
 )
 
 const assistant = (at: number) =>
@@ -34,6 +39,48 @@ const assistant = (at: number) =>
 
 /** A legacy session with one user request, two tasks and one refused todowrite call. */
 const seed = Effect.fn("DebugTodosTest.seed")(function* () {
+  const intelligence = yield* Intelligence.Service
+  const previous = yield* intelligence.read()
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const body = await request.json()
+          return Response.json({
+            model: "jev",
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => [
+                id,
+                (question as { type: string }).type === "score"
+                  ? {
+                      type: "score",
+                      score: 3,
+                      confidence: 1,
+                      probabilities: { "3": 1 },
+                      legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                    }
+                  : { type: "noul", noul: 0.01 },
+              ]),
+            ),
+            usage: { input_tokens: 10, output_tokens: 0 },
+          })
+        },
+      }),
+    ),
+    (server) =>
+      intelligence
+        .save({ settings: previous })
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+  )
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+    },
+  })
   const { db } = yield* Database.Service
   const sessionID = SessionID.make(`ses_debug_todos_${crypto.randomUUID().slice(0, 8)}`)
   yield* db

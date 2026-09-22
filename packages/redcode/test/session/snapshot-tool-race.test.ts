@@ -24,6 +24,9 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { provideInstance, provideTmpdirServer, testInstanceStoreLayer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
@@ -90,6 +93,7 @@ const root = LayerNode.group([
   SessionProjector.node,
   SessionSummary.node,
   Database.node,
+  Intelligence.node,
   CrossSpawnSpawner.node,
   LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
 ])
@@ -138,6 +142,18 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
         Bun.write(path.join(workspace.tree, "opencode.json"), JSON.stringify(providerCfg(llm.url))),
       )
       return yield* Effect.gen(function* () {
+        const intelligence = yield* Intelligence.Service
+        yield* Effect.acquireRelease(intelligence.read(), (settings) =>
+          intelligence.save({ settings }).pipe(Effect.orDie),
+        )
+        yield* intelligence.save({
+          settings: {
+            enabled: true,
+            onboarding: "completed",
+            principal: { providerID: Provider.ID.make("test"), id: Model.ID.make("test-model") },
+            evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },
+          },
+        })
         const prompt = yield* SessionPrompt.Service
         const sessions = yield* Session.Service
         const summary = yield* SessionSummary.Service

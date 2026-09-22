@@ -9,6 +9,8 @@ import { useServerSync, type ServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useLocal, type ModelSelection } from "@/context/local"
+import { useServerSDK } from "@/context/server-sdk"
+import { useSettingsDialog } from "@/components/settings-dialog"
 import { usePermission } from "@/context/permission"
 import { type ContextItem, type ImageAttachmentPart, type Prompt, type usePrompt } from "@/context/prompt"
 import { useSDK, type DirectorySDK } from "@/context/sdk"
@@ -237,6 +239,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const sync = useSync()
   const serverSync = useServerSync()
   const local = useLocal()
+  const server = useServerSDK()
+  const configureIntelligence = useSettingsDialog("intelligence")
   const permission = usePermission()
   const prompt = input.prompt
   const layout = useLayout()
@@ -335,6 +339,18 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       return
     }
 
+    const submissionServer = server()
+    const permissionState = permission.currentServerState()
+    const ready = await submissionServer.intelligence.refresh()
+    if (server() !== submissionServer) return
+    if (!ready) {
+      showToast({
+        title: language.t("intelligence.setupRequired"),
+        description: language.t("intelligence.setupDescription"),
+      })
+      configureIntelligence()
+      return
+    }
     const modelSelection = input.model ?? local.model
     const currentModel = modelSelection.current()
     const currentAgent = local.agent.current()
@@ -351,7 +367,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     input.resetHistoryNavigation()
 
     const projectDirectory = sdk().directory
-    const permissionState = permission.currentServerState()
     const isNewSession = !params.id
     const shouldAutoAccept = isNewSession && input.autoAccept()
     const worktreeSelection = input.newSessionWorktree?.() || "main"
