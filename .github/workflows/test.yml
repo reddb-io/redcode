@@ -107,8 +107,9 @@ jobs:
         run: bun run test:native
 
   # The largest suite, split by recorded per-file durations (packages/redcode/test/timings.json)
-  # so the three shards finish together. Refresh the file with
-  # `bun test --timings=test/timings.json --update-timings` from packages/redcode when it drifts.
+  # so the three shards finish together. Every shard re-measures its own files and the
+  # `redcode timings` job merges them into one `redcode-timings` artifact; when shards drift apart,
+  # download it from a green run and commit it over packages/redcode/test/timings.json.
   redcode-linux:
     name: redcode (linux, ${{ matrix.shard }}/3)
     needs: changes
@@ -150,7 +151,41 @@ jobs:
       - name: Run Redcode test shard
         working-directory: packages/redcode
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun run test --shard=${{ matrix.shard }}/3 --timings=test/timings.json
+        run: GITHUB_ACTIONS=false bun run test --shard=${{ matrix.shard }}/3 --timings=test/timings.json --update-timings
+
+      # Under --shard, --update-timings rewrites the file with only this shard's files.
+      - name: Upload shard timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: redcode-timings-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: packages/redcode/test/timings.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  redcode-timings:
+    name: redcode timings
+    needs: redcode-linux
+    if: ${{ !cancelled() && needs.redcode-linux.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shard timings
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: redcode-timings-*-${{ github.run_attempt }}
+          path: shards
+
+      - name: Merge shard timings
+        run: |
+          jq -s '{version: 1, files: (map(.files) | add | to_entries | sort_by(-.value) | from_entries)}' shards/*/timings.json > timings.json
+          jq -r '"\(.files | length) files, \(([.files[]] | add) / 1000 | floor)s serial"' timings.json
+
+      - name: Upload merged timings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: redcode-timings
+          path: timings.json
+          retention-days: 30
 
   # Windows runs only the tests whose outcome the platform can change, listed per package in
   # test/windows.txt (paths, shells, processes, PTYs, file locking, git worktrees, LSP launch, CLI
