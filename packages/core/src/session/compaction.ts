@@ -1,5 +1,6 @@
 import type { Semantic } from "../semantic"
 import { Intelligence } from "../intelligence"
+import { CompactionEvaluation } from "./compaction-evaluation"
 export * as SessionCompaction from "./compaction"
 
 import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@reddb-io/redcode-llm"
@@ -470,7 +471,23 @@ export const make = (dependencies: Dependencies) => {
   })
 
   const summarize = Effect.fn("SessionCompaction.summarize")(function* (prepared: Prepared) {
+    if (
+      dependencies.intelligence &&
+      !(yield* dependencies.intelligence.read().pipe(
+        Effect.flatMap(Intelligence.requireConfigured),
+        Effect.as(true),
+        Effect.catchTag("IntelligenceError", (error) => Effect.logWarning(error.message).pipe(Effect.as(false))),
+      ))
+    )
+      return
     const input = prepared.input
+    const source = input.entries
+      .map((entry) =>
+        entry.message.type === "compaction"
+          ? [entry.message.summary, entry.message.recent].join("\n\n")
+          : serialize(entry.message),
+      )
+      .join("\n\n")
     const transformed = dependencies.semantic
       ? yield* dependencies.semantic
           .transform({
@@ -481,18 +498,14 @@ export const make = (dependencies: Dependencies) => {
             decode: (text) => {
               const error = summaryError({
                 summary: text,
-                source: prepared.summaryPrompt,
+                source,
                 retained: prepared.selected.tail,
                 finish: "stop",
               })
               return error ? Effect.fail(new Intelligence.Error({ message: error })) : Effect.succeed(text)
             },
             checks: () => ({
-              ...Intelligence.questions({
-                omission:
-                  "Does candidate omit a still-applicable user constraint, decision, pending deliverable or blocker present in sources?",
-                contradiction: "Does candidate contradict sources or present unverified work as completed?",
-              }),
+              ...CompactionEvaluation.questions,
               checkpoint_quality: {
                 type: "score",
                 instructions: "How useful is candidate as a faithful checkpoint for another coding agent?",
@@ -507,11 +520,11 @@ export const make = (dependencies: Dependencies) => {
           })
           .pipe(Effect.catchTag("IntelligenceError", (error) => Effect.logWarning(error.message).pipe(Effect.as(null))))
       : undefined
-    if (transformed === null) return
+    if (transformed === null || (dependencies.intelligence && transformed === undefined)) return
     if (transformed !== undefined) {
       const error = summaryError({
         summary: transformed,
-        source: prepared.summaryPrompt,
+        source,
         retained: prepared.selected.tail,
         finish: "stop",
       })
@@ -553,13 +566,7 @@ export const make = (dependencies: Dependencies) => {
     const error = summaryError({
       summary,
       retained: "\n\n" + prepared.selected.tail,
-      source: input.entries
-        .map((entry) =>
-          entry.message.type === "compaction"
-            ? [entry.message.summary, entry.message.recent].join("\n\n")
-            : serialize(entry.message),
-        )
-        .join("\n\n"),
+      source,
       finish,
     })
     if (error) {
@@ -584,6 +591,15 @@ export const make = (dependencies: Dependencies) => {
     input: Input,
     messageID: SessionMessage.ID,
   ) {
+    if (
+      dependencies.intelligence &&
+      !(yield* dependencies.intelligence.read().pipe(
+        Effect.flatMap(Intelligence.requireConfigured),
+        Effect.as(true),
+        Effect.catchTag("IntelligenceError", (error) => Effect.logWarning(error.message).pipe(Effect.as(false))),
+      ))
+    )
+      return false
     const recent = [
       candidate.prepared.selected.recent,
       ...input.entries.slice(candidate.prepared.prefix.length).map((entry) => serialize(entry.message)),
@@ -697,7 +713,9 @@ export const make = (dependencies: Dependencies) => {
   const sizeOf = (request: LLMRequest) =>
     estimate({ system: request.system, messages: request.messages, tools: request.tools })
 
-  const semanticChecked = new Map<SessionSchema.ID, string>()
+  const evaluateBoundary = dependencies.intelligence
+    ? CompactionEvaluation.boundary(dependencies.intelligence)
+    : undefined
   const send: Preflight = { action: "send" }
   const compacted: Preflight = { action: "compacted" }
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
@@ -720,29 +738,17 @@ export const make = (dependencies: Dependencies) => {
       if (previous && !matches(previous.snapshot, input)) yield* discard(input.sessionID)
       const turns = input.entries.filter((entry) => entry.message.type === "user")
       const lastCompaction = input.entries.findLastIndex((entry) => entry.message.type === "compaction")
-      const since = input.entries.slice(lastCompaction + 1).filter((entry) => entry.message.type === "user").length
+      const since = input.entries
+        .slice(lastCompaction + 1)
+        .filter((entry) => entry.message.type === "user" || entry.message.type === "assistant").length
       const key = turns.at(-1)?.message.id
-      if (
-        dependencies.intelligence &&
-        size >= threshold * 0.5 &&
-        since >= 4 &&
-        key &&
-        semanticChecked.get(input.sessionID) !== key
-      ) {
-        semanticChecked.set(input.sessionID, key)
-        const decision = yield* dependencies.intelligence
-          .evaluate({
-            sessionID: input.sessionID,
-            operation: "compact_now",
-            sources: input.entries.slice(-12).map((entry) => serialize(entry.message)),
-            candidate: "Compact at this provider-turn boundary",
-            questions: Intelligence.questions({
-              unsafe:
-                "Is this an unsuitable boundary to compact because a work phase is still actively unfolding or its relevant evidence is incomplete? Answer no only when a phase has clearly ended and its state can be summarized.",
-            }),
-          })
-          .pipe(Effect.catchTag("IntelligenceError", () => Effect.succeed(undefined)))
-        if (decision?.decision === "accepted" && (yield* compactAfterOverflow(input))) return compacted
+      if (evaluateBoundary && size >= threshold * 0.5 && since >= 4 && key) {
+        const accepted = yield* evaluateBoundary({
+          sessionID: input.sessionID,
+          userID: key,
+          sources: input.entries.slice(-12).map((entry) => serialize(entry.message)),
+        })
+        if (accepted && (yield* compactAfterOverflow(input))) return compacted
       }
       // Prepare only near the limit; below that, the extra provider call is unlikely to help.
       if (

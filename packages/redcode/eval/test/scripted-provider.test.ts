@@ -2,22 +2,44 @@ import { describe, expect, test } from "bun:test"
 import { ScriptedProvider } from "../lib/scripted-provider"
 
 const post = (url: string, body: unknown) =>
-  fetch(`${url}/chat/completions`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } })
+  fetch(`${url}/chat/completions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+  })
 
 describe("scripted provider", () => {
   test("templates resolve at request time and whole-number templates stay numbers", async () => {
     const values: Record<string, string> = { workspace: "/tmp/w", "todo.0.revision": "3" }
-    expect(await ScriptedProvider.template("{{workspace}}/a.ts and {{workspace}}", (key) => values[key]!)).toBe("/tmp/w/a.ts and /tmp/w")
+    expect(await ScriptedProvider.template("{{workspace}}/a.ts and {{workspace}}", (key) => values[key]!)).toBe(
+      "/tmp/w/a.ts and /tmp/w",
+    )
     const provider = ScriptedProvider.start({
       cassette: {
         version: 1,
         name: "t",
         source: "test",
-        steps: [{ tools: [{ name: "todowrite", input: { revision: "{{todo.0.revision}}", path: "{{workspace}}/x" } }], usage: { input: 1, output: 1 } }],
+        steps: [
+          {
+            tools: [{ name: "todowrite", input: { revision: "{{todo.0.revision}}", path: "{{workspace}}/x" } }],
+            usage: { input: 1, output: 1 },
+          },
+        ],
       },
       resolve: (key) => values[key]!,
     })
     try {
+      const evaluation = await fetch(`${provider.url}/systemone`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "scripted-evaluator",
+          questions: { omission: { type: "noul", instructions: "Is evidence missing?" } },
+        }),
+      })
+      expect(await evaluation.json()).toMatchObject({ answers: { omission: { type: "noul", noul: 0 } } })
+      expect(provider.pending()).toBe(1)
+      expect(provider.requests()).toEqual([])
       const text = await (await post(provider.url, { messages: [] })).text()
       expect(text).toContain(JSON.stringify(JSON.stringify({ revision: 3, path: "/tmp/w/x" })).slice(1, -1))
       expect(text).toContain('"finish_reason":"tool_calls"')
@@ -40,9 +62,13 @@ describe("scripted provider", () => {
       resolve: () => "",
     })
     try {
-      const title = await (await post(provider.url, { messages: [{ content: "Generate a title for this conversation" }] })).text()
+      const title = await (
+        await post(provider.url, { messages: [{ content: "Generate a title for this conversation" }] })
+      ).text()
       expect(title).toContain("Eval run")
-      const first = await (await post(provider.url, { messages: [{ content: "hi" }], tools: [{ function: { name: "bash" } }] })).text()
+      const first = await (
+        await post(provider.url, { messages: [{ content: "hi" }], tools: [{ function: { name: "bash" } }] })
+      ).text()
       expect(first).toContain('"content":"first"')
       expect(first).toContain('"prompt_tokens":2')
       const miss = await post(provider.url, { messages: [{ content: "again" }] })

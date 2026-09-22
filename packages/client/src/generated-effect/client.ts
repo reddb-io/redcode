@@ -1167,6 +1167,8 @@ type Endpoint20_4Request = Parameters<RawClient["server.intelligence"]["intellig
 type Endpoint20_4Input = {
   readonly sessionID?: Endpoint20_4Request["query"]["sessionID"]
   readonly operation?: Endpoint20_4Request["query"]["operation"]
+  readonly subjectID?: Endpoint20_4Request["query"]["subjectID"]
+  readonly candidateID?: Endpoint20_4Request["query"]["candidateID"]
   readonly decision?: Endpoint20_4Request["query"]["decision"]
   readonly limit?: Endpoint20_4Request["query"]["limit"]
   readonly offset?: Endpoint20_4Request["query"]["offset"]
@@ -1176,6 +1178,8 @@ const Endpoint20_4 = (raw: RawClient["server.intelligence"]) => (input?: Endpoin
     query: {
       sessionID: input?.["sessionID"],
       operation: input?.["operation"],
+      subjectID: input?.["subjectID"],
+      candidateID: input?.["candidateID"],
       decision: input?.["decision"],
       limit: input?.["limit"],
       offset: input?.["offset"],

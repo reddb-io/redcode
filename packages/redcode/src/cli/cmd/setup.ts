@@ -15,19 +15,15 @@ const answer = <A>(value: Option.Option<A>) =>
 export const SetupCommand = effectCmd({
   command: "setup",
   describe: "configure global System One and System Two roles",
-  instance: false,
-  builder: (yargs) =>
-    yargs.option("defer", { type: "boolean", describe: "defer global onboarding without opening prompts" }),
+  instance: () => Boolean(process.stdin.isTTY && process.stdout.isTTY),
   handler: Effect.fn("Cli.setup")(
-    function* (args) {
+    function* () {
       const service = yield* Intelligence.Service
       const previous = yield* service.read()
-      if (args.defer) {
-        yield* service.save({ settings: { ...previous, onboarding: "deferred" } })
-        return
-      }
       if (!process.stdin.isTTY || !process.stdout.isTTY)
-        return yield* fail("Interactive setup requires a terminal. Use --defer or the global intelligence API.")
+        return yield* fail(
+          "Interactive setup requires a terminal. Configure S1 and S2 with the global intelligence API.",
+        )
       const { Provider } = yield* Effect.promise(() => import("../../provider/provider"))
       const provider = yield* Provider.Service
       const semantic = yield* Semantic.Service.pipe(
@@ -49,10 +45,12 @@ export const SetupCommand = effectCmd({
       if (!choices.length)
         return yield* fail("Connect a generative provider with redcode providers before running setup")
       yield* intro(`Global intelligence setup — ${service.environment}`)
-      const principal = yield* answer(yield* select<string>({ message: "System Two — principal", options: choices }))
+      const principal = yield* answer(
+        yield* select<string>({ message: "S2 (System Two) — principal", options: choices }),
+      )
       const fast = yield* answer(
         yield* select<string>({
-          message: "System Two — transformations",
+          message: "S2 (System Two) — transformations (may reuse principal)",
           options: [
             { value: principal, label: "Reuse principal" },
             ...choices.filter((choice) => choice.value !== principal),
@@ -61,7 +59,7 @@ export const SetupCommand = effectCmd({
       )
       const transport = yield* answer(
         yield* select<Evaluator["transport"]>({
-          message: "System One connection",
+          message: "S1 (System One) connection",
           options: evaluators.map((option) => ({
             value: option.evaluator.transport,
             label: `${option.configured ? "Configured · " : ""}${option.name}`,
@@ -101,7 +99,7 @@ export const SetupCommand = effectCmd({
       const model = discovered.models.length
         ? yield* answer(
             yield* select<string>({
-              message: "System One — evaluator",
+              message: "S1 (System One) — evaluator",
               options: [
                 { value: evaluator.model, label: evaluator.model },
                 ...discovered.models
@@ -110,7 +108,7 @@ export const SetupCommand = effectCmd({
               ],
             }),
           )
-        : yield* answer(yield* text({ message: "System One model", initialValue: evaluator.model }))
+        : yield* answer(yield* text({ message: "S1 (System One) model", initialValue: evaluator.model }))
       if (transport === "opencode-zen")
         yield* outro(
           "Jev Free is a temporary offer. If unavailable, choose another evaluator; setup never switches to a paid model automatically.",
@@ -131,7 +129,7 @@ export const SetupCommand = effectCmd({
           enabled: true,
           onboarding: "completed",
           principal: ref(principal),
-          fast: ref(fast),
+          ...(fast === principal ? {} : { fast: ref(fast) }),
           evaluator: { ...evaluator, model },
         },
         ...(key ? { apiKey: key } : {}),

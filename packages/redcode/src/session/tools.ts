@@ -58,6 +58,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   toolSearch?: ToolSearch.Config
   /** The prompt's per-tool switches (`user.tools`); a tool switched off is never deferred or indexed. */
   userTools?: Record<string, boolean>
+  /** Metadata only: relevance recommendations never load or execute a tool. */
+  onMcpTools?: (tools: ReadonlyArray<{ name: string; description: string }>) => void
   /** `experimental.mcp_validation`; direct MCP calls warn when unset. */
   mcpValidation?: "strict" | "warn" | "off"
   /**
@@ -686,6 +688,21 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     return wrapped
   })
 
+  const mcpTools = yield* mcp.tools()
+  if (input.onMcpTools) {
+    const disabled = Permission.disabled(
+      Object.keys(mcpTools),
+      Permission.merge(input.agent.permission, input.session.permission ?? []),
+    )
+    input.onMcpTools(
+      Object.entries(mcpTools).flatMap(([name, entry]) =>
+        disabled.has(name) || input.userTools?.[name] === false
+          ? []
+          : [{ name, description: entry.def.description ?? "" }],
+      ),
+    )
+  }
+
   // Code mode replaces direct MCP tools only when this step really advertises `execute`: the
   // registry gates it per model, and a permission rule or the prompt's switches can still drop it.
   const codeMode =
@@ -698,7 +715,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   if (codeMode) return yield* finish()
 
   const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
-  for (const [key, entry] of Object.entries(yield* mcp.tools())) {
+  for (const [key, entry] of Object.entries(mcpTools)) {
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
     const execute = item.execute
     if (!execute) continue

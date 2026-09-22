@@ -12,6 +12,7 @@ import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Flag } from "@reddb-io/redcode-core/flag/flag"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { registerAdapter } from "../../src/control-plane/adapters"
 import type { WorkspaceAdapter } from "../../src/control-plane/types"
 import { Workspace } from "../../src/control-plane/workspace"
@@ -44,7 +45,15 @@ const noopBootstrapLayer = Layer.succeed(
   InstanceBootstrapService.Service.of({ run: Effect.void }),
 )
 const appLayer = AppNodeBuilder.build(
-  LayerNode.group([InstanceStore.node, Project.node, Session.node, Workspace.node, Database.node, Ripgrep.node]),
+  LayerNode.group([
+    InstanceStore.node,
+    Project.node,
+    Session.node,
+    Workspace.node,
+    Database.node,
+    Ripgrep.node,
+    Intelligence.node,
+  ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
 )
 const servedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
@@ -391,6 +400,18 @@ describe("session HttpApi", () => {
   it.live("uses the persisted session directory for prompt requests", () =>
     Effect.gen(function* () {
       const llm = yield* TestLLMServer
+      const intelligence = yield* Intelligence.Service
+      yield* Effect.acquireRelease(intelligence.read(), (settings) =>
+        intelligence.save({ settings }).pipe(Effect.orDie),
+      )
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+          evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },
+        },
+      })
       yield* llm.text("ok", { usage: { input: 1, output: 1 } })
 
       const config = testProviderConfig(llm.url)

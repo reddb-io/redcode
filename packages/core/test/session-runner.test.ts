@@ -273,11 +273,24 @@ const modelLimits = ModelLimit.memoryLayer()
 type Evaluation = NonNullable<Effect.Success<ReturnType<Intelligence.Interface["evaluate"]>>>
 let intelligenceEvaluations: Evaluation[] = []
 let intelligenceInputs: Intelligence.EvaluationInput[] = []
-let intelligenceEvaluate: Intelligence.Interface["evaluate"] = () => Effect.succeed(undefined)
+let intelligenceModel = "jev-test"
+const acceptRequiredGate: Intelligence.Interface["evaluate"] = (input) =>
+  Effect.succeed(
+    input.kind === "classification" || input.operation === "response_quality" || input.operation === "tool_usage"
+      ? undefined
+      : evaluated(input, "accepted", {}),
+  )
+let intelligenceEvaluate = acceptRequiredGate
 const intelligence = Layer.succeed(
   Intelligence.Service,
   Intelligence.Service.of({
-    read: () => Effect.succeed(Intelligence.defaults),
+    read: () =>
+      Effect.succeed({
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: ProviderV2.ID.make("fake"), id: ModelV2.ID.make("fake-model") },
+        evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: intelligenceModel },
+      }),
     save: (input) => Effect.succeed(input.settings),
     options: () => Effect.succeed([]),
     request: () => Effect.die("unused"),
@@ -297,7 +310,11 @@ const intelligence = Layer.succeed(
         intelligenceEvaluations
           .filter((evaluation) => !id || evaluation.sessionID === id)
           .filter((evaluation) => !options.operation || evaluation.operation === options.operation)
-          .filter((evaluation) => !options.decision || evaluation.decision === options.decision),
+          .filter((evaluation) => !options.decision || evaluation.decision === options.decision)
+          .filter((evaluation) => !options.subjectID || evaluation.subjectID === options.subjectID)
+          .filter((evaluation) => !options.candidateID || evaluation.candidateID === options.candidateID)
+          .toReversed()
+          .slice(options.offset ?? 0, (options.offset ?? 0) + (options.limit ?? 100)),
       ),
     generation: () => Effect.void,
     environment: "test",
@@ -419,7 +436,8 @@ const setup = Effect.gen(function* () {
   maxActiveToolExecutions = 0
   intelligenceEvaluations = []
   intelligenceInputs = []
-  intelligenceEvaluate = () => Effect.succeed(undefined)
+  intelligenceModel = "jev-test"
+  intelligenceEvaluate = acceptRequiredGate
   // A provider rejection is remembered for the process; tests must not inherit each other's.
   NativeToolSearch.reset()
   yield* db
@@ -568,7 +586,9 @@ const evaluated = (
   issues: string[] = [],
 ): Evaluation => ({
   id: `evaluation-${intelligenceEvaluations.length + 1}`,
-  fingerprint: `fingerprint-${intelligenceEvaluations.length + 1}`,
+  fingerprint: Intelligence.evaluationFingerprint(input, {
+    evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: intelligenceModel },
+  }),
   sessionID: input.sessionID,
   operation: input.operation,
   kind: input.kind ?? "gate",
@@ -840,15 +860,55 @@ describe("SessionRunnerLLM", () => {
       const review = intelligenceInputs.find((input) => input.operation === "response_quality")
       expect(review?.questions).toHaveProperty("tool_evidence")
       expect(review?.sources).toMatchObject({
-        tool_results: [
-          {
-            tool: "application_context",
-            status: "completed",
-            input: { query: "hello" },
-            output: expect.stringContaining('"answer":"HELLO"'),
-          },
-        ],
+        tool_results: { truncated: false, reference: `${sessionID}/tool-results` },
       })
+      const toolReview = intelligenceInputs.find((input) => input.operation === "tool_usage")
+      expect(toolReview?.candidate).toMatchObject({ truncated: false })
+      expect(JSON.stringify(toolReview?.candidate)).toContain("call-evidence")
+      expect(JSON.stringify(toolReview?.candidate)).toContain("HELLO")
+      expect(intelligenceInputs.map((input) => input.operation)).toEqual([
+        "prompt_classification",
+        "tool_usage",
+        "response_quality",
+      ])
+    }),
+  )
+
+  it.effect("exposes a tool review persistence failure in the session transcript", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        input.operation === "tool_usage"
+          ? Effect.fail(new Intelligence.Error({ message: "evaluation persistence failed" }))
+          : Effect.succeed(
+              evaluated(input, "accepted", input.kind === "classification" ? promptAnswers : responseAnswers(0)),
+            )
+      const registry = yield* ApplicationTools.Service
+      const session = yield* SessionV2.Service
+      yield* registry.register({
+        verify: Tool.make({
+          description: "Verify the requested work",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () => Effect.succeed("verified"),
+        }),
+      })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Verify the implementation" }), resume: false })
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "review-persistence", name: "verify", input: {} }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "review-unavailable", ["The tool returned verified."]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(JSON.stringify(yield* session.context(sessionID))).toContain(
+        "System One tool_usage unavailable: evaluation persistence failed",
+      )
     }),
   )
 
@@ -882,16 +942,25 @@ describe("SessionRunnerLLM", () => {
         intelligenceInputs
           .filter((input) => input.operation === "prompt_classification")
           .map((input) => ({ sources: input.sources, candidate: input.candidate })),
-      ).toEqual([
-        { sources: { text: "Keep the existing behavior", files: undefined }, candidate: undefined },
-        { sources: { text: "The build is blocked; fix the crash", files: undefined }, candidate: undefined },
+      ).toMatchObject([
+        {
+          sources: { text: { content: "Keep the existing behavior" }, session: { mode: "build" } },
+          candidate: undefined,
+        },
+        {
+          sources: {
+            text: { content: "The build is blocked; fix the crash" },
+            history: { content: expect.stringContaining("Keep the existing behavior") },
+          },
+          candidate: undefined,
+        },
       ])
       expect(JSON.stringify(requests[0]?.system)).toContain("<user-request-assessment>")
       expect(JSON.stringify(requests[0]?.system)).toContain("generated task priority: high")
     }),
   )
 
-  it.effect("allows one tool-free corrective continuation and never loops on another rejection", () =>
+  it.effect("allows bounded corrective work with tools and exposes unresolved review", () =>
     Effect.gen(function* () {
       yield* setup
       intelligenceEvaluate = (input) =>
@@ -906,17 +975,149 @@ describe("SessionRunnerLLM", () => {
       responses = [
         fragmentFixture("text", "weak-final", ["Done."]).completeEvents,
         fragmentFixture("text", "repair-final", ["The crash was fixed and verified."]).completeEvents,
+        fragmentFixture("text", "unresolved-final", ["Some verification is still missing."]).completeEvents,
       ]
 
       yield* session.resume(sessionID)
 
-      expect(requests).toHaveLength(2)
-      expect(requests[1]?.tools).toEqual([])
-      expect(requests[1]?.toolChoice).toMatchObject({ type: "none" })
-      expect(JSON.stringify(requests[1]?.system)).toContain("corrective follow-up")
+      expect(requests).toHaveLength(3)
+      expect(requests[1]?.tools.length).toBeGreaterThan(0)
+      expect(requests[1]?.toolChoice).toBeUndefined()
+      expect(JSON.stringify(requests[1]?.system)).toContain("finish already authorized work")
+      expect(JSON.stringify(yield* session.context(sessionID))).toContain("Unresolved issues: omission")
+      expect(
+        intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
+      ).toEqual([0, 1, 2])
+    }),
+  )
+
+  it.effect("retries unavailable classification on resume once per drain with recent context", () =>
+    Effect.gen(function* () {
+      yield* setup
+      requests.length = 0
+      const session = yield* SessionV2.Service
+      const applicationTools = yield* ApplicationTools.Service
+      yield* applicationTools.register({
+        verify: Tool.make({
+          description: "Verify the request",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () => Effect.succeed("verified"),
+        }),
+      })
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification" ? evaluated(input, "unavailable", {}, ["offline"]) : undefined,
+        )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Check the implementation" }), resume: false })
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "retry-verification", name: "verify", input: {} }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "first-drain", ["Verified."]).completeEvents,
+      ]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(1)
+      expect(JSON.stringify(requests[0]?.system)).toContain("classification unavailable")
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification" ? evaluated(input, "accepted", promptAnswers) : undefined,
+        )
+      responses = [fragmentFixture("text", "resumed-drain", ["Still verified."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(2)
+      expect(JSON.stringify(requests.at(-1)?.system)).toContain("<user-request-assessment>")
+    }),
+  )
+
+  it.effect("reuses exact durable classification and invalidates changed evaluators or policy fingerprints", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          evaluated(
+            input,
+            "accepted",
+            input.operation === "prompt_classification" ? promptAnswers : responseAnswers(0),
+          ),
+        )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Review this implementation" }), resume: false })
+      responses = [fragmentFixture("text", "first-evaluation", ["Reviewed."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(1)
+
+      responses = [fragmentFixture("text", "reused-evaluation", ["Still reviewed."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(1)
+
+      intelligenceModel = "jev-updated"
+      responses = [fragmentFixture("text", "changed-evaluator", ["Reviewed again."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(2)
+
+      intelligenceEvaluations = intelligenceEvaluations.map((evaluation) =>
+        evaluation.operation === "prompt_classification"
+          ? { ...evaluation, fingerprint: "obsolete-policy-fingerprint", policy: "obsolete-policy" }
+          : evaluation,
+      )
+      responses = [fragmentFixture("text", "changed-policy", ["Rechecked current policy."]).completeEvents]
+      yield* session.resume(sessionID)
+      expect(intelligenceInputs.filter((input) => input.operation === "prompt_classification")).toHaveLength(3)
+    }),
+  )
+
+  it.effect("corrective review can execute missing verification within the existing tool registry", () =>
+    Effect.gen(function* () {
+      yield* setup
+      requests.length = 0
+      const session = yield* SessionV2.Service
+      const applicationTools = yield* ApplicationTools.Service
+      let verified = false
+      yield* applicationTools.register({
+        verify: Tool.make({
+          description: "Verify the request",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () =>
+            Effect.sync(() => {
+              verified = true
+              return "verified"
+            }),
+        }),
+      })
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(
+                input,
+                input.operation === "response_quality" && !verified ? "needs_revision" : "accepted",
+                responseAnswers(verified ? 0 : 0.99),
+                verified ? [] : ["missing_evidence"],
+              ),
+        )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Verify the implementation" }), resume: false })
+      responses = [
+        fragmentFixture("text", "unverified-claim", ["Done."]).completeEvents,
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "repair-verification", name: "verify", input: {} }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "verified-claim", ["Verified with the requested check."]).completeEvents,
+      ]
+      yield* session.resume(sessionID)
+      expect(verified).toBe(true)
+      expect(requests).toHaveLength(3)
       expect(
         intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
       ).toEqual([0, 1])
+      expect(intelligenceInputs.some((input) => input.operation === "tool_usage")).toBe(true)
     }),
   )
 
@@ -2020,9 +2221,11 @@ describe("SessionRunnerLLM", () => {
   it.effect("accepts a useful length-cut compaction and continues the original request", () =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
+      const checkpoint =
+        "## Objective\n- Partial checkpoint\n## Important Details\n- Keep this exact request\n## Work State\n### Completed\n- Earlier answer delivered\n### Active\n- Continue the current request\n### Blocked\n- None\n## Next Move\n1. Continue the current request\n## Relevant Files\n- None"
       responses = [
         [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-        [LLMEvent.textDelta({ id: "summary", text: "Partial checkpoint" }), LLMEvent.finish({ reason: "length" })],
+        [LLMEvent.textDelta({ id: "summary", text: checkpoint }), LLMEvent.finish({ reason: "length" })],
         fragmentFixture("text", "continued", ["Work continued"]).completeEvents,
       ]
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
@@ -2038,7 +2241,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  for (const invalid of ["unfinished", "length", "growing", "empty"] as const) {
+  for (const invalid of ["unfinished", "length", "partial", "growing", "empty"] as const) {
     it.effect(`rejects ${invalid} compaction without replacing durable history`, () =>
       Effect.gen(function* () {
         const session = yield* setupOverflowRecovery
@@ -2054,13 +2257,17 @@ describe("SessionRunnerLLM", () => {
             LLMEvent.textDelta({ id: "summary", text }),
             ...(invalid === "unfinished"
               ? []
-              : [LLMEvent.finish({ reason: invalid === "length" ? "length" : "stop" })]),
+              : [LLMEvent.finish({ reason: invalid === "length" || invalid === "partial" ? "length" : "stop" })]),
           ],
+          ...(invalid === "growing"
+            ? [[LLMEvent.textDelta({ id: "summary-repair", text }), LLMEvent.finish({ reason: "stop" })]]
+            : []),
         ]
         yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
         yield* session.resume(sessionID)
 
-        expect(requests).toHaveLength(2)
+        // A completed but oversized candidate gets one repair; unfinished/empty generation does not.
+        expect(requests).toHaveLength(invalid === "growing" ? 3 : 2)
         const context = yield* session.context(sessionID)
         expect(context.some((message) => message.type === "compaction")).toBe(false)
         expect(context).toContainEqual(expect.objectContaining({ type: "user", text: "Keep this exact request" }))
@@ -4869,6 +5076,12 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
       // The queued prompt is promoted and answered before the session parks.
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[1]!)).toContain("Actually, check the lint first")
+      expect(
+        intelligenceInputs.filter((input) => input.operation === "prompt_classification").map((input) => input.sources),
+      ).toMatchObject([
+        { text: { content: "Start the build" } },
+        { text: { content: "Actually, check the lint first" } },
+      ])
       expect(yield* SessionInput.hasPending(db, sessionID, "queue")).toBe(false)
       yield* clean
     }),
@@ -4903,6 +5116,75 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
         expect(advertised).toContain("tool_search")
         // The index rides the system context, so the tools block keeps its cached bytes.
         expect(requests[0]!.system.map((part) => part.text).join("\n")).toContain("github (1)")
+      }),
+    ),
+  )
+
+  it.effect("recommends permitted deferred MCP tools without loading or executing them", () =>
+    withExperimental(
+      { tool_search: { enabled: true } },
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        const registry = yield* ToolRegistry.Service
+        const executed: string[] = []
+        yield* registry.register({
+          github_list_issues: Tool.external(
+            Tool.make({
+              description: "List issues in a repository",
+              input: Schema.Struct({}),
+              output: Schema.Struct({}),
+              execute: () =>
+                Effect.sync(() => {
+                  executed.push("github_list_issues")
+                  return {}
+                }),
+            }),
+          ),
+        })
+        intelligenceEvaluate = (input) =>
+          Effect.succeed(
+            evaluated(
+              input,
+              "accepted",
+              input.operation === "prompt_classification"
+                ? promptAnswers
+                : input.kind === "classification"
+                  ? {
+                      recommended_mcp_tool: {
+                        type: "choice",
+                        choice: "github_list_issues",
+                        confidence: 0.9,
+                        probabilities: { github_list_issues: 0.9, no_matching_mcp_tool: 0.1 },
+                      },
+                    }
+                  : responseAnswers(0),
+            ),
+          )
+        yield* session.prompt({
+          sessionID,
+          prompt: Prompt.make({
+            text: "Use this screenshot as context",
+            files: [{ uri: "data:image/png;base64,c2VjcmV0LWJpbmFyeQ==", mime: "image/png", name: "issues.png" }],
+          }),
+          resume: false,
+        })
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Find relevant open issues" }), resume: false })
+        requests.length = 0
+        response = fragmentFixture("text", "mcp-advice", ["I can inspect the issue list next."]).completeEvents
+
+        yield* session.resume(sessionID)
+
+        const selection = intelligenceInputs.find(
+          (input) => input.operation === "tool_usage" && input.kind === "classification",
+        )
+        expect(selection?.questions).toHaveProperty("recommended_mcp_tool.criteria.github_list_issues")
+        expect(JSON.stringify(selection?.sources)).toContain("issues.png")
+        expect(JSON.stringify(intelligenceInputs)).not.toContain("c2VjcmV0LWJpbmFyeQ==")
+        expect(JSON.stringify(requests[0]?.system)).toContain("<mcp-tool-relevance-assessment>")
+        expect(JSON.stringify(requests[0]?.system)).toContain("github_list_issues (0.90)")
+        expect(requests[0]?.tools.map((tool) => tool.name)).not.toContain("github_list_issues")
+        expect(executed).toEqual([])
       }),
     ),
   )

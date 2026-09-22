@@ -64,6 +64,8 @@ export interface Interface {
 export interface Materialization {
   readonly media: ReadonlyArray<{ name: string; capability: NonNullable<ReturnType<typeof media>> }>
   readonly definitions: ReadonlyArray<ToolDefinition>
+  /** Permission-filtered external catalog, including tools deferred from the provider request. */
+  readonly mcpTools?: ReadonlyArray<{ name: string; description: string }>
   readonly settle: (input: ExecuteInput) => Effect.Effect<Settlement, ToolOutputStore.Error>
   /** The deferred tool index for the system context, when this step defers anything. */
   readonly toolIndex?: string
@@ -238,7 +240,10 @@ const registryLayer = Layer.effect(
           .filter((name) => !deferrableNames.has(name))
           .map(defined)
         const definitions = native
-          ? [...stable, ...deferrable.map((entry) => ToolDefinition.make({ ...defined(entry.name), deferLoading: true }))]
+          ? [
+              ...stable,
+              ...deferrable.map((entry) => ToolDefinition.make({ ...defined(entry.name), deferLoading: true })),
+            ]
           : [...stable, ...(searchTool ? [searchTool] : []), ...loadedOrder.map(defined)]
         return {
           media: Array.from(registrations).flatMap(([name, registration]) => {
@@ -246,6 +251,11 @@ const registryLayer = Layer.effect(
             return capability ? [{ name, capability }] : []
           }),
           definitions,
+          mcpTools: Array.from(registrations).flatMap(([name, registration]) =>
+            isExternal(registration.tool)
+              ? [{ name, description: definition(name, registration.tool).description }]
+              : [],
+          ),
           ...(deferrable.length > 0 ? { toolIndex: ToolSearch.indexText(deferrable, native !== undefined) } : {}),
           ...(native ? { native } : {}),
           settle: (call) => {

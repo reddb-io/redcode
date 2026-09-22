@@ -9,6 +9,8 @@
  */
 import fs from "node:fs"
 import path from "node:path"
+import { Schema } from "effect"
+import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import type { ProviderRequest } from "./record"
 
 export interface ScriptToolCall {
@@ -62,6 +64,41 @@ export function start(input: { cassette: Cassette; resolve: Resolve; model?: str
     idleTimeout: 0,
     fetch: async (req) => {
       const url = new URL(req.url)
+      // Replayed trajectories exercise orchestration with a deterministic typed evaluator.
+      // Live evals use configured S1. These replies never consume S2 cassette steps or usage.
+      if (req.method === "POST" && url.pathname.endsWith("/systemone")) {
+        const body = Schema.decodeUnknownSync(
+          Schema.Struct({
+            model: Schema.String,
+            questions: Schema.Record(Schema.String, Intelligence.Question),
+          }),
+        )(await req.json())
+        return Response.json({
+          model: body.model,
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => {
+              if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+              if (question.type === "score") {
+                const score = question.criteria.length - 1
+                return [
+                  id,
+                  {
+                    type: "score",
+                    score,
+                    confidence: 1,
+                    probabilities: { [score]: 1 },
+                    legend: Object.fromEntries(question.criteria.map((criterion, index) => [String(index), criterion])),
+                  },
+                ]
+              }
+              const labels = Object.keys(question.criteria)
+              const choice = labels.find((label) => label.startsWith("no_matching_")) ?? labels[0]!
+              return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+            }),
+          ),
+          usage: { input_tokens: 0, output_tokens: 0 },
+        })
+      }
       if (req.method !== "POST" || !url.pathname.endsWith("/chat/completions"))
         return Response.json({ error: { message: `unexpected ${req.method} ${url.pathname}` } }, { status: 404 })
       const raw = await req.text()
@@ -141,7 +178,11 @@ async function resolveStep(step: Step, resolve: Resolve): Promise<Step> {
     ...step,
     ...(step.text !== undefined ? { text: await template(step.text, resolve) } : {}),
     ...(step.tools
-      ? { tools: await Promise.all(step.tools.map(async (tool) => ({ name: tool.name, input: await deep(tool.input, resolve) }))) }
+      ? {
+          tools: await Promise.all(
+            step.tools.map(async (tool) => ({ name: tool.name, input: await deep(tool.input, resolve) })),
+          ),
+        }
       : {}),
   }
 }

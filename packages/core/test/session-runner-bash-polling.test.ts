@@ -45,6 +45,8 @@ import { Effect, Layer, Stream } from "effect"
 import { SessionGoal } from "../src/session/goal"
 import { SessionPlan } from "../src/session/plan"
 import { testEffect } from "./lib/effect"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { configuredIntelligence } from "./lib/intelligence"
 
 const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), "redcode-bash-polling-")))
 afterAll(() => rmSync(directory, { recursive: true, force: true }))
@@ -114,6 +116,7 @@ const location = Location.boundNode({ directory: AbsolutePath.make(directory) })
 const overrides = [
   [LayerNodePlatform.llmClient, client],
   [PermissionV2.node, permission],
+  [Intelligence.node, configuredIntelligence],
   [AppProcess.node, appProcess],
   [SessionRunnerModel.node, models],
   [SystemContextRegistry.node, systemContext],

@@ -12,6 +12,12 @@ import { SessionSchema } from "./schema"
 import { SessionTaskFacts } from "./task-facts"
 import { TodoHistoryTable, TodoTable } from "./sql"
 
+/** Internal transaction hooks for a plan handoff. Network and filesystem work belongs in before. */
+export interface Commit {
+  readonly before: Effect.Effect<void, SessionTodo.Error>
+  readonly write: Effect.Effect<void, SessionTodo.Error>
+}
+
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
   const facts = yield* SessionTaskFacts.Service
@@ -29,17 +35,24 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)).map(read)
   })
 
-  const reconcile = Effect.fn("SessionTodoStore.update")(function* (input: {
-    sessionID: SessionSchema.ID
-    todos: ReadonlyArray<SessionTodo.Input>
-    origin?: SessionTodo.Source
-    /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
-    messageID?: string
-  }) {
+  const reconcile = Effect.fn("SessionTodoStore.update")(function* (
+    input: {
+      sessionID: SessionSchema.ID
+      todos: ReadonlyArray<SessionTodo.Input>
+      origin?: SessionTodo.Source
+      /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
+      messageID?: string
+    },
+    commit?: Commit,
+  ) {
     const incoming = yield* Schema.decodeUnknownEffect(Schema.Array(SessionTodo.Input))(input.todos).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
     if (!incoming.length) return yield* get(input.sessionID)
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
+      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+    )
     const observed = yield* facts.load(input.sessionID)
     const baseline = yield* get(input.sessionID)
     const assessments = yield* intelligence.history(input.sessionID).pipe(Effect.orElseSucceed(() => []))
@@ -277,70 +290,134 @@ const make = Effect.gen(function* () {
           })
       }),
     )
-    const candidate = changes
-    const semantic = yield* intelligence
-      .evaluate({
-        sessionID: input.sessionID,
-        operation: incoming.some((item) => item.status === "completed") ? "task_completion" : "task_quality",
-        sources: {
-          requests: observed.requests.filter((request) => !request.pending),
-          previous: baseline,
-          origin: input.origin,
-          results: observed.results.filter((result) => result.settled && result.kind === "verification"),
+    // Judge each changed requirement against its own source and cited proof. Unrelated historical
+    // tool output cannot crowd out the actual evidence or stand in for a missing result.
+    const semantic = yield* Effect.forEach(changes, (task) => {
+      const candidate = [
+        {
+          ...task,
+          ...(task.source
+            ? {
+                source: {
+                  ...task.source,
+                  quote: Intelligence.evidence(task.source.quote, { reference: task.source.id, limit: 8000 }),
+                },
+              }
+            : {}),
         },
-        candidate,
-        questions: {
-          ...Intelligence.questions(
-            Object.fromEntries(
-              candidate.flatMap((task, index) => [
-                [
-                  `task_${index}_scope`,
-                  `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
-                ],
-                [
-                  `task_${index}_criterion`,
-                  `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
-                ],
-                ...(task.status === "completed"
-                  ? [
-                      [
-                        `task_${index}_evidence`,
-                        `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
-                      ],
-                    ]
-                  : []),
+      ]
+      const latest = observed.requests.filter((request) => !request.pending).at(-1)
+      const requests = observed.requests.filter(
+        (request) =>
+          !request.pending &&
+          (request.id === task.source?.id ||
+            request.id === task.scopeChange?.messageID ||
+            request.id === latest?.id ||
+            (task.source !== undefined && request.created >= task.source.created)),
+      )
+      const results = observed.results.filter(
+        (result) =>
+          result.settled && result.callID === task.evidence?.callID && result.messageID === task.evidence?.messageID,
+      )
+      return intelligence
+        .evaluate({
+          sessionID: input.sessionID,
+          operation: task.status === "completed" ? "task_completion" : "task_quality",
+          subjectID: task.id,
+          sources: {
+            requests: requests.map((request) => ({
+              id: request.id,
+              text: Intelligence.evidence(request.text, { reference: request.id, limit: 8000 }),
+            })),
+            previous: baseline
+              .filter((previous) => previous.id === task.id)
+              .map((previous) => ({
+                id: previous.id,
+                content: previous.content,
+                criterion: previous.criterion,
+                status: previous.status,
+              })),
+            ...(input.origin
+              ? {
+                  origin: {
+                    ...input.origin,
+                    quote: Intelligence.evidence(input.origin.quote, { reference: input.origin.id, limit: 8000 }),
+                  },
+                }
+              : {}),
+            results: results.map((result) => ({
+              ...result,
+              input: Intelligence.evidence(result.input, { limit: 2000 }),
+              summary: Intelligence.evidence(result.summary, { reference: result.callID, limit: 8000 }),
+            })),
+            coverage: {
+              scope:
+                "This task's source requirement, every subsequent user instruction, explicit scope change and cited proof are evaluated. Earlier unrelated history is excluded and is not proof of whole-session coverage.",
+              excludedRequests: observed.requests.length - requests.length,
+              excludedResults: observed.results.length - results.length,
+            },
+          },
+          candidate,
+          questions: {
+            ...Intelligence.questions({
+              coverage:
+                "Does the candidate contradict a subsequent user correction, claim verification or completion that depends on missing or truncated source text, or imply coverage beyond the explicitly selected requirement? Truncated evidence is not proof of its omitted portion.",
+              ...Object.fromEntries(
+                candidate.flatMap((task, index) => [
+                  [
+                    `task_${index}_scope`,
+                    `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
+                  ],
+                  [
+                    `task_${index}_criterion`,
+                    `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
+                  ],
+                  ...(task.status === "completed"
+                    ? [
+                        [
+                          `task_${index}_evidence`,
+                          `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
+                        ],
+                      ]
+                    : []),
+                ]),
+              ),
+            }),
+            ...Object.fromEntries(
+              candidate.map((_, index) => [
+                `task_${index}_quality`,
+                {
+                  type: "score" as const,
+                  instructions: `How clear, scoped and verifiable is candidate[${index}] as a task?`,
+                  criteria: [
+                    "Unclear, unscoped or unverifiable",
+                    "Goal is visible but scope or acceptance is ambiguous",
+                    "Clear scope and observable acceptance criterion",
+                    "Precise, concise, traceable to its requirement and independently verifiable",
+                  ],
+                },
               ]),
             ),
-          ),
-          ...Object.fromEntries(
-            candidate.map((_, index) => [
-              `task_${index}_quality`,
-              {
-                type: "score" as const,
-                instructions: `How clear, scoped and verifiable is candidate[${index}] as a task?`,
-                criteria: [
-                  "Unclear, unscoped or unverifiable",
-                  "Goal is visible but scope or acceptance is ambiguous",
-                  "Clear scope and observable acceptance criterion",
-                  "Precise, concise, traceable to its requirement and independently verifiable",
-                ],
-              },
-            ]),
-          ),
-        },
-      })
-      .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
-    yield* Intelligence.requireAccepted(semantic).pipe(
+          },
+        })
+        .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
+    })
+    yield* Effect.forEach(semantic, Intelligence.requireAccepted).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     if (
-      semantic &&
+      semantic.some(Boolean) &&
       (Intelligence.fingerprint(baseline) !== Intelligence.fingerprint(yield* get(input.sessionID)) ||
         Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID)))
     )
       return yield* new SessionTodo.Error({
         message: "Task sources changed during evaluation; retry with current evidence",
       })
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
+      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+    )
+    if (commit) yield* commit.before
     // Network evaluation is outside the transaction; recheck the baseline before writing.
     return yield* db
       .transaction((tx) =>
@@ -352,7 +429,10 @@ const make = Effect.gen(function* () {
             .orderBy(asc(TodoTable.position))
             .all()
             .pipe(Effect.orDie)).map(read)
-          if (Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline))
+          if (
+            Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline) ||
+            Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID))
+          )
             return yield* new SessionTodo.Error({
               message: "Tasks changed during evaluation; retry with current revisions",
             })
@@ -416,6 +496,7 @@ const make = Effect.gen(function* () {
                 .pipe(Effect.orDie)
             }),
           )
+          if (commit) yield* commit.write
           return result
         }),
       )
@@ -423,8 +504,8 @@ const make = Effect.gen(function* () {
   })
   // A refusal reaches the model as a tool error and the person only as a folded row. The log keeps
   // its kind, the tasks it named and the first line of the reason, never prompts, commands or output.
-  const update = (input: Parameters<typeof reconcile>[0]) =>
-    reconcile(input).pipe(
+  const update = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
+    reconcile(input, commit).pipe(
       Effect.tapError((error) =>
         Effect.logWarning("todowrite refused", {
           "session.id": input.sessionID,

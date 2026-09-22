@@ -4,6 +4,7 @@ import { ToolFailure } from "@reddb-io/redcode-llm"
 import { Context, Effect, Layer } from "effect"
 import { makeLocationNode } from "../effect/app-node"
 import { Database } from "../database/database"
+import { Intelligence } from "../intelligence"
 import { Location } from "../location"
 import { PermissionV2 } from "../permission"
 import { DesignStore } from "../design/store"
@@ -30,6 +31,7 @@ const make = Effect.gen(function* () {
   const renderer = yield* DesignRenderer.Service
   const permissions = yield* PermissionV2.Service
   const location = yield* Location.Service
+  const intelligence = yield* Intelligence.Service
   const candidates = new Map<SessionSchema.ID, Candidate>()
 
   const check = Effect.fn("SessionGoalCompletion.check")(function* (sessionID: SessionSchema.ID) {
@@ -44,6 +46,10 @@ const make = Effect.gen(function* () {
   })
 
   const propose = Effect.fn("SessionGoalCompletion.propose")(function* (input: Candidate) {
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
+      Effect.mapError((error) => new ToolFailure({ message: error.message })),
+    )
     const current = yield* goals.get(input.goal.sessionID)
     if (
       !current ||
@@ -76,6 +82,10 @@ const make = Effect.gen(function* () {
         message: "Evidence changed before the turn settled. Verify the current files again.",
       })
     yield* check(sessionID)
+    yield* intelligence.read().pipe(
+      Effect.flatMap(Intelligence.requireConfigured),
+      Effect.mapError((error) => new ToolFailure({ message: error.message })),
+    )
     return yield* goals.save(candidate.goal, {
       ...candidate.goal,
       status: "done",
@@ -102,5 +112,6 @@ export const node = makeLocationNode({
     PermissionV2.node,
     Location.node,
     Database.node,
+    Intelligence.node,
   ],
 })

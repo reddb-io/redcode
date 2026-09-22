@@ -1,5 +1,6 @@
 import { createDialogSetupState, DialogSetup } from "./component/dialog-setup"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
+import { DialogIntelligence } from "./component/dialog-intelligence"
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { registerOpencodeSpinner } from "./component/register-spinner"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -501,10 +502,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     void IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers })
       .get()
       .then((result) => {
-        if (result.settings.onboarding === "pending")
+        if (!result.settings.enabled || !result.settings.principal || !result.settings.evaluator)
           toast.show({
             variant: "info",
-            message: "Configure System One and System Two with /setup. You can also choose Later there.",
+            message: "Configure S1 (System One) and S2 (System Two) with /setup before sending prompts.",
             duration: 10000,
           })
       })
@@ -806,6 +807,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           local.agent.move(-1)
         },
+      },
+      {
+        name: "intelligence.status",
+        title: "S1 / S2 models and session evaluations",
+        category: "Provider",
+        slashName: "intelligence",
+        run: () =>
+          dialog.replace(() => (
+            <DialogIntelligence sessionID={route.data.type === "session" ? route.data.sessionID : undefined} />
+          )),
       },
       {
         name: "intelligence.setup",

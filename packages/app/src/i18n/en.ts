@@ -7,6 +7,26 @@ const designCopy = Object.fromEntries(
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "intelligence.details": "System One / System Two",
+  "intelligence.systemOne": "S1 · evaluator",
+  "intelligence.systemTwo": "S2 · working model",
+  "intelligence.setup": "Set up",
+  "intelligence.setupRequired": "Configure S1 and S2 to continue",
+  "intelligence.setupDescription":
+    "Choose a System One evaluator and a System Two model before sending prompts. Your draft is preserved.",
+  "intelligence.loading": "Checking…",
+  "intelligence.connectionFailed": "Cannot check the S1/S2 configuration. Reconnect and retry.",
+  "intelligence.configured": "Configured. Connection health is reported by each evaluation.",
+  "intelligence.override": "Session or agent override",
+  "intelligence.globalDefault": "Global S2 default",
+  "intelligence.transformations": "Transformations",
+  "intelligence.reuseS2": "Reuse global S2",
+  "intelligence.sessionHistory": "Session evaluations",
+  "intelligence.emptyHistory": "No evaluations recorded for this session.",
+  "intelligence.historyFailed": "Could not load evaluations. Reopen to retry.",
+  "intelligence.subject": "Prompt: {{id}}",
+  "settings.intelligence.operation.tool_usage": "Tool usage",
+  "settings.intelligence.operation.goal_completion": "Goal completion",
   "settings.intelligence.zen": "OpenCode Zen — Jev Free (recommended)",
   "settings.intelligence.zenNotice":
     "Jev Free is a temporary offer. Session sources are sent to Zen after activation. If it becomes unavailable, choose another evaluator; Redcode never switches to a paid model automatically. A blank key reuses an existing OpenCode Zen connection, OPENCODE_API_KEY, or Zen's public free access.",

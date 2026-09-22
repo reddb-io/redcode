@@ -11,7 +11,7 @@ import { createAcpClient, initialize, newSession, verifierConfig } from "./helpe
 const tinyPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
 
 describe("opencode acp prompt content subprocess", () => {
-  cliIt.live(
+  cliIt.withIntelligence(
     "accepts embedded text resource image and file resource link prompt content",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {

@@ -6,6 +6,9 @@
     "types": ["node", "bun"]
   },
   "include": [
+    "./intelligence/*.spec.ts",
+    "./performance/timeline/session-timeline-stress.fixture.ts",
+    "./performance/timeline/timeline-test-helpers.ts",
     "./performance/timeline-stability/**/*.spec.ts",
     "./performance/timeline-stability/fixture.test.ts",
     "./performance/timeline-stability/fixture.ts",

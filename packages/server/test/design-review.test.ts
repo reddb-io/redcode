@@ -6,6 +6,7 @@ import os from "node:os"
 import { chromium, type Browser, type Page } from "playwright-core"
 import { parseGIF, decompressFrames } from "gifuct-js"
 import type { Design } from "@reddb-io/redcode-schema/design"
+import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { webHandler } from "../src/routes"
 import { materializeDependencies } from "../../core/test/fixture/design-dependencies"
 import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
@@ -32,10 +33,10 @@ const api = async <T>(route: string, method = "GET", body?: unknown): Promise<T>
   if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`)
   return response.json()
 }
-const session = () =>
-  api<{ data: { id: string } }>("/api/session", "POST", { location: { directory }, agent: "design" })
-const published = async (engine: "html" | "solid" | "react") => {
-  const current = await session()
+const session = (location = directory) =>
+  api<{ data: { id: string } }>("/api/session", "POST", { location: { directory: location }, agent: "design" })
+const published = async (engine: "html" | "solid" | "react", location = directory) => {
+  const current = await session(location)
   const root = `/api/session/${current.data.id}/design`
   const document = await api<Design.Info>(root, "POST", {
     name: "Checkout",
@@ -53,6 +54,134 @@ const published = async (engine: "html" | "solid" | "react") => {
   )
   const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "First direction" })
   return { document, revision, root, sessionID: current.data.id }
+}
+
+/** Only scenarios that execute semantic review opt into both real HTTP model boundaries. */
+const configuredReview = async () => {
+  const previous = await api<Intelligence.Status>("/api/intelligence")
+  const calls = { systemOne: 0, systemTwo: 0 }
+  const model = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      if (new URL(request.url).pathname === "/v1/systemone") {
+        const body = (await request.json()) as { model: string; questions: Record<string, Intelligence.Question> }
+        calls.systemOne++
+        return Response.json({
+          model: body.model,
+          usage: { input_tokens: 5, output_tokens: 1 },
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => {
+              if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+              if (question.type === "score") {
+                const score = question.criteria.length - 1
+                return [
+                  id,
+                  {
+                    type: "score",
+                    score,
+                    confidence: 1,
+                    probabilities: { [score]: 1 },
+                    legend: Object.fromEntries(question.criteria.map((criterion, index) => [index, criterion])),
+                  },
+                ]
+              }
+              const choice =
+                Object.keys(question.criteria).find((label) => label.startsWith("no_matching_")) ??
+                Object.keys(question.criteria)[0]!
+              return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+            }),
+          ),
+        })
+      }
+      if (new URL(request.url).pathname !== "/v1/chat/completions") return new Response("Not found", { status: 404 })
+      const body = (await request.json()) as {
+        model: string
+        messages: { role: string; content: string | { text?: string }[] }[]
+      }
+      calls.systemTwo++
+      const prompt =
+        body.messages
+          .flatMap((message) =>
+            typeof message.content === "string"
+              ? [message.content]
+              : message.content.flatMap((part) => (part.text ? [part.text] : [])),
+          )
+          .at(-1) ?? ""
+      const text = prompt.startsWith("Extract requested design actions")
+        ? JSON.stringify(
+            (JSON.parse(prompt.slice(prompt.indexOf("Notes: ") + 7)) as { text: string; target: string }[]).map(
+              (note, index) => ({ note: index, action: note.text, target: note.target }),
+            ),
+          )
+        : "Feedback received."
+      return new Response(
+        [
+          {
+            id: "review",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }],
+          },
+          {
+            id: "review",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          },
+        ]
+          .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+          .join("") + "data: [DONE]\n\n",
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    },
+  })
+  const close = async (sessionID?: string) => {
+    try {
+      if (sessionID) {
+        const stopped = await fetch(`${base}/api/session/${sessionID}/interrupt`, { method: "POST" })
+        expect(stopped.status).toBe(204)
+      }
+    } finally {
+      try {
+        await api("/api/intelligence", "PUT", { settings: previous.settings })
+      } finally {
+        await model.stop(true)
+      }
+    }
+  }
+  try {
+    const location = path.join(temporary, "semantic-review")
+    await mkdir(location)
+    await Bun.write(
+      path.join(location, "redcode.json"),
+      JSON.stringify({
+        providers: {
+          "review-fixture": {
+            api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: `${model.url.origin}/v1` },
+            request: { body: { apiKey: "fixture" } },
+            models: { review: { name: "Review fixture", limit: { context: 100000, output: 4096 } } },
+          },
+        },
+      }),
+    )
+    await api("/api/intelligence", "PUT", {
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: "review-fixture", id: "review" },
+        evaluator: { transport: "typesafe", model: "jev-review", baseURL: `${model.url.origin}/v1` },
+      },
+    })
+    const current = await published("html", location)
+    return { ...current, calls, [Symbol.asyncDispose]: () => close(current.sessionID) }
+  } catch (error) {
+    await close()
+    throw error
+  }
 }
 /** One row of the review's notes list: the element label with the note written for it. */
 const note = (page: Page, label: string, text: string) =>
@@ -1706,9 +1835,15 @@ test("deleting a variant shows at once, survives a reload and reconciles with th
     await page.getByRole("menu", { name: "Variant actions" }).waitFor({ state: "hidden" })
     expect(await activeID(page)).toBe("variant-actions")
     // The agent reads the operation in its own section.
-    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(
-      `/api/session/${current.sessionID}/history?limit=100`,
+    const historyRoute = `/api/session/${current.sessionID}/history?limit=100`
+    await until(
+      async () =>
+        (await api<{ data: { type: string }[] }>(historyRoute)).data.some(
+          (event) => event.type === "session.next.prompted",
+        ),
+      "feedback prompt without setup",
     )
+    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)
     const message = history.data.filter((event) => event.type === "session.next.prompted").at(-1)!.data.prompt!.text
     expect(message).toContain("## Variant operation\nOperation: delete Compact\nKind: delete")
     // A reload keeps the provisional view while its revision is still the latest one.
@@ -2504,8 +2639,56 @@ test("a revision picked while a refresh is in flight stays on screen", async () 
   }
 }, 60000)
 
+test("feedback without setup preserves the original notes and refuses agent completion", async () => {
+  const previous = await api<Intelligence.Status>("/api/intelligence")
+  try {
+    await api("/api/intelligence", "PUT", { settings: { enabled: false, onboarding: "pending" } })
+    const current = await published("html")
+    const feedback: Design.Feedback = {
+      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      revision: current.revision.id,
+      text: "",
+      items: [{ target: "#title", text: "Name the shop", tag: "h1", label: "Checkout" }],
+      assets: [],
+      snapshot: "",
+      delivery: "queue",
+      end: false,
+    }
+    await api(`${current.root}/${current.document.id}/feedback`, "POST", feedback)
+    const response = await fetch(`${base}${current.root}/${current.document.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        notes: [{ feedback: feedback.id, index: 1, status: "accepted", reason: "Keep the existing name" }],
+      }),
+    })
+    expect(response.status).toBe(409)
+    expect(await response.text()).toContain("Semantic evaluation unavailable")
+    expect(
+      (await api<Design.Info>(`${current.root}/${current.document.id}`)).notes?.map((note) => note.status),
+    ).toEqual(["open"])
+    const historyRoute = `/api/session/${current.sessionID}/history?limit=100`
+    await until(
+      async () =>
+        (await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)).data.some(
+          (event) => event.type === "session.next.prompted" && event.data.prompt?.text.includes("Name the shop"),
+        ),
+      "feedback prompt without setup",
+    )
+    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)
+    const prompt = history.data.findLast(
+      (event) => event.type === "session.next.prompted" && event.data.prompt?.text.includes("Name the shop"),
+    )?.data.prompt?.text
+    expect(prompt).toContain("Name the shop")
+    expect(prompt).toContain("Semantic interpretation unavailable. Original feedback is preserved")
+    expect(history.data.some((event) => event.type === "session.next.step.started")).toBe(false)
+  } finally {
+    await api("/api/intelligence", "PUT", { settings: previous.settings })
+  }
+})
+
 test("feedback rounds show each note's status, a verify verdict per note, and queue unfinished notes again", async () => {
-  const current = await published("html")
+  await using current = await configuredReview()
   const feedback: Design.Feedback = {
     id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
     revision: current.revision.id,
@@ -2541,6 +2724,11 @@ test("feedback rounds show each note's status, a verify verdict per note, and qu
     },
   ])
   expect(updated.notes?.map((note) => note.status)).toEqual(["accepted", "unresolved", "open"])
+  expect(await api<Intelligence.Evaluation[]>(`/api/intelligence/evaluations?sessionID=${current.sessionID}`)).toEqual(
+    expect.arrayContaining([expect.objectContaining({ operation: "design_completion", decision: "accepted" })]),
+  )
+  expect(current.calls.systemOne).toBeGreaterThan(0)
+  expect(current.calls.systemTwo).toBeGreaterThan(0)
   const canned = [
     { type: "state", seq: 0, at: 1, state: "working" },
     {

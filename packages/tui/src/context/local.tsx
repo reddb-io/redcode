@@ -1,6 +1,8 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
-import { batch, createEffect, createMemo } from "solid-js"
+import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { IntelligenceClient } from "@reddb-io/redcode-client"
+import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { useSync } from "./sync"
 import { useEvent } from "./event"
 import path from "path"
@@ -60,6 +62,48 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const args = useArgs()
     const event = useEvent()
     const permission = usePermission()
+    const abort = new AbortController()
+    const intelligenceAPI = IntelligenceClient.make({
+      baseUrl: sdk.url,
+      fetch: sdk.fetch,
+      headers: sdk.headers,
+      signal: abort.signal,
+    })
+    const [intelligenceState, setIntelligence] = createStore({
+      status: undefined as Intelligence.Status | undefined,
+      error: "",
+      loaded: false,
+    })
+    const pending = { request: undefined as Promise<boolean> | undefined }
+    const intelligence = {
+      state: intelligenceState,
+      ready: () =>
+        Boolean(
+          intelligenceState.status?.settings.enabled &&
+            intelligenceState.status.settings.principal &&
+            intelligenceState.status.settings.evaluator &&
+            !intelligenceState.error,
+        ),
+      refresh() {
+        return (pending.request ??= intelligenceAPI
+          .get()
+          .then((status) => {
+            if (!status?.settings) throw new Error("Invalid intelligence status")
+            setIntelligence({ status, error: "", loaded: true })
+            return intelligence.ready()
+          })
+          .catch(() => {
+            if (!abort.signal.aborted)
+              setIntelligence({ error: "Cannot check S1/S2 configuration. Reconnect and retry.", loaded: true })
+            return false
+          })
+          .finally(() => {
+            pending.request = undefined
+          }))
+      },
+    }
+    onMount(() => void intelligence.refresh())
+    onCleanup(() => abort.abort())
 
     function isModelValid(model: { providerID: string; modelID: string }) {
       const provider = sync.data.provider.find((item) => item.id === model.providerID)
@@ -203,6 +247,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               modelID,
             }
           }
+        }
+
+        const principal = intelligenceState.status?.settings.principal
+        if (intelligence.ready() && principal) {
+          return { providerID: principal.providerID, modelID: principal.id }
         }
 
         if (sync.data.config.model) {
@@ -531,6 +580,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })
 
     const result = {
+      intelligence,
       model,
       agent,
       mcp,

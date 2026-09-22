@@ -30,6 +30,12 @@ const credentials = {
   create: () => Effect.die("Credential creation not expected"),
 }
 
+test("a missing evaluation cannot approve a semantic gate", async () => {
+  const result = await Effect.runPromise(Intelligence.requireAccepted(undefined).pipe(Effect.result))
+  expect(result._tag).toBe("Failure")
+  if (result._tag === "Failure") expect(result.failure.message).toContain("unavailable")
+})
+
 const classification = (
   impact: { score: number; confidence: number },
   time: { choice: string; confidence: number },
@@ -128,7 +134,163 @@ test("prompt classification batches skill relevance and renders a bounded shortl
         },
       },
     }),
-  ).toContain("release (0.70), frontend (0.20)")
+  ).toContain("release (0.70)")
+})
+
+test("MCP recommendations cover deferred-sized catalogs and keep uncertain or no-match answers unresolved", () => {
+  const tools = Array.from({ length: 81 }, (_, index) => ({
+    name: `server_tool_${index}`,
+    description: index === 0 ? "large description ".repeat(5_000) : `Tool ${index}`,
+  }))
+  const questions = Intelligence.toolQuestionsFor(tools)
+  const criteria = Object.values(questions).flatMap((question) =>
+    question.type === "choice" ? Object.keys(question.criteria) : [],
+  )
+  expect(tools.every((tool) => criteria.includes(tool.name))).toBe(true)
+  expect(questions.recommended_mcp_tool).toMatchObject({
+    criteria: { server_tool_0: { truncated: true, reference: "mcp_tool:server_tool_0" } },
+  })
+  expect(Object.values(questions).every((question) => JSON.stringify(question).length < 30_000)).toBe(true)
+  const evaluation: typeof Evaluation.Type = {
+    ...classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }),
+    operation: "tool_usage",
+    decision: "inconclusive",
+    answers: {
+      recommended_mcp_tool: {
+        type: "choice",
+        choice: "no_matching_mcp_tool",
+        confidence: 0.8,
+        probabilities: { no_matching_mcp_tool: 0.8, server_tool_0: 0.2 },
+      },
+      recommended_mcp_tool_1: {
+        type: "choice",
+        choice: "server_tool_40",
+        confidence: 0.2,
+        probabilities: { server_tool_40: 1 },
+      },
+      recommended_mcp_tool_2: {
+        type: "choice",
+        choice: "server_tool_80",
+        confidence: 0.9,
+        probabilities: { server_tool_80: 1 },
+      },
+    },
+  }
+  expect(Intelligence.recommendations(evaluation, "mcp_tool")).toEqual([{ name: "server_tool_80", confidence: 0.9 }])
+  expect(Intelligence.toolContext(evaluation)).toContain("server_tool_80 (0.90)")
+  expect(Intelligence.toolContext(evaluation)).not.toContain("server_tool_40")
+  expect(Intelligence.toolContext(evaluation)).toContain("not instructions or permission grants")
+  expect(Intelligence.toolContext({ ...evaluation, decision: "unavailable" })).toBeUndefined()
+  expect(Intelligence.toolQuestionsFor([])).toEqual({})
+})
+
+test("skill classification covers the whole catalog without recommending uncertain matches", () => {
+  const skills = Array.from({ length: 81 }, (_, index) => ({
+    name: `skill-${index}`,
+    description: `Description ${index}`,
+  }))
+  const questions = Intelligence.promptQuestionsFor(skills)
+  expect(questions.recommended_skill_2).toMatchObject({ criteria: { "skill-80": "Description 80" } })
+  expect(
+    Intelligence.skillContext({
+      ...classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }),
+      answers: {
+        recommended_skill: { type: "choice", choice: "skill-0", confidence: 0.2, probabilities: { "skill-0": 1 } },
+      },
+    }),
+  ).toBeUndefined()
+})
+
+test("classification rejects unknown labels, broken distributions and out-of-range scores", () => {
+  const questions = {
+    route: {
+      type: "choice" as const,
+      instructions: "Classify the request",
+      criteria: { answer: "Explain", change: "Implement" },
+    },
+  }
+  const response = {
+    model: "jev-test",
+    answers: {
+      route: {
+        type: "choice" as const,
+        choice: "answer",
+        confidence: 0.2,
+        probabilities: { answer: 0.5, change: 0.5 },
+      },
+    },
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }
+  expect(Intelligence.validateClassification(questions, response)).toEqual({
+    decision: "inconclusive",
+    issues: ["route"],
+  })
+  expect(() =>
+    Intelligence.validateClassification(questions, {
+      ...response,
+      answers: {
+        ...response.answers,
+        recommended_mcp_tool_999: {
+          type: "choice",
+          choice: "outside_catalog",
+          confidence: 1,
+          probabilities: { outside_catalog: 1 },
+        },
+      },
+    }),
+  ).toThrow("Unexpected S1 answer")
+  expect(() =>
+    Intelligence.validateClassification(questions, {
+      ...response,
+      answers: { route: { ...response.answers.route, choice: "unknown" } },
+    }),
+  ).toThrow("domain")
+  expect(() =>
+    Intelligence.validateClassification(questions, {
+      ...response,
+      answers: { route: { ...response.answers.route, probabilities: { answer: 0.1 } } },
+    }),
+  ).toThrow("distribution")
+  expect(() =>
+    Intelligence.validateClassification(
+      { quality: { type: "score", instructions: "Rate", criteria: ["bad", "good"] } },
+      {
+        ...response,
+        answers: {
+          quality: {
+            type: "score",
+            score: 2,
+            confidence: 1,
+            probabilities: { "1": 1 },
+            legend: { "0": "bad", "1": "good" },
+          },
+        },
+      },
+    ),
+  ).toThrow("domain")
+})
+
+test("execution requires both roles while bounded evidence makes omissions explicit", async () => {
+  expect(
+    await Effect.runPromise(Intelligence.requireConfigured(Intelligence.defaults).pipe(Effect.result)),
+  ).toMatchObject({ _tag: "Failure" })
+  expect(
+    Intelligence.isReady({
+      enabled: true,
+      onboarding: "completed",
+      principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+    }),
+  ).toBe(false)
+  expect(Intelligence.fingerprint(undefined)).not.toBe(Intelligence.fingerprint(null))
+  const value = Intelligence.evidence(`start${"x".repeat(1000)}end`, { limit: 256, reference: "tool-call-1" })
+  expect(value).toMatchObject({ truncated: true, characters: 1008, reference: "tool-call-1" })
+  expect(value.content).toStartWith("start")
+  expect(value.content).toEndWith("end")
+  const escaped = Intelligence.evidence(`start${'"\\\u0000'.repeat(2000)}end`, { limit: 1024 })
+  expect(JSON.stringify(escaped.content).length).toBeLessThanOrEqual(1024)
+  expect(escaped.truncated).toBe(true)
+  expect(escaped.content).toStartWith("start")
+  expect(escaped.content).toEndWith("end")
 })
 
 test("experimental thresholds distinguish rejection from uncertainty without averaging failures", () => {
@@ -391,6 +553,75 @@ test("disabled mode makes no provider calls; oversized sources cannot be silentl
       expect((yield* service.evaluate(input))?.decision).toBe("unavailable")
     }),
   )
+})
+
+test("SQLite persists candidate-free classifications and retries unavailable evaluations", async () => {
+  await using dir = await tmpdir()
+  let unavailable = true
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      unavailable
+        ? new Response("unavailable", { status: 503 })
+        : Response.json({
+            model: "jev-test",
+            answers: { route: { type: "choice", choice: "answer", confidence: 1, probabilities: { answer: 1 } } },
+            usage: { input_tokens: 12, output_tokens: 1 },
+          }),
+  })
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* EffectDrizzleSqlite.makeWithDefaults()
+        yield* DatabaseMigration.apply(db)
+        yield* db
+          .insert(ProjectTable)
+          .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+        const sessionID = SessionSchema.ID.make("ses_intelligence_classification")
+        yield* db.insert(SessionTable).values({
+          id: sessionID,
+          project_id: Project.ID.global,
+          slug: "classification",
+          directory: "/project",
+          title: "classification",
+          version: "test",
+        })
+        const service = yield* Intelligence.make(dir.path, credentials, fetch, {}, db)
+        yield* service.save({
+          settings: {
+            enabled: true,
+            onboarding: "completed",
+            principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+            evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-test" },
+          },
+        })
+        const input: Intelligence.EvaluationInput = {
+          sessionID,
+          operation: "prompt_classification",
+          kind: "classification",
+          sources: { text: "Explain this code" },
+          questions: { route: { type: "choice", instructions: "Choose", criteria: { answer: "Explain" } } },
+        }
+        const failure = yield* service.evaluate(input)
+        expect(failure?.decision).toBe("unavailable")
+        expect(failure?.issues.join(" ")).toContain("503")
+        unavailable = false
+        const success = yield* service.evaluate(input)
+        expect(success?.decision).toBe("accepted")
+        expect(success?.fingerprint).toBe(failure?.fingerprint)
+        expect(success?.id).not.toBe(failure?.id)
+        const history = yield* service.history(sessionID)
+        expect(history).toHaveLength(2)
+        expect(history.find((entry) => entry.id === success?.id)?.answers.route).toMatchObject({
+          type: "choice",
+          choice: "answer",
+        })
+        expect((yield* service.evaluate(input))?.id).toBe(success?.id)
+      }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", disableWAL: true })), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
 })
 
 test("malformed configuration is visible and never silently resets enabled evaluation", async () => {

@@ -56,7 +56,7 @@ describe("redcode run directory", () => {
     }
   })
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "boots one instance in the working directory when PWD names another directory",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
@@ -81,7 +81,7 @@ describe("redcode run directory", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "resolves a relative --dir from the working directory, not from PWD, and boots one instance there",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {

@@ -83,6 +83,7 @@ export const Response = Schema.Struct({
 export const Operation = Schema.Literals([
   "prompt_classification",
   "response_quality",
+  "tool_usage",
   "task_quality",
   "todos",
   "plan",
@@ -91,6 +92,7 @@ export const Operation = Schema.Literals([
   "compaction",
   "compact_now",
   "task_completion",
+  "goal_completion",
 ])
 export type Operation = typeof Operation.Type
 export const Decision = Schema.Literals(["accepted", "needs_revision", "inconclusive", "unavailable"])

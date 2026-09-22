@@ -1,3 +1,4 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { DesignStudio } from "../../src/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
@@ -6,6 +7,7 @@ import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -94,6 +96,67 @@ import { Location } from "@reddb-io/redcode-core/location"
 import { PluginV2 } from "@reddb-io/redcode-core/plugin"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { define, Operation } from "@reddb-io/redcode-plugin/v2/effect"
+
+const intelligence = Layer.effect(
+  Intelligence.Service,
+  Effect.gen(function* () {
+    const directory = path.join(process.env.XDG_CACHE_HOME!, "prompt-intelligence", crypto.randomUUID())
+    const database = yield* Database.Service
+    const service = yield* Intelligence.make(
+      path.join(directory, ".test-intelligence"),
+      {
+        get: () => Effect.succeed(undefined),
+        list: () => Effect.succeed([]),
+        create: () => Effect.die("unused"),
+      },
+      Object.assign(
+        async (_request: string | URL | Request, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body)) as { questions: typeof Intelligence.promptQuestions }
+          return Response.json({
+            model: "jev-test",
+            usage: { input_tokens: 1, output_tokens: 1 },
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => {
+                // Most of this legacy suite asserts provider-limit compaction timing. Keep the
+                // semantic early-boundary recommendation off unless a focused test opts into it.
+                if (question.type === "noul") return [id, { type: "noul", noul: id === "unsafe" ? 1 : 0 }]
+                if (question.type === "score")
+                  return [
+                    id,
+                    {
+                      type: "score",
+                      score: question.criteria.length - 1,
+                      confidence: 1,
+                      probabilities: { [question.criteria.length - 1]: 1 },
+                      legend: Object.fromEntries(question.criteria.map((text, index) => [index, text])),
+                    },
+                  ]
+                const choice =
+                  Object.keys(question.criteria).find((label) => label.startsWith("no_matching_")) ??
+                  Object.keys(question.criteria)[0]!
+                return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+              }),
+            ),
+          })
+        },
+        { preconnect() {} },
+      ),
+      {},
+      database.db,
+    )
+    yield* service.save({
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+        evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },
+      },
+    })
+    return service
+  }),
+)
+
+const intelligenceNode = makeGlobalNode({ service: Intelligence.Service, layer: intelligence, deps: [Database.node] })
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -250,6 +313,7 @@ const flakyContext = LayerNode.make({
 const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
 
 const promptRoot = LayerNode.group([
+  Intelligence.node,
   DesignStudio.node,
   SessionPlan.node,
   SessionPrompt.node,
@@ -299,6 +363,7 @@ const promptRoot = LayerNode.group([
 
 function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
   const replacements = [
+    [Intelligence.node, intelligenceNode],
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions)],
@@ -320,6 +385,7 @@ function makeHttp(input?: {
 }) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
+    [Intelligence.node, intelligenceNode],
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions, input?.mcpFailure, input?.mcpTools)],
@@ -555,6 +621,64 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
 })
 
 // Loop semantics
+
+it.instance("requires both model roles before execution while retaining admitted prompts", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const settings = yield* service.read()
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* service.save({ settings: { ...settings, enabled: false } })
+    yield* Effect.gen(function* () {
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        noReply: true,
+        parts: [{ type: "text", text: "Keep this request until setup completes" }],
+      })
+      const result = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.exit)
+      expect(Exit.isFailure(result)).toBe(true)
+      expect(Exit.isFailure(result) ? Cause.pretty(result.cause) : "").toContain("System One")
+      expect(yield* llm.calls).toBe(0)
+      expect(
+        (yield* sessions.messages({ sessionID: chat.id })).some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text === "Keep this request until setup completes"),
+        ),
+      ).toBe(true)
+    }).pipe(Effect.ensuring(service.save({ settings }).pipe(Effect.orDie)))
+  }),
+)
+
+it.instance("persists classifications for every promoted legacy prompt using real intelligence storage", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const first = yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "Inspect this implementation" }],
+    })
+    const second = yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "Report your findings before changing it" }],
+    })
+    yield* llm.text("The implementation was inspected.")
+    yield* prompt.loop({ sessionID: chat.id })
+    const history = yield* service.history(chat.id)
+    expect(
+      history
+        .filter((evaluation) => evaluation.operation === "prompt_classification")
+        .map((evaluation) => evaluation.subjectID)
+        .toSorted(),
+    ).toEqual([first.info.id, second.info.id].toSorted())
+    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(true)
+  }),
+)
 
 noLLMServer.instance(
   "loop exits immediately when last assistant has stop finish",
@@ -6366,6 +6490,7 @@ STORED BASELINE MARKER`,
     // A second service graph on the same database, the way a restarted process would build one.
     const restarted = yield* Layer.build(
       AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [Intelligence.node, intelligenceNode],
         [SessionSummary.node, summary],
         [LSP.node, lsp],
         [MCP.node, makeMcp()],
@@ -6614,6 +6739,7 @@ it.instance("a restart between a compaction and the next turn still replaces the
 
     const restarted = yield* Layer.build(
       AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+        [Intelligence.node, intelligenceNode],
         [SessionSummary.node, summary],
         [LSP.node, lsp],
         [MCP.node, makeMcp()],
@@ -7573,6 +7699,7 @@ it.instance(
       // instead of compacting again.
       const restarted = yield* Layer.build(
         AppNodeBuilder.build(LayerNode.group([promptRoot, testLLMServerNode]), [
+          [Intelligence.node, intelligenceNode],
           [SessionSummary.node, summary],
           [LSP.node, lsp],
           [MCP.node, makeMcp()],
@@ -8110,7 +8237,7 @@ it.instance(
 
 for (const failure of ["stall", "server error"] as const) {
   it.instance(
-    `a folded summary that meets a ${failure} reports it instead of history too large`,
+    `a folded summary that meets a ${failure} reports its deadline instead of history too large`,
     () =>
       Effect.gen(function* () {
         const { llm } = yield* useServerConfig((url) => ({
@@ -8122,7 +8249,12 @@ for (const failure of ["stall", "server error"] as const) {
         for (const index of [0, 1, 2, 3, 4, 5])
           yield* seedTurn(chat.id, { user: `part ${index}`, answer: words(1_500, `fold${index}`) })
         if (failure === "stall") yield* llm.hang
-        else yield* llm.error(500, { error: { message: "upstream exploded" } })
+        else
+          yield* Effect.forEach(
+            Array.from({ length: 6 }),
+            () => llm.error(500, { error: { message: "upstream exploded" } }),
+            { discard: true },
+          )
         const all = yield* compactNow(chat.id)
 
         const [summary] = summaries(all)
@@ -8130,8 +8262,8 @@ for (const failure of ["stall", "server error"] as const) {
         expect(error).toBeDefined()
         const text = JSON.stringify(error)
         expect(text).not.toContain("too large to compact")
-        if (failure === "stall") expect(text).toContain("Compacting the conversation got no answer")
-        else expect(error?.name).not.toBe("ContextOverflowError")
+        expect(error?.name).toBe("ContextOverflowError")
+        expect(text).toContain("Compacting the conversation got no answer")
         expect((yield* sessions.get(chat.id)).time.compacting).toBeUndefined()
       }),
     60_000,

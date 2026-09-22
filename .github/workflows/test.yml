@@ -91,7 +91,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
+        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
 
       # Desktop has no package test script, so Turbo does not discover this focused suite.
       - name: Test desktop diagnostic retention
@@ -150,7 +150,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
+        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
 
       - name: Test desktop diagnostic retention
         working-directory: packages/desktop
@@ -341,11 +341,24 @@ jobs:
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
+      - name: Typecheck app end-to-end tests
+        working-directory: packages/app
+        run: bun run typecheck:e2e
+
       - name: Run app e2e tests
         run: bun --cwd packages/app run test:e2e:local
         env:
           CI: true
         timeout-minutes: 30
+
+      - name: Verify S1 and S2 on the production app
+        if: ${{ !cancelled() }}
+        working-directory: packages/app
+        run: bun run test:e2e:local --config e2e/intelligence/playwright.config.ts --grep 'shows S1/S2|opens the new session page'
+        env:
+          CI: true
+          PLAYWRIGHT_PORT: "4319"
+        timeout-minutes: 10
 
       - name: Upload Playwright artifacts
         if: always()

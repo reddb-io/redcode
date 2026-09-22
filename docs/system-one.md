@@ -1,12 +1,12 @@
 # Global intelligence roles (experimental)
 
-Run `redcode setup`, use `/setup` in the TUI, or open **Settings → Intelligence** in the app/desktop. New installations offer setup; **Later** persists the choice. Configuration belongs to the connected server and is shared by its projects. Nothing is enabled by default.
+Run `redcode setup`, use `/setup` in the TUI, or open **Settings → Intelligence** in the app/desktop. Configure and test both S1 and S2 before starting model work. An incomplete or disabled setup leaves navigation and configuration available, but cannot execute a session. Configuration belongs to the connected server and is shared by its projects.
 
-Select three roles:
+Select two required roles and an optional transformation model:
 
-- **Principal / System Two**: normal agent work and one repair attempt. An explicit session model still takes precedence.
-- **Fast / System Two**: structured transformations; can reuse the principal.
-- **Evaluator / System One**: native TypeSafe questions. New onboarding recommends OpenCode Zen with `jev-1.13-free`; existing evaluator settings are preserved.
+- **S2 / System Two**: normal agent work and bounded repair attempts. An explicit session model still takes precedence; the interface shows the effective selection.
+- **S1 / System One**: native TypeSafe questions. New onboarding recommends OpenCode Zen with `jev-1.13-free`; existing evaluator settings are preserved.
+- **Transformation model**: optional structured transformations; reuses S2 when omitted.
 
 Connect providers using `/connect` or the provider settings first. System One setup lists compatible configured connections before the other available providers and reuses their stored credential. It then tests the selected generative models and a synthetic Noul question before activation. Configuration and API-key storage are separate. Switching evaluator URLs does not implicitly forward the previous connection's key. API clients may explicitly supply an existing `credentialID`; a blank key otherwise reuses this evaluator's saved key or provider environment variable.
 
@@ -40,15 +40,17 @@ Generated TODO extraction, missing plan decomposition, feedback interpretation a
 
 Each Noul asks about an **error**: values ≤ 0.1 accept, ≥ 0.9 require revision, and intermediate values are inconclusive. All required checks must accept. These are experimental policy thresholds, not measured accuracy guarantees. Missing answers, malformed responses, timeouts and provider failures cannot approve a change. Feedback keeps its raw input when interpretation fails; its rendered admission is frozen for exact retries. Failed checkpoint validation leaves history intact.
 
-Prompt classification also asks one Choice over the permitted skill descriptions and `no_matching_skill`. The resulting probability distribution produces an advisory shortlist in the System Two context without loading a skill or bypassing its permission. This question is batched with the existing prompt questions, so skill relevance does not add another evaluator request.
+Prompt classification includes recent conversation context and session state so follow-ups such as “continue” can be interpreted against the active request. Skill classification covers all permitted descriptions in groups, each with `no_matching_skill`. Independent questions are split into additional requests only when their combined request budget requires it. Low-confidence answers remain inconclusive. S1 validates category domains and probability distributions before using them. Its shortlist is advisory and cannot load a skill, grant permission, or replace the user's chosen mode.
 
-Final response review receives the settled tool results produced after the latest user request. It checks whether a claimed outcome is supported by those results and whether failed, partial or unrelated output is being treated as proof. Redcode does not evaluate streaming chunks or every routine tool result independently. Task completion continues to evaluate the specific verification result cited for a completed task.
+Before a provider turn, S1 can also recommend MCP tools from the permission-filtered catalog, including deferred tools. Recommendations use the current request and recent tool outcomes; they do not execute tools or bypass discovery, argument checks or permissions. Skill and MCP selection log their start and result, including evaluation ID, decision, selected names and confidence. Missing or inconclusive recommendations are reported as unresolved. Ordinary logs omit prompt bodies, tool arguments, outputs and credentials; detailed evidence belongs to evaluation artifacts.
 
-Semantic early compaction checks start only after four user turns and at least half of the configured context threshold. Hard context limits still apply. Large checkpoint sources are checked in overlapping chunks; this conservative policy can reject summaries that need cross-chunk context. Ordinary evaluations exceeding the request budget fail closed.
+Settled tool batches are reviewed at provider-turn boundaries, and final response review checks whether claimed outcomes are supported by evidence. Bounded evidence views carry their original size, fingerprint, reference and truncation flag; an excerpt is not proof of omitted content. Repairs may use tools within existing permissions to obtain missing evidence. Retries are bounded and an unresolved review remains visible rather than being represented as approval. Goal completion and task completion use typed S1 checks alongside deterministic evidence, revision and permission checks.
+
+Semantic early compaction checks start only after four user or assistant messages since the last checkpoint and at least half of the configured context threshold. Changed evidence can trigger another bounded check, and temporary unavailability can be retried after a cooldown. Both runners validate checkpoint summaries before replacing history. Hard context limits still apply. Large checkpoint sources are checked in overlapping chunks; this conservative policy can reject summaries that need cross-chunk context. Task evaluation selects the task's source requirements and referenced verification results instead of repeatedly sending the entire session history. Evaluations that still exceed the request budget fail closed.
 
 ## Inspection and validation
 
-The global configuration directory contains `intelligence.json`, `evaluations/` (sources, candidates, question policy, response usage and latency), and `generations/` (auxiliary role/model and provider-reported usage). These artifacts may contain session content. No API key is included in public setup or evaluation records. Interrupted generation may have no provider usage; token counts are not billing totals. The settings panel shows recent evaluation results. Disable through setup to restore the ordinary path.
+The global configuration directory contains `intelligence.json`, `evaluations/` (sources, candidates, question policy, response usage and latency), and `generations/` (auxiliary role/model and provider-reported usage). These artifacts may contain session content. No API key is included in public setup or evaluation records. Interrupted generation may have no provider usage; token counts are not billing totals. The session's S1 control shows the configured roles and its recent evaluation results, including unresolved issues. Each completed evaluation attempt is persisted separately, including a failed request followed by a successful retry of the same input. Disabling intelligence requires completing setup again before further model work.
 
 Global endpoints are `/api/intelligence` (GET/PUT), `/models`, `/test`, `/evaluations?sessionID=...`; the generative `/test-model` probe uses location services. Existing server authentication protects them.
 

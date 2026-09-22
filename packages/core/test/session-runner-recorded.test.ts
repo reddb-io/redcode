@@ -37,6 +37,8 @@ import { eq } from "drizzle-orm"
 import { Effect, Layer } from "effect"
 import path from "node:path"
 import { testEffect } from "./lib/effect"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { configuredIntelligence } from "./lib/intelligence"
 
 const cassette =
   process.env.RECORD === "true"
@@ -83,6 +85,7 @@ const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
   [ReferenceGuidance.node, referenceGuidance],
   [Config.node, config],
   [PermissionV2.node, permission],
+  [Intelligence.node, configuredIntelligence],
   [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
 ])
 const execution = Layer.effect(
@@ -121,6 +124,7 @@ const it = testEffect(
     [
       [LayerNodePlatform.llmClient, client],
       [PermissionV2.node, permission],
+      [Intelligence.node, configuredIntelligence],
       [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
       [SessionRunnerModel.node, models],
       [SystemContextRegistry.node, systemContext],

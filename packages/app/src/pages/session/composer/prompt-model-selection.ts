@@ -7,9 +7,11 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useProviders } from "@/hooks/use-providers"
 import { resolveDefaultModel } from "@/hooks/provider-catalog"
+import { useServerSDK } from "@/context/server-sdk"
 
 export function createPromptModelSelection(input: { agent: () => { model?: ModelKey; variant?: string } | undefined }) {
   const sdk = useSDK()
+  const server = useServerSDK()
   const sync = useSync()
   const models = useModels()
   const prompt = usePrompt()
@@ -37,9 +39,16 @@ export function createPromptModelSelection(input: { agent: () => { model?: Model
   }
 
   const current = () => {
-    const key = [prompt.model.current(), input.agent()?.model, configured(), recent(), fallback()].find(
-      (item): item is ModelKey => !!item && valid(item),
-    )
+    const settings = server().intelligence.state.status?.settings
+    const principal =
+      settings?.enabled && settings.principal
+        ? { providerID: settings.principal.providerID, modelID: settings.principal.id }
+        : undefined
+    const key = [
+      prompt.model.current(),
+      input.agent()?.model,
+      ...(principal ? [principal] : [configured(), recent(), fallback()]),
+    ].find((item): item is ModelKey => !!item && valid(item))
     if (!key) return
     return models.find(key)
   }

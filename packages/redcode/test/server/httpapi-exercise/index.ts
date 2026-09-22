@@ -1536,6 +1536,7 @@ const scenarios: Scenario[] = [
     }),
   http.protected
     .get("/session/{sessionID}/todo", "session.todo")
+    .withLlm()
     .seeded((ctx) =>
       Effect.gen(function* () {
         const session = yield* ctx.session({ title: "Todo session" })

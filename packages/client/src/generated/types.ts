@@ -7128,6 +7128,7 @@ export type IntelligenceHistoryInput = {
     readonly operation?:
       | "prompt_classification"
       | "response_quality"
+      | "tool_usage"
       | "task_quality"
       | "todos"
       | "plan"
@@ -7136,7 +7137,10 @@ export type IntelligenceHistoryInput = {
       | "compaction"
       | "compact_now"
       | "task_completion"
+      | "goal_completion"
       | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
     readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
     readonly limit?: number | undefined
     readonly offset?: number | undefined
@@ -7146,6 +7150,7 @@ export type IntelligenceHistoryInput = {
     readonly operation?:
       | "prompt_classification"
       | "response_quality"
+      | "tool_usage"
       | "task_quality"
       | "todos"
       | "plan"
@@ -7154,16 +7159,64 @@ export type IntelligenceHistoryInput = {
       | "compaction"
       | "compact_now"
       | "task_completion"
+      | "goal_completion"
       | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
     readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
     readonly limit?: number | undefined
     readonly offset?: number | undefined
   }["operation"]
+  readonly subjectID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["subjectID"]
+  readonly candidateID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["candidateID"]
   readonly decision?: {
     readonly sessionID?: string | undefined
     readonly operation?:
       | "prompt_classification"
       | "response_quality"
+      | "tool_usage"
       | "task_quality"
       | "todos"
       | "plan"
@@ -7172,7 +7225,10 @@ export type IntelligenceHistoryInput = {
       | "compaction"
       | "compact_now"
       | "task_completion"
+      | "goal_completion"
       | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
     readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
     readonly limit?: number | undefined
     readonly offset?: number | undefined
@@ -7182,6 +7238,7 @@ export type IntelligenceHistoryInput = {
     readonly operation?:
       | "prompt_classification"
       | "response_quality"
+      | "tool_usage"
       | "task_quality"
       | "todos"
       | "plan"
@@ -7190,7 +7247,10 @@ export type IntelligenceHistoryInput = {
       | "compaction"
       | "compact_now"
       | "task_completion"
+      | "goal_completion"
       | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
     readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
     readonly limit?: number | undefined
     readonly offset?: number | undefined
@@ -7200,6 +7260,7 @@ export type IntelligenceHistoryInput = {
     readonly operation?:
       | "prompt_classification"
       | "response_quality"
+      | "tool_usage"
       | "task_quality"
       | "todos"
       | "plan"
@@ -7208,7 +7269,10 @@ export type IntelligenceHistoryInput = {
       | "compaction"
       | "compact_now"
       | "task_completion"
+      | "goal_completion"
       | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
     readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
     readonly limit?: number | undefined
     readonly offset?: number | undefined
@@ -7222,6 +7286,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
   readonly operation:
     | "prompt_classification"
     | "response_quality"
+    | "tool_usage"
     | "task_quality"
     | "todos"
     | "plan"
@@ -7230,6 +7295,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "compaction"
     | "compact_now"
     | "task_completion"
+    | "goal_completion"
   readonly kind?: "classification" | "gate"
   readonly subjectID?: string
   readonly candidateID?: string

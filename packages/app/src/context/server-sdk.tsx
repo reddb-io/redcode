@@ -13,6 +13,9 @@ import { useGlobal } from "./global"
 import { ServerScope } from "@/utils/server-scope"
 import { detectServerProtocol, type ServerProtocol } from "@/utils/server-protocol"
 import { createCompatibleApi, type CompatibleApi } from "@/utils/server-compat"
+import { IntelligenceClient } from "@reddb-io/redcode-client"
+import { authTokenFromCredentials } from "@/utils/server"
+import { createIntelligenceState } from "./intelligence"
 
 const isAbortError = (error: unknown) =>
   error !== null && typeof error === "object" && "name" in error && error.name === "AbortError"
@@ -166,6 +169,7 @@ export function resumeStreamAfterPageShow(event: PageTransitionEvent, start: () 
 
 type ServerEventEmitter = ReturnType<typeof createGlobalEmitter<{ [key: string]: ServerEvent }>>
 type ServerSDKBase = {
+  intelligence: ReturnType<typeof createIntelligenceState>
   server: ServerConnection.Any
   scope: ServerScope
   protocol: Promise<ServerProtocol>
@@ -187,6 +191,18 @@ type ServerSDKBase = {
 function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerScope): ServerSDKBase {
   const platform = usePlatform()
   const abort = new AbortController()
+  const intelligence = createIntelligenceState(
+    IntelligenceClient.make({
+      baseUrl: server.http.url,
+      fetch: platform.fetch,
+      signal: abort.signal,
+      headers: server.http.password
+        ? {
+            Authorization: `Basic ${authTokenFromCredentials({ username: server.http.username, password: server.http.password })}`,
+          }
+        : undefined,
+    }),
+  )
 
   const eventFetch = (() => {
     if (!platform.fetch || !server) return
@@ -350,6 +366,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
 
   return {
     server,
+    intelligence,
     scope,
     protocol,
     protocolKind,

@@ -12,6 +12,9 @@ import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import { DesignStudio } from "../../src/design/studio"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Database } from "@reddb-io/redcode-core/database/database"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -193,6 +196,7 @@ const mcp = Layer.succeed(
 )
 
 const root = LayerNode.group([
+  Intelligence.node,
   DesignStudio.node,
   SessionPlan.node,
   SessionPrompt.node,
@@ -303,7 +307,8 @@ function copyFixture(spec: Spec, directory: string, hermetic: boolean) {
   if (hermetic) for (const entry of PERSONA) fs.rmSync(path.join(directory, entry), { recursive: true, force: true })
   if (!spec.git) return
   // The fixture is the baseline commit, so snapshots and diffs show only what the run changed.
-  const git = (...args: string[]) => Bun.spawnSync(["git", ...args], { cwd: directory, stdout: "ignore", stderr: "ignore" })
+  const git = (...args: string[]) =>
+    Bun.spawnSync(["git", ...args], { cwd: directory, stdout: "ignore", stderr: "ignore" })
   git("add", "-A")
   git("commit", "-q", "--no-verify", "-m", "fixture")
 }
@@ -367,9 +372,24 @@ export function run<A>(input: {
       let providerConfig: Record<string, unknown> = {}
       let model = options.model
       if (scripted) {
-        provider = ScriptedProvider.start({ cassette: cassetteFor(name, spec, options), resolve: (key) => resolver(key) })
+        provider = ScriptedProvider.start({
+          cassette: cassetteFor(name, spec, options),
+          resolve: (key) => resolver(key),
+        })
         providerConfig = scriptedProviderConfig(provider.url)
         model = "scripted/replay"
+        const intelligence = yield* Intelligence.Service
+        yield* Effect.acquireRelease(intelligence.read(), (settings) =>
+          intelligence.save({ settings }).pipe(Effect.orDie),
+        )
+        yield* intelligence.save({
+          settings: {
+            enabled: true,
+            onboarding: "completed",
+            principal: { providerID: Provider.ID.make("scripted"), id: Model.ID.make("replay") },
+            evaluator: { transport: "typesafe", model: "scripted-evaluator", baseURL: provider.url },
+          },
+        })
       }
       const agentSteps = { steps: budget.steps }
       const config = {
@@ -445,7 +465,9 @@ export function run<A>(input: {
             seen.add(request.id)
             const answers = request.questions.map((item) => {
               const labels = item.options.map((option) => option.label)
-              const answer = spec.answer ? spec.answer({ question: item.question, options: labels }) : (labels[0] ?? "Yes")
+              const answer = spec.answer
+                ? spec.answer({ question: item.question, options: labels })
+                : (labels[0] ?? "Yes")
               interactions.push({ kind: "question", subject: item.question.slice(0, 200), answer })
               return [answer]
             })
@@ -462,7 +484,10 @@ export function run<A>(input: {
       }).pipe(Effect.forkChild)
 
       const deadline = started + budget.ms
-      const cost = Effect.map(sessions.messages({ sessionID: chat.id }), (messages) => EvalRecord.transcript(messages).cost)
+      const cost = Effect.map(
+        sessions.messages({ sessionID: chat.id }),
+        (messages) => EvalRecord.transcript(messages).cost,
+      )
       let budgetExceeded = false
       const limit = options.budgetUsd
       const watcher =
@@ -574,7 +599,9 @@ export function run<A>(input: {
       })
       if (!scripted && record.cost !== null) spend.add(record.cost)
       const estimate =
-        options.pilot && provider && options.pricing ? EvalPilot.estimate(provider.exchanges(), options.pricing) : undefined
+        options.pilot && provider && options.pricing
+          ? EvalPilot.estimate(provider.exchanges(), options.pricing)
+          : undefined
       // The judge reaches a real provider, so it exists only in live mode.
       const complete = scripted
         ? undefined

@@ -4,6 +4,8 @@ import { SessionTaskFacts } from "../session/task-facts"
 export * as PlanTools from "./plan"
 
 import { SessionTodo } from "../session/todo"
+import { Database } from "../database/database"
+import { SessionInput } from "../session/input"
 
 import { ToolFailure } from "@reddb-io/redcode-llm"
 import { DateTime, Effect, Layer, Schema } from "effect"
@@ -35,6 +37,7 @@ const layer = Layer.effectDiscard(
     const semantic = yield* Semantic.Service
     const intelligence = yield* Intelligence.Service
     const facts = yield* SessionTaskFacts.Service
+    const database = yield* Database.Service
     yield* tools
       .register({
         worktree_prepare: Tool.make({
@@ -77,11 +80,13 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
               const evidence = yield* SessionEvidence.read(input.path, context, permissions, location)
               const savedGoal = yield* goals.get(context.sessionID)
               const goal = savedGoal?.status === "active" || savedGoal?.status === "waiting" ? savedGoal : null
               const previous = (yield* plans.list(context.sessionID)).find((plan) => plan.revision === evidence.hash)
-              const requests = (yield* facts.load(context.sessionID)).requests.filter((request) => !request.pending)
+              const sourceRequests = (yield* facts.load(context.sessionID)).requests
+              const requests = sourceRequests.filter((request) => !request.pending)
               const decomposition =
                 input.tasks ??
                 previous?.tasks ??
@@ -110,17 +115,22 @@ const layer = Layer.effectDiscard(
               const evaluation = yield* intelligence.evaluate({
                 sessionID: context.sessionID,
                 operation: "plan",
-                sources: requests,
-                candidate: { plan: evidence.content, tasks: decomposition },
+                sources: {
+                  requests: Intelligence.evidence(requests, { reference: context.sessionID, limit: 24000 }),
+                  coverage:
+                    "All applicable request text must be visible to approve the plan; truncated history is incomplete coverage.",
+                },
+                candidate: {
+                  plan: Intelligence.evidence(evidence.content, { reference: evidence.path, limit: 24000 }),
+                  tasks: decomposition,
+                },
                 questions: Intelligence.questions({
+                  coverage:
+                    "Are sources.requests or candidate.plan truncated, so full requirements or plan coverage cannot be verified? Missing content cannot be assumed covered.",
                   decomposition:
                     "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
-                  ...Object.fromEntries(
-                    requests.map((_, index) => [
-                      `request_${index}`,
-                      `Does candidate.plan omit or contradict an applicable requirement in sources[${index}].text, accounting for later corrections in sources?`,
-                    ]),
-                  ),
+                  requirements:
+                    "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
                 }),
               })
               yield* Intelligence.requireAccepted(evaluation)
@@ -133,6 +143,7 @@ const layer = Layer.effectDiscard(
                   )
               )
                 return yield* new ToolFailure({ message: "Plan sources changed during evaluation; retry" })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
               const ready = yield* plans.record({
                 sessionID: context.sessionID,
                 revision: evidence.hash,
@@ -176,19 +187,51 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({
                   message: "Goal changed during plan approval. Inspect the current goal before executing.",
                 })
-              const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
-              yield* todos.update({
-                sessionID: context.sessionID,
-                origin: { type: "plan", id: approved.revision, quote: approved.content, created: approved.created },
-                todos: ready.tasks.map((task) => ({
-                  planKey: task.key,
-                  content: task.content,
-                  criterion: task.criterion,
-                  requirement: task.quote,
-                  status: "pending",
-                  priority: "high",
-                })),
-              })
+              yield* Intelligence.requireConfigured(yield* intelligence.read())
+              const approved = { ...ready, status: "approved" as const, created: Date.now() }
+              yield* todos.update(
+                {
+                  sessionID: context.sessionID,
+                  origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
+                  todos: ready.tasks.map((task) => ({
+                    planKey: task.key,
+                    content: task.content,
+                    criterion: task.criterion,
+                    requirement: task.quote,
+                    status: "pending",
+                    priority: "high",
+                  })),
+                },
+                {
+                  before: Effect.gen(function* () {
+                    if (
+                      (yield* SessionEvidence.read(input.path, context, permissions, location)).hash !== evidence.hash
+                    )
+                      return yield* new SessionTodo.Error({
+                        message: "Plan changed while admitting tasks; review the current revision",
+                      })
+                    yield* Intelligence.requireConfigured(yield* intelligence.read())
+                  }).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message }))),
+                  write: plans
+                    .record(
+                      approved,
+                      Effect.gen(function* () {
+                        const currentGoal = yield* goals.get(context.sessionID)
+                        return (
+                          currentGoal?.id === savedGoal?.id &&
+                          currentGoal?.revision === savedGoal?.revision &&
+                          Intelligence.fingerprint(sourceRequests) ===
+                            Intelligence.fingerprint((yield* facts.load(context.sessionID)).requests) &&
+                          !(yield* SessionInput.hasPending(database.db, context.sessionID, "steer"))
+                        )
+                      }).pipe(Effect.mapError((error) => new SessionPlan.Error({ message: error.message }))),
+                    )
+                    .pipe(
+                      Effect.asVoid,
+                      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+                    ),
+                },
+              )
               yield* events.publish(SessionEvent.AgentSwitched, {
                 sessionID: context.sessionID,
                 messageID: SessionMessage.ID.create(),
@@ -224,5 +267,6 @@ export const node = makeLocationNode({
     Semantic.node,
     Intelligence.node,
     SessionTaskFacts.node,
+    Database.node,
   ],
 })

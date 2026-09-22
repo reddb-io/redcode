@@ -44,7 +44,12 @@ export function DialogSetup(
   const toast = useToast()
   const abort = new AbortController()
   let active = true
-  const api = IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers, signal: abort.signal })
+  const api = IntelligenceClient.make({
+    baseUrl: sdk.url,
+    fetch: sdk.fetch,
+    headers: sdk.headers,
+    signal: abort.signal,
+  })
   onCleanup(() => {
     active = false
     abort.abort()
@@ -114,7 +119,11 @@ export function DialogSetup(
       if (!model) continue
       const checked = await api.probeModel(model)
       if (!active) return
-      if (!checked.ok) return fail()
+      if (!checked.ok) {
+        set("busy", false)
+        toast.show({ variant: "error", message: checked.message, duration: 8000 })
+        return
+      }
     }
     const checked = await api.probe(probe)
     if (!active) return
@@ -128,6 +137,7 @@ export function DialogSetup(
       ...(state.key ? { apiKey: state.key } : {}),
     })
     if (!active) return
+    await local?.intelligence.refresh()
     const principal = state.settings.principal
     if (principal) {
       const selected = { providerID: principal.providerID, modelID: principal.id }
@@ -165,27 +175,16 @@ export function DialogSetup(
                 ]
               : []),
             { title: "Choose or connect a generative provider", value: "connect" },
-            { title: "Later", value: "defer", description: "Keep existing behavior" },
-            { title: "Disable semantic evaluation", value: "disable" },
+            {
+              title: "Close setup",
+              value: "close",
+              description: "S1 and S2 must be configured before sending prompts",
+            },
           ]}
           onSelect={(option) => {
             if (!state.loaded) return
             if (option.value === "connect") return connect("welcome")
-            if (option.value === "defer" || option.value === "disable") {
-              void api
-                .save({
-                  settings: {
-                    ...state.settings,
-                    enabled: option.value === "disable" ? false : state.settings.enabled,
-                    onboarding: "deferred",
-                  },
-                })
-                .then(() => {
-                  if (active) dialog.clear()
-                })
-                .catch(fail)
-              return
-            }
+            if (option.value === "close") return dialog.clear()
             if (option.value === "system-one") {
               set("scope", "system-one")
               set("step", "transport")

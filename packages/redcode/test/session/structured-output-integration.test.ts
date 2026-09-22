@@ -1,24 +1,55 @@
 import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Effect } from "effect"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Session } from "@/session/session"
+import { Provider } from "@/provider/provider"
 import { SessionPrompt } from "../../src/session/prompt"
 import { MessageV2 } from "../../src/session/message-v2"
 import { testEffect } from "../lib/effect"
+import { TestLLMServer } from "../lib/llm-server"
 
 // Skip tests if no API key is available
 const hasApiKey = !!process.env.ANTHROPIC_API_KEY
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([SessionPrompt.node, Session.node, Ripgrep.node])))
+const it = testEffect(
+  AppNodeBuilder.build(
+    LayerNode.group([
+      SessionPrompt.node,
+      Session.node,
+      Ripgrep.node,
+      Provider.node,
+      Intelligence.node,
+      LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
+    ]),
+  ),
+)
 const live = hasApiKey ? it.instance : it.instance.skip
+
+const configureIntelligence = Effect.gen(function* () {
+  const intelligence = yield* Intelligence.Service
+  const provider = yield* Provider.Service
+  const evaluator = yield* TestLLMServer
+  const model = yield* provider.defaultModel()
+  yield* Effect.acquireRelease(intelligence.read(), (settings) => intelligence.save({ settings }).pipe(Effect.orDie))
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: model.providerID, id: model.modelID },
+      evaluator: { transport: "typesafe", model: "jev-test", baseURL: evaluator.url },
+    },
+  })
+})
 
 describe("StructuredOutput Integration", () => {
   live(
     "produces structured output with simple schema",
     () =>
       Effect.gen(function* () {
+        yield* configureIntelligence
         const prompt = yield* SessionPrompt.Service
         const sessions = yield* Session.Service
         const session = yield* sessions.create({ title: "Structured Output Test" })
@@ -69,6 +100,7 @@ describe("StructuredOutput Integration", () => {
     "produces structured output with nested objects",
     () =>
       Effect.gen(function* () {
+        yield* configureIntelligence
         const prompt = yield* SessionPrompt.Service
         const sessions = yield* Session.Service
         const session = yield* sessions.create({ title: "Nested Schema Test" })
@@ -134,6 +166,7 @@ describe("StructuredOutput Integration", () => {
     "works with text outputFormat (default)",
     () =>
       Effect.gen(function* () {
+        yield* configureIntelligence
         const prompt = yield* SessionPrompt.Service
         const sessions = yield* Session.Service
         const session = yield* sessions.create({ title: "Text Output Test" })
@@ -172,6 +205,7 @@ describe("StructuredOutput Integration", () => {
     "stores outputFormat on user message",
     () =>
       Effect.gen(function* () {
+        yield* configureIntelligence
         const prompt = yield* SessionPrompt.Service
         const sessions = yield* Session.Service
         const session = yield* sessions.create({ title: "OutputFormat Storage Test" })

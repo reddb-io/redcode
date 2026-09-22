@@ -387,7 +387,7 @@ export default {
         );
       `)
       yield* tx.run(
-        `CREATE UNIQUE INDEX \`intelligence_evaluation_fingerprint_idx\` ON \`intelligence_evaluation\` (\`fingerprint\`);`,
+        `CREATE INDEX \`intelligence_evaluation_fingerprint_lookup_idx\` ON \`intelligence_evaluation\` (\`fingerprint\`);`,
       )
       yield* tx.run(
         `CREATE INDEX \`intelligence_evaluation_session_created_idx\` ON \`intelligence_evaluation\` (\`session_id\`,\`time_created\`);`,

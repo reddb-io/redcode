@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "1534dc3e-7837-4d0e-85ca-a6a08556410f",
+  "id": "da1c2399-f60b-4532-bf9e-244362eeffb0",
   "prevIds": [
-    "d6e03711-0b6c-4751-b511-ae3c46598b95"
+    "1534dc3e-7837-4d0e-85ca-a6a08556410f"
   ],
   "ddl": [
     {
@@ -3036,10 +3036,10 @@
           "isExpression": false
         }
       ],
-      "isUnique": true,
+      "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "intelligence_evaluation_fingerprint_idx",
+      "name": "intelligence_evaluation_fingerprint_lookup_idx",
       "entityType": "indexes",
       "table": "intelligence_evaluation"
     },

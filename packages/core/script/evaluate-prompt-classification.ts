@@ -42,12 +42,13 @@ export interface ClassificationExpected {
 export interface ClassificationFixture {
   readonly id: string
   readonly prompt: string
+  readonly history?: readonly string[]
   readonly expected: ClassificationExpected
 }
 
 interface ClassificationDataset {
   readonly version: number
-  readonly language: "en"
+  readonly language: "en" | "multilingual"
   readonly cases: readonly ClassificationFixture[]
 }
 
@@ -55,7 +56,7 @@ function decodeDataset(input: unknown): ClassificationDataset {
   const value = Schema.decodeUnknownSync(UnknownRecord)(input)
   return {
     version: Schema.decodeUnknownSync(Schema.Int)(value.version),
-    language: Schema.decodeUnknownSync(Schema.Literal("en"))(value.language),
+    language: Schema.decodeUnknownSync(Schema.Literals(["en", "multilingual"]))(value.language),
     cases: Schema.decodeUnknownSync(Schema.Array(Schema.Unknown))(value.cases).map(decodeFixture),
   }
 }
@@ -76,6 +77,9 @@ function decodeFixture(input: unknown): ClassificationFixture {
   return {
     id: Schema.decodeUnknownSync(Schema.String)(value.id),
     prompt: Schema.decodeUnknownSync(Schema.String)(value.prompt),
+    ...(value.history === undefined
+      ? {}
+      : { history: Schema.decodeUnknownSync(Schema.Array(Schema.String))(value.history) }),
     expected: {
       work_route: Schema.decodeUnknownSync(Schema.String)(expected.work_route),
       ...(optionalString("change_kind") ? { change_kind: optionalString("change_kind") } : {}),
@@ -381,10 +385,20 @@ async function main() {
               const response = yield* service
                 .request(evaluator, "systemone", {
                   model: evaluator.model,
-                  state: { sources: { text: job.fixture.prompt } },
+                  state: {
+                    sources: {
+                      text: job.fixture.prompt,
+                      ...(job.fixture.history ? { history: job.fixture.history } : {}),
+                    },
+                  },
                   questions: Intelligence.promptQuestions,
                 })
-                .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Response)))
+                .pipe(
+                  Effect.flatMap(Schema.decodeUnknownEffect(Response)),
+                  Effect.tap((response) =>
+                    Effect.sync(() => Intelligence.validateClassification(Intelligence.promptQuestions, response)),
+                  ),
+                )
               return {
                 caseID: job.fixture.id,
                 repetition: job.repetition,

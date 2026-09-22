@@ -257,6 +257,10 @@ const make = Effect.gen(function* () {
       yield* Intelligence.requireAccepted(evaluation).pipe(
         Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
       )
+      yield* intelligence.read().pipe(
+        Effect.flatMap(Intelligence.requireConfigured),
+        Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
+      )
     }
     const recorded = statuses?.length
       ? DesignRounds.apply(document, statuses, verifies, Date.now(), recorder)

@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "language": "en",
+  "version": 2,
+  "language": "multilingual",
   "cases": [
     {
       "id": "answer-retry-explanation",
@@ -636,6 +636,77 @@
         "consequence": { "min": 0.7, "max": 1.4 },
         "frustration": { "min": 0, "max": 0.5 },
         "priority": "medium"
+      }
+    },
+    {
+      "id": "pt-answer-model-roles",
+      "prompt": "Explique a diferença entre System One e System Two.",
+      "expected": {
+        "work_route": "answer",
+        "time_pressure": "none",
+        "interaction_constraint": "answer_only",
+        "clarification": "proceed"
+      }
+    },
+    {
+      "id": "pt-fix-session-crash",
+      "prompt": "Corrija o erro que fecha a sessão quando salvo um arquivo.",
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed"
+      }
+    },
+    {
+      "id": "pt-context-implement",
+      "prompt": "Pode implementar o plano.",
+      "history": [
+        "Usuário: Prepare um plano para adicionar filtros à lista de sessões.",
+        "Assistente: O plano adiciona filtros de projeto e status, preserva a seleção e cobre o comportamento com testes."
+      ],
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "feature",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed"
+      }
+    },
+    {
+      "id": "pt-context-continue",
+      "prompt": "Continua de onde parou.",
+      "history": [
+        "Usuário: Corrija o crash de compactação e rode os testes.",
+        "Assistente: A causa está identificada. Falta aplicar a correção e validar os testes."
+      ],
+      "expected": {
+        "work_route": "local_change",
+        "change_kind": "bugfix",
+        "time_pressure": "none",
+        "interaction_constraint": "execute",
+        "clarification": "proceed"
+      }
+    },
+    {
+      "id": "pt-investigate-before-change",
+      "prompt": "Investigue por que a compactação falha e me mostre o que encontrou antes de alterar o código.",
+      "expected": {
+        "work_route": "investigation",
+        "time_pressure": "none",
+        "interaction_constraint": "investigate_report",
+        "clarification": "proceed"
+      }
+    },
+    {
+      "id": "pt-release-explicit",
+      "prompt": "Publique hoje a versão 2.0 que já foi aprovada.",
+      "expected": {
+        "work_route": "external_operation",
+        "time_pressure": "deadline",
+        "interaction_constraint": "execute",
+        "clarification": "proceed"
       }
     }
   ]

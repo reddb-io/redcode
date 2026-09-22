@@ -1,3 +1,6 @@
+import { Intelligence } from "../src/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { Location } from "../src/location"
 import { tempLocationLayer } from "./fixture/location"
 import { describe, expect } from "bun:test"
@@ -42,6 +45,7 @@ const it = testEffect(
   AppNodeBuilder.build(
     LayerNode.group([
       Database.node,
+      Intelligence.node,
       EventV2.node,
       SessionTodo.node,
       ToolRegistry.node,
@@ -59,6 +63,48 @@ const it = testEffect(
 const setup = Effect.gen(function* () {
   assertions.length = 0
   deny = false
+  const intelligence = yield* Intelligence.Service
+  const previous = yield* intelligence.read()
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const body = await request.json()
+          return Response.json({
+            model: "jev",
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => [
+                id,
+                (question as { type: string }).type === "score"
+                  ? {
+                      type: "score",
+                      score: 3,
+                      confidence: 1,
+                      probabilities: { "3": 1 },
+                      legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                    }
+                  : { type: "noul", noul: 0.01 },
+              ]),
+            ),
+            usage: { input_tokens: 10, output_tokens: 0 },
+          })
+        },
+      }),
+    ),
+    (server) =>
+      intelligence
+        .save({ settings: previous })
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+  )
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+    },
+  })
   const { db } = yield* Database.Service
   yield* db
     .insert(ProjectTable)
@@ -86,6 +132,23 @@ const call = (todos: ReadonlyArray<SessionTodo.Info>, id = "call-todowrite") => 
 })
 
 describe("TodoWriteTool", () => {
+  it.live("requires configured intelligence before a tool can create tasks", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const intelligence = yield* Intelligence.Service
+      yield* intelligence.save({ settings: { ...(yield* intelligence.read()), enabled: false } })
+      const registry = yield* ToolRegistry.Service
+      const service = yield* SessionTodo.Service
+      const result = yield* executeTool(
+        registry,
+        call([{ content: "Implement slice", status: "in_progress", priority: "high" }]),
+      )
+      expect(result.type).toBe("error")
+      expect(result.value).toContain("Configure")
+      expect(yield* service.get(sessionID)).toEqual([])
+    }),
+  )
+
   it.effect("registers, approves the wildcard resource, persists todos, and returns typed output", () =>
     Effect.gen(function* () {
       yield* setup

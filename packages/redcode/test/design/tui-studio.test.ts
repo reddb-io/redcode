@@ -1,3 +1,7 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { ProviderV2 } from "@reddb-io/redcode-core/provider"
+import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { TestLLMServer } from "../lib/llm-server"
 import { Provider } from "../../src/provider/provider"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
@@ -20,7 +24,7 @@ import { MessageID } from "../../src/session/schema"
 import { Tool } from "../../src/tool/tool"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { expect } from "bun:test"
-import { Effect, DateTime, Schema, Cause, Exit, Fiber } from "effect"
+import { Effect, DateTime, Schema, Cause, Exit, Fiber, Layer } from "effect"
 import { Question } from "../../src/question"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
@@ -37,24 +41,45 @@ import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { InstanceState } from "../../src/effect/instance-state"
 
 const it = testEffect(
-  AppNodeBuilderV1.build(
-    LayerNode.group([
-      DesignStudio.node,
-      Provider.node,
-      RuntimeFlags.node,
-      FSUtil.node,
-      DesignFeedback.node,
-      SessionStatus.node,
-      SessionPlan.node,
-      SessionPrompt.node,
-      EventV2Bridge.node,
-      Agent.node,
-      Session.node,
-      SessionProjector.node,
-      ToolRegistry.node,
-      Permission.node,
-      Question.node,
-    ]),
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const intelligence = yield* Intelligence.Service
+      const llm = yield* TestLLMServer
+      const previous = yield* intelligence.read()
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { providerID: ProviderV2.ID.make("fixture"), id: ModelV2.ID.make("fixture") },
+          evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },
+        },
+      })
+      yield* Effect.addFinalizer(() => intelligence.save({ settings: previous }).pipe(Effect.orDie))
+    }),
+  ).pipe(
+    Layer.provideMerge(
+      AppNodeBuilderV1.build(
+        LayerNode.group([
+          Intelligence.node,
+          LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
+          DesignStudio.node,
+          Provider.node,
+          RuntimeFlags.node,
+          FSUtil.node,
+          DesignFeedback.node,
+          SessionStatus.node,
+          SessionPlan.node,
+          SessionPrompt.node,
+          EventV2Bridge.node,
+          Agent.node,
+          Session.node,
+          SessionProjector.node,
+          ToolRegistry.node,
+          Permission.node,
+          Question.node,
+        ]),
+      ),
+    ),
   ),
 )
 

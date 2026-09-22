@@ -51,6 +51,10 @@ it.effect("withholds deferred tools and advertises tool_search instead", () =>
     expect(materialized.toolIndex).toContain("github (2)")
     expect(materialized.toolIndex).toContain("list_issues")
     expect(materialized.native).toBeUndefined()
+    expect(materialized.mcpTools).toEqual([
+      { name: "github_list_issues", description: "List issues in a repository" },
+      { name: "github_merge_pull_request", description: "Merge a pull request" },
+    ])
   }),
 )
 
@@ -124,12 +128,7 @@ it.effect("advertises loaded tools in activation order, after everything stable"
     })
 
     // Positional, not membership: a prefix that reshuffles re-bills every cached tool after it.
-    expect(names(materialized)).toEqual([
-      "read",
-      ToolSearch.TOOL_ID,
-      "github_merge_pull_request",
-      "github_list_issues",
-    ])
+    expect(names(materialized)).toEqual(["read", ToolSearch.TOOL_ID, "github_merge_pull_request", "github_list_issues"])
 
     // Loading one more appends to the end and leaves the prefix byte-identical.
     const next = yield* registry.materialize({
@@ -152,6 +151,7 @@ it.effect("never lists or loads a tool the permission rules disable", () =>
       permissions: [{ action: "github_secret_tool", resource: "*", effect: "deny" }],
       deferral: always,
     })
+    expect(materialized.mcpTools?.some((tool) => tool.name === "github_secret_tool")).toBe(false)
 
     // A denied tool is filtered before the plan, so it is neither advertised nor in the index.
     expect(names(materialized)).not.toContain("github_secret_tool")

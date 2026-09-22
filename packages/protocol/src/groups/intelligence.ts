@@ -41,6 +41,8 @@ export const IntelligenceGroup = HttpApiGroup.make("server.intelligence")
       query: Schema.Struct({
         sessionID: Schema.String.pipe(Schema.optional),
         operation: Intelligence.Operation.pipe(Schema.optional),
+        subjectID: Schema.String.pipe(Schema.optional),
+        candidateID: Schema.String.pipe(Schema.optional),
         decision: Intelligence.Decision.pipe(Schema.optional),
         limit: Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })).pipe(
           Schema.optional,

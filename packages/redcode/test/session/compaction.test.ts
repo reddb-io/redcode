@@ -33,6 +33,7 @@ import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -246,6 +247,7 @@ function cfg(compaction?: ConfigV1.Info["compaction"]) {
 
 const defaultProvider = wide()
 const compactionTestNode = LayerNode.group([
+  Intelligence.node,
   SessionCompaction.node,
   SessionNs.node,
   SessionProjector.node,
@@ -275,7 +277,41 @@ type CompactionProcessOptions = {
 }
 
 function withCompaction(options?: CompactionProcessOptions) {
-  return Effect.provide(compactionProcessLayer(options))
+  return <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const intelligence = yield* Intelligence.Service
+      const previous = yield* intelligence.read()
+      const server = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          Bun.serve({
+            port: 0,
+            fetch: async (request) => {
+              const body = await request.json()
+              return Response.json({
+                model: "jev",
+                answers: Object.fromEntries(
+                  Object.keys(body.questions).map((id) => [id, { type: "noul", noul: 0.01 }]),
+                ),
+                usage: { input_tokens: 10, output_tokens: 0 },
+              })
+            },
+          }),
+        ),
+        (server) =>
+          intelligence
+            .save({ settings: previous })
+            .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+      )
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          onboarding: "completed",
+          principal: { id: ref.modelID, providerID: ref.providerID },
+          evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+        },
+      })
+      return yield* effect
+    }).pipe(Effect.provide(compactionProcessLayer(options)))
 }
 
 function compactionProcessLayer(options?: CompactionProcessOptions) {
@@ -288,6 +324,7 @@ function compactionProcessLayer(options?: CompactionProcessOptions) {
     return AppNodeBuilder.build(compactionTestNode, [
       ...replacements,
       [SessionProcessorModule.SessionProcessor.node, processorNode(options?.result ?? "continue")],
+      [LLM.node, Layer.succeed(LLM.Service, LLM.Service.of({ stream: (input) => reply(".")(input) }))],
       ...(options?.plugin ? ([[Plugin.node, options.plugin]] as const) : []),
       ...(options?.config ? ([[Config.node, options.config]] as const) : []),
     ])
@@ -836,6 +873,97 @@ describe("session.compaction.prune", () => {
 })
 
 describe("session.compaction.process", () => {
+  for (const scenario of [
+    "accepted",
+    "repaired",
+    "rejected",
+    "unavailable",
+    "partial",
+    "disabled-during-evaluation",
+  ] as const) {
+    itCompaction.instance(`System One ${scenario} preserves checkpoint admission and bounds repair`, () => {
+      const stub = llm()
+      stub.push(
+        scenario === "partial"
+          ? reply(
+              "## Objective\n- Inspect parser\n## Important Details\n- Do not publish; preserve tests\n## Work State\n### Completed\n- Investigation\n### Active\n- Tests pending\n### Blocked\n- None\n## Next Move\n1. Run tests\n## Relevant Files\n- parser.ts",
+              undefined,
+              "length",
+            )
+          : reply("Checkpoint: parser investigated; tests remain pending."),
+      )
+      if (scenario === "repaired" || scenario === "rejected")
+        stub.push(reply("Checkpoint: parser investigated; preserve tests and do not publish."))
+      return Effect.gen(function* () {
+        const intelligence = yield* Intelligence.Service
+        const previous = yield* intelligence.read()
+        const calls: unknown[] = []
+        const server = Bun.serve({
+          port: 0,
+          fetch: async (request) => {
+            const body = await request.json()
+            calls.push(body)
+            if (scenario === "disabled-during-evaluation") {
+              const settings = await Effect.runPromise(intelligence.read())
+              await Effect.runPromise(intelligence.save({ settings: { ...settings, enabled: false } }))
+            }
+            if (scenario === "unavailable") return new Response("offline", { status: 503 })
+            const rejected = scenario === "rejected" || (scenario === "repaired" && calls.length === 1)
+            return Response.json({
+              model: "jev",
+              answers: Object.fromEntries(
+                Object.keys(body.questions).map((key) => [key, { type: "noul", noul: rejected ? 0.99 : 0.01 }]),
+              ),
+              usage: { input_tokens: 10, output_tokens: 0 },
+            })
+          },
+        })
+        yield* Effect.gen(function* () {
+          yield* intelligence.save({
+            settings: {
+              enabled: true,
+              onboarding: "completed",
+              principal: { id: ref.modelID, providerID: ref.providerID },
+              evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+            },
+          })
+          const ssn = yield* SessionNs.Service
+          const session = yield* ssn.create({})
+          const original = yield* createUserMessage(
+            session.id,
+            "Inspect the parser and preserve its tests. Do not publish. ".repeat(100),
+          )
+          yield* createSummaryCompaction(session.id)
+          const messages = yield* ssn.messages({ sessionID: session.id })
+          const result = yield* SessionCompaction.use.process({
+            parentID: messages.at(-1)!.info.id,
+            messages,
+            sessionID: session.id,
+            auto: true,
+          })
+          expect(calls).toHaveLength(scenario === "repaired" || scenario === "rejected" ? 2 : 1)
+          const all = yield* ssn.messages({ sessionID: session.id })
+          if (scenario === "rejected" || scenario === "unavailable" || scenario === "disabled-during-evaluation") {
+            expect(result).toBe("stop")
+            expect(
+              MessageV2.filterCompacted([...all].reverse()).some((message) => message.info.id === original.id),
+            ).toBe(true)
+            expect(
+              all.find((message) => message.info.role === "assistant" && message.info.summary)?.info,
+            ).toMatchObject({ finish: "error" })
+          } else {
+            expect(result).toBe("continue")
+            expect(
+              all.find((message) => message.info.role === "assistant" && message.info.summary)?.info,
+            ).not.toHaveProperty("error")
+          }
+        }).pipe(
+          Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)),
+          Effect.ensuring(Effect.sync(() => server.stop(true))),
+        )
+      }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
+    })
+  }
   for (const scenario of ["reuse", "rewrite", "cancel"] as const) {
     itCompaction.instance(`handles ${scenario} of a prepared legacy summary without losing new messages`, () => {
       const stub = llm()
@@ -1100,7 +1228,7 @@ describe("session.compaction.process", () => {
     })
   }
 
-  itCompaction.instance("commits a summary cut off by the output limit", () => {
+  itCompaction.instance("rejects output-limited checkpoints missing required sections", () => {
     const stub = llm()
     stub.push(reply("Partial checkpoint", undefined, "length"))
     return Effect.gen(function* () {
@@ -1115,13 +1243,13 @@ describe("session.compaction.process", () => {
         sessionID: session.id,
         auto: true,
       })
-      expect(result).toBe("continue")
+      expect(result).toBe("stop")
       const all = yield* ssn.messages({ sessionID: session.id })
       const checkpoint = all.find((message) => message.info.role === "assistant" && message.info.summary)
-      expect(checkpoint?.info).toMatchObject({ finish: "length", summary: true })
-      expect((checkpoint?.info as { error?: unknown }).error).toBeUndefined()
+      expect(checkpoint?.info).toMatchObject({ finish: "error", summary: true })
+      expect((checkpoint?.info as { error?: unknown }).error).toBeDefined()
       const visible = MessageV2.filterCompacted([...all].reverse())
-      expect(visible.some((message) => message.info.id === original.id)).toBe(false)
+      expect(visible.some((message) => message.info.id === original.id)).toBe(true)
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
   })
 
@@ -1155,7 +1283,7 @@ describe("session.compaction.process", () => {
     }),
   )
 
-  it.instance(
+  itCompaction.instance(
     "publishes compacted event on continue",
     Effect.gen(function* () {
       const events = yield* EventV2Bridge.Service
@@ -1187,7 +1315,7 @@ describe("session.compaction.process", () => {
       expect(result).toBe("continue")
       expect(seen).toContain(SessionCompaction.Event.Compacted.type)
       expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
-    }),
+    }).pipe(withCompaction()),
   )
 
   itCompaction.instance(
@@ -1218,7 +1346,7 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ result: "compact" })),
   )
 
-  it.instance(
+  itCompaction.instance(
     "adds synthetic continue prompt when auto is enabled",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1247,7 +1375,7 @@ describe("session.compaction.process", () => {
       if (last?.parts[0]?.type === "text") {
         expect(last.parts[0].text).toContain("Continue the user's latest request.")
       }
-    }),
+    }).pipe(withCompaction()),
   )
 
   itCompaction.instance(
@@ -1450,7 +1578,7 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ plugin: autocontinue(false) })),
   )
 
-  it.instance(
+  itCompaction.instance(
     "replays the prior user turn on overflow when earlier context exists",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1485,10 +1613,10 @@ describe("session.compaction.process", () => {
       expect(
         last?.parts.some((part) => part.type === "text" && part.text.includes("Attached image/png: cat.png")),
       ).toBe(true)
-    }),
+    }).pipe(withCompaction()),
   )
 
-  it.instance(
+  itCompaction.instance(
     "falls back to overflow guidance when no replayable turn exists",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1518,8 +1646,55 @@ describe("session.compaction.process", () => {
       if (last?.parts[0]?.type === "text") {
         expect(last.parts[0].text).toContain("previous request exceeded the provider's context limit")
       }
-    }),
+    }).pipe(withCompaction()),
   )
+
+  itCompaction.instance("retries a transient summary failure before evaluating and publishing the checkpoint", () => {
+    const stub = llm()
+    stub.push(
+      Stream.fail(
+        new APICallError({
+          message: "temporarily unavailable",
+          url: "https://example.com/v1/chat/completions",
+          requestBodyValues: {},
+          statusCode: 503,
+          responseHeaders: { "retry-after-ms": "1" },
+          responseBody: '{"error":"temporarily unavailable"}',
+          isRetryable: true,
+        }),
+      ),
+    )
+    stub.push(reply("Parser inspected; tests remain pending."))
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const events = yield* EventV2Bridge.Service
+      const session = yield* ssn.create({})
+      const retries: number[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type !== SessionStatus.Event.Status.type) return Effect.void
+        const data = event.data as typeof SessionStatus.Event.Status.data.Type
+        if (data.sessionID === session.id && data.status.type === "retry") retries.push(data.status.attempt)
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => off)
+      yield* createUserMessage(session.id, "Inspect the parser and preserve its tests. ".repeat(100))
+      yield* createSummaryCompaction(session.id)
+      const messages = yield* ssn.messages({ sessionID: session.id })
+      expect(
+        yield* SessionCompaction.use.process({
+          parentID: messages.at(-1)!.info.id,
+          messages,
+          sessionID: session.id,
+          auto: true,
+        }),
+      ).toBe("continue")
+      expect(retries).toEqual([1])
+      const intelligence = yield* Intelligence.Service
+      expect(
+        (yield* intelligence.history(session.id)).filter((record) => record.operation === "compaction"),
+      ).toHaveLength(1)
+    }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 0 }) }))
+  })
 
   itCompaction.instance(
     "stops quickly when aborted during retry backoff",

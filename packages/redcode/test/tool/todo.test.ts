@@ -1,3 +1,6 @@
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { describe, expect } from "bun:test"
 import { eq } from "drizzle-orm"
 import { Effect } from "effect"
@@ -19,7 +22,14 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(
-    LayerNode.group([Todo.node, SessionTaskFacts.node, Database.node, EventV2Bridge.node, ToolOutputBridge.node]),
+    LayerNode.group([
+      Todo.node,
+      SessionTaskFacts.node,
+      Database.node,
+      EventV2Bridge.node,
+      ToolOutputBridge.node,
+      Intelligence.node,
+    ]),
   ),
 )
 
@@ -27,6 +37,48 @@ const requirement = "verify duplicate requests"
 
 /** A legacy (v1) session with one real user request, as the TUI runtime stores it. */
 const seed = Effect.fn("TodoToolTest.seed")(function* () {
+  const intelligence = yield* Intelligence.Service
+  const previous = yield* intelligence.read()
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const body = await request.json()
+          return Response.json({
+            model: "jev",
+            answers: Object.fromEntries(
+              Object.entries(body.questions).map(([id, question]) => [
+                id,
+                (question as { type: string }).type === "score"
+                  ? {
+                      type: "score",
+                      score: 3,
+                      confidence: 1,
+                      probabilities: { "3": 1 },
+                      legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                    }
+                  : { type: "noul", noul: 0.01 },
+              ]),
+            ),
+            usage: { input_tokens: 10, output_tokens: 0 },
+          })
+        },
+      }),
+    ),
+    (server) =>
+      intelligence
+        .save({ settings: previous })
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(() => server.stop(true)))),
+  )
+  yield* intelligence.save({
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
+    },
+  })
   const { db } = yield* Database.Service
   const sessionID = SessionID.make(`ses_todo_tool_${crypto.randomUUID().slice(0, 8)}`)
   yield* db

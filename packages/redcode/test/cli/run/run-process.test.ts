@@ -12,7 +12,7 @@ import { testProviderConfig } from "../../lib/test-provider"
 describe("opencode run (non-interactive subprocess)", () => {
   // Happy path: prompt completes, output reaches stdout, process exits 0.
   // If this fails, all the others likely will too — debug here first.
-  cliIt.live(
+  cliIt.withIntelligence(
     "exits 0 and writes the response to stdout on a successful prompt",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -24,7 +24,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "--max-cost stops the run after the step that reaches it and exits 1",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -34,7 +34,9 @@ describe("opencode run (non-interactive subprocess)", () => {
           provider: {
             test: {
               ...config.provider.test,
-              models: { "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } } },
+              models: {
+                "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } },
+              },
             },
           },
         }
@@ -58,7 +60,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "a budget from the configuration alone also stops the run with exit 1",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -68,7 +70,9 @@ describe("opencode run (non-interactive subprocess)", () => {
           provider: {
             test: {
               ...config.provider.test,
-              models: { "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } } },
+              models: {
+                "test-model": { ...config.provider.test.models["test-model"], cost: { input: 1000, output: 1000 } },
+              },
             },
           },
           session: { budget: { max_cost_usd: 0.5 } },
@@ -92,7 +96,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "prints each completed text part in order around a tool continuation",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -114,7 +118,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "prints reasoning before text only with --thinking",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -136,7 +140,7 @@ describe("opencode run (non-interactive subprocess)", () => {
   // makes the SDK call surface an error promptly so the process exits nonzero.
   // We assert nonzero exit without hitting the harness timeout — a hang would
   // expire the timeout and produce a different (signal-killed) failure.
-  cliIt.live(
+  cliIt.withIntelligence(
     "exits nonzero promptly when the model is unknown (regression for #27371)",
     ({ opencode }) =>
       Effect.gen(function* () {
@@ -158,7 +162,7 @@ describe("opencode run (non-interactive subprocess)", () => {
   // over, so the loop asks again rather than ending in silence with whatever
   // happened to have arrived. What must not change is the rest: partial output
   // survives, the provider's message stays out of stderr, and the exit is clean.
-  cliIt.live(
+  cliIt.withIntelligence(
     "unknown stream finish recovers and keeps the partial output",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -182,7 +186,7 @@ describe("opencode run (non-interactive subprocess)", () => {
   // --format json puts one JSON object per line on stdout for each emitted
   // event. Consumers (CI scripts, tooling) parse this stream. Asserts the
   // shape so a future event-emit change has to update this expectation.
-  cliIt.live(
+  cliIt.withIntelligence(
     "--format json emits parseable line-delimited JSON to stdout",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -216,7 +220,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "--format json emits a pure error record for a rejected prompt request",
     ({ opencode }) =>
       Effect.gen(function* () {
@@ -239,7 +243,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     30_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "--format json preserves reasoning, tool, and continuation ordering",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -288,7 +292,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "--format json records partial output for an unknown stream finish",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
@@ -322,7 +326,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "normal and auto preserve denials while YOLO bypasses them",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
@@ -372,7 +376,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "attach mode sends client-local file contents without a shared path",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
@@ -394,7 +398,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     60_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "attach mode rejects local directories before prompt admission",
     ({ home, opencode }) =>
       Effect.gen(function* () {
@@ -408,7 +412,7 @@ describe("opencode run (non-interactive subprocess)", () => {
     30_000,
   )
 
-  cliIt.live(
+  cliIt.withIntelligence(
     "SIGINT interrupts an active non-interactive run without leaking the process",
     ({ llm, opencode }) =>
       Effect.gen(function* () {
