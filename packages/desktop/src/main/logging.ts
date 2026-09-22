@@ -1,12 +1,12 @@
 import { MainLogger } from "electron-log"
 import log from "electron-log/main.js"
 import { app, crashReporter, netLog, shell } from "electron"
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { ZipWriter, BlobWriter, BlobReader } from "@zip.js/zip.js"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import { homedir } from "node:os"
+import { cleanupLogRuns, diagnosticLogRoots } from "./log-retention"
 
-const MAX_LOG_AGE_DAYS = 7
 const TAIL_LINES = 1000
 const EXPORT_WINDOW = 24 * 60 * 60 * 1000
 const MAX_EXPORT_FILE_SIZE = 50 * 1024 * 1024
@@ -22,6 +22,7 @@ export const getLogger = () => logger
 export function initLogging() {
   initRunDirectory()
   log.transports.file.maxSize = 5 * 1024 * 1024
+  log.transports.file.writeOptions = { ...log.transports.file.writeOptions, mode: 0o600 }
   log.transports.file.resolvePathFn = (_vars, message) =>
     join(
       run,
@@ -29,8 +30,15 @@ export function initLogging() {
     )
   log.initialize({ preload: false, spyRendererConsole: true })
   initConsoleTransport()
-  cleanup()
   return (logger = log)
+}
+
+/** Start only after acquiring Electron's single-instance lock. A second launch must not prune live logs. */
+export function startLogRetention() {
+  cleanup()
+  const retention = setInterval(cleanup, 60_000)
+  retention.unref()
+  app.once("will-quit", () => clearInterval(retention))
 }
 
 export function initCrashReporter() {
@@ -101,7 +109,7 @@ export function tail(): string {
 function initRunDirectory() {
   root = join(app.getPath("userData"), "logs")
   run = join(root, stamp())
-  mkdirSync(run, { recursive: true })
+  mkdirSync(run, { recursive: true, mode: 0o700 })
 }
 
 function stamp() {
@@ -116,17 +124,10 @@ function safeLogName(name: string) {
 }
 
 function cleanup() {
-  const dir = root || dirname(log.transports.file.getFile().path)
-  const cutoff = Date.now() - MAX_LOG_AGE_DAYS * 24 * 60 * 60 * 1000
-
-  for (const entry of readdirSync(dir)) {
-    const file = join(dir, entry)
-    try {
-      const info = statSync(file)
-      if (info.mtimeMs < cutoff) rmSync(file, { recursive: true, force: true })
-    } catch {
-      continue
-    }
+  try {
+    cleanupLogRuns(root, run)
+  } catch {
+    // Diagnostic retention must not prevent startup or take down a running desktop.
   }
 }
 
@@ -151,7 +152,7 @@ function manifest() {
 
 function serverLogRoots() {
   const xdgData = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share")
-  return [...new Set([join(xdgData, "opencode", "log"), join(app.getPath("userData"), "opencode", "log")])]
+  return diagnosticLogRoots(process.env.REDCODE_TEST_HOME ?? homedir(), app.getPath("userData"), xdgData)
 }
 
 type Entry = { name: string; path?: string; data?: Buffer }

@@ -16,7 +16,7 @@ import { checkAppExists, resolveAppPath } from "./apps"
 import { CHANNEL } from "./constants"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
-import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
+import { exportDebugLogs, initCrashReporter, initLogging, startLogRetention, startNetLog, write as writeLog } from "./logging"
 import { createMenu } from "./menu"
 import {
   finishFirstLaunchOnboarding,
@@ -199,6 +199,7 @@ const main = Effect.gen(function* () {
     app.quit()
     return
   }
+  startLogRetention()
 
   const shellEnv = preferAppEnv(app.getPath("userData"))
 

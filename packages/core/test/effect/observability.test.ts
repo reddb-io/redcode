@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { NodeFileSystem } from "@effect/platform-node"
-import { Effect, Layer, Logger } from "effect"
+import { Effect, Layer, Logger, References } from "effect"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -106,4 +106,32 @@ test("file logger flattens nested objects", async () => {
   expect(line).toContain('tags="[\\\"api\\\",\\\"test\\\"]"')
   expect(line).toContain("session.id=session-1")
   expect(line).not.toContain("request={")
+})
+
+test("file logger preserves minimum levels and context while redacting secrets", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-log-test-"))
+  await using _ = { [Symbol.asyncDispose]: () => fs.rm(dir, { recursive: true, force: true }) }
+  const file = path.join(dir, "redcode.log")
+  await Effect.gen(function* () {
+    yield* Effect.logDebug("hidden debug entry")
+    yield* Effect.logInfo("request complete", {
+      headers: { Authorization: "Bearer never-store-this", Cookie: "session=private" },
+      request: { apiKey: "private-api-key", estimatedTokens: 42 },
+      endpoints: [{ url: "https://user:private-password@example.com/path?token=private-query" }],
+    })
+  }).pipe(
+    Effect.annotateLogs({ session: { id: "session-safe" } }),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+    Effect.provide(Logger.layer([fileLogger(file, "run-safe")])),
+    Effect.scoped,
+    Effect.runPromise,
+  )
+  const line = await Bun.file(file).text()
+  expect(line).not.toContain("hidden debug entry")
+  expect(line).toContain("run=run-safe")
+  expect(line).toContain("session.id=session-safe")
+  expect(line).toContain("request.estimatedTokens=42")
+  for (const secret of ["never-store-this", "session=private", "private-api-key", "private-password", "private-query"]) {
+    expect(line).not.toContain(secret)
+  }
 })

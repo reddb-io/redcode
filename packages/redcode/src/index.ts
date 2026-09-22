@@ -157,6 +157,8 @@ try {
     await cli.parse()
   }
 } catch (e) {
+  const { Logging } = await import("@reddb-io/redcode-core/observability/logging")
+  await Logging.fatal(e)
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
