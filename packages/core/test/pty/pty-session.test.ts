@@ -59,8 +59,9 @@ const waitForEvents = (events: Queue.Queue<PtyEvent>, id: PtyID, count: number) 
     }
     return picked
   }).pipe(
+    // Generous: CI runs test files in parallel and spawning a PTY can stall under that load.
     Effect.timeoutOrElse({
-      duration: "5 seconds",
+      duration: "15 seconds",
       orElse: () => Effect.fail(new Error("timeout waiting for pty events")),
     }),
   )
