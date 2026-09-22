@@ -16,7 +16,7 @@ import { mount, wait, json } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 
-function Dialogs(props: { resume?: { settings: Intelligence.Settings; step: "principal" | "fast" } } = {}) {
+function Dialogs(props: { resume?: Parameters<typeof createDialogSetupState>[0] } = {}) {
   const renderer = useRenderer()
   const keymap = createDefaultOpenTuiKeymap(renderer)
   const config = createTuiResolvedConfig({ keybinds: {}, leader_timeout: 1000 })
@@ -126,6 +126,7 @@ const intelligence = {
       },
     },
   ] satisfies Intelligence.EvaluatorOption[],
+  effective: { reasoning: "single", source: "default" },
 }
 
 test("global setup selects System Two models and offers provider connection in the same flow", async () => {
@@ -138,32 +139,31 @@ test("global setup selects System Two models and offers provider connection in t
         return json({ providers: [provider, otherProvider], default: { mock: "model", other: "other" } })
     },
     tmp.path,
-    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    await wait(() => setup.app.captureCharFrame().includes("S2 principal"))
     await wait(
       () =>
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
     const principal = setup.app.captureCharFrame()
-    expect(principal).toContain("System Two principal · Mock Provider")
+    expect(principal).toContain("2/3 · S2 principal · Mock Provider")
     expect(principal).toContain("Mock Model")
     expect(principal).toContain("Balanced Combo")
     expect(principal).not.toContain("Other Model")
     expect(principal).toContain("Choose or connect another provider…")
 
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
-    await setup.app.renderOnce()
+    await wait(() => setup.app.captureCharFrame().includes("2/3 · S2 transformations"))
     await wait(
       () =>
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System One connection"))
+    await wait(() => setup.app.captureCharFrame().includes("3/3 · S1 connection"))
     const evaluators = setup.app.captureCharFrame()
     expect(evaluators).toContain("Cloudflare AI Gateway")
     expect(evaluators).toContain("Configured connection")
@@ -179,10 +179,10 @@ test("global setup can open provider connection when no generative model is conn
   const setup = await mount(
     (url) => (url.pathname === "/api/intelligence" ? json(intelligence) : undefined),
     tmp.path,
-    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    await wait(() => setup.app.captureCharFrame().includes("S2 principal"))
     await wait(
       () =>
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
@@ -217,7 +217,7 @@ test("global setup can reuse an established provider connection without authenti
       }
     },
     tmp.path,
-    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
   )
   try {
     await wait(() => setup.app.captureCharFrame().includes("Choose or connect another provider…"))
@@ -230,7 +230,7 @@ test("global setup can reuse an established provider connection without authenti
     expect(providers).toContain("Mock Provider")
 
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    await wait(() => setup.app.captureCharFrame().includes("S2 principal"))
     expect(setup.app.captureCharFrame()).toContain("Mock Model")
     expect(setup.app.captureCharFrame()).not.toContain("API key")
   } finally {
@@ -242,8 +242,10 @@ test("configured setup can edit System Two without walking through System One", 
   await using tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")
   const configured = {
+    ...intelligence,
     settings: {
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: "mock", id: "model" },
       evaluator: {
@@ -252,8 +254,7 @@ test("configured setup can edit System Two without walking through System One", 
         model: "jev-1.13-free",
       },
     } as Intelligence.Settings,
-    environment: "/global",
-    evaluators: intelligence.evaluators,
+    effective: { reasoning: "dual", source: "config" },
   }
   const setup = await mount(
     (url) => {
@@ -264,22 +265,156 @@ test("configured setup can edit System Two without walking through System One", 
     () => <Dialogs />,
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("Change System Two models"))
-    const welcome = setup.app.captureCharFrame()
-    expect(welcome).toContain("Change System One evaluator")
-    expect(welcome).not.toContain("Later")
-    expect(welcome).not.toContain("Disable semantic evaluation")
-    expect(welcome).toContain("mock/model")
-    expect(welcome).toContain("opencode-zen/jev-1.13-fr")
+    await ready(setup.app, "Change System Two models")
+    const mode = setup.app.captureCharFrame()
+    expect(mode).toContain("Simple — one model")
+    expect(mode).toContain("Dual — S1 classifies")
+    expect(mode).toContain("Change System One evaluator")
+    expect(mode).toContain("opencode-zen/jev-1.13")
+    expect(mode).not.toContain("--reasoning")
 
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System Two principal"))
+    await ready(setup.app, "2/2 · S2 principal")
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("Reuse System Two principal"))
+    await ready(setup.app, "Reuse System Two principal")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
-    expect(setup.app.captureCharFrame()).not.toContain("System One connection")
+    expect(setup.app.captureCharFrame()).not.toContain("S1 connection")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("single reasoning saves S2 without configuring or probing S1", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const saved: unknown[] = []
+  const probes = { model: 0, evaluator: 0 }
+  const setup = await mount(
+    async (url, input) => {
+      if (url.pathname === "/api/intelligence" && input instanceof Request && input.method === "PUT") {
+        saved.push(await input.json())
+        return json({ enabled: true, reasoning: "single", onboarding: "completed" })
+      }
+      if (url.pathname === "/api/intelligence") return json(intelligence)
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/test-model") {
+        probes.model++
+        return json({ ok: true, message: "Connection checked" })
+      }
+      if (url.pathname === "/api/intelligence/test") {
+        probes.evaluator++
+        return json({ ok: true, message: "Connection checked" })
+      }
+    },
+    tmp.path,
+    () => <Dialogs />,
+  )
+  try {
+    await ready(setup.app, "Global intelligence · /global")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "2/2 · S2 principal · Mock Provider")
+    expect(setup.app.captureCharFrame()).not.toContain("Continue with")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
+    expect(setup.app.captureCharFrame()).toContain("Single reasoning: S2 only")
+    expect(setup.app.captureCharFrame()).not.toContain("S1 connection")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => saved.length === 1)
+    expect(saved[0]).toEqual({
+      settings: {
+        enabled: true,
+        reasoning: "single",
+        onboarding: "completed",
+        principal: { providerID: "mock", id: "model" },
+      },
+    })
+    expect(probes).toEqual({ model: 1, evaluator: 0 })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("dual setup with a saved S2 offers Continue and goes straight to S1", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const configured = {
+    ...intelligence,
+    settings: {
+      enabled: true,
+      reasoning: "dual",
+      onboarding: "completed",
+      principal: { providerID: "mock", id: "model" },
+      fast: { providerID: "mock", id: "combo" },
+      evaluator: {
+        transport: "opencode-zen",
+        baseURL: "https://opencode.ai/zen/v1",
+        model: "jev-1.13-free",
+      },
+    } as Intelligence.Settings,
+    effective: { reasoning: "dual", source: "flag" },
+  }
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json(configured)
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+    },
+    tmp.path,
+    () => <Dialogs />,
+  )
+  try {
+    await ready(setup.app, "--reasoning dual")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    const principal = setup.app.captureCharFrame()
+    expect(principal).toContain("2/3 · S2 principal")
+    expect(principal).toContain("Change System Two model…")
+
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "3/3 · S1 connection")
+    expect(setup.app.captureCharFrame()).toContain("Continue with opencode-zen/jev-1.13-free")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("changing a saved S2 keeps the active-connection model list", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const configured = {
+    ...intelligence,
+    settings: {
+      enabled: true,
+      reasoning: "single",
+      onboarding: "completed",
+      principal: { providerID: "mock", id: "model" },
+    } as Intelligence.Settings,
+    effective: { reasoning: "single", source: "config" },
+  }
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json(configured)
+      if (url.pathname === "/config/providers")
+        return json({ providers: [provider, otherProvider], default: { mock: "model", other: "other" } })
+    },
+    tmp.path,
+    () => <Dialogs />,
+  )
+  try {
+    await ready(setup.app, "Change System Two models")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    await setup.app.mockInput.pressArrow("down")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Balanced Combo")
+    const models = setup.app.captureCharFrame()
+    expect(models).toContain("2/2 · S2 principal · Mock Provider")
+    expect(models).toContain("Mock Model")
+    expect(models).not.toContain("Other Model")
+    expect(models).toContain("Choose or connect another provider…")
   } finally {
     setup.app.renderer.destroy()
   }
@@ -316,30 +451,30 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
       }
     },
     tmp.path,
-    () => <Dialogs resume={{ settings, step: "fast" }} />,
+    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
+    await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
-    await wait(
-      () =>
-        setup.app.captureCharFrame().includes("System One connection") &&
-        setup.app.captureCharFrame().includes("OpenRouter"),
-    )
+    await ready(setup.app, "Continue with opencode-zen/jev-1.13-free")
+    await wait(() => setup.app.captureCharFrame().includes("OpenRouter"))
+    // Continue, Cloudflare (connected), OpenCode Zen, then OpenRouter.
+    await setup.app.mockInput.pressArrow("down")
+    await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System One API base URL"))
+    await wait(() => setup.app.captureCharFrame().includes("S1 API base URL"))
     await setup.app.mockInput.pressEnter()
     await wait(
       () =>
-        setup.app.captureCharFrame().includes("System One API key") &&
+        setup.app.captureCharFrame().includes("S1 API key") &&
         setup.app.renderer.currentFocusedEditor instanceof TextareaRenderable,
     )
     const key = setup.app.renderer.currentFocusedEditor
-    if (!(key instanceof TextareaRenderable)) throw new Error("System One key input is not focused")
+    if (!(key instanceof TextareaRenderable)) throw new Error("S1 key input is not focused")
     key.setText("openrouter-secret")
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System One evaluator"))
+    await wait(() => setup.app.captureCharFrame().includes("S1 evaluator"))
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
 
@@ -353,3 +488,12 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     setup.app.renderer.destroy()
   }
 })
+
+async function ready(app: Awaited<ReturnType<typeof mount>>["app"], text: string) {
+  await wait(() => app.captureCharFrame().includes(text))
+  await wait(
+    () =>
+      app.renderer.currentFocusedRenderable instanceof InputRenderable &&
+      !app.renderer.currentFocusedRenderable.isDestroyed,
+  )
+}

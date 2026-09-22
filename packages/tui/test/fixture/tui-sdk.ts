@@ -64,10 +64,11 @@ export type FetchHandler = (url: URL, input: RequestInfo | URL) => Response | un
 
 export function createFetch(override?: FetchHandler, events?: ReturnType<typeof createEventSource>) {
   const session = [] as URL[]
-  const fetch = (async (input: RequestInfo | URL) => {
+  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
     if (url.pathname === "/session") session.push(url)
-    const overridden = await override?.(url, input)
+    // Generated clients call fetch(url, init); overrides still receive one Request with method and body.
+    const overridden = await override?.(url, init ? new Request(input, init) : input)
     if (overridden) return overridden
     if (url.pathname === "/api/event" && events) return events.response()
 
