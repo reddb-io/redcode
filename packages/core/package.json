@@ -10,7 +10,7 @@
     "eval:classification": "bun run script/evaluate-prompt-classification.ts",
     "migration": "bun run script/migration.ts",
     "fix-node-pty": "bun run script/fix-node-pty.ts",
-    "test": "bun test --timeout 30000 --only-failures",
+    "test": "bun test --timeout 30000 --only-failures --parallel",
     "typecheck": "tsgo --noEmit"
   },
   "exports": {

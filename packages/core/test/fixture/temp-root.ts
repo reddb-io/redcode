@@ -28,7 +28,7 @@ export function sharePlaywrightBrowsers() {
   process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(base, "ms-playwright")
 }
 
-const prefixes = ["redcode-core-test-", "opencode-test-data-", "opencode-httpapi-global-", "opencode-httpapi-exercise-"]
+const prefixes = ["redcode-core-test-", "redcode-tui-test-", "opencode-test-data-", "opencode-httpapi-global-", "opencode-httpapi-exercise-"]
 
 function real(target: string) {
   try {
@@ -163,6 +163,14 @@ export function removeOnExit(...paths: string[]) {
     exitHook = true
     process.on("exit", () => removeTempPaths(registered))
   }
+  // `bun test --parallel` runs every file in a fresh global, preload included, so the guard above
+  // resets per file. A marker on disk keeps it to one reaper per process and set of paths rather
+  // than one idle `bun` per test file for the life of the worker.
+  try {
+    fs.writeFileSync(reaperMarker(process.pid, targets), "", { flag: "wx" })
+  } catch {
+    return
+  }
   const reaper = spawn(process.execPath, [fileURLToPath(import.meta.url), String(process.pid), ...targets], {
     detached: true,
     stdio: "ignore",
@@ -187,5 +195,10 @@ if (import.meta.main) {
     if (alive()) return
     clearInterval(timer)
     removeTempPaths(paths, parent)
+    fs.rmSync(reaperMarker(parent, paths), { force: true })
   }, 500)
+}
+
+function reaperMarker(pid: number, targets: string[]) {
+  return path.join(os.tmpdir(), `redcode-test-reaper-${pid}-${Bun.hash(targets.join("\n")).toString(36)}`)
 }
