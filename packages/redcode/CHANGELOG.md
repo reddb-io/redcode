@@ -1,5 +1,11 @@
 # opencode
 
+## 0.43.0
+
+### Minor Changes
+
+- 5a6b2f1: Expose a local voice input sink so compatible dictation tools can update the focused TUI composer without submitting prompts automatically.
+
 ## 0.42.0
 
 ### Minor Changes
