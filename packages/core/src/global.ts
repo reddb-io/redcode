@@ -76,7 +76,7 @@ await Promise.race([
     fs.mkdir(Path.config, { recursive: true }),
     fs.mkdir(Path.state, { recursive: true }),
     fs.mkdir(Path.tmp, { recursive: true }),
-    fs.mkdir(Path.log, { recursive: true }),
+    fs.mkdir(Path.log, { recursive: true, mode: 0o700 }),
     fs.mkdir(Path.bin, { recursive: true }),
     fs.mkdir(Path.repos, { recursive: true }),
     // Promise.race leaves the loser running, and this process outlives the deadline by hours,

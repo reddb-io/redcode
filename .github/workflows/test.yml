@@ -93,6 +93,11 @@ jobs:
         timeout-minutes: 35
         run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
 
+      # Desktop has no package test script, so Turbo does not discover this focused suite.
+      - name: Test desktop diagnostic retention
+        working-directory: packages/desktop
+        run: bun test src/main/log-retention.test.ts
+
       - name: Check generated client
         working-directory: packages/client
         run: bun run check:generated
@@ -146,6 +151,10 @@ jobs:
       - name: Run unit tests
         timeout-minutes: 35
         run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode
+
+      - name: Test desktop diagnostic retention
+        working-directory: packages/desktop
+        run: bun test src/main/log-retention.test.ts
 
   # The largest suite, split by recorded per-file durations (packages/redcode/test/timings.json)
   # so the three shards finish together. Refresh the file with
