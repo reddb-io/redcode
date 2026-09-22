@@ -13,6 +13,8 @@ import { SessionBudget } from "./budget"
 import { SessionSpend } from "./spend"
 import { Process } from "@/util/process"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
 
 /**
  * The goal loop's impure half: where the goal is kept, how the judge is asked, how gates run.
@@ -71,6 +73,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    const database = yield* Database.Service
     const intelligence = yield* Intelligence.Service
     const config = yield* Config.Service
     const guards = yield* SessionGuardLog.Service
@@ -289,6 +292,21 @@ const layer = Layer.effect(
         // The decision is taken on a record and written back only if that record is still the
         // one stored: `/goal-budget` and `/goal-resume` write the same record from another fiber.
         const record = Effect.fn("GoalRuntime.record")(function* (base: SessionGoal.Goal) {
+          const current = yield* get(sessionID)
+          if (
+            !current ||
+            current.status !== "active" ||
+            Intelligence.fingerprint(current) !== Intelligence.fingerprint(base)
+          )
+            return undefined
+          if (yield* SessionInput.hasPending(database.db, sessionID, "steer"))
+            return {
+              action: "continue" as const,
+              goal: base,
+              text: SessionGoal.continuation(base, {
+                reason: "Address the newly admitted user instruction before completing the goal.",
+              }),
+            }
           // Read after the judge: its own call is part of what the goal spent.
           const budget = yield* spendStatus(sessionID, base)
           const decision = SessionGoal.decide({
@@ -306,14 +324,30 @@ const layer = Layer.effect(
             failed ? { verdict: "continue", reason: decision.reason } : verdict,
             now,
           )
-          const current = yield* get(sessionID)
-          if (!current || current.id !== base.id || current.updated !== base.updated || current.status !== "active")
-            return undefined
           if (next.status === "done" && !Intelligence.isReady(yield* intelligence.read().pipe(Effect.orDie))) {
             const paused = yield* pause(sessionID, "Configure S1 and S2 again before completing this goal")
             return paused ? { action: "pause" as const, goal: paused } : undefined
           }
-          yield* set(sessionID, next)
+          const counted = next.spendStart ? next : { ...next, spendStart: yield* spend.totals(sessionID) }
+          const stamped = counted.status === "active" ? { ...counted, boot: SessionGoal.BOOT } : counted
+          const stored = SessionGoal.fromMetadata(
+            yield* sessions.updateMetadata(
+              sessionID,
+              (metadata) => SessionGoal.toMetadata(metadata, stamped),
+              Effect.gen(function* () {
+                return (
+                  Intelligence.fingerprint(yield* get(sessionID)) === Intelligence.fingerprint(base) &&
+                  !(yield* SessionInput.hasPending(database.db, sessionID, "steer"))
+                )
+              }),
+            ),
+          )
+          if (
+            !stored ||
+            Intelligence.fingerprint(stored) !==
+              Intelligence.fingerprint(SessionGoal.fromMetadata(SessionGoal.toMetadata({}, stamped)))
+          )
+            return undefined
           yield* guards.record({
             sessionID,
             guard: "goal",
@@ -326,7 +360,7 @@ const layer = Layer.effect(
             decision.action === "continue"
               ? SessionGoal.continuation(next, failed ? { gate: failed } : { reason: decision.reason })
               : undefined
-          return { action: decision.action, ...(text ? { text } : {}), goal: next }
+          return { action: decision.action, ...(text ? { text } : {}), goal: stored }
         })
         const first = yield* record(goal)
         if (first) return first
@@ -336,6 +370,18 @@ const layer = Layer.effect(
         // active on an idle session; now it is paused with a reason that says so.
         const fresh = yield* get(sessionID)
         if (!fresh || fresh.id !== goal.id || fresh.status !== "active") return undefined
+        if (
+          Intelligence.fingerprint([fresh.objective, fresh.contract, fresh.gates, fresh.claimed]) !==
+          Intelligence.fingerprint([goal.objective, goal.contract, goal.gates, goal.claimed])
+        )
+          return {
+            action: "continue",
+            goal: fresh,
+            text: SessionGoal.continuation(fresh, {
+              reason:
+                "The goal or completion claim changed during review. Recheck the current requirements before completing it.",
+            }),
+          }
         yield* Effect.logWarning("goal record changed during judgement; deciding again on the fresh record", {
           "session.id": sessionID,
         })
@@ -359,7 +405,15 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [Session.node, Intelligence.node, Config.node, SessionGuardLog.node, BackgroundJob.node, SessionSpend.node],
+  deps: [
+    Session.node,
+    Intelligence.node,
+    Database.node,
+    Config.node,
+    SessionGuardLog.node,
+    BackgroundJob.node,
+    SessionSpend.node,
+  ],
 })
 
 export * as GoalRuntime from "./goal-runtime"

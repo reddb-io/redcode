@@ -481,6 +481,13 @@ export const make = (dependencies: Dependencies) => {
     )
       return
     const input = prepared.input
+    const source = input.entries
+      .map((entry) =>
+        entry.message.type === "compaction"
+          ? [entry.message.summary, entry.message.recent].join("\n\n")
+          : serialize(entry.message),
+      )
+      .join("\n\n")
     const transformed = dependencies.semantic
       ? yield* dependencies.semantic
           .transform({
@@ -491,7 +498,7 @@ export const make = (dependencies: Dependencies) => {
             decode: (text) => {
               const error = summaryError({
                 summary: text,
-                source: prepared.summaryPrompt,
+                source,
                 retained: prepared.selected.tail,
                 finish: "stop",
               })
@@ -517,7 +524,7 @@ export const make = (dependencies: Dependencies) => {
     if (transformed !== undefined) {
       const error = summaryError({
         summary: transformed,
-        source: prepared.summaryPrompt,
+        source,
         retained: prepared.selected.tail,
         finish: "stop",
       })
@@ -559,13 +566,7 @@ export const make = (dependencies: Dependencies) => {
     const error = summaryError({
       summary,
       retained: "\n\n" + prepared.selected.tail,
-      source: input.entries
-        .map((entry) =>
-          entry.message.type === "compaction"
-            ? [entry.message.summary, entry.message.recent].join("\n\n")
-            : serialize(entry.message),
-        )
-        .join("\n\n"),
+      source,
       finish,
     })
     if (error) {

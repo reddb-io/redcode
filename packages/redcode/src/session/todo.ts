@@ -13,13 +13,16 @@ export const ModelInput = SessionTodo.ModelInput
 export const Event = SessionTodo.Event
 
 export interface Interface {
-  readonly update: (input: {
-    sessionID: SessionID
-    todos: ReadonlyArray<Input>
-    origin?: SessionTodo.Source
-    /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
-    messageID?: string
-  }) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
+  readonly update: (
+    input: {
+      sessionID: SessionID
+      todos: ReadonlyArray<Input>
+      origin?: SessionTodo.Source
+      /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+      messageID?: string
+    },
+    commit?: SessionTodoStore.Commit,
+  ) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly get: (sessionID: SessionID) => Effect.Effect<Info[]>
   readonly review: (sessionID: SessionID) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
@@ -32,8 +35,8 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
     const store = yield* SessionTodoStore.Service
-    const update: Interface["update"] = Effect.fn("Todo.update")(function* (input) {
-      const todos = yield* store.update(input)
+    const update: Interface["update"] = Effect.fn("Todo.update")(function* (input, commit) {
+      const todos = yield* store.update(input, commit)
       yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos })
       return todos
     }, store.withMutation)

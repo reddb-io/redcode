@@ -2221,9 +2221,11 @@ describe("SessionRunnerLLM", () => {
   it.effect("accepts a useful length-cut compaction and continues the original request", () =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
+      const checkpoint =
+        "## Objective\n- Partial checkpoint\n## Important Details\n- Keep this exact request\n## Work State\n### Completed\n- Earlier answer delivered\n### Active\n- Continue the current request\n### Blocked\n- None\n## Next Move\n1. Continue the current request\n## Relevant Files\n- None"
       responses = [
         [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-        [LLMEvent.textDelta({ id: "summary", text: "Partial checkpoint" }), LLMEvent.finish({ reason: "length" })],
+        [LLMEvent.textDelta({ id: "summary", text: checkpoint }), LLMEvent.finish({ reason: "length" })],
         fragmentFixture("text", "continued", ["Work continued"]).completeEvents,
       ]
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
@@ -2239,7 +2241,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  for (const invalid of ["unfinished", "length", "growing", "empty"] as const) {
+  for (const invalid of ["unfinished", "length", "partial", "growing", "empty"] as const) {
     it.effect(`rejects ${invalid} compaction without replacing durable history`, () =>
       Effect.gen(function* () {
         const session = yield* setupOverflowRecovery
@@ -2255,13 +2257,17 @@ describe("SessionRunnerLLM", () => {
             LLMEvent.textDelta({ id: "summary", text }),
             ...(invalid === "unfinished"
               ? []
-              : [LLMEvent.finish({ reason: invalid === "length" ? "length" : "stop" })]),
+              : [LLMEvent.finish({ reason: invalid === "length" || invalid === "partial" ? "length" : "stop" })]),
           ],
+          ...(invalid === "growing"
+            ? [[LLMEvent.textDelta({ id: "summary-repair", text }), LLMEvent.finish({ reason: "stop" })]]
+            : []),
         ]
         yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep this exact request" }), resume: false })
         yield* session.resume(sessionID)
 
-        expect(requests).toHaveLength(2)
+        // A completed but oversized candidate gets one repair; unfinished/empty generation does not.
+        expect(requests).toHaveLength(invalid === "growing" ? 3 : 2)
         const context = yield* session.context(sessionID)
         expect(context.some((message) => message.type === "compaction")).toBe(false)
         expect(context).toContainEqual(expect.objectContaining({ type: "user", text: "Keep this exact request" }))

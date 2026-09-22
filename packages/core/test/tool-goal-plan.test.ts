@@ -3,6 +3,7 @@ import { Semantic } from "../src/semantic"
 import { AgentV2 } from "../src/agent"
 import { expect } from "bun:test"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { Effect, Layer } from "effect"
 import { Model } from "@reddb-io/redcode-llm"
 import { ModelV2 } from "../src/model"
@@ -45,6 +46,8 @@ let review = "PASS\nVerified"
 let configured = true
 let duringReview = Effect.void
 let duringApproval = Effect.void
+let duringTasks = Effect.void
+let taskDecision: Intelligence.Evaluation["decision"] = "accepted"
 let deny = ""
 let answer = "Execute"
 const permission = Layer.succeed(
@@ -126,13 +129,19 @@ const it = testEffect(
                 requests.push(input)
                 yield* duringReview
               }
+              if (input.operation === "task_quality") yield* duringTasks
               return {
                 id: crypto.randomUUID(),
                 fingerprint: "fixture",
                 sessionID: input.sessionID,
                 operation: input.operation,
                 policy: "fixture",
-                decision: review.startsWith("PASS") ? "accepted" : "needs_revision",
+                decision:
+                  input.operation === "task_quality"
+                    ? taskDecision
+                    : review.startsWith("PASS")
+                      ? "accepted"
+                      : "needs_revision",
                 model: "jev",
                 answers: {},
                 issues: review.startsWith("PASS") ? [] : [review],
@@ -164,6 +173,8 @@ const setup = Effect.gen(function* () {
   review = "PASS\nVerified"
   duringReview = Effect.void
   duringApproval = Effect.void
+  duringTasks = Effect.void
+  taskDecision = "accepted"
   deny = ""
   answer = "Execute"
   const database = yield* Database.Service
@@ -494,15 +505,84 @@ it.live("plan decomposition rejects unmatched quotes and duplicates, while a new
   }),
 )
 
+for (const decision of ["needs_revision", "unavailable", "inconclusive"] as const) {
+  it.live(`a ${decision} task evaluation leaves the plan ready and admits no tasks`, () =>
+    Effect.gen(function* () {
+      const test = yield* setup
+      const plans = yield* SessionPlan.Service
+      const todos = yield* SessionTodo.Service
+      taskDecision = decision
+      expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+      expect((yield* plans.list(test.sessionID))[0]?.status).toBe("ready")
+      expect(yield* todos.get(test.sessionID)).toEqual([])
+    }),
+  )
+}
+
+it.live("a goal paused while tasks are evaluated cannot approve a plan", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const goals = yield* SessionGoal.Service
+    const plans = yield* SessionPlan.Service
+    yield* goals.start(test.sessionID, { objective: "Implement this plan", executePlan: true })
+    duringTasks = goals.control(test.sessionID, { action: "pause" }).pipe(Effect.orDie, Effect.asVoid)
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+    expect((yield* plans.list(test.sessionID))[0]?.status).toBe("ready")
+    expect((yield* goals.get(test.sessionID))?.status).toBe("paused")
+    const todos = yield* SessionTodo.Service
+    expect(yield* todos.get(test.sessionID)).toEqual([])
+  }),
+)
+
+it.live("a plan file changed during task evaluation cannot leave executable tasks", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const plans = yield* SessionPlan.Service
+    const todos = yield* SessionTodo.Service
+    duringTasks = Effect.promise(() => Bun.write(test.file, "A changed plan requiring another review")).pipe(
+      Effect.asVoid,
+    )
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+    expect((yield* plans.list(test.sessionID))[0]?.status).toBe("ready")
+    expect(yield* todos.get(test.sessionID)).toEqual([])
+  }),
+)
+
+it.live("steering admitted during plan approval keeps the reviewed plan ready", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const plans = yield* SessionPlan.Service
+    const database = yield* Database.Service
+    const events = yield* EventV2.Service
+    duringApproval = SessionInput.admit(database.db, events, {
+      id: SessionMessage.ID.create(),
+      sessionID: test.sessionID,
+      prompt: Prompt.make({ text: "Only prepare the plan; do not execute it" }),
+      delivery: "steer",
+    }).pipe(Effect.asVoid)
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
+    expect((yield* plans.list(test.sessionID))[0]?.status).toBe("ready")
+    expect(yield* SessionInput.hasPending(database.db, test.sessionID, "steer")).toBe(true)
+    const todos = yield* SessionTodo.Service
+    expect(yield* todos.get(test.sessionID)).toEqual([])
+  }),
+)
+
 it.live("an older approved plan can add a reviewed decomposition without trapping the handoff", () =>
   Effect.gen(function* () {
     const test = yield* setup
     const goals = yield* SessionGoal.Service
     const plans = yield* SessionPlan.Service
     yield* goals.start(test.sessionID, { objective: "Only plan", agent: AgentV2.ID.make("plan") })
-    yield* test.run("plan_exit", { path: test.file })
-    const ready = (yield* plans.list(test.sessionID))[0]
-    yield* plans.record({ ...ready, status: "approved" })
+    const content = yield* Effect.promise(() => Bun.file(test.file).text())
+    yield* plans.record({
+      sessionID: test.sessionID,
+      revision: createHash("sha256").update(content).digest("hex"),
+      path: test.file,
+      content,
+      status: "approved",
+      created: Date.now(),
+    })
     const goal = yield* goals.get(test.sessionID)
     if (!goal) throw new Error("Expected goal")
     yield* goals.save(goal, { ...goal, status: "paused" })

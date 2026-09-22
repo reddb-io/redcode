@@ -674,23 +674,6 @@ const layer = Layer.effect(
         })
         return previous
       }
-      yield* Effect.logInfo(
-        input.operation === "prompt_classification"
-          ? Object.keys(input.questions).some((key) => /^recommended_skill(?:_\d+)?$/.test(key))
-            ? "Using System One to choose relevant skills and classify the user request"
-            : "Using System One to classify the user request"
-          : input.operation === "tool_usage" && input.kind === "classification"
-            ? "Using System One to select MCP tools"
-            : input.operation === "tool_usage"
-              ? "Using System One to review settled tool results"
-              : "Using System One to review the response",
-        {
-          sessionID: input.sessionID,
-          operation: input.operation,
-          subjectID: input.subjectID,
-          candidateID: input.candidateID,
-        },
-      )
       const evaluation = yield* intelligence
         .evaluate(input)
         .pipe(
@@ -700,24 +683,7 @@ const layer = Layer.effect(
             ),
           ),
         )
-      attempts?.set(hash, evaluation)
-      yield* Effect.logInfo("System One evaluation complete", {
-        sessionID: input.sessionID,
-        operation: input.operation,
-        evaluationID: evaluation?.id,
-        decision: evaluation?.decision ?? "unavailable",
-        recommendations:
-          input.kind === "classification"
-            ? Intelligence.recommendations(
-                evaluation,
-                input.operation === "prompt_classification" ? "skill" : "mcp_tool",
-              )
-            : undefined,
-        reason:
-          evaluation?.decision === "accepted"
-            ? "evaluated"
-            : "review unresolved; original request and existing permissions remain authoritative",
-      })
+      attempts?.set(evaluation?.fingerprint ?? hash, evaluation)
       return evaluation
     })
 

@@ -46,13 +46,16 @@ export const limitReason =
   "Task continuation limit reached without completing the remaining work. Execution is paused; tasks retain their state. Send a new instruction to resume from the next actionable item."
 
 export interface Interface {
-  readonly update: (input: {
-    readonly sessionID: SessionSchema.ID
-    readonly todos: ReadonlyArray<Input>
-    readonly origin?: SessionTodo.Source
-    /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
-    readonly messageID?: string
-  }) => Effect.Effect<ReadonlyArray<Info>, Error>
+  readonly update: (
+    input: {
+      readonly sessionID: SessionSchema.ID
+      readonly todos: ReadonlyArray<Input>
+      readonly origin?: SessionTodo.Source
+      /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+      readonly messageID?: string
+    },
+    commit?: SessionTodoStore.Commit,
+  ) => Effect.Effect<ReadonlyArray<Info>, Error>
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>>
   readonly review: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>, Error>
   readonly block: (sessionID: SessionSchema.ID, reason: string) => Effect.Effect<ReadonlyArray<Info>, Error>
@@ -80,8 +83,8 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const store = yield* SessionTodoStore.Service
     const events = yield* EventV2.Service
-    const update: Interface["update"] = Effect.fn("SessionTodo.update")(function* (input) {
-      const todos = yield* store.update(input)
+    const update: Interface["update"] = Effect.fn("SessionTodo.update")(function* (input, commit) {
+      const todos = yield* store.update(input, commit)
       yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos })
       return todos
     }, store.withMutation)

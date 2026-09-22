@@ -3,7 +3,7 @@ export { Info, Error } from "@reddb-io/redcode-schema/session-plan"
 
 import { SessionPlan } from "@reddb-io/redcode-schema/session-plan"
 import { and, desc, eq } from "drizzle-orm"
-import { Context, Effect, Layer, Semaphore } from "effect"
+import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionSchema } from "./schema"
@@ -11,7 +11,6 @@ import { SessionPlanTable } from "./goal.sql"
 
 const make = Effect.gen(function* () {
   const database = yield* Database.Service
-  const lock = yield* Semaphore.make(1)
   const list = Effect.fn("SessionPlan.list")(function* (sessionID: SessionSchema.ID) {
     return (yield* database.db
       .select()
@@ -21,36 +20,48 @@ const make = Effect.gen(function* () {
       .all()
       .pipe(Effect.orDie)).map((row) => row.data)
   })
-  const record = Effect.fn("SessionPlan.record")(function* (input: SessionPlan.Info) {
-    const problem = validationError(input)
-    if (problem) return yield* new SessionPlan.Error({ message: problem })
-    const existing = (yield* list(input.sessionID)).find((plan) => plan.revision === input.revision)
-    if (existing?.tasks?.length && input.tasks && JSON.stringify(existing.tasks) !== JSON.stringify(input.tasks))
-      return yield* new SessionPlan.Error({
-        message:
-          "Task decomposition is frozen for this plan revision. Revise the plan content before changing its tasks.",
-      })
-    if (
-      (existing?.status === "approved" && (existing.tasks?.length || !input.tasks?.length)) ||
-      (existing?.status === input.status && (existing.tasks?.length || !input.tasks?.length))
-    )
-      return existing
-    if (existing) {
-      yield* database.db
-        .update(SessionPlanTable)
-        .set({ data: input, created: input.created })
-        .where(and(eq(SessionPlanTable.session_id, input.sessionID), eq(SessionPlanTable.revision, input.revision)))
-        .run()
-        .pipe(Effect.orDie)
-      return input
-    }
-    yield* database.db
-      .insert(SessionPlanTable)
-      .values({ session_id: input.sessionID, revision: input.revision, created: input.created, data: input })
-      .run()
-      .pipe(Effect.orDie)
-    return input
-  }, lock.withPermits(1))
+  const record = Effect.fn("SessionPlan.record")(function* (input: SessionPlan.Info, guard?: Effect.Effect<boolean>) {
+    return yield* database.db
+      .transaction(() =>
+        Effect.gen(function* () {
+          if (guard && !(yield* guard))
+            return yield* new SessionPlan.Error({
+              message: "Plan sources changed before approval; review the current request and tasks before executing",
+            })
+          const problem = validationError(input)
+          if (problem) return yield* new SessionPlan.Error({ message: problem })
+          const existing = (yield* list(input.sessionID)).find((plan) => plan.revision === input.revision)
+          if (existing?.tasks?.length && input.tasks && JSON.stringify(existing.tasks) !== JSON.stringify(input.tasks))
+            return yield* new SessionPlan.Error({
+              message:
+                "Task decomposition is frozen for this plan revision. Revise the plan content before changing its tasks.",
+            })
+          if (
+            (existing?.status === "approved" && (existing.tasks?.length || !input.tasks?.length)) ||
+            (existing?.status === input.status && (existing.tasks?.length || !input.tasks?.length))
+          )
+            return existing
+          if (existing) {
+            yield* database.db
+              .update(SessionPlanTable)
+              .set({ data: input, created: input.created })
+              .where(
+                and(eq(SessionPlanTable.session_id, input.sessionID), eq(SessionPlanTable.revision, input.revision)),
+              )
+              .run()
+              .pipe(Effect.orDie)
+            return input
+          }
+          yield* database.db
+            .insert(SessionPlanTable)
+            .values({ session_id: input.sessionID, revision: input.revision, created: input.created, data: input })
+            .run()
+            .pipe(Effect.orDie)
+          return input
+        }),
+      )
+      .pipe(Effect.catchTag("SqlError", Effect.die))
+  })
   return { list, record }
 })
 

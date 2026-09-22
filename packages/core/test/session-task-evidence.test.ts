@@ -34,6 +34,7 @@ const it = testEffect(
 )
 const sessionID = SessionSchema.ID.make("ses_task_evidence")
 const setup = Effect.gen(function* () {
+  const review = { calls: [] as string[], rejectCompletion: false }
   const intelligence = yield* Intelligence.Service
   const previous = yield* intelligence.read()
   const server = yield* Effect.acquireRelease(
@@ -42,6 +43,7 @@ const setup = Effect.gen(function* () {
         port: 0,
         fetch: async (request) => {
           const body = await request.json()
+          review.calls.push(JSON.stringify(body))
           return Response.json({
             model: "jev",
             answers: Object.fromEntries(
@@ -55,7 +57,7 @@ const setup = Effect.gen(function* () {
                       probabilities: { "3": 1 },
                       legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
                     }
-                  : { type: "noul", noul: 0.01 },
+                  : { type: "noul", noul: review.rejectCompletion && id === "coverage" ? 0.99 : 0.01 },
               ]),
             ),
             usage: { input_tokens: 10, output_tokens: 0 },
@@ -94,6 +96,7 @@ const setup = Effect.gen(function* () {
     })
     .run()
     .pipe(Effect.orDie)
+  return review
 })
 
 function message(input: unknown, seq: number) {
@@ -249,6 +252,39 @@ it.live("semantic completion selects the cited proof without resending unrelated
       Effect.ensuring(intelligence.save({ settings: previous }).pipe(Effect.orDie)),
       Effect.ensuring(Effect.sync(() => server.stop(true))),
     )
+  }),
+)
+
+it.live("completion includes intermediate user corrections after the task source", () =>
+  Effect.gen(function* () {
+    const review = yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]!
+    yield* request("Only CI may verify this task; do not run tests locally", 20)
+    yield* request("Continue", 30)
+    yield* result("bash", "local-pass", 40, 0, "completed", { command: "bun test" })
+    review.calls.length = 0
+    review.rejectCompletion = true
+    const rejected = yield* todos
+      .update({
+        sessionID,
+        todos: [
+          {
+            id: created.id,
+            revision: created.revision,
+            status: "completed",
+            evidence: { callID: "local-pass", explanation: "The local duplicate request suite passed" },
+          },
+        ],
+      })
+      .pipe(Effect.exit)
+    expect(rejected._tag).toBe("Failure")
+    expect(review.calls).toHaveLength(1)
+    expect(review.calls[0]).toContain("Implement retries and verify duplicate requests")
+    expect(review.calls[0]).toContain("Only CI may verify this task; do not run tests locally")
+    expect(review.calls[0]).toContain("Continue")
+    expect(yield* todos.get(sessionID)).toEqual([created])
   }),
 )
 

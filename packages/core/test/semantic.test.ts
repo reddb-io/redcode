@@ -7,7 +7,15 @@ import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
 import { tmpdir } from "./fixture/tmpdir"
 
-for (const scenario of ["accepted", "repaired", "uncertain", "unavailable", "disabled"] as const) {
+for (const scenario of [
+  "accepted",
+  "repaired",
+  "invalid-json",
+  "provider-failure",
+  "uncertain",
+  "unavailable",
+  "disabled",
+] as const) {
   test(`transformation ${scenario} obeys bounded repair and fail-closed decisions`, async () => {
     await using dir = await tmpdir()
     const generated: boolean[] = []
@@ -22,7 +30,12 @@ for (const scenario of ["accepted", "repaired", "uncertain", "unavailable", "dis
           answers: {
             error: {
               type: "noul",
-              noul: scenario === "accepted" || (scenario === "repaired" && evaluated.length === 2) ? 0 : 0.5,
+              noul:
+                scenario === "accepted" ||
+                scenario === "invalid-json" ||
+                (scenario === "repaired" && evaluated.length === 2)
+                  ? 0
+                  : 0.5,
             },
           },
           usage: { input_tokens: 10, output_tokens: 1 },
@@ -47,6 +60,9 @@ for (const scenario of ["accepted", "repaired", "uncertain", "unavailable", "dis
           })
           const transform = Semantic.transformer(intelligence, (_id, _prompt, strong = false) => {
             generated.push(strong)
+            if (scenario === "provider-failure")
+              return Effect.fail(new Intelligence.Error({ message: "Provider unavailable" }))
+            if (scenario === "invalid-json" && !strong) return Effect.succeed("invalid JSON")
             return Effect.succeed(JSON.stringify({ action: strong ? "repair" : "initial" }))
           })
           const result = yield* transform({
@@ -60,17 +76,26 @@ for (const scenario of ["accepted", "repaired", "uncertain", "unavailable", "dis
           expect(generated).toEqual(
             scenario === "disabled"
               ? []
-              : scenario === "accepted" || scenario === "unavailable"
+              : scenario === "accepted" || scenario === "unavailable" || scenario === "provider-failure"
                 ? [false]
                 : [false, true],
           )
-          expect(evaluated.length).toBe(generated.length)
-          if (scenario === "uncertain" || scenario === "unavailable" || scenario === "disabled")
+          expect(evaluated.length).toBe(
+            scenario === "provider-failure" ? 0 : scenario === "invalid-json" ? 1 : generated.length,
+          )
+          if (
+            scenario === "uncertain" ||
+            scenario === "unavailable" ||
+            scenario === "disabled" ||
+            scenario === "provider-failure"
+          )
             expect(result._tag).toBe("Failure")
           else {
             expect(result._tag).toBe("Success")
             if (result._tag === "Success")
-              expect(result.success).toEqual({ action: scenario === "repaired" ? "repair" : "initial" })
+              expect(result.success).toEqual({
+                action: scenario === "repaired" || scenario === "invalid-json" ? "repair" : "initial",
+              })
           }
         }),
       )

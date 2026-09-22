@@ -22,6 +22,8 @@ import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionRunnerModel } from "@reddb-io/redcode-core/session/runner/model"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { configuredIntelligence } from "./lib/intelligence"
 import { toolDefinitions } from "./lib/tool"
 import { FSUtil } from "../src/fs-util"
 import { Credential } from "../src/credential"
@@ -36,7 +38,9 @@ import { ToolRegistry } from "../src/tool/registry"
 import { ApplicationTools } from "../src/tool/application-tools"
 
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([ApplicationTools.node, Database.node, EventV2.node, LocationServiceMap.node])),
+  AppNodeBuilder.build(LayerNode.group([ApplicationTools.node, Database.node, EventV2.node, LocationServiceMap.node]), [
+    [Intelligence.node, configuredIntelligence],
+  ]),
 )
 
 describe("LocationServiceMap", () => {

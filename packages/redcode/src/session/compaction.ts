@@ -1285,7 +1285,7 @@ const layer = Layer.effect(
         yield* session.updateMessage(message)
         return "stop" as const
       })
-      const deadline = <A>(effect: Effect.Effect<A>, onTimeout: Effect.Effect<A>) =>
+      const deadline = <A, B>(effect: Effect.Effect<A>, onTimeout: Effect.Effect<B>) =>
         compactionMs === undefined
           ? effect
           : effect.pipe(Effect.timeoutOrElse({ duration: Duration.millis(compactionMs), orElse: () => onTimeout }))

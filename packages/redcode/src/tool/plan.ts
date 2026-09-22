@@ -3,6 +3,8 @@ import { Todo } from "../session/todo"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionTaskFacts } from "@reddb-io/redcode-core/session/task-facts"
+import { Database } from "@reddb-io/redcode-core/database/database"
+import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import path from "path"
 import { createHash } from "node:crypto"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
@@ -58,6 +60,7 @@ export const PlanExitTool = Tool.define(
     const provider = yield* Provider.Service
     const intelligence = yield* Intelligence.Service
     const facts = yield* SessionTaskFacts.Service
+    const database = yield* Database.Service
 
     return {
       description: EXIT_DESCRIPTION,
@@ -75,7 +78,8 @@ export const PlanExitTool = Tool.define(
           const tasks = params.tasks ?? previous?.tasks
           const problem = SessionPlan.validationError({ content, tasks })
           if (problem) return yield* Effect.die(problem)
-          const requests = (yield* facts.load(ctx.sessionID)).requests.filter((request) => !request.pending)
+          const sourceRequests = (yield* facts.load(ctx.sessionID)).requests
+          const requests = sourceRequests.filter((request) => !request.pending)
           yield* Intelligence.requireAccepted(
             yield* intelligence.evaluate({
               sessionID: ctx.sessionID,
@@ -156,19 +160,52 @@ export const PlanExitTool = Tool.define(
           if (latestGoal?.id !== goal?.id || latestGoal?.updated !== goal?.updated)
             return yield* Effect.die("Goal changed during plan approval; inspect the current goal before executing")
           yield* Intelligence.requireConfigured(yield* intelligence.read())
-          const approved = yield* plans.record({ ...ready, status: "approved", created: Date.now() })
-          yield* todos.update({
-            sessionID: ctx.sessionID,
-            origin: { type: "plan", id: approved.revision, quote: approved.content, created: approved.created },
-            todos: ready.tasks.map((task) => ({
-              planKey: task.key,
-              content: task.content,
-              criterion: task.criterion,
-              requirement: task.quote,
-              status: "pending",
-              priority: "high",
-            })),
-          })
+          const approved = { ...ready, status: "approved" as const, created: Date.now() }
+          yield* todos.update(
+            {
+              sessionID: ctx.sessionID,
+              origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
+              todos: ready.tasks.map((task) => ({
+                planKey: task.key,
+                content: task.content,
+                criterion: task.criterion,
+                requirement: task.quote,
+                status: "pending",
+                priority: "high",
+              })),
+            },
+            {
+              before: Effect.gen(function* () {
+                if (
+                  createHash("sha256")
+                    .update(yield* readPlan(path.resolve(instance.worktree, plan)))
+                    .digest("hex") !== revision
+                )
+                  return yield* new SessionTodo.Error({
+                    message: "Plan changed while admitting tasks; review the current revision",
+                  })
+                yield* Intelligence.requireConfigured(yield* intelligence.read())
+              }).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message }))),
+              write: plans
+                .record(
+                  approved,
+                  Effect.gen(function* () {
+                    const currentGoal = yield* goals.get(ctx.sessionID)
+                    return (
+                      currentGoal?.id === goal?.id &&
+                      currentGoal?.updated === goal?.updated &&
+                      Intelligence.fingerprint(sourceRequests) ===
+                        Intelligence.fingerprint((yield* facts.load(ctx.sessionID)).requests) &&
+                      !(yield* SessionInput.hasPending(database.db, ctx.sessionID, "steer"))
+                    )
+                  }),
+                )
+                .pipe(
+                  Effect.asVoid,
+                  Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+                ),
+            },
+          )
           const messages = yield* session.messages({ sessionID: ctx.sessionID }).pipe(Effect.orDie)
           const lastUser = messages.findLast((item) => item.info.role === "user" && item.info.model)
           const model =

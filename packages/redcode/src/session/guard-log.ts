@@ -19,7 +19,17 @@ import type { SessionID } from "./schema"
  *
  * Writing must never be able to break a turn: a guard that cannot be recorded still acts.
  */
-export type Guard = "stall" | "tool_timeout" | "loop" | "steps" | "aux" | "orphan" | "goal" | "compaction" | "budget"
+export type Guard =
+  | "stall"
+  | "tool_timeout"
+  | "loop"
+  | "steps"
+  | "aux"
+  | "orphan"
+  | "goal"
+  | "compaction"
+  | "budget"
+  | "intelligence"
 export type Action = "warn" | "correct" | "stop"
 
 export interface Trip {

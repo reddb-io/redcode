@@ -12,6 +12,12 @@ import { SessionSchema } from "./schema"
 import { SessionTaskFacts } from "./task-facts"
 import { TodoHistoryTable, TodoTable } from "./sql"
 
+/** Internal transaction hooks for a plan handoff. Network and filesystem work belongs in before. */
+export interface Commit {
+  readonly before: Effect.Effect<void, SessionTodo.Error>
+  readonly write: Effect.Effect<void, SessionTodo.Error>
+}
+
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
   const facts = yield* SessionTaskFacts.Service
@@ -29,13 +35,16 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)).map(read)
   })
 
-  const reconcile = Effect.fn("SessionTodoStore.update")(function* (input: {
-    sessionID: SessionSchema.ID
-    todos: ReadonlyArray<SessionTodo.Input>
-    origin?: SessionTodo.Source
-    /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
-    messageID?: string
-  }) {
+  const reconcile = Effect.fn("SessionTodoStore.update")(function* (
+    input: {
+      sessionID: SessionSchema.ID
+      todos: ReadonlyArray<SessionTodo.Input>
+      origin?: SessionTodo.Source
+      /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
+      messageID?: string
+    },
+    commit?: Commit,
+  ) {
     const incoming = yield* Schema.decodeUnknownEffect(Schema.Array(SessionTodo.Input))(input.todos).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
@@ -301,7 +310,10 @@ const make = Effect.gen(function* () {
       const requests = observed.requests.filter(
         (request) =>
           !request.pending &&
-          (request.id === task.source?.id || request.id === task.scopeChange?.messageID || request.id === latest?.id),
+          (request.id === task.source?.id ||
+            request.id === task.scopeChange?.messageID ||
+            request.id === latest?.id ||
+            (task.source !== undefined && request.created >= task.source.created)),
       )
       const results = observed.results.filter(
         (result) =>
@@ -340,7 +352,7 @@ const make = Effect.gen(function* () {
             })),
             coverage: {
               scope:
-                "Only this task's named requirement, source, latest user request, explicit scope change and cited proof are evaluated. Excluded history is not evidence of completion or whole-session coverage.",
+                "This task's source requirement, every subsequent user instruction, explicit scope change and cited proof are evaluated. Earlier unrelated history is excluded and is not proof of whole-session coverage.",
               excludedRequests: observed.requests.length - requests.length,
               excludedResults: observed.results.length - results.length,
             },
@@ -349,7 +361,7 @@ const make = Effect.gen(function* () {
           questions: {
             ...Intelligence.questions({
               coverage:
-                "Does the candidate claim verification or completion that depends on missing or truncated source text, or imply coverage beyond the explicitly selected requirement? Truncated evidence is not proof of its omitted portion.",
+                "Does the candidate contradict a subsequent user correction, claim verification or completion that depends on missing or truncated source text, or imply coverage beyond the explicitly selected requirement? Truncated evidence is not proof of its omitted portion.",
               ...Object.fromEntries(
                 candidate.flatMap((task, index) => [
                   [
@@ -405,6 +417,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
+    if (commit) yield* commit.before
     // Network evaluation is outside the transaction; recheck the baseline before writing.
     return yield* db
       .transaction((tx) =>
@@ -416,7 +429,10 @@ const make = Effect.gen(function* () {
             .orderBy(asc(TodoTable.position))
             .all()
             .pipe(Effect.orDie)).map(read)
-          if (Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline))
+          if (
+            Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline) ||
+            Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID))
+          )
             return yield* new SessionTodo.Error({
               message: "Tasks changed during evaluation; retry with current revisions",
             })
@@ -480,6 +496,7 @@ const make = Effect.gen(function* () {
                 .pipe(Effect.orDie)
             }),
           )
+          if (commit) yield* commit.write
           return result
         }),
       )
@@ -487,8 +504,8 @@ const make = Effect.gen(function* () {
   })
   // A refusal reaches the model as a tool error and the person only as a folded row. The log keeps
   // its kind, the tasks it named and the first line of the reason, never prompts, commands or output.
-  const update = (input: Parameters<typeof reconcile>[0]) =>
-    reconcile(input).pipe(
+  const update = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
+    reconcile(input, commit).pipe(
       Effect.tapError((error) =>
         Effect.logWarning("todowrite refused", {
           "session.id": input.sessionID,

@@ -338,7 +338,7 @@ function IntelligenceForm() {
                       <div class="py-1">
                         <strong>{id}</strong>
                         <Show when={answer.type === "noul"}>
-                          : yes {(answer.type === "noul" ? answer.noul * 100 : 0).toFixed(0)}%
+                          : noul {(answer.type === "noul" ? answer.noul : 0).toFixed(2)}
                         </Show>
                         <Show when={answer.type === "choice"}>
                           : {answer.type === "choice" ? answer.choice : ""} · confidence{" "}

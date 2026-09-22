@@ -467,11 +467,13 @@ export interface Interface {
   /**
    * Read-modify-write of the session's metadata against a fresh read, one writer per session at a
    * time. Writers that change one key (the goal, the spend ledger, compaction) use this so they
-   * never write back another writer's stale copy.
+   * never write back another writer's stale copy. An optional database-only guard runs in the same
+   * transaction as the metadata update; a false result preserves the current record without publishing.
    */
   readonly updateMetadata: (
     sessionID: SessionID,
     fn: (metadata: Record<string, unknown>) => Record<string, unknown>,
+    guard?: Effect.Effect<boolean>,
   ) => Effect.Effect<Record<string, unknown>>
   readonly setAgentModel: (input: {
     sessionID: SessionID
@@ -786,11 +788,12 @@ const layer: Layer.Layer<
     // compaction state) included. Read and write therefore hold the database write lock together,
     // so a `touch` in one process never writes back what another process changed in between.
     // Listeners hear of the change only once the transaction has committed.
-    const patch = (sessionID: SessionID, info: Patch | ((current: Info) => Patch)) =>
+    const patch = (sessionID: SessionID, info: Patch | ((current: Info) => Patch), guard?: Effect.Effect<boolean>) =>
       db
         .transaction(() =>
           Effect.gen(function* () {
             const current = yield* get(sessionID)
+            if (guard && !(yield* guard)) return current
             const change = typeof info === "function" ? info(current) : info
             const next = {
               ...current,
@@ -850,11 +853,15 @@ const layer: Layer.Layer<
       )
     })
 
-    const updateMetadata: Interface["updateMetadata"] = (sessionID, fn) =>
+    const updateMetadata: Interface["updateMetadata"] = (sessionID, fn, guard) =>
       metadataLock(sessionID).withPermits(1)(
         // `fn` sees the metadata as read under the write lock, so spend, a goal pause or a
         // compaction another process writes meanwhile is never overwritten from a stale read.
-        patch(sessionID, (current) => ({ metadata: fn({ ...current.metadata }), time: { updated: Date.now() } })).pipe(
+        patch(
+          sessionID,
+          (current) => ({ metadata: fn({ ...current.metadata }), time: { updated: Date.now() } }),
+          guard,
+        ).pipe(
           Effect.map((next) => next.metadata ?? {}),
           Effect.orDie,
         ),

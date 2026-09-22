@@ -534,7 +534,16 @@ export const make = (
       if (!settings.enabled) return undefined
       const hash = evaluationFingerprint(input, settings)
       const cached = cache.get(hash)
-      if (cached) return cached
+      if (cached) {
+        yield* Effect.logInfo("Reusing System One evaluation", {
+          sessionID: input.sessionID,
+          operation: input.operation,
+          evaluationID: cached.id,
+          decision: cached.decision,
+          source: "engine",
+        })
+        return cached
+      }
       const id = randomUUID()
       const created = Date.now()
       const candidate = input.candidate === undefined ? {} : { candidate: input.candidate }
@@ -593,27 +602,62 @@ export const make = (
           ? Effect.fail(new Error({ message: "Evaluation sources exceed budget or configuration is incomplete" }))
           : Effect.forEach(
               requests,
-              (input) =>
-                request(evaluator, "systemone", {
-                  model: evaluator.model,
-                  state: input.state,
-                  questions: input.questions,
-                }).pipe(
-                  Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
-                  Effect.flatMap((response) =>
-                    Effect.try({
-                      try: () => ({
-                        response,
-                        sourceIndex: input.sourceIndex,
-                        ...(classification
-                          ? validateClassification(input.questions, response)
-                          : decide(input.questions, response)),
+              (part, index) =>
+                Effect.gen(function* () {
+                  if (index === 0)
+                    yield* Effect.logInfo(
+                      {
+                        prompt_classification: Object.keys(input.questions).some((key) =>
+                          /^recommended_skill(?:_\d+)?$/.test(key),
+                        )
+                          ? "Using System One to choose relevant skills and classify the user request"
+                          : "Using System One to classify the user request",
+                        response_quality: "Using System One to review the response",
+                        tool_usage: classification
+                          ? "Using System One to select MCP tools"
+                          : "Using System One to review settled tool results",
+                        task_quality: "Using System One to review task quality",
+                        todos: "Using System One to review tracked tasks",
+                        plan: "Using System One to review the proposed plan",
+                        feedback: "Using System One to review feedback",
+                        design_completion: "Using System One to review proposed design completion",
+                        compaction: classification
+                          ? "Using System One to recommend compaction timing"
+                          : "Using System One to verify the compaction checkpoint",
+                        compact_now: "Using System One to review proposed compaction timing",
+                        task_completion: "Using System One to review proposed task completion",
+                        goal_completion: "Using System One to review proposed goal completion",
+                      }[input.operation],
+                      {
+                        sessionID: input.sessionID,
+                        operation: input.operation,
+                        evaluationID: id,
+                        subjectID: input.subjectID,
+                        candidateID: input.candidateID,
+                        requests: requests.length,
+                      },
+                    )
+                  return yield* request(evaluator, "systemone", {
+                    model: evaluator.model,
+                    state: part.state,
+                    questions: part.questions,
+                  }).pipe(
+                    Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
+                    Effect.flatMap((response) =>
+                      Effect.try({
+                        try: () => ({
+                          response,
+                          sourceIndex: part.sourceIndex,
+                          ...(classification
+                            ? validateClassification(part.questions, response)
+                            : decide(part.questions, response)),
+                        }),
+                        catch: (error) =>
+                          error instanceof Error ? error : new Error({ message: "Invalid evaluation answers" }),
                       }),
-                      catch: (error) =>
-                        error instanceof Error ? error : new Error({ message: "Invalid evaluation answers" }),
-                    }),
-                  ),
-                ),
+                    ),
+                  )
+                }),
               { concurrency: 2 },
             ).pipe(
               Effect.map((results) => ({
@@ -738,6 +782,31 @@ export const make = (
         if (cache.size >= 256) cache.delete(cache.keys().next().value!)
         cache.set(hash, record)
       }
+      yield* Effect.logInfo("System One evaluation complete", {
+        sessionID: record.sessionID,
+        operation: record.operation,
+        evaluationID: record.id,
+        decision: record.decision,
+        outcomes: Object.fromEntries(
+          Object.entries(record.answers).map(([question, answer]) => [
+            question,
+            answer.type === "noul"
+              ? { type: answer.type, noul: answer.noul }
+              : answer.type === "choice"
+                ? { type: answer.type, choice: answer.choice, confidence: answer.confidence }
+                : { type: answer.type, score: answer.score, confidence: answer.confidence },
+          ]),
+        ),
+        recommendations: classification
+          ? recommendations(record, input.operation === "prompt_classification" ? "skill" : "mcp_tool")
+          : undefined,
+        reason:
+          record.decision === "accepted"
+            ? "evaluated"
+            : record.decision === "unavailable"
+              ? "evaluation unavailable; original request and existing permissions remain authoritative"
+              : "review unresolved; original request and existing permissions remain authoritative",
+      })
       return record
     })
     const history = Effect.fn("Intelligence.history")(function* (

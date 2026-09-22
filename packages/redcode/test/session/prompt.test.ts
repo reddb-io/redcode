@@ -644,7 +644,7 @@ it.instance("requires both model roles before execution while retaining admitted
           message.parts.some((part) => part.type === "text" && part.text === "Keep this request until setup completes"),
         ),
       ).toBe(true)
-    }).pipe(Effect.ensuring(service.save({ settings })))
+    }).pipe(Effect.ensuring(service.save({ settings }).pipe(Effect.orDie)))
   }),
 )
 
