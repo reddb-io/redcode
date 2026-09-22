@@ -20,14 +20,16 @@ export function evaluatorPreset(
 }
 
 /** Shared global setup transport; deliberately independent of location and legacy SDKs. */
-export function make(options: Parameters<typeof makeClient>[0]) {
+export function make(options: Parameters<typeof makeClient>[0] & { signal?: AbortSignal }) {
   const client = makeClient(options)
+  const request = options.signal ? { signal: options.signal } : undefined
   return {
-    probeModel: (model: Model.Ref) => client.intelligenceModels.test(model),
-    get: () => client.intelligence.get() as Promise<Intelligence.Status>,
-    save: (input: Intelligence.Save) => client.intelligence.save(input) as Promise<Intelligence.Settings>,
-    discover: (input: Intelligence.Probe) => client.intelligence.discover(input) as Promise<Intelligence.Models>,
-    probe: (input: Intelligence.Probe) => client.intelligence.probe(input) as Promise<Intelligence.Check>,
+    probeModel: (model: Model.Ref) => client.intelligenceModels.test(model, request),
+    get: () => client.intelligence.get(request) as Promise<Intelligence.Status>,
+    save: (input: Intelligence.Save) => client.intelligence.save(input, request) as Promise<Intelligence.Settings>,
+    discover: (input: Intelligence.Probe) =>
+      client.intelligence.discover(input, request) as Promise<Intelligence.Models>,
+    probe: (input: Intelligence.Probe) => client.intelligence.probe(input, request) as Promise<Intelligence.Check>,
     history: (
       input: {
         sessionID?: string
@@ -36,7 +38,7 @@ export function make(options: Parameters<typeof makeClient>[0]) {
         limit?: number
         offset?: number
       } = {},
-    ) => client.intelligence.history(input) as Promise<ReadonlyArray<Intelligence.Evaluation>>,
+    ) => client.intelligence.history(input, request) as Promise<ReadonlyArray<Intelligence.Evaluation>>,
   }
 }
 export * as IntelligenceClient from "./intelligence"

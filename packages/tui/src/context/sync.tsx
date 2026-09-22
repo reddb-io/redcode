@@ -29,6 +29,7 @@ import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
 import { batch, createEffect, onCleanup, onMount } from "solid-js"
+import { setMaxListeners } from "node:events"
 import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
@@ -955,6 +956,9 @@ export const {
       refreshingSessions = undefined
       bootstrapAbort?.abort()
       const abort = new AbortController()
+      // A bootstrap intentionally fans out across more than Node's default ten EventTarget
+      // listeners. Requests remove them when they settle, so this is expected concurrency.
+      setMaxListeners(0, abort.signal)
       bootstrapAbort = abort
       // This run reads commands itself.
       cancelCommandRetry()

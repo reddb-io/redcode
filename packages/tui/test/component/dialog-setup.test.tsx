@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { InputRenderable } from "@opentui/core"
+import { InputRenderable, TextareaRenderable } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { onCleanup, onMount } from "solid-js"
@@ -250,6 +250,74 @@ test("configured setup can edit System Two without walking through System One", 
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
     expect(setup.app.captureCharFrame()).not.toContain("System One connection")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("failed OpenRouter probe stays in setup and can be retried with the entered key", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  let probes = 0
+  const settings = {
+    enabled: false,
+    onboarding: "pending",
+    principal: { providerID: "mock", id: "model" },
+    evaluator: {
+      transport: "opencode-zen" as const,
+      baseURL: "https://opencode.ai/zen/v1",
+      model: "jev-1.13-free",
+    },
+  } as Intelligence.Settings
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/models")
+        return json({ models: [{ id: "typesafe/jev-1.13", name: "typesafe/jev-1.13" }], manual: false })
+      if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
+      if (url.pathname === "/api/intelligence/test") {
+        probes++
+        return json(
+          probes === 1
+            ? { ok: false, message: "System One authentication failed (HTTP 401). Check the API key for openrouter." }
+            : { ok: true, message: "Connection checked" },
+        )
+      }
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "fast" }} />,
+  )
+  try {
+    await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("System One connection"))
+    await setup.app.mockInput.pressArrow("down")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("System One API base URL"))
+    await setup.app.mockInput.pressEnter()
+    await wait(
+      () =>
+        setup.app.captureCharFrame().includes("System One API key") &&
+        setup.app.renderer.currentFocusedEditor instanceof TextareaRenderable,
+    )
+    const key = setup.app.renderer.currentFocusedEditor
+    if (!(key instanceof TextareaRenderable)) throw new Error("System One key input is not focused")
+    key.setText("openrouter-secret")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("System One evaluator"))
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
+
+    await setup.app.mockInput.pressEnter()
+    await wait(
+      () => probes === 1 && setup.app.captureCharFrame().includes("Save global intelligence setup"),
+    )
+    expect(setup.app.captureCharFrame()).toContain("authentication failed")
+
+    await setup.app.mockInput.pressEnter()
+    await wait(() => probes === 2)
+    await wait(() => !setup.app.captureCharFrame().includes("Save global intelligence setup"))
   } finally {
     setup.app.renderer.destroy()
   }
