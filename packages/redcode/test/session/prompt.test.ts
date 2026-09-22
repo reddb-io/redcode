@@ -8237,7 +8237,7 @@ it.instance(
 
 for (const failure of ["stall", "server error"] as const) {
   it.instance(
-    `a folded summary that meets a ${failure} reports it instead of history too large`,
+    `a folded summary that meets a ${failure} reports its deadline instead of history too large`,
     () =>
       Effect.gen(function* () {
         const { llm } = yield* useServerConfig((url) => ({
@@ -8262,8 +8262,8 @@ for (const failure of ["stall", "server error"] as const) {
         expect(error).toBeDefined()
         const text = JSON.stringify(error)
         expect(text).not.toContain("too large to compact")
-        if (failure === "stall") expect(text).toContain("Compacting the conversation got no answer")
-        else expect(error?.name).not.toBe("ContextOverflowError")
+        expect(error?.name).toBe("ContextOverflowError")
+        expect(text).toContain("Compacting the conversation got no answer")
         expect((yield* sessions.get(chat.id)).time.compacting).toBeUndefined()
       }),
     60_000,

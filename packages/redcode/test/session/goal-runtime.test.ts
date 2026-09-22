@@ -19,6 +19,7 @@ import { Session } from "@/session/session"
 import { MessageID, PartID } from "@/session/schema"
 import { testEffect, awaitWithTimeout } from "../lib/effect"
 import { TestInstance } from "../fixture/fixture"
+import { testProviderConfig } from "../lib/test-provider"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -96,23 +97,12 @@ const setup = Effect.gen(function* () {
     settings: {
       enabled: true,
       onboarding: "completed",
-      principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
+      principal: { providerID: Provider.ID.make("test"), id: Model.ID.make("test-model") },
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
     },
   })
   yield* Effect.promise(() =>
-    Bun.write(
-      path.join(instance.directory, "redcode.json"),
-      JSON.stringify({
-        providers: {
-          fixture: {
-            api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: `${server.url}v1` },
-            request: { body: { apiKey: "fixture" } },
-            models: { principal: { name: "Principal fixture", limit: { context: 100000, output: 4096 } } },
-          },
-        },
-      }),
-    ),
+    Bun.write(path.join(instance.directory, "redcode.json"), JSON.stringify(testProviderConfig(`${server.url}v1`))),
   )
   const sessions = yield* Session.Service
   const goals = yield* GoalRuntime.Service
@@ -123,7 +113,7 @@ const setup = Effect.gen(function* () {
     sessionID: chat.id,
     role: "user",
     agent: "build",
-    model: { providerID: Provider.ID.make("fixture"), modelID: Model.ID.make("principal") },
+    model: { providerID: Provider.ID.make("test"), modelID: Model.ID.make("test-model") },
     time: { created: Date.now() },
   })
   const assistant = yield* sessions.updateMessage({
@@ -133,8 +123,8 @@ const setup = Effect.gen(function* () {
     agent: "build",
     mode: "build",
     parentID: user.id,
-    providerID: Provider.ID.make("fixture"),
-    modelID: Model.ID.make("principal"),
+    providerID: Provider.ID.make("test"),
+    modelID: Model.ID.make("test-model"),
     path: { cwd: instance.directory, root: instance.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

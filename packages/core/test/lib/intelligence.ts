@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 
 /** Provider and tool fixtures configure both roles without adding unrelated evaluator traffic. */
 export const configuredIntelligence = Layer.mock(Intelligence.Service, {
+  environment: "test",
   read: () =>
     Effect.succeed({
       enabled: true,

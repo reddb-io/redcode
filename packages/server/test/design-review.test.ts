@@ -2667,10 +2667,18 @@ test("feedback without setup preserves the original notes and refuses agent comp
     expect(
       (await api<Design.Info>(`${current.root}/${current.document.id}`)).notes?.map((note) => note.status),
     ).toEqual(["open"])
-    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(
-      `/api/session/${current.sessionID}/history?limit=100`,
+    const historyRoute = `/api/session/${current.sessionID}/history?limit=100`
+    await until(
+      async () =>
+        (await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)).data.some(
+          (event) => event.type === "session.next.prompted" && event.data.prompt?.text.includes("Name the shop"),
+        ),
+      "feedback prompt without setup",
     )
-    const prompt = history.data.find((event) => event.type === "session.next.prompted")?.data.prompt?.text
+    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)
+    const prompt = history.data.findLast(
+      (event) => event.type === "session.next.prompted" && event.data.prompt?.text.includes("Name the shop"),
+    )?.data.prompt?.text
     expect(prompt).toContain("Name the shop")
     expect(prompt).toContain("Semantic interpretation unavailable. Original feedback is preserved")
     expect(history.data.some((event) => event.type === "session.next.step.started")).toBe(false)
