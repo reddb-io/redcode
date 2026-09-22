@@ -291,7 +291,9 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
   try {
     await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("System One connection"))
+    await wait(
+      () => setup.app.captureCharFrame().includes("System One connection") && setup.app.captureCharFrame().includes("OpenRouter"),
+    )
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("System One API base URL"))
