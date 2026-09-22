@@ -151,6 +151,7 @@
     "@types/node": "catalog:"
   },
   "patchedDependencies": {
+    "bun-pty@0.4.8": "patches/bun-pty@0.4.8.patch",
     "@scriptc/runtime@0.0.35": "patches/@scriptc%2Fruntime@0.0.35.patch",
     "@dnd-kit/dom@0.5.0": "patches/@dnd-kit%2Fdom@0.5.0.patch",
     "@npmcli/agent@4.0.2": "patches/@npmcli%2Fagent@4.0.2.patch",

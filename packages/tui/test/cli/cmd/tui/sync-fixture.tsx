@@ -12,7 +12,9 @@ import { createEventSource, createFetch, type FetchHandler, directory } from "..
 import { TestTuiContexts } from "../../../fixture/tui-environment"
 export { createEventSource, createFetch, directory, eventSource, json, worktree } from "../../../fixture/tui-sdk"
 
-export async function wait(fn: () => boolean, timeout = 2000) {
+// A ceiling, not a delay: CI runs test files in parallel, and a loaded runner can take seconds to
+// render a frame. Passing conditions still return on the first poll that sees them.
+export async function wait(fn: () => boolean, timeout = 10_000) {
   const start = Date.now()
   while (!fn()) {
     if (Date.now() - start > timeout) throw new Error("timed out waiting for condition")

@@ -58,6 +58,10 @@ export default defineMain({
             find: /^@\/components\/dialog-select-model-unpaid$/,
             replacement: path.resolve(mocks, "app/components/dialog-select-model-unpaid.tsx"),
           },
+          {
+            find: /^@\/components\/settings-v2$/,
+            replacement: path.resolve(mocks, "app/components/settings-v2.tsx"),
+          },
           { find: "@", replacement: app },
         ],
       },
