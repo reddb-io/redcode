@@ -1,4 +1,3 @@
-import type { ParentProps } from "solid-js"
 import type { ProviderAuthMethod } from "@reddb-io/redcode-sdk/v2/client"
 
 const data = {
@@ -31,9 +30,4 @@ export function useServerSync() {
     },
     updateConfig: async () => {},
   })
-}
-
-// Stories render real settings components that wrap their content in this provider.
-export function ServerSyncProvider(props: ParentProps) {
-  return props.children
 }
