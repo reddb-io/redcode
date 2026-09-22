@@ -51,6 +51,7 @@ import { DesignContext } from "../../design/context"
 import { DesignRenderer } from "../../design/renderer"
 import { DesignStore } from "../../design/store"
 import { SkillGuidance } from "../../skill/guidance"
+import { SkillV2 } from "../../skill"
 import { ReferenceGuidance } from "../../reference/guidance"
 import { ToolRegistry } from "../../tool/registry"
 import { NativeToolSearch } from "../../tool/native-tool-search"
@@ -106,6 +107,33 @@ const CONTENT_EVENTS = new Set([
 const prefixLength = <A>(items: ReadonlyArray<A>, keep: (item: A) => boolean) => {
   const index = items.findIndex((item) => !keep(item))
   return index < 0 ? items.length : index
+}
+
+const responseToolResults = (messages: ReadonlyArray<SessionMessage.Message>) => {
+  const lastUser = messages.findLastIndex((message) => message.type === "user")
+  return messages
+    .slice(lastUser + 1)
+    .flatMap((message) =>
+      message.type === "assistant"
+        ? message.content.flatMap((part) => {
+            if (part.type !== "tool" || (part.state.status !== "completed" && part.state.status !== "error")) return []
+            const state = part.state
+            return [
+              {
+                tool: part.name,
+                status: state.status,
+                input: state.input,
+                output: JSON.stringify({
+                  content: state.content,
+                  structured: state.structured,
+                  ...(state.status === "error" ? { error: state.error } : {}),
+                }).slice(0, 4_000),
+              },
+            ]
+          })
+        : [],
+    )
+    .slice(-20)
 }
 
 /** The latest user message follows a turn that was cancelled or cut off with tool calls unsettled. */
@@ -187,6 +215,7 @@ const layer = Layer.effect(
     const designs = yield* DesignStore.Service
     const renderer = yield* DesignRenderer.Service
     const skillGuidance = yield* SkillGuidance.Service
+    const skills = yield* SkillV2.Service
     const referenceGuidance = yield* ReferenceGuidance.Service
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
@@ -568,6 +597,7 @@ const layer = Layer.effect(
       const requests = messages
         .filter((message) => message.type === "user")
         .map((message) => ({ id: message.id, text: message.text }))
+      const toolResults = responseToolResults(messages)
       return yield* intelligence
         .evaluate({
           sessionID,
@@ -581,29 +611,10 @@ const layer = Layer.effect(
             checkpoints: messages.filter((message) => message.type === "compaction").slice(-1),
             tasks: yield* todos.get(sessionID),
             goal: yield* goals.get(sessionID),
+            tool_results: toolResults,
           },
           candidate: text,
-          questions: {
-            ...Intelligence.questions({
-              omission: "Does candidate fail to answer an applicable user request or question in sources?",
-              unsupported:
-                "Does candidate claim work, verification or completion that is not supported by sources.tasks or sources.goal?",
-              premature:
-                "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
-              writing:
-                "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
-            }),
-            writing_quality: {
-              type: "score",
-              instructions: "How clear, concise and useful is candidate as a final response to sources.requests?",
-              criteria: [
-                "Unclear, misleading or missing the usable result",
-                "Understandable but confusing, repetitive or missing useful context",
-                "Clear, direct and actionable",
-                "Exceptionally clear, concise and well matched to the user's context",
-              ],
-            },
-          },
+          questions: Intelligence.responseQuestions,
         })
         .pipe(
           Effect.catchTag("IntelligenceError", (error) =>
@@ -658,6 +669,13 @@ const layer = Layer.effect(
         ? yield* intelligence.history(session.id).pipe(Effect.orElseSucceed(() => []))
         : []
       const promotedUsers = promoted > 0 ? context.filter((message) => message.type === "user").slice(-promoted) : []
+      const availableSkills = agent.info
+        ? SkillV2.available(yield* skills.list(), agent.info)
+            .flatMap((skill) =>
+              skill.description === undefined ? [] : [{ name: skill.name, description: skill.description }],
+            )
+            .toSorted((left, right) => left.name.localeCompare(right.name))
+        : []
       const newAssessments = yield* Effect.forEach(
         promotedUsers.filter(
           (message) =>
@@ -673,7 +691,7 @@ const layer = Layer.effect(
               kind: "classification",
               subjectID: message.id,
               sources: { text: message.text, files: message.files },
-              questions: Intelligence.promptQuestions,
+              questions: Intelligence.promptQuestionsFor(availableSkills),
             })
             .pipe(
               Effect.catchTag("IntelligenceError", (error) =>
@@ -688,6 +706,7 @@ const layer = Layer.effect(
         (evaluation) => evaluation?.operation === "prompt_classification" && evaluation.subjectID === latestUser?.id,
       )
       const assessmentContext = Intelligence.promptContext(assessment)
+      const skillContext = Intelligence.skillContext(assessment)
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
       const configEntries = yield* config.entries()
@@ -726,7 +745,7 @@ const layer = Layer.effect(
           // Native search: the provider carries the deferred definitions and its own search tool.
           ...(toolMaterialization?.native === "anthropic" ? { anthropic: { toolSearch: "bm25" } } : {}),
         },
-        system: [agent.info?.system, system.baseline, assessmentContext]
+        system: [agent.info?.system, system.baseline, assessmentContext, skillContext]
           .concat(
             toolMaterialization?.definitions.some((tool) => tool.name === "todowrite") ? SessionTodo.guidance : [],
           )
@@ -1513,6 +1532,7 @@ export const node = makeLocationNode({
     DesignStore.node,
     DesignRenderer.node,
     SkillGuidance.node,
+    SkillV2.node,
     ReferenceGuidance.node,
     Config.node,
     Snapshot.node,

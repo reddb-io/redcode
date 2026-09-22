@@ -23,7 +23,7 @@ Redcode combines the live models.dev catalog with explicit System One protocol m
 - **TypeSafe** directly at `https://api.typesafe.ai/v1`.
 - **OpenRouter**, using `typesafe/jev-1.13` through `POST https://openrouter.ai/api/alpha/decisions`. JEV is a Decisions model and is intentionally absent from OpenRouter's chat-model catalog.
 - **RedRouter** at `http://localhost:25050/v1` or a deployed URL.
-- **Cloudflare AI Gateway**, using `typesafe/jev` through the documented `/accounts/{account}/ai/run` envelope. Connect it first so Redcode can reuse the account ID, gateway ID and API token.
+- **Cloudflare Workers AI or AI Gateway**, using `typesafe/jev` through the documented `/accounts/{account}/ai/run` envelope. Redcode reuses the account ID and API token from either connection; a configured Gateway ID is forwarded when present.
 - **Vercel AI Gateway**, using `typesafe-ai/jev` through its evaluation-model v4 endpoint.
 - **Vivgrid**, using `jev` through its native System One endpoint.
 - **NanoGPT**, using `typesafe/jev-latest` through its native System One endpoint.
@@ -39,6 +39,10 @@ Router discovery uses `GET /v1/models/systemone`. Direct discovery uses `/v1/mod
 Generated TODO extraction, missing plan decomposition, feedback interpretation and checkpoint summaries follow fast generation → structural validation → evaluation → at most one principal repair → re-evaluation. Explicit task/plan updates are evaluated against source requests. Existing deterministic evidence, permissions, revisions and design approval checks remain authoritative. Task checks run before evaluation and stale source snapshots cannot commit.
 
 Each Noul asks about an **error**: values ≤ 0.1 accept, ≥ 0.9 require revision, and intermediate values are inconclusive. All required checks must accept. These are experimental policy thresholds, not measured accuracy guarantees. Missing answers, malformed responses, timeouts and provider failures cannot approve a change. Feedback keeps its raw input when interpretation fails; its rendered admission is frozen for exact retries. Failed checkpoint validation leaves history intact.
+
+Prompt classification also asks one Choice over the permitted skill descriptions and `no_matching_skill`. The resulting probability distribution produces an advisory shortlist in the System Two context without loading a skill or bypassing its permission. This question is batched with the existing prompt questions, so skill relevance does not add another evaluator request.
+
+Final response review receives the settled tool results produced after the latest user request. It checks whether a claimed outcome is supported by those results and whether failed, partial or unrelated output is being treated as proof. Redcode does not evaluate streaming chunks or every routine tool result independently. Task completion continues to evaluate the specific verification result cited for a completed task.
 
 Semantic early compaction checks start only after four user turns and at least half of the configured context threshold. Hard context limits still apply. Large checkpoint sources are checked in overlapping chunks; this conservative policy can reject summaries that need cross-chunk context. Ordinary evaluations exceeding the request budget fail closed.
 

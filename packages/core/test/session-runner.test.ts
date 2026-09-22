@@ -801,6 +801,57 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("reviews final claims against settled tool results", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(input, "accepted", responseAnswers(0)),
+        )
+      const applicationTools = yield* ApplicationTools.Service
+      const session = yield* SessionV2.Service
+      yield* applicationTools.register({
+        application_context: Tool.make({
+          description: "Read application context",
+          input: Schema.Struct({ query: Schema.String }),
+          output: Schema.Struct({ answer: Schema.String }),
+          execute: ({ query }) => Effect.succeed({ answer: query.toUpperCase() }),
+        }),
+      })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Verify the application context" }),
+        resume: false,
+      })
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "call-evidence", name: "application_context", input: { query: "hello" } }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "final-with-evidence", ["HELLO confirmed."]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      const review = intelligenceInputs.find((input) => input.operation === "response_quality")
+      expect(review?.questions).toHaveProperty("tool_evidence")
+      expect(review?.sources).toMatchObject({
+        tool_results: [
+          {
+            tool: "application_context",
+            status: "completed",
+            input: { query: "hello" },
+            output: expect.stringContaining('"answer":"HELLO"'),
+          },
+        ],
+      })
+    }),
+  )
+
   it.effect("classifies each promoted prompt and reviews only the final response", () =>
     Effect.gen(function* () {
       yield* setup
