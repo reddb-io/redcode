@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onMount, Show } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useSync } from "../context/sync"
 import { map, pipe, sortBy } from "remeda"
 import { DialogSelect } from "../ui/dialog-select"
@@ -178,7 +178,7 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
           : ""),
     })
     if (props.onConnected) {
-      await sync.bootstrap()
+      await sync.bootstrap({ fatal: false })
       return props.onConnected(result.providerID)
     }
     dialog.replace(() => <DialogModel providerID={result.providerID} />)
@@ -426,7 +426,7 @@ function AutoMethod(props: AutoMethodProps) {
       return
     }
     await sdk.client.instance.dispose()
-    await sync.bootstrap()
+    await sync.bootstrap({ fatal: false })
     if (props.onConnected) return props.onConnected(props.providerID)
     dialog.replace(() => <DialogModel providerID={props.providerID} />)
   })
@@ -479,7 +479,7 @@ function CodeMethod(props: CodeMethodProps) {
         })
         if (!error) {
           await sdk.client.instance.dispose()
-          await sync.bootstrap()
+          await sync.bootstrap({ fatal: false })
           if (props.onConnected) await props.onConnected(props.providerID)
           else dialog.replace(() => <DialogModel providerID={props.providerID} />)
           return
@@ -511,6 +511,12 @@ function ApiMethod(props: ApiMethodProps) {
   const sync = useSync()
   const toast = useToast()
   const { theme } = useTheme()
+  const abort = new AbortController()
+  let active = true
+  onCleanup(() => {
+    active = false
+    abort.abort()
+  })
   // Saving a key disposes and re-bootstraps the instance, which can take tens of seconds when
   // plugins or provider packages are (re)installed. Without a busy state the dialog looks frozen
   // and every extra enter re-submits the key.
@@ -552,29 +558,36 @@ function ApiMethod(props: ApiMethodProps) {
         if (!value || busy()) return
         setBusy(true)
         try {
-          const result = await sdk.client.auth.set({
-            providerID: props.providerID,
-            auth: {
-              type: "api",
-              key: value,
-              ...(props.metadata ? { metadata: props.metadata } : {}),
+          const result = await sdk.client.auth.set(
+            {
+              providerID: props.providerID,
+              auth: {
+                type: "api",
+                key: value,
+                ...(props.metadata ? { metadata: props.metadata } : {}),
+              },
             },
-          })
+            { signal: abort.signal },
+          )
+          if (!active) return
           if (result.error) {
             toast.show({ variant: "error", message: JSON.stringify(result.error) })
             return
           }
-          await sdk.client.instance.dispose()
-          await sync.bootstrap()
+          await sdk.client.instance.dispose({}, { signal: abort.signal })
+          if (!active) return
+          await sync.bootstrap({ fatal: false })
         } catch (error) {
+          if (!active) return
           toast.show({
             variant: "error",
             message: `Failed to save credential: ${error instanceof Error ? error.message : String(error)}`,
           })
           return
         } finally {
-          setBusy(false)
+          if (active) setBusy(false)
         }
+        if (!active) return
         if (props.onConnected) await props.onConnected(props.providerID)
         else dialog.replace(() => <DialogModel providerID={props.providerID} />)
       }}

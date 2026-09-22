@@ -1,0 +1,51 @@
+name: "Detect release-only change"
+description: "Identify a trusted Changesets Version PR or merge whose diff contains only release metadata"
+inputs:
+  event:
+    required: true
+  head-ref:
+    required: false
+  head-repository:
+    required: false
+  repository:
+    required: true
+  base-sha:
+    required: false
+  head-sha:
+    required: true
+outputs:
+  release_only:
+    value: ${{ steps.detect.outputs.release_only }}
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        EVENT: ${{ inputs.event }}
+        HEAD_REF: ${{ inputs.head-ref }}
+        HEAD_REPOSITORY: ${{ inputs.head-repository }}
+        REPOSITORY: ${{ inputs.repository }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+      run: |
+        set -euo pipefail
+        echo "release_only=false" >> "$GITHUB_OUTPUT"
+        if [ "$EVENT" = pull_request ]; then
+          if [ "$HEAD_REF" != changeset-release/main ] || [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then exit 0; fi
+        elif [ "$EVENT" != push ]; then
+          exit 0
+        fi
+        found=false
+        while IFS=$'\t' read -r status path; do
+          found=true
+          case "$status:$path" in
+            D:.changeset/*.md|M:package.json|M:bun.lock|M:packages/*/package.json|M:packages/*/CHANGELOG.md) ;;
+            *)
+              echo "Version PR contains non-release change: $status $path"
+              exit 0
+              ;;
+          esac
+        done < <(git diff --name-status "$BASE_SHA...$HEAD_SHA")
+        if [ "$found" != true ]; then exit 0; fi
+        echo "release_only=true" >> "$GITHUB_OUTPUT"

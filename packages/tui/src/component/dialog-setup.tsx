@@ -1,4 +1,4 @@
-import { batch, onMount, Switch, Match } from "solid-js"
+import { batch, onCleanup, onMount, Switch, Match } from "solid-js"
 import { createStore } from "solid-js/store"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -42,11 +42,18 @@ export function DialogSetup(
   const local = props.onModelSelected ? undefined : useLocal()
   const dialog = useDialog()
   const toast = useToast()
-  const api = IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers })
+  const abort = new AbortController()
+  let active = true
+  const api = IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers, signal: abort.signal })
+  onCleanup(() => {
+    active = false
+    abort.abort()
+  })
   const setup = props.state ?? createDialogSetupState()
   const [state, set] = setup
   if (!state.environment) set("environment", sdk.url)
   const fail = () => {
+    if (!active) return
     set("busy", false)
     toast.show({
       variant: "error",
@@ -58,6 +65,7 @@ export function DialogSetup(
     api
       .get()
       .then((result) => {
+        if (!active) return
         if (state.step === "welcome") set("settings", result.settings)
         set("environment", result.environment)
         set("evaluators", result.evaluators)
@@ -103,9 +111,13 @@ export function DialogSetup(
     for (const model of [state.settings.principal, state.settings.fast].filter(
       (model, index, list) => model && (index === 0 || JSON.stringify(model) !== JSON.stringify(list[0])),
     )) {
-      if (model && !(await api.probeModel(model)).ok) return fail()
+      if (!model) continue
+      const checked = await api.probeModel(model)
+      if (!active) return
+      if (!checked.ok) return fail()
     }
     const checked = await api.probe(probe)
+    if (!active) return
     if (!checked.ok) {
       set("busy", false)
       toast.show({ variant: "error", message: checked.message, duration: 8000 })
@@ -115,6 +127,7 @@ export function DialogSetup(
       settings: { ...state.settings, enabled: true, onboarding: "completed" },
       ...(state.key ? { apiKey: state.key } : {}),
     })
+    if (!active) return
     const principal = state.settings.principal
     if (principal) {
       const selected = { providerID: principal.providerID, modelID: principal.id }
@@ -167,7 +180,9 @@ export function DialogSetup(
                     onboarding: "deferred",
                   },
                 })
-                .then(() => dialog.clear())
+                .then(() => {
+                  if (active) dialog.clear()
+                })
                 .catch(fail)
               return
             }
@@ -262,6 +277,7 @@ export function DialogSetup(
                 ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
                 : "API key, or empty to use the server environment"
           }
+          value={state.key}
           busy={state.busy}
           onConfirm={(value) => {
             set("key", value)
@@ -269,6 +285,7 @@ export function DialogSetup(
             void api
               .discover({ evaluator: evaluator(), ...(value ? { apiKey: value } : {}) })
               .then((result) => {
+                if (!active) return
                 set("models", result.models)
                 set("busy", false)
                 set("step", result.models.length ? "models" : "manual")

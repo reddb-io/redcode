@@ -517,6 +517,44 @@ test("invalid evaluator URLs fail without replacing global settings", async () =
   )
 })
 
+test("System One probe reports actionable authentication and model response failures", async () => {
+  await using dir = await tmpdir()
+  const evaluator = {
+    transport: "openrouter" as const,
+    baseURL: "https://openrouter.ai/api/alpha",
+    model: "typesafe/jev-1.13",
+  }
+  const unauthorized = await Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* Intelligence.make(
+        dir.path,
+        credentials,
+        Object.assign(() => Promise.resolve(new Response(null, { status: 401 })), { preconnect: fetch.preconnect }),
+      )
+      return yield* service.probe({ evaluator, apiKey: "invalid" })
+    }),
+  )
+  expect(unauthorized).toEqual({
+    ok: false,
+    message: "System One authentication failed (HTTP 401). Check the API key for openrouter.",
+  })
+
+  const malformed = await Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* Intelligence.make(
+        dir.path,
+        credentials,
+        Object.assign(() => Promise.resolve(Response.json({ model: evaluator.model, answers: {}, usage: {} })), {
+          preconnect: fetch.preconnect,
+        }),
+      )
+      return yield* service.probe({ evaluator, apiKey: "valid" })
+    }),
+  )
+  expect(malformed.ok).toBe(false)
+  expect(malformed.message).toContain("System One connection failed:")
+})
+
 test("stored evaluator credentials cannot be redirected to another API origin", async () => {
   await using dir = await tmpdir()
   let calls = 0

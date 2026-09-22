@@ -424,9 +424,26 @@ export const make = (
         },
         input.apiKey,
       ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)), Effect.result)
+      if (result._tag === "Failure") {
+        const status = result.failure instanceof Error ? result.failure.status : undefined
+        const message =
+          status === 401 || status === 403
+            ? `System One authentication failed (HTTP ${status}). Check the API key for ${input.evaluator.transport}.`
+            : status === 404
+              ? "System One endpoint or model was not found (HTTP 404). Check the base URL and model name."
+              : status === 429
+                ? "System One is rate limited (HTTP 429). Wait briefly and retry."
+                : status !== undefined
+                  ? `System One provider returned HTTP ${status}. Check the provider status and retry.`
+                  : `System One connection failed: ${result.failure.message}`
+        return { ok: false, message }
+      }
       return {
-        ok: result._tag === "Success" && result.success.answers.check?.type === "noul",
-        message: result._tag === "Success" ? "Connection checked" : "System One connection failed",
+        ok: result.success.answers.check?.type === "noul",
+        message:
+          result.success.answers.check?.type === "noul"
+            ? "Connection checked"
+            : "System One returned an invalid response. Check that the selected model supports System One questions.",
       }
     })
     const evaluate = Effect.fn("Intelligence.evaluate")(function* (input: EvaluationInput) {
