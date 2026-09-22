@@ -64,13 +64,14 @@ const layer = Layer.effectDiscard(
     const facts = yield* SessionTaskFacts.Service
     const permission = yield* PermissionV2.Service
     const semantic = yield* Semantic.Service
+    const intelligence = yield* Intelligence.Service
 
     yield* tools
       .register({
         [name]: Tool.make({
           description:
             SessionTodo.guidance +
-            " When intelligence is enabled, sourceMessageID with todos: [] delegates decomposition of that user request to the configured transformation model. " +
+            " sourceMessageID with todos: [] delegates decomposition of that user request to the configured transformation model. " +
             " Supply the id when updating; revision is optional and checked when supplied. Blocked and cancelled tasks require reason. The next pending task becomes active automatically. Send todos: [] to read the current list.",
           input: ModelInput,
           inputSchema: inputSchema(),
@@ -124,18 +125,26 @@ const layer = Layer.effectDiscard(
                 : undefined
               if (source && !generated)
                 return yield* new ToolFailure({
-                  message: "Enable global intelligence setup to extract tasks from a request",
+                  message: "Tasks could not be extracted from the request; retry or supply todos directly",
                 })
               const updated = yield* todos.update({
                 sessionID: context.sessionID,
                 todos: generated ?? input.todos,
                 messageID: context.assistantMessageID,
               })
-              const notes = SessionTodo.notes(
-                input.todos,
-                updated,
-                SessionTodo.quotesCommand(input.todos, updated) ? (yield* facts.load(context.sessionID)).results : [],
-              )
+              const completed = input.todos.some((todo) => todo.status === "completed")
+              const unverified =
+                completed && Intelligence.mode(yield* intelligence.read().pipe(Effect.orDie)) === "single"
+              const notes = [
+                ...SessionTodo.notes(
+                  input.todos,
+                  updated,
+                  SessionTodo.quotesCommand(input.todos, updated) ? (yield* facts.load(context.sessionID)).results : [],
+                ),
+                ...(unverified
+                  ? [`Completion passed the structural evidence checks; S1 review ${Intelligence.UNVERIFIED}.`]
+                  : []),
+              ]
               return {
                 todos: updated,
                 ...(notes.length ? { notes } : {}),
@@ -164,5 +173,12 @@ function inputSchema(): JsonSchema.JsonSchema {
 export const node = makeLocationNode({
   name: "tool/todowrite",
   layer,
-  deps: [ToolRegistry.node, PermissionV2.node, SessionTodo.node, SessionTaskFacts.node, Semantic.node],
+  deps: [
+    ToolRegistry.node,
+    PermissionV2.node,
+    SessionTodo.node,
+    SessionTaskFacts.node,
+    Semantic.node,
+    Intelligence.node,
+  ],
 })

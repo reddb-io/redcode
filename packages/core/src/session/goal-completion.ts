@@ -82,14 +82,17 @@ const make = Effect.gen(function* () {
         message: "Evidence changed before the turn settled. Verify the current files again.",
       })
     yield* check(sessionID)
-    yield* intelligence.read().pipe(
-      Effect.flatMap(Intelligence.requireConfigured),
+    const settings = yield* intelligence.read().pipe(
+      Effect.tap(Intelligence.requireConfigured),
       Effect.mapError((error) => new ToolFailure({ message: error.message })),
     )
     return yield* goals.save(candidate.goal, {
       ...candidate.goal,
       status: "done",
-      reason: "Every criterion verified against recorded evidence after tool effects settled",
+      reason:
+        Intelligence.mode(settings) === "single"
+          ? `Goal checks and recorded evidence passed after tool effects settled; criteria ${Intelligence.UNVERIFIED}`
+          : "Every criterion verified against recorded evidence after tool effects settled",
       evidence: evidence.map((item) => ({ path: item.path, hash: item.hash, bytes: item.bytes })),
       checks: candidate.checks,
     })

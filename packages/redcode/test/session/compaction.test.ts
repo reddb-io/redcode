@@ -305,6 +305,7 @@ function withCompaction(options?: CompactionProcessOptions) {
       yield* intelligence.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { id: ref.modelID, providerID: ref.providerID },
           evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
@@ -922,6 +923,7 @@ describe("session.compaction.process", () => {
           yield* intelligence.save({
             settings: {
               enabled: true,
+              reasoning: "dual",
               onboarding: "completed",
               principal: { id: ref.modelID, providerID: ref.providerID },
               evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },

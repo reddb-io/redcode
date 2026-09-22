@@ -8,7 +8,6 @@ import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
-import { Locale } from "../util/locale"
 import { DialogSetup } from "./dialog-setup"
 
 export function IntelligenceIndicator(props: { sessionID?: string }) {
@@ -42,17 +41,21 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
         if (!abort.signal.aborted) set("failed", true)
       })
   })
+  const single = () => local.intelligence.reasoning() === "single"
   const warning = () =>
-    !local.intelligence.ready() || state.failed || (state.evaluation && state.evaluation.decision !== "accepted")
+    !local.intelligence.ready() ||
+    (!single() && (state.failed || (state.evaluation && state.evaluation.decision !== "accepted")))
+  const label = () => {
+    if (single()) return "Single"
+    if (!local.intelligence.ready()) return "S1 Setup"
+    return "S1 · S2"
+  }
   return (
     <text
       fg={warning() ? theme.warning : theme.textMuted}
       onMouseUp={() => dialog.replace(() => <DialogIntelligence sessionID={props.sessionID} />)}
     >
-      · S1{" "}
-      {local.intelligence.ready()
-        ? Locale.truncate(local.intelligence.state.status!.settings.evaluator!.model.split("/").at(-1)!, 16)
-        : "Setup"}
+      · {label()}
       {warning() ? " !" : ""}
     </text>
   )
@@ -97,7 +100,7 @@ export function DialogIntelligence(props: { sessionID?: string }) {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text fg={theme.text}>
-          <b>System One / System Two</b>
+          <b>{local.intelligence.reasoning() === "single" ? "Single reasoning" : "Dual reasoning · S1 · S2"}</b>
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
           esc
@@ -105,9 +108,11 @@ export function DialogIntelligence(props: { sessionID?: string }) {
       </box>
       <text fg={local.intelligence.ready() ? theme.textMuted : theme.warning} wrapMode="word">
         {local.intelligence.state.error ||
-          (local.intelligence.ready()
-            ? "Configured. Connection health is reported by each evaluation."
-            : "Setup required before sending prompts.")}
+          (local.intelligence.reasoning() === "single"
+            ? `S2 only; completion gates keep their structural checks and report S1 as not verified.${local.intelligence.state.status?.effective.source === "flag" ? " Set for this run by --reasoning." : " Run /setup to enable dual reasoning (S1 + S2)."}`
+            : local.intelligence.ready()
+              ? "Configured. Connection health is reported by each evaluation."
+              : "Setup required before sending prompts.")}
       </text>
       <text fg={theme.text} wrapMode="word">
         S1 · evaluator: {settings()?.evaluator?.model ?? "Not configured"}

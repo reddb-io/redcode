@@ -29,24 +29,28 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
   const override = () =>
     current()?.provider.id !== settings()?.principal?.providerID || current()?.id !== settings()?.principal?.id
   const latest = () => state.evaluations[0]
+  const single = () => intelligence().state.loaded && intelligence().reasoning() === "single"
   const attention = () =>
     intelligence().state.failed ||
     !intelligence().ready() ||
-    state.failed ||
-    latest()?.decision === "unavailable" ||
-    latest()?.decision === "needs_revision" ||
-    latest()?.decision === "inconclusive"
+    (!single() &&
+      (state.failed ||
+        latest()?.decision === "unavailable" ||
+        latest()?.decision === "needs_revision" ||
+        latest()?.decision === "inconclusive"))
   const status = () =>
     language.t(
       !intelligence().state.loaded
         ? "intelligence.loading"
         : intelligence().state.failed
           ? "intelligence.connectionFailed"
-          : !intelligence().ready()
-            ? "intelligence.setupRequired"
-            : latest()
-              ? `settings.intelligence.decision.${latest()!.decision}`
-              : "intelligence.configured",
+          : single()
+            ? "intelligence.singleStatus"
+            : !intelligence().ready()
+              ? "intelligence.setupRequired"
+              : latest()
+                ? `settings.intelligence.decision.${latest()!.decision}`
+                : "intelligence.configured",
     )
   createEffect(() => {
     const id = sessionID()
@@ -83,14 +87,18 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
         class: "min-w-0 max-w-[100px] sm:max-w-[160px] h-7 text-12-regular text-text-weak",
         "data-action": "prompt-intelligence",
         "aria-label": language.t("intelligence.details"),
-        title: `${language.t("intelligence.systemOne")}: ${settings()?.evaluator?.model ?? status()}`,
+        title: single()
+          ? status()
+          : `${language.t("intelligence.systemOne")}: ${settings()?.evaluator?.model ?? status()}`,
       }}
       trigger={
         <>
-          <span classList={{ "text-icon-warning-base": attention() }}>S1</span>
-          <span class="truncate">
-            {intelligence().ready() ? settings()!.evaluator!.model.split("/").at(-1) : language.t("intelligence.setup")}
+          <span classList={{ "text-icon-warning-base": attention() }}>
+            {single() ? language.t("intelligence.mode.single") : "S1 · S2"}
           </span>
+          <Show when={!single() && !intelligence().ready()}>
+            <span class="truncate">{language.t("intelligence.setup")}</span>
+          </Show>
           <Show when={attention()}>
             <span aria-label={status()}>!</span>
           </Show>
@@ -105,11 +113,13 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
           {status()}
         </p>
         <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-          <dt class="text-text-weak">{language.t("intelligence.systemOne")}</dt>
-          <dd class="min-w-0 break-words">
-            {settings()?.evaluator?.model ?? language.t("intelligence.setupRequired")}
-            <div class="text-text-weak">{settings()?.evaluator?.transport}</div>
-          </dd>
+          <Show when={!single()}>
+            <dt class="text-text-weak">{language.t("intelligence.systemOne")}</dt>
+            <dd class="min-w-0 break-words">
+              {settings()?.evaluator?.model ?? language.t("intelligence.setupRequired")}
+              <div class="text-text-weak">{settings()?.evaluator?.transport}</div>
+            </dd>
+          </Show>
           <dt class="text-text-weak">{language.t("intelligence.systemTwo")}</dt>
           <dd class="min-w-0 break-words">
             {current() ? `${current()!.provider.name} / ${current()!.name}` : language.t("dialog.model.select.title")}
@@ -137,7 +147,7 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
             configure()
           }}
         >
-          {language.t("settings.intelligence.configure")}
+          {language.t(single() ? "intelligence.enableDual" : "settings.intelligence.configure")}
         </Button>
         <div class="border-t border-border-base pt-3">
           <h3 class="text-12-medium mb-2">{language.t("intelligence.sessionHistory")}</h3>

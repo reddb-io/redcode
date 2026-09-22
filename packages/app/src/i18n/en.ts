@@ -11,6 +11,10 @@ export const dict = {
   "intelligence.systemOne": "S1 · evaluator",
   "intelligence.systemTwo": "S2 · working model",
   "intelligence.setup": "Set up",
+  "intelligence.mode.single": "Single",
+  "intelligence.singleStatus":
+    "Single reasoning: S2 only. Completion checks keep their structural evidence and report S1 as not verified.",
+  "intelligence.enableDual": "Enable dual reasoning (S1 + S2)",
   "intelligence.setupRequired": "Configure S1 and S2 to continue",
   "intelligence.setupDescription":
     "Choose a System One evaluator and a System Two model before sending prompts. Your draft is preserved.",

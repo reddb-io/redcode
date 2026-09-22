@@ -77,13 +77,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const pending = { request: undefined as Promise<boolean> | undefined }
     const intelligence = {
       state: intelligenceState,
+      // Single reasoning (the unconfigured default) runs on the selected model and needs no setup.
+      // Older servers omit `effective`; an enabled evaluator there means dual.
+      reasoning: (): Intelligence.Reasoning => {
+        const status = intelligenceState.status
+        if (!status) return "single"
+        if (status.effective) return status.effective.reasoning
+        return status.settings.reasoning ?? (status.settings.enabled && status.settings.evaluator ? "dual" : "single")
+      },
       ready: () =>
-        Boolean(
-          intelligenceState.status?.settings.enabled &&
-            intelligenceState.status.settings.principal &&
-            intelligenceState.status.settings.evaluator &&
-            !intelligenceState.error,
-        ),
+        !intelligenceState.error &&
+        (intelligence.reasoning() === "single" ||
+          Boolean(
+            intelligenceState.status?.settings.enabled &&
+              intelligenceState.status.settings.principal &&
+              intelligenceState.status.settings.evaluator,
+          )),
       refresh() {
         return (pending.request ??= intelligenceAPI
           .get()

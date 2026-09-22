@@ -74,6 +74,11 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("reasoning", {
+    describe: "reasoning mode for this run",
+    type: "string",
+    choices: ["single", "dual"],
+  })
   .option("verbose", {
     describe: "trace the boot to stderr until the screen renders, then trace activity to the log",
     type: "boolean",
@@ -84,6 +89,8 @@ const cli = yargs(args)
     if (opts.pure) {
       process.env.REDCODE_PURE = "1"
     }
+    // Overrides the saved setting for this run; the TUI worker and server inherit the environment.
+    if (opts.reasoning) process.env.REDCODE_REASONING = opts.reasoning
     // Kept in the tracer, not in the environment: a nested redcode the bash tool spawns must not
     // inherit the flag. The file log's level follows it (see Logging.minimumLogLevel).
     if (opts.verbose) BootTrace.enable()

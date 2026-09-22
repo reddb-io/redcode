@@ -84,6 +84,7 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
         },
         environment: config.directory,
         evaluators: [],
+        effective: principal ? { reasoning: "dual", source: "config" } : { reasoning: "single", source: "default" },
       })
     }
     if (path === "/api/intelligence/evaluations") return json(route, [])

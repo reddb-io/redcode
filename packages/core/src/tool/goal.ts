@@ -62,7 +62,8 @@ const layer = Layer.effectDiscard(
               const goal = yield* goals.get(context.sessionID)
               if (!goal || goal.status !== "active")
                 return yield* new ToolFailure({ message: "No active goal to complete" })
-              yield* Intelligence.requireConfigured(yield* intelligence.read())
+              const settings = yield* intelligence.read()
+              yield* Intelligence.requireConfigured(settings)
               yield* completion.check(context.sessionID)
               const evidence = yield* Effect.forEach([...new Set(input.evidence)], (file) =>
                 SessionEvidence.read(file, context, permissions, location),
@@ -144,7 +145,8 @@ const layer = Layer.effectDiscard(
                   message: "Evidence changed during verification. Verify the current files again.",
                 })
               yield* Intelligence.requireConfigured(yield* intelligence.read())
-              const passed = review?.decision === "accepted"
+              // Single reasoning keeps the executed gates and evidence reads above and skips S1 by choice.
+              const passed = Intelligence.mode(settings) === "single" || review?.decision === "accepted"
               // Work admitted while the reviewer ran invalidates its completion verdict.
               yield* completion.check(context.sessionID)
               if (passed) return yield* completion.propose({ goal, context, evidence: current, checks })

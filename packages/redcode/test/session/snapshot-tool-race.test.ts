@@ -149,6 +149,7 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
         yield* intelligence.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { providerID: Provider.ID.make("test"), id: Model.ID.make("test-model") },
             evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },

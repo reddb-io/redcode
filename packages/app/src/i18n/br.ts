@@ -6,6 +6,10 @@ export const dict = {
   "intelligence.systemOne": "S1 · avaliador",
   "intelligence.systemTwo": "S2 · modelo em uso",
   "intelligence.setup": "Configurar",
+  "intelligence.mode.single": "Único",
+  "intelligence.singleStatus":
+    "Raciocínio único: apenas S2. As verificações de conclusão mantêm as evidências estruturais e informam S1 como não verificado.",
+  "intelligence.enableDual": "Ativar raciocínio duplo (S1 + S2)",
   "intelligence.setupRequired": "Configure S1 e S2 para continuar",
   "intelligence.setupDescription":
     "Escolha um avaliador System One e um modelo System Two antes de enviar prompts. Seu rascunho será preservado.",

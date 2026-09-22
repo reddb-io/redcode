@@ -12,15 +12,18 @@ export function createIntelligenceState(client: {
     failed: false,
   })
   const pending = { request: undefined as Promise<boolean> | undefined, revision: 0 }
+  // Single reasoning (the unconfigured default) runs on the selected model and needs no setup.
+  // Older servers omit `effective`; derive it from the settings they return.
+  const reasoning = (): Intelligence.Reasoning =>
+    state.status ? (state.status.effective ?? effective(state.status.settings, undefined)).reasoning : "single"
   const ready = () =>
-    Boolean(
-      !state.failed &&
-        state.status?.settings.enabled &&
-        state.status.settings.principal &&
-        state.status.settings.evaluator,
-    )
+    !state.failed &&
+    state.status !== undefined &&
+    (reasoning() === "single" ||
+      Boolean(state.status?.settings.enabled && state.status.settings.principal && state.status.settings.evaluator))
   return {
     state,
+    reasoning,
     ready,
     async history(input: { sessionID: string; limit: number }) {
       const history = await client.history(input)
@@ -30,7 +33,12 @@ export function createIntelligenceState(client: {
     accept(settings: Intelligence.Settings) {
       pending.revision++
       set({
-        status: { environment: state.status?.environment ?? "", evaluators: state.status?.evaluators ?? [], settings },
+        status: {
+          environment: state.status?.environment ?? "",
+          evaluators: state.status?.evaluators ?? [],
+          settings,
+          effective: effective(settings, state.status?.effective),
+        },
         loaded: true,
         failed: false,
       })
@@ -55,4 +63,15 @@ export function createIntelligenceState(client: {
         }))
     },
   }
+}
+
+/** Mirrors the server's resolution after a local save; a run-level flag keeps precedence. */
+export function effective(
+  settings: Intelligence.Settings,
+  previous: Intelligence.Status["effective"] | undefined,
+): Intelligence.Status["effective"] {
+  if (previous?.source === "flag") return previous
+  if (settings.reasoning) return { reasoning: settings.reasoning, source: "config" }
+  if (settings.enabled && settings.evaluator) return { reasoning: "dual", source: "config" }
+  return { reasoning: "single", source: "default" }
 }

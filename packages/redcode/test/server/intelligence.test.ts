@@ -35,8 +35,9 @@ test("global intelligence setup is available through the CLI server composition"
     try {
       const saved = await request("PUT", { settings: { enabled: false, onboarding: "deferred" } })
       expect(saved.status).toBe(200)
-      const after = await request("GET")
-      expect((await after.json()).settings).toEqual({ enabled: false, onboarding: "deferred" })
+      const after = await (await request("GET")).json()
+      expect(after.settings).toEqual({ enabled: false, onboarding: "deferred" })
+      expect(after.effective).toEqual({ reasoning: "single", source: "default" })
       const invalid = await request("PUT", { settings: { enabled: true, onboarding: "completed" } })
       expect(invalid.status).toBe(400)
     } finally {

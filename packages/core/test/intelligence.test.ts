@@ -270,13 +270,44 @@ test("classification rejects unknown labels, broken distributions and out-of-ran
   ).toThrow("domain")
 })
 
-test("execution requires both roles while bounded evidence makes omissions explicit", async () => {
+test("single reasoning needs no setup while dual execution requires both roles", async () => {
+  expect(Intelligence.reasoning(Intelligence.defaults)).toEqual({ reasoning: "single", source: "default" })
   expect(
     await Effect.runPromise(Intelligence.requireConfigured(Intelligence.defaults).pipe(Effect.result)),
+  ).toMatchObject({ _tag: "Success" })
+  expect(
+    await Effect.runPromise(
+      Intelligence.requireConfigured({ ...Intelligence.defaults, reasoning: "dual" }).pipe(Effect.result),
+    ),
   ).toMatchObject({ _tag: "Failure" })
+  const legacy = {
+    enabled: true,
+    onboarding: "completed" as const,
+    principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
+    evaluator: Intelligence.evaluatorPreset("typesafe"),
+  }
+  expect(Intelligence.reasoning(legacy)).toEqual({ reasoning: "dual", source: "config" })
+  expect(Intelligence.reasoning({ ...legacy, reasoning: "single" })).toEqual({ reasoning: "single", source: "config" })
+  process.env.REDCODE_REASONING = "dual"
+  const flagged = Intelligence.reasoning(Intelligence.defaults)
+  const blocked = await Effect.runPromise(Intelligence.requireConfigured(Intelligence.defaults).pipe(Effect.flip))
+  process.env.REDCODE_REASONING = "single"
+  const overridden = Intelligence.reasoning(legacy)
+  delete process.env.REDCODE_REASONING
+  expect(flagged).toEqual({ reasoning: "dual", source: "flag" })
+  expect(blocked.message).toContain("/setup")
+  expect(overridden).toEqual({ reasoning: "single", source: "flag" })
+  // Dual keeps the strict contract; single passes only because the user chose to skip S1.
+  expect(await Effect.runPromise(Intelligence.requireReview(legacy, undefined).pipe(Effect.result))).toMatchObject({
+    _tag: "Failure",
+  })
+  expect(
+    await Effect.runPromise(Intelligence.requireReview(Intelligence.defaults, undefined).pipe(Effect.result)),
+  ).toMatchObject({ _tag: "Success" })
   expect(
     Intelligence.isReady({
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
     }),
@@ -388,6 +419,11 @@ test("global setup survives reload, leaves credentials out of public settings, a
       const result = yield* service.save({ settings: { enabled: true, onboarding: "completed" } }).pipe(Effect.result)
       expect(result._tag).toBe("Failure")
       expect((yield* service.read()).enabled).toBe(false)
+      const single = yield* service.save({ settings: { enabled: true, reasoning: "single", onboarding: "completed" } })
+      expect(single.reasoning).toBe("single")
+      expect(
+        yield* service.evaluate({ sessionID: "session", operation: "todos", sources: "source", questions }),
+      ).toBeUndefined()
     }),
   )
 })
@@ -422,6 +458,7 @@ test("native HTTP evaluation preserves real candidates, omits absent ones, and f
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
             evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-1.13.0" },
@@ -509,6 +546,7 @@ test("database history preserves typed answers independently of compressed artif
       yield* service.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
           evaluator: { transport: "typesafe", baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" },
@@ -545,6 +583,7 @@ test("disabled mode makes no provider calls; oversized sources cannot be silentl
       yield* service.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
           evaluator: { transport: "typesafe", baseURL: "https://invalid.example/v1", model: "jev-1.13.0" },
@@ -590,6 +629,7 @@ test("SQLite persists candidate-free classifications and retries unavailable eva
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
             evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-test" },
@@ -653,6 +693,7 @@ test("identical evaluations are reused while a changed source forces a new reque
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
             evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-1.13.0" },
@@ -695,6 +736,7 @@ test("large checkpoints inspect every source batch and retain a rejection from a
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
             evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-1.13.0" },
@@ -737,6 +779,7 @@ test("temporary overload retries once and missing catalog supports manual select
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
             evaluator,
@@ -1120,6 +1163,7 @@ test("Zen discovery excludes chat models and never falls back from free to paid 
         yield* service.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             evaluator,
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },

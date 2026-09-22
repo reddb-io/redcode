@@ -16,6 +16,7 @@ import { makeGlobalNode } from "./effect/app-node"
 import { ModelsDev } from "./models-dev"
 import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence.sql"
 import { SessionSchema } from "./session/schema"
+import { Flag } from "./flag/flag"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 export const POLICY = "semantic-v3-experimental"
@@ -127,7 +128,27 @@ export const fingerprint = (value: unknown) =>
 export const evaluationFingerprint = (input: EvaluationInput, settings: Pick<Intelligence.Settings, "evaluator">) =>
   fingerprint({ ...input, evaluator: settings.evaluator, policy: POLICY })
 
+/**
+ * Effective reasoning mode: the `--reasoning` flag (REDCODE_REASONING) wins for the run, then the
+ * saved choice. Settings saved before the choice existed stay dual when S1 was enabled; everything
+ * else, including an unconfigured install, runs single reasoning on the session's model.
+ */
+export function reasoning(settings: Intelligence.Settings): Intelligence.Status["effective"] {
+  const flag = Flag.REDCODE_REASONING
+  if (flag) return { reasoning: flag, source: "flag" }
+  if (settings.reasoning) return { reasoning: settings.reasoning, source: "config" as const }
+  if (settings.enabled && settings.evaluator) return { reasoning: "dual" as const, source: "config" as const }
+  return { reasoning: "single" as const, source: "default" as const }
+}
+
+export const mode = (settings: Intelligence.Settings) => reasoning(settings).reasoning
+
+/** Reported by gates that kept their structural checks but skipped S1 by explicit user choice. */
+export const UNVERIFIED = "not verified (single reasoning)"
+
+/** Single reasoning needs no setup: S2 falls back to the session's selected model. */
 export const isReady = (settings: Intelligence.Settings) =>
+  mode(settings) === "single" ||
   Boolean(
     settings.enabled &&
       settings.principal?.id &&
@@ -141,7 +162,8 @@ export const requireConfigured = (settings: Intelligence.Settings): Effect.Effec
     ? Effect.void
     : Effect.fail(
         new Error({
-          message: "Configure and test S1 (System One) and S2 (System Two) in /setup before starting work.",
+          message:
+            "Configure and test S1 (System One) and S2 (System Two) in /setup before starting work, or run with --reasoning single.",
         }),
       )
 
@@ -358,8 +380,8 @@ export const make = (
       const settings = yield* Schema.decodeUnknownEffect(Intelligence.Settings)(input.settings).pipe(
         Effect.mapError(() => new Error({ message: "Invalid intelligence settings" })),
       )
-      if (settings.enabled && (!settings.principal || !settings.evaluator))
-        return yield* new Error({ message: "Select a principal and evaluator before enabling intelligence" })
+      if (settings.enabled && settings.reasoning !== "single" && (!settings.principal || !settings.evaluator))
+        return yield* new Error({ message: "Select a principal and evaluator before enabling dual reasoning" })
       if (settings.evaluator && !validURL(settings.evaluator.baseURL))
         return yield* new Error({ message: "Use an HTTP(S) base URL without credentials, query or fragment" })
       if (settings.principal && (!settings.principal.id.trim() || !settings.principal.providerID.trim()))
@@ -534,7 +556,7 @@ export const make = (
     })
     const evaluate = Effect.fn("Intelligence.evaluate")(function* (input: EvaluationInput) {
       const settings = yield* read()
-      if (!settings.enabled) return undefined
+      if (!settings.enabled || mode(settings) === "single") return undefined
       const hash = evaluationFingerprint(input, settings)
       const cached = cache.get(hash)
       if (cached) {
@@ -954,6 +976,16 @@ export const requireAccepted = (record: Intelligence.Evaluation | undefined): Ef
             : "Semantic evaluation unavailable. Previous state preserved. Configure S1 and S2 in /setup and retry before relying on this decision.",
         }),
       )
+
+/**
+ * Mode-aware gate verdict. Dual keeps the strict contract: unavailable or inconclusive S1 never
+ * approves. Single passes because the user chose to run without S1; callers keep their structural
+ * and executed checks and report the result as {@link UNVERIFIED}.
+ */
+export const requireReview = (
+  settings: Intelligence.Settings,
+  record: Intelligence.Evaluation | undefined,
+): Effect.Effect<void, Error> => (mode(settings) === "single" ? Effect.void : requireAccepted(record))
 
 const promptQuestionDefinitions: Record<string, Intelligence.Question> = {
   work_route: {

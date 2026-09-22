@@ -96,6 +96,7 @@ const setup = Effect.gen(function* () {
   yield* intelligence.save({
     settings: {
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: Provider.ID.make("test"), id: Model.ID.make("test-model") },
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },

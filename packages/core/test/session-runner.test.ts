@@ -287,6 +287,7 @@ const intelligence = Layer.succeed(
     read: () =>
       Effect.succeed({
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: ProviderV2.ID.make("fake"), id: ModelV2.ID.make("fake-model") },
         evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: intelligenceModel },

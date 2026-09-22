@@ -281,7 +281,14 @@ const layer = Layer.effect(
         )
       const verdict = SessionGoal.parseVerdict(text)
       if (!verdict || verdict.verdict !== "done") return verdict
-      yield* Intelligence.requireConfigured(yield* intelligence.read())
+      const settings = yield* intelligence.read()
+      yield* Intelligence.requireConfigured(settings)
+      // Gates already ran before the judge; single reasoning skips only the S1 review.
+      if (Intelligence.mode(settings) === "single")
+        return {
+          ...verdict,
+          reason: [verdict.reason, `S1 review ${Intelligence.UNVERIFIED}`].filter(Boolean).join("; "),
+        }
       const evaluation = yield* intelligence.evaluate({
         sessionID: input.session.id,
         operation: "goal_completion",

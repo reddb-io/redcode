@@ -9,6 +9,7 @@ export const configuredIntelligence = Layer.mock(Intelligence.Service, {
   read: () =>
     Effect.succeed({
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: ProviderV2.ID.make("fixture"), id: ModelV2.ID.make("fixture") },
       evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },

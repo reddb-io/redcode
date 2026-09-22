@@ -171,6 +171,7 @@ const configuredReview = async () => {
     await api("/api/intelligence", "PUT", {
       settings: {
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: "review-fixture", id: "review" },
         evaluator: { transport: "typesafe", model: "jev-review", baseURL: `${model.url.origin}/v1` },
@@ -2642,7 +2643,7 @@ test("a revision picked while a refresh is in flight stays on screen", async () 
 test("feedback without setup preserves the original notes and refuses agent completion", async () => {
   const previous = await api<Intelligence.Status>("/api/intelligence")
   try {
-    await api("/api/intelligence", "PUT", { settings: { enabled: false, onboarding: "pending" } })
+    await api("/api/intelligence", "PUT", { settings: { enabled: false, reasoning: "dual", onboarding: "pending" } })
     const current = await published("html")
     const feedback: Design.Feedback = {
       id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],

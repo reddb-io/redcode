@@ -147,6 +147,7 @@ const intelligence = Layer.effect(
     yield* service.save({
       settings: {
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
         evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },
@@ -677,6 +678,32 @@ it.instance("persists classifications for every promoted legacy prompt using rea
         .toSorted(),
     ).toEqual([first.info.id, second.info.id].toSorted())
     expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(true)
+  }),
+)
+
+it.instance("unconfigured single reasoning admits and answers a prompt without System One", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const settings = yield* service.read()
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* service.save({ settings: Intelligence.defaults })
+    yield* Effect.gen(function* () {
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        noReply: true,
+        parts: [{ type: "text", text: "Answer without any setup" }],
+      })
+      yield* llm.text("Answered by the selected model.")
+      const result = yield* prompt.loop({ sessionID: chat.id })
+      expect(result.parts).toContainEqual(
+        expect.objectContaining({ type: "text", text: "Answered by the selected model." }),
+      )
+      expect(yield* llm.calls).toBe(1)
+      expect(yield* service.history(chat.id)).toEqual([])
+    }).pipe(Effect.ensuring(service.save({ settings }).pipe(Effect.orDie)))
   }),
 )
 

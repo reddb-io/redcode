@@ -59,6 +59,7 @@ const setup = Effect.gen(function* () {
   yield* intelligence.save({
     settings: {
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
@@ -411,6 +412,50 @@ describe("SessionTodo", () => {
   )
 })
 
+it.live(
+  "single reasoning completes tasks through structural checks while dual never treats unavailable S1 as approval",
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* setup
+      const todos = yield* SessionTodo.Service
+      const intelligence = yield* Intelligence.Service
+      const settings = yield* intelligence.read()
+      const calls = { count: 0 }
+      fixture.server.reload({
+        fetch: () => {
+          calls.count++
+          return new Response("unavailable", { status: 503 })
+        },
+      })
+      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      const created = yield* todos.update({
+        sessionID,
+        todos: [{ content: "Ship the fix", criterion: "The fix is merged", priority: "high" }],
+      })
+      const done = yield* todos.update({
+        sessionID,
+        todos: [{ id: created[0].id, revision: created[0].revision, status: "completed" }],
+      })
+      expect(done[0]).toMatchObject({ id: created[0].id, status: "completed" })
+      // Structural checks still apply in single reasoning.
+      expect(
+        (yield* todos
+          .update({ sessionID, todos: [{ id: created[0].id, revision: 999, status: "in_progress" }] })
+          .pipe(Effect.result))._tag,
+      ).toBe("Failure")
+      expect(calls.count).toBe(0)
+      yield* intelligence.save({ settings })
+      const refused = yield* todos
+        .update({
+          sessionID,
+          todos: [{ content: "Verify the release", criterion: "Release verified", priority: "high" }],
+        })
+        .pipe(Effect.flip)
+      expect(refused.message).toContain("unavailable")
+      expect(calls.count).toBeGreaterThan(0)
+    }),
+)
+
 it.live("disabled intelligence and a configuration change during evaluation preserve task revisions", () =>
   Effect.gen(function* () {
     const fixture = yield* setup
@@ -502,6 +547,7 @@ it.live("semantic rejection preserves the stored task revision", () =>
       yield* intelligence.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("test") },
           evaluator: { transport: "red-router", baseURL: `${server.url}v1`, model: "jev-1.13.0" },

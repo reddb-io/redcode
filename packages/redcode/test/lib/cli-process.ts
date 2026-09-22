@@ -250,6 +250,7 @@ export function withCliFixture<A, E>(
         path.join(directory, "intelligence.json"),
         Schema.decodeUnknownSync(Intelligence.Settings)({
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { providerID: "test", id: "test-model" },
           evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },

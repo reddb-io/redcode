@@ -51,6 +51,7 @@ for (const width of [1280, 390]) {
           },
           environment: "/test",
           evaluators: [],
+          effective: { reasoning: "dual", source: "config" },
         },
       })
     })
