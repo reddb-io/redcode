@@ -135,6 +135,7 @@ test("disabling S1 while evaluation is in flight cannot publish an accepted tran
         yield* intelligence.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("principal"), providerID: Provider.ID.make("fixture") },
             evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },

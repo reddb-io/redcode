@@ -385,6 +385,7 @@ export function run<A>(input: {
         yield* intelligence.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { providerID: Provider.ID.make("scripted"), id: Model.ID.make("replay") },
             evaluator: { transport: "typesafe", model: "scripted-evaluator", baseURL: provider.url },

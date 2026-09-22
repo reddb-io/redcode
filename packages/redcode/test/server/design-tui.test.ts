@@ -81,6 +81,7 @@ test("TUI session creates, reviews and approves the new Design artifacts in the 
     const configured = await request("/api/intelligence", "PUT", {
       settings: {
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: "fixture", id: "fixture" },
         evaluator: { transport: "typesafe", model: "jev-test", baseURL: model.url.origin + "/v1" },
@@ -485,6 +486,7 @@ test("legacy feed reports a variant operation pending while an earlier turn work
     const configured = await request("/api/intelligence", "PUT", {
       settings: {
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: "fixture", id: "fixture" },
         evaluator: { transport: "typesafe", model: "jev-test", baseURL: model.url.origin + "/v1" },

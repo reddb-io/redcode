@@ -369,7 +369,7 @@ const resolver = testEffect(
   ]),
 )
 
-resolver.effect("requires both roles in the real resolver and honors System Two with explicit overrides", () =>
+resolver.effect("dual requires both roles, single resolves the session model, and System Two honors overrides", () =>
   Effect.gen(function* () {
     const intelligence = yield* Intelligence.Service
     const previous = yield* intelligence.read()
@@ -387,11 +387,11 @@ resolver.effect("requires both roles in the real resolver and honors System Two 
       location: { directory: AbsolutePath.make("/project") },
     })
     yield* Effect.gen(function* () {
-      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      yield* intelligence.save({ settings: { enabled: false, reasoning: "dual", onboarding: "pending" } })
       expect(yield* models.resolve({ ...session, model: override }).pipe(Effect.flip)).toMatchObject({
         _tag: "IntelligenceError",
       })
-      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending", principal } })
+      yield* intelligence.save({ settings: { enabled: false, reasoning: "dual", onboarding: "pending", principal } })
       expect(yield* models.resolve({ ...session, model: override }).pipe(Effect.flip)).toMatchObject({
         _tag: "IntelligenceError",
       })
@@ -417,9 +417,14 @@ resolver.effect("requires both roles in the real resolver and honors System Two 
         )
         editor.model.default.set(override.providerID, override.id)
       })
+      // Unconfigured redcode runs single reasoning on the session's selected model.
+      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      expect((yield* models.resolve({ ...session, model: override })).id).toBe(ModelID.make("api-explicit"))
+      expect((yield* models.resolve(session)).id).toBe(ModelID.make("api-explicit"))
       yield* intelligence.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal,
           evaluator: { transport: "typesafe", baseURL: "https://resolver.test/v1", model: "jev-test" },

@@ -291,6 +291,7 @@ function configureIntelligence(url: string) {
     yield* intelligence.save({
       settings: {
         enabled: true,
+        reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
         evaluator: { transport: "typesafe", model: "jev-test", baseURL: url },

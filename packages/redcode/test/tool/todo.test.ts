@@ -74,6 +74,7 @@ const seed = Effect.fn("TodoToolTest.seed")(function* () {
   yield* intelligence.save({
     settings: {
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },

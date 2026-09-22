@@ -49,6 +49,7 @@ const it = testEffect(
       yield* intelligence.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { providerID: ProviderV2.ID.make("fixture"), id: ModelV2.ID.make("fixture") },
           evaluator: { transport: "typesafe", model: "jev-test", baseURL: llm.url },

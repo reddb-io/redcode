@@ -478,7 +478,7 @@ describe("Design revisions and review", () => {
       yield* Effect.acquireRelease(intelligence.read(), (settings) =>
         intelligence.save({ settings }).pipe(Effect.orDie),
       )
-      yield* intelligence.save({ settings: { enabled: false, onboarding: "pending" } })
+      yield* intelligence.save({ settings: { enabled: false, reasoning: "dual", onboarding: "pending" } })
       const revision = yield* store.publish(document.id, "Review")
       const feedback: Design.Feedback = {
         id: SessionMessage.ID.create(),
@@ -664,6 +664,7 @@ describe("Design revisions and review", () => {
         yield* intelligence.save({
           settings: {
             enabled: true,
+            reasoning: "dual",
             onboarding: "completed",
             principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("fixture") },
             evaluator: { transport: "typesafe", model: "jev", baseURL: `${evaluator.url}v1` },

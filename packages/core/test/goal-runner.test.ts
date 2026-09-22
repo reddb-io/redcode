@@ -59,6 +59,7 @@ const it = testEffect(
           read: () =>
             Effect.succeed({
               enabled: true,
+              reasoning: "dual",
               onboarding: "completed",
               principal: { providerID: Provider.ID.make("fixture"), id: ModelV2.ID.make("fixture") },
               evaluator: { transport: "typesafe", baseURL: "http://localhost/v1", model: "jev" },

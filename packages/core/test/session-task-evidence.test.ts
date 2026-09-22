@@ -73,6 +73,7 @@ const setup = Effect.gen(function* () {
   yield* intelligence.save({
     settings: {
       enabled: true,
+      reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: Provider.ID.make("fixture"), id: Model.ID.make("principal") },
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
@@ -225,6 +226,7 @@ it.live("semantic completion selects the cited proof without resending unrelated
       yield* intelligence.save({
         settings: {
           enabled: true,
+          reasoning: "dual",
           onboarding: "completed",
           principal: { id: Model.ID.make("main"), providerID: Provider.ID.make("fixture") },
           evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },

@@ -44,6 +44,7 @@ const questions: QuestionV2.AskInput[] = []
 const assertions: string[] = []
 let review = "PASS\nVerified"
 let configured = true
+let reasoning: "single" | "dual" = "dual"
 let duringReview = Effect.void
 let duringApproval = Effect.void
 let duringTasks = Effect.void
@@ -118,13 +119,16 @@ const it = testEffect(
           read: () =>
             Effect.sync(() => ({
               enabled: configured,
+              reasoning,
               onboarding: "completed",
               principal: { providerID: Provider.ID.make("fixture"), id: ModelV2.ID.make("principal") },
               evaluator: { transport: "typesafe", baseURL: "http://localhost/v1", model: "jev" },
             })),
           history: () => Effect.succeed([]),
+          // Mirrors the real service: single reasoning never produces an S1 record.
           evaluate: (input) =>
             Effect.gen(function* () {
+              if (reasoning === "single") return undefined
               if (input.operation === "goal_completion" || input.operation === "plan") {
                 requests.push(input)
                 yield* duringReview
@@ -167,6 +171,7 @@ const planTasks = [
 
 const setup = Effect.gen(function* () {
   configured = true
+  reasoning = "dual"
   requests.length = 0
   questions.length = 0
   assertions.length = 0
@@ -289,6 +294,35 @@ it.live("disabling S1 during plan evaluation or approval cannot authorize Build"
     expect((yield* plans.list(test.sessionID)).every((plan) => plan.status === "ready")).toBe(true)
     const todos = yield* SessionTodo.Service
     expect(yield* todos.get(test.sessionID)).toEqual([])
+  }),
+)
+
+it.live("single reasoning completes goals and plans through gates and structural checks, reported as unverified", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    reasoning = "single"
+    const goals = yield* SessionGoal.Service
+    const plans = yield* SessionPlan.Service
+    const completion = yield* SessionGoalCompletion.Service
+    yield* goals.start(test.sessionID, { objective: "Run the check", gates: ["exit 7"] })
+    expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Done" })).type).toBe("error")
+    expect((yield* goals.get(test.sessionID))?.status).toBe("active")
+    const goal = yield* goals.get(test.sessionID)
+    yield* goals.save(goal!, { ...goal!, gates: ["test -s plan.md"] })
+    expect((yield* test.run("goal_complete", { evidence: [test.file], explanation: "Plan is ready" })).type).not.toBe(
+      "error",
+    )
+    const done = yield* completion.settle(test.sessionID)
+    expect(done?.status).toBe("done")
+    expect(done?.reason).toContain(Intelligence.UNVERIFIED)
+    expect(done?.checks[0]).toMatchObject({ command: "test -s plan.md", exitCode: 0 })
+    expect(
+      (yield* test.run("plan_exit", { path: test.file, tasks: [{ ...planTasks[0], quote: "Nowhere" }] })).type,
+    ).toBe("error")
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    expect(questions.at(-1)?.questions[0].question).toContain(Intelligence.UNVERIFIED)
+    expect((yield* plans.list(test.sessionID)).some((plan) => plan.status === "approved")).toBe(true)
+    expect(requests).toHaveLength(0)
   }),
 )
 
