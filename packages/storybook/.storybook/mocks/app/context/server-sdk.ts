@@ -1,3 +1,4 @@
+import type { ParentProps } from "solid-js"
 const providers = [
   "opencode",
   "opencode-go",
@@ -44,4 +45,9 @@ const client = {
 
 export function useServerSDK() {
   return () => ({ client })
+}
+
+// Stories render real settings components that wrap their content in this provider.
+export function ServerSDKProvider(props: ParentProps) {
+  return props.children
 }
