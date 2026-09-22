@@ -15,6 +15,7 @@ for (const scenario of [
   "uncertain",
   "unavailable",
   "disabled",
+  "single",
 ] as const) {
   test(`transformation ${scenario} obeys bounded repair and fail-closed decisions`, async () => {
     await using dir = await tmpdir()
@@ -53,6 +54,7 @@ for (const scenario of [
           yield* intelligence.save({
             settings: {
               enabled: scenario !== "disabled",
+              reasoning: scenario === "single" ? "single" : "dual",
               onboarding: "completed",
               principal: { id: Model.ID.make("principal"), providerID: Provider.ID.make("fixture") },
               evaluator: { transport: "typesafe", model: "jev-1.13.0", baseURL: `${server.url}v1` },
@@ -76,12 +78,19 @@ for (const scenario of [
           expect(generated).toEqual(
             scenario === "disabled"
               ? []
-              : scenario === "accepted" || scenario === "unavailable" || scenario === "provider-failure"
+              : scenario === "accepted" ||
+                  scenario === "unavailable" ||
+                  scenario === "provider-failure" ||
+                  scenario === "single"
                 ? [false]
                 : [false, true],
           )
           expect(evaluated.length).toBe(
-            scenario === "provider-failure" ? 0 : scenario === "invalid-json" ? 1 : generated.length,
+            scenario === "provider-failure" || scenario === "single"
+              ? 0
+              : scenario === "invalid-json"
+                ? 1
+                : generated.length,
           )
           if (
             scenario === "uncertain" ||
