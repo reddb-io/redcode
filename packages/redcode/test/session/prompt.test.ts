@@ -117,7 +117,9 @@ const intelligence = Layer.effect(
             usage: { input_tokens: 1, output_tokens: 1 },
             answers: Object.fromEntries(
               Object.entries(body.questions).map(([id, question]) => {
-                if (question.type === "noul") return [id, { type: "noul", noul: 0 }]
+                // Most of this legacy suite asserts provider-limit compaction timing. Keep the
+                // semantic early-boundary recommendation off unless a focused test opts into it.
+                if (question.type === "noul") return [id, { type: "noul", noul: id === "unsafe" ? 1 : 0 }]
                 if (question.type === "score")
                   return [
                     id,
@@ -8247,7 +8249,12 @@ for (const failure of ["stall", "server error"] as const) {
         for (const index of [0, 1, 2, 3, 4, 5])
           yield* seedTurn(chat.id, { user: `part ${index}`, answer: words(1_500, `fold${index}`) })
         if (failure === "stall") yield* llm.hang
-        else yield* llm.error(500, { error: { message: "upstream exploded" } })
+        else
+          yield* Effect.forEach(
+            Array.from({ length: 6 }),
+            () => llm.error(500, { error: { message: "upstream exploded" } }),
+            { discard: true },
+          )
         const all = yield* compactNow(chat.id)
 
         const [summary] = summaries(all)

@@ -198,7 +198,7 @@ export const PlanExitTool = Tool.define(
                         Intelligence.fingerprint((yield* facts.load(ctx.sessionID)).requests) &&
                       !(yield* SessionInput.hasPending(database.db, ctx.sessionID, "steer"))
                     )
-                  }),
+                  }).pipe(Effect.mapError((error) => new SessionPlan.Error({ message: error.message }))),
                 )
                 .pipe(
                   Effect.asVoid,

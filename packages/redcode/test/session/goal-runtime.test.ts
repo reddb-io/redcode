@@ -1,5 +1,6 @@
 import { expect } from "bun:test"
 import { Effect, Fiber } from "effect"
+import path from "node:path"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -36,6 +37,7 @@ const it = testEffect(
 const setup = Effect.gen(function* () {
   const intelligence = yield* Intelligence.Service
   const previous = yield* intelligence.read()
+  const instance = yield* TestInstance
   const entered = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
   const server = yield* Effect.acquireRelease(
@@ -43,6 +45,31 @@ const setup = Effect.gen(function* () {
       Bun.serve({
         port: 0,
         fetch: async (request) => {
+          if (new URL(request.url).pathname === "/v1/chat/completions") {
+            const text = JSON.stringify({ verdict: "done", reason: "the saved artifact was verified" })
+            return new Response(
+              [
+                {
+                  id: "goal-judge",
+                  object: "chat.completion.chunk",
+                  created: 1,
+                  model: "principal",
+                  choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }],
+                },
+                {
+                  id: "goal-judge",
+                  object: "chat.completion.chunk",
+                  created: 1,
+                  model: "principal",
+                  choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                  usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+                },
+              ]
+                .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                .join("") + "data: [DONE]\n\n",
+              { headers: { "content-type": "text/event-stream" } },
+            )
+          }
           const body = await request.json()
           entered.resolve()
           await release.promise
@@ -73,9 +100,22 @@ const setup = Effect.gen(function* () {
       evaluator: { transport: "typesafe", model: "jev", baseURL: `${server.url}v1` },
     },
   })
+  yield* Effect.promise(() =>
+    Bun.write(
+      path.join(instance.directory, "redcode.json"),
+      JSON.stringify({
+        providers: {
+          fixture: {
+            api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: `${server.url}v1` },
+            request: { body: { apiKey: "fixture" } },
+            models: { principal: { name: "Principal fixture", limit: { context: 100000, output: 4096 } } },
+          },
+        },
+      }),
+    ),
+  )
   const sessions = yield* Session.Service
   const goals = yield* GoalRuntime.Service
-  const instance = yield* TestInstance
   const chat = yield* sessions.create({ title: "Goal review concurrency" })
   yield* goals.set(chat.id, SessionGoal.parse("Verify the saved artifact"))
   const user = yield* sessions.updateMessage({

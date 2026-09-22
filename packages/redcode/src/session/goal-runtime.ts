@@ -1,10 +1,16 @@
-import { Context, Effect, Layer } from "effect"
+import { Context, Duration, Effect, Layer } from "effect"
+import { Stream } from "effect"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { Shell } from "@reddb-io/redcode-core/shell"
+import { LLMEvent } from "@reddb-io/redcode-llm"
+import { Agent } from "@/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
+import { Provider } from "@/provider/provider"
+import { LLM } from "./llm"
+import { AuxDeadline } from "./aux-deadline"
 import { SessionGoal } from "./goal"
 import { SessionGuardLog } from "./guard-log"
 import type { SessionID } from "./schema"
@@ -73,6 +79,9 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    const agents = yield* Agent.Service
+    const provider = yield* Provider.Service
+    const llm = yield* LLM.Service
     const database = yield* Database.Service
     const intelligence = yield* Intelligence.Service
     const config = yield* Config.Service
@@ -193,7 +202,7 @@ const layer = Layer.effect(
       return out
     })
 
-    /** Verify an explicit completion claim against observed evidence using typed S1 questions. */
+    /** S2 proposes the bounded goal decision; S1 must separately approve a proposed completion. */
     const judge = Effect.fn("GoalRuntime.judge")(function* (input: {
       session: Session.Info
       goal: SessionGoal.Goal
@@ -202,11 +211,76 @@ const layer = Layer.effect(
       background: readonly string[]
       evidence: string
     }) {
-      if (!input.goal.claimed)
-        return {
-          verdict: "continue" as const,
-          reason: "The agent has not proposed completion. Continue within the goal's scope.",
-        }
+      const ag = yield* agents.get("goal_judge")
+      if (!ag) return undefined
+      const mdl = ag.model
+        ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
+        : ((yield* provider.getSmallModel(input.lastUser.model.providerID)) ??
+          (yield* provider.getModel(input.lastUser.model.providerID, input.lastUser.model.modelID)))
+      const cfg = yield* config.get()
+      const ms = AuxDeadline.deadlineMs("judge", cfg.experimental?.goal?.judge_timeout)
+      const content = [
+        "<goal>",
+        `Objective: ${input.goal.objective}`,
+        ...(input.goal.contract.outcome ? [`Outcome: ${input.goal.contract.outcome}`] : []),
+        ...(input.goal.contract.verification ? [`Verification: ${input.goal.contract.verification}`] : []),
+        ...(input.goal.contract.constraints ? [`Constraints: ${input.goal.contract.constraints}`] : []),
+        ...(input.goal.contract.boundaries ? [`Boundaries: ${input.goal.contract.boundaries}`] : []),
+        ...(input.goal.contract.stop_when ? [`Stop when: ${input.goal.contract.stop_when}`] : []),
+        ...(input.goal.gates.length ? [`Gates (all passed this turn): ${input.goal.gates.join(" && ")}`] : []),
+        `Turn ${input.goal.turns.used + 1} of ${input.goal.turns.max}.`,
+        "</goal>",
+        "",
+        input.goal.claimed
+          ? `<claim>\nThe agent called goal_complete with this evidence:\n${input.goal.claimed.evidence}\n</claim>`
+          : "<claim>The agent did not claim completion this turn.</claim>",
+        "",
+        `<observed-evidence>\n${input.evidence || "No executed checks or completed tools."}\n</observed-evidence>`,
+        `<last-turn>\n${input.answer || "(the agent produced no text this turn)"}\n</last-turn>`,
+        "",
+        input.background.length
+          ? `<background>Work still running for this session: ${input.background.join("; ")}</background>`
+          : "<background>No background work is running.</background>",
+        "",
+        'Reply with one JSON object: {"verdict": "done|continue|blocked|wait", "reason": "..."}',
+      ].join("\n")
+      const text = yield* llm
+        .stream({
+          agent: ag,
+          user: input.lastUser,
+          system: [],
+          small: true,
+          tools: {},
+          model: mdl,
+          sessionID: input.session.id,
+          retries: 2,
+          messages: [{ role: "user", content }],
+        })
+        .pipe(
+          Stream.filter(LLMEvent.is.textDelta),
+          Stream.map((event) => event.text),
+          Stream.mkString,
+          Effect.catchCause((cause) =>
+            Effect.logWarning("goal judge failed", { "session.id": input.session.id, cause }).pipe(Effect.as("")),
+          ),
+          ms === undefined
+            ? (self) => self
+            : Effect.timeoutOrElse({
+                duration: Duration.millis(ms),
+                orElse: () =>
+                  guards
+                    .record({
+                      sessionID: input.session.id,
+                      guard: "goal",
+                      action: "warn",
+                      subject: "judge",
+                      detail: AuxDeadline.message("judge", ms),
+                    })
+                    .pipe(Effect.as("")),
+              }),
+        )
+      const verdict = SessionGoal.parseVerdict(text)
+      if (!verdict || verdict.verdict !== "done") return verdict
       yield* Intelligence.requireConfigured(yield* intelligence.read())
       const evaluation = yield* intelligence.evaluate({
         sessionID: input.session.id,
@@ -220,7 +294,7 @@ const layer = Layer.effect(
           lastAnswer: Intelligence.evidence(input.answer, { limit: 8000 }),
           background: input.background,
         },
-        candidate: input.goal.claimed,
+        candidate: { verdict, claim: input.goal.claimed },
         questions: Intelligence.questions({
           unsupported:
             "Does the proposed completion lack observed evidence proving the objective and every contract requirement within its scope? A confident claim or unexecuted test file does not prove runtime behavior.",
@@ -232,7 +306,7 @@ const layer = Layer.effect(
       if (!evaluation || evaluation.decision === "unavailable" || evaluation.decision === "inconclusive")
         return undefined
       return evaluation.decision === "accepted"
-        ? { verdict: "done" as const, reason: `System One verified the proposed completion (${evaluation.id})` }
+        ? verdict
         : { verdict: "continue" as const, reason: `System One requires correction: ${evaluation.issues.join(", ")}` }
     })
 
@@ -407,6 +481,9 @@ export const node = LayerNode.make({
   layer,
   deps: [
     Session.node,
+    Agent.node,
+    Provider.node,
+    LLM.node,
     Intelligence.node,
     Database.node,
     Config.node,

@@ -20,7 +20,10 @@ const make = Effect.gen(function* () {
       .all()
       .pipe(Effect.orDie)).map((row) => row.data)
   })
-  const record = Effect.fn("SessionPlan.record")(function* (input: SessionPlan.Info, guard?: Effect.Effect<boolean>) {
+  const record = Effect.fn("SessionPlan.record")(function* (
+    input: SessionPlan.Info,
+    guard?: Effect.Effect<boolean, SessionPlan.Error>,
+  ) {
     return yield* database.db
       .transaction(() =>
         Effect.gen(function* () {

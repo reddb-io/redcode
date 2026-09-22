@@ -224,7 +224,7 @@ const layer = Layer.effectDiscard(
                             Intelligence.fingerprint((yield* facts.load(context.sessionID)).requests) &&
                           !(yield* SessionInput.hasPending(database.db, context.sessionID, "steer"))
                         )
-                      }),
+                      }).pipe(Effect.mapError((error) => new SessionPlan.Error({ message: error.message }))),
                     )
                     .pipe(
                       Effect.asVoid,

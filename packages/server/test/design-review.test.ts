@@ -1835,9 +1835,15 @@ test("deleting a variant shows at once, survives a reload and reconciles with th
     await page.getByRole("menu", { name: "Variant actions" }).waitFor({ state: "hidden" })
     expect(await activeID(page)).toBe("variant-actions")
     // The agent reads the operation in its own section.
-    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(
-      `/api/session/${current.sessionID}/history?limit=100`,
+    const historyRoute = `/api/session/${current.sessionID}/history?limit=100`
+    await until(
+      async () =>
+        (await api<{ data: { type: string }[] }>(historyRoute)).data.some(
+          (event) => event.type === "session.next.prompted",
+        ),
+      "feedback prompt without setup",
     )
+    const history = await api<{ data: { type: string; data: { prompt?: { text: string } } }[] }>(historyRoute)
     const message = history.data.filter((event) => event.type === "session.next.prompted").at(-1)!.data.prompt!.text
     expect(message).toContain("## Variant operation\nOperation: delete Compact\nKind: delete")
     // A reload keeps the provisional view while its revision is still the latest one.
