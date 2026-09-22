@@ -18,9 +18,11 @@ runs:
         version=$(node -p 'require("@playwright/test/package.json").version')
         echo "version=$version" >> "$GITHUB_OUTPUT"
 
-    - name: Cache Playwright browsers
+    # Restored and saved explicitly: the post-job save of actions/cache only runs when the whole job
+    # succeeds, so one failing test used to cost the next run a fresh Chromium download.
+    - name: Restore Playwright browsers
       id: playwright-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
         key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
@@ -50,3 +52,10 @@ runs:
           sleep $((attempt * 15))
         done
         bunx playwright install chromium
+
+    - name: Save Playwright browsers
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: ${{ steps.playwright-cache.outputs.cache-primary-key }}

@@ -1,16 +1,19 @@
 name: test
 
 on:
+  # Main runs too, so the caches it saves (Turbo, Playwright, Bun) are ones every pull request can
+  # restore; a cache saved on a pull request is only visible to that pull request.
   push:
     branches:
       - dev
+      - main
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  # Keep every run on dev so cancelled checks do not pollute the default branch
+  # Keep every run on dev and main so cancelled checks do not pollute the default branch
   # commit history. PRs and other branches still share a group and cancel stale runs.
-  group: ${{ case(github.ref == 'refs/heads/dev', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
+  group: ${{ case(github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
   cancel-in-progress: true
 
 permissions:
@@ -79,19 +82,27 @@ jobs:
           git config --global user.name "opencode"
 
       # Turbo 2 writes its local cache to `.turbo/cache`; caching any other path restores nothing
-      # and every package re-runs its tests on every commit.
-      - name: Cache Turbo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # and every package re-runs its tests on every commit. Turbo hashes its own inputs, so the
+      # newest saved cache is always the right one to start from; the key only has to be unique.
+      - name: Restore Turbo cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .turbo/cache
-          key: turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
       - name: Run unit tests
         timeout-minutes: 35
         run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
+
+      # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.
+      - name: Save Turbo cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Desktop has no package test script, so Turbo does not discover this focused suite.
       - name: Test desktop diagnostic retention
