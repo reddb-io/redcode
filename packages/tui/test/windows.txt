@@ -1,0 +1,16 @@
+# Test paths the Windows CI jobs run for this package; Linux runs the whole suite.
+# See packages/redcode/test/windows.txt for what belongs here. One path per line, relative to the
+# package root; CI fails on a path that no longer exists.
+
+./test/editor.test.ts
+./test/clipboard.test.ts
+./test/runtime.test.tsx
+./test/app-lifecycle.test.tsx
+./test/cli/tui/inline-tool-wrap-snapshot.test.tsx
+./test/prompt/paste-dedupe.test.ts
+./test/prompt/local-attachment.test.ts
+./test/prompt/persistence.test.ts
+./test/prompt/history.test.ts
+./test/util/revert-diff.test.ts
+./test/util/filetype.test.ts
+./test/feature-plugins/sidebar-footer.test.tsx

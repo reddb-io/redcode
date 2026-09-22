@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "bun test --timeout 30000 --only-failures",
+    "test:ci": "bun test --timeout 30000 --only-failures --parallel=4",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

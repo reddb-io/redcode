@@ -1,0 +1,86 @@
+# Test paths the Windows CI jobs run for this package; Linux runs the whole suite.
+#
+# Windows only earns its runner time where the platform changes the outcome: path separators,
+# drive letters and case, shells and process spawning, PTYs, file locking and removal, symlinks and
+# junctions, git worktrees and snapshots, LSP launch, CLI process I/O and anything with a
+# `process.platform === "win32"` branch. Pure logic is covered once, on Linux.
+# One path per line (a file or a directory), relative to the package root. CI fails on a path that
+# no longer exists, so keep this list in step with renames.
+
+# CLI process I/O, terminal and editor integration
+./test/cli/run/
+./test/cli/tui/
+./test/cli/help/
+./test/cli/smokes/
+./test/cli/serve/
+./test/cli/setup.test.ts
+./test/cli/debug-logs.test.ts
+./test/cli/github-remote.test.ts
+
+# Paths, config discovery and permissions on external directories
+./test/config/
+./test/permission/
+./test/skill/
+./test/fixture/
+./test/util/filesystem.test.ts
+./test/util/glob.test.ts
+./test/util/module.test.ts
+./test/util/process.test.ts
+./test/util/wildcard.test.ts
+./test/filesystem/
+./test/storage/
+./test/format/
+./test/installation/
+./test/patch/
+./test/ide/
+./test/design/browser.test.ts
+
+# Git, worktrees and snapshots
+./test/git/
+./test/project/
+./test/snapshot/
+./test/control-plane/workspace.test.ts
+./test/session/snapshot-tool-race.test.ts
+./test/session/revert-compact.test.ts
+./test/session/instruction.test.ts
+./test/session/session-lock.test.ts
+
+# Tools that touch the filesystem, shells and language servers
+./test/tool/apply_patch.test.ts
+./test/tool/edit.test.ts
+./test/tool/external-directory.test.ts
+./test/tool/glob.test.ts
+./test/tool/grep.test.ts
+./test/tool/lsp.test.ts
+./test/tool/monitor.test.ts
+./test/tool/read.test.ts
+./test/tool/shell.test.ts
+./test/tool/shell-polling.test.ts
+./test/tool/skill.test.ts
+./test/tool/write.test.ts
+./test/lsp/
+
+# Plugin loading from disk, MCP stdio servers
+./test/plugin/loader-shared.test.ts
+./test/plugin/install.test.ts
+./test/plugin/install-concurrency.test.ts
+./test/plugin/azure.test.ts
+./test/plugin/tui/
+./test/mcp/transport.test.ts
+./test/mcp/lifecycle.test.ts
+
+# Server routes with platform branches: PTYs, listening, directories and worktrees
+./test/server/httpapi-experimental.test.ts
+./test/server/httpapi-file.test.ts
+./test/server/httpapi-listen.test.ts
+./test/server/httpapi-pty.test.ts
+./test/server/httpapi-session.test.ts
+./test/server/httpapi-v2-location.test.ts
+./test/server/httpapi-v2-pty.test.ts
+./test/server/project-copy.test.ts
+./test/server/project-init-git.test.ts
+./test/server/rpc-sidecar-integration.test.ts
+./test/server/session-list.test.ts
+./test/server/session-messages.test.ts
+./test/server/worktree-endpoint-repro.test.ts
+./test/script/npm-release-assets.test.ts

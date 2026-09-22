@@ -15,6 +15,16 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    // CI runs of the suites that run files in parallel workers (`bun test --parallel`); local
+    // `test` stays sequential.
+    "test:ci": {
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
+    "@reddb-io/redcode-core#test:ci": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "@reddb-io/redcode#test": {
       "dependsOn": ["^build"],
       "outputs": []

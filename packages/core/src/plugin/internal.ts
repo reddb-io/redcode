@@ -134,7 +134,7 @@ function builtIns() {
     ConfigAgentPlugin.Plugin,
     ConfigCommandPlugin.Plugin,
     ConfigSkillPlugin.Plugin,
-    ...ProviderPlugins,
+    ...ProviderPlugins(),
     ConfigExternalPlugin.Plugin,
     ConfigProviderPlugin.Plugin,
     VariantPlugin.Plugin,
