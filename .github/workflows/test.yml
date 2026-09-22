@@ -186,6 +186,14 @@ jobs:
         timeout-minutes: 35
         run: GITHUB_ACTIONS=false bun run test:ci --shard=${{ matrix.shard }}/3 --timings=test/timings.json --update-timings
 
+      # Processor timing asserts wall-clock generation windows, which parallel workers competing for
+      # the runner's CPU distort. It runs alone, after the pool, on one shard.
+      - name: Run Redcode timing tests
+        if: matrix.shard == 1
+        working-directory: packages/redcode
+        timeout-minutes: 10
+        run: GITHUB_ACTIONS=false bun run test:ci:timing
+
       # Under --shard, --update-timings rewrites the file with only this shard's files.
       - name: Upload shard timings
         if: ${{ !cancelled() }}

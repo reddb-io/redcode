@@ -24,6 +24,12 @@ export const dict = {
   "intelligence.emptyHistory": "Nenhuma avaliação registrada para esta sessão.",
   "intelligence.historyFailed": "Não foi possível carregar as avaliações. Reabra para tentar novamente.",
   "intelligence.subject": "Prompt: {{id}}",
+  "settings.intelligence.reasoning": "Modo de raciocínio",
+  "settings.intelligence.single": "Simples — um modelo",
+  "settings.intelligence.dual": "Duplo — S1 classifica e valida, S2 executa",
+  "settings.intelligence.flag":
+    "Este servidor está rodando com --reasoning {{mode}}. O modo salvo vale quando ele iniciar sem a flag.",
+  "settings.intelligence.principalRequired": "Selecione um modelo principal de S2 para continuar",
   "settings.intelligence.operation.tool_usage": "Uso de ferramentas",
   "settings.intelligence.operation.goal_completion": "Conclusão do objetivo",
   "desktop.menu.app": "Redcode",

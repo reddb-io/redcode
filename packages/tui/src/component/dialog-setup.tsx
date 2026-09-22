@@ -13,14 +13,24 @@ import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
 
-type Step = "welcome" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
+type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
-type ModelChoice = Model.Ref | "connect" | "reuse"
+type ModelChoice = Model.Ref | "connect" | "reuse" | "continue" | "change"
+type TransportChoice = Intelligence.Evaluator["transport"] | "continue"
 
-export function createDialogSetupState(resume?: { settings: Intelligence.Settings; step: "principal" | "fast" }) {
+export function createDialogSetupState(resume?: {
+  settings: Intelligence.Settings
+  step: "mode" | "principal" | "fast"
+  reasoning?: Intelligence.Reasoning
+}) {
   return createStore({
-    step: (resume?.step ?? "welcome") as Step,
+    step: (resume?.step ?? "mode") as Step,
     scope: "all" as Scope,
+    reasoning: resume?.reasoning ?? resume?.settings.reasoning ?? ("single" as Intelligence.Reasoning),
+    // The --reasoning flag overrides the saved mode for the current run only.
+    flag: false,
+    // A saved S2 principal is offered as "Continue with…" until the user asks to change it.
+    changing: false,
     settings: resume?.settings ?? ({ enabled: false, onboarding: "pending" } as Intelligence.Settings),
     key: "",
     busy: false,
@@ -72,14 +82,27 @@ export function DialogSetup(
       .get()
       .then((result) => {
         if (!active) return
-        if (state.step === "welcome") set("settings", result.settings)
-        set("environment", result.environment)
-        set("evaluators", result.evaluators)
-        set("loaded", true)
+        // Older servers omit `effective`; an enabled evaluator there means dual.
+        const effective = result.effective ?? {
+          reasoning:
+            result.settings.reasoning ?? (result.settings.enabled && result.settings.evaluator ? "dual" : "single"),
+          source: "config" as const,
+        }
+        batch(() => {
+          // Resumed states (provider connection round-trips) keep the choices made so far.
+          if (!state.loaded) {
+            set("settings", result.settings)
+            set("reasoning", effective.reasoning)
+          }
+          set("flag", effective.source === "flag")
+          set("environment", result.environment)
+          set("evaluators", result.evaluators)
+          set("loaded", true)
+        })
       })
       .catch(fail)
   })
-  const connect = (resume: "welcome" | "principal" | "fast") =>
+  const connect = (resume: "principal" | "fast") =>
     dialog.replace(() => (
       <DialogProvider
         onConnected={(providerID) => {
@@ -101,15 +124,34 @@ export function DialogSetup(
       .find((provider) => provider && hasGenerativeModel(provider))
     return preferred ?? sync.data.provider.find(hasGenerativeModel)
   }
+  const label = (ref: Model.Ref) => {
+    const provider = sync.data.provider.find((item) => item.id === ref.providerID)
+    return `${provider?.name ?? ref.providerID} / ${provider?.models[ref.id]?.name ?? ref.id}`
+  }
+  const sessionModel = () => {
+    const current = local?.model.current()
+    if (!current) return undefined
+    return { providerID: Provider.ID.make(current.providerID), id: Model.ID.make(current.modelID) }
+  }
   const options = (): DialogSelectOption<ModelChoice>[] => {
+    const principal = state.settings.principal
+    if (state.step === "principal" && principal && !state.changing)
+      return [
+        {
+          title: `Continue with ${label(principal)}`,
+          value: "continue",
+          description: state.settings.fast ? `Transformations: ${label(state.settings.fast)}` : undefined,
+        },
+        { title: "Change System Two model…", value: "change" },
+      ]
     const provider = activeProvider()
     return [
-      ...(state.step === "fast" && state.settings.principal
+      ...(state.step === "fast" && principal
         ? [
             {
               title: "Reuse System Two principal",
               value: "reuse" as const,
-              description: `${state.settings.principal.providerID}/${state.settings.principal.id}`,
+              description: label(principal),
               category: "Recommended",
             },
           ]
@@ -125,15 +167,43 @@ export function DialogSetup(
       { title: "Choose or connect another provider…", value: "connect" as const, category: "Connection" },
     ]
   }
+  // Numbered stages follow the chosen flow; S1 sub-steps (URL, key, model) share the S1 stage.
+  const stages = () => [
+    "mode",
+    ...(state.scope === "system-one" ? [] : ["s2"]),
+    ...(state.reasoning === "dual" && state.scope !== "system-two" ? ["s1"] : []),
+  ]
+  const title = (stage: "s1" | "s2", text: string) => `${stages().indexOf(stage) + 1}/${stages().length} · ${text}`
   const modelStepTitle = () => {
     const provider = activeProvider()
-    const role = state.step === "principal" ? "1/3 · System Two principal" : "2/3 · System Two transformations"
+    const role = title("s2", state.step === "principal" ? "S2 principal" : "S2 transformations")
     return `${role}${provider ? ` · ${provider.name}` : ""}`
   }
-  const evaluator = () => state.settings.evaluator!
+  const afterSystemTwo = (): Step =>
+    state.reasoning === "single" || state.scope === "system-two" ? "confirm" : "transport"
+  const transportOptions = (): DialogSelectOption<TransportChoice>[] => [
+    ...(state.settings.evaluator
+      ? [
+          {
+            title: `Continue with ${state.settings.evaluator.transport}/${state.settings.evaluator.model}`,
+            value: "continue" as const,
+            category: "Current",
+          },
+        ]
+      : []),
+    // Detected local transports (for example a running RedRouter) belong here, ahead of the catalog.
+    ...state.evaluators.map((option) => ({
+      title: option.name,
+      value: option.evaluator.transport,
+      description: option.configured ? "Configured connection" : undefined,
+      category: option.configured ? "Connected" : "Available",
+    })),
+  ]
   const finish = async () => {
     set("busy", true)
-    const probe = { evaluator: evaluator(), ...(state.key ? { apiKey: state.key } : {}) }
+    // Single reasoning keeps a saved S1 evaluator untouched (runtime ignores it) but never probes it.
+    const evaluator = state.reasoning === "dual" ? state.settings.evaluator : undefined
+    const apiKey = evaluator && state.key ? { apiKey: state.key } : {}
     for (const model of [state.settings.principal, state.settings.fast].filter(
       (model, index, list) => model && (index === 0 || JSON.stringify(model) !== JSON.stringify(list[0])),
     )) {
@@ -146,16 +216,18 @@ export function DialogSetup(
         return
       }
     }
-    const checked = await api.probe(probe)
-    if (!active) return
-    if (!checked.ok) {
-      set("busy", false)
-      toast.show({ variant: "error", message: checked.message, duration: 8000 })
-      return
+    if (evaluator) {
+      const checked = await api.probe({ evaluator, ...apiKey })
+      if (!active) return
+      if (!checked.ok) {
+        set("busy", false)
+        toast.show({ variant: "error", message: checked.message, duration: 8000 })
+        return
+      }
     }
     await api.save({
-      settings: { ...state.settings, enabled: true, onboarding: "completed" },
-      ...(state.key ? { apiKey: state.key } : {}),
+      settings: { ...state.settings, reasoning: state.reasoning, enabled: true, onboarding: "completed" },
+      ...apiKey,
     })
     if (!active) return
     await local?.intelligence.refresh()
@@ -167,27 +239,45 @@ export function DialogSetup(
     }
     set("key", "")
     dialog.clear()
-    toast.show({ variant: "success", message: "Global System One and System Two setup saved", duration: 4000 })
+    toast.show({
+      variant: "success",
+      message: evaluator ? "Global S1 and S2 setup saved" : "Single reasoning saved: S2 only",
+      duration: 4000,
+    })
   }
   return (
     <Switch>
-      <Match when={state.step === "welcome"}>
+      <Match when={state.step === "mode"}>
         <DialogSelect
-          title={state.loaded ? `Global intelligence · ${state.environment}` : "Loading global intelligence setup…"}
+          title={
+            state.loaded
+              ? `Global intelligence${state.flag ? ` · --reasoning ${state.reasoning}` : ""} · ${state.environment}`
+              : "Loading global intelligence setup…"
+          }
           locked={!state.loaded}
+          current={state.reasoning}
           options={[
             {
-              title: "Configure all roles",
-              value: "all",
-              description: "Principal, transformations and semantic evaluator",
+              title: "Simple — one model",
+              value: "single",
+              description: "S2 only; completion checks report S1 as not verified",
             },
-            ...(state.settings.onboarding === "completed" && state.settings.principal && state.settings.evaluator
+            {
+              title: "Dual — S1 classifies and validates, S2 executes",
+              value: "dual",
+              description: "Adds the S1 evaluator to every semantic gate",
+            },
+            ...(state.settings.onboarding === "completed" && state.settings.principal
               ? [
                   {
                     title: "Change System Two models",
                     value: "system-two",
-                    description: `Principal: ${state.settings.principal.providerID}/${state.settings.principal.id}`,
+                    description: `Principal: ${label(state.settings.principal)}`,
                   },
+                ]
+              : []),
+            ...(state.settings.onboarding === "completed" && state.settings.evaluator
+              ? [
                   {
                     title: "Change System One evaluator",
                     value: "system-one",
@@ -195,56 +285,55 @@ export function DialogSetup(
                   },
                 ]
               : []),
-            { title: "Choose or connect a generative provider", value: "connect" },
-            {
-              title: "Close setup",
-              value: "close",
-              description: "S1 and S2 must be configured before sending prompts",
-            },
+            { title: "Close setup", value: "close", description: "Keep the current setup" },
           ]}
           onSelect={(option) => {
             if (!state.loaded) return
-            if (option.value === "connect") return connect("welcome")
             if (option.value === "close") return dialog.clear()
-            if (option.value === "system-one") {
-              set("scope", "system-one")
-              set("step", "transport")
-              return
-            }
-            set("scope", option.value === "system-two" ? "system-two" : "all")
-            set("step", "principal")
+            if (option.value === "system-one")
+              return set((current) => ({ ...current, scope: "system-one", reasoning: "dual", step: "transport" }))
+            if (option.value === "system-two")
+              return set((current) => ({ ...current, scope: "system-two", changing: true, step: "principal" }))
+            set((current) => ({
+              ...current,
+              scope: "all",
+              reasoning: option.value === "dual" ? "dual" : "single",
+              changing: false,
+              step: "principal",
+            }))
           }}
         />
       </Match>
       <Match when={state.step === "principal" || state.step === "fast"}>
         <DialogSelect
           title={modelStepTitle()}
+          current={state.step === "principal" ? (state.settings.principal ?? sessionModel()) : undefined}
           options={options()}
           onSelect={(option) => {
             if (option.value === "connect") return connect(state.step === "fast" ? "fast" : "principal")
+            if (option.value === "change") return set("changing", true)
+            // Continuing keeps the saved transformations model, or reuse of the principal.
+            if (option.value === "continue") return set("step", afterSystemTwo())
             const role = state.step === "principal" ? "principal" : "fast"
             const model = option.value === "reuse" ? undefined : option.value
             set((current) => ({
               ...current,
               providerID: model?.providerID ?? current.providerID,
               settings: { ...current.settings, [role]: model },
-              step: role === "principal" ? "fast" : current.scope === "system-two" ? "confirm" : "transport",
+              step: role === "principal" && current.reasoning === "dual" ? "fast" : afterSystemTwo(),
             }))
           }}
         />
       </Match>
       <Match when={state.step === "transport"}>
         <DialogSelect
-          title="3/3 · System One connection"
-          current={state.settings.evaluator?.transport ?? "opencode-zen"}
-          options={state.evaluators.map((option) => ({
-            title: option.name,
-            value: option.evaluator.transport,
-            description: option.configured ? "Configured connection" : undefined,
-            category: option.configured ? "Connected" : "Available",
-          }))}
+          title={title("s1", "S1 connection")}
+          current={state.settings.evaluator ? "continue" : "opencode-zen"}
+          options={transportOptions()}
           onSelect={(option) => {
-            const selected = state.evaluators.find((item) => item.evaluator.transport === option.value)!
+            if (option.value === "continue") return set("step", "confirm")
+            const selected = state.evaluators.find((item) => item.evaluator.transport === option.value)
+            if (!selected) return
             batch(() => {
               set("settings", (settings) => ({
                 ...settings,
@@ -263,85 +352,95 @@ export function DialogSetup(
           }}
         />
       </Match>
-      <Match when={state.step === "url"}>
-        <DialogPrompt
-          title="System One API base URL"
-          value={evaluator().baseURL}
-          onConfirm={(value) => {
-            batch(() => {
-              set("settings", (settings) => ({
-                ...settings,
-                evaluator: {
-                  ...evaluator(),
-                  baseURL: value,
-                  credentialID: evaluator().baseURL === value ? evaluator().credentialID : undefined,
-                },
-              }))
-              set("step", "key")
-            })
-          }}
-        />
-      </Match>
-      <Match when={state.step === "key"}>
-        <DialogPrompt
-          title={
-            evaluator().transport === "opencode-zen" ? "Zen API key — https://opencode.ai/zen" : "System One API key"
-          }
-          placeholder={
-            evaluator().credentialID
-              ? "Empty reuses the configured provider connection"
-              : evaluator().transport === "opencode-zen"
-                ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
-                : "API key, or empty to use the server environment"
-          }
-          value={state.key}
-          busy={state.busy}
-          onConfirm={(value) => {
-            set("key", value)
-            set("busy", true)
-            void api
-              .discover({ evaluator: evaluator(), ...(value ? { apiKey: value } : {}) })
-              .then((result) => {
-                if (!active) return
-                set("models", result.models)
-                set("busy", false)
-                set("step", result.models.length ? "models" : "manual")
+      <Match when={state.step === "url" && state.settings.evaluator}>
+        {(evaluator) => (
+          <DialogPrompt
+            title={title("s1", "S1 API base URL")}
+            value={evaluator().baseURL}
+            onConfirm={(value) => {
+              batch(() => {
+                set("settings", (settings) => ({
+                  ...settings,
+                  evaluator: {
+                    ...evaluator(),
+                    baseURL: value,
+                    credentialID: evaluator().baseURL === value ? evaluator().credentialID : undefined,
+                  },
+                }))
+                set("step", "key")
               })
-              .catch(fail)
-          }}
-        />
+            }}
+          />
+        )}
       </Match>
-      <Match when={state.step === "models"}>
-        <DialogSelect
-          title="System One evaluator"
-          current={evaluator().model}
-          options={[
-            { title: evaluator().model, value: evaluator().model },
-            ...state.models
-              .filter((model) => model.id !== evaluator().model)
-              .map((model) => ({ title: model.name, value: model.id })),
-            { title: "Enter model manually", value: "manual" },
-          ]}
-          onSelect={(option) => {
-            if (option.value === "manual") return set("step", "manual")
-            batch(() => {
-              set("settings", (settings) => ({ ...settings, evaluator: { ...evaluator(), model: option.value } }))
-              set("step", "confirm")
-            })
-          }}
-        />
+      <Match when={state.step === "key" && state.settings.evaluator}>
+        {(evaluator) => (
+          <DialogPrompt
+            title={
+              evaluator().transport === "opencode-zen"
+                ? "Zen API key — https://opencode.ai/zen"
+                : title("s1", "S1 API key")
+            }
+            placeholder={
+              evaluator().credentialID
+                ? "Empty reuses the configured provider connection"
+                : evaluator().transport === "opencode-zen"
+                  ? "Empty reuses an OpenCode Zen connection, OPENCODE_API_KEY, or public free access"
+                  : "API key, or empty to use the server environment"
+            }
+            value={state.key}
+            busy={state.busy}
+            onConfirm={(value) => {
+              set("key", value)
+              set("busy", true)
+              void api
+                .discover({ evaluator: evaluator(), ...(value ? { apiKey: value } : {}) })
+                .then((result) => {
+                  if (!active) return
+                  set("models", result.models)
+                  set("busy", false)
+                  set("step", result.models.length ? "models" : "manual")
+                })
+                .catch(fail)
+            }}
+          />
+        )}
       </Match>
-      <Match when={state.step === "manual"}>
-        <DialogPrompt
-          title="System One model"
-          value={evaluator().model}
-          onConfirm={(value) => {
-            batch(() => {
-              set("settings", (settings) => ({ ...settings, evaluator: { ...evaluator(), model: value } }))
-              set("step", "confirm")
-            })
-          }}
-        />
+      <Match when={state.step === "models" && state.settings.evaluator}>
+        {(evaluator) => (
+          <DialogSelect
+            title={title("s1", "S1 evaluator")}
+            current={evaluator().model}
+            options={[
+              { title: evaluator().model, value: evaluator().model },
+              ...state.models
+                .filter((model) => model.id !== evaluator().model)
+                .map((model) => ({ title: model.name, value: model.id })),
+              { title: "Enter model manually", value: "manual" },
+            ]}
+            onSelect={(option) => {
+              if (option.value === "manual") return set("step", "manual")
+              batch(() => {
+                set("settings", (settings) => ({ ...settings, evaluator: { ...evaluator(), model: option.value } }))
+                set("step", "confirm")
+              })
+            }}
+          />
+        )}
+      </Match>
+      <Match when={state.step === "manual" && state.settings.evaluator}>
+        {(evaluator) => (
+          <DialogPrompt
+            title={title("s1", "S1 model")}
+            value={evaluator().model}
+            onConfirm={(value) => {
+              batch(() => {
+                set("settings", (settings) => ({ ...settings, evaluator: { ...evaluator(), model: value } }))
+                set("step", "confirm")
+              })
+            }}
+          />
+        )}
       </Match>
       <Match when={state.step === "confirm"}>
         <DialogSelect
@@ -352,18 +451,20 @@ export function DialogSetup(
               title: "Test and save",
               value: "save",
               description:
-                evaluator().transport === "opencode-zen"
-                  ? "Sends sources to Zen. Free offer is temporary; no automatic paid fallback."
-                  : "Sources and candidates will be sent to the selected evaluator",
+                state.reasoning === "single"
+                  ? "Single reasoning: S2 only; a saved S1 stays unused"
+                  : state.settings.evaluator?.transport === "opencode-zen"
+                    ? "Sends sources to Zen. Free offer is temporary; no automatic paid fallback."
+                    : "Sources and candidates will be sent to the selected evaluator",
             },
             {
-              title: state.scope === "system-two" ? "Back to System Two models" : "Back to connection",
+              title: afterSystemTwo() === "confirm" ? "Back to S2 model" : "Back to S1 connection",
               value: "back",
             },
           ]}
           onSelect={(option) => {
             if (state.busy) return
-            if (option.value === "back") return set("step", state.scope === "system-two" ? "principal" : "transport")
+            if (option.value === "back") return set("step", afterSystemTwo() === "confirm" ? "principal" : "transport")
             void finish().catch(fail)
           }}
         />

@@ -1,0 +1,14 @@
+diff --git a/src/terminal.ts b/src/terminal.ts
+--- a/src/terminal.ts
++++ b/src/terminal.ts
+@@ -228,6 +228,10 @@ export class Terminal implements IPty {
+ 
+ 		const buf = Buffer.allocUnsafe(4096);
+ 
++		// Start reading only after the constructor returned: a child that exits at once would
++		// otherwise fire onData/onExit before the caller could attach listeners.
++		await Promise.resolve();
++
+ 		while (this._readLoop && !this._closing) {
+ 			const n = lib.symbols.bun_pty_read(this.handle, ptr(buf), buf.length);
+ 			if (n > 0) {

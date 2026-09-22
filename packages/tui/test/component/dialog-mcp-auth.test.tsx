@@ -351,6 +351,8 @@ describe("MCP servers dialog", () => {
     ))
     await wait(() => setup.app.captureCharFrame().includes("callback port is in use"))
     expect(setup.fake.count("POST", "/mcp/linear/auth/wait")).toBe(0)
+    // The textarea takes focus after the frame shows the message; wait for it.
+    await wait(() => setup.app.renderer.currentFocusedRenderable instanceof TextareaRenderable)
     const textarea = setup.app.renderer.currentFocusedRenderable as TextareaRenderable
     textarea.setText("http://127.0.0.1:40123/mcp/oauth/callback?code=abc&state=state-1")
     setup.app.mockInput.pressEnter()

@@ -289,12 +289,19 @@ test("single reasoning needs no setup while dual execution requires both roles",
   }
   expect(Intelligence.reasoning(legacy)).toEqual({ reasoning: "dual", source: "config" })
   expect(Intelligence.reasoning({ ...legacy, reasoning: "single" })).toEqual({ reasoning: "single", source: "config" })
-  process.env.REDCODE_REASONING = "dual"
-  const flagged = Intelligence.reasoning(Intelligence.defaults)
-  const blocked = await Effect.runPromise(Intelligence.requireConfigured(Intelligence.defaults).pipe(Effect.flip))
-  process.env.REDCODE_REASONING = "single"
-  const overridden = Intelligence.reasoning(legacy)
-  delete process.env.REDCODE_REASONING
+  // Set and restore synchronously: an await while the flag is set lets other test files that
+  // share this process under --parallel read it and run in dual mode.
+  const [flagged, blocked, overridden] = (() => {
+    try {
+      process.env.REDCODE_REASONING = "dual"
+      const flagged = Intelligence.reasoning(Intelligence.defaults)
+      const blocked = Effect.runSync(Intelligence.requireConfigured(Intelligence.defaults).pipe(Effect.flip))
+      process.env.REDCODE_REASONING = "single"
+      return [flagged, blocked, Intelligence.reasoning(legacy)] as const
+    } finally {
+      delete process.env.REDCODE_REASONING
+    }
+  })()
   expect(flagged).toEqual({ reasoning: "dual", source: "flag" })
   expect(blocked.message).toContain("/setup")
   expect(overridden).toEqual({ reasoning: "single", source: "flag" })
