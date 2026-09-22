@@ -128,8 +128,9 @@ export const evaluationFingerprint = (input: EvaluationInput, settings: Pick<Int
  * saved choice. Settings saved before the choice existed stay dual when S1 was enabled; everything
  * else, including an unconfigured install, runs single reasoning on the session's model.
  */
-export function reasoning(settings: Intelligence.Settings) {
-  if (Flag.REDCODE_REASONING) return { reasoning: Flag.REDCODE_REASONING, source: "flag" as const }
+export function reasoning(settings: Intelligence.Settings): Intelligence.Status["effective"] {
+  const flag = Flag.REDCODE_REASONING
+  if (flag) return { reasoning: flag, source: "flag" }
   if (settings.reasoning) return { reasoning: settings.reasoning, source: "config" as const }
   if (settings.enabled && settings.evaluator) return { reasoning: "dual" as const, source: "config" as const }
   return { reasoning: "single" as const, source: "default" as const }
