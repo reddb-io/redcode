@@ -526,8 +526,10 @@ test("System One probe reports actionable authentication and model response fail
   }
   const unauthorized = await Effect.runPromise(
     Effect.gen(function* () {
-      const service = yield* Intelligence.make(dir.path, credentials, () =>
-        Promise.resolve(new Response(null, { status: 401 })),
+      const service = yield* Intelligence.make(
+        dir.path,
+        credentials,
+        Object.assign(() => Promise.resolve(new Response(null, { status: 401 })), { preconnect: fetch.preconnect }),
       )
       return yield* service.probe({ evaluator, apiKey: "invalid" })
     }),
@@ -539,8 +541,12 @@ test("System One probe reports actionable authentication and model response fail
 
   const malformed = await Effect.runPromise(
     Effect.gen(function* () {
-      const service = yield* Intelligence.make(dir.path, credentials, () =>
-        Promise.resolve(Response.json({ model: evaluator.model, answers: {}, usage: {} })),
+      const service = yield* Intelligence.make(
+        dir.path,
+        credentials,
+        Object.assign(() => Promise.resolve(Response.json({ model: evaluator.model, answers: {}, usage: {} })), {
+          preconnect: fetch.preconnect,
+        }),
       )
       return yield* service.probe({ evaluator, apiKey: "valid" })
     }),
