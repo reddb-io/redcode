@@ -1,5 +1,12 @@
 # opencode
 
+## 0.41.1
+
+### Patch Changes
+
+- 6221b18: Use System One to shortlist relevant skills, review final claims against tool results, and reuse Cloudflare Workers AI credentials for Jev evaluation.
+- 096825e: Keep global intelligence setup usable when provider reloads or System One probes fail, preserve entered credentials for retry, and prevent expected bootstrap concurrency from emitting listener leak warnings.
+
 ## 0.41.0
 
 ### Minor Changes
