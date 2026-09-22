@@ -25,9 +25,30 @@ env:
 # Each of those is an aggregator below, so the jobs that do the work can be sharded and reshaped
 # without touching the protection rule.
 jobs:
+  changes:
+    name: test scope
+    runs-on: ubuntu-latest
+    outputs:
+      release_only: ${{ steps.release.outputs.release_only }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+      - id: release
+        uses: ./.github/actions/release-only
+        with:
+          event: ${{ github.event_name }}
+          head-ref: ${{ github.head_ref }}
+          head-repository: ${{ github.event.pull_request.head.repo.full_name }}
+          repository: ${{ github.repository }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.sha }}
+
   # Every package except @reddb-io/redcode, which runs in balanced shards of its own on both hosts.
   workspace-linux:
     name: workspace (linux)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # Normal runs finish well under 20 minutes; a stalled setup step must not hold the runner for hours.
     timeout-minutes: 45
@@ -82,6 +103,8 @@ jobs:
 
   workspace-windows:
     name: workspace (windows)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 45
     env:
@@ -129,6 +152,8 @@ jobs:
   # `bun test --timings=test/timings.json --update-timings` from packages/redcode when it drifts.
   redcode-linux:
     name: redcode (linux, ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     strategy:
@@ -170,6 +195,8 @@ jobs:
 
   redcode-windows:
     name: redcode (windows, ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 45
     strategy:
@@ -214,6 +241,8 @@ jobs:
   # the critical path; it only needs the workspace built.
   httpapi:
     name: httpapi (linux)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # Same ceiling as the other jobs that set Playwright up; a cold browser cache is setup time, not a stall.
     timeout-minutes: 45
@@ -251,15 +280,17 @@ jobs:
   unit-linux:
     name: unit (linux)
     runs-on: ubuntu-latest
-    needs: [workspace-linux, redcode-linux, httpapi]
+    needs: [changes, workspace-linux, redcode-linux, httpapi]
     if: always()
     steps:
       - name: Every Linux suite passed
         env:
+          RELEASE_ONLY: ${{ needs.changes.outputs.release_only }}
           WORKSPACE_RESULT: ${{ needs.workspace-linux.result }}
           SHARD_RESULT: ${{ needs.redcode-linux.result }}
           HTTPAPI_RESULT: ${{ needs.httpapi.result }}
         run: |
+          if [ "$RELEASE_ONLY" = true ]; then exit 0; fi
           test "$WORKSPACE_RESULT" = success
           test "$SHARD_RESULT" = success
           test "$HTTPAPI_RESULT" = success
@@ -267,19 +298,23 @@ jobs:
   unit-windows:
     name: unit (windows)
     runs-on: ubuntu-latest
-    needs: [workspace-windows, redcode-windows]
+    needs: [changes, workspace-windows, redcode-windows]
     if: always()
     steps:
       - name: Every Windows suite passed
         env:
+          RELEASE_ONLY: ${{ needs.changes.outputs.release_only }}
           WORKSPACE_RESULT: ${{ needs.workspace-windows.result }}
           SHARD_RESULT: ${{ needs.redcode-windows.result }}
         run: |
+          if [ "$RELEASE_ONLY" = true ]; then exit 0; fi
           test "$WORKSPACE_RESULT" = success
           test "$SHARD_RESULT" = success
 
   e2e-linux:
     name: e2e (linux)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     defaults:
@@ -315,6 +350,8 @@ jobs:
   # Windows runs the same suite in about three times the Linux wall time, so it is split in two.
   e2e-windows-shard:
     name: e2e (windows, ${{ matrix.shard }}/2)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 45
     strategy:
@@ -354,10 +391,13 @@ jobs:
   e2e-windows:
     name: e2e (windows)
     runs-on: ubuntu-latest
-    needs: e2e-windows-shard
+    needs: [changes, e2e-windows-shard]
     if: always()
     steps:
       - name: Every Windows e2e shard passed
         env:
+          RELEASE_ONLY: ${{ needs.changes.outputs.release_only }}
           SHARD_RESULT: ${{ needs.e2e-windows-shard.result }}
-        run: test "$SHARD_RESULT" = success
+        run: |
+          if [ "$RELEASE_ONLY" = true ]; then exit 0; fi
+          test "$SHARD_RESULT" = success

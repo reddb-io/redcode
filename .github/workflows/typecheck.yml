@@ -8,8 +8,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: typecheck scope
+    runs-on: ubuntu-latest
+    outputs:
+      release_only: ${{ steps.release.outputs.release_only }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+      - id: release
+        uses: ./.github/actions/release-only
+        with:
+          event: ${{ github.event_name }}
+          head-ref: ${{ github.head_ref }}
+          head-repository: ${{ github.event.pull_request.head.repo.full_name }}
+          repository: ${{ github.repository }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.sha }}
+
   shard:
     name: typecheck (${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -34,10 +55,14 @@ jobs:
   typecheck:
     name: typecheck
     runs-on: ubuntu-latest
-    needs: shard
+    needs: [changes, shard]
     if: always()
     steps:
       - name: Every shard passed
+        env:
+          RELEASE_ONLY: ${{ needs.changes.outputs.release_only }}
+          SHARD_RESULT: ${{ needs.shard.result }}
         run: |
-          echo "shards: ${{ needs.shard.result }}"
-          test "${{ needs.shard.result }}" = "success"
+          if [ "$RELEASE_ONLY" = true ]; then exit 0; fi
+          echo "shards: $SHARD_RESULT"
+          test "$SHARD_RESULT" = success
