@@ -286,9 +286,19 @@ test("configured setup can edit System Two without walking through System One", 
   }
 })
 
-test("single reasoning saves S2 without configuring or probing S1", async () => {
+test("single reasoning saves S2 and keeps the saved S1 evaluator without probing it", async () => {
   await using tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const evaluator = {
+    transport: "openrouter",
+    baseURL: "https://openrouter.ai/api/alpha",
+    model: "typesafe/jev-1.13",
+    credentialID: "cred_saved",
+  }
+  const status = {
+    ...intelligence,
+    settings: { enabled: false, onboarding: "pending", evaluator } as Intelligence.Settings,
+  }
   const saved: unknown[] = []
   const probes = { model: 0, evaluator: 0 }
   const setup = await mount(
@@ -297,7 +307,7 @@ test("single reasoning saves S2 without configuring or probing S1", async () => 
         saved.push(await input.json())
         return json({ enabled: true, reasoning: "single", onboarding: "completed" })
       }
-      if (url.pathname === "/api/intelligence") return json(intelligence)
+      if (url.pathname === "/api/intelligence") return json(status)
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
       if (url.pathname === "/api/intelligence/test-model") {
         probes.model++
@@ -328,6 +338,7 @@ test("single reasoning saves S2 without configuring or probing S1", async () => 
         reasoning: "single",
         onboarding: "completed",
         principal: { providerID: "mock", id: "model" },
+        evaluator,
       },
     })
     expect(probes).toEqual({ model: 1, evaluator: 0 })

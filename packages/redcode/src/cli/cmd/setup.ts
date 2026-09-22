@@ -124,7 +124,8 @@ export const SetupCommand = effectCmd({
           onboarding: "completed",
           principal: ref(principal),
           ...(fast === principal ? {} : { fast: ref(fast) }),
-          evaluator: systemOne?.evaluator,
+          // Single reasoning keeps the saved S1 evaluator (runtime ignores it) so dual can continue with it.
+          evaluator: systemOne?.evaluator ?? previous.evaluator,
         },
         ...apiKey,
       })

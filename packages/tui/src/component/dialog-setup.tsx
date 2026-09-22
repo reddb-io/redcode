@@ -201,6 +201,7 @@ export function DialogSetup(
   ]
   const finish = async () => {
     set("busy", true)
+    // Single reasoning keeps a saved S1 evaluator untouched (runtime ignores it) but never probes it.
     const evaluator = state.reasoning === "dual" ? state.settings.evaluator : undefined
     const apiKey = evaluator && state.key ? { apiKey: state.key } : {}
     for (const model of [state.settings.principal, state.settings.fast].filter(
@@ -225,7 +226,7 @@ export function DialogSetup(
       }
     }
     await api.save({
-      settings: { ...state.settings, reasoning: state.reasoning, enabled: true, onboarding: "completed", evaluator },
+      settings: { ...state.settings, reasoning: state.reasoning, enabled: true, onboarding: "completed" },
       ...apiKey,
     })
     if (!active) return
@@ -451,7 +452,7 @@ export function DialogSetup(
               value: "save",
               description:
                 state.reasoning === "single"
-                  ? "Single reasoning: S2 only, no S1 evaluator"
+                  ? "Single reasoning: S2 only; a saved S1 stays unused"
                   : state.settings.evaluator?.transport === "opencode-zen"
                     ? "Sends sources to Zen. Free offer is temporary; no automatic paid fallback."
                     : "Sources and candidates will be sent to the selected evaluator",

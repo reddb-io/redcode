@@ -44,6 +44,8 @@ function IntelligenceForm() {
     reasoning: "single" as Intelligence.Reasoning,
     // The --reasoning flag overrides the saved mode for the server's current run only.
     flag: "" as "" | Intelligence.Reasoning,
+    // Editing the S1 fields rewrites `settings.evaluator`; single reasoning keeps the last saved one.
+    saved: undefined as Intelligence.Evaluator | undefined,
     principal: "",
     fast: "",
     ...IntelligenceClient.evaluatorPreset(),
@@ -104,6 +106,7 @@ function IntelligenceForm() {
       if (!active) return
       const mode = result.effective ?? effective(result.settings, undefined)
       set("settings", result.settings)
+      set("saved", result.settings.evaluator)
       set("reasoning", mode.reasoning)
       set("flag", mode.source === "flag" ? mode.reasoning : "")
       set("environment", result.environment)
@@ -130,7 +133,7 @@ function IntelligenceForm() {
       }
       const client = api()
       const serverURL = server().url
-      // Single reasoning saves S2 only; the S1 evaluator and its key belong to dual reasoning.
+      // Single reasoning keeps the saved S1 evaluator for a later switch back to dual, without probing it.
       const dual = state.reasoning === "dual"
       const input = {
         settings: {
@@ -139,7 +142,7 @@ function IntelligenceForm() {
           onboarding: "completed" as const,
           principal: ref(state.principal),
           ...(state.fast ? { fast: ref(state.fast) } : {}),
-          ...(dual ? { evaluator: evaluator() } : {}),
+          evaluator: dual ? evaluator() : state.saved,
         },
         ...(dual && state.key ? { apiKey: state.key } : {}),
       }
@@ -151,8 +154,8 @@ function IntelligenceForm() {
           return
         }
       }
-      if (input.settings.evaluator) {
-        const check = await client.probe({ evaluator: input.settings.evaluator, apiKey: input.apiKey })
+      if (dual) {
+        const check = await client.probe({ evaluator: evaluator(), apiKey: input.apiKey })
         if (!check.ok) {
           set("message", check.message)
           return
@@ -162,6 +165,7 @@ function IntelligenceForm() {
       const settings = await client.save(input)
       if (server().url !== serverURL) return
       set("settings", settings)
+      set("saved", settings.evaluator)
       server().intelligence.accept(settings)
       set("key", "")
       set("message", language.t("settings.intelligence.saved"))
