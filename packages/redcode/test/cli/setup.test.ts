@@ -37,7 +37,7 @@ describe("redcode setup", () => {
               cols: 120,
               rows: 35,
               cwd: home,
-              env: { ...process.env, ...isolatedEnv(home, JSON.stringify(testProviderConfig(llm.url))) },
+              env: isolatedEnv(home, JSON.stringify(testProviderConfig(llm.url))),
             })
             const output = child.onData((chunk) => Queue.offerUnsafe(chunks, chunk))
             const exit = child.onExit((event) => {

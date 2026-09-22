@@ -449,7 +449,7 @@ const layer = Layer.effect(
           Intelligence.fingerprint([goal.objective, goal.contract, goal.gates, goal.claimed])
         )
           return {
-            action: "continue",
+            action: "continue" as const,
             goal: fresh,
             text: SessionGoal.continuation(fresh, {
               reason:
