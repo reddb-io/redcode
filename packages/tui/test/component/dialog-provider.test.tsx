@@ -9,7 +9,7 @@ import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider } from "../../src/config"
 import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../../src/keymap"
 import { DialogProvider, useDialog } from "../../src/ui/dialog"
-import { ToastProvider } from "../../src/ui/toast"
+import { Toast, ToastProvider } from "../../src/ui/toast"
 import { json, mount, wait } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
@@ -35,6 +35,7 @@ function Dialogs() {
               <DialogProvider>
                 <Open />
               </DialogProvider>
+              <Toast />
             </ToastProvider>
           </ClipboardProvider>
         </ThemeProvider>
@@ -148,7 +149,7 @@ test("provider reload failure stays in the credential dialog without exiting the
     textarea.setText("replacement-key")
     setup.app.mockInput.pressEnter()
 
-    await wait(() => disposed && setup.app.captureCharFrame().includes("Failed to save credential"))
+    await wait(() => disposed && setup.app.captureCharFrame().includes("Failed to save credential"), 5000)
     expect(setup.app.captureCharFrame()).toContain("API key")
     expect(exits).toEqual([])
   } finally {

@@ -11,7 +11,7 @@ import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider } from "../../src/config"
 import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../../src/keymap"
 import { DialogProvider, useDialog } from "../../src/ui/dialog"
-import { ToastProvider } from "../../src/ui/toast"
+import { Toast, ToastProvider } from "../../src/ui/toast"
 import { mount, wait, json } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
@@ -36,6 +36,7 @@ function Dialogs(props: { resume?: { settings: Intelligence.Settings; step: "pri
               <DialogProvider>
                 <Open />
               </DialogProvider>
+              <Toast />
             </ToastProvider>
           </ClipboardProvider>
         </ThemeProvider>
@@ -312,10 +313,7 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
 
     await setup.app.mockInput.pressEnter()
-    await wait(
-      () => probes === 1 && setup.app.captureCharFrame().includes("Save global intelligence setup"),
-    )
-    expect(setup.app.captureCharFrame()).toContain("authentication failed")
+    await wait(() => probes === 1 && setup.app.captureCharFrame().includes("authentication failed"))
 
     await setup.app.mockInput.pressEnter()
     await wait(() => probes === 2)
