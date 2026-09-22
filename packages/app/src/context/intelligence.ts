@@ -13,7 +13,9 @@ export function createIntelligenceState(client: {
   })
   const pending = { request: undefined as Promise<boolean> | undefined, revision: 0 }
   // Single reasoning (the unconfigured default) runs on the selected model and needs no setup.
-  const reasoning = (): Intelligence.Reasoning => state.status?.effective.reasoning ?? "single"
+  // Older servers omit `effective`; derive it from the settings they return.
+  const reasoning = (): Intelligence.Reasoning =>
+    state.status ? (state.status.effective ?? effective(state.status.settings, undefined)).reasoning : "single"
   const ready = () =>
     !state.failed &&
     state.status !== undefined &&
@@ -64,7 +66,7 @@ export function createIntelligenceState(client: {
 }
 
 /** Mirrors the server's resolution after a local save; a run-level flag keeps precedence. */
-function effective(
+export function effective(
   settings: Intelligence.Settings,
   previous: Intelligence.Status["effective"] | undefined,
 ): Intelligence.Status["effective"] {

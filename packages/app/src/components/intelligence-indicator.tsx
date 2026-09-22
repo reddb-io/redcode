@@ -29,7 +29,7 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
   const override = () =>
     current()?.provider.id !== settings()?.principal?.providerID || current()?.id !== settings()?.principal?.id
   const latest = () => state.evaluations[0]
-  const single = () => intelligence().reasoning() === "single"
+  const single = () => intelligence().state.loaded && intelligence().reasoning() === "single"
   const attention = () =>
     intelligence().state.failed ||
     !intelligence().ready() ||

@@ -78,7 +78,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const intelligence = {
       state: intelligenceState,
       // Single reasoning (the unconfigured default) runs on the selected model and needs no setup.
-      reasoning: (): Intelligence.Reasoning => intelligenceState.status?.effective.reasoning ?? "single",
+      // Older servers omit `effective`; an enabled evaluator there means dual.
+      reasoning: (): Intelligence.Reasoning => {
+        const status = intelligenceState.status
+        if (!status) return "single"
+        if (status.effective) return status.effective.reasoning
+        return status.settings.reasoning ?? (status.settings.enabled && status.settings.evaluator ? "dual" : "single")
+      },
       ready: () =>
         !intelligenceState.error &&
         (intelligence.reasoning() === "single" ||

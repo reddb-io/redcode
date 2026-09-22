@@ -506,7 +506,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       .get()
       .then((result) => {
         if (
-          result.effective.reasoning === "dual" &&
+          (result.effective?.reasoning ?? (result.settings.evaluator ? "dual" : "single")) === "dual" &&
           (!result.settings.enabled || !result.settings.principal || !result.settings.evaluator)
         )
           return toast.show({
@@ -515,7 +515,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             duration: 10000,
           })
         // Single reasoning by default gets one subtle hint ever; a chosen mode never does.
-        if (result.effective.source !== "default" || !kv.ready || kv.get("dual_reasoning_hint_shown", false)) return
+        if (result.effective?.source !== "default" || !kv.ready || kv.get("dual_reasoning_hint_shown", false)) return
         kv.set("dual_reasoning_hint_shown", true)
         toast.show({ variant: "info", message: "Run /setup to enable dual reasoning (S1 + S2)", duration: 6000 })
       })

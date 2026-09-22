@@ -9,6 +9,7 @@ import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
 import { useLanguage } from "@/context/language"
 import { useServerSDK } from "@/context/server-sdk"
+import { effective } from "@/context/intelligence"
 import { usePlatform } from "@/context/platform"
 import { useModels } from "@/context/models"
 import { authTokenFromCredentials } from "@/utils/server"
@@ -404,7 +405,7 @@ export function IntelligenceOnboarding() {
       .then((result) => {
         // Single reasoning needs no setup; only an unconfigured dual mode asks for it.
         if (
-          result.effective.reasoning === "single" ||
+          (result.effective ?? effective(result.settings, undefined)).reasoning === "single" ||
           (result.settings.enabled && result.settings.principal && result.settings.evaluator) ||
           server().url !== http.url
         )
