@@ -67,7 +67,8 @@ export const PlanExitTool = Tool.define(
       parameters: PlanParameters,
       execute: (params: typeof PlanParameters.Type, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          yield* Intelligence.requireConfigured(yield* intelligence.read())
+          const settings = yield* intelligence.read()
+          yield* Intelligence.requireConfigured(settings)
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(instance.worktree, yield* Session.preparePlan(info, instance))
@@ -80,7 +81,8 @@ export const PlanExitTool = Tool.define(
           if (problem) return yield* Effect.die(problem)
           const sourceRequests = (yield* facts.load(ctx.sessionID)).requests
           const requests = sourceRequests.filter((request) => !request.pending)
-          yield* Intelligence.requireAccepted(
+          yield* Intelligence.requireReview(
+            settings,
             yield* intelligence.evaluate({
               sessionID: ctx.sessionID,
               operation: "plan",
@@ -139,7 +141,7 @@ export const PlanExitTool = Tool.define(
                   sessionID: ctx.sessionID,
                   questions: [
                     {
-                      question: `Execute plan ${plan} (revision ${revision})?\n\n${content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}`,
+                      question: `Execute plan ${plan} (revision ${revision})?\n\n${content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}${Intelligence.mode(settings) === "single" ? `\n\nS1 plan review: ${Intelligence.UNVERIFIED}.` : ""}`,
                       header: "Build Agent",
                       custom: false,
                       options: [

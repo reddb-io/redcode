@@ -49,8 +49,8 @@ const make = Effect.gen(function* () {
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
     if (!incoming.length) return yield* get(input.sessionID)
-    yield* intelligence.read().pipe(
-      Effect.flatMap(Intelligence.requireConfigured),
+    const settings = yield* intelligence.read().pipe(
+      Effect.tap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     const observed = yield* facts.load(input.sessionID)
@@ -402,7 +402,8 @@ const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
     })
-    yield* Effect.forEach(semantic, Intelligence.requireAccepted).pipe(
+    // Structural and revision checks above always apply; only the S1 verdict depends on the mode.
+    yield* Effect.forEach(semantic, (record) => Intelligence.requireReview(settings, record)).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     if (

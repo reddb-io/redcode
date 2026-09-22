@@ -155,6 +155,16 @@ export function transformer(
     // schema or semantic correction; transport failures preserve the previous state.
     const generated = yield* generate(input.sessionID, input.prompt, false, input.operation === "compaction")
     const candidate = yield* input.decode(generated).pipe(Effect.result)
+    // Single reasoning keeps schema and structural validation, with one repair, but never calls S1.
+    if (Intelligence.mode(settings) === "single") {
+      if (candidate._tag === "Success") return candidate.success
+      return yield* generate(
+        input.sessionID,
+        `${input.prompt}\n\nRevise against original sources. The previous output did not satisfy the required structure: ${candidate.failure.message}`,
+        true,
+        input.operation === "compaction",
+      ).pipe(Effect.flatMap(input.decode))
+    }
     const first =
       candidate._tag === "Success"
         ? yield* intelligence.evaluate({

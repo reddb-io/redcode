@@ -80,7 +80,8 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
-              yield* Intelligence.requireConfigured(yield* intelligence.read())
+              const settings = yield* intelligence.read()
+              yield* Intelligence.requireConfigured(settings)
               const evidence = yield* SessionEvidence.read(input.path, context, permissions, location)
               const savedGoal = yield* goals.get(context.sessionID)
               const goal = savedGoal?.status === "active" || savedGoal?.status === "waiting" ? savedGoal : null
@@ -133,7 +134,7 @@ const layer = Layer.effectDiscard(
                     "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
                 }),
               })
-              yield* Intelligence.requireAccepted(evaluation)
+              yield* Intelligence.requireReview(settings, evaluation)
               const currentEvidence = yield* SessionEvidence.read(input.path, context, permissions, location)
               if (
                 currentEvidence.hash !== evidence.hash ||
@@ -166,7 +167,7 @@ const layer = Layer.effectDiscard(
                   questions: [
                     {
                       header: "Plan approval",
-                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}`,
+                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}${Intelligence.mode(settings) === "single" ? `\n\nS1 plan review: ${Intelligence.UNVERIFIED}.` : ""}`,
                       custom: false,
                       options: [
                         { label: "Execute", description: "Approve this revision and start Build" },

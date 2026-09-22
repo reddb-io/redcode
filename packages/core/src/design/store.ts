@@ -254,7 +254,9 @@ const make = Effect.gen(function* () {
           ),
         })
         .pipe(Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })))
-      yield* Intelligence.requireAccepted(evaluation).pipe(
+      // DesignRounds.gate above keeps the structural verification checks in every mode.
+      yield* intelligence.read().pipe(
+        Effect.flatMap((settings) => Intelligence.requireReview(settings, evaluation)),
         Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
       )
       yield* intelligence.read().pipe(

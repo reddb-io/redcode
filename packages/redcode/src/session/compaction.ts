@@ -1341,6 +1341,9 @@ const layer = Layer.effect(
                 summaryError({ summary: text, source: settled.source, finish }) ??
                 (finish === "length" ? CompactionEvaluation.partialError(text) : undefined)
               if (structural) return { issue: structural, unavailable: false }
+              // Single reasoning keeps the structural and reduction checks and skips S1 by choice.
+              if (Intelligence.mode(yield* intelligence.read()) === "single")
+                return { issue: undefined, unavailable: false }
               const evaluation = yield* intelligence.evaluate({
                 sessionID: input.sessionID,
                 operation: "compaction",

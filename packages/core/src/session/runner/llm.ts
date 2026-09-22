@@ -639,6 +639,8 @@ const layer = Layer.effect(
     ) {
       const settings = yield* intelligence.read()
       yield* Intelligence.requireConfigured(settings)
+      // Single reasoning runs S2 alone: no classification, review or warning is produced.
+      if (Intelligence.mode(settings) === "single") return undefined
       const hash = Intelligence.evaluationFingerprint(input, settings)
       if (attempts?.has(hash)) {
         const cached = attempts.get(hash)
