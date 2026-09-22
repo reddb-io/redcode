@@ -62,6 +62,12 @@ export const dict = {
   "settings.intelligence.environment": "Global setup on {{environment}}",
   "settings.intelligence.description":
     "Configure System Two for generation and System One for semantic decisions. These roles are shared across projects on this server.",
+  "settings.intelligence.reasoning": "Reasoning mode",
+  "settings.intelligence.single": "Simple — one model",
+  "settings.intelligence.dual": "Dual — S1 classifies and validates, S2 executes",
+  "settings.intelligence.flag":
+    "This server runs with --reasoning {{mode}}. The saved mode applies when it starts without the flag.",
+  "settings.intelligence.principalRequired": "Select an S2 principal to continue",
   "settings.intelligence.principal": "System Two — principal",
   "settings.intelligence.fast": "System Two — transformations",
   "settings.intelligence.select": "Select a connected model",

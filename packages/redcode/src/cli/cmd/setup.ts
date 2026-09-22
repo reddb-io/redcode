@@ -1,4 +1,4 @@
-import type { Evaluator } from "@reddb-io/redcode-schema/intelligence"
+import type { Evaluator, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
 import { Effect, Option } from "effect"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Location } from "@reddb-io/redcode-core/location"
@@ -33,7 +33,6 @@ export const SetupCommand = effectCmd({
         Effect.provide(locationServiceMapLayer),
       )
       const providers = yield* provider.list()
-      const evaluators = yield* service.options()
       const choices = Object.values(providers).flatMap((provider) =>
         Object.values(provider.models)
           .filter((model) => model.capabilities.protocol !== "systemone")
@@ -45,75 +44,66 @@ export const SetupCommand = effectCmd({
       if (!choices.length)
         return yield* fail("Connect a generative provider with redcode providers before running setup")
       yield* intro(`Global intelligence setup — ${service.environment}`)
-      const principal = yield* answer(
-        yield* select<string>({ message: "S2 (System Two) — principal", options: choices }),
-      )
-      const fast = yield* answer(
-        yield* select<string>({
-          message: "S2 (System Two) — transformations (may reuse principal)",
+      const effective = Intelligence.reasoning(previous)
+      const reasoning = yield* answer(
+        yield* select<Reasoning>({
+          message:
+            effective.source === "flag"
+              ? `Reasoning mode (this run uses --reasoning ${effective.reasoning})`
+              : "Reasoning mode",
+          initialValue: effective.reasoning,
           options: [
-            { value: principal, label: "Reuse principal" },
-            ...choices.filter((choice) => choice.value !== principal),
+            {
+              value: "single",
+              label: "Simple — one model",
+              hint: "S2 only; completion checks report S1 as not verified",
+            },
+            { value: "dual", label: "Dual — S1 classifies and validates, S2 executes" },
           ],
         }),
       )
-      const transport = yield* answer(
-        yield* select<Evaluator["transport"]>({
-          message: "S1 (System One) connection",
-          options: evaluators.map((option) => ({
-            value: option.evaluator.transport,
-            label: `${option.configured ? "Configured · " : ""}${option.name}`,
-          })),
-        }),
-      )
-      const selected = evaluators.find((option) => option.evaluator.transport === transport)!
-      const baseURL = yield* answer(
-        yield* text({
-          message: "API base URL",
-          initialValue:
-            previous.evaluator?.transport === transport ? previous.evaluator.baseURL : selected.evaluator.baseURL,
-        }),
-      )
-      const key = yield* answer(
-        yield* password({
-          message: selected.configured
-            ? "API key (empty reuses the configured provider connection)"
-            : transport === "opencode-zen"
-              ? "Zen API key (empty reuses OpenCode connection, OPENCODE_API_KEY, or public free access)"
-              : "System One API key (leave empty to reuse saved credentials or environment)",
-        }),
-      )
-      const credentialID =
-        previous.evaluator?.transport === transport && previous.evaluator.baseURL === baseURL
-          ? previous.evaluator.credentialID
-          : selected.evaluator.baseURL === baseURL
-            ? selected.evaluator.credentialID
-            : undefined
-      const evaluator = {
-        transport,
-        baseURL,
-        model: previous.evaluator?.transport === transport ? previous.evaluator.model : selected.evaluator.model,
-        ...(credentialID ? { credentialID } : {}),
-      }
-      const discovered = yield* service.discover({ evaluator, ...(key ? { apiKey: key } : {}) })
-      const model = discovered.models.length
-        ? yield* answer(
-            yield* select<string>({
-              message: "S1 (System One) — evaluator",
+      const label = (value: string) => choices.find((choice) => choice.value === value)?.label ?? value
+      const saved = previous.principal ? `${previous.principal.providerID}/${previous.principal.id}` : undefined
+      const savedFast = previous.fast ? `${previous.fast.providerID}/${previous.fast.id}` : undefined
+      const continued = saved
+        ? (yield* answer(
+            yield* select<"continue" | "change">({
+              message: "S2 (System Two)",
               options: [
-                { value: evaluator.model, label: evaluator.model },
-                ...discovered.models
-                  .filter((model) => model.id !== evaluator.model)
-                  .map((model) => ({ value: model.id, label: model.name })),
+                {
+                  value: "continue",
+                  label: `Continue with ${label(saved)}`,
+                  hint: savedFast ? `transformations: ${label(savedFast)}` : undefined,
+                },
+                { value: "change", label: "Change System Two model…" },
               ],
             }),
-          )
-        : yield* answer(yield* text({ message: "S1 (System One) model", initialValue: evaluator.model }))
-      if (transport === "opencode-zen")
-        yield* outro(
-          "Jev Free is a temporary offer. If unavailable, choose another evaluator; setup never switches to a paid model automatically.",
-        )
-      yield* outro("Sources and candidates will be sent to the selected evaluator. Testing with a synthetic example.")
+          )) === "continue"
+        : false
+      const principal =
+        continued && saved
+          ? saved
+          : yield* answer(
+              yield* select<string>({
+                message: "S2 (System Two) — principal",
+                options: choices,
+                initialValue: saved,
+              }),
+            )
+      // Continuing, or single reasoning, keeps the saved transformations model (or reuse of the principal).
+      const fast =
+        continued || reasoning === "single"
+          ? (savedFast ?? principal)
+          : yield* answer(
+              yield* select<string>({
+                message: "S2 (System Two) — transformations (may reuse principal)",
+                options: [
+                  { value: principal, label: "Reuse principal" },
+                  ...choices.filter((choice) => choice.value !== principal),
+                ],
+              }),
+            )
+      const systemOne = reasoning === "dual" ? yield* configureSystemOne(service, previous) : undefined
       const ref = (value: string) => ({
         providerID: ProviderV2.ID.make(value.slice(0, value.indexOf("/"))),
         id: Model.ID.make(value.slice(value.indexOf("/") + 1)),
@@ -122,20 +112,109 @@ export const SetupCommand = effectCmd({
         const checked = yield* semantic.probeModel(ref(selected))
         if (!checked.ok) return yield* fail(checked.message)
       }
-      const check = yield* service.probe({ evaluator: { ...evaluator, model }, ...(key ? { apiKey: key } : {}) })
-      if (!check.ok) return yield* fail(check.message)
+      const apiKey = systemOne?.key ? { apiKey: systemOne.key } : {}
+      if (systemOne) {
+        const check = yield* service.probe({ evaluator: systemOne.evaluator, ...apiKey })
+        if (!check.ok) return yield* fail(check.message)
+      }
       yield* service.save({
         settings: {
           enabled: true,
+          reasoning,
           onboarding: "completed",
           principal: ref(principal),
           ...(fast === principal ? {} : { fast: ref(fast) }),
-          evaluator: { ...evaluator, model },
+          // Single reasoning keeps the saved S1 evaluator (runtime ignores it) so dual can continue with it.
+          evaluator: systemOne?.evaluator ?? previous.evaluator,
         },
-        ...(key ? { apiKey: key } : {}),
+        ...apiKey,
       })
-      yield* outro("Global intelligence configured. Projects on this server share these roles.")
+      yield* outro(
+        systemOne
+          ? "Global intelligence configured. Projects on this server share these roles."
+          : "Single reasoning configured: S2 only. Projects on this server share this model.",
+      )
     },
     Effect.mapError((error) => new CliError({ message: error.message })),
   ),
 })
+
+/** Dual reasoning only: keep the saved S1 evaluator or choose, discover and confirm another one. */
+function configureSystemOne(service: Intelligence.Interface, previous: Settings) {
+  return Effect.gen(function* () {
+    const current = previous.evaluator
+    if (
+      current &&
+      (yield* answer(
+        yield* select<"continue" | "change">({
+          message: "S1 (System One)",
+          options: [
+            { value: "continue", label: `Continue with ${current.transport}/${current.model}` },
+            { value: "change", label: "Change System One connection…" },
+          ],
+        }),
+      )) === "continue"
+    )
+      return { evaluator: current, key: "" }
+    const evaluators = yield* service.options()
+    const transport = yield* answer(
+      yield* select<Evaluator["transport"]>({
+        message: "S1 (System One) connection",
+        // Detected local transports (for example a running RedRouter) belong ahead of the catalog.
+        options: evaluators.map((option) => ({
+          value: option.evaluator.transport,
+          label: `${option.configured ? "Configured · " : ""}${option.name}`,
+        })),
+      }),
+    )
+    const selected = evaluators.find((option) => option.evaluator.transport === transport)
+    if (!selected) return yield* fail(`Unknown S1 connection: ${transport}`)
+    const baseURL = yield* answer(
+      yield* text({
+        message: "API base URL",
+        initialValue: current?.transport === transport ? current.baseURL : selected.evaluator.baseURL,
+      }),
+    )
+    const key = yield* answer(
+      yield* password({
+        message: selected.configured
+          ? "API key (empty reuses the configured provider connection)"
+          : transport === "opencode-zen"
+            ? "Zen API key (empty reuses OpenCode connection, OPENCODE_API_KEY, or public free access)"
+            : "System One API key (leave empty to reuse saved credentials or environment)",
+      }),
+    )
+    const credentialID =
+      current?.transport === transport && current.baseURL === baseURL
+        ? current.credentialID
+        : selected.evaluator.baseURL === baseURL
+          ? selected.evaluator.credentialID
+          : undefined
+    const evaluator = {
+      transport,
+      baseURL,
+      model: current?.transport === transport ? current.model : selected.evaluator.model,
+      ...(credentialID ? { credentialID } : {}),
+    }
+    const discovered = yield* service.discover({ evaluator, ...(key ? { apiKey: key } : {}) })
+    const model = discovered.models.length
+      ? yield* answer(
+          yield* select<string>({
+            message: "S1 (System One) — evaluator",
+            options: [
+              { value: evaluator.model, label: evaluator.model },
+              ...discovered.models
+                .filter((model) => model.id !== evaluator.model)
+                .map((model) => ({ value: model.id, label: model.name })),
+            ],
+          }),
+        )
+      : yield* answer(yield* text({ message: "S1 (System One) model", initialValue: evaluator.model }))
+    if (transport === "opencode-zen")
+      yield* outro(
+        "Jev Free is a temporary offer. If unavailable, choose another evaluator; setup never switches to a paid model automatically.",
+      )
+    yield* outro("Sources and candidates will be sent to the selected evaluator. Testing with a synthetic example.")
+    return { evaluator: { ...evaluator, model }, key }
+  })
+}
