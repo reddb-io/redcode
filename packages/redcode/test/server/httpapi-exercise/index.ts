@@ -876,7 +876,12 @@ const scenarios: Scenario[] = [
       object(body)
       object(body.settings)
       array(body.evaluators)
+      object(body.effective)
       check(typeof body.environment === "string", "intelligence setup should identify its global environment")
+      check(
+        body.effective.reasoning === "single" || body.effective.reasoning === "dual",
+        "intelligence setup should report the effective reasoning mode",
+      )
     }),
   http.protected
     .put("/api/intelligence", "intelligence.save")

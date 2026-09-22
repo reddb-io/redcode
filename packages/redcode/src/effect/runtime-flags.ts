@@ -16,6 +16,11 @@ const enabledByExperimental = (name: string) =>
 export class Service extends ConfigService.Service<Service>()("@redcode/RuntimeFlags", {
   autoShare: bool("REDCODE_AUTO_SHARE"),
   pure: bool("REDCODE_PURE"),
+  // An unknown value falls back to the saved setting instead of failing startup.
+  reasoning: Config.string("REDCODE_REASONING").pipe(
+    Config.map((value) => (value === "single" || value === "dual" ? value : undefined)),
+    Config.orElse(() => Config.succeed(undefined)),
+  ),
   disableDefaultPlugins: bool("REDCODE_DISABLE_DEFAULT_PLUGINS"),
   disableEmbeddedWebUi: bool("REDCODE_DISABLE_EMBEDDED_WEB_UI"),
   disableExternalSkills: bool("REDCODE_DISABLE_EXTERNAL_SKILLS"),

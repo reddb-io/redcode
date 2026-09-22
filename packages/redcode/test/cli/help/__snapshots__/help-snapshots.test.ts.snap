@@ -11,6 +11,7 @@ Options:
       --print-logs         print logs to stderr                                            [boolean]
       --log-level          log level            [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure               run without external plugins                                    [boolean]
+      --reasoning          reasoning mode for this run          [string] [choices: "single", "dual"]
       --verbose            trace the boot to stderr until the screen renders, then trace activity to
                            the log                                                         [boolean]
       --port               port to listen on                                   [number] [default: 0]
@@ -42,6 +43,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -60,6 +62,7 @@ Options:
       --print-logs    print logs to stderr                                                 [boolean]
       --log-level     log level                 [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure          run without external plugins                                         [boolean]
+      --reasoning     reasoning mode for this run               [string] [choices: "single", "dual"]
       --verbose       trace the boot to stderr until the screen renders, then trace activity to the
                       log                                                                  [boolean]
       --dir           directory to run in                                                   [string]
@@ -87,6 +90,7 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --reasoning    reasoning mode for this run                [string] [choices: "single", "dual"]
       --verbose      trace the boot to stderr until the screen renders, then trace activity to the
                      log                                                                   [boolean]
       --command      the command to run, use message for args                               [string]
@@ -154,6 +158,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -174,6 +179,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -193,6 +199,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -211,6 +218,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
   -m, --method      installation method to use      [string] [choices: "npm", "pnpm", "bun", "yarn"]"
@@ -227,6 +235,7 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --reasoning    reasoning mode for this run                [string] [choices: "single", "dual"]
       --verbose      trace the boot to stderr until the screen renders, then trace activity to the
                      log                                                                   [boolean]
   -c, --keep-config  keep configuration files                             [boolean] [default: false]
@@ -246,6 +255,7 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --reasoning    reasoning mode for this run                [string] [choices: "single", "dual"]
       --verbose      trace the boot to stderr until the screen renders, then trace activity to the
                      log                                                                   [boolean]
       --port         port to listen on                                         [number] [default: 0]
@@ -268,6 +278,7 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
+      --reasoning    reasoning mode for this run                [string] [choices: "single", "dual"]
       --verbose      trace the boot to stderr until the screen renders, then trace activity to the
                      log                                                                   [boolean]
       --port         port to listen on                                         [number] [default: 0]
@@ -293,6 +304,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     use more verbose model output (includes metadata like costs)           [boolean]
       --refresh     refresh the models cache from models.dev                               [boolean]"
 `;
@@ -308,6 +320,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
       --days        show stats for the last N days (default: all time)                      [number]
@@ -331,6 +344,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
       --sanitize    redact sensitive transcript and file data                              [boolean]"
@@ -350,6 +364,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -369,6 +384,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -387,6 +403,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -406,6 +423,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -424,6 +442,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
   -g, --global      install in global config                              [boolean] [default: false]
@@ -450,6 +469,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
       --format      Output format                 [string] [choices: "json", "tsv"] [default: "tsv"]"
@@ -466,6 +486,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -484,6 +505,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
       --url         URL for a remote MCP server                                             [string]
@@ -508,6 +530,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -526,6 +549,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -541,6 +565,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -559,6 +584,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
   -p, --provider    provider id or name to log in to (skips provider selection)             [string]
@@ -579,6 +605,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -594,6 +621,7 @@ Options:
       --print-logs            print logs to stderr                                         [boolean]
       --log-level             log level         [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure                  run without external plugins                                 [boolean]
+      --reasoning             reasoning mode for this run       [string] [choices: "single", "dual"]
       --verbose               trace the boot to stderr until the screen renders, then trace activity
                               to the log                                                   [boolean]
       --path                  directory path to generate the agent file                     [string]
@@ -616,6 +644,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -631,6 +660,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
   -n, --max-count   limit to N most recent sessions                                         [number]
@@ -651,6 +681,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -666,6 +697,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;
@@ -681,6 +713,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]
       --event       GitHub mock event to run the agent for                                  [string]
@@ -698,6 +731,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
 `;

@@ -12,10 +12,12 @@ export const IntelligenceHandler = HttpApiBuilder.group(Api, "server.intelligenc
     .handle("intelligence.get", () =>
       Effect.gen(function* () {
         const service = yield* Intelligence.Service
+        const settings = yield* checked(service.read())
         return {
-          settings: yield* checked(service.read()),
+          settings,
           environment: service.environment,
           evaluators: yield* checked(service.options()),
+          effective: Intelligence.reasoning(settings),
         }
       }),
     )

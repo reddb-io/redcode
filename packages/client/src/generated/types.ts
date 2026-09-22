@@ -6932,6 +6932,7 @@ export type HooksImportOutput = {
 export type IntelligenceGetOutput = {
   readonly settings: {
     readonly enabled: boolean
+    readonly reasoning?: "single" | "dual"
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -6969,12 +6970,14 @@ export type IntelligenceGetOutput = {
       readonly credentialID?: string
     }
   }>
+  readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
 }
 
 export type IntelligenceSaveInput = {
   readonly settings: {
     readonly settings: {
       readonly enabled: boolean
+      readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -6998,6 +7001,7 @@ export type IntelligenceSaveInput = {
   readonly apiKey?: {
     readonly settings: {
       readonly enabled: boolean
+      readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -7022,6 +7026,7 @@ export type IntelligenceSaveInput = {
 
 export type IntelligenceSaveOutput = {
   readonly enabled: boolean
+  readonly reasoning?: "single" | "dual"
   readonly onboarding: "pending" | "deferred" | "completed"
   readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
   readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }

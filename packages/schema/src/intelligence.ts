@@ -24,8 +24,13 @@ export const Evaluator = Schema.Struct({
 }).annotate({ identifier: "Intelligence.Evaluator" })
 export interface Evaluator extends Schema.Schema.Type<typeof Evaluator> {}
 
+/** `single` runs S2 only; `dual` adds the S1 evaluator to every semantic gate. */
+export const Reasoning = Schema.Literals(["single", "dual"]).annotate({ identifier: "Intelligence.Reasoning" })
+export type Reasoning = typeof Reasoning.Type
+
 export const Settings = Schema.Struct({
   enabled: Schema.Boolean,
+  reasoning: Reasoning.pipe(optional),
   onboarding: Schema.Literals(["pending", "deferred", "completed"]),
   principal: Model.Ref.pipe(optional),
   fast: Model.Ref.pipe(optional),
@@ -131,6 +136,10 @@ export const Status = Schema.Struct({
   settings: Settings,
   environment: Schema.String,
   evaluators: Schema.Array(EvaluatorOption),
+  effective: Schema.Struct({
+    reasoning: Reasoning,
+    source: Schema.Literals(["flag", "config", "default"]),
+  }),
 }).annotate({
   identifier: "Intelligence.Status",
 })

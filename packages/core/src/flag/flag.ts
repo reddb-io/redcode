@@ -72,6 +72,10 @@ export const Flag = {
   get REDCODE_PURE() {
     return truthy("REDCODE_PURE")
   },
+  get REDCODE_REASONING() {
+    const value = process.env["REDCODE_REASONING"]?.toLowerCase()
+    return value === "single" || value === "dual" ? value : undefined
+  },
   get REDCODE_PERMISSION() {
     return process.env["REDCODE_PERMISSION"]
   },
