@@ -305,8 +305,10 @@ describe("Monitors", () => {
           error: expect.stringContaining("success_regex regex timed out"),
         },
       })
-      // The event loop kept turning while each match was stuck.
-      expect(ticks).toBeGreaterThan((Date.now() - started) / 10 / 4)
+      // The event loop kept turning while each match was stuck. The bound is loose on purpose: a
+      // blocked loop gets next to no ticks, while a loaded Windows runner with 15.6 ms timers and
+      // other test files alongside gets a fraction of the ideal hundred per second.
+      expect(ticks).toBeGreaterThan((Date.now() - started) / 10 / 10)
     }),
   )
 

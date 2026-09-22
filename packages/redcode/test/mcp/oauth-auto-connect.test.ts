@@ -404,7 +404,10 @@ function approve(authorizationUrl: string, code = "valid-code") {
 
 function until<A>(check: () => A | undefined, label: string) {
   return Effect.gen(function* () {
-    for (let attempt = 0; attempt < 500; attempt++) {
+    // Bounded by time rather than by turns of the event loop: on a loaded runner, with other test
+    // files running alongside, the callback round trip can take more than a few hundred turns.
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
       const value = check()
       if (value !== undefined && value !== false) return value
       yield* Effect.yieldNow

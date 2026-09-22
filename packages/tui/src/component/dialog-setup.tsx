@@ -26,6 +26,7 @@ export function createDialogSetupState(resume?: { settings: Intelligence.Setting
     busy: false,
     loaded: !!resume,
     environment: "",
+    providerID: "",
     models: [] as { id: string; name: string }[],
     evaluators: [] as Intelligence.EvaluatorOption[],
   })
@@ -81,34 +82,54 @@ export function DialogSetup(
   const connect = (resume: "welcome" | "principal" | "fast") =>
     dialog.replace(() => (
       <DialogProvider
-        onConnected={() => {
-          set("step", resume)
+        onConnected={(providerID) => {
+          batch(() => {
+            set("providerID", providerID)
+            set("step", resume)
+          })
           dialog.replace(() => <DialogSetup state={setup} onModelSelected={props.onModelSelected} />)
         }}
       />
     ))
-  const options = (): DialogSelectOption<ModelChoice>[] => [
-    ...(state.step === "fast" && state.settings.principal
-      ? [
-          {
-            title: "Reuse System Two principal",
-            value: "reuse" as const,
-            description: `${state.settings.principal.providerID}/${state.settings.principal.id}`,
-            category: "Recommended",
-          },
-        ]
-      : []),
-    ...sync.data.provider.flatMap((provider) =>
-      Object.values(provider.models)
-        .filter((model) => model.capabilities.protocol !== "systemone")
-        .map((model) => ({
-          title: model.name,
-          value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
-          category: provider.name,
-        })),
-    ),
-    { title: "Choose or connect provider…", value: "connect" as const, category: "Providers" },
-  ]
+  const activeProvider = () => {
+    const hasGenerativeModel = (provider: (typeof sync.data.provider)[number]) =>
+      Object.values(provider.models).some((model) => model.capabilities.protocol !== "systemone")
+    const current = local?.model.current()
+    const preferred = [state.providerID, current?.providerID, state.settings.principal?.providerID]
+      .filter((providerID, index, list): providerID is string => !!providerID && list.indexOf(providerID) === index)
+      .map((providerID) => sync.data.provider.find((provider) => provider.id === providerID))
+      .find((provider) => provider && hasGenerativeModel(provider))
+    return preferred ?? sync.data.provider.find(hasGenerativeModel)
+  }
+  const options = (): DialogSelectOption<ModelChoice>[] => {
+    const provider = activeProvider()
+    return [
+      ...(state.step === "fast" && state.settings.principal
+        ? [
+            {
+              title: "Reuse System Two principal",
+              value: "reuse" as const,
+              description: `${state.settings.principal.providerID}/${state.settings.principal.id}`,
+              category: "Recommended",
+            },
+          ]
+        : []),
+      ...(provider
+        ? Object.values(provider.models)
+            .filter((model) => model.capabilities.protocol !== "systemone")
+            .map((model) => ({
+              title: model.name,
+              value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
+            }))
+        : []),
+      { title: "Choose or connect another provider…", value: "connect" as const, category: "Connection" },
+    ]
+  }
+  const modelStepTitle = () => {
+    const provider = activeProvider()
+    const role = state.step === "principal" ? "1/3 · System Two principal" : "2/3 · System Two transformations"
+    return `${role}${provider ? ` · ${provider.name}` : ""}`
+  }
   const evaluator = () => state.settings.evaluator!
   const finish = async () => {
     set("busy", true)
@@ -197,11 +218,7 @@ export function DialogSetup(
       </Match>
       <Match when={state.step === "principal" || state.step === "fast"}>
         <DialogSelect
-          title={
-            state.step === "principal"
-              ? "1/3 · System Two principal"
-              : "2/3 · System Two transformations (may reuse principal)"
-          }
+          title={modelStepTitle()}
           options={options()}
           onSelect={(option) => {
             if (option.value === "connect") return connect(state.step === "fast" ? "fast" : "principal")
@@ -209,6 +226,7 @@ export function DialogSetup(
             const model = option.value === "reuse" ? undefined : option.value
             set((current) => ({
               ...current,
+              providerID: model?.providerID ?? current.providerID,
               settings: { ...current.settings, [role]: model },
               step: role === "principal" ? "fast" : current.scope === "system-two" ? "confirm" : "transport",
             }))

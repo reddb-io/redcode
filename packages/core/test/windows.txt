@@ -1,0 +1,53 @@
+# Test paths the Windows CI jobs run for this package; Linux runs the whole suite.
+# See packages/redcode/test/windows.txt for what belongs here. One path per line, relative to the
+# package root; CI fails on a path that no longer exists.
+
+# Processes, shells and PTYs
+./test/process/
+./test/pty/
+./test/shell.test.ts
+./test/effect/cross-spawn-spawner.test.ts
+./test/tool-bash.test.ts
+./test/tool-shell-polling.test.ts
+./test/session-runner-bash-polling.test.ts
+./test/monitor.test.ts
+./test/monitor-probe.test.ts
+./test/util/which.test.ts
+./test/npm.test.ts
+./test/ripgrep.test.ts
+
+# Filesystem, paths and locking
+./test/filesystem/
+./test/util/flock.test.ts
+./test/util/effect-flock.test.ts
+./test/tool-read.test.ts
+./test/tool-read-filesystem.test.ts
+./test/tool-write.test.ts
+./test/tool-edit.test.ts
+./test/tool-apply-patch.test.ts
+./test/tool-external.test.ts
+./test/location-filesystem.test.ts
+./test/location-mutation.test.ts
+./test/database-migration.test.ts
+./test/database-processes.test.ts
+./test/observability/
+./test/global.test.ts
+./test/config/config.test.ts
+./test/skill-discovery.test.ts
+./test/image-photon.test.ts
+
+# Git, projects, worktrees and snapshots
+./test/git.test.ts
+./test/snapshot.test.ts
+./test/project.test.ts
+./test/project-dir.test.ts
+./test/project-directories.test.ts
+./test/project-copy.test.ts
+./test/repository-guard.test.ts
+./test/repository-cache.test.ts
+./test/move-session.test.ts
+
+# Design files on disk
+./test/design-boundaries.test.ts
+./test/design-inventory.test.ts
+./test/design-system.test.ts

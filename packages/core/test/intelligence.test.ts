@@ -927,6 +927,7 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
   expect(Intelligence.evaluatorPreset("nano-gpt").model).toBe("typesafe/jev-latest")
   expect(Intelligence.defaults).toEqual({ enabled: false, onboarding: "pending" })
   expect(Intelligence.isJev("typesafe-ai/jev")).toBe(true)
+  expect(Intelligence.isJev("openrouter/typesafe/jev-1.13")).toBe(true)
   expect(Intelligence.isJev("jev-1.13-free")).toBe(true)
   expect(Intelligence.isJev("gpt-5")).toBe(false)
   await using dir = await tmpdir()
@@ -1094,6 +1095,35 @@ test("Cloudflare, Vercel and OpenRouter use their native System One endpoints", 
   expect(calls[3].url.pathname).toBe("/api/alpha/decisions")
   expect(calls[3].headers.get("authorization")).toBe("Bearer openrouter-key")
   expect(calls[3].body).toMatchObject({ model: "typesafe/jev-1.13", questions: { check: { type: "noul" } } })
+})
+
+test("generic System One discovery excludes chat models and accepts routed evaluator IDs", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      Response.json({
+        data: [{ id: "gpt-5" }, { id: "openrouter/typesafe/jev-1.13" }, { id: "typesafe-ai/jev" }],
+      }),
+  })
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* Intelligence.make(dir.path, credentials)
+        const evaluator = {
+          transport: "typesafe" as const,
+          baseURL: `${server.url}v1`,
+          model: "jev-1.13.0",
+        }
+        expect((yield* service.discover({ evaluator })).models.map((model) => model.id)).toEqual([
+          "openrouter/typesafe/jev-1.13",
+          "typesafe-ai/jev",
+        ])
+      }),
+    )
+  } finally {
+    server.stop(true)
+  }
 })
 
 test("Zen discovery excludes chat models and never falls back from free to paid Jev", async () => {

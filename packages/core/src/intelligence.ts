@@ -50,8 +50,13 @@ const JevIDs = new Set([
   "typesafe/jev-1.13",
   "typesafe-ai/jev",
 ])
-/** Persistence safeguard for old settings; live catalogs classify execution protocol explicitly. */
-export const isJev = (id: string) => JevIDs.has(id.toLowerCase())
+/** Persistence safeguard for old settings and catalogs that prefix models with routing providers. */
+export const isJev = (id: string) => {
+  const segments = id.toLowerCase().split("/")
+  return [id.toLowerCase(), segments.at(-1), segments.slice(-2).join("/")].some((candidate) =>
+    candidate ? JevIDs.has(candidate) : false,
+  )
+}
 export class Error extends Schema.TaggedErrorClass<Error>()("IntelligenceError", {
   message: Schema.String,
   status: Schema.Int.pipe(Schema.optional),
@@ -503,9 +508,7 @@ export const make = (
         models: [
           ...(parsed.data ?? []).map((model) => ({ id: model.id, name: model.id })),
           ...(parsed.models ?? []).map((model) => ({ id: model.name, name: model.name })),
-        ].filter((model) =>
-          ["opencode-zen", "vivgrid", "nano-gpt"].includes(input.evaluator.transport) ? isJev(model.id) : true,
-        ),
+        ].filter((model) => (input.evaluator.transport === "red-router" ? true : isJev(model.id))),
         manual: false,
       }
     })

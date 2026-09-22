@@ -1,4 +1,5 @@
 import { createDialogSetupState, DialogSetup } from "./component/dialog-setup"
+import { setMaxListeners } from "node:events"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { DialogIntelligence } from "./component/dialog-intelligence"
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
@@ -227,6 +228,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             destroyRenderer(renderer)
           }),
       )
+      // Scroll boxes subscribe to renderer selection events and are disposed with their views.
+      // A full TUI legitimately renders more than Node's default listener warning threshold.
+      setMaxListeners(0, renderer)
       win32DisableProcessedInput()
       const keymap = createDefaultOpenTuiKeymap(renderer)
       yield* Effect.acquireRelease(

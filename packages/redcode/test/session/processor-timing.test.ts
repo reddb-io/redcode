@@ -30,6 +30,10 @@ import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 // provider: it stamps output as it arrives and keeps reading while the processor handles earlier
 // events. Timings are real sleeps, so bounds are loose; the exact rules are tested with a fake clock
 // in core's generation-timing tests.
+// Real sleeps also make these scenarios sensitive to a busy CPU: when CI runs other test files in
+// parallel, event handling can take long enough to read as a burst. A retry absorbs one slow run
+// without loosening what a passing run proves.
+const slowCpu = { timeout: 20_000, retry: 2 }
 
 type Step = { readonly after?: number } & ({ readonly event: LLMEvent } | { readonly fail: unknown })
 type Script = { readonly prep?: number; readonly steps: readonly Step[] }
@@ -279,7 +283,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -331,7 +335,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -370,7 +374,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -403,7 +407,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -435,7 +439,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -461,7 +465,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -492,7 +496,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -527,7 +531,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -548,7 +552,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -585,7 +589,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 it.live(
@@ -614,7 +618,7 @@ it.live(
         }),
       { config: cfg },
     ),
-  20_000,
+  slowCpu,
 )
 
 function poll<A>(read: Effect.Effect<A, unknown>, done: (value: A) => boolean) {

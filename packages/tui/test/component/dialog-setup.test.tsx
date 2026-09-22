@@ -60,6 +60,28 @@ const provider = {
       limit: { context: 1000, output: 100 },
       cost: {},
     },
+    combo: {
+      id: "combo",
+      providerID: "mock",
+      name: "Balanced Combo",
+      capabilities: { protocol: "language", tools: true, input: ["text"], output: ["text"] },
+      limit: { context: 1000, output: 100 },
+      cost: {},
+    },
+  },
+}
+
+const otherProvider = {
+  ...provider,
+  id: "other",
+  name: "Other Provider",
+  models: {
+    other: {
+      ...provider.models.model,
+      id: "other",
+      providerID: "other",
+      name: "Other Model",
+    },
   },
 }
 
@@ -112,7 +134,8 @@ test("global setup selects System Two models and offers provider connection in t
   const setup = await mount(
     (url) => {
       if (url.pathname === "/api/intelligence") return json(intelligence)
-      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/config/providers")
+        return json({ providers: [provider, otherProvider], default: { mock: "model", other: "other" } })
     },
     tmp.path,
     () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
@@ -125,8 +148,11 @@ test("global setup selects System Two models and offers provider connection in t
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
     const principal = setup.app.captureCharFrame()
+    expect(principal).toContain("System Two principal · Mock Provider")
     expect(principal).toContain("Mock Model")
-    expect(principal).toContain("Choose or connect provider…")
+    expect(principal).toContain("Balanced Combo")
+    expect(principal).not.toContain("Other Model")
+    expect(principal).toContain("Choose or connect another provider…")
 
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("System Two transformations"))
@@ -162,7 +188,7 @@ test("global setup can open provider connection when no generative model is conn
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
-    await wait(() => setup.app.captureCharFrame().includes("Choose or connect provider…"))
+    await wait(() => setup.app.captureCharFrame().includes("Choose or connect another provider…"))
     await wait(
       () =>
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
@@ -194,7 +220,8 @@ test("global setup can reuse an established provider connection without authenti
     () => <Dialogs resume={{ settings: intelligence.settings, step: "principal" }} />,
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("Choose or connect provider…"))
+    await wait(() => setup.app.captureCharFrame().includes("Choose or connect another provider…"))
+    await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
