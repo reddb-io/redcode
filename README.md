@@ -46,6 +46,7 @@ it**. Read [The Session Model](#the-session-model) first — the rest of this do
 - [Install](#install) — native CLI and installation methods
 - [Use](#use) — every command, and what it is for
 - [OpenAI-compatible providers](#openai-compatible-providers) — connect any OpenAI-compatible endpoint, or 9Router, without editing configuration
+- [Voice input](#voice-input) — dictate into the TUI composer without automatically submitting a prompt
 - [Modes](#modes) — Build, Plan and Design, with explicit handoffs
 - [Design Mode](#design-mode) — prototype in the browser, review it there, come out with a plan
 - [Tasks](#tasks) — requested work, progress and explicit blockers
@@ -351,6 +352,10 @@ Adding `9router` to `disabled_providers` hides it from `/connect`.
 If the `9router` provider points to an address that is not 9Router's default (because another
 endpoint was connected through it), `/connect` → **9Router** offers to move that connection to its
 own provider id. Its settings, models and saved key move with it; keeping it as it is works too.
+
+## Voice input
+
+The TUI publishes a capability-protected local socket for compatible dictation tools. On Linux, [dit](https://github.com/reddb-io/dit) can discover the Redcode instance associated with the focused terminal, render live transcription in its composer and leave the final text as a draft. It does not create a Session input or submit the prompt. See [Voice input](./docs/voice-input.md) for the transport and fallback behavior.
 
 ## Modes
 
