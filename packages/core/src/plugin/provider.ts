@@ -33,7 +33,10 @@ import { ZenmuxPlugin } from "./provider/zenmux"
 import type { PluginInternal } from "./internal"
 import type { Scope } from "effect"
 
-export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements | Scope.Scope>[] = [
+// A function, not a module-level array: every provider module imports `define` from ../internal,
+// which imports this module. Entered through a provider module (as its own test file does), this
+// body would otherwise run while that provider's binding is still uninitialized.
+export const ProviderPlugins = (): PluginInternal.Plugin<PluginInternal.Requirements | Scope.Scope>[] => [
   AlibabaPlugin,
   AmazonBedrockPlugin,
   AnthropicPlugin,
