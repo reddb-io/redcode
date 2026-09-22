@@ -43,14 +43,30 @@ runs:
         bun-version-file: ${{ !steps.bun-url.outputs.url && 'package.json' || '' }}
         bun-download-url: ${{ steps.bun-url.outputs.url }}
 
+    # Windows spends about three minutes per job restoring 675 MB of Bun's package cache and then
+    # linking it into node_modules. The linked tree itself is restored instead, keyed on exactly
+    # what produces it, and the package cache is skipped on an exact hit. Install still runs after
+    # it: with every package already in place it only verifies the tree, and it repairs anything
+    # the archive could not carry (workspace junctions) without touching the network.
+    - name: Restore node_modules
+      if: inputs.install == 'true' && runner.os == 'Windows'
+      id: node-modules
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          packages/*/*/node_modules
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('bun.lock', 'patches/**', 'package.json') }}-${{ inputs.install-flags }}
+
     - name: Get cache directory
-      if: inputs.install == 'true'
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       id: cache
       shell: bash
       run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
 
     - name: Restore Bun dependencies
-      if: inputs.install == 'true'
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       id: bun-cache
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -60,7 +76,7 @@ runs:
           ${{ runner.os }}-bun-
 
     - name: Install setuptools for distutils compatibility
-      if: inputs.install == 'true'
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       run: python3 -m pip install setuptools || pip install setuptools || true
       shell: bash
 
@@ -90,7 +106,7 @@ runs:
     - name: Save Bun dependencies
       # Saved from pull requests too: a lockfile change otherwise paid the full install in every
       # job of every run until it merged, and Windows installs cost two minutes each.
-      if: inputs.install == 'true' && steps.bun-cache.outputs.cache-hit != 'true'
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit != 'true' && steps.bun-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ steps.cache.outputs.dir }}
@@ -98,3 +114,13 @@ runs:
         # under a different key when Bun normalized the lockfile on the runner, causing permanent
         # misses and two-minute reinstalls on every Windows job.
         key: ${{ steps.bun-cache.outputs.cache-primary-key }}
+
+    - name: Save node_modules
+      if: inputs.install == 'true' && runner.os == 'Windows' && steps.node-modules.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          packages/*/*/node_modules
+        key: ${{ steps.node-modules.outputs.cache-primary-key }}
