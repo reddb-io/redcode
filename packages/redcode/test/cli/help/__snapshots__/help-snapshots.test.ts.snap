@@ -144,6 +144,8 @@ Commands:
   redcode debug v2                 debug v2 catalog and built-in plugins
   redcode debug info               show debug information
   redcode debug paths              show global paths (data, config, cache, state)
+  redcode debug logs               show or open the diagnostic log (10 MiB per file, 5 files
+                                   retained)
   redcode debug wait               wait indefinitely (for debugging)
 
 Options:

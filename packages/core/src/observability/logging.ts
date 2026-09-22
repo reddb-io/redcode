@@ -1,9 +1,13 @@
-import { Formatter, Logger, References, type LogLevel } from "effect"
+import { Effect, Formatter, Logger, References, type LogLevel } from "effect"
 import path from "path"
 import { Global } from "../global"
 import { runID } from "./shared"
 import { BootTrace } from "./boot-trace"
 import { Verbose } from "./verbose"
+import { LogFile } from "./log-file"
+import { Redact } from "./redact"
+
+export const filePath = () => path.join(Global.Path.log, "redcode.log")
 
 function formatter(id: string = runID) {
   return Logger.map(Logger.formatStructured, (output) => {
@@ -17,7 +21,7 @@ function formatter(id: string = runID) {
       ...flatten(output.spans),
       ...flatten(output.annotations),
     ]
-      .map(([key, value]) => `${key}=${format(value)}`)
+      .map(([key, value]) => `${key}=${format(Redact.redact(value, key))}`)
       .join(" ")
   })
 }
@@ -33,7 +37,8 @@ function flatten(
   if (entries.length === 0 && prefix) return [[prefix, input]]
   return entries.flatMap(([key, value]) => {
     const path = prefix ? `${prefix}.${key}` : key
-    return plain(value) ? flatten(value, path, seen) : [[path, value] as const]
+    const safe = Redact.redact(value, key)
+    return plain(safe) ? flatten(safe, path, seen) : [[path, safe] as const]
   })
 }
 
@@ -44,13 +49,23 @@ function plain(input: unknown): input is Record<string, unknown> {
 }
 
 function format(input: unknown) {
-  const value = typeof input === "string" ? input : Formatter.format(input)
+  const value = Redact.text(typeof input === "string" ? input : Formatter.format(input))
   return /^[^\s="\\]+$/.test(value) ? value : JSON.stringify(value)
 }
 
-export function fileLogger(file = path.join(Global.Path.log, "redcode.log"), id: string = runID) {
-  // Do not set batchWindow to 0; it causes high idle CPU usage.
-  return Logger.toFile(formatter(id), file, { flag: "a" })
+export function fileLogger(file = filePath(), id: string = runID) {
+  // A nonzero batch window avoids idle CPU spin. Scope closure awaits the final batch.
+  return Logger.batched(formatter(id), {
+    window: 1000,
+    flush: (entries) => Effect.promise(() => LogFile.append(file, entries)).pipe(Effect.asVoid, Effect.uninterruptible),
+  })
+}
+
+/** The CLI catch runs outside the Effect runtime; await this before process.exit(). */
+export async function fatal(error: unknown, file = filePath()) {
+  return LogFile.append(file, [
+    `timestamp=${new Date().toISOString()} level=ERROR run=${runID} event=process.fatal cause=${format(Redact.redact(error))}`,
+  ])
 }
 
 const stderrLogger = Logger.make((options) => process.stderr.write(formatter().log(options) + "\n"))
@@ -66,7 +81,7 @@ const verboseStderrLogger = Logger.make((options) => {
   const facts = messages
     .filter(plain)
     .flatMap((value) => flatten(value))
-    .map(([key, value]) => `${key}=${format(value)}`)
+    .map(([key, value]) => `${key}=${format(Redact.redact(value, key))}`)
     .join(" ")
   const since = String(Math.round(options.date.getTime() - BootTrace.start())).padStart(6)
   process.stderr.write(`verbose ${since}ms ${event}${facts ? " " + facts : ""}\n`)
