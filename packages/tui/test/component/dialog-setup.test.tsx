@@ -457,13 +457,13 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Continue with opencode-zen/jev-1.13-free")
-    await wait(() => setup.app.captureCharFrame().includes("OpenRouter"))
-    // Continue, Cloudflare (connected), OpenCode Zen, then OpenRouter.
+    // Continue, Cloudflare (connected), OpenCode Zen, then OpenRouter below the visible rows.
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("S1 API base URL"))
+    expect(setup.app.captureCharFrame()).toContain("openrouter.ai")
     await setup.app.mockInput.pressEnter()
     await wait(
       () =>

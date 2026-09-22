@@ -260,13 +260,11 @@ export function DialogSetup(
               title: "Simple — one model",
               value: "single",
               description: "S2 only; completion checks report S1 as not verified",
-              category: "Reasoning mode",
             },
             {
               title: "Dual — S1 classifies and validates, S2 executes",
               value: "dual",
               description: "Adds the S1 evaluator to every semantic gate",
-              category: "Reasoning mode",
             },
             ...(state.settings.onboarding === "completed" && state.settings.principal
               ? [
@@ -274,7 +272,6 @@ export function DialogSetup(
                     title: "Change System Two models",
                     value: "system-two",
                     description: `Principal: ${label(state.settings.principal)}`,
-                    category: "Shortcuts",
                   },
                 ]
               : []),
@@ -284,11 +281,10 @@ export function DialogSetup(
                     title: "Change System One evaluator",
                     value: "system-one",
                     description: `${state.settings.evaluator.transport}/${state.settings.evaluator.model}`,
-                    category: "Shortcuts",
                   },
                 ]
               : []),
-            { title: "Close setup", value: "close", description: "Keep the current setup", category: "Shortcuts" },
+            { title: "Close setup", value: "close", description: "Keep the current setup" },
           ]}
           onSelect={(option) => {
             if (!state.loaded) return
