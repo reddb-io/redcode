@@ -80,6 +80,24 @@ describe("OpenAICompatible.plan", () => {
       limit: { context: 1000, output: 100 },
     })
   })
+
+  test("refreshes what a router reports and still prunes models carrying only discovery fields", () => {
+    const limit = { context: 1000, output: 100 }
+    const existing = {
+      combo: { name: "combo", limit, router: { owned_by: "combo", strategy: "smart" } },
+      gone: { name: "gone", limit, router: { owned_by: "combo", strategy: "fallback" } },
+    }
+    const found = [
+      { id: "combo", name: "combo", limit, router: { owned_by: "combo", strategy: "fallback" } },
+      { id: "fresh", name: "fresh", limit, router: { thinking_levels: ["low", "high"] } },
+    ]
+    const result = OpenAICompatible.plan(existing, found, { prune: true })
+    expect(result.models).toEqual({
+      combo: { router: { owned_by: "combo", strategy: "fallback" } },
+      fresh: { name: "fresh", limit, router: { thinking_levels: ["low", "high"] } },
+    })
+    expect(result.remove).toEqual(["gone"])
+  })
 })
 
 it.effect("connects a keyless endpoint from its model list", () =>

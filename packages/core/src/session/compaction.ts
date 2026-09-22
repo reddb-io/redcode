@@ -1,5 +1,6 @@
 import type { Semantic } from "../semantic"
 import { Intelligence } from "../intelligence"
+import { ProviderRouter } from "../provider/router"
 import { CompactionEvaluation } from "./compaction-evaluation"
 export * as SessionCompaction from "./compaction"
 
@@ -541,7 +542,16 @@ export const make = (dependencies: Dependencies) => {
       .stream(
         LLM.request({
           model: input.model,
-          http: input.request.http,
+          // The summary must see the history whole, never a router's trimmed copy of it.
+          http: {
+            ...input.request.http,
+            headers: {
+              ...input.request.http?.headers,
+              ...ProviderRouter.requestHeaders(ProviderRouter.known(input.model.route.endpoint.baseURL ?? ""), {
+                tokenSaver: false,
+              }),
+            },
+          },
           system: systemPrompt,
           messages: [Message.user(prepared.summaryPrompt)],
           tools: [],

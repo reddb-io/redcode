@@ -261,3 +261,41 @@ it.effect("rejects invalid endpoints and credentials before making requests", ()
     }
   }),
 )
+
+it.live("keeps what a router says about each model beyond its limits", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() =>
+      Response.json({
+        data: [
+          {
+            id: "fast",
+            owned_by: "combo",
+            strategy: "fallback",
+            thinking_levels: ["none", "low", "high"],
+            capabilities: { tools: true, contextWindow: 200000 },
+            context_length: 200000,
+            max_completion_tokens: 32000,
+          },
+          { id: "cc/claude", owned_by: "cc", thinking_levels: ["low", "high", "low", 3] },
+          { id: "combo-only", owned_by: "combo" },
+          { id: "plain", owned_by: "openai" },
+        ],
+      }),
+    )
+    const http = yield* HttpClient.HttpClient
+    const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" })
+    const router = Object.fromEntries(result.models.map((model) => [model.id, model.router]))
+    expect(router).toEqual({
+      fast: {
+        owned_by: "combo",
+        strategy: "fallback",
+        thinking_levels: ["none", "low", "high"],
+        capabilities: { tools: true, contextWindow: 200000 },
+      },
+      "cc/claude": { owned_by: "cc", thinking_levels: ["low", "high"] },
+      "combo-only": { owned_by: "combo" },
+      plain: undefined,
+    })
+    expect(result.models.find((model) => model.id === "fast")?.limit).toEqual({ context: 200000, output: 32000 })
+  }),
+)

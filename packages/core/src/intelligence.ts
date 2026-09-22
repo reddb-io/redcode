@@ -17,6 +17,7 @@ import { ModelsDev } from "./models-dev"
 import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence.sql"
 import { SessionSchema } from "./session/schema"
 import { Flag } from "./flag/flag"
+import { ProviderRouter } from "./provider/router"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 export const POLICY = "semantic-v3-experimental"
@@ -30,7 +31,7 @@ export function evaluatorPreset(
   if (transport === "openrouter")
     return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
-  if (transport === "red-router") return { transport, baseURL: "http://localhost:25050/v1", model: "jev-1.13.0" }
+  if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1", model: "jev-1.13.0" }
   if (transport === "cloudflare-ai-gateway")
     return { transport, baseURL: "https://api.cloudflare.com/client/v4", model: "typesafe/jev" }
   if (transport === "vercel")
@@ -107,6 +108,8 @@ export interface Interface {
     },
   ): Effect.Effect<Intelligence.Evaluation[], Error>
   generation(input: GenerationInput): Effect.Effect<void, Error>
+  /** The connected RedRouter, when it answers as one; probed with the provider's key and cached. */
+  router(): Effect.Effect<Intelligence.DetectedRouter | undefined, Error>
   environment: string
 }
 const attempt = <A>(run: (signal: AbortSignal) => Promise<A>) =>
@@ -326,10 +329,16 @@ export const make = (
       const metadata = credential?.value.metadata
       const baseURL = validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined
       const owned = credential?.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`)
+      // A provider's key is shared with S1 only for the address it was saved for: the one recorded
+      // with the connection, else the transport's preset. Loopback names are one address.
       const shared =
         providerIntegrations(evaluator.transport).some(
           (integration) => credential?.integrationID === Integration.ID.make(integration),
-        ) && baseURL === evaluatorPreset(evaluator.transport).baseURL
+        ) &&
+        ProviderRouter.sameEndpoint(
+          evaluator.baseURL,
+          stringMetadata(metadata, "baseURL") ?? evaluatorPreset(evaluator.transport).baseURL,
+        )
       if (
         !credential ||
         (!owned && !shared) ||
@@ -364,11 +373,14 @@ export const make = (
           ))
             .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
             .find((item) => item !== undefined)
+          const connected = stringMetadata(credential?.value.metadata, "baseURL")
           return {
             name: entry.transport === "opencode-zen" ? `${entry.name} (recommended)` : entry.name,
             configured: Boolean(credential || providerEnvironment(entry.transport).some((name) => process.env[name])),
             evaluator: {
               ...preset,
+              // A connected router is used where it was connected, not at its default address.
+              ...(connected && entry.transport === "red-router" ? { baseURL: connected } : {}),
               ...("model" in entry ? { model: entry.model } : {}),
               ...(credential ? { credentialID: credential.id } : {}),
             },
@@ -937,7 +949,45 @@ export const make = (
     })
     const generation = (record: GenerationInput) =>
       write(path.join(root, "generations", `${randomUUID()}.json`), { ...record, created: Date.now() })
-    return { read, save, options, request, discover, probe, evaluate, history, generation, environment: root }
+    const router = Effect.fn("Intelligence.router")(function* () {
+      const credential = (yield* credentials.list(Integration.ID.make("red-router")))
+        .toReversed()
+        .find((item) => credentialValue(item.value))
+      const key = credentialValue(credential?.value) ?? process.env.RED_ROUTER_API_KEY
+      if (!key) return undefined
+      const baseURL = stringMetadata(credential?.value.metadata, "baseURL") ?? evaluatorPreset("red-router").baseURL
+      const detection = yield* ProviderRouter.detect({ baseURL, apiKey: key, fetch: fetcher })
+      if (!ProviderRouter.isRedRouter(detection)) return undefined
+      const model = detection.systemOne?.available ? detection.systemOne.models[0] : undefined
+      return {
+        providerID: "red-router",
+        baseURL,
+        detection,
+        ...(model
+          ? {
+              evaluator: {
+                transport: "red-router" as const,
+                baseURL,
+                model,
+                ...(credential ? { credentialID: credential.id } : {}),
+              },
+            }
+          : {}),
+      }
+    })
+    return {
+      read,
+      save,
+      options,
+      request,
+      discover,
+      probe,
+      evaluate,
+      history,
+      generation,
+      router,
+      environment: root,
+    }
   })
 export class Service extends Context.Service<Service, Interface>()("@redcode/Intelligence") {}
 export const node = makeGlobalNode({

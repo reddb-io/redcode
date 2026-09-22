@@ -3,6 +3,7 @@ import { isContextOverflowFailure } from "@reddb-io/redcode-llm"
 import type { NamedError } from "../util/error"
 import { SessionV1 } from "../v1/session"
 import { Cause, Clock, Duration, Effect, Schedule } from "effect"
+import { ProviderRouter } from "../provider/router"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
@@ -63,6 +64,10 @@ export function delay(attempt: number, error?: SessionV1.APIError, random = Math
         }
       }
 
+      // 9Router and RedRouter name the instant an account frees up; Retry-After rounds it up a second.
+      const retryAt = Date.parse(ProviderRouter.header(headers, ProviderRouter.Header.retryAt) ?? "") - Date.now()
+      if (!Number.isNaN(retryAt) && retryAt > 0) return cap(Math.ceil(retryAt))
+
       const retryAfter = headers["retry-after"]
       if (retryAfter) {
         const parsedSeconds = Number.parseFloat(retryAfter)
@@ -93,6 +98,7 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
+    if (!routerRetryable(error.data.responseHeaders)) return undefined
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
@@ -121,6 +127,14 @@ export function connectionInterrupted(error: Err) {
   return isRecord(error.data) && matchesConnectionInterruption(error.data.message)
 }
 
+/**
+ * A router that reports no active credentials for the model will not have any on the next attempt:
+ * connecting an account is the fix, so that failure is not retried whatever its status.
+ */
+function routerRetryable(headers: Readonly<Record<string, string>> | undefined) {
+  return ProviderRouter.header(headers, ProviderRouter.Header.reason) !== "no_active_credentials"
+}
+
 function matchesRetryableMessage(value: unknown) {
   return typeof value === "string" && RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(value))
 }
@@ -142,6 +156,7 @@ export function retryableLLM(error: LLMError): Retryable | undefined {
   const reason = error.reason
   const status = "status" in reason ? reason.status : "http" in reason ? reason.http?.response?.status : undefined
   const body = "http" in reason ? reason.http?.body : undefined
+  if (!routerRetryable("http" in reason ? reason.http?.response?.headers : undefined)) return undefined
   if (
     !reason.retryable &&
     !(status !== undefined && status >= 500) &&

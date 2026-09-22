@@ -36,6 +36,7 @@ import { ToolSearch } from "./tool-search"
 import { SessionSpend } from "./spend"
 import { NativeToolSearch } from "./native-tool-search"
 import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -56,6 +57,12 @@ export type StreamInput = {
   maxOutputTokens?: number
   /** The preflight token estimate this request was sized by, for the verbose trace. */
   estimate?: number
+  /**
+   * Cooperation with a detected RedRouter, ignored by every other provider: `decision: false` when
+   * System One already chose this turn's tools and skills, `tokenSaver: false` for compaction and
+   * validation requests, which must reach the model whole.
+   */
+  router?: { readonly decision?: boolean; readonly tokenSaver?: boolean }
   /**
    * Timing hooks. `request` runs right before every provider HTTP attempt, after all local request
    * preparation: from a stream middleware on the AI SDK path (again for each SDK retry), and per
@@ -146,6 +153,7 @@ const live: Layer.Layer<
         isWorkflow,
         hooks,
       })
+      const headers = { ...prepared.headers, ...(yield* routerHeaders(input, item, info)) }
 
       // Provider-native tool search, as SessionTools chose it for this step (a fallback attempt
       // runs without it). History keeps only search parts the request can replay, and a deferred
@@ -297,7 +305,7 @@ const live: Layer.Layer<
           topK: prepared.params.topK,
           maxOutputTokens: prepared.params.maxOutputTokens,
           providerOptions: prepared.params.options,
-          headers: prepared.headers,
+          headers,
           abort: input.abort,
           timing: input.timing,
         })
@@ -389,7 +397,7 @@ const live: Layer.Layer<
           toolChoice: input.toolChoice,
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
-          headers: prepared.headers,
+          headers,
           maxRetries: input.retries ?? 0,
           messages,
           model: wrapLanguageModel({
@@ -542,6 +550,26 @@ const live: Layer.Layer<
     return Service.of({ stream })
   }),
 )
+
+/**
+ * RedRouter headers for a request that asks for them. Only a connection with its own base URL is
+ * probed (lazily, cached per address and key), so catalog providers never are; anything not
+ * detected as RedRouter gets none.
+ */
+const routerHeaders = Effect.fnUntraced(function* (
+  input: StreamInput,
+  provider: Provider.Info,
+  auth: Auth.Info | undefined,
+) {
+  const wanted = input.router
+  if (!wanted || (wanted.decision !== false && wanted.tokenSaver !== false)) return {}
+  const baseURL = provider.options.baseURL
+  if (typeof baseURL !== "string" || !["@ai-sdk/openai-compatible", "@ai-sdk/openai"].includes(input.model.api.npm))
+    return {}
+  const configured = provider.options.apiKey
+  const apiKey = auth?.type === "api" ? auth.key : typeof configured === "string" ? configured : provider.key
+  return ProviderRouter.requestHeaders(yield* ProviderRouter.detect({ baseURL, apiKey }), wanted)
+})
 
 export const hasToolCalls = LLMRequestPrep.hasToolCalls
 

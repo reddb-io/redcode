@@ -107,17 +107,18 @@ export class ConnectError extends Schema.TaggedErrorClass<ConnectError>()("Provi
 }) {}
 
 /** The only fields discovery writes on a model. A model with any other field was customized. */
-const DISCOVERY_FIELDS = new Set(["name", "limit"])
+const DISCOVERY_FIELDS = new Set(["name", "limit", "router"])
 
-type ModelPatch = { name?: string; limit?: ProviderDiscovery.Limit }
-type Found = { id: string; name: string; limit: ProviderDiscovery.Limit }
+type ModelPatch = { name?: string; limit?: ProviderDiscovery.Limit; router?: ProviderDiscovery.RouterInfo }
+type Found = { id: string; name: string; limit: ProviderDiscovery.Limit; router?: ProviderDiscovery.RouterInfo }
 
 /**
  * Computes the model changes for a connection. New models get their name and limits. Existing
  * models are left alone, except that one without limits gets them (a zero context would disable
- * proactive compaction) and one whose context was typed in gets that limit. With `prune`, models
- * that are no longer listed are removed only when they carry nothing but discovery's own fields;
- * customized models are kept.
+ * proactive compaction) and one whose context was typed in gets that limit. What a router reports
+ * about a model (combo strategy, thinking levels, capabilities) is the router's and is refreshed on
+ * every connection. With `prune`, models that are no longer listed are removed only when they carry
+ * nothing but discovery's own fields; customized models are kept.
  */
 export function plan(
   existing: Record<string, unknown> | undefined,
@@ -129,9 +130,11 @@ export function plan(
   const models: Record<string, ModelPatch> = {}
   for (const model of found) {
     const entry = Object.hasOwn(current, model.id) ? current[model.id] : undefined
-    if (!isRecord(entry)) models[model.id] = { name: model.name, limit: { ...model.limit } }
-    else if (options.explicit?.has(model.id) || !isRecord(entry.limit)) models[model.id] = { limit: { ...model.limit } }
-    else models[model.id] = {}
+    const router = model.router ? { router: model.router } : {}
+    if (!isRecord(entry)) models[model.id] = { name: model.name, limit: { ...model.limit }, ...router }
+    else if (options.explicit?.has(model.id) || !isRecord(entry.limit))
+      models[model.id] = { limit: { ...model.limit }, ...router }
+    else models[model.id] = router
   }
   const remove = options.prune
     ? Object.entries(current)
@@ -379,13 +382,15 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     .updateGlobal(patch as Parameters<Config.Interface["updateGlobal"]>[0], { remove })
     .pipe(Effect.asVoid)
 
+  // The key remembers the address it was saved for, so System One shares it only with that address.
+  const stored = (key: string) => new Auth.Api({ type: "api", key, metadata: { baseURL } })
   yield* Effect.uninterruptible(
     moveFrom
       ? // The credential lands under the new id before the configuration moves, and leaves the old id
         // last, so a failure at any point leaves a working provider holding its key.
         Effect.gen(function* () {
           if (credential === "stored")
-            yield* deps.auth.set(providerID, new Auth.Api({ type: "api", key: rawKey! })).pipe(Effect.orDie)
+            yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
           else if (credential === "kept" && savedAuth) yield* deps.auth.set(providerID, savedAuth).pipe(Effect.orDie)
           // A stale credential under the new id would win over a reference or a moved config key.
           else if (targetAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
@@ -395,7 +400,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       : Effect.gen(function* () {
           yield* write
           if (credential === "stored")
-            yield* deps.auth.set(providerID, new Auth.Api({ type: "api", key: rawKey! })).pipe(Effect.orDie)
+            yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
           // A reference or an explicit "no key" replaces the stored key, which would otherwise win.
           else if (credential !== "kept" && savedAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
         }),

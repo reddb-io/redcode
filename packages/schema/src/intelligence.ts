@@ -3,6 +3,7 @@ export * as Intelligence from "./intelligence"
 import { Schema } from "effect"
 import { Credential } from "./credential"
 import { Model } from "./model"
+import { Router } from "./router"
 import { optional } from "./schema"
 
 const Text = Schema.String.check(Schema.isMinLength(1))
@@ -126,6 +127,17 @@ export const Evaluation = Schema.Struct({
 }).annotate({ identifier: "Intelligence.Evaluation" })
 export interface Evaluation extends Schema.Schema.Type<typeof Evaluation> {}
 export interface Status extends Schema.Schema.Type<typeof Status> {}
+/**
+ * A connected RedRouter that serves System One with the saved provider key. `evaluator` is ready to
+ * save as the S1 evaluator: it points at the router and shares the provider's credential.
+ */
+export const DetectedRouter = Schema.Struct({
+  providerID: Text,
+  baseURL: Text,
+  detection: Router.Detection,
+  evaluator: Evaluator.pipe(optional),
+}).annotate({ identifier: "Intelligence.DetectedRouter" })
+export interface DetectedRouter extends Schema.Schema.Type<typeof DetectedRouter> {}
 export const EvaluatorOption = Schema.Struct({
   name: Text,
   configured: Schema.Boolean,
@@ -140,6 +152,7 @@ export const Status = Schema.Struct({
     reasoning: Reasoning,
     source: Schema.Literals(["flag", "config", "default"]),
   }),
+  router: DetectedRouter.pipe(optional),
 }).annotate({
   identifier: "Intelligence.Status",
 })
