@@ -505,12 +505,19 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     void IntelligenceClient.make({ baseUrl: sdk.url, fetch: sdk.fetch, headers: sdk.headers })
       .get()
       .then((result) => {
-        if (!result.settings.enabled || !result.settings.principal || !result.settings.evaluator)
-          toast.show({
+        if (
+          result.effective.reasoning === "dual" &&
+          (!result.settings.enabled || !result.settings.principal || !result.settings.evaluator)
+        )
+          return toast.show({
             variant: "info",
             message: "Configure S1 (System One) and S2 (System Two) with /setup before sending prompts.",
             duration: 10000,
           })
+        // Single reasoning by default gets one subtle hint ever; a chosen mode never does.
+        if (result.effective.source !== "default" || !kv.ready || kv.get("dual_reasoning_hint_shown", false)) return
+        kv.set("dual_reasoning_hint_shown", true)
+        toast.show({ variant: "info", message: "Run /setup to enable dual reasoning (S1 + S2)", duration: 6000 })
       })
       .catch(() => {})
     // Said once on screen as well as in the footer: the trace left stderr before this rendered.

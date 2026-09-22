@@ -7,17 +7,22 @@ import { createIntelligenceState } from "./intelligence"
 const configured: Intelligence.Status = {
   settings: {
     enabled: true,
+    reasoning: "dual",
     onboarding: "completed",
     principal: { providerID: Provider.ID.make("provider"), id: Model.ID.make("principal") },
     evaluator: { transport: "typesafe", baseURL: "https://api.typesafe.ai/v1", model: "jev" },
   },
   environment: "/test",
   evaluators: [],
+  effective: { reasoning: "dual", source: "config" },
 }
 
-test("requires both configured roles, with optional transformations", async () => {
+test("dual requires both configured roles, with optional transformations", async () => {
   const current = {
-    status: { ...configured, settings: { enabled: false, onboarding: "deferred" } } as Intelligence.Status,
+    status: {
+      ...configured,
+      settings: { enabled: false, reasoning: "dual", onboarding: "deferred" },
+    } as Intelligence.Status,
   }
   const service = createIntelligenceState({ get: async () => current.status, history: async () => [] })
   expect(service.ready()).toBe(false)
@@ -27,6 +32,21 @@ test("requires both configured roles, with optional transformations", async () =
   current.status = configured
   expect(await service.refresh()).toBe(true)
   expect(service.state.status?.settings.fast).toBeUndefined()
+})
+
+test("unconfigured single reasoning admits prompts without setup", async () => {
+  const service = createIntelligenceState({
+    get: async () => ({
+      ...configured,
+      settings: { enabled: false, onboarding: "pending" },
+      effective: { reasoning: "single", source: "default" },
+    }),
+    history: async () => [],
+  })
+  expect(await service.refresh()).toBe(true)
+  expect(service.reasoning()).toBe("single")
+  service.accept({ ...configured.settings })
+  expect(service.reasoning()).toBe("dual")
 })
 
 test("failed refresh blocks stale readiness and a successful retry restores it", async () => {

@@ -126,6 +126,8 @@ function IntelligenceForm() {
       const input = {
         settings: {
           enabled: true,
+          // Saving a tested S1 evaluator here is the explicit choice of dual reasoning.
+          reasoning: "dual" as const,
           onboarding: "completed" as const,
           principal: ref(state.principal),
           ...(state.fast ? { fast: ref(state.fast) } : {}),
@@ -379,7 +381,7 @@ function IntelligenceForm() {
   )
 }
 
-/** Configuration is required for execution; navigation and provider setup stay available. */
+/** Dual reasoning requires configuration; navigation and provider setup stay available. */
 export function IntelligenceOnboarding() {
   const server = useServerSDK()
   const platform = usePlatform()
@@ -400,7 +402,9 @@ export function IntelligenceOnboarding() {
     void api
       .get()
       .then((result) => {
+        // Single reasoning needs no setup; only an unconfigured dual mode asks for it.
         if (
+          result.effective.reasoning === "single" ||
           (result.settings.enabled && result.settings.principal && result.settings.evaluator) ||
           server().url !== http.url
         )
