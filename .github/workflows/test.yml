@@ -66,7 +66,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # The pull request base must be reachable for the affected-package filter below.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          # A bare 0 is falsy in an expression and would fall through to 1, so both are strings.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
@@ -110,7 +111,12 @@ jobs:
             scope=("--filter=...[$BASE]")
             echo "Testing packages affected since $BASE"
           fi
-          GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode "${scope[@]}" --continue=dependencies-successful
+          # Core, tui and server run their files across workers through `test:ci`; everything else
+          # runs its plain `test` script. Sequential, so the two runs never build a dependency at once.
+          status=0
+          GITHUB_ACTIONS=false bun turbo test:ci --filter=!@reddb-io/redcode "${scope[@]}" --continue=dependencies-successful || status=1
+          GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --filter=!@reddb-io/redcode-core --filter=!@reddb-io/redcode-tui --filter=!@reddb-io/redcode-server "${scope[@]}" --continue=dependencies-successful || status=1
+          exit $status
 
       # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.
       - name: Save Turbo cache
@@ -178,7 +184,7 @@ jobs:
       - name: Run Redcode test shard
         working-directory: packages/redcode
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun run test --shard=${{ matrix.shard }}/3 --timings=test/timings.json --update-timings
+        run: GITHUB_ACTIONS=false bun run test:ci --shard=${{ matrix.shard }}/3 --timings=test/timings.json --update-timings
 
       # Under --shard, --update-timings rewrites the file with only this shard's files.
       - name: Upload shard timings
@@ -276,7 +282,7 @@ jobs:
             timings=()
             if [ -f "packages/$pkg/test/timings.json" ]; then timings=(--timings=test/timings.json); fi
             echo "::group::$pkg"
-            if ! (cd "packages/$pkg" && GITHUB_ACTIONS=false bun run test --shard="$SHARD" "${timings[@]}" "${paths[@]}"); then
+            if ! (cd "packages/$pkg" && GITHUB_ACTIONS=false bun run test:ci --shard="$SHARD" "${timings[@]}" "${paths[@]}"); then
               failed+=("$pkg")
             fi
             echo "::endgroup::"

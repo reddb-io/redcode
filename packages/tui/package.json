@@ -6,7 +6,8 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "bun test --timeout 30000 --only-failures --parallel",
+    "test": "bun test --timeout 30000 --only-failures",
+    "test:ci": "bun test --timeout 30000 --only-failures --parallel=4",
     "bench:lifecycle": "bun run script/benchmark-lifecycle.tsx",
     "typecheck": "tsgo --noEmit"
   },
