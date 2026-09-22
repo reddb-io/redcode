@@ -1131,6 +1131,7 @@
     "tree-sitter-bash",
   ],
   "patchedDependencies": {
+    "bun-pty@0.4.8": "patches/bun-pty@0.4.8.patch",
     "@scriptc/runtime@0.0.35": "patches/@scriptc%2Fruntime@0.0.35.patch",
     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
     "@opentui/solid@0.4.5": "patches/@opentui%2Fsolid@0.4.5.patch",
