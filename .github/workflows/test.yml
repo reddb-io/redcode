@@ -114,7 +114,7 @@ jobs:
           # Core, tui and server run their files across workers through `test:ci`; everything else
           # runs its plain `test` script. Sequential, so the two runs never build a dependency at once.
           status=0
-          GITHUB_ACTIONS=false bun turbo test:ci --filter=!@reddb-io/redcode "${scope[@]}" --continue=dependencies-successful || status=1
+          GITHUB_ACTIONS=false bun turbo test:ci --filter=!@reddb-io/redcode "${scope[@]}" --continue=dependencies-successful --log-order=stream || status=1
           GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --filter=!@reddb-io/redcode-core --filter=!@reddb-io/redcode-tui --filter=!@reddb-io/redcode-server "${scope[@]}" --continue=dependencies-successful || status=1
           exit $status
 
