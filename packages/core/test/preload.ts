@@ -15,11 +15,19 @@ const dir = path.join(os.tmpdir(), "redcode-core-test-" + process.pid)
 // Per process, so it goes when the process does: after the last file, or on an interrupt.
 removeOnExit(dir)
 afterAll(() => removeTempPaths([dir]))
-// The home is shared by every core test process rather than per-pid, deliberately: `Global.Path.bin`
-// hangs off it and is where ripgrep lands when the machine has none on PATH. Per-pid would isolate
-// correctly and make every suite download it again.
-const home = path.join(os.tmpdir(), "redcode-core-test-home")
-await fs.mkdir(home, { recursive: true })
+// The home is per process: CI runs core files in parallel processes, and a shared home let one
+// process's intelligence.json, KV state and data leak into another. Only `Global.Path.bin` is shared
+// (linked below), because that is where ripgrep lands when the machine has none on PATH and a
+// per-process bin would download it again for every process.
+const home = path.join(dir, "home")
+const bin = path.join(os.tmpdir(), "redcode-core-test-bin")
+const cache = path.join(home, ".red", "code", "cache")
+await fs.mkdir(bin, { recursive: true })
+await fs.mkdir(cache, { recursive: true })
+await fs.symlink(bin, path.join(cache, "bin"), process.platform === "win32" ? "junction" : "dir").catch((error) => {
+  // Each file re-runs this preload in the same process, so the link is usually already there.
+  if (error?.code !== "EEXIST") throw error
+})
 
 process.env.REDCODE_TEST_HOME = home
 process.env.HOME = home
