@@ -102,6 +102,35 @@ const classification = (
   usage: { input_tokens: 1, output_tokens: 1 },
 })
 
+test("prompt classification batches skill relevance and renders a bounded shortlist", () => {
+  const questions = Intelligence.promptQuestionsFor([
+    { name: "release", description: "Verify and publish releases" },
+    { name: "frontend", description: "Review frontend interfaces" },
+  ])
+  expect(questions.recommended_skill).toMatchObject({
+    type: "choice",
+    criteria: {
+      release: "Verify and publish releases",
+      frontend: "Review frontend interfaces",
+      no_matching_skill: expect.any(String),
+    },
+  })
+  expect(
+    Intelligence.skillContext({
+      ...classification({ score: 1, confidence: 1 }, { choice: "none", confidence: 1 }),
+      answers: {
+        ...classification({ score: 1, confidence: 1 }, { choice: "none", confidence: 1 }).answers,
+        recommended_skill: {
+          type: "choice",
+          choice: "release",
+          confidence: 0.7,
+          probabilities: { release: 0.7, frontend: 0.2, no_matching_skill: 0.1 },
+        },
+      },
+    }),
+  ).toContain("release (0.70), frontend (0.20)")
+})
+
 test("experimental thresholds distinguish rejection from uncertainty without averaging failures", () => {
   expect(Intelligence.decide(questions, response(0.1)).decision).toBe("accepted")
   expect(Intelligence.decide(questions, response(0.5)).decision).toBe("inconclusive")
@@ -660,14 +689,23 @@ test("System One onboarding lists configured catalog providers first", async () 
     label: "OpenRouter",
     value: { type: "key", key: "fixture" },
   })
+  const workers = new Credential.Info({
+    id: Credential.ID.create(),
+    integrationID: Integration.ID.make("cloudflare-workers-ai"),
+    label: "Cloudflare Workers AI",
+    value: { type: "key", key: "workers-fixture", metadata: { accountId: "account" } },
+  })
   const providers = ["opencode", "openrouter", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"]
   const catalog = Object.fromEntries(providers.map((id) => [id, { id, name: id, env: [], models: {} }]))
   const service = await Effect.runPromise(
     Intelligence.make(
       dir.path,
       {
-        get: (id) => Effect.succeed(id === openrouter.id ? openrouter : undefined),
-        list: (id) => Effect.succeed(id === openrouter.integrationID ? [openrouter] : []),
+        get: (id) => Effect.succeed(id === openrouter.id ? openrouter : id === workers.id ? workers : undefined),
+        list: (id) =>
+          Effect.succeed(
+            id === openrouter.integrationID ? [openrouter] : id === workers.integrationID ? [workers] : [],
+          ),
         create: () => Effect.die("unused"),
       },
       fetch,
@@ -680,6 +718,15 @@ test("System One onboarding lists configured catalog providers first", async () 
     configured: true,
     evaluator: { transport: "openrouter", model: "typesafe/jev-1.13", credentialID: openrouter.id },
   })
+  expect(options).toContainEqual(
+    expect.objectContaining({
+      configured: true,
+      evaluator: expect.objectContaining({
+        transport: "cloudflare-ai-gateway",
+        credentialID: workers.id,
+      }),
+    }),
+  )
   expect(options.map((option) => option.evaluator.transport)).toEqual(
     expect.arrayContaining(["opencode-zen", "openrouter", "typesafe", "red-router", "vercel", "vivgrid", "nano-gpt"]),
   )
@@ -713,11 +760,17 @@ test("Cloudflare, Vercel and OpenRouter use their native System One endpoints", 
     label: "Cloudflare",
     value: { type: "key", key: "cloudflare-key", metadata: { accountId: "account", gatewayId: "gateway" } },
   })
+  const workers = new Credential.Info({
+    id: Credential.ID.create(),
+    integrationID: Integration.ID.make("cloudflare-workers-ai"),
+    label: "Cloudflare Workers AI",
+    value: { type: "key", key: "workers-key", metadata: { accountId: "workers-account" } },
+  })
   const service = await Effect.runPromise(
     Intelligence.make(
       dir.path,
       {
-        get: (id) => Effect.succeed(id === cloudflare.id ? cloudflare : undefined),
+        get: (id) => Effect.succeed(id === cloudflare.id ? cloudflare : id === workers.id ? workers : undefined),
         list: () => Effect.succeed([]),
         create: () => Effect.die("unused"),
       },
@@ -729,6 +782,15 @@ test("Cloudflare, Vercel and OpenRouter use their native System One endpoints", 
       await Effect.runPromise(
         service.probe({
           evaluator: { ...Intelligence.evaluatorPreset("cloudflare-ai-gateway"), credentialID: cloudflare.id },
+        }),
+      )
+    ).ok,
+  ).toBe(true)
+  expect(
+    (
+      await Effect.runPromise(
+        service.probe({
+          evaluator: { ...Intelligence.evaluatorPreset("cloudflare-ai-gateway"), credentialID: workers.id },
         }),
       )
     ).ok,
@@ -750,12 +812,14 @@ test("Cloudflare, Vercel and OpenRouter use their native System One endpoints", 
   expect(calls[0].url.pathname).toBe("/client/v4/accounts/account/ai/run")
   expect(calls[0].headers.get("cf-aig-gateway-id")).toBe("gateway")
   expect(calls[0].body).toMatchObject({ model: "typesafe/jev", input: { questions: { check: { type: "noul" } } } })
-  expect(calls[1].url.pathname).toBe("/v4/ai/evaluation-model")
-  expect(calls[1].headers.get("ai-model-id")).toBe("typesafe-ai/jev")
-  expect(calls[1].body).toMatchObject({ questions: { check: { type: "boolean" } } })
-  expect(calls[2].url.pathname).toBe("/api/alpha/decisions")
-  expect(calls[2].headers.get("authorization")).toBe("Bearer openrouter-key")
-  expect(calls[2].body).toMatchObject({ model: "typesafe/jev-1.13", questions: { check: { type: "noul" } } })
+  expect(calls[1].url.pathname).toBe("/client/v4/accounts/workers-account/ai/run")
+  expect(calls[1].headers.get("cf-aig-gateway-id")).toBeNull()
+  expect(calls[2].url.pathname).toBe("/v4/ai/evaluation-model")
+  expect(calls[2].headers.get("ai-model-id")).toBe("typesafe-ai/jev")
+  expect(calls[2].body).toMatchObject({ questions: { check: { type: "boolean" } } })
+  expect(calls[3].url.pathname).toBe("/api/alpha/decisions")
+  expect(calls[3].headers.get("authorization")).toBe("Bearer openrouter-key")
+  expect(calls[3].body).toMatchObject({ model: "typesafe/jev-1.13", questions: { check: { type: "noul" } } })
 })
 
 test("Zen discovery excludes chat models and never falls back from free to paid Jev", async () => {

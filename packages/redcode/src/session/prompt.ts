@@ -1,4 +1,5 @@
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -40,6 +41,7 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
+const RESPONSE_REPAIR = "[system:response-quality-repair]"
 
 const attendedClient = SessionStall.attended
 import { ToolRegistry } from "@/tool/registry"
@@ -112,6 +114,7 @@ import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
 import { SessionBudget } from "./budget"
 import { errorMessage } from "@/util/error"
+import { Skill } from "@/skill"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -217,6 +220,8 @@ const layer = Layer.effect(
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
     const limits = yield* ModelLimit.Service
+    const intelligence = yield* Intelligence.Service
+    const skills = yield* Skill.Service
     // Sessions already told that a provider taught us its limit: the notice shows once.
     const limitNotices = new Set<SessionID>()
 
@@ -829,10 +834,9 @@ const layer = Layer.effect(
       }
       if (Exit.isSuccess(exit)) return exit.value
       const err = Cause.squash(exit.cause)
-      const message =
-        Provider.ModelNotFoundError.isInstance(err)
-          ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
-          : errorMessage(err)
+      const message = Provider.ModelNotFoundError.isInstance(err)
+        ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
+        : errorMessage(err)
       yield* events
         .publish(Session.Event.Error, {
           sessionID,
@@ -1404,6 +1408,80 @@ const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
+    const reviewResponse = Effect.fn("SessionPrompt.reviewResponse")(function* (
+      sessionID: SessionID,
+      messages: ReadonlyArray<SessionV1.WithParts>,
+      candidate: SessionV1.WithParts,
+      attempt: number,
+    ) {
+      const text = candidate.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+      if (!text.trim()) return undefined
+      const previous = (yield* intelligence.history(sessionID).pipe(Effect.orElseSucceed(() => []))).find(
+        (evaluation) => evaluation.operation === "response_quality" && evaluation.candidateID === candidate.info.id,
+      )
+      if (previous) return previous
+      const latestRequest = messages.findLastIndex(
+        (message) =>
+          message.info.role === "user" && !message.parts.every((part) => "synthetic" in part && part.synthetic),
+      )
+      const requests = messages.flatMap((message) => {
+        if (message.info.role !== "user" || message.parts.every((part) => "synthetic" in part && part.synthetic))
+          return []
+        return [
+          {
+            id: message.info.id,
+            text: message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+          },
+        ]
+      })
+      const toolResults = messages
+        .slice(latestRequest + 1)
+        .flatMap((message) =>
+          message.info.role === "assistant"
+            ? message.parts.flatMap((part) => {
+                if (part.type !== "tool" || (part.state.status !== "completed" && part.state.status !== "error"))
+                  return []
+                return [
+                  {
+                    tool: part.tool,
+                    status: part.state.status,
+                    input: part.state.input,
+                    output:
+                      part.state.status === "completed"
+                        ? part.state.output.slice(0, 4_000)
+                        : part.state.error.slice(0, 4_000),
+                  },
+                ]
+              })
+            : [],
+        )
+        .slice(-20)
+      return yield* intelligence
+        .evaluate({
+          sessionID,
+          operation: "response_quality",
+          kind: "gate",
+          subjectID: requests.at(-1)?.id,
+          candidateID: candidate.info.id,
+          attempt,
+          sources: {
+            requests,
+            tasks: yield* todos.get(sessionID),
+            goal: yield* goals.get(sessionID),
+            tool_results: toolResults,
+          },
+          candidate: text,
+          questions: Intelligence.responseQuestions,
+        })
+        .pipe(
+          Effect.catchTag("IntelligenceError", (error) =>
+            Effect.logWarning("response quality evaluation unavailable", { error: error.message }).pipe(
+              Effect.as(undefined),
+            ),
+          ),
+        )
+    })
+
     const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
@@ -1411,6 +1489,8 @@ const layer = Layer.effect(
         let step = 0
         let todoContinuations = 0
         let reconnects = 0
+        let responseRepairs = 0
+        const promptAssessments = new Map<string, Intelligence.Evaluation | undefined>()
         // The task list as reviewed since the last provider turn. A continuation reads it to decide
         // whether to keep going; the step it starts reuses that read instead of reviewing again.
         let reviewed: ReadonlyArray<Todo.Info> | undefined
@@ -1442,6 +1522,7 @@ const layer = Layer.effect(
           step = 0
           todoContinuations = 0
           reconnects = 0
+          responseRepairs = 0
           reviewed = undefined
           ineffectiveCompactions = 0
           overflowRecoveries = 0
@@ -1908,6 +1989,51 @@ const layer = Layer.effect(
                 continue
               }
             }
+            const responseCandidate =
+              lastAssistantMsg?.info.role === "assistant" && lastAssistantMsg.info.summary
+                ? msgs.findLast(
+                    (message) =>
+                      message.info.role === "assistant" &&
+                      !message.info.summary &&
+                      !!message.info.finish &&
+                      message.info.id < lastAssistantMsg.info.id,
+                  )
+                : lastAssistantMsg
+            const evaluation = responseCandidate
+              ? yield* reviewResponse(sessionID, msgs, responseCandidate, responseRepairs).pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("response quality review failed", { error: String(error) }).pipe(
+                      Effect.as(undefined),
+                    ),
+                  ),
+                )
+              : undefined
+            if (
+              evaluation &&
+              evaluation.decision !== "accepted" &&
+              evaluation.decision !== "unavailable" &&
+              responseRepairs < 1
+            ) {
+              const message: SessionV1.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(message)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                sessionID,
+                messageID: message.id,
+                type: "text",
+                text: `${RESPONSE_REPAIR}\nCorrect the final response for these evaluation issues: ${evaluation.issues.join(", ")}.`,
+                synthetic: true,
+              })
+              responseRepairs++
+              continue
+            }
             if (yield* promoteAtIdle(sessionID)) {
               restart()
               continue
@@ -2005,6 +2131,42 @@ const layer = Layer.effect(
             yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
             throw error
           }
+          const currentUser = msgs.findLast(
+            (message) => message.info.role === "user" && message.info.id === lastUser.id,
+          )
+          const assessment = yield* Effect.gen(function* () {
+            if (!currentUser || currentUser.parts.every((part) => "synthetic" in part && part.synthetic)) return
+            if (promptAssessments.has(lastUser.id)) return promptAssessments.get(lastUser.id)
+            const availableSkills = (yield* skills.available(agent)).flatMap((skill) =>
+              skill.description === undefined ? [] : [{ name: skill.name, description: skill.description }],
+            )
+            const result = yield* intelligence
+              .evaluate({
+                sessionID,
+                operation: "prompt_classification",
+                kind: "classification",
+                subjectID: lastUser.id,
+                sources: {
+                  text: currentUser.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+                  files: currentUser.parts.flatMap((part) =>
+                    part.type === "file" ? [{ url: part.url, filename: part.filename, mime: part.mime }] : [],
+                  ),
+                },
+                questions: Intelligence.promptQuestionsFor(availableSkills),
+              })
+              .pipe(
+                Effect.catchTag("IntelligenceError", (error) =>
+                  Effect.logWarning("prompt classification unavailable", { error: error.message }).pipe(
+                    Effect.as(undefined),
+                  ),
+                ),
+              )
+            promptAssessments.set(lastUser.id, result)
+            return result
+          })
+          const responseRepair = currentUser?.parts.some(
+            (part) => part.type === "text" && part.text.startsWith(RESPONSE_REPAIR),
+          )
           const maxSteps = agent.steps ?? Infinity
           // The agent's own bound and the turn's wall ask for the same thing at the end: stop
           // using tools and say what happened.
@@ -2149,40 +2311,42 @@ const layer = Layer.effect(
                 Effect.map((documents) => documents.length > 0),
                 Effect.catchCause(() => Effect.succeed(true)),
               ))
-            const tools = yield* SessionTools.resolve({
-              agent,
-              session,
-              model,
-              processor: handle,
-              bypassAgentCheck,
-              messages: msgs,
-              promptOps,
-              publishEvent: events.publish,
-              toolTimeout: (yield* config.get()).experimental?.tool_timeout,
-              mcpValidation: (yield* config.get()).experimental?.mcp_validation,
-              toolSearch,
-              userTools: lastUser.tools,
-              designContext,
-              recordGuard: guards.record,
-              ...(lastUser.format?.type === "json_schema"
-                ? {
-                    structuredOutputTool: createStructuredOutputTool({
-                      schema: lastUser.format.schema,
-                      onSuccess(output) {
-                        structured = output
-                      },
-                    }),
-                  }
-                : {}),
-            }).pipe(
-              Effect.provideService(Plugin.Service, plugin),
-              Effect.provideService(Permission.Service, permission),
-              Effect.provideService(ToolRegistry.Service, registry),
-              Effect.provideService(MCP.Service, mcp),
-              Effect.provideService(ToolOutputBridge.Service, outputs),
-              Effect.provideService(RuntimeFlags.Service, flags),
-              Effect.provideService(OperationHookBridge.Service, hooks),
-            )
+            const tools = responseRepair
+              ? {}
+              : yield* SessionTools.resolve({
+                  agent,
+                  session,
+                  model,
+                  processor: handle,
+                  bypassAgentCheck,
+                  messages: msgs,
+                  promptOps,
+                  publishEvent: events.publish,
+                  toolTimeout: (yield* config.get()).experimental?.tool_timeout,
+                  mcpValidation: (yield* config.get()).experimental?.mcp_validation,
+                  toolSearch,
+                  userTools: lastUser.tools,
+                  designContext,
+                  recordGuard: guards.record,
+                  ...(lastUser.format?.type === "json_schema"
+                    ? {
+                        structuredOutputTool: createStructuredOutputTool({
+                          schema: lastUser.format.schema,
+                          onSuccess(output) {
+                            structured = output
+                          },
+                        }),
+                      }
+                    : {}),
+                }).pipe(
+                  Effect.provideService(Plugin.Service, plugin),
+                  Effect.provideService(Permission.Service, permission),
+                  Effect.provideService(ToolRegistry.Service, registry),
+                  Effect.provideService(MCP.Service, mcp),
+                  Effect.provideService(ToolOutputBridge.Service, outputs),
+                  Effect.provideService(RuntimeFlags.Service, flags),
+                  Effect.provideService(OperationHookBridge.Service, hooks),
+                )
 
             // The safe provider-turn boundary: the epoch's baseline is reused verbatim, and any
             // source that changed since is admitted as one durable system message here rather
@@ -2227,8 +2391,15 @@ const layer = Layer.effect(
             const system = [
               SystemPrompt.identity(model),
               prepared.baseline,
+              Intelligence.promptContext(assessment),
+              Intelligence.skillContext(assessment),
+              ...(responseRepair
+                ? [
+                    "Write only a corrective follow-up to the preceding final response. Address the listed evaluation issues without repeating completed work, calling tools or claiming new evidence.",
+                  ]
+                : []),
               ...(todowrite ? [SessionTodo.guidance] : []),
-            ]
+            ].filter((part): part is string => part !== undefined)
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             // System prompt and tool schemas: both ride every request, compacted or not.
@@ -2344,7 +2515,7 @@ const layer = Layer.effect(
               messages: stepMessages,
               tools,
               model,
-              toolChoice: format.type === "json_schema" ? "required" : undefined,
+              toolChoice: responseRepair ? "none" : format.type === "json_schema" ? "required" : undefined,
               estimate: requestEstimate,
             })
 
@@ -2866,6 +3037,8 @@ export const node = LayerNode.make({
     MonitorRuntime.node,
     Todo.node,
     ModelLimit.node,
+    Intelligence.node,
+    Skill.node,
   ],
 })
 

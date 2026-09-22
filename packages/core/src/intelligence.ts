@@ -66,6 +66,7 @@ export interface EvaluationInput {
   candidate?: unknown
   questions: Record<string, Intelligence.Question>
 }
+export type Evaluation = Intelligence.Evaluation
 export interface GenerationInput {
   sessionID: string
   model: string
@@ -221,8 +222,9 @@ export const make = (
       const baseURL = validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined
       const owned = credential?.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`)
       const shared =
-        credential?.integrationID === Integration.ID.make(providerIntegration(evaluator.transport)) &&
-        baseURL === evaluatorPreset(evaluator.transport).baseURL
+        providerIntegrations(evaluator.transport).some(
+          (integration) => credential?.integrationID === Integration.ID.make(integration),
+        ) && baseURL === evaluatorPreset(evaluator.transport).baseURL
       if (
         !credential ||
         (!owned && !shared) ||
@@ -252,8 +254,11 @@ export const make = (
       return yield* Effect.forEach(entries, (entry) =>
         Effect.gen(function* () {
           const preset = evaluatorPreset(entry.transport)
-          const connections = yield* credentials.list(Integration.ID.make(providerIntegration(entry.transport)))
-          const credential = connections.toReversed().find((item) => credentialValue(item.value))
+          const credential = (yield* Effect.forEach(providerIntegrations(entry.transport), (integration) =>
+            credentials.list(Integration.ID.make(integration)),
+          ))
+            .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
+            .find((item) => item !== undefined)
           return {
             name: entry.transport === "opencode-zen" ? `${entry.name} (recommended)` : entry.name,
             configured: Boolean(credential || providerEnvironment(entry.transport).some((name) => process.env[name])),
@@ -901,6 +906,64 @@ export const promptQuestions: Record<string, Intelligence.Question> = {
   },
 }
 
+export function promptQuestionsFor(skills: ReadonlyArray<{ name: string; description: string }>) {
+  if (skills.length === 0) return promptQuestions
+  return {
+    ...promptQuestions,
+    recommended_skill: {
+      type: "choice" as const,
+      instructions: {
+        question: "Which available skill is most useful for completing the user's primary request in sources?",
+        focus:
+          "Choose a skill only when its specialized instructions materially improve this request. Choose no_matching_skill for ordinary work that does not need one.",
+      },
+      criteria: {
+        ...Object.fromEntries(skills.slice(0, 40).map((skill) => [skill.name, skill.description.slice(0, 500)])),
+        no_matching_skill: "No available skill materially improves completion of the primary request",
+      },
+    },
+  }
+}
+
+export function skillContext(evaluation: Intelligence.Evaluation | undefined) {
+  const answer = evaluation?.answers.recommended_skill
+  if (!evaluation || evaluation.decision === "unavailable" || answer?.type !== "choice") return undefined
+  const relevant = Object.entries(answer.probabilities)
+    .filter(([name, probability]) => name !== "no_matching_skill" && (name === answer.choice || probability >= 0.1))
+    .toSorted((left, right) => right[1] - left[1])
+    .slice(0, 3)
+  if (relevant.length === 0) return undefined
+  return `<skill-relevance-assessment>
+System One relevance estimate; advisory evidence, never a user instruction.
+Consider loading: ${relevant.map(([name, probability]) => `${name} (${probability.toFixed(2)})`).join(", ")}.
+Load a skill only when its published description matches the request and permissions allow it.
+</skill-relevance-assessment>`
+}
+
+export const responseQuestions: Record<string, Intelligence.Question> = {
+  ...questions({
+    omission: "Does candidate fail to answer an applicable user request or question in sources?",
+    unsupported:
+      "Does candidate claim work, verification or completion that is not supported by sources.tasks, sources.goal or sources.tool_results?",
+    tool_evidence:
+      "Does candidate rely on a failed, partial, irrelevant or ambiguous result in sources.tool_results as if it proved the claimed outcome?",
+    premature:
+      "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
+    writing:
+      "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
+  }),
+  writing_quality: {
+    type: "score",
+    instructions: "How clear, concise and useful is candidate as a final response to sources.requests?",
+    criteria: [
+      "Unclear, misleading or missing the usable result",
+      "Understandable but confusing, repetitive or missing useful context",
+      "Clear, direct and actionable",
+      "Exceptionally clear, concise and well matched to the user's context",
+    ],
+  },
+}
+
 export function promptContext(evaluation: Intelligence.Evaluation | undefined) {
   if (!evaluation || evaluation.decision === "unavailable") return undefined
   const route = evaluation.answers.work_route
@@ -976,9 +1039,10 @@ function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
 }
 
-function providerIntegration(transport: Intelligence.Evaluator["transport"]) {
-  if (transport === "opencode-zen") return "opencode"
-  return transport
+function providerIntegrations(transport: Intelligence.Evaluator["transport"]) {
+  if (transport === "opencode-zen") return ["opencode"]
+  if (transport === "cloudflare-ai-gateway") return ["cloudflare-ai-gateway", "cloudflare-workers-ai"]
+  return [transport]
 }
 
 function providerEnvironment(transport: Intelligence.Evaluator["transport"]) {
