@@ -65,6 +65,8 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # The pull request base must be reachable for the affected-package filter below.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
@@ -92,9 +94,23 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-
 
+      # A pull request tests the packages it changed and everything that depends on them. A change
+      # outside packages/ (lockfile, patches, root or CI config) can reach any package, so it runs
+      # every suite, as do pushes and manual runs.
       - name: Run unit tests
         timeout-minutes: 35
-        run: GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --continue=dependencies-successful
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          scope=()
+          # Captured first: `grep -q` closing the pipe early would fail `git diff` under pipefail.
+          changed=$(git diff --name-only "$BASE...HEAD")
+          if [ "$EVENT" = pull_request ] && ! grep -qv '^packages/' <<< "$changed"; then
+            scope=("--filter=...[$BASE]")
+            echo "Testing packages affected since $BASE"
+          fi
+          GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode "${scope[@]}" --continue=dependencies-successful
 
       # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.
       - name: Save Turbo cache
