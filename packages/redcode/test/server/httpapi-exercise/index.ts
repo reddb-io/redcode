@@ -349,6 +349,53 @@ const scenarios: Scenario[] = [
       check(body.reason === "discovery", "an unreachable endpoint should be a discovery failure")
     }),
   http.protected
+    .delete("/provider/{providerID}", "provider.remove.dryRun")
+    .seeded(() =>
+      Effect.promise(() =>
+        Bun.write(
+          path.join(exerciseDataDirectory, "auth.json"),
+          JSON.stringify({ "httpapi-remove": { type: "api", key: "keep-me" } }),
+        ),
+      ),
+    )
+    .at((ctx) => ({
+      path: `${route("/provider/{providerID}", { providerID: "httpapi-remove" })}?dryRun=true`,
+      headers: ctx.headers(),
+    }))
+    .jsonEffect(200, (body) =>
+      Effect.gen(function* () {
+        object(body)
+        check(body.dryRun === true, "a dry run should say so")
+        check(isRecord(body.removed) && body.removed.credential === true, "a dry run should report the saved key")
+        const auth = yield* Effect.promise(() => Bun.file(path.join(exerciseDataDirectory, "auth.json")).json())
+        object(auth)
+        check(isRecord(auth["httpapi-remove"]), "a dry run should keep the saved key")
+      }),
+    ),
+  http.protected
+    .delete("/provider/{providerID}", "provider.remove")
+    .mutating()
+    .seeded(() =>
+      Effect.promise(() =>
+        Bun.write(
+          path.join(exerciseDataDirectory, "auth.json"),
+          JSON.stringify({ "httpapi-remove": { type: "api", key: "remove-me" } }),
+        ),
+      ),
+    )
+    .at((ctx) => ({ path: route("/provider/{providerID}", { providerID: "httpapi-remove" }), headers: ctx.headers() }))
+    .jsonEffect(200, (body) =>
+      Effect.gen(function* () {
+        object(body)
+        check(body.dryRun === false, "a removal should not be a dry run")
+        check(isRecord(body.removed) && body.removed.credential === true, "a removal should report the saved key")
+        check(Array.isArray(body.referencingFiles), "a removal should list project files that mention the provider")
+        const auth = yield* Effect.promise(() => Bun.file(path.join(exerciseDataDirectory, "auth.json")).json())
+        object(auth)
+        check(auth["httpapi-remove"] === undefined, "a removal should delete the saved key")
+      }),
+    ),
+  http.protected
     .post("/provider/9router/connect", "provider.nineRouter.connect")
     .at((ctx) => ({
       path: "/provider/9router/connect",

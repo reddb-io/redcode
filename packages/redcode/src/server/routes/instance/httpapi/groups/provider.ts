@@ -5,11 +5,17 @@ import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
-import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
+import {
+  WorkspaceRoutingMiddleware,
+  WorkspaceRoutingQuery,
+  WorkspaceRoutingQueryFields,
+} from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
 import { OpenAICompatible } from "@/provider/openai-compatible"
+import { ProviderRemove } from "@/provider/remove"
+import { QueryBoolean } from "./query"
 
 export class ProviderDiscoveryApiError extends Schema.ErrorClass<ProviderDiscoveryApiError>(
   "ProviderDiscoveryApiError",
@@ -21,6 +27,13 @@ export class ProviderConnectApiError extends Schema.ErrorClass<ProviderConnectAp
 ) {}
 
 const root = "/provider"
+
+export const ProviderRemoveQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  dryRun: Schema.optional(QueryBoolean).annotate({
+    description: "Only report what would be removed and cleared; change nothing.",
+  }),
+})
 
 const ProviderAuthErrorName = Schema.Union([
   Schema.Literal("BadRequest"),
@@ -96,6 +109,18 @@ export const ProviderApi = HttpApi.make("provider")
             summary: "Connect RedRouter",
             description:
               "Connect the RedRouter preset of the OpenAI-compatible connection: discover RedRouter models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+          }),
+        ),
+        HttpApiEndpoint.delete("remove", `${root}/:providerID`, {
+          params: { providerID: ProviderV2.ID },
+          query: ProviderRemoveQuery,
+          success: described(ProviderRemove.Result, "What was removed, or with dryRun what would be"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.remove",
+            summary: "Remove a provider",
+            description:
+              "Remove a provider completely: its saved key or login, its entry in the global configuration, the global settings that name it (default and small model, agent and command models, the enabled and disabled provider lists), System Two models and a System One evaluator that use it, cached router detections and learned model limits, then reload instances before responding. With dryRun=true nothing changes and the result lists what would be removed. Project configuration files that mention the provider are listed, not edited, and environment variables that make the provider available again are named.",
           }),
         ),
         HttpApiEndpoint.get("list", root, {

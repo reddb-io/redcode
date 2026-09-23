@@ -5,6 +5,7 @@ import type { Config } from "@/config/config"
 import { isRecord } from "@/util/record"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { ProviderDiscovery } from "./discovery"
+import { ProviderRemove } from "./remove"
 
 /** AI SDK packages a connected endpoint may use: chat completions, or the OpenAI Responses API. */
 export const NPM_PACKAGES = ["@ai-sdk/openai-compatible", "@ai-sdk/openai"] as const
@@ -400,6 +401,16 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     for (const header of Object.keys(savedHeaders))
       if (!Object.hasOwn(keptHeaders, header)) remove.push(["provider", providerID, "options", "headers", header])
   }
+  // Connecting a provider again brings it back from a list that hid it.
+  const listed = ProviderRemove.enabling(
+    { disabled_providers: patch.disabled_providers ?? latest.data.disabled_providers },
+    providerID,
+  )
+  if (listed) {
+    delete patch.disabled_providers
+    Object.assign(patch, listed.patch)
+    remove.push(...listed.remove)
+  }
   const write = deps.config
     .updateGlobal(patch as Parameters<Config.Interface["updateGlobal"]>[0], { remove })
     .pipe(Effect.asVoid)
@@ -411,8 +422,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       ? // The credential lands under the new id before the configuration moves, and leaves the old id
         // last, so a failure at any point leaves a working provider holding its key.
         Effect.gen(function* () {
-          if (credential === "stored")
-            yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
+          if (credential === "stored") yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
           else if (credential === "kept" && savedAuth) yield* deps.auth.set(providerID, savedAuth).pipe(Effect.orDie)
           // A stale credential under the new id would win over a reference or a moved config key.
           else if (targetAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
@@ -421,8 +431,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
         })
       : Effect.gen(function* () {
           yield* write
-          if (credential === "stored")
-            yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
+          if (credential === "stored") yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
           // A reference or an explicit "no key" replaces the stored key, which would otherwise win.
           else if (credential !== "kept" && savedAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
         }),

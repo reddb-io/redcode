@@ -1,4 +1,6 @@
 import { Auth } from "@/auth"
+import { Config } from "@/config/config"
+import { ProviderRemove } from "@/provider/remove"
 
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -9,12 +11,15 @@ import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (handlers) =>
   Effect.gen(function* () {
     const auth = yield* Auth.Service
+    const config = yield* Config.Service
 
     const authSet = Effect.fn("ControlHttpApi.authSet")(function* (ctx: {
       params: { providerID: ProviderV2.ID }
       payload: Auth.Info
     }) {
       yield* auth.set(ctx.params.providerID, ctx.payload).pipe(Effect.orDie)
+      // Connecting again brings back a provider that was hidden with disabled_providers.
+      yield* ProviderRemove.enable(config, ctx.params.providerID)
       return true
     })
 

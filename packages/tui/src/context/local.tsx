@@ -1,4 +1,4 @@
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
@@ -51,7 +51,11 @@ export function recentModels(
     .map((item) => ({ providerID: item.providerID, modelID: item.modelID }))
 }
 
-export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
+export const {
+  use: useLocal,
+  provider: LocalProvider,
+  context: LocalContext,
+} = createSimpleContext({
   name: "Local",
   init: () => {
     const sync = useSync()
@@ -414,6 +418,28 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             setModelStore(
               "favorite",
               next.map((x) => ({ providerID: x.providerID, modelID: x.modelID })),
+            )
+            save()
+          })
+        },
+        /** Drops recents, favorites and per-agent choices of a provider that is gone, so it does not come back later. */
+        forgetProvider(providerID: string) {
+          batch(() => {
+            setModelStore(
+              "recent",
+              modelStore.recent.filter((item) => item.providerID !== providerID),
+            )
+            setModelStore(
+              "favorite",
+              modelStore.favorite.filter((item) => item.providerID !== providerID),
+            )
+            setModelStore(
+              "model",
+              reconcile(
+                Object.fromEntries(
+                  Object.entries(modelStore.model).filter(([, item]) => item.providerID !== providerID),
+                ),
+              ),
             )
             save()
           })

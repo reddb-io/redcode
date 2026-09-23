@@ -525,6 +525,29 @@ it.effect("builds the change from the configuration as it is after discovery", (
   }),
 )
 
+it.effect("connecting again takes the provider off disabled_providers", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() => Response.json({ data: [{ id: "model-a" }] }))
+    const http = yield* HttpClient.HttpClient
+    const baseURL = server.url.href.replace(/\/$/, "")
+    const shared = fakes({ data: { disabled_providers: ["local-llm", "other"] } })
+    yield* OpenAICompatible.connect(
+      { http, config: shared.config, auth: shared.auth },
+      { providerID: "local-llm", baseURL },
+    )
+    expect(shared.writes[0].patch.disabled_providers).toEqual(["other"])
+    expect(shared.writes[0].remove).toEqual([])
+
+    const alone = fakes({ data: { disabled_providers: ["local-llm"] } })
+    yield* OpenAICompatible.connect(
+      { http, config: alone.config, auth: alone.auth },
+      { providerID: "local-llm", baseURL },
+    )
+    expect(alone.writes[0].patch.disabled_providers).toBeUndefined()
+    expect(alone.writes[0].remove).toEqual([["disabled_providers"]])
+  }),
+)
+
 describe("renameReferences", () => {
   test("points models, agents, commands and provider lists at the new id", () => {
     expect(

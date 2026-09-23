@@ -17,6 +17,11 @@ import { Process } from "@/util/process"
 import { errorMessage } from "@/util/error"
 import { text } from "node:stream/consumers"
 import { Effect, Option } from "effect"
+import { Credential } from "@reddb-io/redcode-core/credential"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { ProviderRemove } from "@/provider/remove"
+import { isRecord } from "@/util/record"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -27,7 +32,9 @@ const promptValue = <Value>(value: Option.Option<Value>) => {
 
 const put = Effect.fn("Cli.providers.put")(function* (key: string, info: Auth.Info) {
   const auth = yield* Auth.Service
+  const config = yield* Config.Service
   yield* Effect.orDie(auth.set(key, info))
+  yield* ProviderRemove.enable(config, key)
 })
 
 const cliTry = <Value>(message: string, fn: () => PromiseLike<Value>) =>
@@ -241,7 +248,12 @@ export const ProvidersCommand = cmd({
   aliases: ["auth"],
   describe: "manage AI providers and credentials",
   builder: (yargs) =>
-    yargs.command(ProvidersListCommand).command(ProvidersLoginCommand).command(ProvidersLogoutCommand).demandCommand(),
+    yargs
+      .command(ProvidersListCommand)
+      .command(ProvidersLoginCommand)
+      .command(ProvidersLogoutCommand)
+      .command(ProvidersRemoveCommand)
+      .demandCommand(),
   async handler() {},
 })
 
@@ -254,6 +266,7 @@ export const ProvidersListCommand = effectCmd({
   handler: Effect.fn("Cli.providers.list")(function* (_args) {
     const authSvc = yield* Auth.Service
     const modelsDev = yield* ModelsDev.Service
+    const config = yield* Config.Service
 
     UI.empty()
     const authPath = path.join(Global.Path.data, "auth.json")
@@ -269,6 +282,20 @@ export const ProvidersListCommand = effectCmd({
     }
 
     yield* Prompt.outro(`${results.length} credentials`)
+
+    // Providers configured without a saved credential (a keyless endpoint, or a key from {env:NAME}).
+    const saved = new Set(results.map(([providerID]) => providerID))
+    const configured = Object.entries((yield* config.getGlobal()).provider ?? {}).filter(([id]) => !saved.has(id))
+    if (configured.length > 0) {
+      UI.empty()
+      yield* Prompt.intro("Configured")
+      for (const [providerID, provider] of configured) {
+        yield* Prompt.log.info(
+          `${provider.name || database[providerID]?.name || providerID} ${UI.Style.TEXT_DIM}configuration only`,
+        )
+      }
+      yield* Prompt.outro(`${configured.length} configured provider` + (configured.length === 1 ? "" : "s"))
+    }
 
     const activeEnvVars: Array<{ provider: string; envVar: string }> = []
 
@@ -483,6 +510,7 @@ export const ProvidersLoginCommand = effectCmd({
     })
     const apiKey = yield* promptValue(key)
     yield* Effect.orDie(authSvc.set(provider, { type: "api", key: apiKey }))
+    yield* ProviderRemove.enable(cfgSvc, provider)
 
     yield* Prompt.outro("Done")
   }),
@@ -532,3 +560,102 @@ export const ProvidersLogoutCommand = effectCmd({
     yield* Prompt.outro("Logout successful")
   }),
 })
+
+export const ProvidersRemoveCommand = effectCmd({
+  command: "remove [provider]",
+  describe: "remove a provider and the settings that use it",
+  builder: (yargs) =>
+    yargs
+      .positional("provider", {
+        describe: "provider id or name to remove",
+        type: "string",
+      })
+      .option("yes", {
+        alias: ["y"],
+        describe: "remove without asking for confirmation",
+        type: "boolean",
+      }),
+  // Changes global credentials and configuration only; no project instance needed.
+  instance: false,
+  handler: Effect.fn("Cli.providers.remove")(function* (args) {
+    const auth = yield* Auth.Service
+    const config = yield* Config.Service
+    const modelsDev = yield* ModelsDev.Service
+    const database = yield* modelsDev.get()
+    const global = yield* config.readGlobalFile()
+
+    UI.empty()
+    yield* Prompt.intro("Remove provider")
+    const ids = [
+      ...new Set([
+        ...Object.keys(yield* Effect.orDie(auth.all())),
+        ...Object.keys(isRecord(global.data.provider) ? global.data.provider : {}),
+      ]),
+    ]
+    const name = (id: string) => database[id]?.name || id
+    const providerID = args.provider
+      ? (ids.find((id) => id === args.provider || name(id).toLowerCase() === args.provider?.toLowerCase()) ??
+        args.provider)
+      : ids.length
+        ? yield* promptValue(
+            yield* Prompt.autocomplete({
+              message: "Select provider",
+              maxItems: 8,
+              options: ids.map((id) => ({ label: name(id), value: id, hint: id })),
+            }),
+          )
+        : yield* fail("No saved or configured providers")
+
+    const deps = {
+      config,
+      auth,
+      credentials: yield* Credential.Service,
+      intelligence: yield* Intelligence.Service,
+      limits: yield* ModelLimit.Service,
+      envNames: database[providerID]?.env,
+    }
+    const preview = yield* ProviderRemove.remove(deps, providerID, { dryRun: true })
+    const lines = removalLines(preview)
+    if (!lines.length) {
+      yield* Prompt.log.warn(envNotice(providerID, preview.envVariables) ?? `Nothing saved for ${providerID}`)
+      return yield* fail(`Nothing to remove for "${providerID}"`)
+    }
+    for (const line of lines) yield* Prompt.log.info(line)
+    if (!args.yes) {
+      const confirmed = yield* promptValue(
+        yield* Prompt.select({
+          message: `Remove ${name(providerID)}?`,
+          options: [
+            { value: false, label: "Cancel" },
+            { value: true, label: "Remove" },
+          ],
+        }),
+      )
+      if (!confirmed) {
+        yield* Prompt.outro("Nothing removed")
+        return
+      }
+    }
+    const result = yield* ProviderRemove.remove(deps, providerID)
+    const notice = envNotice(providerID, result.envVariables)
+    if (notice) yield* Prompt.log.warn(notice)
+    yield* Prompt.outro(`Removed ${name(providerID)}`)
+  }),
+})
+
+/** What a removal takes away, one line each, for the confirmation. */
+export function removalLines(result: ProviderRemove.Result) {
+  return [
+    ...(result.removed.credential ? ["Saved key or login"] : []),
+    ...(result.removed.config ? [`Configuration entry in ${result.configPath}`] : []),
+    ...(result.removed.references.length ? [`In use by: ${result.removed.references.join(", ")}`] : []),
+    ...(result.removed.learnedLimits
+      ? [`${result.removed.learnedLimits} learned model limit${result.removed.learnedLimits === 1 ? "" : "s"}`]
+      : []),
+  ]
+}
+
+function envNotice(providerID: string, names: ReadonlyArray<string>) {
+  if (!names.length) return
+  return `${providerID} stays available through ${names.join(", ")}. Unset ${names.length === 1 ? "it" : "them"} to remove it completely.`
+}

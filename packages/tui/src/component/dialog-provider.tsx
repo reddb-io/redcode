@@ -1,14 +1,16 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show, useContext } from "solid-js"
 import { useSync } from "../context/sync"
+import { LocalContext } from "../context/local"
 import { map, pipe, sortBy } from "remeda"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
 import { useSDK } from "../context/sdk"
 import { DialogPrompt } from "../ui/dialog-prompt"
+import { DialogConfirm } from "../ui/dialog-confirm"
 import { Link } from "../ui/link"
 import { useTheme } from "../context/theme"
 import { TextAttributes } from "@opentui/core"
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@reddb-io/redcode-sdk/v2"
+import type { ProviderAuthAuthorization, ProviderAuthMethod, ProviderRemoveResponses } from "@reddb-io/redcode-sdk/v2"
 import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
@@ -132,6 +134,7 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
   const toast = useToast()
   const { theme } = useTheme()
   const onboarded = useConnected()
+  const remove = createProviderRemoval()
 
   function lookup(providerID: string) {
     const configured = sync.data.config.provider?.[providerID]
@@ -260,12 +263,7 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
     const metadata = method.prompts?.length ? await PromptsMethod({ dialog, prompts: method.prompts }) : undefined
     if (metadata === null) return
     dialog.replace(() => (
-      <ApiMethod
-        providerID={providerID}
-        title={method.label}
-        metadata={metadata}
-        onConnected={onConnected}
-      />
+      <ApiMethod providerID={providerID} title={method.label} metadata={metadata} onConnected={onConnected} />
     ))
   }
 
@@ -324,6 +322,12 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
                                 dialog.clear()
                               }),
                           },
+                          {
+                            title: "Remove provider",
+                            value: "remove",
+                            description: "Delete its saved credentials and configuration",
+                            onSelect: () => void remove(providerID, provider.title),
+                          },
                         ]
                       : []),
                   ]}
@@ -373,7 +377,98 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
 
 export function DialogProvider(props: { onConnected?: Connected } = {}) {
   const options = createDialogProviderOptions(props)
-  return <DialogSelect title="Connect a provider" options={options()} />
+  const sync = useSync()
+  const remove = createProviderRemoval()
+  return (
+    <DialogSelect
+      title="Connect a provider"
+      options={options()}
+      actions={[
+        {
+          command: "dialog.provider.remove",
+          title: "remove",
+          // Setup picks a provider here; removing one belongs to /connect.
+          hidden: !!props.onConnected,
+          disabled: (option) =>
+            !option ||
+            !sync.data.provider_next.connected.includes(option.value) ||
+            isConsoleManagedProvider(sync.data.console_state.consoleManagedProviders, option.value),
+          onTrigger: (option) => void remove(option.value, option.title),
+        },
+      ]}
+    />
+  )
+}
+
+/** Previews a provider removal, asks for confirmation, then removes it and moves the TUI off it. */
+function createProviderRemoval() {
+  const sync = useSync()
+  const sdk = useSDK()
+  const dialog = useDialog()
+  const toast = useToast()
+  // Optional: the model cleanup needs the app's Local context, which isolated dialogs (tests) do not have.
+  const local = useContext(LocalContext)
+
+  return async function remove(providerID: string, name: string) {
+    const preview = await sdk.client.provider.remove({ providerID, dryRun: "true" })
+    if (preview.error) return toast.show({ variant: "error", message: JSON.stringify(preview.error) })
+    const confirmed = await DialogConfirm.show(dialog, `Remove ${name}?`, removalSummary(name, preview.data))
+    dialog.replace(() => <DialogProvider />)
+    if (!confirmed) return
+
+    const before = local?.model.current()
+    // Reloading every instance can take a while; say what is happening until the result arrives.
+    toast.show({ variant: "info", message: `Removing ${name} and reloading providers...`, duration: 60_000 })
+    const result = await sdk.client.provider.remove({ providerID, dryRun: "false" })
+    if (result.error) return toast.show({ variant: "error", message: JSON.stringify(result.error) })
+    // The server reloaded before answering; refresh so the list and the model fallback see the removal.
+    const refreshed = await sync.bootstrap({ fatal: false }).then(
+      () => true,
+      (error) => {
+        toast.error(error)
+        return false
+      },
+    )
+    if (!refreshed) return
+    await local?.intelligence.refresh()
+    if (!sync.data.provider.some((item) => item.id === providerID)) local?.model.forgetProvider(providerID)
+
+    const after = local?.model.current()
+    const moved = !!local && before?.providerID === providerID && after?.providerID !== providerID
+    toast.show({
+      variant: moved && !after ? "warning" : "success",
+      message: [
+        `${name} removed.`,
+        moved && after ? `Now using ${local?.model.parsed().model} (${local?.model.parsed().provider}).` : "",
+        moved && !after ? "No model is available; pick one with /models." : "",
+        result.data.envVariables.length ? `Still available through ${result.data.envVariables.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    })
+  }
+}
+
+function removalSummary(name: string, removal: ProviderRemoveResponses[200]) {
+  const learned = removal.removed.learnedLimits
+  const removed = [
+    removal.removed.credential ? "saved key or login" : "",
+    removal.removed.config ? "configuration entry" : "",
+    learned > 0 ? `${learned} learned model limit${learned === 1 ? "" : "s"}` : "",
+  ].filter(Boolean)
+  return [
+    removed.length ? `Removes: ${removed.join(", ")}.` : "",
+    removal.removed.references.length ? `In use by: ${removal.removed.references.join(", ")}.` : "",
+    !removed.length && !removal.removed.references.length ? `Nothing saved for ${name} needs removing.` : "",
+    removal.envVariables.length
+      ? `${name} stays available through ${removal.envVariables.join(", ")}; unset ${removal.envVariables.length === 1 ? "it" : "them"} to remove it completely.`
+      : "",
+    removal.referencingFiles.length
+      ? `Still mentioned in: ${removal.referencingFiles.join(", ")}. These files are not edited.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 interface AutoMethodProps {

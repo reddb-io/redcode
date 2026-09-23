@@ -487,6 +487,133 @@ describe("provider HttpApi", () => {
     projectOptions,
   )
 
+  it.instance(
+    "removes a provider with every setting that names it, previews it first, and reconnecting unhides it",
+    () =>
+      Effect.gen(function* () {
+        const directory = (yield* TestInstance).directory
+        const authFile = path.join(Global.Path.data, "auth.json")
+        const configFile = path.join(Global.Path.config, "config.jsonc")
+        const configFiles = (names: string[]) => names.filter((name) => /\.jsonc?$/.test(name))
+        const headers = { "x-opencode-directory": directory, "content-type": "application/json" }
+        yield* Effect.acquireRelease(
+          Effect.promise(async () => {
+            const names = configFiles(await fs.readdir(Global.Path.config).catch(() => []))
+            return {
+              config: await Promise.all(
+                names.map(
+                  async (name) => [name, await fs.readFile(path.join(Global.Path.config, name), "utf8")] as const,
+                ),
+              ),
+              auth: await fs.readFile(authFile, "utf8").catch(() => undefined),
+            }
+          }),
+          (saved) =>
+            Effect.promise(async () => {
+              const kept = new Map(saved.config)
+              for (const name of configFiles(await fs.readdir(Global.Path.config).catch(() => []))) {
+                if (!kept.has(name)) await fs.rm(path.join(Global.Path.config, name), { force: true })
+              }
+              for (const [name, text] of saved.config) await fs.writeFile(path.join(Global.Path.config, name), text)
+              if (saved.auth === undefined) await fs.rm(authFile, { force: true })
+              else await fs.writeFile(authFile, saved.auth)
+            }),
+        )
+        const intelligence = yield* request("/api/intelligence", { headers })
+        const previous = ((yield* intelligence.json) as { settings: unknown }).settings
+        yield* Effect.addFinalizer(() =>
+          request("/api/intelligence", {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ settings: previous }),
+          }).pipe(Effect.ignore),
+        )
+
+        const stored = yield* request("/auth/removal-test", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ type: "api", key: "removal-test-key" }),
+        })
+        expect(stored.status).toBe(200)
+        const fixture = {
+          provider: {
+            "removal-test": {
+              npm: "@ai-sdk/openai-compatible",
+              name: "Removal Test",
+              options: { baseURL: "http://127.0.0.1:1/v1" },
+              models: { m: { name: "m" } },
+            },
+          },
+          model: "removal-test/m",
+          small_model: "removal-test/m",
+          agent: { build: { model: "removal-test/m" } },
+          command: { review: { model: "removal-test/m", template: "review" } },
+          disabled_providers: ["removal-test"],
+        }
+        yield* Effect.promise(() => fs.writeFile(configFile, JSON.stringify(fixture, null, 2)))
+        const configured = yield* request("/api/intelligence", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({
+            settings: {
+              enabled: false,
+              reasoning: "single",
+              onboarding: "completed",
+              principal: { providerID: "removal-test", id: "m" },
+            },
+          }),
+        })
+        expect(configured.status).toBe(200)
+
+        const preview = yield* request("/provider/removal-test?dryRun=true", { method: "DELETE", headers })
+        expect(preview.status).toBe(200)
+        expect(yield* preview.json).toMatchObject({
+          providerID: "removal-test",
+          dryRun: true,
+          removed: {
+            credential: true,
+            config: true,
+            references: [
+              "default model",
+              "small model",
+              "agent build",
+              "command review",
+              "disabled providers",
+              "S2 principal",
+            ],
+          },
+          configPath: configFile,
+        })
+        expect(yield* Effect.promise(() => fs.readFile(configFile, "utf8"))).toContain("removal-test")
+        expect(yield* Effect.promise(() => fs.readFile(authFile, "utf8"))).toContain("removal-test-key")
+
+        const removed = yield* request("/provider/removal-test", { method: "DELETE", headers })
+        expect(removed.status).toBe(200)
+        expect(yield* removed.json).toMatchObject({ dryRun: false, removed: { credential: true, config: true } })
+        expect(yield* Effect.promise(() => fs.readFile(configFile, "utf8"))).not.toContain("removal-test")
+        expect(yield* Effect.promise(() => fs.readFile(authFile, "utf8"))).not.toContain("removal-test-key")
+        const after = yield* request("/api/intelligence", { headers })
+        expect(((yield* after.json) as { settings: { principal?: unknown } }).settings.principal).toBeUndefined()
+
+        // A provider hidden with disabled_providers is shown again once it is connected again.
+        yield* Effect.promise(() =>
+          fs.writeFile(configFile, JSON.stringify({ disabled_providers: ["removal-test", "other-hidden"] }, null, 2)),
+        )
+        const reconnected = yield* request("/auth/removal-test", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ type: "api", key: "removal-test-key" }),
+        })
+        expect(reconnected.status).toBe(200)
+        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8")))).toEqual({
+          disabled_providers: ["other-hidden"],
+        })
+        yield* request("/provider/removal-test", { method: "DELETE", headers })
+      }),
+    projectOptions,
+    30000,
+  )
+
   it.instance.skip(
     "returns public v2 provider not found errors",
     Effect.gen(function* () {

@@ -279,9 +279,9 @@ export function catalogChanged(scope: string, baseURL: string, version: string) 
   return true
 }
 
-/** Drops recorded catalog versions, for tests. */
-export function forgetCatalogs() {
-  catalogs.clear()
+/** Drops recorded catalog versions: those of one connection (a removed provider), or all of them. */
+export function forgetCatalogs(scope?: string) {
+  for (const key of catalogs.keys()) if (scope === undefined || key.startsWith(`${scope}\n`)) catalogs.delete(key)
 }
 
 function dollars(value: unknown) {
