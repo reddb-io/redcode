@@ -1,5 +1,12 @@
 # opencode
 
+## 0.45.1
+
+### Patch Changes
+
+- 95a9741: Fix compaction replay, session forks and diff summaries failing on a structured output turn with `Expected OutputFormatJsonSchema`.
+- 8110a0c: Never send a forced tool choice to models that refuse one (Claude Opus 5.5, Fable, Mythos, or a RedRouter that declares it): session requests ask for the tool instead, and agent generation falls back to prompted JSON with one repair attempt.
+
 ## 0.45.0
 
 ### Minor Changes
