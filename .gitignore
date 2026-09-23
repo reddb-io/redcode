@@ -38,3 +38,5 @@ tsconfig.tsbuildinfo
 .red/code/designs/
 .redcode/design/
 .redcode/designs/
+.red/tmp/
+.red/state/
