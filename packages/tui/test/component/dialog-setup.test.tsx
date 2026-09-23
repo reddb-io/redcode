@@ -140,21 +140,20 @@ test("global setup selects System Two models and offers provider connection in t
     },
     tmp.path,
     () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
+    { height: 40 },
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("S2 principal"))
-    await wait(
-      () =>
-        setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
-        !setup.app.renderer.currentFocusedRenderable.isDestroyed,
-    )
+    await ready(setup.app, "Balanced Combo")
     const principal = setup.app.captureCharFrame()
     expect(principal).toContain("2/3 · S2 principal · Mock Provider")
+    expect(principal).toContain("Providers")
+    expect(principal).toContain("Other Provider")
+    expect(principal).toContain("Connect another provider…")
+    expect(principal).toContain("Mock Provider models")
     expect(principal).toContain("Mock Model")
-    expect(principal).toContain("Balanced Combo")
     expect(principal).not.toContain("Other Model")
-    expect(principal).toContain("Choose or connect another provider…")
 
+    // The cursor starts on the first model, below the Providers section.
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("2/3 · S2 transformations"))
     await wait(
@@ -188,12 +187,7 @@ test("global setup can open provider connection when no generative model is conn
         setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
-    await wait(() => setup.app.captureCharFrame().includes("Choose or connect another provider…"))
-    await wait(
-      () =>
-        setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
-        !setup.app.renderer.currentFocusedRenderable.isDestroyed,
-    )
+    await ready(setup.app, "Connect another provider…")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
   } finally {
@@ -218,11 +212,16 @@ test("global setup can reuse an established provider connection without authenti
     },
     tmp.path,
     () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
+    { height: 40 },
   )
   try {
-    await wait(() => setup.app.captureCharFrame().includes("Choose or connect another provider…"))
-    await setup.app.mockInput.pressArrow("down")
-    await setup.app.mockInput.pressArrow("down")
+    await ready(setup.app, "Balanced Combo")
+    await setup.app.mockInput.typeText("connect")
+    await wait(
+      () =>
+        setup.app.captureCharFrame().includes("Connect another provider…") &&
+        !setup.app.captureCharFrame().includes("Balanced Combo"),
+    )
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
     const providers = setup.app.captureCharFrame()
@@ -263,6 +262,7 @@ test("configured setup can edit System Two without walking through System One", 
     },
     tmp.path,
     () => <Dialogs />,
+    { height: 40 },
   )
   try {
     await ready(setup.app, "Change System Two models")
@@ -275,6 +275,7 @@ test("configured setup can edit System Two without walking through System One", 
 
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
+    // The cursor lands on the saved principal, below the Providers section.
     await ready(setup.app, "2/2 · S2 principal")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Reuse System Two principal")
@@ -328,8 +329,11 @@ test("single reasoning saves S2 and keeps the saved S1 evaluator without probing
     expect(setup.app.captureCharFrame()).not.toContain("Continue with")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")
-    expect(setup.app.captureCharFrame()).toContain("Single reasoning: S2 only")
-    expect(setup.app.captureCharFrame()).not.toContain("S1 connection")
+    const confirm = setup.app.captureCharFrame()
+    // The explanation sits on its own line, whole, at the test width.
+    expect(confirm).toContain("S2 only; a saved S1 stays unused")
+    expect(confirm).toContain("Change S2 model")
+    expect(confirm).not.toContain("S1 connection")
     await setup.app.mockInput.pressEnter()
     await wait(() => saved.length === 1)
     expect(saved[0]).toEqual({
@@ -413,6 +417,7 @@ test("changing a saved S2 keeps the active-connection model list", async () => {
     },
     tmp.path,
     () => <Dialogs />,
+    { height: 40 },
   )
   try {
     await ready(setup.app, "Change System Two models")
@@ -425,7 +430,8 @@ test("changing a saved S2 keeps the active-connection model list", async () => {
     expect(models).toContain("2/2 · S2 principal · Mock Provider")
     expect(models).toContain("Mock Model")
     expect(models).not.toContain("Other Model")
-    expect(models).toContain("Choose or connect another provider…")
+    expect(models).toContain("Other Provider")
+    expect(models).toContain("Connect another provider…")
   } finally {
     setup.app.renderer.destroy()
   }
@@ -492,6 +498,11 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await setup.app.mockInput.pressEnter()
     await wait(() => probes === 1 && setup.app.captureCharFrame().includes("authentication failed"))
 
+    // The failed S1 probe leaves the cursor on the option that fixes it.
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "3/3 · S1 connection")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
     await setup.app.mockInput.pressEnter()
     await wait(() => probes === 2)
     await wait(() => !setup.app.captureCharFrame().includes("Save global intelligence setup"))
@@ -566,6 +577,112 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
         evaluator: router.evaluator,
       },
     })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("the Providers section switches the model list to another connected provider", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const model = (providerID: string, id: string, name: string) => ({
+    ...provider.models.model,
+    id,
+    providerID,
+    name,
+  })
+  const router = {
+    ...provider,
+    id: "red-router",
+    name: "RedRouter",
+    models: { alpha: model("red-router", "alpha", "Router Alpha"), beta: model("red-router", "beta", "Router Beta") },
+  }
+  const openrouter = {
+    ...provider,
+    id: "openrouter",
+    name: "OpenRouter",
+    models: { gamma: model("openrouter", "gamma", "Open Gamma"), delta: model("openrouter", "delta", "Open Delta") },
+  }
+  const saved: unknown[] = []
+  const setup = await mount(
+    async (url, input) => {
+      if (url.pathname === "/api/intelligence" && input instanceof Request && input.method === "PUT") {
+        saved.push(await input.json())
+        return json({ enabled: true, reasoning: "single", onboarding: "completed" })
+      }
+      if (url.pathname === "/api/intelligence") return json(intelligence)
+      if (url.pathname === "/config/providers")
+        return json({ providers: [router, openrouter], default: { "red-router": "alpha", openrouter: "gamma" } })
+      if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "single" }} />,
+    { height: 40 },
+  )
+  try {
+    await ready(setup.app, "Router Beta")
+    const models = setup.app.captureCharFrame()
+    expect(models).toContain("2/2 · S2 principal · RedRouter")
+    expect(models).toContain("2 models · current")
+    expect(models).toContain("RedRouter models")
+    expect(models).not.toContain("Open Gamma")
+    expect(models.indexOf("OpenRouter")).toBeGreaterThan(-1)
+    expect(models.indexOf("OpenRouter")).toBeLessThan(models.indexOf("Router Alpha"))
+
+    await setup.app.mockInput.typeText("openrouter")
+    await wait(() => !setup.app.captureCharFrame().includes("Router Alpha"))
+    await setup.app.mockInput.pressEnter()
+    await wait(
+      () =>
+        setup.app.captureCharFrame().includes("2/2 · S2 principal · OpenRouter") &&
+        setup.app.captureCharFrame().includes("Open Gamma"),
+    )
+    expect(setup.app.captureCharFrame()).not.toContain("Router Beta")
+
+    // After switching, the cursor lands on the new provider's first model.
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => saved.length === 1)
+    expect(saved[0]).toMatchObject({ settings: { principal: { providerID: "openrouter", id: "gamma" } } })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a failed S2 probe names the model and leaves the cursor on Change S2 model", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const settings = {
+    enabled: true,
+    reasoning: "single",
+    onboarding: "completed",
+    principal: { providerID: "mock", id: "model" },
+  } as Intelligence.Settings
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/test-model")
+        return json({ ok: false, message: "Generative connection failed (HTTP 400): Upstream request failed" })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "single" }} />,
+    { height: 40 },
+  )
+  try {
+    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => setup.app.captureCharFrame().includes("S2 model Mock Provider"))
+    expect(setup.app.captureCharFrame()).not.toContain("Generative connection")
+
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Mock Provider models")
+    const models = setup.app.captureCharFrame()
+    expect(models).toContain("2/2 · S2 principal · Mock Provider")
+    expect(models).toContain("Balanced Combo")
   } finally {
     setup.app.renderer.destroy()
   }
