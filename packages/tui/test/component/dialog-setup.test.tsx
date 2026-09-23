@@ -519,7 +519,7 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
       model: "jev-1.13.0",
       credentialID: "cred_router",
     },
-  } satisfies Intelligence.DetectedRouter
+  }
   const settings = {
     enabled: false,
     onboarding: "pending",
