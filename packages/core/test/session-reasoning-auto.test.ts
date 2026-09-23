@@ -10,7 +10,7 @@ const turn = (input: Partial<ReasoningAuto.Input> & { readonly turnID: string })
   ReasoningAuto.decideEffort({ variants: OPENAI, ...input })!
 
 describe("ReasoningAuto.decideEffort", () => {
-  test.each<[number, string]>([
+  test.each<[number, ReasoningAuto.Level]>([
     [0, "minimal"],
     [0.14, "minimal"],
     [0.15, "low"],
