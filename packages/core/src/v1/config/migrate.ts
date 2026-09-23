@@ -279,9 +279,13 @@ function migrateRouter(router: NonNullable<(typeof ConfigProviderV1.Model.Type)[
     ...(router.parameters?.modes ? { modes: [...router.parameters.modes] } : {}),
     ...(router.variants
       ? {
+          // Router.Variant rejects a key set to undefined, so only the fields present are copied.
           variants: router.variants.map((variant) => ({
-            ...variant,
-            ...(variant.aliases ? { aliases: [...variant.aliases] } : {}),
+            id: variant.id,
+            ...(variant.name === undefined ? {} : { name: variant.name }),
+            ...(variant.level === undefined ? {} : { level: variant.level }),
+            ...(variant.mode === undefined ? {} : { mode: variant.mode }),
+            ...(variant.aliases === undefined ? {} : { aliases: [...variant.aliases] }),
           })),
         }
       : {}),
