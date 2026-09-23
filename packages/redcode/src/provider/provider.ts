@@ -1429,7 +1429,7 @@ function routedModel(router: RouterInfo | undefined) {
       ...(router.variants ?? []).flatMap((variant) => (variant.mode ? [variant.mode] : [])),
     ]),
   ]
-  const upstream =
+  const upstream: ConfigProviderV1.RouterUpstream | undefined =
     router.provider ?? (router.owned_by === "combo" ? { id: "combo", name: "Combo", category: "combo" } : undefined)
   return {
     ...(upstream
