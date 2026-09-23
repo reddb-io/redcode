@@ -230,7 +230,8 @@ export const RunCommand = effectCmd({
       })
       .option("variant", {
         type: "string",
-        describe: "model variant (provider-specific reasoning effort, e.g., high, max, minimal)",
+        describe:
+          "model variant (provider-specific reasoning effort, e.g., high, max, minimal), or auto to let the effort follow each turn",
       })
       .option("thinking", {
         type: "boolean",

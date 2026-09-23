@@ -106,6 +106,7 @@ import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
+import { appliedLabel } from "../../util/reasoning"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { LocationProvider } from "../../context/location"
@@ -1821,6 +1822,12 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
+  // An `auto` turn records the level it applied on its assistant message.
+  const effort = createMemo(() => {
+    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
+    return appliedLabel(user?.role === "user" ? user.model?.variant : undefined, props.message.variant)
+  })
+
   const duration = createMemo(() => {
     if (!final()) return 0
     if (!props.message.time.completed) return 0
@@ -1909,6 +1916,9 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
               </span>{" "}
               <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
               <span style={{ fg: theme.textMuted }}> · {model()}</span>
+              <Show when={effort()}>
+                <span style={{ fg: theme.textMuted }}> · {effort()}</span>
+              </Show>
               <Show when={duration()}>
                 <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
               </Show>

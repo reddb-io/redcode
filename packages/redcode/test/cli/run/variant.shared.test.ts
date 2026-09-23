@@ -15,6 +15,7 @@ import {
 import type { SessionMessages } from "@/cli/cmd/run/session.shared"
 import type { RunProvider } from "@/cli/cmd/run/types"
 import { testEffect } from "../../lib/effect"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 
 const model = {
   providerID: "openai",
@@ -132,6 +133,16 @@ describe("run variant shared", () => {
     expect(resolveVariant("max", "high", "low", ["low", "high"])).toBe("max")
     expect(resolveVariant(undefined, "high", "low", ["low", "high"])).toBe("high")
     expect(resolveVariant(undefined, "missing", "low", ["low", "high"])).toBe("low")
+  })
+
+  test("keeps auto where the model's variants offer it", () => {
+    const offered = ReasoningAuto.options(["low", "high"])
+    expect(resolveVariant(undefined, "auto", "low", offered)).toBe("auto")
+    expect(resolveVariant(undefined, undefined, "auto", offered)).toBe("auto")
+    // A model with a single effort level has nothing for auto to choose.
+    expect(resolveVariant(undefined, "auto", undefined, ReasoningAuto.options(["high"]))).toBeUndefined()
+    expect(cycleVariant(undefined, offered)).toBe("auto")
+    expect(cycleVariant("auto", offered)).toBe("low")
   })
 
   test("cycles through variants and back to default", () => {

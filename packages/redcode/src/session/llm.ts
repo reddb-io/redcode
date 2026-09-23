@@ -38,6 +38,7 @@ import { SessionSpend } from "./spend"
 import { NativeToolSearch } from "./native-tool-search"
 import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { RedRouter } from "@/provider/red-router"
 import { PromptCacheDiagnostics } from "@reddb-io/redcode-core/session/prompt-cache-diagnostics"
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider"
@@ -64,10 +65,17 @@ export type StreamInput = {
   /**
    * Cooperation with a detected RedRouter, ignored by every other provider: `decision: false` when
    * System One already chose this turn's tools and skills, `tokenSaver: false` for compaction and
-   * validation requests, which must reach the model whole, and `hint`, System One's reading of the
-   * turn, sent only when the selected model is a combo that picks its member per request.
+   * validation requests, which must reach the model whole, `hint`, System One's reading of the
+   * turn, sent only when the selected model is a combo that picks its member per request or the
+   * router decides the effort, and `reasoning`, who decides a turn request's effort
+   * (`ReasoningAuto.coordinate`).
    */
-  router?: { readonly decision?: boolean; readonly tokenSaver?: boolean; readonly hint?: string }
+  router?: {
+    readonly decision?: boolean
+    readonly tokenSaver?: boolean
+    readonly hint?: string
+    readonly reasoning?: ReasoningAuto.Route
+  }
   /**
    * Timing hooks. `request` runs right before every provider HTTP attempt, after all local request
    * preparation: from a stream middleware on the AI SDK path (again for each SDK retry), and per
@@ -607,6 +615,14 @@ const live: Layer.Layer<
         Stream.tap((event) =>
           event.type === "step-finish" ? refreshCatalog(input.model, event.providerMetadata) : Effect.void,
         ),
+        // A router that decided an `auto` session's effort says which level it applied.
+        Stream.tap((event) =>
+          event.type === "step-finish" && input.router?.reasoning?.auto
+            ? Effect.sync(() =>
+                ReasoningAuto.adopt(input.sessionID, ProviderRouter.reportedReasoning(event.providerMetadata)),
+              )
+            : Effect.void,
+        ),
       )
 
     return Service.of({ stream })
@@ -626,16 +642,32 @@ const routerHeaders = Effect.fnUntraced(function* (
   declared: { readonly router?: { readonly strategy?: string } } | undefined,
 ) {
   const wanted = input.router
-  const hinted = !!wanted?.hint && ProviderRouter.routesByHint(declared?.router)
-  if (!wanted || (wanted.decision !== false && wanted.tokenSaver !== false && !hinted)) return {}
+  if (!wanted) return {}
+  const hinted = !!wanted.hint && ProviderRouter.routesByHint(declared?.router)
+  // Probed when the request asks the router for something, or when a person's own variant needs
+  // protecting on a connection that is a router (RedRouter's own, or models a router described);
+  // any other OpenAI-compatible server is never probed on every turn, only read from the cache.
+  const probe =
+    wanted.decision === false ||
+    wanted.tokenSaver === false ||
+    hinted ||
+    wanted.reasoning?.auto === true ||
+    (!!wanted.reasoning && (input.model.providerID === RedRouter.PROVIDER_ID || declared?.router !== undefined))
+  if (!probe && !wanted.reasoning) return {}
   const baseURL = provider.options.baseURL
   if (typeof baseURL !== "string" || !["@ai-sdk/openai-compatible", "@ai-sdk/openai"].includes(input.model.api.npm))
     return {}
   const configured = provider.options.apiKey
   const apiKey = auth?.type === "api" ? auth.key : typeof configured === "string" ? configured : provider.key
-  return ProviderRouter.requestHeaders(yield* ProviderRouter.detect({ baseURL, apiKey }), {
+  const detection = probe ? yield* ProviderRouter.detect({ baseURL, apiKey }) : ProviderRouter.known(baseURL)
+  const reasoning = wanted.reasoning
+    ? ReasoningAuto.coordinate(wanted.reasoning, detection, ProviderRouter.routesByHint(declared?.router))
+    : undefined
+  if (reasoning && reasoning.decider !== "none") ReasoningAuto.note(input.sessionID, reasoning.decider)
+  return ProviderRouter.requestHeaders(detection, {
     ...wanted,
     model: declared?.router,
+    reasoning,
   })
 })
 

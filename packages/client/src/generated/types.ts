@@ -6991,6 +6991,10 @@ export type IntelligenceGetOutput = {
         | "cost"
         | "stream-usage-cost"
         | "catalog"
+        | "reasoning"
+        | "reasoning-auto"
+        | "reasoning-applies"
+        | "hint-signals"
       >
       readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
       readonly checkedAt: number

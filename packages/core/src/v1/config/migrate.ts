@@ -63,6 +63,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     design: info.design,
     session: info.session,
     models: info.models,
+    reasoning: info.reasoning,
     skills: info.skills && [...(info.skills.paths ?? []), ...(info.skills.urls ?? [])],
     commands: info.command,
     instructions: info.instructions,

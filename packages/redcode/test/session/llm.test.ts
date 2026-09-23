@@ -25,6 +25,7 @@ import { Session as SessionNs } from "@/session/session"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { LayerNodePlatform } from "@reddb-io/redcode-core/effect/app-node-platform"
@@ -1032,7 +1033,10 @@ describe("session.llm.stream", () => {
           Effect.gen(function* () {
             const request = waitRequest(
               "/chat/completions",
-              new Response(createChatStream("Hello"), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+              new Response(createChatStream("Hello"), {
+                status: 200,
+                headers: { "Content-Type": "text/event-stream" },
+              }),
             )
             yield* drain({
               user,
@@ -2592,6 +2596,163 @@ describe("session.llm RedRouter cooperation", () => {
                 tool_call: true,
                 limit: { context: 128000, output: 8192 },
                 router: { owned_by: "combo", strategy: "auto" },
+              },
+            },
+          },
+        },
+      }),
+    },
+  )
+})
+
+describe("session.llm RedRouter reasoning contract", () => {
+  const seen: Headers[] = []
+  // Requests the router's own decision model would have been asked about: those it was told to decide.
+  const jev = { asked: 0 }
+  const routerState = { server: null as ReturnType<typeof Bun.serve> | null }
+
+  beforeAll(() => {
+    routerState.server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/v1/capabilities")
+          return Response.json({
+            product: "red-router",
+            version: "3.3.0",
+            decision: {
+              header: "x-red-router-decision",
+              accepts_hint: true,
+              hint_header: "x-red-router-hint",
+              hint_keys: [
+                "complexity",
+                "deliberation",
+                "needs_tool",
+                "tier",
+                "effort",
+                "stall",
+                "feedback",
+                "frustration",
+              ],
+            },
+            reasoning: {
+              mode: "off",
+              header: "x-red-router-reasoning",
+              response_header: "X-RedRouter-Reasoning",
+              applies: false,
+              accepts: ["off", "auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"],
+              ladder: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+            },
+          })
+        if (url.pathname !== "/v1/chat/completions") return new Response("not found", { status: 404 })
+        seen.push(request.headers)
+        const decides = request.headers.get("x-red-router-reasoning") === "auto"
+        if (decides) jev.asked++
+        return new Response(createChatStream("Hello"), {
+          headers: {
+            "Content-Type": "text/event-stream",
+            ...(decides ? { "X-RedRouter-Reasoning": "medium->high; cause=jev" } : {}),
+          },
+        })
+      },
+    })
+  })
+
+  afterAll(() => {
+    ProviderRouter.forget()
+    ReasoningAuto.forget()
+    void routerState.server?.stop(true)
+  })
+
+  it.instance(
+    "one decider per turn: redcode with System One, the router without it, nobody over a person's variant",
+    () =>
+      Effect.gen(function* () {
+        const model = yield* Provider.use.getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("direct"))
+        const combo = yield* Provider.use.getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("smart-combo"))
+        const sessionID = SessionID.make("session-reasoning")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: MessageID.make("msg_user-reasoning"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make("red-router"), modelID: model.id, variant: "medium" },
+        } satisfies SessionV1.User
+        const input = {
+          user,
+          sessionID,
+          model,
+          agent,
+          system: ["You are a helpful assistant."],
+          messages: [{ role: "user" as const, content: "Hello" }],
+          tools: {},
+        }
+        const hint = "complexity=0.5;stall=false;feedback=corrects;frustration=0.25"
+        ReasoningAuto.remember(sessionID, {
+          level: "medium",
+          cause: "assessment",
+          changedAt: 1,
+          turn: 1,
+          turnID: user.id,
+          loopStep: false,
+        })
+
+        // A person's own variant: the router must not override it.
+        yield* drain({ ...input, router: { hint, reasoning: { auto: false, dual: true } } })
+        // Auto with System One: Redcode decided; the direct model carries it in the body.
+        yield* drain({ ...input, router: { hint, reasoning: { auto: true, dual: true, level: "medium" } } })
+        expect(ReasoningAuto.recall(sessionID)?.decider).toBe("redcode")
+        // Auto with System One on a combo: the level, for the router to map onto the member it picks.
+        yield* drain({
+          ...input,
+          model: combo,
+          router: { hint, reasoning: { auto: true, dual: true, level: "medium" } },
+        })
+        expect(jev.asked).toBe(0)
+        // Auto without System One: the router decides, reads the turn's signals and reports its level.
+        yield* drain({
+          ...input,
+          router: { hint: "stall=true", reasoning: { auto: true, dual: false, level: "medium" } },
+        })
+        expect(jev.asked).toBe(1)
+
+        expect(
+          seen.map((headers) => [headers.get("x-red-router-reasoning"), headers.get("x-red-router-hint")]),
+        ).toEqual([
+          ["off", null],
+          ["off", null],
+          ["medium", hint],
+          ["auto", "stall=true"],
+        ])
+        expect(ReasoningAuto.display(ReasoningAuto.recall(sessionID)!)).toEqual({
+          level: "high",
+          cause: "jev",
+          decider: "router",
+        })
+      }),
+    {
+      config: () => ({
+        enabled_providers: ["red-router"],
+        provider: {
+          "red-router": {
+            name: "RedRouter",
+            npm: "@ai-sdk/openai-compatible",
+            options: { apiKey: "test-key", baseURL: `${routerState.server!.url.origin}/v1` },
+            models: {
+              direct: { name: "direct", tool_call: true, limit: { context: 128000, output: 8192 } },
+              "smart-combo": {
+                name: "smart-combo",
+                tool_call: true,
+                limit: { context: 128000, output: 8192 },
+                router: { owned_by: "combo", strategy: "smart" },
               },
             },
           },
