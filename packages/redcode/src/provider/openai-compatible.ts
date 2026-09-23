@@ -3,6 +3,7 @@ import type { HttpClient } from "effect/unstable/http"
 import { Auth } from "@/auth"
 import type { Config } from "@/config/config"
 import { isRecord } from "@/util/record"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { ProviderDiscovery } from "./discovery"
 
 /** AI SDK packages a connected endpoint may use: chat completions, or the OpenAI Responses API. */
@@ -115,10 +116,11 @@ type Found = { id: string; name: string; limit: ProviderDiscovery.Limit; router?
 /**
  * Computes the model changes for a connection. New models get their name and limits. Existing
  * models are left alone, except that one without limits gets them (a zero context would disable
- * proactive compaction) and one whose context was typed in gets that limit. What a router reports
- * about a model (combo strategy, thinking levels, capabilities) is the router's and is refreshed on
- * every connection. With `prune`, models that are no longer listed are removed only when they carry
- * nothing but discovery's own fields; customized models are kept.
+ * proactive compaction), one whose context was typed in gets that limit, and one whose limits are
+ * still the ones the router's parameters last reported follows the router when they change. What a
+ * router reports about a model (combo strategy, members, thinking levels, parameters) is the
+ * router's and is refreshed on every connection. With `prune`, models that are no longer listed
+ * are removed only when they carry nothing but discovery's own fields; customized models are kept.
  */
 export function plan(
   existing: Record<string, unknown> | undefined,
@@ -132,7 +134,7 @@ export function plan(
     const entry = Object.hasOwn(current, model.id) ? current[model.id] : undefined
     const router = model.router ? { router: model.router } : {}
     if (!isRecord(entry)) models[model.id] = { name: model.name, limit: { ...model.limit }, ...router }
-    else if (options.explicit?.has(model.id) || !isRecord(entry.limit))
+    else if (options.explicit?.has(model.id) || !isRecord(entry.limit) || reportedLimit(entry, model))
       models[model.id] = { limit: { ...model.limit }, ...router }
     else models[model.id] = router
   }
@@ -149,6 +151,24 @@ export function plan(
 
 function record(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {}
+}
+
+/**
+ * Whether a saved model's limits are exactly what the router's parameters reported when it was
+ * last read, and the router now reports others: nobody typed them in, so they follow the router.
+ */
+function reportedLimit(entry: Record<string, unknown>, found: Found) {
+  const saved = record(record(entry.router).parameters)
+  const limit = record(entry.limit)
+  const next = found.router?.parameters
+  return (
+    saved.context_length !== undefined &&
+    saved.context_length === limit.context &&
+    saved.max_completion_tokens === limit.output &&
+    next?.context_length !== undefined &&
+    next.max_completion_tokens !== undefined &&
+    (next.context_length !== limit.context || next.max_completion_tokens !== limit.output)
+  )
 }
 
 function resolveReferences(value: string, env: (name: string) => string | undefined) {
@@ -286,6 +306,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
   })
 
   let found: Array<typeof ProviderDiscovery.Model.Type>
+  let catalogVersion: string | undefined
   if (manual === undefined) {
     if (reference && !discoveryKey) {
       return yield* fail(
@@ -307,6 +328,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       },
     ).pipe(Effect.mapError((error) => fail("discovery", error.message)))
     found = [...discovered.models]
+    catalogVersion = discovered.catalogVersion
   } else {
     found = manual.map((model) => ({
       id: model.id,
@@ -405,6 +427,8 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
           else if (credential !== "kept" && savedAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
         }),
   )
+  // The models just saved are this catalog version; a response reporting another one means they are stale.
+  if (catalogVersion) ProviderRouter.recordCatalog(providerID, baseURL, catalogVersion)
 
   return {
     providerID,

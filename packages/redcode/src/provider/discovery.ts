@@ -1,11 +1,17 @@
 import { Effect, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import { Router } from "@reddb-io/redcode-schema/router"
+import { isRecord } from "@/util/record"
 
 export const Input = Schema.Struct({ baseURL: Schema.String, apiKey: Schema.String })
 export const Limit = Schema.Struct({ context: Schema.Number, output: Schema.Number })
-/** What a router says about a model beyond its limits: RedRouter lists combos and thinking levels. */
+/**
+ * What a router says about a model beyond its limits: RedRouter lists combos, their members,
+ * thinking levels and the parameters a request must respect.
+ */
 export const RouterInfo = Schema.Struct({
   owned_by: Schema.optional(Schema.String),
   strategy: Schema.optional(Schema.String).annotate({ description: "How a combo walks its members." }),
@@ -13,6 +19,10 @@ export const RouterInfo = Schema.Struct({
     description: "Reasoning levels the router accepts for this model; they become its variants.",
   }),
   capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  parameters: Schema.optional(ConfigProviderV1.RouterParameters),
+  members: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "The provider/model ids a combo can route to, nested combos expanded.",
+  }),
 })
 export const Model = Schema.Struct({
   id: Schema.String,
@@ -29,6 +39,9 @@ export const Result = Schema.Struct({
   models: Schema.Array(Model),
   router: Schema.optional(Router.Detection).annotate({
     description: "What answered at the URL, probed after connecting. Absent when the probe was not run.",
+  }),
+  catalogVersion: Schema.optional(Schema.String).annotate({
+    description: "The catalog version RedRouter reported with the model list, when it did.",
   }),
 })
 
@@ -75,6 +88,8 @@ const Catalog = Schema.Struct({
       strategy: Schema.optional(Schema.Unknown),
       thinking_levels: Schema.optional(Schema.Unknown),
       capabilities: Schema.optional(Schema.Unknown),
+      parameters: Schema.optional(Schema.Unknown),
+      members: Schema.optional(Schema.Unknown),
       [NESTED]: Schema.optional(Schema.Unknown),
       ...Object.fromEntries(
         [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
@@ -140,13 +155,17 @@ function firstPositive(item: Record<string, unknown>, fields: readonly string[])
 }
 
 /**
- * Router-reported limits win (the serving provider's `top_provider` limits included), then the
- * catalog entry, then the conservative default. A model whose context nobody reports gets the
- * guess held back by the reserve, and the smaller of the router's own and the serving provider's
- * output limit.
+ * Router-reported limits win (RedRouter's `parameters` first, a combo's being its strictest
+ * member's, then the serving provider's `top_provider` limits), then the catalog entry, then the
+ * conservative default. A model whose context nobody reports gets the guess held back by the
+ * reserve, and the smaller of the router's own and the serving provider's output limit.
  */
 export function resolveLimit(item: Record<string, unknown> & { id: string }, catalog?: CatalogLimit) {
-  const reported = { context: firstPositive(item, CONTEXT_FIELDS), output: firstPositive(item, OUTPUT_FIELDS) }
+  const parameters = isRecord(item.parameters) ? item.parameters : {}
+  const reported = {
+    context: positive(parameters.context_length) ?? firstPositive(item, CONTEXT_FIELDS),
+    output: positive(parameters.max_completion_tokens) ?? firstPositive(item, OUTPUT_FIELDS),
+  }
   const known = reported.context && reported.output ? undefined : catalog?.(item.id)
   const context = reported.context ?? positive(known?.context)
   const output = reported.output ?? positive(known?.output)
@@ -302,7 +321,8 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
           "No models are available. Connect an account or create a combo in the provider dashboard, then retry.",
       })
     }
-    return { baseURL, models }
+    const catalogVersion = ProviderRouter.header(response.headers, ProviderRouter.Header.catalogVersion)
+    return { baseURL, models, ...(catalogVersion ? { catalogVersion } : {}) }
   }).pipe(
     Effect.timeoutOrElse({
       duration: "10 seconds",
@@ -319,23 +339,56 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
  * boilerplate, so it is kept only for a combo or next to another router field.
  */
 export function routerInfo(item: Record<string, unknown>): RouterInfo | undefined {
-  const levels = Array.isArray(item.thinking_levels)
-    ? [
-        ...new Set(
-          item.thinking_levels.filter((level): level is string => typeof level === "string" && !!level.trim()),
-        ),
-      ]
-    : undefined
+  const parameters = routerParameters(item.parameters)
+  // A combo's own levels are already what all its members accept; parameters say the same.
+  const levels = strings(item.thinking_levels) ?? strings(parameters?.thinking_levels)
+  const members = strings(item.members)
   const info = {
     ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),
     ...(levels?.length ? { thinking_levels: levels } : {}),
-    ...(typeof item.capabilities === "object" && item.capabilities !== null && !Array.isArray(item.capabilities)
-      ? { capabilities: item.capabilities as Record<string, unknown> }
-      : {}),
+    ...(isRecord(item.capabilities) ? { capabilities: item.capabilities } : {}),
+    ...(parameters ? { parameters } : {}),
+    ...(members?.length ? { members } : {}),
   }
   const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
   if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }
   return Object.keys(info).length ? info : undefined
+}
+
+/**
+ * RedRouter's `parameters`, keeping only fields of the documented type so a malformed value never
+ * reaches (and invalidates) the configuration file. Unknown fields are dropped.
+ */
+function routerParameters(value: unknown): ConfigProviderV1.RouterParameters | undefined {
+  if (!isRecord(value)) return
+  const flag = (item: unknown) => (typeof item === "boolean" ? item : undefined)
+  const modalities = isRecord(value.modalities) ? value.modalities : {}
+  const io = defined({ input: strings(modalities.input), output: strings(modalities.output) })
+  const parameters = defined({
+    context_length: positive(value.context_length),
+    max_completion_tokens: positive(value.max_completion_tokens),
+    reasoning: flag(value.reasoning),
+    // null is meaningful: the model takes no thinking level at all.
+    thinking_levels: value.thinking_levels === null ? null : strings(value.thinking_levels),
+    thinking_can_disable: flag(value.thinking_can_disable),
+    forced_tool_choice: flag(value.forced_tool_choice),
+    tools: flag(value.tools),
+    search: flag(value.search),
+    modalities: Object.keys(io).length ? io : undefined,
+  })
+  return Object.keys(parameters).length ? parameters : undefined
+}
+
+function defined<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>
+  }
+}
+
+/** The distinct non-blank strings of an array; undefined for anything that is not an array. */
+function strings(value: unknown) {
+  if (!Array.isArray(value)) return
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && !!item.trim()))]
 }
 
 /** A model ID that can be a config key: not blank and not an object prototype key. */

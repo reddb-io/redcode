@@ -89,6 +89,30 @@ describe("ProviderRouter.detect", () => {
     expect(ProviderRouter.known(`http://localhost:${router.port}/v1`)?.kind).toBe("red-router")
   })
 
+  test("records the catalog version and the catalog feature a RedRouter advertises", async () => {
+    const router = serve({
+      "/v1/capabilities": () =>
+        Response.json({
+          ...capabilities,
+          catalog: {
+            version: "0123456789abcdef",
+            version_header: "X-RedRouter-Catalog-Version",
+            model_endpoint: "/v1/models/{id}",
+            model_parameters: true,
+            combo_members: true,
+          },
+        }),
+    })
+    const detection = await Effect.runPromise(ProviderRouter.detect({ baseURL: router.baseURL, apiKey: "k" }))
+    expect(detection.catalogVersion).toBe("0123456789abcdef")
+    expect(detection.features).toContain("catalog")
+
+    const older = serve({ "/v1/capabilities": () => Response.json({ ...capabilities, catalog: { version: "" } }) })
+    const without = await Effect.runPromise(ProviderRouter.detect({ baseURL: older.baseURL, apiKey: "k" }))
+    expect(without.catalogVersion).toBeUndefined()
+    expect(without.features).not.toContain("catalog")
+  })
+
   test("falls back to the System One catalog, then to the public version fingerprint", async () => {
     const older = serve({
       "/v1/models/systemone": () => Response.json({ object: "list", data: [{ id: "jev/jev-latest" }] }),
@@ -129,6 +153,30 @@ describe("ProviderRouter.detect", () => {
     const detection = await Effect.runPromise(ProviderRouter.detect({ baseURL: slow.baseURL, timeout: 100 }))
     expect(detection.kind).toBe("none")
     expect(Date.now() - started).toBeLessThan(1_500)
+  })
+})
+
+describe("ProviderRouter.catalogChanged", () => {
+  afterEach(() => ProviderRouter.forgetCatalogs())
+
+  test("answers true once per new version of a connection's catalog", () => {
+    const base = "http://127.0.0.1:25050/v1"
+    // Nothing recorded yet: the saved models were read by an earlier process.
+    expect(ProviderRouter.catalogChanged("red-router", base, "aaaa")).toBe(true)
+    expect(ProviderRouter.catalogChanged("red-router", "http://localhost:25050/v1/", "aaaa")).toBe(false)
+    expect(ProviderRouter.catalogChanged("red-router", base, "bbbb")).toBe(true)
+    expect(ProviderRouter.catalogChanged("red-router", base, "bbbb")).toBe(false)
+    // Another connection to the same address has its own key, and so its own catalog.
+    expect(ProviderRouter.catalogChanged("other", base, "bbbb")).toBe(true)
+    expect(ProviderRouter.catalogChanged("red-router", "not a url", "cccc")).toBe(false)
+    expect(ProviderRouter.catalogChanged("red-router", base, "")).toBe(false)
+  })
+
+  test("a version recorded by discovery is not stale", () => {
+    const base = "http://127.0.0.1:25050/v1"
+    ProviderRouter.recordCatalog("red-router", base, "aaaa")
+    expect(ProviderRouter.catalogChanged("red-router", base, "aaaa")).toBe(false)
+    expect(ProviderRouter.catalogChanged("red-router", base, "bbbb")).toBe(true)
   })
 })
 
@@ -204,6 +252,14 @@ describe("ProviderRouter headers", () => {
     expect(ProviderRouter.reported({}, { cost: 0.5 })).toBeUndefined()
     expect(ProviderRouter.reportedCost({ [ProviderRouter.METADATA]: { costUSD: 0 } })).toBe(0)
     expect(ProviderRouter.reportedCost({ other: { costUSD: 1 } })).toBeUndefined()
+  })
+
+  test("reads the catalog version a response reports", () => {
+    const reported = ProviderRouter.reported({ "X-RedRouter-Catalog-Version": "0123456789abcdef" })
+    expect(reported).toEqual({ catalogVersion: "0123456789abcdef" })
+    expect(ProviderRouter.reportedCatalogVersion({ [ProviderRouter.METADATA]: reported! })).toBe("0123456789abcdef")
+    expect(ProviderRouter.reportedCatalogVersion({ [ProviderRouter.METADATA]: { catalogVersion: 1 } })).toBeUndefined()
+    expect(ProviderRouter.reportedCatalogVersion(undefined)).toBeUndefined()
   })
 
   test("compares addresses with every loopback name as one", () => {

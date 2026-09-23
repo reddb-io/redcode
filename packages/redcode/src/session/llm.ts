@@ -1,11 +1,12 @@
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
-import { llmClient } from "@reddb-io/redcode-core/effect/app-node-platform"
+import { httpClient, llmClient } from "@reddb-io/redcode-core/effect/app-node-platform"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Provider } from "@/provider/provider"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
-import { Cause, Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Layer, Scope } from "effect"
+import { HttpClient } from "effect/unstable/http"
 import * as Stream from "effect/Stream"
 import { NoSuchToolError, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import { unknownToolMessage } from "@/tool/invalid"
@@ -37,6 +38,7 @@ import { SessionSpend } from "./spend"
 import { NativeToolSearch } from "./native-tool-search"
 import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { RedRouter } from "@/provider/red-router"
 import { PromptCacheDiagnostics } from "@reddb-io/redcode-core/session/prompt-cache-diagnostics"
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider"
 
@@ -100,6 +102,7 @@ const live: Layer.Layer<
   | RuntimeFlags.Service
   | OperationHookBridge.Service
   | SessionSpend.Service
+  | HttpClient.HttpClient
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -113,6 +116,8 @@ const live: Layer.Layer<
     const flags = yield* RuntimeFlags.Service
     const hooks = yield* OperationHookBridge.Service
     const spend = yield* SessionSpend.Service
+    const http = yield* HttpClient.HttpClient
+    const scope = yield* Scope.Scope
     const promptCache = PromptCacheDiagnostics.tracker()
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest, allowNativeSearch: boolean) {
@@ -548,6 +553,41 @@ const live: Layer.Layer<
         ),
       )
 
+    /**
+     * A RedRouter reports the version of the model catalog the key sees. When it is not the one the
+     * connection's saved models were read at, its combos, members or limits may have changed, so
+     * they are read again in the background, once per version. It never delays or fails the turn,
+     * and the refreshed models apply once the configuration is next loaded.
+     */
+    const refreshCatalog = Effect.fnUntraced(
+      function* (model: Provider.Model, metadata: Parameters<typeof ProviderRouter.reportedCatalogVersion>[0]) {
+        const version = ProviderRouter.reportedCatalogVersion(metadata)
+        if (!version) return
+        const baseURL = (yield* provider.getProvider(model.providerID)).options.baseURL
+        if (typeof baseURL !== "string" || !ProviderRouter.catalogChanged(model.providerID, baseURL, version)) return
+        yield* RedRouter.refresh({ http, config, auth }, { providerID: model.providerID, baseURL }).pipe(
+          Effect.flatMap((result) =>
+            result
+              ? Effect.logInfo("router catalog changed; models refreshed", {
+                  providerID: model.providerID,
+                  version,
+                  models: result.models.length,
+                })
+              : Effect.void,
+          ),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("router catalog changed; refreshing models failed", {
+              providerID: model.providerID,
+              version,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+          Effect.forkIn(scope),
+        )
+      },
+      Effect.catchCause(() => Effect.void),
+    )
+
     const stream: Interface["stream"] = (input) =>
       attempt(input, true).pipe(
         // Every provider call passes here — turns, subagents, compaction, titles, the goal judge — so
@@ -563,6 +603,9 @@ const live: Layer.Layer<
                 metadata: event.providerMetadata,
               })
             : Effect.void,
+        ),
+        Stream.tap((event) =>
+          event.type === "step-finish" ? refreshCatalog(input.model, event.providerMetadata) : Effect.void,
         ),
       )
 
@@ -634,6 +677,7 @@ export const node = LayerNode.make({
     RuntimeFlags.node,
     OperationHookBridge.node,
     SessionSpend.node,
+    httpClient,
   ],
 })
 
