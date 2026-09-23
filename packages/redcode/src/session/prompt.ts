@@ -1,5 +1,7 @@
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
+import { LoopGuard } from "@reddb-io/redcode-core/session/loop-guard"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -972,9 +974,14 @@ const layer = Layer.effect(
               .getModel(model.providerID, model.modelID)
               .pipe(Effect.catchIf(Provider.ModelNotFoundError.isInstance, () => Effect.succeed(undefined)))
           : undefined
+      // An agent's `auto` needs a model with effort levels to choose between.
+      const agentVariant =
+        ag.variant === ReasoningAuto.AUTO
+          ? ReasoningAuto.supports(Object.keys(full?.variants ?? {}))
+          : !!ag.variant && !!full?.variants?.[ag.variant]
       const variant =
         input.variant ??
-        (ag.variant && full?.variants?.[ag.variant] ? ag.variant : undefined) ??
+        (agentVariant ? ag.variant : undefined) ??
         ("variant" in model && typeof model.variant === "string" ? model.variant : undefined)
 
       const info: SessionV1.User = {
@@ -1721,6 +1728,16 @@ const layer = Layer.effect(
             .pipe(Effect.ignore)
         })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        // What the session shows about its automatic effort (ReasoningAuto), written only on change.
+        let shownEffort = JSON.stringify(session.metadata?.reasoning ?? null)
+        const showEffort = Effect.fnUntraced(function* () {
+          const state = ReasoningAuto.recall(sessionID)
+          if (!state) return
+          const shown = ReasoningAuto.display(state)
+          if (JSON.stringify(shown) === shownEffort) return
+          shownEffort = JSON.stringify(shown)
+          yield* sessions.updateMetadata(sessionID, (metadata) => ({ ...metadata, reasoning: shown }))
+        })
         // A goal never restarts itself: if the process that drove it is not this one, it is
         // paused here, and only /goal resume brings it back.
         {
@@ -2409,6 +2426,52 @@ const layer = Layer.effect(
           const responseRepair = currentUser?.parts.some(
             (part) => part.type === "text" && part.text.startsWith(RESPONSE_REPAIR),
           )
+          // `auto` is never sent: the turn carries one of the model's own variants, chosen where the
+          // person speaks, with one step up inside a tool loop in trouble (ReasoningAuto).
+          const auto = lastUser.model.variant === ReasoningAuto.AUTO
+          const dual = auto
+            ? yield* intelligence.read().pipe(
+                Effect.map((settings) => Intelligence.mode(settings) === "dual"),
+                Effect.orElseSucceed(() => false),
+              )
+            : false
+          const turnProgress = auto
+            ? {
+                ...ReasoningAuto.progress(LoopGuard.turn(msgs)),
+                toolIssues:
+                  toolReview !== undefined &&
+                  toolReview.decision !== "accepted" &&
+                  toolReview.issues.includes("failed_result"),
+                repair: responseRepair === true,
+              }
+            : undefined
+          const reasoningBounds = (yield* config.get()).reasoning?.auto
+          const effort = auto
+            ? ReasoningAuto.decideEffort({
+                variants: Object.keys(model.variants ?? {}),
+                turnID: realUser?.info.id ?? lastUser.id,
+                previous: ReasoningAuto.recall(sessionID),
+                assessment: Intelligence.effortAssessment(assessment),
+                context: {
+                  tokens:
+                    lastFinished && !lastFinished.summary
+                      ? lastFinished.tokens.input + lastFinished.tokens.cache.read + lastFinished.tokens.cache.write
+                      : undefined,
+                  window: model.limit.context,
+                },
+                progress: turnProgress,
+                plan: agent.name === "plan",
+                text: realUser?.parts
+                  .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+                  .join("\n"),
+                floor: reasoningBounds?.floor,
+                ceiling: reasoningBounds?.ceiling,
+              })
+            : undefined
+          if (effort) {
+            ReasoningAuto.remember(sessionID, effort.state)
+            yield* showEffort()
+          }
           const maxSteps = agent.steps ?? Infinity
           // The agent's own bound and the turn's wall ask for the same thing at the end: stop
           // using tools and say what happened.
@@ -2463,7 +2526,7 @@ const layer = Layer.effect(
             role: "assistant",
             mode: agent.name,
             agent: agent.name,
-            variant: lastUser.model.variant,
+            variant: effort?.level ?? lastUser.model.variant,
             path: { cwd: ctx.directory, root: ctx.worktree },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -2789,7 +2852,7 @@ const layer = Layer.effect(
             }
             lastSent = { messageID: handle.message.id, estimate: requestEstimate }
             const result = yield* handle.process({
-              user: lastUser,
+              user: effort ? { ...lastUser, model: { ...lastUser.model, variant: effort.level } } : lastUser,
               agent,
               permission: session.permission,
               sessionID,
@@ -2808,11 +2871,19 @@ const layer = Layer.effect(
               estimate: requestEstimate,
               // System One already chose this turn's tools and skills; a RedRouter must not choose again.
               // Its hint lets a RedRouter combo pick the model for the turn; Redcode never switches it.
+              // Who decides the effort is settled per request against the detected router.
               router: {
                 ...(mcpContext || skillContext ? { decision: false } : {}),
-                hint: Intelligence.routerHint(assessment, toolAssessments.get(selectionID)),
+                hint: Intelligence.routerHint(
+                  assessment,
+                  toolAssessments.get(selectionID),
+                  auto ? { stall: ReasoningAuto.stalled(turnProgress) } : undefined,
+                ),
+                reasoning: { auto, dual, level: effort?.level },
               },
             })
+            // A router that decided reports its level with the response.
+            if (auto) yield* showEffort()
 
             if (result === "reconnect") {
               reconnects++

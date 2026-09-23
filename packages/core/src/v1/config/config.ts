@@ -7,6 +7,7 @@ import { ConfigExperimental } from "../../config/experimental"
 import { ConfigModels } from "../../config/models"
 import { ConfigReference } from "../../config/reference"
 import { ConfigSession } from "../../config/session"
+import { ConfigReasoning } from "../../config/reasoning"
 import { ConfigAgentV1 } from "./agent"
 import { ConfigAttachmentV1 } from "./attachment"
 import { ConfigCommandV1 } from "./command"
@@ -185,6 +186,9 @@ export const Info = Schema.Struct({
   }),
   models: Schema.optional(ConfigModels.Info).annotate({
     description: "Models catalog sources, for networks that block the public catalog endpoints",
+  }),
+  reasoning: Schema.optional(ConfigReasoning.Info).annotate({
+    description: "Reasoning effort: the bounds of the auto variant",
   }),
   experimental: Schema.optional(
     Schema.Struct({

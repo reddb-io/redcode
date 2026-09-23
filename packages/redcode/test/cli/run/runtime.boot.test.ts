@@ -219,7 +219,7 @@ describe("run runtime boot", () => {
 
     await expect(resolveModelInfo(sdk, "/workspace", { providerID: "openai", modelID: "gpt-5" })).resolves.toEqual({
       providers: configured.providers,
-      variants: ["high", "minimal"],
+      variants: ["auto", "high", "minimal"],
       limits: {
         "openai/gpt-5": 128000,
       },
@@ -274,7 +274,7 @@ describe("run runtime boot", () => {
 
     await expect(resolveModelInfo(sdk, "/workspace", { providerID: "openai", modelID: "gpt-5" })).resolves.toEqual({
       providers: data.all,
-      variants: ["high", "minimal"],
+      variants: ["auto", "high", "minimal"],
       limits: {
         "openai/gpt-5": 128000,
         "anthropic/sonnet": 200000,

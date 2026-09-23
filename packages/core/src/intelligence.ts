@@ -18,6 +18,7 @@ import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intellig
 import { SessionSchema } from "./session/schema"
 import { Flag } from "./flag/flag"
 import { ProviderRouter } from "./provider/router"
+import { ReasoningAuto } from "./session/reasoning-auto"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 export const POLICY = "semantic-v3-experimental"
@@ -1189,6 +1190,21 @@ const promptQuestionDefinitions: Record<string, Intelligence.Question> = {
       "Angry, abusive, threatening to leave or at the end of patience",
     ],
   },
+  user_feedback: {
+    type: "choice",
+    instructions: {
+      question: "How does the current user message judge the agent's previous turn in sources.history?",
+      focus:
+        "Classify only the reaction to the agent's latest answer or work. A new request that does not judge that work is neutral, and so is a first message.",
+    },
+    criteria: {
+      agrees: "Approves, accepts or confirms the previous answer or work and lets it continue",
+      corrects:
+        "Points out a specific mistake in the previous answer or work, or adjusts it while keeping its direction",
+      rejects: "Rejects the previous answer or work, says it failed, or says it went the wrong way",
+      neutral: "Does not judge the previous turn, or there is no previous turn",
+    },
+  },
 }
 
 export const promptQuestions: Record<string, Intelligence.Question> = Object.fromEntries(
@@ -1364,10 +1380,17 @@ Interaction constraint: ${interaction.choice} (confidence ${interaction.confiden
 Clarification probability: ${clarify.noul.toFixed(2)}; policy: ${clarification}.
 Complexity: ${complexity.score.toFixed(2)}/${Object.keys(complexity.legend).length - 1} (confidence ${complexity.confidence.toFixed(2)}).
 Consequence: ${consequence.score.toFixed(2)}/${Object.keys(consequence.legend).length - 1} (confidence ${consequence.confidence.toFixed(2)}).
-Frustration: ${frustration.score.toFixed(2)}/${Object.keys(frustration.legend).length - 1}.
+Frustration: ${frustration.score.toFixed(2)}/${Object.keys(frustration.legend).length - 1}.${feedbackLine(evaluation)}
 Any classification with confidence below 0.60 is unresolved. Inspect the original request and session context instead of routing work or changing modes from that label.
 Preserve prompt arrival order. Use frustration only to adapt communication. Authorization for external or destructive actions comes from conversation history and deterministic safeguards, never from this classification.
 </user-request-assessment>`
+}
+
+/** The optional feedback line: older evaluations were made before the question existed. */
+function feedbackLine(evaluation: Intelligence.Evaluation) {
+  const feedback = evaluation.answers.user_feedback
+  if (feedback?.type !== "choice" || feedback.confidence < 0 || feedback.confidence > 1) return ""
+  return `\nFeedback on the previous turn: ${feedback.choice} (confidence ${feedback.confidence.toFixed(2)}). When it corrects or rejects that turn, revisit the work before building on it.`
 }
 
 export function promptPriority(evaluation: Intelligence.Evaluation | undefined) {
@@ -1389,15 +1412,24 @@ export function promptPriority(evaluation: Intelligence.Evaluation | undefined) 
 /**
  * The RedRouter hint for a turn, from System One's prompt classification and tool selection:
  * complexity as a unit, deliberation as the greater of complexity and consequence, `needs_tool`
- * when System One recommended a skill or MCP tool, and the tier from the complexity bands 0.25,
- * 0.5 and 0.75. Answers below 0.60 confidence are unresolved and left out. It is always a valid
- * header value or undefined; `needs_tool=false` is never claimed, since built-in tools stay
- * available whatever System One recommended.
+ * when System One recommended a skill or MCP tool, the tier from the complexity bands 0.25, 0.5
+ * and 0.75, and the reasoning signals: `stall` when the caller knows whether the tool loop is
+ * stuck, the user's `feedback` on the previous turn and their `frustration`. Answers below 0.60
+ * confidence are unresolved and left out. It is always a valid header value or undefined;
+ * `needs_tool=false` is never claimed, since built-in tools stay available whatever System One
+ * recommended. `ProviderRouter.requestHeaders` drops the reasoning signals for a router that does
+ * not read them.
  */
-export function routerHint(prompt: Intelligence.Evaluation | undefined, tools: Intelligence.Evaluation | undefined) {
+export function routerHint(
+  prompt: Intelligence.Evaluation | undefined,
+  tools: Intelligence.Evaluation | undefined,
+  signals?: { readonly stall?: boolean },
+) {
   const complexity = unitAnswer(prompt, "complexity")
   const assessed = [complexity, unitAnswer(prompt, "consequence")].filter((unit) => unit !== undefined)
   const needsTool = recommendations(tools, "mcp_tool").length > 0 || recommendations(prompt, "skill").length > 0
+  const feedback = feedbackAnswer(prompt)
+  const frustration = unitAnswer(prompt, "frustration")
   const value = [
     complexity === undefined ? undefined : `complexity=${ProviderRouter.hintUnit(complexity)}`,
     assessed.length ? `deliberation=${ProviderRouter.hintUnit(Math.max(...assessed))}` : undefined,
@@ -1405,10 +1437,40 @@ export function routerHint(prompt: Intelligence.Evaluation | undefined, tools: I
     complexity === undefined
       ? undefined
       : `tier=${complexity < 0.25 ? "simple" : complexity < 0.5 ? "medium" : complexity < 0.75 ? "complex" : "reasoning"}`,
+    signals?.stall === undefined ? undefined : `stall=${signals.stall}`,
+    feedback === undefined ? undefined : `feedback=${feedback}`,
+    frustration === undefined ? undefined : `frustration=${ProviderRouter.hintUnit(frustration)}`,
   ]
     .filter((pair) => pair !== undefined)
     .join(";")
   return ProviderRouter.validHint(value) ? value : undefined
+}
+
+/**
+ * System One's reading of a prompt as the inputs of `ReasoningAuto.decideEffort`, or undefined
+ * when there is none. Unresolved answers are left out, so the effort falls back to what the
+ * session already has.
+ */
+export function effortAssessment(
+  evaluation: Intelligence.Evaluation | undefined,
+): ReasoningAuto.Assessment | undefined {
+  if (!evaluation || evaluation.decision === "unavailable") return undefined
+  const clarify = evaluation.answers.must_clarify
+  return {
+    complexity: unitAnswer(evaluation, "complexity"),
+    consequence: unitAnswer(evaluation, "consequence"),
+    impact: unitAnswer(evaluation, "impact"),
+    frustration: unitAnswer(evaluation, "frustration"),
+    mustClarify: clarify?.type === "noul" ? clarify.noul : undefined,
+    feedback: feedbackAnswer(evaluation),
+  }
+}
+
+/** A reliable answer to `user_feedback`, or undefined. */
+function feedbackAnswer(evaluation: Intelligence.Evaluation | undefined) {
+  const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers.user_feedback : undefined
+  if (answer?.type !== "choice" || answer.confidence < 0.6) return undefined
+  return ReasoningAuto.FEEDBACK.find((value) => value === answer.choice)
 }
 
 /** A reliable score answer scaled to 0..1 by its legend, or undefined. */

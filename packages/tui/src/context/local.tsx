@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -436,7 +437,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const provider = sync.data.provider.find((item) => item.id === m.providerID)
             const info = provider?.models[m.modelID]
             if (!info?.variants) return []
-            return Object.keys(info.variants)
+            // `auto` first when the model has effort levels for it to choose between.
+            return ReasoningAuto.options(Object.keys(info.variants))
           },
           set(value: string | undefined) {
             const m = currentModel()

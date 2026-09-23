@@ -20,6 +20,7 @@ import { resolveModelInfo, resolveRunTuiConfig, resolveSessionInfo } from "./run
 import { createRuntimeLifecycle } from "./runtime.lifecycle"
 import { trace } from "./trace"
 import { cycleVariant, formatModelLabel, resolveSavedVariant, resolveVariant, saveVariant } from "./variant.shared"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import type { LocalReplayAnchor, LocalReplayRow, RunInput, RunPrompt, RunProvider, StreamCommit } from "./types"
 
 /** @internal Exported for testing */
@@ -149,7 +150,9 @@ function variantsFor(providers: RunProvider[], model: RunInput["model"]) {
     return []
   }
 
-  return Object.keys(providers.find((item) => item.id === model.providerID)?.models?.[model.modelID]?.variants ?? {})
+  return ReasoningAuto.options(
+    Object.keys(providers.find((item) => item.id === model.providerID)?.models?.[model.modelID]?.variants ?? {}),
+  )
 }
 
 const RESIZE_DELAY = 250

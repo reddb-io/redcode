@@ -188,7 +188,14 @@ export const TaskTool = Tool.define(
         Effect.orDie,
       )
       if (msg.info.role !== "assistant") return yield* Effect.fail(new Error("Not an assistant message"))
-      const variant = msg.info.variant
+      // The variant the person chose, which an `auto` turn's assistant message does not carry: it
+      // records the level that turn applied.
+      const asked = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: msg.info.parentID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.map((parent) => (parent.info.role === "user" ? parent.info.model.variant : undefined)),
+        Effect.orElseSucceed(() => undefined),
+      )
+      const variant = asked ?? msg.info.variant
 
       const model = next.model ?? {
         modelID: msg.info.modelID,

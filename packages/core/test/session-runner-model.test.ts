@@ -211,6 +211,39 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  it.effect("resolves an auto Session variant to a concrete one, never sending auto", () =>
+    Effect.gen(function* () {
+      const catalog = model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }, [
+        { id: ModelV2.VariantID.make("low"), headers: {}, body: { reasoning: { effort: "low" } } },
+        { id: ModelV2.VariantID.make("high"), headers: {}, body: { reasoning: { effort: "high" } } },
+      ])
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_model_variant_auto"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        model: { id: catalog.id, providerID: catalog.providerID, variant: ModelV2.VariantID.make("auto") },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+      const offered: string[][] = []
+
+      const chosen = yield* SessionRunnerModel.resolve(session, catalog, undefined, (variants) => {
+        offered.push([...variants])
+        return "high"
+      })
+      expect(offered).toEqual([["low", "high"]])
+      expect(chosen.route.defaults.http?.body).toEqual({
+        custom_extension: { enabled: true },
+        reasoning: { effort: "high" },
+      })
+      // Without a chooser (or one that cannot decide) the model's default applies: no failure.
+      const fallback = yield* SessionRunnerModel.resolve(session, catalog)
+      expect(fallback.route.defaults.http?.body).toEqual({ custom_extension: { enabled: true } })
+    }),
+  )
+
   it.effect("overlays selected Anthropic Session variant bodies", () =>
     Effect.gen(function* () {
       const catalog = model({ type: "aisdk", package: "@ai-sdk/anthropic", url: "https://anthropic.example/v1" }, [
