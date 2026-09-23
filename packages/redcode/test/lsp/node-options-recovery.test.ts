@@ -19,8 +19,13 @@ it.instance(
           [lsp.touchFile(path.join(root, "first.recovery-a")), lsp.touchFile(path.join(root, "second.recovery-b"))],
           { concurrency: "unbounded" },
         )
-        yield* Effect.sleep("100 millis")
-        const status = yield* lsp.status()
+        // Poll rather than wait a fixed delay: each server rejects the option, restarts
+        // without it and connects, which takes longer on slow runners.
+        let status = yield* lsp.status()
+        for (let i = 0; i < 400 && status.filter((item) => item.status === "connected").length < 2; i++) {
+          yield* Effect.sleep("25 millis")
+          status = yield* lsp.status()
+        }
         expect(
           status
             .filter((item) => item.status === "connected")
