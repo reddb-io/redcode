@@ -441,6 +441,19 @@ describe("provider quota errors", () => {
     expect(parsed?.message).toContain("quota, credits or free-tier limit is exhausted")
   })
 
+  test("does not retry a quota failure a native stream parser classified, whatever the message says", () => {
+    const error = MessageV2.fromError(
+      new ProviderError.ResponseStreamError("RESOURCE_EXHAUSTED: 429 quota exceeded, try again later", {
+        refusal: "quota",
+      }),
+      { providerID },
+    )
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(error.data.isRetryable).toBe(false)
+    expect(error.data.metadata?.classification).toBe("quota")
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
   test("keeps a throttling 429 retryable", () => {
     const error = MessageV2.fromError(
       quotaError(429, '{"error":{"type":"rate_limit_error","message":"Too many requests"}}'),

@@ -8,6 +8,7 @@ import {
   isContextOverflowBody,
   isContextOverflowCode,
   isQuotaFailure,
+  QUOTA_HINT,
 } from "@reddb-io/redcode-llm"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
@@ -21,9 +22,12 @@ export class HeaderTimeoutError extends Error {
 
 export class ResponseStreamError extends Error {
   public override readonly name = "ProviderResponseStreamError"
+  /** Set when the provider refused the request in a way another attempt repeats. */
+  public readonly refusal?: "quota" | "content-policy"
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: ErrorOptions & { readonly refusal?: "quota" | "content-policy" }) {
     super(message, options)
+    this.refusal = options?.refusal
   }
 }
 
@@ -107,9 +111,6 @@ function json(input: unknown): any {
   }
   return undefined
 }
-
-const QUOTA_HINT =
-  "the account's quota, credits or free-tier limit is exhausted; check the plan and billing with the provider, or switch models"
 
 export type ParsedStreamError =
   | {

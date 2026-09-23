@@ -19,7 +19,7 @@ import {
   type ToolResultPart,
 } from "../schema"
 import { JsonObject, optionalArray, optionalNull, ProviderShared } from "./shared"
-import { isContextOverflow, isContextOverflowCode } from "../provider-error"
+import { isContextOverflow, isContextOverflowCode, streamProviderError } from "../provider-error"
 import { OpenAIOptions } from "./utils/openai-options"
 import { Lifecycle } from "./utils/lifecycle"
 import { ToolSchemaProjection } from "./utils/tool-schema"
@@ -904,8 +904,10 @@ const providerErrorMessage = (event: OpenAIResponsesEvent, fallback: string): st
 const providerError = (event: OpenAIResponsesEvent, fallback: string) => {
   const code = event.code || event.response?.error?.code || undefined
   const message = providerErrorMessage(event, fallback)
-  return LLMEvent.providerError({
+  return streamProviderError({
     message,
+    body: { error: { code } },
+    throttled: code === "rate_limit_exceeded",
     classification: isContextOverflowCode(code) || isContextOverflow(message) ? "context-overflow" : undefined,
   })
 }

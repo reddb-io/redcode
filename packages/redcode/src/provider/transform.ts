@@ -4,6 +4,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type * as Provider from "./provider"
 import type * as ModelsDev from "@reddb-io/redcode-core/models-dev"
 import { iife } from "@/util/iife"
+import { LLM } from "@reddb-io/redcode-llm"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -760,22 +761,14 @@ function adaptiveThinkingDefault(apiId: string) {
   return { type: "adaptive", ...(anthropicOmitsThinking(apiId) ? { display: "summarized" } : {}) }
 }
 
-// Claude Opus 5.5 and the Fable and Mythos models always think, and the API answers a forced
-// tool_choice ("any" or a named tool) with a 400 for them. A router says so in the parameters
+// See LLM.supportsForcedToolChoice for which models refuse it. A router says so in the parameters
 // discovery saved for the model (`declared`, its configuration): a RedRouter combo refuses it when
 // any member does, whatever the combo is called.
 export function supportsForcedToolChoice(
   model: Provider.Model,
   declared?: { readonly router?: { readonly parameters?: { readonly forced_tool_choice?: boolean } } },
 ) {
-  if (declared?.router?.parameters?.forced_tool_choice === false) return false
-  const id = model.api.id.toLowerCase()
-  if (!id.includes("claude-")) return true
-  if (/(?:^|[^a-z])(?:fable|mythos)(?:[^a-z]|$)/.test(id)) return false
-  const version = /claude-(?:([a-z]+)-)?(\d+)(?:[.-](\d{1,2}))?(?:-([a-z]+))?(?:[.@-]|$)/.exec(id)
-  if (!version || (version[1] ?? version[4]) !== "opus") return true
-  const major = Number(version[2])
-  return major < 5 || (major === 5 && Number(version[3] ?? 0) < 5)
+  return LLM.supportsForcedToolChoice(model.api.id, declared?.router?.parameters?.forced_tool_choice)
 }
 
 function googleThinkingLevelEfforts(apiId: string) {

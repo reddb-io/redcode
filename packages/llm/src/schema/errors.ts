@@ -1,7 +1,12 @@
 import { Schema } from "effect"
 import { ModelID, ProviderID, ProviderMetadata, RouteID } from "./ids"
 
-export const ProviderFailureClassification = Schema.Literal("context-overflow")
+/**
+ * Why a provider refused a request, when that decides what happens next: an overflow goes to
+ * compaction, while an exhausted account (`quota`) or a content-policy refusal fails the same way on
+ * every attempt and is surfaced instead of retried.
+ */
+export const ProviderFailureClassification = Schema.Literals(["context-overflow", "quota", "content-policy"])
 export type ProviderFailureClassification = typeof ProviderFailureClassification.Type
 
 export class HttpRequestDetails extends Schema.Class<HttpRequestDetails>("LLM.HttpRequestDetails")({
