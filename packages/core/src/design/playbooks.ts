@@ -1,3 +1,5 @@
+import type { Design } from "@reddb-io/redcode-schema/design"
+
 /**
  * How to build each kind of artifact well.
  *
@@ -31,7 +33,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
     structure: [
       '1. Establish the brief: design_document with action="create" or "list"; use the Design system block (paths and counts of docs, token files, component roots and their exported components) and read .red/DESIGN.md plus the listed docs with the read tool when they exist, then action="update" with brief, designSystem, decisions and scenarios. State in designSystem which roots and token files the prototype uses, or that the project has none. Give variant-specific scenarios their variant ID; unscoped scenarios apply to every variant. Write only in the returned root.',
-      '2. Build a coherent draft. design_preview {id,name} freezes it; design_export {id,input:{revision,format:"audit"}} starts inspection at 390, 768 and 1440px. Poll design_jobs {id} until terminal. Read its named PNG captures with the image-capable read tool, plus the HTML report when findings are truncated. A path, a screenshot you did not open, or a clean axe result is not a visual review.',
+      '2. Build a coherent draft. design_preview {id,name} freezes it; design_export {id,input:{revision,format:"audit"}} starts inspection at the viewports of the design target (for web the configured breakpoints, 390, 768 and 1440px by default). Poll design_jobs {id} until terminal. Read its named PNG captures with the image-capable read tool, plus the HTML report when findings are truncated. A path, a screenshot you did not open, or a clean axe result is not a visual review.',
       "3. First pass, structure and use: compare each rendered variant with the brief, reading order, primary task, real content, useful density and distinct composition. Exercise primary actions, keyboard flow, validation, loading, empty, error and recovery states. Check every required surface is present. Record findings as revision-linked decisions with a stable quality-pass-1 identifier, target, evidence, impact and proposed correction (these are your own decisions, not review notes, so design_document update decisions carries them); put unresolved decisions in questions.",
       "4. Apply justified corrections using read plus edit/write/apply_patch inside the prototype root. Import components from the listed roots and reference the listed token files; add CSS only for what the system lacks. Use design_media then design_generate with the discovered schema, or design_asset, only when real visual assets help. Preserve sources and label illustrative data. Publish a new revision and audit it; inspect the same variants, states and widths before calling a fix resolved.",
       "5. Second pass, craft and regression: inspect hierarchy, type, spacing rhythm, contrast, alignment, responsive composition, labels, focus, feedback and reduced-motion behavior. Review the advisory pattern signals against the brief. Compare the earlier findings one by one as resolved, partial, unresolved or accepted-with-reason. Record quality-pass-2 decisions. Fix remaining material issues as one batch, then republish, re-audit and inspect the affected captures.",
@@ -300,6 +302,39 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
   },
   {
+    id: "mobile-app",
+    use_when: "Design screens or flows of a mobile app for iOS, Android or both (a design with target app)",
+    choose: [
+      "Follow the platform the design names: Apple's Human Interface Guidelines for ios, Material Design 3 for android. With no platform, design one flow and adapt its navigation and controls to each platform rather than averaging them; the reviewer switches the preview between the iPhone and the Android frame, and that choice is saved as the design's platform.",
+      "Design for the phone the review frames and the audit emulates, in portrait: 393×852 CSS px on iOS (device pixel ratio 3) and 412×915 on Android (2.625), touch input, a mobile user agent and no hover. The audit renders only these phones.",
+      "Prefer the platform's native patterns over web patterns: a hover state, a wide sidebar, a page footer or a multi-column table has no place on a phone screen.",
+    ],
+    structure: [
+      "Screens are the app's navigation. Mark each app screen with data-design-screen and move between them with data-design-go: a tab switch, a push onto the navigation stack, a modal or a sheet each is its own screen. One screen fills one phone viewport, with its own scroll area for longer content and fixed bars outside it.",
+      "Params are app states, not pages: signed out or in, empty or populated, loading, offline, error, permission denied, a long name or a large text size. Declare them with the params controls so the reviewer switches states on the same screen, and give each acceptance scenario the screen and params it needs.",
+      "Build the app shell once and reuse it across screens: a status bar area at the top, the navigation bar (iOS large or inline title with a back chevron; Android top app bar with a navigation icon), the content, then the persistent navigation at the bottom (iOS tab bar of 3 to 5 items; Android navigation bar of 3 to 5 destinations, or a navigation rail only on wide layouts).",
+      "Navigation stack: a pushed screen gets a back affordance at the top left (iOS back chevron with the previous title; Android back arrow in the top app bar) and keeps the tab bar unless it is a focused task. Modal tasks open as a sheet (iOS sheet with detents and a grabber; Android bottom sheet or full-screen dialog) with an explicit close or cancel.",
+      "Safe areas: the review frame and the audit set --safe-area-top and --safe-area-bottom on the root (59 and 34px on iOS, 40 and 24px on Android). CSS env() cannot be set from outside the page, and browsers always define env(safe-area-inset-*) (0 without insets), so its fallback never applies: pad with max(env(safe-area-inset-top, 0px), var(--safe-area-top, 0px)) and max(env(safe-area-inset-bottom, 0px), var(--safe-area-bottom, 0px)). The same CSS then works in the review, the audit and on a real phone; add viewport-fit=cover to the viewport meta tag. Backgrounds may run under the status bar and home indicator; text and controls stay inside.",
+    ],
+    design_rules: [
+      "Touch targets are at least 44×44 pt on iOS and 48×48 dp on Android, on both sides, with spacing so neighbours are not hit by mistake; the audit's small-control check uses these thresholds on app designs. Put frequent actions within thumb reach, in the lower half of the screen.",
+      "HIG on iOS: SF Pro (system-ui) with the Dynamic Type scale (17pt body, 34pt large title), a bottom tab bar, the primary action in the navigation bar, grouped inset lists, switches, segmented controls, action sheets, swipe actions on rows and translucent bars.",
+      "Material on Android: Roboto with the Material type scale (16sp body), a top app bar, a navigation bar at the bottom, a floating action button or a top app bar action for the primary task, filled and tonal buttons, chips, snackbars for undoable results, and tonal surfaces instead of heavy shadows.",
+      "Use the project's design system when it has one, mapped onto the platform's patterns; otherwise system fonts. Body text stays at 16 px or larger, and layouts survive a larger text size.",
+      "Show loading, empty, error and offline states in place with a retry; a phone often loses its connection. Prefer skeletons over spinners for content.",
+    ],
+    pitfalls: [
+      "Do not shrink a desktop web page into the phone frame; recompose it for one column and thumb reach.",
+      "Do not mix the platforms: no iOS back chevron with a Material floating action button, no Material snackbar on an iOS screen.",
+      "Do not draw a fake status bar, notch or home indicator into the design: the frame draws them, and the audit captures the page without them.",
+      "Do not rely on hover, tiny links, fixed pixel heights that clip at larger text sizes, or content under the safe areas.",
+    ],
+    review_notes: [
+      "Review each screen in the frame of its platform; when the design targets both, switch the preview between iOS and Android and check each one's navigation and controls.",
+      "Walk the navigation as a user would: every tab, each push and back, every sheet and its close, and each declared param state.",
+    ],
+  },
+  {
     id: "slides",
     use_when: "Create a deliberate presentation when slides are requested",
     choose: [
@@ -331,6 +366,13 @@ export const PLAYBOOKS: readonly Playbook[] = [
 ]
 
 export const ids = () => PLAYBOOKS.map((item) => item.id)
+
+/** The playbooks a design of this target starts from; a design without a target is web. */
+export function forTarget(target: Design.Surface | undefined) {
+  if (target === "app") return ["mobile-app", "quality"]
+  if (target === "presentation") return ["slides"]
+  return ["screen", "flow", "quality"]
+}
 
 export const find = (id: string) => PLAYBOOKS.find((item) => item.id === id.trim().toLowerCase())
 

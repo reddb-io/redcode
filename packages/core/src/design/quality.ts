@@ -3,9 +3,21 @@
 export * as DesignQuality from "./quality"
 
 import { Design } from "@reddb-io/redcode-schema/design"
+import { device, type Platform } from "@reddb-io/redcode-design/devices"
 
-/** Runs inside the isolated prototype page. Signals invite review; they never infer authorship. */
-export function inspect() {
+/**
+ * The smallest control the small-control check accepts, in CSS pixels: a phone's touch target (44pt on
+ * iOS, 48dp on Android) when the page emulates one, else the 24px WCAG target size.
+ */
+export function minimumControl(platform: Platform | undefined) {
+  return platform ? device(platform).touch : 24
+}
+
+/**
+ * Runs inside the isolated prototype page. Signals invite review; they never infer authorship. A
+ * `minimum` above 24 is a phone's touch target, which applies to both sides of a control.
+ */
+export function inspect(minimum = 24) {
   const elements = [...document.querySelectorAll<HTMLElement>("body *")].filter((element) => {
     const box = element.getBoundingClientRect()
     const style = getComputedStyle(element)
@@ -72,16 +84,22 @@ export function inspect() {
         evidence: "Visible image has no decoded pixels.",
         fix: "Import the real asset locally with design_asset/design_generate, correct its path, and render again.",
       })
+    const control = element.getBoundingClientRect()
+    const touch = minimum > 24
     if (
       element.matches("button,[role=button],input:not([type=hidden]),select,textarea") &&
-      element.getBoundingClientRect().height < 24
+      (touch ? Math.min(control.width, control.height) : control.height) < minimum
     )
       checks.push({
         rule: "small-control",
         severity: "review",
         selector: target,
-        evidence: `Control height is ${Math.round(element.getBoundingClientRect().height)}px.`,
-        fix: "Check target size and spacing. Use at least 24px targets or a valid spacing exception; prefer larger touch controls.",
+        evidence: touch
+          ? `Control is ${Math.round(control.width)}×${Math.round(control.height)}px, under the ${minimum}px touch target.`
+          : `Control height is ${Math.round(control.height)}px.`,
+        fix: touch
+          ? `Give touch controls at least ${minimum}×${minimum}px (44pt on iOS, 48dp on Android), with spacing between neighbours.`
+          : "Check target size and spacing. Use at least 24px targets or a valid spacing exception; prefer larger touch controls.",
       })
     const cards = [...element.children].filter(
       (child): child is HTMLElement => child instanceof HTMLElement && child.getBoundingClientRect().height > 0,

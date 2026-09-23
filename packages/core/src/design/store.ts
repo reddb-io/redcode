@@ -34,6 +34,12 @@ const normalizeApplication = (value: string) =>
   path.posix.normalize(value.split("\\").join("/")).replace(/^\.\/|\/+$/g, "") || "."
 export const sameApplication = (a: string, b: string) => normalizeApplication(a) === normalizeApplication(b)
 
+/** A stored document with its target and platform read from their columns, which win over the JSON copy. */
+function targeted(row: typeof DesignTable.$inferSelect): Design.Info {
+  const { platform: _platform, ...data } = row.data
+  return { ...data, target: row.target, ...(row.platform ? { platform: row.platform } : {}) }
+}
+
 /**
  * A design's application relative to its workspace, as design_document create named it. The root is
  * `<workspace>/.red/code/design/<id>/work`, so the workspace is five levels above it.
@@ -100,12 +106,17 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orDie)
     if (!row || (sessionID && row.session_id !== sessionID))
       return yield* new Design.Error({ code: "not-found", message: "Design not found in this session" })
-    return yield* Schema.decodeUnknownEffect(Design.Info)(row.data).pipe(Effect.orDie)
+    return yield* Schema.decodeUnknownEffect(Design.Info)(targeted(row)).pipe(Effect.orDie)
   })
 
   const save = Effect.fn("Design.save")(function* (document: Design.Info) {
     const data = { ...document, updated: Date.now() }
-    yield* db.update(DesignTable).set({ data }).where(eq(DesignTable.id, document.id)).run().pipe(Effect.orDie)
+    yield* db
+      .update(DesignTable)
+      .set({ data, target: data.target ?? "web", platform: data.platform ?? null })
+      .where(eq(DesignTable.id, document.id))
+      .run()
+      .pipe(Effect.orDie)
     return data
   })
 
@@ -115,10 +126,14 @@ const make = Effect.gen(function* () {
       .from(DesignTable)
       .where(and(eq(DesignTable.session_id, sessionID), eq(DesignTable.directory, location.directory)))
       .all()
-      .pipe(Effect.orDie)).map((row) => row.data)
+      .pipe(Effect.orDie)).map(targeted)
   })
 
   const create = Effect.fn("Design.create")(function* (sessionID: Session.ID, input: Design.Create) {
+    const { platform, ...fields } = input
+    const target = input.target ?? "web"
+    if (platform && target !== "app")
+      return yield* new Design.Error({ code: "invalid", message: "Only an app design takes a platform" })
     const session = yield* sessions.get(sessionID)
     if (!session || session.location.directory !== location.directory)
       return yield* new Design.Error({ code: "not-found", message: "Session not found in this location" })
@@ -143,7 +158,9 @@ const make = Effect.gen(function* () {
       DesignBuild.system(application, applicable(design, input.application ?? design?.application ?? ".")),
     )
     const data: Design.Info = {
-      ...input,
+      ...fields,
+      target,
+      ...(platform ? { platform } : {}),
       id,
       sessionID,
       application,
@@ -192,7 +209,7 @@ const make = Effect.gen(function* () {
       )
     yield* db
       .insert(DesignTable)
-      .values({ id, session_id: sessionID, directory: location.directory, data })
+      .values({ id, session_id: sessionID, directory: location.directory, data, target, platform: platform ?? null })
       .run()
       .pipe(Effect.orDie)
     return data
@@ -223,8 +240,13 @@ const make = Effect.gen(function* () {
         message: "Target paths must be relative to the project root and stay inside it",
       })
     if (targets) input = { ...input, targets }
+    const target = input.target ?? document.target ?? "web"
+    if (input.platform && target !== "app")
+      return yield* new Design.Error({ code: "invalid", message: "Only an app design takes a platform" })
     // Note statuses are recorded against the stored notes, never written into the document as sent.
-    const { notes: statuses, by, ...fields } = input
+    const { notes: statuses, by, platform: _platform, ...fields } = input
+    // Leaving app drops the platform; staying on app keeps it unless a new one is named.
+    const platform = target === "app" ? (input.platform ?? document.platform) : undefined
     const recorder = by ?? "agent"
     yield* Effect.try({
       try: () => DesignParams.validate({ ...document, ...fields }),
@@ -268,7 +290,14 @@ const make = Effect.gen(function* () {
       ? DesignRounds.apply(document, statuses, verifies, Date.now(), recorder)
       : { notes: document.notes }
     if ("problem" in recorded) return yield* new Design.Error({ code: "invalid", message: recorded.problem })
-    return yield* save({ ...document, ...fields, ...(recorded.notes ? { notes: recorded.notes } : {}) })
+    const { platform: _previous, ...current } = document
+    return yield* save({
+      ...current,
+      ...fields,
+      target,
+      ...(platform ? { platform } : {}),
+      ...(recorded.notes ? { notes: recorded.notes } : {}),
+    })
   }, lock.withPermits(1))
 
   const revisions = Effect.fn("Design.revisions")(function* (id: Design.ID) {

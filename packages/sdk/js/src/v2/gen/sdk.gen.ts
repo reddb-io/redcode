@@ -538,6 +538,14 @@ import type {
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
+  WorktreeInventoryCleanErrors,
+  WorktreeInventoryCleanInput,
+  WorktreeInventoryCleanResponses,
+  WorktreeInventoryListErrors,
+  WorktreeInventoryListResponses,
+  WorktreeInventoryRemoveErrors,
+  WorktreeInventoryRemoveInput,
+  WorktreeInventoryRemoveResponses,
   WorktreeListErrors,
   WorktreeListResponses,
   WorktreeRemoveErrors,
@@ -1796,6 +1804,126 @@ export class Tool extends HeyApiClient {
   }
 }
 
+export class Inventory extends HeyApiClient {
+  /**
+   * List worktree inventory
+   *
+   * List the repository's linked worktrees with size, pending changes, divergence from the default branch, merge state, activity and linked sessions.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      pullRequests?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "pullRequests" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorktreeInventoryListResponses,
+      WorktreeInventoryListErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/worktree/inventory",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove a worktree safely
+   *
+   * Remove one linked worktree. Uncommitted changes need force; the primary checkout and worktrees of active sessions are never removed.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worktreeInventoryRemoveInput?: WorktreeInventoryRemoveInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { key: "worktreeInventoryRemoveInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorktreeInventoryRemoveResponses,
+      WorktreeInventoryRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/worktree/inventory/remove",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Clean merged or stale worktrees
+   *
+   * Remove clean worktrees whose branch merged or that saw no activity for a number of days, and prune stale registrations. dryRun only reports what would go.
+   */
+  public clean<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      worktreeInventoryCleanInput?: WorktreeInventoryCleanInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { key: "worktreeInventoryCleanInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorktreeInventoryCleanResponses,
+      WorktreeInventoryCleanErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/worktree/inventory/clean",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Worktree extends HeyApiClient {
   /**
    * Remove worktree
@@ -1936,6 +2064,11 @@ export class Worktree extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  private _inventory?: Inventory
+  get inventory(): Inventory {
+    return (this._inventory ??= new Inventory({ client: this.client }))
   }
 }
 
@@ -9389,6 +9522,7 @@ export class Intelligence extends HeyApiClient {
         | "subagent_brief"
         | "subagent_progress"
         | "subagent_result"
+        | "design_target"
       subjectID?: string
       candidateID?: string
       decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

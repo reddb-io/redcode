@@ -5,7 +5,7 @@ import { mountDialog } from "../fixture/dialog"
 import { wait } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 
-test("compact Design review lists the notes and attachments without the rendered message", async () => {
+test("compact Design review shows the target and lists the notes and attachments without the rendered message", async () => {
   await using tmp = await tmpdir()
   function Notice() {
     return (
@@ -24,6 +24,7 @@ test("compact Design review lists the notes and attachments without the rendered
             ],
             attachments: ["reference.png"],
             snapshot: true,
+            target: "iOS app",
           }}
         />
         <DesignFeedbackNotice
@@ -50,7 +51,8 @@ test("compact Design review lists the notes and attachments without the rendered
     await wait(() => !!setup.renderer.currentFocusedEditor)
     await setup.renderOnce()
     const screen = setup.captureCharFrame()
-    expect(screen).toContain("Design review · design_checkout · rev_1 · stone · ended")
+    // The notice names what the design is for; one recorded before targets existed has none.
+    expect(screen).toContain("Design review · design_checkout · iOS app · rev_1 · stone · ended")
     expect(screen).toContain("Looks close")
     expect(screen).toContain('1. h1 "Checkout" — Make this title more prominent')
     expect(screen).toContain("2. page — Add a footer")

@@ -161,7 +161,9 @@ export default {
           \`id\` text PRIMARY KEY,
           \`session_id\` text NOT NULL,
           \`directory\` text NOT NULL,
-          \`data\` text NOT NULL
+          \`data\` text NOT NULL,
+          \`target\` text DEFAULT 'web' NOT NULL,
+          \`platform\` text
         );
       `)
       yield* tx.run(`

@@ -3020,3 +3020,66 @@ test("a live reload reopens the reader's screen even when the prototype mounts i
     await page.close()
   }
 }, 60000)
+
+test("an app design previews inside a scaled phone frame, switches platform and anchors notes to the frame", async () => {
+  const current = await session()
+  const root = `/api/session/${current.data.id}/design`
+  const document = await api<Design.Info>(root, "POST", {
+    name: "Runner",
+    journey: "new",
+    engine: "html",
+    kind: "screen",
+    target: "app",
+  })
+  await Bun.write(
+    path.join(document.root, document.entry),
+    '<!doctype html><html lang="en"><head><title>Runner</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:16px system-ui}main{padding:max(env(safe-area-inset-top, 0px), var(--safe-area-top, 0px)) 16px 0}</style></head><body><main><h1 id="title">Today</h1><button id="start" style="height:48px">Start run</button></main></body></html>',
+  )
+  const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "Phone" })
+  // Shorter than the 876px iPhone frame, so the frame is scaled down to fit.
+  const page = await browser.newPage({ viewport: { width: 1280, height: 760 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(`${base}${root}/review`)
+    await showsRevision(page, revision.id)
+    const frame = page.frameLocator("#preview")
+    await frame.locator("#title").waitFor()
+    expect(await page.locator("#width").isHidden()).toBe(true)
+    expect(await page.getByRole("button", { name: "iOS", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    expect(await page.locator("#preview-device .device-overlay[data-platform=ios] .device-camera").count()).toBe(1)
+    const scaled = await page.locator("#preview").boundingBox()
+    expect(scaled!.width).toBeLessThan(393)
+    expect(scaled!.width / scaled!.height).toBeCloseTo(393 / 852, 2)
+    // The frame hands the phone's safe-area insets to the prototype.
+    await until(
+      async () =>
+        (await frame
+          .locator("html")
+          .evaluate((node) => getComputedStyle(node).getPropertyValue("--safe-area-top").trim())) === "59px",
+      "safe-area insets reach the framed prototype",
+    )
+    // The note card sits right under the element as drawn in the scaled frame.
+    await annotate(page, true)
+    await frame.locator("#title").click()
+    await page.locator("#card:not([hidden])").waitFor()
+    const title = await frame.locator("#title").boundingBox()
+    const card = await page.locator("#card").boundingBox()
+    expect(Math.abs(card!.x - title!.x)).toBeLessThan(2)
+    expect(Math.abs(card!.y - (title!.y + title!.height + 8))).toBeLessThan(2)
+    await annotate(page, false)
+    // Switching the phone records the platform on the design, where the agent reads it.
+    await page.getByRole("button", { name: "Android", exact: true }).click()
+    await until(
+      async () => (await api<Design.Info>(`${root}/${document.id}`)).platform === "android",
+      "platform saved on the design",
+    )
+    await page.locator("#preview-device .device-overlay[data-platform=android]").waitFor({ state: "attached" })
+    expect(await page.getByRole("button", { name: "Android", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    const android = await page.locator("#preview").boundingBox()
+    expect(android!.width / android!.height).toBeCloseTo(412 / 915, 2)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+}, 60000)

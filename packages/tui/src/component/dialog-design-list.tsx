@@ -22,7 +22,7 @@ export function DialogDesignList() {
   dialog.setSize("large")
 
   const [conversations] = createResource(async () => {
-    const url = new URL("/design/list", sdk.url)
+    const url = new URL("/api/design/list", sdk.url)
     url.searchParams.set("directory", sync.path.directory)
     return sdk
       .fetch(url, { headers: sdk.headers, signal: abort.signal })

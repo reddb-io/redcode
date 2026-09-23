@@ -10,6 +10,7 @@ test("exposes every standard HTTP API group", () => {
     "agents",
     "sessions",
     "designs",
+    "designHost",
     "messages",
     "models",
     "providers",

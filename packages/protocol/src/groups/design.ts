@@ -3,6 +3,7 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenAp
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { NonNegativeInt } from "@reddb-io/redcode-schema/schema"
+import { ForbiddenError } from "../errors"
 
 const root = "/api/session/:sessionID/design"
 const item = `${root}/:designID`
@@ -155,5 +156,153 @@ export const makeDesignGroup = <Id extends HttpApiMiddleware.AnyId, Service>(mid
       OpenApi.annotations({
         title: "Design",
         description: "Design documents, immutable revisions, review, assets and local exports.",
+      }),
+    )
+
+const host = "/api/design/session/:sessionID"
+const hostParams = { sessionID: Session.ID }
+const hostItemParams = { sessionID: Session.ID, designID: Design.ID }
+
+export const DesignHostReview = Schema.Struct({
+  url: Schema.String,
+  /** Review pages following this session's feed in the serving process. */
+  connected: Schema.Number,
+}).annotate({ identifier: "DesignHostReview" })
+
+export const DesignHostLaunch = Schema.Struct({
+  url: Schema.String,
+  outcome: Schema.Literals(["claimed", "connected", "pending"]),
+  /** Present on a claim; give it back through the release route when the launch fails. */
+  token: Schema.optional(Schema.Number),
+}).annotate({ identifier: "DesignHostLaunch" })
+
+export const DesignHostPermission = Schema.Struct({
+  permission: Schema.String,
+  patterns: Schema.Array(Schema.String),
+  always: Schema.optional(Schema.Array(Schema.String)),
+  metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+}).annotate({ identifier: "DesignHostPermission" })
+
+/**
+ * The session side of Design: what a design surface (the review page, the TUI, `redcode design`, a
+ * separate design process) asks of the process that runs the conversation. Documents, revisions and
+ * exports stay in `server.design`; these routes reach the conversation runtime, its bus and its
+ * permission queue, which only the owning process has.
+ */
+export const makeDesignHostGroup = <Id extends HttpApiMiddleware.AnyId, Service>(
+  sessionMiddleware: Context.Key<Id, Service>,
+) =>
+  HttpApiGroup.make("design.host")
+    .add(
+      HttpApiEndpoint.get("designHost.list", "/api/design/list", {
+        query: { directory: Schema.String },
+        success: Schema.Array(Design.Conversation),
+        error: ForbiddenError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          summary: "List Design conversations",
+          description: "Conversations of a directory that own a design or run in Design mode, newest first.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("designHost.open", `${host}/open`, {
+        params: hostParams,
+        success: DesignHostReview,
+        error: [error, ForbiddenError],
+      }).middleware(sessionMiddleware),
+    )
+    .add(
+      HttpApiEndpoint.post("designHost.launch", `${host}/launch`, {
+        params: hostParams,
+        payload: Schema.Struct({ explicit: Schema.optional(Schema.Boolean) }),
+        success: DesignHostLaunch,
+        error: [error, ForbiddenError],
+      })
+        .middleware(sessionMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            summary: "Claim a review browser launch",
+            description:
+              "Claims opening a browser tab on the session's review, against the review pages connected to its feed. Never while a page is connected and never twice within the debounce.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("designHost.release", `${host}/launch/release`, {
+        params: hostParams,
+        payload: Schema.Struct({ token: Schema.Number }),
+        error: [error, ForbiddenError],
+      }).middleware(sessionMiddleware),
+    )
+    .add(
+      HttpApiEndpoint.get("designHost.feed", `${host}/feed`, {
+        params: hostParams,
+        query: { after: Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt), Schema.optional) },
+        success: HttpApiSchema.StreamSse({ data: Design.FeedEvent }),
+        error: [error, ForbiddenError],
+      })
+        .middleware(sessionMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            summary: "Subscribe to the conversation feed",
+            description:
+              "The conversation as reduced feed entries, replayed then live. A subscriber counts as a connected review page.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("designHost.feedback", `${host}/:designID/feedback`, {
+        params: hostItemParams,
+        payload: Design.Feedback,
+        success: Design.Receipt,
+        error: [error, ForbiddenError],
+      })
+        .middleware(sessionMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            summary: "Admit review feedback",
+            description:
+              "Admits feedback into the conversation. Idempotent by feedback ID: an exact retry returns the same receipt.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("designHost.approve", `${host}/:designID/approve`, {
+        params: hostItemParams,
+        payload: Design.Approve,
+        success: Schema.Struct({ plan: Schema.String, revision: Schema.String }),
+        error: [error, ForbiddenError],
+      })
+        .middleware(sessionMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            summary: "Approve a revision and hand off to the plan",
+            description:
+              "Records the approval, writes the Design section of the session plan and continues the conversation in Plan mode.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("designHost.permission", `${host}/permission`, {
+        params: hostParams,
+        payload: DesignHostPermission,
+        success: Schema.Struct({ granted: Schema.Boolean }),
+        error: [error, ForbiddenError],
+      })
+        .middleware(sessionMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            summary: "Ask a permission for the session",
+            description:
+              "Asks through the session's permission queue with its agent's rules; waits for the user when a rule asks. A refusal answers granted false.",
+          }),
+        ),
+    )
+    .annotateMerge(
+      OpenApi.annotations({
+        title: "Design host",
+        description:
+          "Session-side Design contract: conversation list, review launches, feed, feedback, approval and permissions.",
       }),
     )

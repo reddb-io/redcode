@@ -28,6 +28,7 @@ import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
+import { WorktreesCommand } from "./cli/cmd/worktrees"
 import { UsageCommand } from "./cli/cmd/usage"
 import { Shutdown } from "./effect/shutdown"
 import { errorMessage } from "./util/error"
@@ -138,6 +139,7 @@ const cli = yargs(args)
   .command(SessionCommand)
   .command(PluginCommand)
   .command(DbCommand)
+  .command(WorktreesCommand)
   .command(UsageCommand)
   .fail((msg, err) => {
     if (

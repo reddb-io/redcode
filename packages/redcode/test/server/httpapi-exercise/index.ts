@@ -37,6 +37,7 @@ import { disposeApps } from "./backend"
 import { runtime } from "./runtime"
 import { type Scenario } from "./types"
 import { designGoalScenarios } from "./design-goal"
+import { designHostScenarios } from "./design-host"
 
 function cursor(input: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(input)).toString("base64url")
@@ -79,6 +80,7 @@ function goalMetadata(status: "active" | "paused") {
 
 const scenarios: Scenario[] = [
   ...designGoalScenarios,
+  ...designHostScenarios,
   http.protected
     .get("/global/health", "global.health")
     .global()
@@ -744,6 +746,65 @@ const scenarios: Scenario[] = [
         yield* ctx.worktreeRemove(ctx.state.directory)
       }),
     ),
+  http.protected.get("/experimental/worktree/inventory", "worktree.inventory.list").json(200, (body) => {
+    object(body)
+    const worktrees = body.worktrees
+    array(worktrees)
+    const primary = worktrees[0]
+    object(primary)
+    check(primary.primary === true, "the primary checkout should come first")
+  }),
+  http.protected
+    .post("/experimental/worktree/inventory/remove", "worktree.inventory.remove")
+    .mutating()
+    // A plain linked worktree: the Worktree service populates its checkout in the background.
+    .seeded((ctx) =>
+      Effect.sync(() => {
+        const directory = path.join(ctx.directory!, ".red", "worktrees", "api-inventory-remove")
+        const added = Bun.spawnSync([
+          "git",
+          "-C",
+          ctx.directory!,
+          "worktree",
+          "add",
+          "-b",
+          "api-inventory-remove",
+          directory,
+        ])
+        if (added.exitCode !== 0) throw new Error(added.stderr.toString())
+        return { directory }
+      }),
+    )
+    .at((ctx) => ({
+      path: "/experimental/worktree/inventory/remove",
+      headers: ctx.headers(),
+      body: { target: ctx.state.directory },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(typeof body.path === "string", "removal should report the removed path")
+      check(body.branchDeleted === false, "the branch should be kept unless asked")
+    }),
+  http.protected
+    .post("/experimental/worktree/inventory/remove", "worktree.inventory.remove.primary")
+    .at((ctx) => ({
+      path: "/experimental/worktree/inventory/remove",
+      headers: ctx.headers(),
+      body: { target: "." },
+    }))
+    .status(400),
+  http.protected
+    .post("/experimental/worktree/inventory/clean", "worktree.inventory.clean")
+    .at((ctx) => ({
+      path: "/experimental/worktree/inventory/clean",
+      headers: ctx.headers(),
+      body: { dryRun: true },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.dryRun === true, "a dry run should say so")
+      check(Array.isArray(body.removed) && body.removed.length === 0, "a dry run should remove nothing")
+    }),
   http.protected
     .get("/experimental/session", "experimental.session.list")
     .at((ctx) => ({ path: "/experimental/session?roots=false&archived=false", headers: ctx.headers() }))

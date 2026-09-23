@@ -2499,6 +2499,92 @@ export type WorktreeResetInput = {
   directory: string
 }
 
+export type WorktreeInventoryChanges = {
+  tracked: number
+  untracked: number
+}
+
+export type WorktreeInventorySession = {
+  id: string
+  title: string
+}
+
+export type WorktreeInventoryInfo = {
+  path: string
+  relative?: string
+  branch?: string
+  head: string
+  primary: boolean
+  current: boolean
+  locked: boolean
+  prunable: boolean
+  size: number
+  sizePartial: boolean
+  changes: WorktreeInventoryChanges
+  ahead?: number
+  behind?: number
+  merged: boolean
+  activity?: number
+  sessions: Array<WorktreeInventorySession>
+}
+
+export type WorktreeInventory = {
+  root: string
+  base?: string
+  worktrees: Array<WorktreeInventoryInfo>
+}
+
+export type WorktreeInventoryError = {
+  message: string
+}
+
+export type WorktreeInventoryRemoveInput = {
+  /**
+   * Worktree path (absolute or relative to the repository), name or branch
+   */
+  target: string
+  /**
+   * Discard uncommitted changes or remove a locked worktree
+   */
+  force?: boolean
+  /**
+   * Delete the local branch when it is merged
+   */
+  deleteBranch?: boolean
+  /**
+   * Directories whose worktrees must be kept
+   */
+  protect?: Array<string>
+}
+
+export type WorktreeInventoryRemoveResult = {
+  path: string
+  branch?: string
+  branchDeleted: boolean
+  freed: number
+}
+
+export type WorktreeInventoryCleanInput = {
+  merged?: boolean
+  staleDays?: number
+  dryRun?: boolean
+  deleteBranch?: boolean
+  pullRequests?: boolean
+  protect?: Array<string>
+}
+
+export type WorktreeInventoryCleanResult = {
+  dryRun: boolean
+  candidates: Array<WorktreeInventoryInfo>
+  removed: Array<string>
+  failed: Array<{
+    path: string
+    message: string
+  }>
+  pruned: Array<string>
+  freed: number
+}
+
 export type ProjectSummary = {
   id: string
   name?: string
@@ -4390,6 +4476,7 @@ export type ConfigV2Design = {
   system?: ConfigV2DesignSystem
   application?: string
   browser?: string
+  breakpoints?: Array<number>
 }
 
 export type ConfigV2SessionBudget = {
@@ -5806,6 +5893,8 @@ export type DesignInfo = {
   journey: "new" | "existing"
   engine: "html" | "react" | "solid"
   kind: "screen" | "flow" | "comparison" | "deck"
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
   root: string
   application: string
   entry: string
@@ -5842,6 +5931,8 @@ export type DesignCreate = {
   engine: "html" | "react" | "solid"
   kind: "screen" | "flow" | "comparison" | "deck"
   application?: string
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
 }
 
 export type DesignNoteUpdate = {
@@ -5860,6 +5951,8 @@ export type DesignUpdate = {
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
   name?: string
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
   brief?: DesignBrief
   decisions?: Array<DesignDecision>
   questions?: Array<string>
@@ -7641,6 +7734,7 @@ export type IntelligenceEvaluation = {
     | "subagent_brief"
     | "subagent_progress"
     | "subagent_result"
+    | "design_target"
   kind?: "classification" | "gate"
   subjectID?: string
   candidateID?: string
@@ -9360,6 +9454,91 @@ export type WorktreeResetResponses = {
 }
 
 export type WorktreeResetResponse = WorktreeResetResponses[keyof WorktreeResetResponses]
+
+export type WorktreeInventoryListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    pullRequests?: "true" | "false"
+  }
+  url: "/experimental/worktree/inventory"
+}
+
+export type WorktreeInventoryListErrors = {
+  /**
+   * WorktreeInventoryError | InvalidRequestError
+   */
+  400: WorktreeInventoryError | InvalidRequestError
+}
+
+export type WorktreeInventoryListError = WorktreeInventoryListErrors[keyof WorktreeInventoryListErrors]
+
+export type WorktreeInventoryListResponses = {
+  /**
+   * The repository's worktrees
+   */
+  200: WorktreeInventory
+}
+
+export type WorktreeInventoryListResponse = WorktreeInventoryListResponses[keyof WorktreeInventoryListResponses]
+
+export type WorktreeInventoryRemoveData = {
+  body?: WorktreeInventoryRemoveInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/worktree/inventory/remove"
+}
+
+export type WorktreeInventoryRemoveErrors = {
+  /**
+   * WorktreeInventoryError | InvalidRequestError
+   */
+  400: WorktreeInventoryError | InvalidRequestError
+}
+
+export type WorktreeInventoryRemoveError = WorktreeInventoryRemoveErrors[keyof WorktreeInventoryRemoveErrors]
+
+export type WorktreeInventoryRemoveResponses = {
+  /**
+   * Worktree removed
+   */
+  200: WorktreeInventoryRemoveResult
+}
+
+export type WorktreeInventoryRemoveResponse = WorktreeInventoryRemoveResponses[keyof WorktreeInventoryRemoveResponses]
+
+export type WorktreeInventoryCleanData = {
+  body?: WorktreeInventoryCleanInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/worktree/inventory/clean"
+}
+
+export type WorktreeInventoryCleanErrors = {
+  /**
+   * WorktreeInventoryError | InvalidRequestError
+   */
+  400: WorktreeInventoryError | InvalidRequestError
+}
+
+export type WorktreeInventoryCleanError = WorktreeInventoryCleanErrors[keyof WorktreeInventoryCleanErrors]
+
+export type WorktreeInventoryCleanResponses = {
+  /**
+   * Worktrees cleaned or previewed
+   */
+  200: WorktreeInventoryCleanResult
+}
+
+export type WorktreeInventoryCleanResponse = WorktreeInventoryCleanResponses[keyof WorktreeInventoryCleanResponses]
 
 export type ExperimentalSessionListData = {
   body?: never
@@ -18483,6 +18662,8 @@ export type IntelligenceHistoryData = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
+    | "design_target"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

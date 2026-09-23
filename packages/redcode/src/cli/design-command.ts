@@ -21,7 +21,16 @@ export async function run(args: {
   directory?: string
   attach?: string
   open?: boolean
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
 }) {
+  if (args.platform && args.target !== "app") throw new Error("--platform applies only with --target app.")
+  // The terminal's own server reads the forced target from its environment (see DesignTarget.forced);
+  // an attached server runs elsewhere with its own.
+  if (args.target && args.attach)
+    throw new Error("--target applies to the Design terminal's own server; it cannot be combined with --attach.")
+  if (args.target) process.env["REDCODE_DESIGN_TARGET"] = args.target
+  if (args.platform) process.env["REDCODE_DESIGN_PLATFORM"] = args.platform
   const selectedModel = args.model ? DesignTerminal.model(args.model) : undefined
   const directory = path.resolve(args.directory ?? process.cwd())
   // Asked before the server opens the location, so an adopted design system is read with its config.
@@ -47,8 +56,8 @@ export async function run(args: {
   }
   // `--open` and `/review` claim the launch on the server, which counts connected review pages and sees
   // the Design tool's and the TUI's launches: no tab while a page is connected or one was just requested.
-  // A server without the launch route (a V2-only server) cannot report pages opened elsewhere, so the
-  // claim falls back to this process and says so.
+  // A server without the `design.host` launch route (an older one) cannot report pages opened elsewhere,
+  // so the claim falls back to this process and says so.
   const local = DesignReviewPresence.make()
   const review = async (sessionID: string) => {
     const id = encodeURIComponent(sessionID)
@@ -67,12 +76,12 @@ export async function run(args: {
       url,
       local,
       claim: async () => {
-        const response = await post(`/design/session/${id}/launch`, { explicit: true })
+        const response = await post(`/api/design/session/${id}/launch`, { explicit: true })
         if (!response.ok) return undefined
         const reply = DesignReviewPresence.parseClaim(await response.json())
         return reply && { ...reply, url }
       },
-      release: (token) => post(`/design/session/${id}/launch/release`, { token }),
+      release: (token) => post(`/api/design/session/${id}/launch/release`, { token }),
       launch: (target) => Effect.runPromise(DesignBrowser.open(target, { browser })),
     })
     const note = {
