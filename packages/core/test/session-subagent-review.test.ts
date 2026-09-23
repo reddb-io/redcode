@@ -11,7 +11,7 @@ const complete = {
 }
 
 describe("SubagentReview.briefStructure", () => {
-  const cases: Array<[string, SubagentReview.BriefInput, string[], boolean]> = [
+  const cases: Array<[string, SubagentReview.BriefInput, SubagentReview.BriefIssue[], boolean]> = [
     ["a complete brief", complete, [], false],
     ["an empty prompt blocks alone", { ...complete, prompt: "   " }, ["empty_prompt"], true],
     ["a short prompt", { ...complete, prompt: "fix it" }, ["short_prompt"], false],
@@ -195,7 +195,7 @@ describe("SubagentReview.resultStructure", () => {
     tool,
     state: { status: "completed", input },
   })
-  const cases: Array<[string, string, SubagentReview.Part[], string[], boolean, string[]]> = [
+  const cases: Array<[string, string, SubagentReview.Part[], string[], boolean, SubagentReview.ResultIssue[]]> = [
     ["an empty result blocks alone", "  ", [], ["tests pass"], true, ["empty_result"]],
     [
       "criteria mentioned",
