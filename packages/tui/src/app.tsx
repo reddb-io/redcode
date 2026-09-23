@@ -802,6 +802,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "Agent",
         hidden: local.model.variant.list().length === 0,
         slashName: "variants",
+        // `/thinking` stays the session's thinking-visibility toggle.
+        slashAliases: ["effort"],
         run: () => {
           if (local.model.variant.list().length === 0) {
             return toast.show({
