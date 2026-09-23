@@ -5,7 +5,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 import { gunzip, gzip } from "node:zlib"
-import { Context, Effect, Layer, Schema, Semaphore, Schedule } from "effect"
+import { Context, Effect, Layer, Option, Schema, Semaphore, Schedule } from "effect"
 import { and, desc, eq, inArray } from "drizzle-orm"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { Credential } from "./credential"
@@ -556,7 +556,7 @@ export const make = (
                 ? "System One is rate limited (HTTP 429). Wait briefly and retry."
                 : status !== undefined
                   ? `System One provider returned HTTP ${status}. Check the provider status and retry.`
-                  : `System One connection failed: ${result.failure.message}`
+                  : failureMessage("System One connection failed", result.failure.message)
         return { ok: false, message }
       }
       return {
@@ -1598,6 +1598,39 @@ function answerFromRow(row: typeof IntelligenceAnswerTable.$inferSelect): Intell
       legend: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(row.legend ?? {}),
     }
   throw new Error({ message: `Invalid persisted ${row.type} answer` })
+}
+
+/**
+ * A provider failure as its HTTP status plus the innermost human `message`. Providers and routers
+ * nest JSON error bodies inside strings (for example `[400]: {"error":{"message":"..."}}`), so every
+ * string is searched for embedded JSON before it is shown.
+ */
+export function readableError(text: string) {
+  const http = /\bHTTP (\d{3})(?::\s*|$)/.exec(text)
+  if (!http) return { message: innermostMessage(text) ?? text }
+  return {
+    status: Number(http[1]),
+    message: innermostMessage(text.slice(http.index + http[0].length)) ?? "the provider rejected the request",
+  }
+}
+
+/** `<prefix> (HTTP <status>): <message>` from a raw provider failure. */
+export function failureMessage(prefix: string, text: string) {
+  const error = readableError(text)
+  return `${prefix}${error.status ? ` (HTTP ${error.status})` : ""}: ${error.message}`
+}
+
+const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
+
+function innermostMessage(value: unknown): string | undefined {
+  if (Array.isArray(value)) return value.map(innermostMessage).find(Boolean)
+  if (record(value))
+    return innermostMessage(value.message) ?? innermostMessage(value.error) ?? innermostMessage(value.detail)
+  if (typeof value !== "string" || !value.trim()) return undefined
+  const nested = [...value.matchAll(/[[{]/g)]
+    .map((match) => Option.getOrUndefined(decodeJson(value.slice(match.index ?? 0))))
+    .find((parsed) => parsed !== undefined)
+  return innermostMessage(nested) ?? value.trim()
 }
 
 function record(value: unknown): value is Record<string, unknown> {

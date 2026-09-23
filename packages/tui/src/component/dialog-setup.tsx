@@ -1,4 +1,4 @@
-import { batch, onCleanup, onMount, Switch, Match } from "solid-js"
+import { batch, createEffect, on, onCleanup, onMount, Switch, Match } from "solid-js"
 import { createStore } from "solid-js/store"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -9,13 +9,13 @@ import { useSync } from "../context/sync"
 import { useLocal } from "../context/local"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
-import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
+import { DialogSelect, type DialogSelectOption, type DialogSelectRef } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
 
 type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
-type ModelChoice = Model.Ref | "connect" | "reuse" | "continue" | "change"
+type ModelChoice = Model.Ref | { provider: string } | "connect" | "reuse" | "continue" | "change"
 type TransportChoice = Intelligence.Evaluator["transport"] | "continue" | "detected"
 
 export function createDialogSetupState(resume?: {
@@ -116,15 +116,15 @@ export function DialogSetup(
         }}
       />
     ))
+  const generative = (provider: (typeof sync.data.provider)[number]) =>
+    Object.values(provider.models).filter((model) => model.capabilities.protocol !== "systemone")
   const activeProvider = () => {
-    const hasGenerativeModel = (provider: (typeof sync.data.provider)[number]) =>
-      Object.values(provider.models).some((model) => model.capabilities.protocol !== "systemone")
     const current = local?.model.current()
     const preferred = [state.providerID, current?.providerID, state.settings.principal?.providerID]
       .filter((providerID, index, list): providerID is string => !!providerID && list.indexOf(providerID) === index)
       .map((providerID) => sync.data.provider.find((provider) => provider.id === providerID))
-      .find((provider) => provider && hasGenerativeModel(provider))
-    return preferred ?? sync.data.provider.find(hasGenerativeModel)
+      .find((provider) => provider && generative(provider).length > 0)
+    return preferred ?? sync.data.provider.find((provider) => generative(provider).length > 0)
   }
   const label = (ref: Model.Ref) => {
     const provider = sync.data.provider.find((item) => item.id === ref.providerID)
@@ -147,6 +147,7 @@ export function DialogSetup(
         { title: "Change System Two model…", value: "change" },
       ]
     const provider = activeProvider()
+    // Every connected provider is listed above the active provider's models so switching stays visible.
     return [
       ...(state.step === "fast" && principal
         ? [
@@ -158,17 +159,44 @@ export function DialogSetup(
             },
           ]
         : []),
+      ...sync.data.provider.flatMap((item) => {
+        const total = generative(item).length
+        if (!total) return []
+        return [
+          {
+            title: item.name,
+            value: { provider: item.id },
+            description: `${total} model${total === 1 ? "" : "s"}${item.id === provider?.id ? " · current" : ""}`,
+            category: "Providers",
+          },
+        ]
+      }),
+      { title: "Connect another provider…", value: "connect" as const, category: "Providers" },
       ...(provider
-        ? Object.values(provider.models)
-            .filter((model) => model.capabilities.protocol !== "systemone")
-            .map((model) => ({
-              title: model.name,
-              value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
-            }))
+        ? generative(provider).map((model) => ({
+            title: model.name,
+            value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
+            category: `${provider.name} models`,
+          }))
         : []),
-      { title: "Choose or connect another provider…", value: "connect" as const, category: "Connection" },
     ]
   }
+  let select: DialogSelectRef<ModelChoice> | undefined
+  let confirm: DialogSelectRef<string> | undefined
+  // Providers sit above the models, so the cursor lands on the saved model or the provider's first model
+  // (the fast step starts on reusing the principal).
+  createEffect(
+    on([() => state.step, () => state.changing, () => activeProvider()?.id], ([step], previous) => {
+      if (step !== "principal" && step !== "fast") return
+      if (step === "fast" && previous?.[0] !== "fast" && state.settings.principal) return select?.moveTo("reuse")
+      const models = options().flatMap((option) => (isModel(option.value) ? [option.value] : []))
+      const saved = step === "principal" ? [state.settings.principal, sessionModel()] : [state.settings.fast]
+      const target =
+        models.find((model) => saved.some((ref) => ref?.providerID === model.providerID && ref.id === model.id)) ??
+        models[0]
+      if (target) select?.moveTo(target)
+    }),
+  )
   // Numbered stages follow the chosen flow; S1 sub-steps (URL, key, model) share the S1 stage.
   const stages = () => [
     "mode",
@@ -211,31 +239,35 @@ export function DialogSetup(
       category: option.configured ? "Connected" : "Available",
     })),
   ]
+  // A failed probe leaves the cursor on the option that changes the failing role.
+  const failed = (fix: "s2" | "back", message: string) => {
+    set("busy", false)
+    toast.show({ variant: "error", message, duration: 8000 })
+    confirm?.moveTo(fix)
+  }
   const finish = async () => {
     set("busy", true)
     // Single reasoning keeps a saved S1 evaluator untouched (runtime ignores it) but never probes it.
     const evaluator = state.reasoning === "dual" ? state.settings.evaluator : undefined
     const apiKey = evaluator && state.key ? { apiKey: state.key } : {}
-    for (const model of [state.settings.principal, state.settings.fast].filter(
-      (model, index, list) => model && (index === 0 || JSON.stringify(model) !== JSON.stringify(list[0])),
-    )) {
-      if (!model) continue
-      const checked = await api.probeModel(model)
+    const principal = state.settings.principal
+    const models = [
+      { role: "S2 model", ref: principal },
+      { role: "S2 transformations model", ref: state.settings.fast },
+    ].filter((item, index) => item.ref && (index === 0 || JSON.stringify(item.ref) !== JSON.stringify(principal)))
+    for (const model of models) {
+      if (!model.ref) continue
+      const checked = await api.probeModel(model.ref)
       if (!active) return
-      if (!checked.ok) {
-        set("busy", false)
-        toast.show({ variant: "error", message: checked.message, duration: 8000 })
-        return
-      }
+      if (checked.ok) continue
+      // "Generative connection failed (HTTP 400): …" reads as "S2 model <name> failed (HTTP 400): …".
+      const reason = checked.message.replace(/^Generative connection failed/, "failed")
+      return failed("s2", `${model.role} ${label(model.ref)}${reason.startsWith("failed") ? " " : ": "}${reason}`)
     }
     if (evaluator) {
       const checked = await api.probe({ evaluator, ...apiKey })
       if (!active) return
-      if (!checked.ok) {
-        set("busy", false)
-        toast.show({ variant: "error", message: checked.message, duration: 8000 })
-        return
-      }
+      if (!checked.ok) return failed("back", checked.message)
     }
     await api.save({
       settings: { ...state.settings, reasoning: state.reasoning, enabled: true, onboarding: "completed" },
@@ -319,9 +351,13 @@ export function DialogSetup(
       <Match when={state.step === "principal" || state.step === "fast"}>
         <DialogSelect
           title={modelStepTitle()}
+          ref={(ref) => (select = ref)}
           current={state.step === "principal" ? (state.settings.principal ?? sessionModel()) : undefined}
           options={options()}
           onSelect={(option) => {
+            // Choosing a provider stays on this step and lists that provider's models.
+            if (typeof option.value === "object" && "provider" in option.value)
+              return set("providerID", option.value.provider)
             if (option.value === "connect") return connect(state.step === "fast" ? "fast" : "principal")
             if (option.value === "change") return set("changing", true)
             // Continuing keeps the saved transformations model, or reuse of the principal.
@@ -466,31 +502,37 @@ export function DialogSetup(
         <DialogSelect
           title={state.busy ? "Testing configuration…" : "Save global intelligence setup"}
           locked={state.busy}
+          ref={(ref) => (confirm = ref)}
           options={[
             {
               title: "Test and save",
               value: "save",
-              description:
+              // Its own line: the dialog is too narrow to follow the title.
+              details: [
                 state.reasoning === "single"
-                  ? "Single reasoning: S2 only; a saved S1 stays unused"
+                  ? "S2 only; a saved S1 stays unused"
                   : state.settings.evaluator?.transport === "opencode-zen"
-                    ? "Sends sources to Zen. Free offer is temporary; no automatic paid fallback."
-                    : "Sources and candidates will be sent to the selected evaluator",
+                    ? "Sends sources to Zen; free offer, no paid fallback"
+                    : `Sends sources to ${state.settings.evaluator?.transport ?? "S1"}`,
+              ],
             },
-            {
-              title: afterSystemTwo() === "confirm" ? "Back to S2 model" : "Back to S1 connection",
-              value: "back",
-            },
+            ...(afterSystemTwo() === "transport" ? [{ title: "Back to S1 connection", value: "back" }] : []),
+            ...(state.scope === "system-one" ? [] : [{ title: "Change S2 model", value: "s2" }]),
           ]}
           onSelect={(option) => {
             if (state.busy) return
-            if (option.value === "back") return set("step", afterSystemTwo() === "confirm" ? "principal" : "transport")
+            if (option.value === "back") return set("step", "transport")
+            if (option.value === "s2") return set((current) => ({ ...current, changing: true, step: "principal" }))
             void finish().catch(fail)
           }}
         />
       </Match>
     </Switch>
   )
+}
+
+function isModel(value: ModelChoice): value is Model.Ref {
+  return typeof value === "object" && "id" in value
 }
 
 /** A detected router by its instance name, else the address it answers at. */

@@ -196,10 +196,10 @@ export function probeVerdict(result: Result.Result<ReadonlyArray<LLMEvent>, unkn
   if (result._tag === "Failure") {
     const cause = result.failure
     const reason = cause instanceof Error ? cause.message : String(cause)
-    return { ok: false, message: `Generative connection failed: ${reason}` }
+    return { ok: false, message: Intelligence.failureMessage("Generative connection failed", reason) }
   }
   const error = result.success.find(LLMEvent.is.providerError)
-  if (error) return { ok: false, message: `Generative connection failed: ${error.message}` }
+  if (error) return { ok: false, message: Intelligence.failureMessage("Generative connection failed", error.message) }
   const finish = result.success.find(LLMEvent.is.finish)
   if (!finish) return { ok: false, message: "Generative connection failed: the provider ended the stream without finishing" }
   if (finish.reason === "error" || finish.reason === "content-filter")
