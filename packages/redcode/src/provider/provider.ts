@@ -1447,9 +1447,10 @@ function routedModel(router: RouterInfo | undefined) {
     ...(modes.length ? { modes } : {}),
     ...(router.variants?.length
       ? {
-          routerVariants: router.variants.map((variant) =>
-            variant.aliases ? { ...variant, aliases: [...variant.aliases] } : { ...variant },
-          ),
+          routerVariants: router.variants.map((variant) => ({
+            ...variant,
+            ...(variant.aliases ? { aliases: [...variant.aliases] } : { aliases: undefined }),
+          })),
         }
       : {}),
     ...(router.via ? { via: router.via } : {}),

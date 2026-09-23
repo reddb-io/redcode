@@ -188,7 +188,11 @@ function migrateProvider(info: ConfigProviderV1.Info) {
         }
       : undefined,
     request: info.options && { headers: options.headers, body: options.body },
-    router: info.router,
+    router: info.router && {
+      kind: info.router.kind,
+      ...(info.router.instanceID === undefined ? {} : { instanceID: info.router.instanceID }),
+      ...(info.router.version === undefined ? {} : { version: info.router.version }),
+    },
     models:
       info.models &&
       Object.fromEntries(Object.entries(info.models).map(([name, model]) => [name, migrateModel(model, info.npm)])),
