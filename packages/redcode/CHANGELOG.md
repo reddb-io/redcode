@@ -1,5 +1,14 @@
 # opencode
 
+## 0.45.1
+
+### Patch Changes
+
+- 95a9741: Fix compaction replay, session forks and diff summaries failing on a structured output turn with `Expected OutputFormatJsonSchema`.
+- 8110a0c: Never send a forced tool choice to models that refuse one (Claude Opus 5.5, Fable, Mythos, or a RedRouter that declares it): session requests ask for the tool instead, and agent generation falls back to prompted JSON with one repair attempt.
+- b778252: Exhausted accounts are no longer retried as if they were rate limits. HTTP 402 and gateway account caps such as OpenCode Zen's free-tier and credit limits, `insufficient_quota`, usage limits and OpenRouter credit errors now stop the turn at once with a message saying the account's quota, credits or free-tier limit is exhausted, instead of retrying for minutes. Content-policy refusals are not retried either, and a 4xx rejection whose body carries a gateway's substituted `server_error` code is no longer retried.
+- 3fccf50: Name a new session with its own model when the small title model fails or answers with nothing usable, retrying once.
+
 ## 0.45.0
 
 ### Minor Changes
