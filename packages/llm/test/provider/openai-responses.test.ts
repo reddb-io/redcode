@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
 import { ConfigProvider, Effect, Layer, Stream } from "effect"
 import { Headers, HttpClientRequest } from "effect/unstable/http"
-import { LLM, LLMError, Message, Model, ToolCallPart, Usage } from "../../src"
+import { LLM, LLMError, Message, Model, QUOTA_HINT, ToolCallPart, Usage } from "../../src"
 import { Auth, LLMClient, RequestExecutor, WebSocketExecutor } from "../../src/route"
 import * as Azure from "../../src/providers/azure"
 import * as OpenAI from "../../src/providers/openai"
@@ -1356,6 +1356,68 @@ describe("OpenAI Responses route", () => {
       // production errors like rate limits were indistinguishable from
       // unrelated stream failures.
       expect(response.events).toEqual([{ type: "provider-error", message: "rate_limit_exceeded: Slow down" }])
+    }),
+  )
+
+  it.effect("marks a mid-stream insufficient_quota error as a non-retryable quota failure", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({ type: "error", code: "insufficient_quota", message: "You exceeded your current quota" }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: `insufficient_quota: You exceeded your current quota (${QUOTA_HINT})`,
+          classification: "quota",
+          retryable: false,
+        },
+      ])
+    }),
+  )
+
+  it.effect("marks a response.failed quota error as a non-retryable quota failure", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "response.failed",
+              response: { id: "resp_quota", error: { code: "usage_limit_reached", message: "Plan limit reached" } },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: `usage_limit_reached: Plan limit reached (${QUOTA_HINT})`,
+          classification: "quota",
+          retryable: false,
+        },
+      ])
+    }),
+  )
+
+  it.effect("marks a mid-stream content filter as a non-retryable refusal", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(fixedResponse(sseEvents({ type: "error", code: "content_filter", message: "Blocked" }))),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: "content_filter: Blocked",
+          classification: "content-policy",
+          retryable: false,
+        },
+      ])
     }),
   )
 

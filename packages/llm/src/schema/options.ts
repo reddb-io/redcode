@@ -168,6 +168,8 @@ export type ModelToolSchemaCompatibility = Schema.Schema.Type<typeof ModelToolSc
 
 export class ModelCompatibility extends Schema.Class<ModelCompatibility>("LLM.ModelCompatibility")({
   toolSchema: Schema.optional(ModelToolSchemaCompatibility),
+  /** `false` when the model or the router in front of it refuses a forced tool choice. */
+  forcedToolChoice: Schema.optional(Schema.Boolean),
 }) {}
 
 export namespace ModelCompatibility {

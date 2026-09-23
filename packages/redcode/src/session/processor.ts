@@ -20,6 +20,7 @@ import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
+import { ProviderError } from "@/provider/error"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
@@ -498,6 +499,9 @@ const layer = Layer.effect(
           }
 
           case "provider-error":
+            // An exhausted account or a content-policy refusal mid-stream fails the same way again.
+            if (value.classification === "quota" || value.classification === "content-policy")
+              throw new ProviderError.ResponseStreamError(value.message, { refusal: value.classification })
             throw new Error(value.message)
 
           case "step-start":
