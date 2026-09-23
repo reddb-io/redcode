@@ -58,7 +58,7 @@ const intelligenceNode = makeGlobalNode({
           async (_request: string | URL | Request, init?: RequestInit) => {
             s1.calls++
             if (s1.down) return new Response("unavailable", { status: 503 })
-            const body = JSON.parse(String(init?.body)) as { questions: Record<string, Intelligence.Question> }
+            const body = JSON.parse(String(init?.body)) as { questions: Record<string, unknown> }
             return Response.json({
               model: "jev-test",
               usage: { input_tokens: 1, output_tokens: 1 },
@@ -82,7 +82,7 @@ const intelligenceNode = makeGlobalNode({
         },
       })
       return service
-    }),
+    }).pipe(Effect.orDie),
   ),
 })
 
