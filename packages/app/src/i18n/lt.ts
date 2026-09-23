@@ -324,6 +324,7 @@ export const dict = {
   "model.origin.subscription": "subscription",
   "model.origin.alsoVia": "also via {{router}}",
   "model.origin.alsoDirect": "also direct",
+  "model.catalog.updated": "{{name}} catalog updated: +{{added}}/−{{removed}} models, {{renamed}} renamed",
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
   "model.provider.google": "Google",

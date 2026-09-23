@@ -2393,6 +2393,14 @@ export type RouterUpstream = {
   subscription?: boolean
 }
 
+export type RouterVariant = {
+  id: string
+  name?: string
+  level?: string
+  mode?: string
+  aliases?: Array<string>
+}
+
 export type RouterConnection = {
   kind: "red-router" | "9router"
   instanceID?: string
@@ -6091,6 +6099,26 @@ export type ModelV2Info = {
     input?: number
     output: number
   }
+  /**
+   * The provider behind a model a router serves, so clients can say where it really comes from.
+   */
+  upstream?: RouterUpstream
+  /**
+   * Earlier ids of the model at its router. A request for one resolves to this model.
+   */
+  aliases?: Array<string>
+  /**
+   * Modes the router serves the model in besides its default, such as review.
+   */
+  modes?: Array<string>
+  /**
+   * Reasoning levels and modes the router serves under this model rather than as separate models.
+   */
+  routerVariants?: Array<RouterVariant>
+  /**
+   * The router in between when another router serves the model, e.g. a remote RedRouter.
+   */
+  via?: string
 }
 
 export type ProviderAisdk = {

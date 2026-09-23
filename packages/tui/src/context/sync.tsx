@@ -410,10 +410,12 @@ export const {
         case "models-dev.refreshed":
           void reloadProviders()
           break
-        case "provider.catalog.updated":
+        case "provider.catalog.updated": {
           void reloadProviders()
-          toast?.show({ variant: "info", message: catalogUpdateMessage(event.properties), duration: 5000 })
+          const message = catalogUpdateMessage(event.properties)
+          if (message) toast?.show({ variant: "info", message, duration: 5000 })
           break
+        }
         case "permission.replied": {
           snapshot?.permissions.add(event.properties.requestID)
           const requests = store.permission[event.properties.sessionID]
