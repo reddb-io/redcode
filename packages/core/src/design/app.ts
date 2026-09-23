@@ -206,7 +206,7 @@ export async function ensure(input: EnsureInput) {
         if (child.exitCode !== null)
           throw new Error(`The design app exited with code ${child.exitCode} before it registered; see ${files.log}`)
         const info = await registration(files.registration)
-        if (info?.pid === child.pid && (await health(info.url, secret))?.protocol === PROTOCOL)
+        if (info && info.pid === child.pid && (await health(info.url, secret))?.protocol === PROTOCOL)
           return { url: info.url, token: secret }
         await sleep(100)
       }
