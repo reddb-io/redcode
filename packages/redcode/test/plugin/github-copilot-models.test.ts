@@ -490,3 +490,45 @@ test("remaps fallback oauth model urls to the enterprise host", async () => {
   expect(models.claude.api.url).toBe("https://copilot-api.ghe.example.com")
   expect(models.claude.api.npm).toBe("@ai-sdk/github-copilot")
 })
+
+test("requests summarized adaptive thinking for every Copilot Claude model", async () => {
+  globalThis.fetch = mock(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              model_picker_enabled: true,
+              id: "claude-sonnet-4.6",
+              name: "Claude Sonnet 4.6",
+              version: "claude-sonnet-4.6",
+              supported_endpoints: ["/v1/messages"],
+              capabilities: {
+                family: "claude-sonnet",
+                limits: {
+                  max_context_window_tokens: 144000,
+                  max_output_tokens: 64000,
+                  max_prompt_tokens: 128000,
+                },
+                supports: {
+                  adaptive_thinking: true,
+                  reasoning_effort: ["low", "high"],
+                  streaming: true,
+                  tool_calls: true,
+                },
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    ),
+  ) as unknown as typeof fetch
+
+  const model = (await CopilotModels.get("https://api.githubcopilot.com")).models["claude-sonnet-4.6"]
+
+  expect(model.variants).toEqual({
+    low: { thinking: { type: "adaptive", display: "summarized" }, effort: "low" },
+    high: { thinking: { type: "adaptive", display: "summarized" }, effort: "high" },
+  })
+})
