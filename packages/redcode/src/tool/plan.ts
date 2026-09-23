@@ -19,6 +19,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { MessageID, PartID } from "../session/schema"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
+import { AutoWorktree } from "@/session/auto-worktree"
+import { EventV2Bridge } from "@/event-v2-bridge"
 
 export const Parameters = Schema.Struct({})
 export const PlanParameters = Schema.Struct({ tasks: Schema.optional(Schema.Array(SessionTodo.PlanTask)) })
@@ -27,9 +29,10 @@ export const WorktreePrepareTool = Tool.define(
   "worktree_prepare",
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
     return {
       description:
-        "Run the mandatory repository preflight before coding. Create or reuse this session's linked worktree and return its absolute paths and status. The source checkout is preserved. Non-Git directories and YOLO keep their directory.",
+        "Create or reuse this session's linked worktree now instead of on the first edit, and return its absolute paths, branch and status. The harness moves the session into it; the source checkout is preserved. Non-Git directories and YOLO keep their directory.",
       parameters: Parameters,
       execute: (_input: {}, ctx: Tool.Context) =>
         Effect.gen(function* () {
@@ -41,8 +44,16 @@ export const WorktreePrepareTool = Tool.define(
             metadata: {},
           })
           const info = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
-          const plan = yield* Session.preparePlan(info, instance)
-          const output = yield* Effect.promise(() => RepositoryGuard.preflight(instance.directory, ctx.sessionID, plan))
+          // Writing agents get the same session worktree the first edit would create; plan and design keep theirs.
+          const claim = yield* AutoWorktree.ensure({ sessions, events, sessionID: ctx.sessionID, agent: ctx.agent })
+          const directory = claim
+            ? yield* Effect.promise(() => RepositoryGuard.relocate(claim, instance.directory))
+            : instance.directory
+          const plan = yield* Session.preparePlan(
+            info,
+            claim ? { ...instance, directory, worktree: claim.worktree } : instance,
+          )
+          const output = yield* Effect.promise(() => RepositoryGuard.preflight(directory, ctx.sessionID, plan))
           return { title: "Repository preflight", output, metadata: {} }
         }),
     }

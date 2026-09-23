@@ -25,6 +25,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 import { MonitorRuntime } from "@/background/monitor"
 import { Session } from "@/session/session"
+import { EventV2Bridge } from "@/event-v2-bridge"
 
 const shellLayer = Layer.mergeAll(
   LayerNode.compile(
@@ -38,6 +39,7 @@ const shellLayer = Layer.mergeAll(
       RuntimeFlags.node,
       MonitorRuntime.node,
       Session.node,
+      EventV2Bridge.node,
     ]),
   ),
   testInstanceStoreLayer,
@@ -192,15 +194,30 @@ const mustTruncate = (result: {
 }
 
 describe("tool.shell", () => {
-  each("protects a dirty primary checkout and blocks destructive Git inside a task worktree", () =>
+  each("runs primary checkout writes in the session worktree and blocks destructive Git inside a task worktree", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
       const repo = yield* Effect.promise(() => gitWorktree(tmp))
+      const worktree = path.join(repo.root, ".red", "worktrees", "task")
       yield* runIn(
         repo.root,
         Effect.gen(function* () {
           expect((yield* run({ command: "git status --short" })).output).toContain("source.txt")
-          expect((yield* fail({ command: "echo replaced > source.txt" })).message).toContain("separate linked worktree")
+          expect(yield* Effect.promise(() => Bun.file(path.join(worktree, ".git")).exists())).toBe(false)
+          if (process.platform !== "win32") {
+            // A read-only pipeline stays in the primary checkout and creates nothing.
+            expect((yield* run({ command: "git status --short | head -5" })).output).toContain("source.txt")
+            expect(yield* Effect.promise(() => Bun.file(path.join(worktree, ".git")).exists())).toBe(false)
+          }
+          expect((yield* fail({ command: "echo replaced > source.txt" }, { ...ctx, agent: "plan" })).message).toContain(
+            "separate linked worktree",
+          )
+          expect(yield* Effect.promise(() => Bun.file(path.join(worktree, ".git")).exists())).toBe(false)
+          expect((yield* run({ command: "echo replaced > source.txt" })).metadata.exit).toBe(0)
+          expect(yield* Effect.promise(() => Bun.file(path.join(worktree, "source.txt")).text())).not.toBe(
+            "committed\n",
+          )
+          expect((yield* run({ command: "git status --short" })).output).not.toContain(".red")
           expect((yield* fail({ command: "git reset --hard", workdir: repo.tree })).message).toContain(
             "prohibits git reset",
           )
@@ -1358,7 +1375,9 @@ describe("tool.shell monitors", () => {
           capture(short),
         ),
       )
-      expect((short.find((request) => request.permission === "bash") as { force?: boolean } | undefined)?.force).toBeUndefined()
+      expect(
+        (short.find((request) => request.permission === "bash") as { force?: boolean } | undefined)?.force,
+      ).toBeUndefined()
     }),
   )
 

@@ -17,10 +17,19 @@ import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 import { tmpdir } from "../../../core/test/fixture/tmpdir"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { testEffect } from "../lib/effect"
+import { Session } from "@/session/session"
 
 const it = testEffect(
   LayerNode.compile(
-    LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, ToolOutputBridge.node, Agent.node]),
+    LayerNode.group([
+      LSP.node,
+      FSUtil.node,
+      Format.node,
+      EventV2Bridge.node,
+      ToolOutputBridge.node,
+      Agent.node,
+      Session.node,
+    ]),
   ),
 )
 

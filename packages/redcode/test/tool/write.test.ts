@@ -15,6 +15,7 @@ import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+import { Session } from "@/session/session"
 import { gitWorktree } from "../../../core/test/fixture/git-worktree"
 
 const ctx = {
@@ -42,6 +43,7 @@ const it = testEffect(
       CrossSpawnSpawner.node,
       ToolOutputBridge.node,
       Agent.node,
+      Session.node,
     ]),
   ),
 )
@@ -73,6 +75,41 @@ describe("tool.write", () => {
       expect(yield* Effect.promise(() => Bun.file(path.join(repo.tree, "source.txt")).text())).toBe("task change")
       expect(yield* Effect.promise(() => Bun.file(path.join(repo.root, "source.txt")).text())).toBe("user changes\n")
     }),
+  )
+  it.instance(
+    "moves the first primary checkout write into a session worktree and reuses it",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const worktree = path.join(test.directory, ".red", "worktrees", "task")
+        yield* Effect.promise(() => fs.writeFile(path.join(test.directory, "draft.txt"), "user draft"))
+        const planned = yield* run(
+          { filePath: path.join(test.directory, "plan.txt"), content: "not here" },
+          { ...ctx, agent: "plan" },
+        ).pipe(Effect.exit)
+        expect(Exit.isFailure(planned)).toBe(true)
+        expect(yield* Effect.promise(() => Bun.file(path.join(worktree, ".git")).exists())).toBe(false)
+
+        const result = yield* run({ filePath: path.join(test.directory, "src", "new.txt"), content: "task change" })
+        expect(result.metadata.filepath).toBe(path.join(worktree, "src", "new.txt"))
+        expect(yield* Effect.promise(() => fs.readFile(path.join(worktree, "src", "new.txt"), "utf-8"))).toBe(
+          "task change",
+        )
+        expect(yield* Effect.promise(() => Bun.file(path.join(test.directory, "src", "new.txt")).exists())).toBe(false)
+        expect(yield* Effect.promise(() => fs.readFile(path.join(test.directory, "draft.txt"), "utf-8"))).toBe(
+          "user draft",
+        )
+        expect(
+          yield* Effect.promise(() => fs.readFile(path.join(test.directory, ".git", "info", "exclude"), "utf-8")),
+        ).toContain(".red/worktrees/")
+
+        yield* run({ filePath: "second.txt", content: "more" })
+        expect(yield* Effect.promise(() => fs.readFile(path.join(worktree, "second.txt"), "utf-8"))).toBe("more")
+        expect(yield* Effect.promise(() => fs.readdir(path.join(test.directory, ".red", "worktrees")))).toEqual([
+          "task",
+        ])
+      }),
+    { git: true },
   )
   describe("new file creation", () => {
     it.instance("writes content to new file", () =>
