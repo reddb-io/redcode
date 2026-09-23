@@ -1245,6 +1245,7 @@ describe("ProviderTransform.providerOptions", () => {
       })
       expect(sent?.body.thinking).toEqual({
         type: "adaptive",
+        display: "summarized",
         block_binding: { prefix_mismatch_behavior: "drop_block" },
       })
       expect(sent?.headers.get("anthropic-beta")?.split(",")).toContain("thinking-binding-controls-2026-08-01")
@@ -1294,6 +1295,7 @@ describe("ProviderTransform.providerOptions", () => {
       expect(sent?.body.anthropic_version).toBe("vertex-2023-10-16")
       expect(sent?.body.thinking).toEqual({
         type: "adaptive",
+        display: "summarized",
         block_binding: { prefix_mismatch_behavior: "drop_block" },
       })
       expect(sent?.headers.get("anthropic-beta")?.split(",")).toContain("thinking-binding-controls-2026-08-01")
