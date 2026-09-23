@@ -68,7 +68,7 @@ const CleanCommand = effectCmd({
   handler: Effect.fn("Cli.worktrees.clean")(function* (args: {
     merged?: boolean
     stale?: number
-    dryRun: boolean
+    "dry-run": boolean
     yes: boolean
   }) {
     const rows = yield* sessionRows
@@ -95,7 +95,7 @@ const CleanCommand = effectCmd({
       `${preview.candidates.length} worktree${preview.candidates.length === 1 ? "" : "s"}, ${WorktreeInventory.bytes(preview.freed)} to free:`,
     )
     lines.forEach((line) => console.log(line))
-    if (args.dryRun) return
+    if (args["dry-run"]) return
     if (!args.yes) {
       const confirmed = yield* Effect.promise(() => prompts.confirm({ message: "Remove them?" }))
       if (confirmed !== true) return
@@ -118,7 +118,7 @@ const RemoveCommand = effectCmd({
   handler: Effect.fn("Cli.worktrees.remove")(function* (args: {
     target: string
     force: boolean
-    deleteBranch: boolean
+    "delete-branch": boolean
   }) {
     const rows = yield* sessionRows
     const result = yield* run(() =>
@@ -126,9 +126,9 @@ const RemoveCommand = effectCmd({
         directory: process.cwd(),
         target: args.target,
         force: args.force,
-        deleteBranch: args.deleteBranch,
+        deleteBranch: args["delete-branch"],
         protect: WorktreeSessions.busy(rows),
-        pullRequests: args.deleteBranch,
+        pullRequests: args["delete-branch"],
       }),
     )
     console.log(
