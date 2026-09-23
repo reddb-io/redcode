@@ -2789,7 +2789,11 @@ const layer = Layer.effect(
               toolChoice: format.type === "json_schema" ? "required" : undefined,
               estimate: requestEstimate,
               // System One already chose this turn's tools and skills; a RedRouter must not choose again.
-              ...(mcpContext || skillContext ? { router: { decision: false } } : {}),
+              // Its hint lets a RedRouter combo pick the model for the turn; Redcode never switches it.
+              router: {
+                ...(mcpContext || skillContext ? { decision: false } : {}),
+                hint: Intelligence.routerHint(assessment, toolAssessments.get(selectionID)),
+              },
             })
 
             if (result === "reconnect") {

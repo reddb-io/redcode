@@ -250,6 +250,7 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type, packageName?: st
       input: info.limit.input === undefined ? undefined : int(info.limit.input),
       output: int(info.limit.output),
     },
+    router: info.router && { owned_by: info.router.owned_by, strategy: info.router.strategy },
   }
 }
 

@@ -16,7 +16,7 @@ import { DialogProvider } from "./dialog-provider"
 type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
 type ModelChoice = Model.Ref | "connect" | "reuse" | "continue" | "change"
-type TransportChoice = Intelligence.Evaluator["transport"] | "continue"
+type TransportChoice = Intelligence.Evaluator["transport"] | "continue" | "detected"
 
 export function createDialogSetupState(resume?: {
   settings: Intelligence.Settings
@@ -39,6 +39,7 @@ export function createDialogSetupState(resume?: {
     providerID: "",
     models: [] as { id: string; name: string }[],
     evaluators: [] as Intelligence.EvaluatorOption[],
+    router: undefined as Intelligence.DetectedRouter | undefined,
   })
 }
 
@@ -97,6 +98,7 @@ export function DialogSetup(
           set("flag", effective.source === "flag")
           set("environment", result.environment)
           set("evaluators", result.evaluators)
+          set("router", result.router)
           set("loaded", true)
         })
       })
@@ -182,6 +184,17 @@ export function DialogSetup(
   const afterSystemTwo = (): Step =>
     state.reasoning === "single" || state.scope === "system-two" ? "confirm" : "transport"
   const transportOptions = (): DialogSelectOption<TransportChoice>[] => [
+    // A connected RedRouter that serves System One comes first: it shares the provider's key.
+    ...(state.router?.evaluator
+      ? [
+          {
+            title: `Use RedRouter ${routerName(state.router)} (detected)`,
+            value: "detected" as const,
+            description: `${state.router.evaluator.model} · shares the provider connection`,
+            category: "Detected",
+          },
+        ]
+      : []),
     ...(state.settings.evaluator
       ? [
           {
@@ -191,7 +204,6 @@ export function DialogSetup(
           },
         ]
       : []),
-    // Detected local transports (for example a running RedRouter) belong here, ahead of the catalog.
     ...state.evaluators.map((option) => ({
       title: option.name,
       value: option.evaluator.transport,
@@ -328,10 +340,18 @@ export function DialogSetup(
       <Match when={state.step === "transport"}>
         <DialogSelect
           title={title("s1", "S1 connection")}
-          current={state.settings.evaluator ? "continue" : "opencode-zen"}
+          current={state.settings.evaluator ? "continue" : state.router?.evaluator ? "detected" : "opencode-zen"}
           options={transportOptions()}
           onSelect={(option) => {
             if (option.value === "continue") return set("step", "confirm")
+            // The router's own S1 model at its connected address, with the provider's credential.
+            const detected = state.router?.evaluator
+            if (option.value === "detected" && detected)
+              return batch(() => {
+                set("settings", (settings) => ({ ...settings, evaluator: detected }))
+                set("key", "")
+                set("step", "confirm")
+              })
             const selected = state.evaluators.find((item) => item.evaluator.transport === option.value)
             if (!selected) return
             batch(() => {
@@ -471,4 +491,9 @@ export function DialogSetup(
       </Match>
     </Switch>
   )
+}
+
+/** A detected router by its instance name, else the address it answers at. */
+function routerName(router: Intelligence.DetectedRouter) {
+  return router.detection.instanceID ?? URL.parse(router.baseURL)?.host ?? router.baseURL
 }

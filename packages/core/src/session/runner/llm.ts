@@ -985,9 +985,12 @@ const layer = Layer.effect(
             "X-Session-Id": session.id,
             ...(session.parentID ? { "x-parent-session-id": session.parentID } : {}),
             // Only a RedRouter this process already detected (on connect, by the legacy runner or
-            // by System One setup); the runner never waits on a probe.
+            // by System One setup); the runner never waits on a probe. A combo that picks its member
+            // per request gets System One's hint and chooses the model; the runner never switches it.
             ...ProviderRouter.requestHeaders(ProviderRouter.known(model.route.endpoint.baseURL ?? ""), {
               decision: mcpContext || skillContext ? false : undefined,
+              hint: Intelligence.routerHint(assessment, mcpSelection),
+              model: Config.latest(configEntries, "providers")?.[model.provider ?? ""]?.models?.[model.id]?.router,
             }),
           },
         },

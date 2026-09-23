@@ -500,6 +500,77 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
   }
 })
 
+test("a detected RedRouter is the first S1 option and saves its evaluator with the provider credential", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const router = {
+    providerID: "red-router",
+    baseURL: "http://127.0.0.1:25050/v1",
+    detection: {
+      kind: "red-router",
+      instanceID: "studio",
+      features: ["capabilities", "systemone"],
+      systemOne: { available: true, models: ["jev-1.13.0"] },
+      checkedAt: 0,
+    },
+    evaluator: {
+      transport: "red-router",
+      baseURL: "http://127.0.0.1:25050/v1",
+      model: "jev-1.13.0",
+      credentialID: "cred_router",
+    },
+  }
+  const settings = {
+    enabled: false,
+    onboarding: "pending",
+    principal: { providerID: "mock", id: "model" },
+  } as Intelligence.Settings
+  const saved: unknown[] = []
+  const probed: unknown[] = []
+  const setup = await mount(
+    async (url, input) => {
+      if (url.pathname === "/api/intelligence" && input instanceof Request && input.method === "PUT") {
+        saved.push(await input.json())
+        return json({ enabled: true, reasoning: "dual", onboarding: "completed" })
+      }
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings, router })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
+      if (url.pathname === "/api/intelligence/test") {
+        if (input instanceof Request) probed.push(await input.json())
+        return json({ ok: true, message: "Connection checked" })
+      }
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+  )
+  try {
+    await ready(setup.app, "S2 transformations")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Use RedRouter studio (detected)")
+    const options = setup.app.captureCharFrame()
+    expect(options).toContain("3/3 · S1 connection")
+    expect(options.indexOf("Use RedRouter studio (detected)")).toBeLessThan(options.indexOf("Cloudflare AI Gateway"))
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
+    expect(setup.app.captureCharFrame()).not.toContain("S1 API key")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => saved.length === 1)
+    expect(probed).toEqual([{ evaluator: router.evaluator }])
+    expect(saved[0]).toEqual({
+      settings: {
+        enabled: true,
+        reasoning: "dual",
+        onboarding: "completed",
+        principal: { providerID: "mock", id: "model" },
+        evaluator: router.evaluator,
+      },
+    })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
 async function ready(app: Awaited<ReturnType<typeof mount>>["app"], text: string) {
   await wait(() => app.captureCharFrame().includes(text))
   await wait(

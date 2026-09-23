@@ -68,6 +68,15 @@ class Model extends Schema.Class<Model>("ConfigV2.Model")({
   cost: Schema.Union([Cost, Cost.pipe(Schema.Array)]).pipe(Schema.optional),
   disabled: Schema.Boolean.pipe(Schema.optional),
   limit: Limit.pipe(Schema.optional),
+  router: Schema.Struct({
+    owned_by: Schema.String.pipe(Schema.optional),
+    strategy: Schema.String.pipe(Schema.optional),
+  })
+    .pipe(Schema.optional)
+    .annotate({
+      description:
+        "What the router reported about this model, written by provider discovery. A RedRouter combo with strategy auto or smart receives System One's routing hint.",
+    }),
 }) {}
 
 export class Info extends Schema.Class<Info>("ConfigV2.Provider")({

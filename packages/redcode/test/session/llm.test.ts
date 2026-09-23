@@ -2511,7 +2511,7 @@ describe("session.llm RedRouter cooperation", () => {
           return Response.json({
             product: "red-router",
             version: "3.2.0",
-            decision: { header: "x-red-router-decision" },
+            decision: { header: "x-red-router-decision", accepts_hint: true, hint_header: "x-red-router-hint" },
             token_saver_header: "x-red-router-token-saver",
           })
         if (url.pathname !== "/v1/chat/completions") return new Response("not found", { status: 404 })
@@ -2555,15 +2555,26 @@ describe("session.llm RedRouter cooperation", () => {
           messages: [{ role: "user" as const, content: "Hello" }],
           tools: {},
         }
+        const combo = yield* Provider.use.getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("smart-combo"))
+        const hint = "complexity=0.666667;deliberation=0.666667;tier=complex"
         yield* drain({ ...input, router: { decision: false } })
         yield* drain(input)
         yield* drain({ ...input, router: { tokenSaver: false } })
+        // Only a combo that picks its member per request is steered by the hint.
+        yield* drain({ ...input, router: { hint } })
+        yield* drain({ ...input, model: combo, router: { hint } })
         expect(
-          seen.map((headers) => [headers.get("x-red-router-decision"), headers.get("x-red-router-token-saver")]),
+          seen.map((headers) => [
+            headers.get("x-red-router-decision"),
+            headers.get("x-red-router-token-saver"),
+            headers.get("x-red-router-hint"),
+          ]),
         ).toEqual([
-          ["off", null],
-          [null, null],
-          [null, "off"],
+          ["off", null, null],
+          [null, null, null],
+          [null, "off", null],
+          [null, null, null],
+          [null, null, hint],
         ])
       }),
     {
@@ -2574,7 +2585,15 @@ describe("session.llm RedRouter cooperation", () => {
             name: "RedRouter",
             npm: "@ai-sdk/openai-compatible",
             options: { apiKey: "test-key", baseURL: `${routerState.server!.url.origin}/v1` },
-            models: { "fast-combo": { name: "fast-combo", tool_call: true, limit: { context: 128000, output: 8192 } } },
+            models: {
+              "fast-combo": { name: "fast-combo", tool_call: true, limit: { context: 128000, output: 8192 } },
+              "smart-combo": {
+                name: "smart-combo",
+                tool_call: true,
+                limit: { context: 128000, output: 8192 },
+                router: { owned_by: "combo", strategy: "auto" },
+              },
+            },
           },
         },
       }),
