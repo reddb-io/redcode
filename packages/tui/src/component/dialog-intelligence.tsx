@@ -48,7 +48,9 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
   const label = () => {
     if (single()) return "Single"
     if (!local.intelligence.ready()) return "S1 Setup"
-    return "S1 · S2"
+    // The S2 model is already shown before this indicator; name the S1 evaluator here.
+    const model = local.intelligence.state.status?.settings.evaluator?.model
+    return model ? `S1 ${model.split("/").at(-1)}` : "S1 · S2"
   }
   return (
     <text
