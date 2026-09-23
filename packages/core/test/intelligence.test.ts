@@ -1490,3 +1490,116 @@ test("a RedRouter connected under another provider id is found by the router its
     await server.stop(true)
   }
 })
+
+test("a RedRouter advertising recommendations carries them and evaluates with its recommended System One model", async () => {
+  await using dir = await tmpdir()
+  const recommended = {
+    default: {
+      id: "cc/claude-opus-5-5",
+      name: "Claude Opus 5.5",
+      provider: { slug: "cc", name: "Claude Code" },
+      reason: "Strongest connected coding model (claude-opus family, newest version).",
+    },
+    systemone: {
+      id: "jev/jev-1.13",
+      name: "Jev 1.13",
+      provider: { slug: "jev", name: "Jev" },
+      reason: "First JEV model served on /v1/systemone.",
+    },
+  }
+  const catalogs: string[] = []
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      const path = new URL(request.url).pathname
+      if (path === "/v1/capabilities")
+        return Response.json({
+          product: "red-router",
+          version: "3.6.0",
+          systemone: { available: true, models: ["jev/jev-latest", "jev/jev-1.13"] },
+          catalog: { version: "cat-1", catalog_endpoint: "/v1/catalog", recommendations: true },
+        })
+      if (path === "/v1/catalog") {
+        catalogs.push(request.headers.get("authorization") ?? "-")
+        return Response.json({ version: "cat-1", groups: [], combos: [], recommended: { ...recommended, fast: null } })
+      }
+      return new Response("not found", { status: 404 })
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const provider = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === provider.id ? provider : undefined),
+          list: (id) => Effect.succeed(id === provider.integrationID ? [provider] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    const router = await Effect.runPromise(service.router())
+    expect(router?.recommended).toEqual(recommended)
+    expect(router?.evaluator?.model).toBe("jev/jev-1.13")
+    // The catalog is read once per catalog version, with the provider's key.
+    await Effect.runPromise(service.router())
+    expect(catalogs).toEqual(["Bearer router-key"])
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("a RedRouter whose catalog fails is still offered, without recommendations", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      const path = new URL(request.url).pathname
+      if (path === "/v1/capabilities")
+        return Response.json({
+          product: "red-router",
+          version: "3.6.0",
+          systemone: { available: true, models: ["jev/jev-latest"] },
+          catalog: { version: "cat-1", catalog_endpoint: "/v1/catalog", recommendations: true },
+        })
+      return new Response("unavailable", { status: 503 })
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const provider = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === provider.id ? provider : undefined),
+          list: (id) => Effect.succeed(id === provider.integrationID ? [provider] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    const router = await Effect.runPromise(service.router())
+    expect(router?.detection.features).toContain("recommendations")
+    expect(router?.recommended).toBeUndefined()
+    expect(router?.evaluator?.model).toBe("jev/jev-latest")
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})

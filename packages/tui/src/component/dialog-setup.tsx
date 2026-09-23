@@ -1,4 +1,4 @@
-import { batch, createEffect, on, onCleanup, onMount, Switch, Match } from "solid-js"
+import { batch, createEffect, createMemo, on, onCleanup, onMount, Switch, Match } from "solid-js"
 import { createStore } from "solid-js/store"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -12,11 +12,25 @@ import { useToast } from "../ui/toast"
 import { DialogSelect, type DialogSelectOption, type DialogSelectRef } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
-import { modeBadge, originCategory, originDescription, originIndex, routerLabel } from "../util/model-origin"
+import {
+  modeBadge,
+  originCategory,
+  originDescription,
+  originIndex,
+  resolveModel,
+  routerLabel,
+} from "../util/model-origin"
 
 type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
-type ModelChoice = Model.Ref | { provider: string } | "connect" | "reuse" | "continue" | "change"
+type ModelChoice =
+  | Model.Ref
+  | { recommended: Model.Ref }
+  | { provider: string }
+  | "connect"
+  | "reuse"
+  | "continue"
+  | "change"
 type TransportChoice = Intelligence.Evaluator["transport"] | "continue" | "detected"
 
 export function createDialogSetupState(resume?: {
@@ -136,6 +150,26 @@ export function DialogSetup(
     if (!current) return undefined
     return { providerID: Provider.ID.make(current.providerID), id: Model.ID.make(current.modelID) }
   }
+  // The connected RedRouter's recommended model for a role, when that router lists it.
+  const recommendation = (role: "default" | "fast") => {
+    const router = state.router
+    const pick = router?.recommended?.[role]
+    const provider = sync.data.provider.find((item) => item.id === router?.providerID)
+    const found = pick ? resolveModel(provider, pick.id) : undefined
+    if (!pick || !provider || !found) return undefined
+    return {
+      pick,
+      provider,
+      ref: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(found.modelID) },
+    }
+  }
+  const stepRecommendation = () =>
+    state.step === "principal" || state.step === "fast"
+      ? recommendation(state.step === "principal" ? "default" : "fast")
+      : undefined
+  // Memoized so the cursor effect below reruns only when the recommended model changes, not on every
+  // router or provider update.
+  const recommendedID = createMemo(() => stepRecommendation()?.ref.id)
   const options = (): DialogSelectOption<ModelChoice>[] => {
     const principal = state.settings.principal
     if (state.step === "principal" && principal && !state.changing)
@@ -149,8 +183,25 @@ export function DialogSetup(
       ]
     const provider = activeProvider()
     const index = originIndex(sync.data.provider)
+    const recommended = stepRecommendation()
     // Every connected provider is listed above the active provider's models so switching stays visible.
     return [
+      ...(recommended
+        ? [
+            {
+              title: `Recommended: ${recommended.pick.name}`,
+              value: { recommended: recommended.ref },
+              // Detail lines: the dialog is too narrow to follow the title with the origin and reason.
+              details: [
+                [`via ${routerLabel(recommended.provider) ?? "RedRouter"}`, recommended.pick.provider.name]
+                  .filter(Boolean)
+                  .join(" · "),
+                ...wrap(recommended.pick.reason, 50),
+              ],
+              category: "Recommended",
+            },
+          ]
+        : []),
       ...(state.step === "fast" && principal
         ? [
             {
@@ -196,19 +247,26 @@ export function DialogSetup(
   }
   let select: DialogSelectRef<ModelChoice> | undefined
   let confirm: DialogSelectRef<string> | undefined
-  // Providers sit above the models, so the cursor lands on the saved model or the provider's first model
-  // (the fast step starts on reusing the principal).
+  // Providers sit above the models, so the cursor lands on the router's recommendation, else the saved
+  // model or the provider's first model (the fast step starts on reusing the principal). Switching
+  // provider lands on that provider's models instead.
   createEffect(
-    on([() => state.step, () => state.changing, () => activeProvider()?.id], ([step], previous) => {
-      if (step !== "principal" && step !== "fast") return
-      if (step === "fast" && previous?.[0] !== "fast" && state.settings.principal) return select?.moveTo("reuse")
-      const models = options().flatMap((option) => (isModel(option.value) ? [option.value] : []))
-      const saved = step === "principal" ? [state.settings.principal, sessionModel()] : [state.settings.fast]
-      const target =
-        models.find((model) => saved.some((ref) => ref?.providerID === model.providerID && ref.id === model.id)) ??
-        models[0]
-      if (target) select?.moveTo(target)
-    }),
+    on(
+      [() => state.step, () => state.changing, () => activeProvider()?.id, recommendedID],
+      ([step, changing, , recommended], previous) => {
+        if (step !== "principal" && step !== "fast") return
+        const entered = !previous || previous[0] !== step || previous[1] !== changing || previous[3] !== recommended
+        const pick = stepRecommendation()
+        if (entered && pick) return select?.moveTo({ recommended: pick.ref })
+        if (step === "fast" && previous?.[0] !== "fast" && state.settings.principal) return select?.moveTo("reuse")
+        const models = options().flatMap((option) => (isModel(option.value) ? [option.value] : []))
+        const saved = step === "principal" ? [state.settings.principal, sessionModel()] : [state.settings.fast]
+        const target =
+          models.find((model) => saved.some((ref) => ref?.providerID === model.providerID && ref.id === model.id)) ??
+          models[0]
+        if (target) select?.moveTo(target)
+      },
+    ),
   )
   // Numbered stages follow the chosen flow; S1 sub-steps (URL, key, model) share the S1 stage.
   const stages = () => [
@@ -231,7 +289,11 @@ export function DialogSetup(
           {
             title: `Use RedRouter ${routerName(state.router)} (detected)`,
             value: "detected" as const,
-            description: `${state.router.evaluator.model} · shares the provider connection`,
+            description: [
+              state.router.evaluator.model,
+              ...(state.router.recommended?.systemone?.id === state.router.evaluator.model ? ["recommended"] : []),
+              "shares the provider connection",
+            ].join(" · "),
             category: "Detected",
           },
         ]
@@ -377,7 +439,12 @@ export function DialogSetup(
             // Continuing keeps the saved transformations model, or reuse of the principal.
             if (option.value === "continue") return set("step", afterSystemTwo())
             const role = state.step === "principal" ? "principal" : "fast"
-            const model = option.value === "reuse" ? undefined : option.value
+            const model =
+              option.value === "reuse"
+                ? undefined
+                : "recommended" in option.value
+                  ? option.value.recommended
+                  : option.value
             set((current) => ({
               ...current,
               providerID: model?.providerID ?? current.providerID,
@@ -547,6 +614,18 @@ export function DialogSetup(
 
 function isModel(value: ModelChoice): value is Model.Ref {
   return typeof value === "object" && "id" in value
+}
+
+/** A sentence as lines of at most `width` characters, broken between words. */
+function wrap(text: string, width: number) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .reduce<string[]>((lines, word) => {
+      const last = lines.at(-1)
+      if (last !== undefined && `${last} ${word}`.length <= width) return [...lines.slice(0, -1), `${last} ${word}`]
+      return [...lines, word]
+    }, [])
 }
 
 /** A detected router by its instance name, else the address it answers at. */

@@ -4528,6 +4528,7 @@ export type RouterFeature =
   | "reasoning-auto"
   | "reasoning-applies"
   | "hint-signals"
+  | "recommendations"
 
 export type RouterDetection = {
   kind: RouterKind
@@ -7489,11 +7490,30 @@ export type IntelligenceEvaluatorOption = {
   evaluator: IntelligenceEvaluator
 }
 
+export type RouterRecommendation = {
+  id: string
+  name: string
+  provider: {
+    slug: string
+    name: string
+  }
+  reason: string
+}
+
+export type RouterRecommendations = {
+  default?: RouterRecommendation
+  fast?: RouterRecommendation
+  review?: RouterRecommendation
+  systemone?: RouterRecommendation
+  vision?: RouterRecommendation
+}
+
 export type IntelligenceDetectedRouter = {
   providerID: string
   baseURL: string
   detection: RouterDetection
   evaluator?: IntelligenceEvaluator
+  recommended?: RouterRecommendations
 }
 
 export type IntelligenceStatus = {

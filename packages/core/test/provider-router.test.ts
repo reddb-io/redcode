@@ -204,6 +204,96 @@ describe("ProviderRouter.detect", () => {
   })
 })
 
+describe("ProviderRouter.recommendations", () => {
+  const opus = {
+    id: "cc/claude-opus-5-5",
+    name: "Claude Opus 5.5",
+    provider: { slug: "cc", name: "Claude Code" },
+    reason: "Strongest connected coding model (claude-opus family, newest version).",
+  }
+  const luna = {
+    id: "cx/gpt-6-luna",
+    name: "GPT-6 Luna",
+    provider: { slug: "cx", name: "OpenAI Codex" },
+    reason: "Cheapest capable fast model (gpt-6-luna family).",
+  }
+  const catalog = (version: string) => ({
+    version,
+    groups: [],
+    combos: [],
+    recommended: { default: opus, fast: luna, review: null, systemone: null },
+  })
+
+  test("detects the recommendations feature a RedRouter advertises", async () => {
+    const router = serve({
+      "/v1/capabilities": () =>
+        Response.json({
+          ...capabilities,
+          catalog: { version: "v1", catalog_endpoint: "/v1/catalog", recommendations: true },
+        }),
+    })
+    const detection = await Effect.runPromise(ProviderRouter.detect({ baseURL: router.baseURL, apiKey: "k" }))
+    expect(detection.features).toContain("recommendations")
+
+    const older = serve({ "/v1/capabilities": () => Response.json({ ...capabilities, catalog: { version: "v1" } }) })
+    const without = await Effect.runPromise(ProviderRouter.detect({ baseURL: older.baseURL, apiKey: "k" }))
+    expect(without.features).not.toContain("recommendations")
+  })
+
+  test("reads the catalog with the key, drops empty roles and caches per catalog version", async () => {
+    const router = serve({ "/v1/catalog": () => Response.json(catalog("v1")) })
+    const first = await Effect.runPromise(
+      ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "sk-one", version: "v1" }),
+    )
+    expect(first).toEqual({ default: opus, fast: luna })
+    expect(router.hits).toEqual(["/v1/catalog Bearer sk-one"])
+
+    await Effect.runPromise(
+      ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "sk-one", version: "v1" }),
+    )
+    expect(router.hits).toHaveLength(1)
+    // Another catalog version, or another key, reads the catalog again.
+    await Effect.runPromise(
+      ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "sk-one", version: "v2" }),
+    )
+    await Effect.runPromise(
+      ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "sk-two", version: "v2" }),
+    )
+    expect(router.hits).toEqual(["/v1/catalog Bearer sk-one", "/v1/catalog Bearer sk-one", "/v1/catalog Bearer sk-two"])
+  })
+
+  test("keeps the well-formed roles of a partly malformed catalog", async () => {
+    const router = serve({
+      "/v1/catalog": () =>
+        Response.json({ version: "v1", recommended: { default: { id: "", name: "Nothing" }, fast: luna } }),
+    })
+    expect(await Effect.runPromise(ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "k" }))).toEqual({
+      fast: luna,
+    })
+  })
+
+  test("fails open on a missing, malformed, unreachable or slow catalog", async () => {
+    const missing = serve({})
+    expect(await Effect.runPromise(ProviderRouter.recommendations({ baseURL: missing.baseURL }))).toBeUndefined()
+
+    const malformed = serve({ "/v1/catalog": () => new Response("not json", { status: 200 }) })
+    expect(await Effect.runPromise(ProviderRouter.recommendations({ baseURL: malformed.baseURL }))).toBeUndefined()
+
+    const closed = serve({})
+    await servers.pop()!.stop(true)
+    expect(await Effect.runPromise(ProviderRouter.recommendations({ baseURL: closed.baseURL }))).toBeUndefined()
+
+    const slow = serve({
+      "/v1/catalog": () => new Promise((resolve) => setTimeout(() => resolve(Response.json(catalog("v1"))), 2_000)),
+    })
+    const started = Date.now()
+    expect(
+      await Effect.runPromise(ProviderRouter.recommendations({ baseURL: slow.baseURL, timeout: 100 })),
+    ).toBeUndefined()
+    expect(Date.now() - started).toBeLessThan(1_500)
+  })
+})
+
 describe("ProviderRouter.catalogChanged", () => {
   afterEach(() => ProviderRouter.forgetCatalogs())
 

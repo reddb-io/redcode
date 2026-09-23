@@ -29,6 +29,7 @@ export const Feature = Schema.Literals([
   "reasoning-auto",
   "reasoning-applies",
   "hint-signals",
+  "recommendations",
 ]).annotate({ identifier: "Router.Feature" })
 export type Feature = typeof Feature.Type
 
@@ -74,6 +75,32 @@ export const Upstream = Schema.Struct({
   subscription: Schema.Boolean.pipe(optional),
 }).annotate({ identifier: "Router.Upstream" })
 export interface Upstream extends Schema.Schema.Type<typeof Upstream> {}
+
+/**
+ * A model a router recommends for one role, from the accounts the key has connected: its model id
+ * at the router, display name, the upstream provider that serves it and why it was chosen.
+ */
+export const Recommendation = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1)),
+  name: Schema.String,
+  provider: Schema.Struct({ slug: Schema.String, name: Schema.String }),
+  reason: Schema.String,
+}).annotate({ identifier: "Router.Recommendation" })
+export interface Recommendation extends Schema.Schema.Type<typeof Recommendation> {}
+
+/**
+ * The router's recommended model per role: `default` for the principal, `fast` for
+ * transformations, `review` for review, `systemone` for the System One evaluator and `vision` for
+ * images. A role the router has no model for is absent.
+ */
+export const Recommendations = Schema.Struct({
+  default: Recommendation.pipe(optional),
+  fast: Recommendation.pipe(optional),
+  review: Recommendation.pipe(optional),
+  systemone: Recommendation.pipe(optional),
+  vision: Recommendation.pipe(optional),
+}).annotate({ identifier: "Router.Recommendations" })
+export interface Recommendations extends Schema.Schema.Type<typeof Recommendations> {}
 
 /**
  * A router's model catalog changed and its saved models were read again: `added` and `removed`

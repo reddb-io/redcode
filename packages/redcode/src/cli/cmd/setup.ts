@@ -1,4 +1,4 @@
-import type { Evaluator, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
+import type { DetectedRouter, Evaluator, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
 import { Effect, Option } from "effect"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Location } from "@reddb-io/redcode-core/location"
@@ -43,6 +43,8 @@ export const SetupCommand = effectCmd({
       )
       if (!choices.length)
         return yield* fail("Connect a generative provider with redcode providers before running setup")
+      // A connected RedRouter's recommendations come first in each model list; it also serves S1.
+      const router = yield* service.router()
       yield* intro(`Global intelligence setup — ${service.environment}`)
       const effective = Intelligence.reasoning(previous)
       const reasoning = yield* answer(
@@ -80,30 +82,34 @@ export const SetupCommand = effectCmd({
             }),
           )) === "continue"
         : false
+      const principalChoices = recommendedFirst(choices, router, "default")
       const principal =
         continued && saved
           ? saved
           : yield* answer(
               yield* select<string>({
                 message: "S2 (System Two) — principal",
-                options: choices,
-                initialValue: saved,
+                options: principalChoices.options,
+                initialValue: principalChoices.initialValue ?? saved,
               }),
             )
       // Continuing, or single reasoning, keeps the saved transformations model (or reuse of the principal).
+      const fastChoices = recommendedFirst(
+        [{ value: principal, label: "Reuse principal" }, ...choices.filter((choice) => choice.value !== principal)],
+        router,
+        "fast",
+      )
       const fast =
         continued || reasoning === "single"
           ? (savedFast ?? principal)
           : yield* answer(
               yield* select<string>({
                 message: "S2 (System Two) — transformations (may reuse principal)",
-                options: [
-                  { value: principal, label: "Reuse principal" },
-                  ...choices.filter((choice) => choice.value !== principal),
-                ],
+                options: fastChoices.options,
+                initialValue: fastChoices.initialValue,
               }),
             )
-      const systemOne = reasoning === "dual" ? yield* configureSystemOne(service, previous) : undefined
+      const systemOne = reasoning === "dual" ? yield* configureSystemOne(service, previous, router) : undefined
       const ref = (value: string) => ({
         providerID: ProviderV2.ID.make(value.slice(0, value.indexOf("/"))),
         id: Model.ID.make(value.slice(value.indexOf("/") + 1)),
@@ -139,8 +145,34 @@ export const SetupCommand = effectCmd({
   ),
 })
 
+/**
+ * Moves the model a connected RedRouter recommends for a role to the top of a model list, labelled
+ * with where it comes from and why, and preselects it. The list is unchanged when there is no
+ * recommendation or the router does not list the recommended model.
+ */
+export function recommendedFirst(
+  choices: ReadonlyArray<{ value: string; label: string; hint?: string }>,
+  router: DetectedRouter | undefined,
+  role: "default" | "fast",
+) {
+  const pick = router?.recommended?.[role]
+  const listed = pick && choices.find((choice) => choice.value === `${router?.providerID}/${pick.id}`)
+  if (!pick || !listed) return { options: [...choices], initialValue: undefined }
+  return {
+    options: [
+      {
+        value: listed.value,
+        label: `Recommended: ${pick.name} · via RedRouter${pick.provider.name ? ` · ${pick.provider.name}` : ""}`,
+        hint: pick.reason,
+      },
+      ...choices.filter((choice) => choice !== listed),
+    ],
+    initialValue: listed.value,
+  }
+}
+
 /** Dual reasoning only: keep the saved S1 evaluator or choose, discover and confirm another one. */
-function configureSystemOne(service: Intelligence.Interface, previous: Settings) {
+function configureSystemOne(service: Intelligence.Interface, previous: Settings, router: DetectedRouter | undefined) {
   return Effect.gen(function* () {
     const current = previous.evaluator
     if (
@@ -158,7 +190,6 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings)
       return { evaluator: current, key: "" }
     const evaluators = yield* service.options()
     // A connected RedRouter that serves System One comes first: it shares the provider's key.
-    const router = yield* service.router()
     const detected = router?.evaluator
     const transport = yield* answer(
       yield* select<Evaluator["transport"] | "detected">({
@@ -169,7 +200,11 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings)
                 {
                   value: "detected" as const,
                   label: `Use RedRouter ${router.detection.instanceID ?? URL.parse(router.baseURL)?.host ?? router.baseURL} (detected)`,
-                  hint: `${detected.model} · shares the provider connection`,
+                  hint: [
+                    detected.model,
+                    ...(router.recommended?.systemone?.id === detected.model ? ["recommended"] : []),
+                    "shares the provider connection",
+                  ].join(" · "),
                 },
               ]
             : []),

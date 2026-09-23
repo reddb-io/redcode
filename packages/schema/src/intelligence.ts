@@ -129,13 +129,17 @@ export interface Evaluation extends Schema.Schema.Type<typeof Evaluation> {}
 export interface Status extends Schema.Schema.Type<typeof Status> {}
 /**
  * A connected RedRouter that serves System One with the saved provider key. `evaluator` is ready to
- * save as the S1 evaluator: it points at the router and shares the provider's credential.
+ * save as the S1 evaluator: it points at the router and shares the provider's credential (its
+ * model is the router's recommended System One model when it has one). `recommended` holds the
+ * models the router recommends for the accounts the key has connected; model ids are the router's,
+ * so a recommendation is the model `id` at provider `providerID`.
  */
 export const DetectedRouter = Schema.Struct({
   providerID: Text,
   baseURL: Text,
   detection: Router.Detection,
   evaluator: Evaluator.pipe(optional),
+  recommended: Router.Recommendations.pipe(optional),
 }).annotate({ identifier: "Intelligence.DetectedRouter" })
 export interface DetectedRouter extends Schema.Schema.Type<typeof DetectedRouter> {}
 export const EvaluatorOption = Schema.Struct({
