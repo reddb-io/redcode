@@ -365,7 +365,8 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
   const aliases = strings(item.aliases)?.filter((alias) => alias !== item.id && validModelID(alias))
   const variants = routerVariants(item.variants)
   const memberParameters = routerMemberParameters(item.member_parameters)
-  const basis =
+  // Annotated so the literal is not widened to string inside the object below.
+  const basis: ConfigProviderV1.RouterParametersBasis | undefined =
     item.parameters_basis === "lead" ? "lead" : item.parameters_basis === "strictest" ? "strictest" : undefined
   const info = {
     ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),

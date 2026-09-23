@@ -96,7 +96,7 @@ describe("ComboMember", () => {
     expect(ProviderTransform.supportsForcedToolChoice(model, parameters)).toBe(false)
     expect(ProviderTransform.supportsForcedToolChoice(combo(), declared().router.parameters)).toBe(true)
     // Other sessions on the same combo still plan for the lead.
-    expect(ComboMember.model("ses_b", combo()).limit.context).toBe(LEAD.context_length)
+    expect(ComboMember.model("ses_b", combo()).limit.context).toBe(1_000_000)
   })
 
   test("keeps the member's parameters while it keeps serving and returns to the lead's", async () => {
@@ -115,7 +115,7 @@ describe("ComboMember", () => {
     await observe("other")
     expect(ComboMember.model("ses_a", combo()).limit.context).toBe(200_000)
     await observe("lead")
-    expect(ComboMember.model("ses_a", combo()).limit.context).toBe(LEAD.context_length)
+    expect(ComboMember.model("ses_a", combo()).limit.context).toBe(1_000_000)
   })
 
   test("reads a member missing from the saved parameters once, then reuses it", async () => {
