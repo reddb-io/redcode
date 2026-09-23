@@ -4477,6 +4477,9 @@ export type ConfigV2Design = {
   application?: string
   browser?: string
   breakpoints?: Array<number>
+  app?: {
+    mode?: "process" | "inline"
+  }
 }
 
 export type ConfigV2SessionBudget = {

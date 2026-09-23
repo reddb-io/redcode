@@ -8,7 +8,7 @@ import { DesignConversations } from "@reddb-io/redcode-core/design/conversations
 import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { DesignConversation } from "@/design/conversation"
 import { DesignFeedback } from "@/design/feedback"
-import { DesignHost } from "@/design/host"
+import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import type { SessionID } from "@/session/schema"
 
 /** `design.host` for conversations on the legacy loop: the TUI's transcript, bus and permission queue. */

@@ -28,7 +28,14 @@ export function sharePlaywrightBrowsers() {
   process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(base, "ms-playwright")
 }
 
-const prefixes = ["redcode-core-test-", "redcode-tui-test-", "opencode-test-data-", "opencode-httpapi-global-", "opencode-httpapi-exercise-"]
+const prefixes = [
+  "redcode-core-test-",
+  "redcode-design-app-test-",
+  "redcode-tui-test-",
+  "opencode-test-data-",
+  "opencode-httpapi-global-",
+  "opencode-httpapi-exercise-",
+]
 
 function real(target: string) {
   try {

@@ -1,7 +1,7 @@
 import type { Tool } from "@/tool/tool"
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
-import { DesignHost } from "@/design/host"
+import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignConversation } from "@/design/conversation"
 import { eq } from "drizzle-orm"
