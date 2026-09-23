@@ -1,5 +1,20 @@
 # opencode
 
+## 0.44.0
+
+### Minor Changes
+
+- 49666bc: Add single and dual reasoning modes. Unconfigured redcode now runs in `single` mode on the session's selected model (S2 only): completion gates keep their structural evidence checks and executed shell gates and report S1 as "not verified (single reasoning)". `dual` adds the System One evaluator with the existing strict contract, where an unavailable or inconclusive review is never approval. Choose the mode per run with `--reasoning single|dual` or `REDCODE_REASONING`, overriding the saved setting; settings saved with an enabled evaluator stay dual.
+- bcfc4da: Detect RedRouter behind a connected provider and cooperate with it. Redcode probes the router's capabilities when it is connected (and lazily, cached for five minutes, failing open), keeps each model's combo strategy, capabilities and thinking levels (which become the model's reasoning variants), and reports a connected RedRouter that serves System One in the intelligence status. A RedRouter's own decision layer is turned off for turns System One already guided, and its token saver for compaction and goal checks. Spend now counts the cost RedRouter reports for combos and routed models, retries wait until the instant a 9Router-family router names, and a router with no active account for the model is not retried. The provider's key is shared with System One for the address it was connected at, with `localhost` and `127.0.0.1` treated as one; the RedRouter System One preset now uses `127.0.0.1`.
+- 270c258: Steer RedRouter combos with System One. In dual reasoning, when the selected model is a RedRouter combo with the `auto` or `smart` strategy and the router accepts hints, each turn sends an `x-red-router-hint` built from System One's classification: complexity and deliberation as units, `needs_tool` when System One recommended a skill or MCP tool, and a tier from the complexity bands. The router picks the model for the turn; Redcode never switches it. A hint outside the router's grammar is never sent. `/setup` (TUI, CLI and web settings) now offers a connected RedRouter that serves System One as the first System One option, saving an evaluator that points at the router and shares the provider's credential.
+- 4c54541: Rework `/setup`, `redcode setup` and the web intelligence settings around the reasoning mode. Setup now starts by choosing Simple (one model) or Dual (S1 classifies and validates, S2 executes), preselecting the effective mode and noting a `--reasoning` override. A saved System Two model can be kept with "Continue with…" instead of walking through the model list again, and dual setup offers the same shortcut for a saved System One evaluator. Simple reasoning never asks for or probes an evaluator; a previously saved System One evaluator is kept (unused) so switching back to Dual can continue with it.
+
+### Patch Changes
+
+- 5e6ca82: Make the intelligence setup inherit the active System Two connection, limit model choices to that connection, filter System One catalogs to evaluator models, and suppress expected renderer listener warnings.
+- d49bf6d: Command hooks that exit without reading their input no longer crash with a broken-pipe error.
+- 93c02bb: Terminals whose command exits immediately now report their exit instead of staying "running" forever.
+
 ## 0.43.0
 
 ### Minor Changes
