@@ -31,6 +31,8 @@ export interface Brief {
   readonly verdict: Verdict
   readonly issues: ReadonlyArray<string>
   readonly created: number
+  /** How the parent judged the latest result the subagent handed back under this brief. */
+  readonly result?: ResultReview
 }
 
 export const METADATA_KEY = "subagentBrief"
@@ -47,7 +49,27 @@ export function fromMetadata(metadata: Record<string, unknown> | undefined): Bri
     criteria: strings(brief.criteria),
     issues: strings(brief.issues),
     writeCapable: brief.writeCapable === true,
+    result: resultOf(brief.result),
   }
+}
+
+function resultOf(value: unknown): ResultReview | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const result = value as Partial<ResultReview>
+  if (!RESULT_DECISIONS.includes(result.decision as ResultDecision)) return undefined
+  return { ...(result as ResultReview), issues: strings(result.issues), repaired: result.repaired === true }
+}
+
+/**
+ * Whether the parent reviews this subagent's result against its brief: the parent wrote the brief
+ * and gave it structure to check against. Such a child skips its own generic response review.
+ */
+export function supervised(brief: Brief | undefined): brief is Brief {
+  return (
+    !!brief &&
+    brief.verdict !== "skipped" &&
+    (brief.scope.length > 0 || brief.criteria.length > 0 || !!brief.returnFormat?.trim())
+  )
 }
 
 export function toMetadata(metadata: Record<string, unknown> | undefined, brief: Brief): Record<string, unknown> {
@@ -223,7 +245,13 @@ export interface Part {
   readonly type: string
   readonly tool?: string
   readonly callID?: string
-  readonly state?: { readonly status: string; readonly input?: unknown }
+  readonly state?: {
+    readonly status: string
+    readonly input?: unknown
+    readonly output?: string
+    readonly error?: string
+    readonly metadata?: Readonly<Record<string, unknown>>
+  }
 }
 
 export interface Violation {
@@ -364,6 +392,252 @@ export function resultStructure(
         ]
       : []),
   ]
+}
+
+/** How a subagent's result was judged against its brief before it went back to the parent. */
+export type ResultDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
+
+const RESULT_DECISIONS: ReadonlyArray<ResultDecision> = ["verified", "inconclusive", "needs_revision", "unverified"]
+
+export interface ResultReview {
+  readonly decision: ResultDecision
+  /** S1's issue ids and the ids of blocking mechanical findings, without repeats. */
+  readonly issues: ReadonlyArray<string>
+  /** Whether the subagent had its one repair round before this verdict. */
+  readonly repaired: boolean
+  readonly evaluationID?: string
+  /** Why S1 gave no verdict, when it could not be reached. */
+  readonly unavailable?: string
+  /** Mechanical findings; the only check single reasoning runs. */
+  readonly findings?: ReadonlyArray<Finding>
+}
+
+export type ResultCheck = ResultIssue | "out_of_scope" | "failing_verification"
+
+/**
+ * The mechanical half of a result review, run in every reasoning mode before S1 is asked: what
+ * {@link resultStructure} finds, files changed outside the scope, and verification commands whose
+ * latest run failed. Only an empty result and a change outside the scope block on their own: a
+ * failing command may be the honest report of a pre-existing failure, which S1 or the parent weighs.
+ */
+export function resultChecks(
+  result: { readonly text: string; readonly parts: ReadonlyArray<Part> },
+  brief: {
+    readonly criteria?: ReadonlyArray<string>
+    readonly scope?: ReadonlyArray<string>
+    readonly changesRequested: boolean
+    readonly directory?: string
+  },
+): Finding<ResultCheck>[] {
+  const outside = [
+    ...new Set(
+      scopeViolations(result.parts, brief.scope, brief.directory)
+        .filter((violation) => violation.access === "write")
+        .map((violation) => violation.path),
+    ),
+  ]
+  const failing = failingVerifications(result.parts)
+  return [
+    ...resultStructure(result, brief),
+    ...(outside.length
+      ? [
+          {
+            id: "out_of_scope" as const,
+            blocking: true,
+            message: `The subagent changed files outside its scope: ${outside.join(", ")}`,
+          },
+        ]
+      : []),
+    ...(failing.length
+      ? [
+          {
+            id: "failing_verification" as const,
+            blocking: false,
+            message: `The latest run of these commands failed: ${failing
+              .map((run) => (run.exit === undefined ? run.command : `${run.command} (exit ${run.exit})`))
+              .join("; ")}`,
+          },
+        ]
+      : []),
+  ]
+}
+
+/**
+ * Shell commands whose latest run failed: an error, or a non-zero exit code. A command that only
+ * looks at things proves nothing either way (a grep with no match exits 1), so it is left out.
+ */
+export function failingVerifications(parts: ReadonlyArray<Part>) {
+  const runs = parts.flatMap((part) => {
+    if (part.type !== "tool" || (part.tool !== "bash" && part.tool !== "shell") || !part.state) return []
+    if (part.state.status !== "completed" && part.state.status !== "error") return []
+    if (SessionTaskFacts.readOnly(part.state.input)) return []
+    const command = SessionTaskFacts.command(part.state.input)
+    if (!command) return []
+    const code = part.state.metadata?.exit
+    const exit = typeof code === "number" ? code : undefined
+    return [{ command, exit, failed: part.state.status === "error" || (exit !== undefined && exit !== 0) }]
+  })
+  // The last run of a command wins: a test that failed and then passed is passing.
+  return [...new Map(runs.map((run) => [run.command, run])).values()].filter((run) => run.failed)
+}
+
+/** The most recent tool calls a result review shows S1; older ones are counted, not listed. */
+export const DIGEST_CALLS = 40
+
+/**
+ * A bounded digest of the subagent's settled tool calls for S1: what ran, on which files, how it
+ * ended, and the tail of what it printed, where the verdict of a command usually is.
+ */
+export function digest(
+  parts: ReadonlyArray<Part>,
+  input: { readonly directory?: string; readonly calls?: number } = {},
+) {
+  const calls = parts.flatMap((part) => {
+    if (part.type !== "tool" || !part.tool || !part.state) return []
+    if (part.state.status !== "completed" && part.state.status !== "error") return []
+    const command = SessionTaskFacts.command(part.state.input, 200)
+    const files = command ? [] : SessionTaskFacts.paths(part.tool, part.state.input, input.directory)
+    const exit = part.state.metadata?.exit
+    const output = part.state.status === "error" ? part.state.error : part.state.output
+    return [
+      {
+        tool: part.tool,
+        status: part.state.status,
+        ...(command ? { command } : {}),
+        ...(files.length ? { files } : {}),
+        ...(!command && !files.length ? { input: clip(JSON.stringify(part.state.input) ?? "") } : {}),
+        ...(typeof exit === "number" ? { exit } : {}),
+        ...(output?.trim() ? { output: tail(output.trim()) } : {}),
+      },
+    ]
+  })
+  const limit = Math.max(1, input.calls ?? DIGEST_CALLS)
+  return { total: calls.length, omitted: Math.max(0, calls.length - limit), calls: calls.slice(-limit) }
+}
+
+const clip = (text: string, size = 200) => ([...text].length > size ? `${[...text].slice(0, size).join("")}…` : text)
+const tail = (text: string, size = 400) => ([...text].length > size ? `…${[...text].slice(-size).join("")}` : text)
+
+/**
+ * What S1 is asked about a result, against the brief and the digest of the subagent's tool calls. A
+ * yes to any question is a gap between the result and the brief.
+ */
+export const resultQuestions = Intelligence.questions({
+  unmet_criterion:
+    "Is any criterion in sources.brief.done_criteria not met, judging by candidate and sources.tool_calls, or reported met without saying how it was checked? Answer no when there are no done criteria.",
+  claim_without_evidence:
+    "Does candidate claim a change, a passing check or a finding that no successful call in sources.tool_calls supports, such as tests or a build reported passing with no command that exited 0?",
+  out_of_scope:
+    "Did the subagent change files or systems outside sources.brief.scope or against the non-goals in sources.brief.prompt, per sources.tool_calls? Reading outside the scope for context is not an error.",
+  missing_output:
+    "Does candidate lack what sources.brief.return_format asks for, in content or in shape? When there is no return format, does it fail to answer what sources.brief.prompt asks for?",
+  contradicts_brief:
+    "Does candidate or sources.tool_calls contradict sources.brief.prompt: work toward a different objective, a non-goal done, or a stated constraint ignored?",
+})
+
+/**
+ * The verdict from the mechanical findings and S1's evaluation. Single reasoning is unverified by
+ * definition. A blocking finding needs revision whatever S1 says or whether it answered at all;
+ * otherwise S1 that could not be reached leaves the result unverified, never silently verified.
+ */
+export function judge(input: {
+  readonly findings: ReadonlyArray<Finding>
+  readonly evaluation?: Pick<Intelligence.Evaluation, "id" | "decision" | "issues">
+  readonly single: boolean
+  readonly repaired: boolean
+}): ResultReview {
+  const findings = input.findings.length ? { findings: input.findings } : {}
+  const evaluationID = input.evaluation ? { evaluationID: input.evaluation.id } : {}
+  if (input.single)
+    return {
+      decision: "unverified",
+      issues: input.findings.map((finding) => finding.id),
+      repaired: input.repaired,
+      ...findings,
+    }
+  const blocking = input.findings.filter((finding) => finding.blocking).map((finding) => finding.id)
+  const raised =
+    input.evaluation?.decision === "needs_revision" || input.evaluation?.decision === "inconclusive"
+      ? input.evaluation.issues
+      : []
+  if (blocking.length)
+    return {
+      decision: "needs_revision",
+      issues: [...new Set([...raised, ...blocking])],
+      repaired: input.repaired,
+      ...evaluationID,
+      ...findings,
+    }
+  if (!input.evaluation || input.evaluation.decision === "unavailable")
+    return {
+      decision: "unverified",
+      issues: input.findings.map((finding) => finding.id),
+      repaired: input.repaired,
+      // The engine's wording is for gates that keep a previous state; a result has none.
+      unavailable:
+        input.evaluation?.issues[0]?.replace(/ Previous state preserved\.$/, "") ?? "System One is not enabled",
+      ...evaluationID,
+      ...findings,
+    }
+  if (input.evaluation.decision === "accepted")
+    return { decision: "verified", issues: [], repaired: input.repaired, ...evaluationID }
+  return {
+    decision: input.evaluation.decision,
+    issues: [...new Set(raised)],
+    repaired: input.repaired,
+    ...evaluationID,
+    ...findings,
+  }
+}
+
+/** Opens the synthetic message that sends a subagent back to repair its result. */
+export const REPAIR = "[system:subagent-result-repair]"
+
+const REPAIR_ASKS: Record<string, string> = {
+  empty_result: "Hand back a written result; the last one had no text.",
+  criteria_not_mentioned: "Report each done criterion and the evidence that it holds.",
+  no_successful_change: "Make the requested change, and run a check that shows it works.",
+  out_of_scope: "Undo or justify every change outside the scope; change only files the scope allows.",
+  failing_verification:
+    "Fix what makes the failing commands fail, or say plainly why they fail and that the work is not done.",
+  unmet_criterion: "Meet every done criterion, or say which one is not met and why.",
+  claim_without_evidence: "Back every claim with a command or tool result from this session, or withdraw it.",
+  missing_output: "Hand back exactly what the return format asks for, in its shape.",
+  contradicts_brief: "Bring the work back to the brief's objective and constraints.",
+}
+
+/** The one repair round's message: what fell short, and what to hand back. */
+export function repair(review: Pick<ResultReview, "issues" | "findings">) {
+  const asks = [
+    ...new Set(
+      review.issues.map((issue) => REPAIR_ASKS[issue.replace(/^\d+:/, "")]).filter((item) => item !== undefined),
+    ),
+  ]
+  return [
+    REPAIR,
+    `Your parent reviewed this result against your brief and it falls short: ${review.issues.join(", ")}.`,
+    ...(review.findings ?? []).map((finding) => `- ${finding.message}`),
+    ...asks.map((ask) => `- ${ask}`),
+    "Stay within the brief's scope, then hand back the complete result again in the requested return format. This is the only repair round.",
+  ].join("\n")
+}
+
+/** The `<review>` block the parent reads in the task envelope. */
+export function reviewBlock(review: ResultReview) {
+  const by = review.evaluationID ? ` (S1 evaluation ${review.evaluationID})` : ""
+  const round = review.repaired ? " after one repair round" : ""
+  const notes = review.findings?.length ? ` ${review.findings.map((finding) => finding.message).join(" ")}` : ""
+  const body =
+    review.decision === "verified"
+      ? `The result was checked against the brief${by}${round} and no gap was found.`
+      : review.decision === "needs_revision"
+        ? `The result still falls short of the brief${round}${by}: ${review.issues.join(", ")}.${notes} Verify these yourself or re-delegate before relying on it.`
+        : review.decision === "inconclusive"
+          ? `The review could not settle the result${by}${round}: ${review.issues.join(", ")}.${notes} Check the claims that matter before relying on them.`
+          : review.unavailable
+            ? `S1 could not review the result (${review.unavailable}); treat it as unchecked.${notes}`
+            : `Result ${Intelligence.UNVERIFIED}; only mechanical checks ran. Treat it as unchecked.${notes}`
+  return `<review decision="${review.decision}"${review.repaired ? ` repaired="true"` : ""}>${body}</review>`
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "word" })

@@ -41,6 +41,12 @@ export interface RecordInput {
   readonly metadata?: ProviderMetadata
 }
 
+export interface EvaluationInput {
+  readonly sessionID: string
+  /** What System One reported for one evaluation. */
+  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
+}
+
 export interface AdmitInput {
   readonly sessionID: SessionID
   /** The user message the step answers; with `human`, re-arms a `reset_on_message` budget. */
@@ -59,6 +65,11 @@ export interface Refusal {
 
 export interface Interface {
   readonly record: (input: RecordInput) => Effect.Effect<void>
+  /**
+   * A System One evaluation made on the session's behalf, which does not pass through the LLM
+   * stream. S1 reports tokens but no price, so they count toward token limits and as unpriced.
+   */
+  readonly recordEvaluation: (input: EvaluationInput) => Effect.Effect<void>
   /** Everything this session and its subagents have spent. */
   readonly totals: (sessionID: SessionID) => Effect.Effect<SessionBudget.Totals>
   readonly view: (sessionID: SessionID) => Effect.Effect<typeof SessionBudget.View.Type>
@@ -124,7 +135,8 @@ const limitsFor = (metadata: Record<string, unknown> | undefined, parentID: stri
 }
 
 const resetFor = (metadata: Record<string, unknown> | undefined, cfg: Configured) =>
-  SessionBudget.overrideOf(metadata?.[SessionBudget.LIMITS_KEY]).reset_on_message ?? cfg?.budget?.reset_on_message === true
+  SessionBudget.overrideOf(metadata?.[SessionBudget.LIMITS_KEY]).reset_on_message ??
+  cfg?.budget?.reset_on_message === true
 
 /** The warnings one step may raise: 80% of a limit, and a cost limit meeting unpriced spend. Each once. */
 function warnings(input: {
@@ -169,7 +181,10 @@ function warnings(input: {
         }`,
       )
     if (status.warn && !status.exceeded)
-      once("warn", `${item.label} ${Math.floor(status.used * 100)}% used: ${SessionBudget.describe(item.limits, item.spent)}`)
+      once(
+        "warn",
+        `${item.label} ${Math.floor(status.used * 100)}% used: ${SessionBudget.describe(item.limits, item.spent)}`,
+      )
   }
   return out
 }
@@ -219,13 +234,32 @@ const layer = Layer.effect(
         { discard: true },
       )
 
+    /** Adds one step's spend to the session and to every session above it. */
+    const charge = Effect.fn("SessionSpend.charge")(function* (sessionID: string, delta: SessionBudget.Totals) {
+      const cfg = (yield* config.get()).session
+      for (const session of yield* chain(sessionID as SessionID)) {
+        let raised: Array<{ message: string; subject: string }> = []
+        yield* sessions.updateMetadata(session.id, (metadata) => {
+          const state = stateOf(metadata[SessionBudget.SPEND_KEY])
+          state.total = SessionBudget.add(state.total, delta)
+          raised = warnings({ metadata, parentID: session.parentID, state, cfg })
+          return { ...metadata, [SessionBudget.SPEND_KEY]: stored(state) }
+        })
+        for (const warning of raised) yield* notify({ sessionID: session.id, action: "warn", ...warning })
+      }
+    })
+
     const record: Interface["record"] = (input) =>
       Effect.gen(function* () {
         const usage = Session.getUsage({ model: input.model, usage: input.usage, metadata: input.metadata })
         const tokens =
-          usage.tokens.input + usage.tokens.output + usage.tokens.reasoning + usage.tokens.cache.read + usage.tokens.cache.write
+          usage.tokens.input +
+          usage.tokens.output +
+          usage.tokens.reasoning +
+          usage.tokens.cache.read +
+          usage.tokens.cache.write
         if (tokens <= 0 && usage.cost <= 0) return
-        const delta: SessionBudget.Totals = {
+        yield* charge(input.sessionID, {
           cost: usage.cost,
           tokens,
           // A cost the router reported is known even when it is zero.
@@ -233,22 +267,24 @@ const layer = Layer.effect(
             usage.cost > 0 || priced(input.model) || ProviderRouter.reportedCost(input.metadata) !== undefined
               ? 0
               : tokens,
-        }
-        const cfg = (yield* config.get()).session
-        for (const session of yield* chain(input.sessionID as SessionID)) {
-          let raised: Array<{ message: string; subject: string }> = []
-          yield* sessions.updateMetadata(session.id, (metadata) => {
-            const state = stateOf(metadata[SessionBudget.SPEND_KEY])
-            state.total = SessionBudget.add(state.total, delta)
-            raised = warnings({ metadata, parentID: session.parentID, state, cfg })
-            return { ...metadata, [SessionBudget.SPEND_KEY]: stored(state) }
-          })
-          for (const warning of raised) yield* notify({ sessionID: session.id, action: "warn", ...warning })
-        }
+        })
       }).pipe(
         // Accounting never fails the stream it watches.
-        Effect.catchCause((cause) => Effect.logWarning("spend could not be recorded", { "session.id": input.sessionID, cause })),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("spend could not be recorded", { "session.id": input.sessionID, cause }),
+        ),
       )
+
+    const recordEvaluation: Interface["recordEvaluation"] = (input) => {
+      const tokens = input.usage.input_tokens + input.usage.output_tokens
+      if (tokens <= 0) return Effect.void
+      return charge(input.sessionID, { cost: 0, tokens, unpriced: tokens }).pipe(
+        // Accounting never fails the review it counts.
+        Effect.catchCause((cause) =>
+          Effect.logWarning("System One spend could not be recorded", { "session.id": input.sessionID, cause }),
+        ),
+      )
+    }
 
     const totals: Interface["totals"] = (sessionID) =>
       read(sessionID).pipe(Effect.map((session) => stateOf(session?.metadata?.[SessionBudget.SPEND_KEY]).total))
@@ -347,7 +383,7 @@ const layer = Layer.effect(
         return undefined
       })
 
-    return Service.of({ record, totals, view, setLimits, admit, notify })
+    return Service.of({ record, recordEvaluation, totals, view, setLimits, admit, notify })
   }),
 )
 

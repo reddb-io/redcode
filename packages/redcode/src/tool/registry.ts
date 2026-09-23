@@ -10,6 +10,7 @@ import { Ripgrep } from "@reddb-io/redcode-core/ripgrep"
 import { PlanExitTool, WorktreePrepareTool } from "./plan"
 import { GoalCompleteTool } from "./goal"
 import { GoalRuntime } from "@/session/goal-runtime"
+import { SessionSpend } from "@/session/spend"
 import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
@@ -512,6 +513,7 @@ export const node = LayerNode.make({
     DesignStudio.node,
     DesignReviewServer.node,
     GoalRuntime.node,
+    SessionSpend.node,
     SessionPlan.node,
     Config.node,
     Plugin.node,
