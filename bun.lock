@@ -1134,6 +1134,8 @@
     "@effect/platform-node-shared@4.0.0-beta.83": "patches/@effect%2Fplatform-node-shared@4.0.0-beta.83.patch",
     "bun-pty@0.4.8": "patches/bun-pty@0.4.8.patch",
     "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch",
+||||||| parent of a5e31d2892 (fix(lsp): stop failed requests leaking an unhandled write error)
+    "vscode-jsonrpc@8.2.1": "patches/vscode-jsonrpc@8.2.1.patch",
     "@scriptc/runtime@0.0.35": "patches/@scriptc%2Fruntime@0.0.35.patch",
     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
     "@opentui/solid@0.4.5": "patches/@opentui%2Fsolid@0.4.5.patch",
