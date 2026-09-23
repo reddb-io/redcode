@@ -21,7 +21,7 @@ export async function openDesignReview(input: {
   readonly disabled?: string
   readonly launch: (url: string) => Promise<boolean>
 }): Promise<Notice | undefined> {
-  const root = `/design/session/${input.sessionID}`
+  const root = `/api/design/session/${input.sessionID}`
   const post = (path: string, body: unknown) => {
     const headers = new Headers(input.headers)
     headers.set("content-type", "application/json")
@@ -45,7 +45,7 @@ export async function openDesignReview(input: {
       .then((response) => (response.ok ? response.json() : undefined))
       .then((value: { url?: unknown } | undefined) => (typeof value?.url === "string" ? value.url : undefined))
       .catch(() => undefined)) ??
-    new URL(`${root}/review`, input.base).toString()
+    new URL(`/design/session/${input.sessionID}/review`, input.base).toString()
   const notices: Record<Exclude<DesignReviewPresence.Explicit, "opened">, Notice> = {
     disabled: { variant: "info", message: `Browser launch is disabled by ${input.disabled}. Design review: ${url}` },
     connected: {

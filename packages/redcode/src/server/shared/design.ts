@@ -1,21 +1,15 @@
 import type { Tool } from "@/tool/tool"
 import { appearance } from "@reddb-io/redcode-design/brand.gen"
 import { params } from "@reddb-io/redcode-design/params"
-import { DesignReviewServer } from "@/design/review-server"
 import { DesignHost } from "@/design/host"
 import { DesignFeedback } from "@/design/feedback"
+import { DesignConversation } from "@/design/conversation"
+import { eq } from "drizzle-orm"
 import { DesignRead } from "@/design/read"
-import { DesignHandoff } from "@/design/handoff"
-import { DesignFeed } from "@/design/feed"
-import { Effect, Schema, FileSystem, Stream } from "effect"
-import { Sse } from "effect/unstable/encoding"
-import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
-import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import { Effect, Schema, FileSystem } from "effect"
 import { HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
-import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
-import { DesignTable } from "@reddb-io/redcode-core/design/sql"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
@@ -32,63 +26,17 @@ import { annotations } from "@reddb-io/redcode-design/annotations"
 import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
-/** Browser JSON API shared with the review UI. Session admission remains owned by the TUI runtime. */
+/**
+ * The review page's document routes for conversations on the legacy loop. The session side (list, launches,
+ * feed, feedback, approval, permissions) is the `design.host` contract; the page still reaches its feed,
+ * feedback and approval here, through the same implementation.
+ */
 export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) {
   return Effect.gen(function* () {
     const url = new URL(request.url, "http://localhost")
     if (!DesignHost.allowed(request.headers.host)) return HttpServerResponse.empty({ status: 403 })
     const parts = url.pathname.split("/").filter(Boolean)
     if (parts[0] !== "design") return HttpServerResponse.empty({ status: 404 })
-    const db = yield* Database.Service
-    if (request.method === "GET" && parts[1] === "list" && parts.length === 2) {
-      const directory = url.searchParams.get("directory")
-      if (!directory) return HttpServerResponse.empty({ status: 400 })
-      const rows = yield* db.db
-        .select({
-          sessionID: SessionTable.id,
-          title: SessionTable.title,
-          updated: SessionTable.time_updated,
-          design: DesignTable.data,
-        })
-        .from(SessionTable)
-        .leftJoin(
-          DesignTable,
-          and(eq(SessionTable.id, DesignTable.session_id), eq(DesignTable.directory, FSUtil.resolve(directory))),
-        )
-        .where(
-          and(
-            eq(SessionTable.directory, FSUtil.resolve(directory)),
-            isNull(SessionTable.time_archived),
-            or(isNotNull(DesignTable.id), eq(SessionTable.agent, "design")),
-          ),
-        )
-        .all()
-        .pipe(Effect.orDie)
-      const conversations = rows.reduce((result, row) => {
-        const current = result.get(row.sessionID)
-        result.set(row.sessionID, {
-          sessionID: row.sessionID,
-          title: row.title,
-          updated: Math.max(current?.updated ?? 0, row.updated, row.design?.updated ?? 0),
-          designs: [
-            ...(current?.designs ?? []),
-            ...(row.design
-              ? [
-                  {
-                    id: row.design.id,
-                    name: row.design.name,
-                    revision: row.design.revision,
-                    approvedRevision: row.design.approvedRevision,
-                    ended: row.design.ended,
-                  },
-                ]
-              : []),
-          ],
-        })
-        return result
-      }, new Map<string, Design.Conversation>())
-      return HttpServerResponse.jsonUnsafe([...conversations.values()].sort((a, b) => b.updated - a.updated))
-    }
     if (parts[1] !== "session") return HttpServerResponse.empty({ status: 404 })
     const sessionID = yield* Schema.decodeUnknownEffect(SessionID)(parts[2])
     if (request.method !== "GET") {
@@ -99,6 +47,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       )
         return HttpServerResponse.empty({ status: 403 })
     }
+    const db = yield* Database.Service
     const row = yield* db.db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie)
     if (!row) return HttpServerResponse.empty({ status: 404 })
     const instances = yield* InstanceStore.Service
@@ -107,68 +56,12 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
       Effect.gen(function* () {
         const studio = yield* DesignStudio.Service
         yield* studio.assertSession(sessionID)
-        if (request.method === "GET" && parts[3] === "open") {
-          const review = yield* DesignReviewServer.Service
-          return HttpServerResponse.jsonUnsafe({
-            url: new URL(`/design/session/${sessionID}/review`, yield* review.url).toString(),
-            // Review pages following this session's feed in this server, so a client opens no second tab.
-            connected: DesignReviewPresence.shared.connected(sessionID),
-          })
-        }
-        // Clients (the TUI command, `redcode design`) claim a browser launch here, against the same presence
-        // the review feeds and the Design tool use, and give the claim back when their launch fails.
-        if (request.method === "POST" && parts[3] === "launch" && parts.length === 4) {
-          const review = yield* DesignReviewServer.Service
-          const body = yield* request.json.pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ explicit: Schema.optional(Schema.Boolean) }))),
-            Effect.orElseSucceed(() => ({ explicit: undefined })),
-          )
-          return HttpServerResponse.jsonUnsafe({
-            url: new URL(`/design/session/${sessionID}/review`, yield* review.url).toString(),
-            ...DesignReviewPresence.shared.claim(sessionID, { explicit: body.explicit === true }),
-          })
-        }
-        if (request.method === "POST" && parts[3] === "launch" && parts[4] === "release" && parts.length === 5) {
-          const body = yield* request.json.pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ token: Schema.Number }))),
-            Effect.option,
-          )
-          if (body._tag === "None") return HttpServerResponse.empty({ status: 400 })
-          DesignReviewPresence.shared.release(sessionID, body.value.token)
-          return HttpServerResponse.empty({ status: 204 })
-        }
         if (request.method === "GET" && parts[3] === "feed" && parts.length === 4) {
-          // `after` is accepted for parity with the V2 route but not applied: the V1 bus has no durable
-          // sequence, so every connection replays the whole transcript and the page merges repeats by id.
+          // `after` is accepted for parity with the V2 route but not applied: see DesignConversation.feed.
           yield* Schema.decodeUnknownEffect(Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt)))(
             url.searchParams.get("after") ?? "0",
           )
-          const feed = yield* DesignFeed.Service
-          const encoded = (yield* feed.stream(sessionID)).pipe(
-            Stream.map(
-              (event): Sse.Event => ({
-                _tag: "Event",
-                event: "message",
-                id: undefined,
-                data: JSON.stringify(Schema.encodeSync(Design.FeedEvent)(event)),
-              }),
-            ),
-            Stream.pipeThroughChannel(Sse.encode()),
-            // A subscriber is a connected review page; publishing does not open another tab while it lasts.
-            (stream) => Stream.unwrap(Effect.as(DesignReviewPresence.hold(sessionID), stream)),
-          )
-          const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
-          return HttpServerResponse.stream(
-            encoded.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText),
-            {
-              contentType: "text/event-stream",
-              headers: {
-                "cache-control": "no-cache, no-transform",
-                "x-accel-buffering": "no",
-                "x-content-type-options": "nosniff",
-              },
-            },
-          )
+          return yield* DesignConversation.feed(sessionID)
         }
         return yield* studio.use(
           Effect.gen(function* () {
@@ -257,20 +150,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             if (parts[4] === "refresh" && request.method === "POST") return reply(yield* store.refresh(id))
             // Publishing/restoring can read application dependencies: use TUI permissions, never a second permission queue.
             if ((parts[4] === "revision" || parts[4] === "restore") && request.method === "POST") {
-              const { Permission } = yield* Effect.promise(() => import("@/permission"))
-              const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
-              const permissions = yield* Permission.Service
-              const agents = yield* Agent.Service
-              const session = yield* studio.assertSession(sessionID)
-              const agent = yield* agents.get(session.agent ?? "design")
-              const ask = (input: Parameters<Tool.Context["ask"]>[0]) =>
-                permissions
-                  .ask({
-                    ...input,
-                    sessionID,
-                    ruleset: Permission.merge(agent!.permission, session.permission ?? []),
-                  })
-                  .pipe(Effect.orDie)
+              const permission = yield* DesignConversation.ask(sessionID)
+              const ask = (input: Parameters<Tool.Context["ask"]>[0]) => permission(input).pipe(Effect.orDie)
               const read = yield* DesignRead.make(ask)
               const tooling = yield* DesignRead.tooling(yield* store.get(id, sessionID), ask)
               if (parts[4] === "revision")
@@ -286,15 +167,8 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
                 ),
               )
             }
-            if (parts[4] === "approve" && request.method === "POST") {
-              const input = yield* json(Design.Approve)
-              const approved = yield* DesignHandoff.approve(sessionID, id, input.revision, input.variant)
-              if (approved.resume) {
-                const feedback = yield* DesignFeedback.Service
-                yield* feedback.resume(sessionID)
-              }
-              return reply(approved)
-            }
+            if (parts[4] === "approve" && request.method === "POST")
+              return reply(yield* DesignConversation.approve(sessionID, id, yield* json(Design.Approve)))
             if (parts[4] === "approval" && parts[5] && request.method === "GET")
               return reply(yield* store.approval(id, parts[5]))
             if (parts[4] === "feedback" && request.method === "POST") {

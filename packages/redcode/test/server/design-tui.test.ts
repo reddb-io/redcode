@@ -279,8 +279,8 @@ test("Design picker groups prototypes by conversation and excludes other workspa
       })
       expect(response.status).toBe(200)
     }
-    expect((await request(first.path, "/design/list")).status).toBe(400)
-    const list = `/design/list?directory=${encodeURIComponent(first.path)}`
+    expect((await request(first.path, "/api/design/list")).status).toBe(400)
+    const list = `/api/design/list?directory=${encodeURIComponent(first.path)}`
     const response = await request(first.path, list)
     expect(response.status).toBe(200)
     const conversations = await response.json()
@@ -298,7 +298,7 @@ test("Design picker groups prototypes by conversation and excludes other workspa
     ])
     expect(conversation.designs[0]).not.toHaveProperty("root")
     expect(
-      await (await request(second.path, `/design/list?directory=${encodeURIComponent(second.path)}`)).json(),
+      await (await request(second.path, `/api/design/list?directory=${encodeURIComponent(second.path)}`)).json(),
     ).toEqual([])
     expect((await request(first.path, `/session/${session.id}`, "DELETE")).status).toBe(200)
     expect(await (await request(first.path, list)).json()).toMatchObject([{ sessionID: pending.id, designs: [] }])
@@ -566,7 +566,7 @@ test("legacy feed reports a variant operation pending while an earlier turn work
 }, 90000)
 
 // The Design tool, the TUI command and `redcode design` claim launches against these counts.
-test("the legacy launch route claims once, gives a failed launch back and refuses while a page is connected", async () => {
+test("the design.host launch route claims once, gives a failed launch back and refuses while a page is connected", async () => {
   await using tmp = await tmpdir({ git: true })
   const server = HttpRouter.toWebHandler(HttpApiApp.createRoutes(), { disableLogger: true })
   const request = (route: string, init: RequestInit = {}) =>
@@ -578,14 +578,14 @@ test("the legacy launch route claims once, gives a failed launch back and refuse
       HttpApiApp.context,
     )
   const connected = async (id: string) =>
-    (await (await request(`/design/session/${id}/open`)).json()).connected as number
+    (await (await request(`/api/design/session/${id}/open`)).json()).connected as number
   try {
     const session = await (
       await request("/session", { method: "POST", body: JSON.stringify({ agent: "design" }) })
     ).json()
     expect(await connected(session.id)).toBe(0)
     const launch = async (body: unknown) =>
-      (await request(`/design/session/${session.id}/launch`, { method: "POST", body: JSON.stringify(body) })).json()
+      (await request(`/api/design/session/${session.id}/launch`, { method: "POST", body: JSON.stringify(body) })).json()
     // The TUI command opens explicitly; the agent publishes before the page connects: no second tab.
     const first = await launch({ explicit: true })
     expect(first).toMatchObject({
@@ -594,14 +594,14 @@ test("the legacy launch route claims once, gives a failed launch back and refuse
     })
     expect(await launch({})).toMatchObject({ outcome: "pending" })
     // A launch that opened no browser gives its claim back, so the next publish tries again.
-    const release = await request(`/design/session/${session.id}/launch/release`, {
+    const release = await request(`/api/design/session/${session.id}/launch/release`, {
       method: "POST",
       body: JSON.stringify({ token: first.token }),
     })
     expect(release.status).toBe(204)
     expect((await launch({})).outcome).toBe("claimed")
     const abort = new AbortController()
-    const feed = await request(`/design/session/${session.id}/feed`, { signal: abort.signal })
+    const feed = await request(`/api/design/session/${session.id}/feed`, { signal: abort.signal })
     expect(feed.status).toBe(200)
     const reader = feed.body!.getReader()
     expect((await reader.read()).done).toBe(false)
