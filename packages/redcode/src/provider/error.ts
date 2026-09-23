@@ -231,8 +231,8 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
 /**
  * What a 9Router-family router (RedRouter included) says about a failed request: why it failed and
  * whether waiting helps. Every account for the model is cooling down or overloaded: retry, at the
- * instant `X-9Router-Retry-At` names (see SessionRetry.delay). No active credentials: connecting an
- * account is the fix, so it is not retried.
+ * instant `X-9Router-Retry-At` names, capped like any retry-after at SessionRetry.RETRY_MAX_DELAY (see
+ * SessionRetry.delay). No active credentials: connecting an account is the fix, so it is not retried.
  */
 function routerRetry(headers: Record<string, string> | undefined) {
   const reason = ProviderRouter.header(headers, ProviderRouter.Header.reason)

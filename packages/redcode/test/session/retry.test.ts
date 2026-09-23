@@ -89,9 +89,14 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, longError)).toBe(700000)
   })
 
-  test("caps oversized header delays to the runtime timer limit", () => {
-    const error = apiError({ "retry-after-ms": "999999999999" })
-    expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
+  test("caps provider-requested delays at fifteen minutes", () => {
+    expect(SessionRetry.RETRY_MAX_DELAY).toBe(900_000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after-ms": "999999999999" }))).toBe(900_000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after": "3600" }))).toBe(900_000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after": new Date(Date.now() + 3_600_000).toUTCString() }))).toBe(
+      900_000,
+    )
+    expect(SessionRetry.delay(1, apiError({ "retry-after-ms": "899999" }))).toBe(899_999)
   })
 
   it.instance("policy updates retry status and increments attempts", () =>
@@ -464,6 +469,11 @@ describe("router retry headers", () => {
     const delay = SessionRetry.delay(1, apiError({ "x-9router-retry-at": at, "retry-after": "44" }))
     expect(delay).toBeGreaterThan(40_000)
     expect(delay).toBeLessThanOrEqual(42_000)
+  })
+
+  test("caps a distant X-9Router-Retry-At at fifteen minutes", () => {
+    const at = new Date(Date.now() + 3_600_000).toISOString()
+    expect(SessionRetry.delay(1, apiError({ "x-9router-retry-at": at }))).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 
   test("a cooling-down account is retried and says why", () => {
