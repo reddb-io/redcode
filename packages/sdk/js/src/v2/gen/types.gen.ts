@@ -2390,6 +2390,13 @@ export type Model = {
    * The router in between when another router serves the model, e.g. a remote RedRouter.
    */
   via?: string
+  /**
+   * For a router combo planned by its lead member (a fallback combo), each member and the variants it takes, the lead first. While another member serves a session, that member's variants apply.
+   */
+  comboMembers?: Array<{
+    id: string
+    variants: Array<string>
+  }>
 }
 
 export type RouterUpstream = {

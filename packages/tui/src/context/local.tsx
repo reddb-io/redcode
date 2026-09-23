@@ -16,7 +16,7 @@ import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
-import { migrateModelState, resolveModel, routerLabel } from "../util/model-origin"
+import { latestServed, migrateModelState, resolveModel, routerLabel, servingVariants } from "../util/model-origin"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -479,8 +479,13 @@ export const {
             const provider = sync.data.provider.find((item) => item.id === m.providerID)
             const info = provider?.models[m.modelID]
             if (!info?.variants) return []
+            // While a fallback combo's member other than its lead serves this session, its levels apply.
+            const served =
+              route.data.type === "session"
+                ? latestServed(sync.data.message[route.data.sessionID] ?? [], (id) => sync.data.part[id] ?? [], m)
+                : undefined
             // `auto` first when the model has effort levels for it to choose between.
-            return ReasoningAuto.options(Object.keys(info.variants))
+            return ReasoningAuto.options(servingVariants(info, served) ?? Object.keys(info.variants))
           },
           set(value: string | undefined) {
             const m = currentModel()

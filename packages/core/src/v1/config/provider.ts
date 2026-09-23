@@ -12,7 +12,8 @@ const InterleavedField = Schema.Union([
 ])
 
 /**
- * Settings RedRouter reports a model accepts. A combo reports its strictest member's: the smallest
+ * Settings RedRouter reports a model accepts. A combo reports its lead member's when it is a
+ * fallback combo (`parameters_basis: "lead"`), and otherwise its strictest member's: the smallest
  * limits, the thinking levels every member accepts, and false when any member refuses to disable
  * thinking or to be forced to call a tool.
  */
@@ -38,6 +39,21 @@ export const RouterParameters = Schema.Struct({
   ),
 })
 export type RouterParameters = typeof RouterParameters.Type
+
+/**
+ * What a combo's `parameters` describe: its lead member's (`lead`, a fallback combo, served by its
+ * lead unless the lead fails) or its strictest member's (`strictest`, a combo that may land on any
+ * member). Older RedRouters do not say, and their combo parameters are the strictest.
+ */
+export const RouterParametersBasis = Schema.Literals(["lead", "strictest"])
+export type RouterParametersBasis = typeof RouterParametersBasis.Type
+
+/** One combo member's own parameters, as RedRouter lists them under `member_parameters`. */
+export const RouterMemberParameters = Schema.Struct({
+  id: Schema.String,
+  parameters: Schema.optional(RouterParameters),
+})
+export type RouterMemberParameters = typeof RouterMemberParameters.Type
 
 /** The provider behind a routed model, as RedRouter's model list reports it. */
 export const RouterUpstream = Schema.Struct({
@@ -129,8 +145,16 @@ export const Model = Schema.Struct({
       thinking_levels: Schema.optional(Schema.Array(Schema.String)),
       capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
       parameters: Schema.optional(RouterParameters),
+      parameters_basis: Schema.optional(RouterParametersBasis).annotate({
+        description:
+          "Whose parameters `parameters` are: the lead member's (a fallback combo) or the strictest member's.",
+      }),
       members: Schema.optional(Schema.Array(Schema.String)).annotate({
         description: "The provider/model ids a combo can route to, nested combos expanded.",
+      }),
+      member_parameters: Schema.optional(Schema.Array(RouterMemberParameters)).annotate({
+        description:
+          "Each combo member's own parameters. When another member than the lead serves a combo whose basis is `lead`, a session plans for that member's.",
       }),
       provider: Schema.optional(RouterUpstream).annotate({
         description: "The provider behind the model, as the router reported it.",

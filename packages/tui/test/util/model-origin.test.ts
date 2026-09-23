@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import type { Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
+import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
 import {
   catalogUpdateMessage,
+  latestServed,
   migrateModelState,
   modeBadge,
   modeID,
@@ -11,6 +12,7 @@ import {
   resolveModel,
   routerLabel,
   servedModel,
+  servingVariants,
 } from "../../src/util/model-origin"
 
 function model(providerID: string, id: string, extra: Partial<Model> = {}): Model {
@@ -224,5 +226,55 @@ describe("model origin", () => {
     expect(modeID(sol, "review")).toBe("codex/gpt-5.6-sol-review")
     expect(modeID({ ...sol, routerVariants: undefined }, "review")).toBe("codex/gpt-5.6-sol-review")
     expect(modeID(sol, "high")).toBeUndefined()
+  })
+
+  test("follows the variants of the fallback combo member that served the session last", () => {
+    const assistant = (id: string, modelID: string): Message => ({
+      id,
+      sessionID: "ses",
+      role: "assistant",
+      time: { created: 0 },
+      parentID: "msg_user",
+      modelID,
+      providerID: "red-router",
+      mode: "build",
+      agent: "build",
+      path: { cwd: "/", root: "/" },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    const finish = (messageID: string, served?: string): Part => ({
+      id: `prt_${messageID}`,
+      sessionID: "ses",
+      messageID,
+      type: "step-finish",
+      reason: "stop",
+      ...(served ? { servedModel: served } : {}),
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    const parts: Record<string, Part[]> = {
+      one: [finish("one", "cc/other")],
+      two: [finish("two")],
+      three: [finish("three", "cc/lead")],
+    }
+    const fast = { providerID: "red-router", modelID: "fast" }
+    const messages = [assistant("one", "fast"), assistant("two", "fast"), assistant("three", "slow")]
+    expect(latestServed(messages, (id) => parts[id] ?? [], fast)).toBe("cc/other")
+    expect(latestServed([], (id) => parts[id] ?? [], fast)).toBeUndefined()
+
+    const combo = model("red-router", "fast", {
+      comboMembers: [
+        { id: "cc/lead", variants: ["none", "low", "high"] },
+        { id: "cc/other", variants: ["low", "medium"] },
+      ],
+    })
+    expect(servingVariants(combo, "cc/other")).toEqual(["low", "medium"])
+    expect(servingVariants(combo, "other")).toEqual(["low", "medium"])
+    // The lead, an unlisted member, no report and a combo without members keep the model's own variants.
+    expect(servingVariants(combo, "cc/lead")).toBeUndefined()
+    expect(servingVariants(combo, "cc/third")).toBeUndefined()
+    expect(servingVariants(combo, undefined)).toBeUndefined()
+    expect(servingVariants(model("red-router", "smart"), "cc/other")).toBeUndefined()
   })
 })

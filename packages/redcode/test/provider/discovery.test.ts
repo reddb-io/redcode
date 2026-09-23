@@ -348,3 +348,76 @@ test("keeps RedRouter's upstream provider, earlier ids, collapsed variants and r
     provider: { id: "kilo-code", slug: "kilo-code", name: "kilo-code" },
   })
 })
+
+test("keeps a combo's parameter basis and each member's parameters", () => {
+  expect(
+    ProviderDiscovery.routerInfo({
+      id: "fast",
+      owned_by: "combo",
+      strategy: "fallback",
+      parameters: { context_length: 1000000, max_completion_tokens: 64000 },
+      parameters_basis: "lead",
+      parameters_strict: { context_length: 200000 },
+      members: ["cc/lead", "cc/other"],
+      member_parameters: [
+        { id: "cc/lead", parameters: { context_length: 1000000, max_completion_tokens: 64000 } },
+        { id: "cc/other", parameters: { context_length: 200000, thinking_levels: ["low"], forced_tool_choice: false } },
+        { id: "cc/unknown", parameters: "none" },
+        { parameters: { context_length: 1 } },
+      ],
+    }),
+  ).toEqual({
+    owned_by: "combo",
+    strategy: "fallback",
+    parameters: { context_length: 1000000, max_completion_tokens: 64000 },
+    parameters_basis: "lead",
+    members: ["cc/lead", "cc/other"],
+    member_parameters: [
+      { id: "cc/lead", parameters: { context_length: 1000000, max_completion_tokens: 64000 } },
+      { id: "cc/other", parameters: { context_length: 200000, thinking_levels: ["low"], forced_tool_choice: false } },
+      { id: "cc/unknown" },
+    ],
+  })
+  // A router before per-member parameters, or a basis it may add later, reads as before.
+  expect(
+    ProviderDiscovery.routerInfo({
+      id: "fast",
+      owned_by: "combo",
+      parameters_basis: "newest",
+      members: ["cc/lead"],
+    }),
+  ).toEqual({ owned_by: "combo", members: ["cc/lead"] })
+})
+
+it.live("reads a fallback combo's lead parameters and every member's from the model list", () =>
+  Effect.gen(function* () {
+    const server = yield* serve(() =>
+      Response.json({
+        data: [
+          {
+            id: "fast",
+            owned_by: "combo",
+            strategy: "fallback",
+            members: ["cc/lead", "cc/other"],
+            parameters: { context_length: 1000000, max_completion_tokens: 64000 },
+            parameters_basis: "lead",
+            member_parameters: [
+              { id: "cc/lead", parameters: { context_length: 1000000, max_completion_tokens: 64000 } },
+              { id: "cc/other", parameters: { context_length: 200000, max_completion_tokens: 32000 } },
+            ],
+          },
+        ],
+      }),
+    )
+    const http = yield* HttpClient.HttpClient
+    const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" })
+    const fast = result.models.find((model) => model.id === "fast")
+    // The lead's limits are the combo's: a member that serves instead is followed per session.
+    expect(fast?.limit).toEqual({ context: 1000000, output: 64000 })
+    expect(fast?.router?.parameters_basis).toBe("lead")
+    expect(fast?.router?.member_parameters).toEqual([
+      { id: "cc/lead", parameters: { context_length: 1000000, max_completion_tokens: 64000 } },
+      { id: "cc/other", parameters: { context_length: 200000, max_completion_tokens: 32000 } },
+    ])
+  }),
+)

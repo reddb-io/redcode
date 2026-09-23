@@ -31,6 +31,7 @@ import { hardLimit, usable as usableTokens } from "./overflow"
 import { SessionPreflight } from "./preflight"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { ProviderTransform } from "@/provider/transform"
+import { ComboMember } from "@/provider/combo-member"
 import { contextOverflowNumbers } from "@reddb-io/redcode-llm"
 import { Token } from "@/util/token"
 import { SystemPrompt } from "./system"
@@ -930,7 +931,8 @@ const layer = Layer.effect(
         yield* Effect.sleep(250)
         exit = yield* attempt()
       }
-      if (Exit.isSuccess(exit)) return exit.value
+      // A fallback combo's member other than its lead that served the session is planned for.
+      if (Exit.isSuccess(exit)) return ComboMember.model(sessionID, exit.value)
       const err = Cause.squash(exit.cause)
       const message = Provider.ModelNotFoundError.isInstance(err)
         ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
@@ -2798,8 +2800,14 @@ const layer = Layer.effect(
             // is compacted first and, once compaction has had its two chances, not sent at all.
             const requestEstimate = overhead + Token.estimate(JSON.stringify(stepMessages))
             const cfg = yield* config.get()
-            // What discovery saved about the model: a router's parameters say what it accepts.
-            const declared = cfg.provider?.[model.providerID]?.models?.[model.id]
+            // What discovery saved about the model: a router's parameters say what it accepts, and
+            // while a fallback combo's other member serves, that member's do.
+            const routerParameters = ComboMember.effectiveRouterParameters(
+              sessionID,
+              model.providerID,
+              model.id,
+              cfg.provider?.[model.providerID]?.models?.[model.id],
+            )
             const observed = yield* limits.get(
               model.providerID,
               model.id,
@@ -2892,7 +2900,7 @@ const layer = Layer.effect(
               // Models that always think reject a forced tool choice; they are asked for the tool instead.
               toolChoice:
                 format.type === "json_schema"
-                  ? ProviderTransform.supportsForcedToolChoice(model, declared)
+                  ? ProviderTransform.supportsForcedToolChoice(model, routerParameters)
                     ? "required"
                     : "auto"
                   : undefined,
@@ -2960,7 +2968,7 @@ const layer = Layer.effect(
               if (format.type === "json_schema") {
                 // Without a forced tool choice the model may answer in text; remind it before failing.
                 if (
-                  !ProviderTransform.supportsForcedToolChoice(model, declared) &&
+                  !ProviderTransform.supportsForcedToolChoice(model, routerParameters) &&
                   structuredReminders < (format.retryCount ?? 2)
                 ) {
                   structuredReminders++

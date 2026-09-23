@@ -20,9 +20,11 @@ export const RouterInfo = Schema.Struct({
   }),
   capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   parameters: Schema.optional(ConfigProviderV1.RouterParameters),
+  parameters_basis: Schema.optional(ConfigProviderV1.RouterParametersBasis),
   members: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "The provider/model ids a combo can route to, nested combos expanded.",
   }),
+  member_parameters: Schema.optional(Schema.Array(ConfigProviderV1.RouterMemberParameters)),
   provider: Schema.optional(ConfigProviderV1.RouterUpstream).annotate({
     description: "The provider behind the model: the one RedRouter sends it to, or `combo` for a combo.",
   }),
@@ -99,7 +101,9 @@ const Catalog = Schema.Struct({
       thinking_levels: Schema.optional(Schema.Unknown),
       capabilities: Schema.optional(Schema.Unknown),
       parameters: Schema.optional(Schema.Unknown),
+      parameters_basis: Schema.optional(Schema.Unknown),
       members: Schema.optional(Schema.Unknown),
+      member_parameters: Schema.optional(Schema.Unknown),
       provider: Schema.optional(Schema.Unknown),
       aliases: Schema.optional(Schema.Unknown),
       variants: Schema.optional(Schema.Unknown),
@@ -360,12 +364,18 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
   const upstream = routerUpstream(item.provider)
   const aliases = strings(item.aliases)?.filter((alias) => alias !== item.id && validModelID(alias))
   const variants = routerVariants(item.variants)
+  const memberParameters = routerMemberParameters(item.member_parameters)
+  // Annotated so the literal is not widened to string inside the object below.
+  const basis: ConfigProviderV1.RouterParametersBasis | undefined =
+    item.parameters_basis === "lead" ? "lead" : item.parameters_basis === "strictest" ? "strictest" : undefined
   const info = {
     ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),
     ...(levels?.length ? { thinking_levels: levels } : {}),
     ...(isRecord(item.capabilities) ? { capabilities: item.capabilities } : {}),
     ...(parameters ? { parameters } : {}),
+    ...(basis ? { parameters_basis: basis } : {}),
     ...(members?.length ? { members } : {}),
+    ...(memberParameters?.length ? { member_parameters: memberParameters } : {}),
     ...(upstream ? { provider: upstream } : {}),
     ...(aliases?.length ? { aliases } : {}),
     ...(variants?.length ? { variants } : {}),
@@ -415,10 +425,24 @@ function routerVariants(value: unknown): ConfigProviderV1.RouterVariant[] | unde
 }
 
 /**
+ * RedRouter's `member_parameters`: each combo member's own parameters, so the member a response
+ * reports serving can be planned for without reading the catalog again. An entry without an id is
+ * dropped; one without valid parameters keeps its id, which says the router knows none.
+ */
+function routerMemberParameters(value: unknown): ConfigProviderV1.RouterMemberParameters[] | undefined {
+  if (!Array.isArray(value)) return
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || !validModelID(item.id)) return []
+    const parameters = routerParameters(item.parameters)
+    return [{ id: item.id, ...(parameters ? { parameters } : {}) }]
+  })
+}
+
+/**
  * RedRouter's `parameters`, keeping only fields of the documented type so a malformed value never
  * reaches (and invalidates) the configuration file. Unknown fields are dropped.
  */
-function routerParameters(value: unknown): ConfigProviderV1.RouterParameters | undefined {
+export function routerParameters(value: unknown): ConfigProviderV1.RouterParameters | undefined {
   if (!isRecord(value)) return
   const flag = (item: unknown) => (typeof item === "boolean" ? item : undefined)
   const modalities = isRecord(value.modalities) ? value.modalities : {}
