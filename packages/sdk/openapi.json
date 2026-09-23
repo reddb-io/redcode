@@ -33003,6 +33003,20 @@
                 "type": "integer",
                 "exclusiveMinimum": 0
               },
+              "subagent_limits": {
+                "type": "object",
+                "properties": {
+                  "concurrent": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "per_request": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
               "tool_timeout": {
                 "anyOf": [
                   {

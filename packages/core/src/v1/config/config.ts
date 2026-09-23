@@ -306,6 +306,20 @@ export const Info = Schema.Struct({
         description:
           "How many background subagents one session may have running at once; past it the task tool refuses and asks the model to wait or run the task inline (default: 4)",
       }),
+      subagent_limits: Schema.optional(
+        Schema.Struct({
+          concurrent: Schema.optional(PositiveInt).annotate({
+            description:
+              "How many foreground subagents one session may run at the same time; past it the task tool refuses and asks the model to wait for one (default: 4)",
+          }),
+          per_request: Schema.optional(PositiveInt).annotate({
+            description:
+              "How many new subagents one session may start for a single user message; past it the task tool refuses and asks the model to finish with what it has (default: 12)",
+          }),
+        }),
+      ).annotate({
+        description: "Fan-out caps on the task tool. Nesting depth is bounded separately by subagent_depth.",
+      }),
       tool_timeout: Schema.optional(Schema.Union([Schema.Literal(false), PositiveInt])).annotate({
         description:
           "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",

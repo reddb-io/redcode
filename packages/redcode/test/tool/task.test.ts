@@ -25,6 +25,12 @@ import { disposeAllInstances } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
+import { Todo } from "../../src/session/todo"
+import path from "path"
 
 afterEach(async () => {
   await disposeAllInstances()
@@ -35,30 +41,84 @@ const ref = {
   modelID: ModelV2.ID.make("test-model"),
 }
 
+/** What the fake System One answers: every question in `flagged` is an error, the rest are clean. */
+const s1 = { calls: 0, flagged: new Set<string>(), down: false }
+
+const intelligenceNode = makeGlobalNode({
+  service: Intelligence.Service,
+  deps: [Database.node],
+  layer: Layer.effect(
+    Intelligence.Service,
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const service = yield* Intelligence.make(
+        path.join(process.env.XDG_CACHE_HOME!, "task-intelligence", crypto.randomUUID()),
+        { get: () => Effect.succeed(undefined), list: () => Effect.succeed([]), create: () => Effect.die("unused") },
+        Object.assign(
+          async (_request: string | URL | Request, init?: RequestInit) => {
+            s1.calls++
+            if (s1.down) return new Response("unavailable", { status: 503 })
+            const body = JSON.parse(String(init?.body)) as { questions: Record<string, Intelligence.Question> }
+            return Response.json({
+              model: "jev-test",
+              usage: { input_tokens: 1, output_tokens: 1 },
+              answers: Object.fromEntries(
+                Object.keys(body.questions).map((id) => [id, { type: "noul", noul: s1.flagged.has(id) ? 1 : 0 }]),
+              ),
+            })
+          },
+          { preconnect() {} },
+        ),
+        {},
+        database.db,
+      )
+      yield* service.save({
+        settings: {
+          enabled: true,
+          reasoning: "dual",
+          onboarding: "completed",
+          principal: { providerID: ProviderV2.ID.make("test"), id: ModelV2.ID.make("test-model") },
+          evaluator: { transport: "typesafe", baseURL: "https://system-one.test/v1", model: "jev-test" },
+        },
+      })
+      return service
+    }),
+  ),
+})
+
+const nodes = () =>
+  LayerNode.group([
+    Agent.node,
+    BackgroundJob.node,
+    EventV2Bridge.node,
+    Config.node,
+    CrossSpawnSpawner.node,
+    Session.node,
+    SessionProjector.node,
+    SessionRunState.node,
+    SessionStatus.node,
+    ToolOutputBridge.node,
+    ToolRegistry.node,
+    Database.node,
+    RuntimeFlags.node,
+    Ripgrep.node,
+    Intelligence.node,
+    Todo.node,
+    SessionPlan.node,
+  ])
+
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
-  LayerNode.compile(
-    LayerNode.group([
-      Agent.node,
-      BackgroundJob.node,
-      EventV2Bridge.node,
-      Config.node,
-      CrossSpawnSpawner.node,
-      Session.node,
-      SessionProjector.node,
-      SessionRunState.node,
-      SessionStatus.node,
-      ToolOutputBridge.node,
-      ToolRegistry.node,
-      Database.node,
-      RuntimeFlags.node,
-      Ripgrep.node,
-    ]),
-    [[RuntimeFlags.node, RuntimeFlags.layer(flags)]],
-  )
+  LayerNode.compile(nodes(), [[RuntimeFlags.node, RuntimeFlags.layer(flags)]])
 
 const it = testEffect(layer())
 const background = testEffect(layer({ experimentalBackgroundSubagents: true }))
 const noBackground = testEffect(layer({ experimentalBackgroundSubagents: false }))
+const dual = testEffect(
+  LayerNode.compile(nodes(), [
+    [RuntimeFlags.node, RuntimeFlags.layer({})],
+    [Intelligence.node, intelligenceNode],
+  ]),
+)
 
 function defer<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -1203,5 +1263,241 @@ describe("tool.task", () => {
         expect((yield* Fiber.join(inline)).output).toContain("subagent done")
       }),
     { config: { experimental: { background_subagents_max: 1 } } },
+  )
+})
+
+const brief = {
+  description: "inspect bug",
+  prompt: "Find where the cache key is built in src/cache and explain why two tenants can collide.",
+  subagent_type: "general",
+  scope: ["src/cache/**"],
+  done_criteria: ["the function that builds the key is named with its file and line"],
+  return_format: "file:line and a two-sentence explanation",
+}
+
+function context(chat: SessionID, assistant: MessageID, promptOps: TaskPromptOps, extra?: Record<string, unknown>) {
+  return {
+    sessionID: chat,
+    messageID: assistant,
+    agent: "build",
+    abort: new AbortController().signal,
+    callID: "call_task",
+    extra: { promptOps, ...extra },
+    messages: [],
+    metadata: () => Effect.void,
+    ask: () => Effect.void,
+  }
+}
+
+const failure = (exit: Exit.Exit<unknown, unknown>) => (Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "")
+
+describe("tool.task brief review", () => {
+  dual.instance("a brief S1 rejects fails the call with the issues and launches nothing", () =>
+    Effect.gen(function* () {
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set(["missing_done_criteria", "missing_context"])
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      let prompted = false
+      const exit = yield* def
+        .execute(brief, context(chat.id, assistant.id, stubOps({ onPrompt: () => (prompted = true) })))
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(failure(exit)).toContain("needs revision")
+      expect(failure(exit)).toContain("missing_done_criteria")
+      expect(failure(exit)).toContain("done_criteria")
+      expect(failure(exit)).toContain("blank context")
+      expect(s1.calls).toBeGreaterThan(0)
+      expect(prompted).toBe(false)
+      expect(yield* sessions.children(chat.id)).toHaveLength(0)
+    }),
+  )
+
+  dual.instance("a revised brief S1 accepts proceeds and is kept in the child's metadata", () =>
+    Effect.gen(function* () {
+      s1.down = false
+      s1.flagged = new Set(["missing_done_criteria"])
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const seen: SessionPrompt.PromptInput[] = []
+      const ctx = context(chat.id, assistant.id, stubOps({ onPrompt: (input) => void seen.push(input) }))
+
+      expect(Exit.isFailure(yield* def.execute({ ...brief, done_criteria: undefined }, ctx).pipe(Effect.exit))).toBe(
+        true,
+      )
+      s1.flagged = new Set()
+      const result = yield* def.execute(brief, ctx)
+
+      expect(result.output).toContain("done")
+      expect(result.output).not.toContain("<brief_review")
+      expect(result.metadata.brief?.verdict).toBe("verified")
+      const stored = SubagentReview.fromMetadata((yield* sessions.get(result.metadata.sessionId)).metadata)
+      expect(stored?.verdict).toBe("verified")
+      expect(stored?.brief).toBe(brief.prompt)
+      expect(stored?.scope).toEqual(brief.scope)
+      expect(stored?.criteria).toEqual(brief.done_criteria)
+      expect(stored?.returnFormat).toBe(brief.return_format)
+      expect(stored?.parentSessionID).toBe(chat.id)
+      expect(stored?.callID).toBe("call_task")
+      expect(stored?.briefEvaluationID).toBe(result.metadata.brief?.evaluationID)
+      expect(stored?.writeCapable).toBe(true)
+      // The subagent reads the structured half of its brief after the prompt.
+      const text = seen[0]?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n") ?? ""
+      expect(text).toContain("- src/cache/**")
+      expect(text).toContain(brief.done_criteria[0])
+    }),
+  )
+
+  dual.instance("a second rejection for the same request proceeds with a warning", () =>
+    Effect.gen(function* () {
+      s1.down = false
+      s1.flagged = new Set(["overreach"])
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const ctx = context(chat.id, assistant.id, stubOps())
+
+      const first = yield* def.execute(brief, ctx).pipe(Effect.exit)
+      expect(failure(first)).toContain("overreach")
+      const second = yield* def.execute({ ...brief, prompt: `${brief.prompt} Do not change any file.` }, ctx)
+
+      expect(second.output).toContain(`<brief_review verdict="needs_revision">`)
+      expect(second.output).toContain("overreach")
+      expect(second.output).toContain("done")
+      expect(second.metadata.brief?.verdict).toBe("needs_revision")
+    }),
+  )
+
+  dual.instance("unavailable S1 proceeds with a visible warning, never a silent approval", () =>
+    Effect.gen(function* () {
+      s1.down = true
+      s1.flagged = new Set()
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const result = yield* def.execute(brief, context(chat.id, assistant.id, stubOps()))
+      s1.down = false
+
+      expect(result.output).toContain(`<brief_review verdict="inconclusive">`)
+      expect(result.output).toContain("S1 could not review the brief")
+      expect(result.metadata.brief?.verdict).toBe("inconclusive")
+    }),
+  )
+
+  dual.instance("a brief the user wrote, from a command or an @mention, is not reviewed", () =>
+    Effect.gen(function* () {
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set(Object.keys(SubagentReview.briefQuestions))
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const result = yield* def.execute(
+        { description: "review", prompt: "review", subagent_type: "general" },
+        context(chat.id, assistant.id, stubOps(), { bypassAgentCheck: true }),
+      )
+
+      expect(s1.calls).toBe(0)
+      expect(result.output).not.toContain("<brief_review")
+      expect(SubagentReview.fromMetadata((yield* sessions.get(result.metadata.sessionId)).metadata)?.verdict).toBe(
+        "skipped",
+      )
+    }),
+  )
+
+  dual.instance("single reasoning checks structure only, never calls S1, and labels the result unverified", () =>
+    Effect.gen(function* () {
+      const intelligence = yield* Intelligence.Service
+      yield* intelligence.save({ settings: { ...(yield* intelligence.read()), reasoning: "single" } })
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set(Object.keys(SubagentReview.briefQuestions))
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const result = yield* def.execute(
+        { description: "inspect bug", prompt: "look into the cache key path", subagent_type: "general" },
+        context(chat.id, assistant.id, stubOps()),
+      )
+
+      expect(s1.calls).toBe(0)
+      expect(result.output).toContain(`<brief_review verdict="unverified">`)
+      expect(result.output).toContain(Intelligence.UNVERIFIED)
+      expect(result.output).toContain("No done_criteria")
+      expect(result.metadata.brief?.verdict).toBe("unverified")
+      expect(SubagentReview.fromMetadata((yield* sessions.get(result.metadata.sessionId)).metadata)?.verdict).toBe(
+        "unverified",
+      )
+    }),
+  )
+
+  it.instance("an empty prompt is refused in every mode", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const exit = yield* def
+        .execute({ ...brief, prompt: "  " }, context(chat.id, assistant.id, stubOps()))
+        .pipe(Effect.exit)
+
+      expect(failure(exit)).toContain("empty_prompt")
+      expect(yield* sessions.children(chat.id)).toHaveLength(0)
+    }),
+  )
+})
+
+describe("tool.task fan-out caps", () => {
+  it.instance(
+    "refuses a foreground subagent past the session's concurrency cap",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        const ready = yield* Deferred.make<void>()
+        const done = yield* Deferred.make<void>()
+        const promptOps: TaskPromptOps = {
+          cancel: () => Effect.void,
+          resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
+          prompt: (input) =>
+            Deferred.succeed(ready, undefined).pipe(
+              Effect.andThen(Deferred.await(done)),
+              Effect.as(reply(input, "first done")),
+            ),
+        }
+        const ctx = context(chat.id, assistant.id, promptOps)
+        const first = yield* def.execute(brief, ctx).pipe(Effect.forkChild)
+        yield* Deferred.await(ready)
+
+        const second = yield* def.execute(brief, ctx).pipe(Effect.exit)
+        expect(failure(second)).toContain("limit 1")
+        expect(failure(second)).toContain("Wait for one to finish")
+
+        yield* Deferred.succeed(done, undefined)
+        expect((yield* Fiber.join(first)).output).toContain("first done")
+        // The slot is released once the first returns.
+        expect((yield* def.execute(brief, ctx)).output).toContain("first done")
+      }),
+    { config: { experimental: { subagent_limits: { concurrent: 1 } } } },
+  )
+
+  it.instance(
+    "refuses new subagents past the per-request cap, but a resume is not a new one",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        const ctx = context(chat.id, assistant.id, stubOps())
+        const first = yield* def.execute(brief, ctx)
+
+        const second = yield* def.execute(brief, ctx).pipe(Effect.exit)
+        expect(failure(second)).toContain("limit 1")
+        expect(failure(second)).toContain("already started for this request")
+
+        const resumed = yield* def.execute({ ...brief, task_id: first.metadata.sessionId }, ctx)
+        expect(resumed.metadata.sessionId).toBe(first.metadata.sessionId)
+      }),
+    { config: { experimental: { subagent_limits: { per_request: 1 } } } },
   )
 })
