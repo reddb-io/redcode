@@ -727,6 +727,8 @@ namespace TestLLMServer {
     readonly hang: Effect.Effect<void>
     /** Answer every "name this session" request with silence, the way a wedged small model does. */
     readonly hangTitles: Effect.Effect<void>
+    /** Reject every "name this session" request made to this model with a 400. */
+    readonly failTitles: (model: string) => Effect.Effect<void>
     readonly hold: (value: string, wait: PromiseLike<unknown>) => Effect.Effect<void>
     readonly reset: Effect.Effect<void>
     readonly hits: Effect.Effect<Hit[]>
@@ -747,6 +749,7 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
 
       let hits: Hit[] = []
       let titlesHang = false
+      let titlesFailing = new Set<string>()
       let list: Queue[] = []
       let waits: Wait[] = []
       let misses: Hit[] = []
@@ -786,6 +789,12 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         if (isTitleRequest(body)) {
           hits = [...hits, current]
           yield* notify()
+          if (titlesFailing.has(modelFrom(body)))
+            return fail({
+              type: "http-error",
+              status: 400,
+              body: { error: { type: "invalid_request_error", message: "title model rejected the request" } },
+            })
           const auto: Sse = titlesHang
             ? { type: "sse", head: [role()], tail: [], hang: true }
             : { type: "sse", head: [role()], tail: [textLine("E2E Title"), finishLine("stop")] }
@@ -912,6 +921,10 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         hangTitles: Effect.sync(() => {
           titlesHang = true
         }),
+        failTitles: (model: string) =>
+          Effect.sync(() => {
+            titlesFailing = new Set([...titlesFailing, model])
+          }),
         toolHang: Effect.fn("TestLLMServer.toolHang")(function* (name: string, input: unknown) {
           queue(reply().pendingTool(name, input).hang().item())
         }),
@@ -936,6 +949,7 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         reset: Effect.sync(() => {
           hits = []
           titlesHang = false
+          titlesFailing = new Set()
           list = []
           waits = []
           misses = []
