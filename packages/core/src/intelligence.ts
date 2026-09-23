@@ -665,6 +665,9 @@ export const make = (
                         compact_now: "Using System One to review proposed compaction timing",
                         task_completion: "Using System One to review proposed task completion",
                         goal_completion: "Using System One to review proposed goal completion",
+                        subagent_brief: "Using System One to review the subagent brief",
+                        subagent_progress: "Using System One to review subagent progress",
+                        subagent_result: "Using System One to review the subagent result",
                       }[input.operation],
                       {
                         sessionID: input.sessionID,
