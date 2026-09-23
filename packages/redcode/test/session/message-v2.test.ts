@@ -604,6 +604,82 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("keeps bedrock tool-result images inline only for Claude, Nova and Llama 4", async () => {
+    const png = Buffer.from("png").toString("base64")
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo("m-user-bedrock-image"),
+        parts: [
+          { ...basePart("m-user-bedrock-image", "u1-bedrock-image"), type: "text", text: "run tool" },
+        ] as SessionV1.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant-bedrock-image", "m-user-bedrock-image"),
+        parts: [
+          {
+            ...basePart("m-assistant-bedrock-image", "a1-bedrock-image"),
+            type: "tool",
+            callID: "call-bedrock-image-1",
+            tool: "read",
+            state: {
+              status: "completed",
+              input: { filePath: "/tmp/shot.png" },
+              output: "Image read successfully",
+              title: "Read",
+              metadata: {},
+              time: { start: 0, end: 1 },
+              attachments: [
+                {
+                  ...basePart("m-assistant-bedrock-image", "file-bedrock-image-1"),
+                  type: "file",
+                  mime: "image/png",
+                  filename: "shot.png",
+                  url: `data:image/png;base64,${png}`,
+                },
+              ],
+            },
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+    const bedrock = (id: string): Provider.Model => ({
+      ...model,
+      id: ModelV2.ID.make(`amazon-bedrock/${id}`),
+      providerID: ProviderV2.ID.make("amazon-bedrock"),
+      api: { id, url: "https://bedrock-runtime.us-east-1.amazonaws.com", npm: "@ai-sdk/amazon-bedrock" },
+      capabilities: {
+        ...model.capabilities,
+        attachment: true,
+        input: { ...model.capabilities.input, image: true },
+      },
+    })
+
+    for (const id of [
+      "us.anthropic.claude-sonnet-4-6",
+      "amazon.nova-pro-v1:0",
+      "meta.llama4-maverick-17b-instruct-v1:0",
+    ]) {
+      const result = await MessageV2.toModelMessages(input, bedrock(id))
+      expect(result).toHaveLength(3)
+      expect(result[2].content[0]).toMatchObject({
+        output: { type: "content", value: [{ type: "text" }, { type: "media", mediaType: "image/png", data: png }] },
+      })
+    }
+
+    for (const id of ["mistral.pixtral-large-2502-v1:0", "qwen.qwen3-vl-235b-a22b"]) {
+      const result = await MessageV2.toModelMessages(input, bedrock(id))
+      expect(result).toHaveLength(4)
+      expect(result[2].content[0]).toMatchObject({ output: { type: "text", value: "Image read successfully" } })
+      expect(result[3]).toMatchObject({
+        role: "user",
+        content: [
+          { type: "text", text: "Attached media from tool result:" },
+          { type: "file", mediaType: "image/png" },
+        ],
+      })
+    }
+  })
+
   test("omits provider metadata when assistant model differs", async () => {
     const userID = "m-user"
     const assistantID = "m-assistant"

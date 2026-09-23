@@ -1,6 +1,6 @@
 import * as Tool from "./tool"
 import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js"
-import { Cause, Duration, Effect, Schema, Semaphore } from "effect"
+import { Cause, Duration, Effect, Option, Schema, Semaphore } from "effect"
 import { CodeMode, Tool as SandboxTool, toolError } from "@reddb-io/redcode-codemode"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { JsonSchemaValidate } from "@reddb-io/redcode-core/util/json-schema-validate"
@@ -104,11 +104,17 @@ const lastSegment = (uri: string) => {
 
 const dataUrl = (mime: string, base64: string) => `data:${mime};base64,${base64}`
 
+const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
+
 /**
  * The value a script sees for an MCP result. Binary blocks leave through the attachment channel,
  * under the same MIME allowlist and size cap as a direct MCP call; refused ones become text.
  */
-export function projectMcpResult(result: CallToolResult, collect: (attachment: Attachment) => void): unknown {
+export function projectMcpResult(
+  result: CallToolResult,
+  collect: (attachment: Attachment) => void,
+  outputSchema?: unknown,
+): unknown {
   const text: string[] = []
   let files = 0
   let images = 0
@@ -156,7 +162,12 @@ export function projectMcpResult(result: CallToolResult, collect: (attachment: A
   }
 
   if (result.structuredContent !== undefined && result.structuredContent !== null) return result.structuredContent
-  if (text.length > 0) return text.join("\n")
+  if (text.length > 0) {
+    const joined = text.join("\n")
+    // Agents assume JSON returned as text is already an object, so parse it when the server declares no output schema.
+    if (outputSchema === undefined && /^[[{]/.test(joined)) return Option.getOrElse(decodeJson(joined), () => joined)
+    return joined
+  }
   if (files > 0) {
     const noun = files === images ? "image" : "file"
     return `[${files} ${noun}${files === 1 ? "" : "s"} attached to the result]`
@@ -437,7 +448,11 @@ export const CodeModeTool = Tool.define(
                     { tool: entry.key, sessionID: ctx.sessionID, callID: child.callID, args },
                     result,
                   )
-                  return projectMcpResult(result, (attachment) => void attachments.push(attachment))
+                  return projectMcpResult(
+                    result,
+                    (attachment) => void attachments.push(attachment),
+                    entry.tool.def.outputSchema,
+                  )
                 }),
             }),
           )

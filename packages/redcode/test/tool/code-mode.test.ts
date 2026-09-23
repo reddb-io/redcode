@@ -323,6 +323,27 @@ describe("code mode execute", () => {
     ])
   })
 
+  test("parses JSON text from MCP tools without an output schema", async () => {
+    const json = '{"issues":[{"id":1}]}'
+    const tool = await build({
+      demo_issues: mcpTool("issues", () => ({ content: [{ type: "text", text: json }] })),
+      demo_count: mcpTool("count", () => ({ content: [{ type: "text", text: "42" }] })),
+      demo_broken: mcpTool("broken", () => ({ content: [{ type: "text", text: "{not json" }] })),
+      demo_typed: mcpTool(
+        "typed",
+        () => ({ content: [{ type: "text", text: json }] }),
+        { type: "object", properties: {} },
+        { type: "string" },
+      ),
+    })
+    const run = (code: string) => Effect.runPromise(tool.execute({ code }, ctx)).then((output) => output.output)
+
+    expect(await run("return (await tools.demo.issues({})).issues[0].id")).toBe("1")
+    expect(await run("return typeof (await tools.demo.count({}))")).toBe("string")
+    expect(await run("return await tools.demo.broken({})")).toBe("{not json")
+    expect(await run("return typeof (await tools.demo.typed({}))")).toBe("string")
+  })
+
   test("runs tool calls in parallel with Promise.all", async () => {
     const tool = await build({
       echo_one: mcpTool("one", () => ({ content: [{ type: "text", text: "1" }] })),
