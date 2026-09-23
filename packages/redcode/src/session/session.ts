@@ -179,6 +179,11 @@ function sessionPath(worktree: string, cwd: string) {
   return path.relative(path.resolve(worktree), cwd).replaceAll("\\", "/")
 }
 
+// Stored messages read back as plain JSON, but publishing a user message encodes its format as the
+// schema class. Promotion, compaction replay, forks and diff summaries all republish stored user
+// messages, so the format is decoded again at the single place every message is published.
+const decodeFormat = Schema.decodeUnknownSync(SessionV1.Format)
+
 const Summary = Schema.Struct({
   additions: Schema.Finite,
   deletions: Schema.Finite,
@@ -680,7 +685,11 @@ const layer: Layer.Layer<
 
     const updateMessage = <T extends SessionV1.Info>(msg: T): Effect.Effect<T> =>
       Effect.gen(function* () {
-        yield* events.publish(SessionV1.Event.MessageUpdated, { sessionID: msg.sessionID, info: msg })
+        const info: SessionV1.Info = msg
+        yield* events.publish(SessionV1.Event.MessageUpdated, {
+          sessionID: info.sessionID,
+          info: info.role === "user" && info.format ? { ...info, format: decodeFormat(info.format) } : info,
+        })
         return msg
       }).pipe(Effect.withSpan("Session.updateMessage"))
 

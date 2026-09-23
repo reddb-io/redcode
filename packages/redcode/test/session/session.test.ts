@@ -270,6 +270,34 @@ describe("Session", () => {
     }),
   )
 
+  it.instance("forks a structured output turn with its stored format", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const created = yield* Effect.acquireRelease(session.create({}), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+      const schema = { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] }
+      yield* session.updateMessage({
+        id: MessageID.ascending(),
+        sessionID: created.id,
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerID: "test", modelID: "test" },
+        format: new SessionV1.OutputFormatJsonSchema({ type: "json_schema", schema, retryCount: 2 }),
+      } as SessionV1.User)
+
+      // The fork republishes the stored message, whose format reads back as plain JSON.
+      const fork = yield* Effect.acquireRelease(session.fork({ sessionID: created.id }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+
+      const copied = (yield* session.messages({ sessionID: fork.id })).map((msg) => msg.info)
+      expect(copied).toHaveLength(1)
+      expect(copied[0]?.role === "user" ? copied[0].format : undefined).toMatchObject({ type: "json_schema", schema })
+    }),
+  )
+
   it.instance("omits metadata when not provided", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

@@ -1619,6 +1619,49 @@ describe("session.compaction.process", () => {
   )
 
   itCompaction.instance(
+    "replays a structured output turn with its stored format",
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "root")
+      const schema = { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] }
+      const replay = yield* ssn.updateMessage({
+        id: MessageID.ascending(),
+        role: "user",
+        sessionID: session.id,
+        agent: "build",
+        model: ref,
+        time: { created: Date.now() },
+        format: new SessionV1.OutputFormatJsonSchema({ type: "json_schema", schema, retryCount: 2 }),
+      })
+      yield* ssn.updatePart({
+        id: PartID.ascending(),
+        messageID: replay.id,
+        sessionID: session.id,
+        type: "text",
+        text: "What is 2 + 2?",
+      })
+      const msg = yield* createUserMessage(session.id, "current")
+      // Read back from the database, the replayed turn's format is plain JSON, not the schema class.
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+
+      const result = yield* SessionCompaction.use.process({
+        parentID: msg.id,
+        messages: msgs,
+        sessionID: session.id,
+        auto: true,
+        overflow: true,
+      })
+
+      const last = (yield* ssn.messages({ sessionID: session.id })).at(-1)
+
+      expect(result).toBe("continue")
+      expect(last?.info.id).not.toBe(replay.id)
+      expect(last?.info.role === "user" ? last.info.format : undefined).toMatchObject({ type: "json_schema", schema })
+    }).pipe(withCompaction()),
+  )
+
+  itCompaction.instance(
     "falls back to overflow guidance when no replayable turn exists",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
