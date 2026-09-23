@@ -8700,11 +8700,11 @@ const promptStructured = Effect.fn("test.promptStructured")(function* () {
     agent: "build",
     noReply: true,
     parts: [{ type: "text", text: "What is 2 + 2?" }],
-    format: {
+    format: new SessionV1.OutputFormatJsonSchema({
       type: "json_schema",
       schema: { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] },
       retryCount: 2,
-    },
+    }),
   })
   return { chat, prompt, sessions }
 })
