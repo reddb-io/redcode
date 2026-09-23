@@ -29,6 +29,7 @@ import { NonNegativeInt } from "@reddb-io/redcode-schema/schema"
 import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
+import { viewports } from "@reddb-io/redcode-design/viewports"
 import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
@@ -188,7 +189,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               })
             if (request.method === "GET" && parts[3] === "review")
               return html(
-                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()} }))</script></body></html>`,
+                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()} }))</script></body></html>`,
               )
             if (request.method === "GET" && parts[3] === "whiteboard")
               return html(yield* Effect.promise(DesignWhiteboard.frame))

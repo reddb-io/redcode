@@ -4476,6 +4476,7 @@ export type ConfigV2Design = {
   system?: ConfigV2DesignSystem
   application?: string
   browser?: string
+  breakpoints?: Array<number>
 }
 
 export type ConfigV2SessionBudget = {
@@ -5892,6 +5893,8 @@ export type DesignInfo = {
   journey: "new" | "existing"
   engine: "html" | "react" | "solid"
   kind: "screen" | "flow" | "comparison" | "deck"
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
   root: string
   application: string
   entry: string
@@ -5928,6 +5931,8 @@ export type DesignCreate = {
   engine: "html" | "react" | "solid"
   kind: "screen" | "flow" | "comparison" | "deck"
   application?: string
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
 }
 
 export type DesignNoteUpdate = {
@@ -5946,6 +5951,8 @@ export type DesignUpdate = {
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
   name?: string
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
   brief?: DesignBrief
   decisions?: Array<DesignDecision>
   questions?: Array<string>
@@ -7727,6 +7734,7 @@ export type IntelligenceEvaluation = {
     | "subagent_brief"
     | "subagent_progress"
     | "subagent_result"
+    | "design_target"
   kind?: "classification" | "gate"
   subjectID?: string
   candidateID?: string
@@ -18654,6 +18662,8 @@ export type IntelligenceHistoryData = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
+    | "design_target"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

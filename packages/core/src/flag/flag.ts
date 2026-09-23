@@ -77,6 +77,18 @@ export const Flag = {
     if (value === "single" || value === "dual") return value
     return undefined
   },
+  /** Set by `redcode design --target`: new designs take this target without detection or a question. */
+  get REDCODE_DESIGN_TARGET(): "web" | "app" | "presentation" | undefined {
+    const value = process.env["REDCODE_DESIGN_TARGET"]?.toLowerCase()
+    if (value === "web" || value === "app" || value === "presentation") return value
+    return undefined
+  },
+  /** Set by `redcode design --platform`; applies only when REDCODE_DESIGN_TARGET is app. */
+  get REDCODE_DESIGN_PLATFORM(): "ios" | "android" | undefined {
+    const value = process.env["REDCODE_DESIGN_PLATFORM"]?.toLowerCase()
+    if (value === "ios" || value === "android") return value
+    return undefined
+  },
   get REDCODE_PERMISSION() {
     return process.env["REDCODE_PERMISSION"]
   },

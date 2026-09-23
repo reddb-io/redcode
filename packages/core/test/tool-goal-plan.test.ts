@@ -34,12 +34,14 @@ import { PlanTools } from "../src/tool/plan"
 import { ExternalTools } from "../src/tool/external"
 import { DesignTools } from "../src/tool/design"
 import { DesignStore } from "../src/design/store"
+import { DesignTarget } from "../src/design/target"
 import { ToolRegistry } from "../src/tool/registry"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { executeTool, toolIdentity } from "./lib/tool"
 
 const requests: Intelligence.EvaluationInput[] = []
+const classifications: Intelligence.EvaluationInput[] = []
 const questions: QuestionV2.AskInput[] = []
 const assertions: string[] = []
 let review = "PASS\nVerified"
@@ -129,6 +131,37 @@ const it = testEffect(
           evaluate: (input) =>
             Effect.gen(function* () {
               if (reasoning === "single") return undefined
+              if (input.operation === "design_target") {
+                classifications.push(input)
+                return {
+                  id: crypto.randomUUID(),
+                  fingerprint: "fixture",
+                  sessionID: input.sessionID,
+                  operation: input.operation,
+                  kind: "classification" as const,
+                  policy: "fixture",
+                  decision: "accepted" as const,
+                  model: "jev",
+                  answers: {
+                    target: {
+                      type: "choice" as const,
+                      choice: "presentation",
+                      probabilities: { web: 0.1, app: 0, presentation: 0.9 },
+                      confidence: 0.9,
+                    },
+                    platform: {
+                      type: "choice" as const,
+                      choice: "either",
+                      probabilities: { ios: 0, android: 0, either: 1 },
+                      confidence: 1,
+                    },
+                  },
+                  issues: [],
+                  created: Date.now(),
+                  duration: 1,
+                  usage: { input_tokens: 10, output_tokens: 5 },
+                }
+              }
               if (input.operation === "goal_completion" || input.operation === "plan") {
                 requests.push(input)
                 yield* duringReview
@@ -663,6 +696,49 @@ it.live("Plan can inspect Design documents but cannot create a prototype through
     ).toBe("error")
     const store = yield* DesignStore.Service
     expect(yield* store.list(test.sessionID)).toHaveLength(0)
+  }),
+)
+
+it.live("design_document create has System One classify the target and the user confirm it preselected", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const store = yield* DesignStore.Service
+    const before = classifications.length
+    answer = "Presentation (Recommended)"
+    const result = yield* test.run("design_document", {
+      action: "create",
+      input: { name: "Pitch", journey: "new", engine: "html", kind: "deck", target: "web" },
+    })
+    expect(result.type).not.toBe("error")
+    expect(JSON.stringify(result)).toContain("Target: Presentation · playbooks: slides")
+    expect(JSON.stringify(result)).toContain("detected by System One and confirmed by the user")
+    expect(classifications).toHaveLength(before + 1)
+    expect(classifications.at(-1)?.kind).toBe("classification")
+    const asked = questions.flatMap((item) => item.questions).find((item) => item.header === DesignTarget.HEADER)
+    expect(asked?.options[0]?.label).toBe("Presentation (Recommended)")
+    expect(asked?.question).toContain("System One suggests Presentation (90% confident)")
+    expect((yield* store.list(test.sessionID)).find((item) => item.name === "Pitch")?.target).toBe("presentation")
+  }),
+)
+
+it.live("design_document create in single reasoning takes the agent's target without System One or a question", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    reasoning = "single"
+    const store = yield* DesignStore.Service
+    const before = classifications.length
+    const result = yield* test.run("design_document", {
+      action: "create",
+      input: { name: "Runner", journey: "new", engine: "html", kind: "flow", target: "app", platform: "android" },
+    })
+    expect(result.type).not.toBe("error")
+    expect(JSON.stringify(result)).toContain("Target: Android app · playbooks: mobile-app, quality")
+    expect(classifications).toHaveLength(before)
+    expect(questions.flatMap((item) => item.questions).some((item) => item.header === DesignTarget.HEADER)).toBe(false)
+    expect((yield* store.list(test.sessionID)).find((item) => item.name === "Runner")).toMatchObject({
+      target: "app",
+      platform: "android",
+    })
   }),
 )
 

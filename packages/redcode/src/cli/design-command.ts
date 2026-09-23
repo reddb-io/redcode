@@ -21,7 +21,16 @@ export async function run(args: {
   directory?: string
   attach?: string
   open?: boolean
+  target?: "web" | "app" | "presentation"
+  platform?: "ios" | "android"
 }) {
+  if (args.platform && args.target !== "app") throw new Error("--platform applies only with --target app.")
+  // The terminal's own server reads the forced target from its environment (see DesignTarget.forced);
+  // an attached server runs elsewhere with its own.
+  if (args.target && args.attach)
+    throw new Error("--target applies to the Design terminal's own server; it cannot be combined with --attach.")
+  if (args.target) process.env["REDCODE_DESIGN_TARGET"] = args.target
+  if (args.platform) process.env["REDCODE_DESIGN_PLATFORM"] = args.platform
   const selectedModel = args.model ? DesignTerminal.model(args.model) : undefined
   const directory = path.resolve(args.directory ?? process.cwd())
   // Asked before the server opens the location, so an adopted design system is read with its config.

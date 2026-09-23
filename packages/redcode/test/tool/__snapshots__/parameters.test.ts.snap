@@ -955,6 +955,13 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
           "maxItems": 100,
           "type": "array",
         },
+        "platform": {
+          "enum": [
+            "ios",
+            "android",
+          ],
+          "type": "string",
+        },
         "presets": {
           "items": {
             "properties": {
@@ -1092,6 +1099,14 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
             "type": "object",
           },
           "type": "array",
+        },
+        "target": {
+          "enum": [
+            "web",
+            "app",
+            "presentation",
+          ],
+          "type": "string",
         },
         "targets": {
           "items": {

@@ -28,6 +28,9 @@ import { LocationMutation } from "../location-mutation"
 import { Location } from "../location"
 import { Global } from "../global"
 import { DesignProposal } from "../design/proposal"
+import { DesignTarget } from "../design/target"
+import { Intelligence } from "../intelligence"
+import { SessionStore } from "../session/store"
 import type { ConfigDesign } from "../config/design"
 
 /** The proposal outcome travels with the returned document in its manifest status, rendered by both runtimes. */
@@ -41,6 +44,8 @@ const layer = Layer.effectDiscard(
     const store = yield* DesignStore.Service
     /** Screen markup warnings per published revision, rendered with the publish result. */
     const notices = new Map<string, string>()
+    /** How each design created here got its target, rendered with the create result. */
+    const settled = new Map<string, string>()
     const renderer = yield* DesignRenderer.Service
     const permissions = yield* PermissionV2.Service
     const questions = yield* QuestionV2.Service
@@ -49,6 +54,8 @@ const layer = Layer.effectDiscard(
     const mutation = yield* LocationMutation.Service
     const location = yield* Location.Service
     const global = yield* Global.Service
+    const intelligence = yield* Intelligence.Service
+    const sessions = yield* SessionStore.Service
 
     const state = path.join(global.state, DesignProposal.STATE)
     // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
@@ -301,7 +308,7 @@ const layer = Layer.effectDiscard(
                   : output
                       .map(
                         (document) =>
-                          `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`,
+                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}${input.action === "create" && settled.has(document.id) ? `\n${settled.get(document.id)}` : ""}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`,
                       )
                       .join("\n\n"),
             },
@@ -321,11 +328,39 @@ const layer = Layer.effectDiscard(
                 )
               yield* allow("design_edit", context)
               if (input.action === "create") {
+                const target = yield* DesignTarget.choose({
+                  requested: input.input,
+                  forced: DesignTarget.forced(),
+                  mode: Intelligence.mode(
+                    yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults)),
+                  ),
+                  detect: sessions.context(context.sessionID).pipe(
+                    Effect.orElseSucceed(() => []),
+                    Effect.flatMap((messages) =>
+                      intelligence.evaluate(
+                        DesignTarget.evaluation({
+                          sessionID: context.sessionID,
+                          requests: messages.flatMap((message) => (message.type === "user" ? [message.text] : [])),
+                          design: { name: input.input.name, kind: input.input.kind },
+                        }),
+                      ),
+                    ),
+                  ),
+                  ask: (request) =>
+                    questions
+                      .ask({
+                        sessionID: context.sessionID,
+                        tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                        questions: [request],
+                      })
+                      .pipe(Effect.map((answers) => answers[0]?.[0])),
+                })
                 const created = yield* DesignProposal.around(
                   yield* proposal(context, input.input.application),
-                  store.create(context.sessionID, input.input),
+                  store.create(context.sessionID, { ...input.input, target: target.target, platform: target.platform }),
                 )
                 const document = withReport(created.value, created.report)
+                settled.set(document.id, target.note)
                 if (context.agent !== "design")
                   yield* events.publish(SessionEvent.AgentSwitched, {
                     sessionID: context.sessionID,
@@ -570,6 +605,8 @@ export const node = makeLocationNode({
     LocationMutation.node,
     Location.node,
     Global.node,
+    Intelligence.node,
+    SessionStore.node,
   ],
 })
 

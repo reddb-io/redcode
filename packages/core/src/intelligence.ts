@@ -668,6 +668,7 @@ export const make = (
                         subagent_brief: "Using System One to review the subagent brief",
                         subagent_progress: "Using System One to review subagent progress",
                         subagent_result: "Using System One to review the subagent result",
+                        design_target: "Using System One to classify the design target",
                       }[input.operation],
                       {
                         sessionID: input.sessionID,
