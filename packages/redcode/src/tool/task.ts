@@ -20,6 +20,7 @@ import { Permission } from "../permission"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import { SessionSpend } from "@/session/spend"
 import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 
 export interface TaskPromptOps {
@@ -89,6 +90,7 @@ function renderOutput(input: {
   state: "running" | "completed" | "error"
   summary?: string
   review?: SubagentReview.Review
+  result?: SubagentReview.ResultReview
   text: string
 }) {
   const tag = input.state === "error" ? "task_error" : "task_result"
@@ -97,6 +99,7 @@ function renderOutput(input: {
     `<task id="${input.sessionID}" state="${input.state}">`,
     ...(input.summary ? [`<summary>${input.summary}</summary>`] : []),
     ...(input.review && note ? [`<brief_review verdict="${input.review.verdict}">${note}</brief_review>`] : []),
+    ...(input.result ? [SubagentReview.reviewBlock(input.result)] : []),
     `<${tag}>`,
     input.text,
     `</${tag}>`,
@@ -117,9 +120,23 @@ export const TaskTool = Tool.define(
     const intelligence = yield* Intelligence.Service
     const todos = yield* Todo.Service
     const plans = yield* SessionPlan.Service
+    const spend = yield* SessionSpend.Service
     // Foreground subagents running per parent session. Checked and taken in one synchronous step,
     // so parallel task calls in one message cannot all slip under the cap.
     const running = new Map<SessionID, number>()
+
+    /**
+     * An S1 evaluation on the parent's behalf. Its spend is the parent's, charged once: a record the
+     * engine reused from its cache was charged when it was made. Failing to evaluate is never an
+     * error here; the caller labels the missing verdict.
+     */
+    const evaluate = Effect.fn("TaskTool.evaluate")(function* (input: Intelligence.EvaluationInput) {
+      const started = Date.now()
+      const record = yield* intelligence.evaluate(input).pipe(Effect.orElseSucceed(() => undefined))
+      if (record && record.created >= started)
+        yield* spend.recordEvaluation({ sessionID: input.sessionID, usage: record.usage })
+      return record
+    })
 
     /**
      * Whether the brief is good enough to launch on. Structure is checked in every mode; dual
@@ -167,45 +184,43 @@ export const TaskTool = Tool.define(
       const plan = (yield* plans.list(input.ctx.sessionID))
         .filter((item) => item.status === "approved")
         .toSorted((a, b) => b.created - a.created)[0]
-      const record = yield* intelligence
-        .evaluate({
-          sessionID: input.ctx.sessionID,
-          operation: "subagent_brief",
-          subjectID,
-          attempt: rejected.length,
-          sources: {
-            requests: Intelligence.evidence(input.request.texts, { reference: input.ctx.sessionID, limit: 16_000 }),
-            goal: goal?.status === "active" ? { objective: goal.objective } : undefined,
-            todos: (yield* todos.get(input.ctx.sessionID)).map((todo) => ({
-              content: todo.content,
-              status: todo.status,
-            })),
-            plan: plan
-              ? {
-                  path: plan.path,
-                  tasks: plan.tasks?.map((task) => ({ content: task.content, criterion: task.criterion })),
-                }
-              : undefined,
-            agent: {
-              name: input.agent.name,
-              description: input.agent.description,
-              write_capable: input.writeCapable,
-              permissions: Object.fromEntries(
-                REVIEWED_PERMISSIONS.map((item) => [item, Permission.evaluate(item, "*", input.permission).action]),
-              ),
-            },
-            structure: findings.map((finding) => finding.message),
+      const record = yield* evaluate({
+        sessionID: input.ctx.sessionID,
+        operation: "subagent_brief",
+        subjectID,
+        attempt: rejected.length,
+        sources: {
+          requests: Intelligence.evidence(input.request.texts, { reference: input.ctx.sessionID, limit: 16_000 }),
+          goal: goal?.status === "active" ? { objective: goal.objective } : undefined,
+          todos: (yield* todos.get(input.ctx.sessionID)).map((todo) => ({
+            content: todo.content,
+            status: todo.status,
+          })),
+          plan: plan
+            ? {
+                path: plan.path,
+                tasks: plan.tasks?.map((task) => ({ content: task.content, criterion: task.criterion })),
+              }
+            : undefined,
+          agent: {
+            name: input.agent.name,
+            description: input.agent.description,
+            write_capable: input.writeCapable,
+            permissions: Object.fromEntries(
+              REVIEWED_PERMISSIONS.map((item) => [item, Permission.evaluate(item, "*", input.permission).action]),
+            ),
           },
-          candidate: {
-            description: input.params.description,
-            prompt: Intelligence.evidence(input.params.prompt, { limit: 16_000 }),
-            scope: input.params.scope,
-            done_criteria: input.params.done_criteria,
-            return_format: input.params.return_format,
-          },
-          questions: SubagentReview.briefQuestions,
-        })
-        .pipe(Effect.orElseSucceed(() => undefined))
+          structure: findings.map((finding) => finding.message),
+        },
+        candidate: {
+          description: input.params.description,
+          prompt: Intelligence.evidence(input.params.prompt, { limit: 16_000 }),
+          scope: input.params.scope,
+          done_criteria: input.params.done_criteria,
+          return_format: input.params.return_format,
+        },
+        questions: SubagentReview.briefQuestions,
+      })
 
       if (!record || record.decision === "unavailable")
         return {
@@ -232,6 +247,88 @@ export const TaskTool = Tool.define(
       }
       return { verdict: "needs_revision", issues: record.issues, evaluationID: record.id } as const
     })
+
+    /**
+     * Whether the subagent's result holds up against its brief. Mechanical checks run in every mode;
+     * dual reasoning then asks S1 with the brief and a bounded digest of the subagent's tool calls,
+     * unless a blocking finding already settles it. S1 that fails leaves the result unverified.
+     */
+    const reviewResult = Effect.fn("TaskTool.reviewResult")(function* (input: {
+      sessionID: SessionID
+      child: Session.Info
+      brief: SubagentReview.Brief
+      prompt: string
+      /** The first message of this run in the child; everything from it on is this run's evidence. */
+      from: MessageID
+      replies: ReadonlyArray<SessionV1.WithParts>
+      repaired: boolean
+    }) {
+      const persisted = yield* sessions.messages({ sessionID: input.child.id }).pipe(Effect.orElseSucceed(() => []))
+      const reply = input.replies.at(-1)!
+      const text = reply.parts.findLast((part) => part.type === "text")?.text ?? ""
+      const parts = [
+        ...persisted.filter(
+          (message) => message.info.id >= input.from && !input.replies.some((item) => item.info.id === message.info.id),
+        ),
+        ...input.replies,
+      ]
+        .filter((message) => message.info.role === "assistant")
+        .toSorted((a, b) => (a.info.id < b.info.id ? -1 : a.info.id > b.info.id ? 1 : 0))
+        .flatMap((message) => message.parts)
+      const findings = SubagentReview.resultChecks(
+        { text, parts },
+        {
+          criteria: input.brief.criteria,
+          scope: input.brief.scope,
+          changesRequested: input.brief.writeCapable,
+          directory: input.child.directory,
+        },
+      )
+      const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults))
+      const single = Intelligence.mode(settings) === "single"
+      if (single || findings.some((finding) => finding.blocking))
+        return SubagentReview.judge({ findings, single, repaired: input.repaired })
+      const evaluation = yield* evaluate({
+        sessionID: input.sessionID,
+        operation: "subagent_result",
+        subjectID: input.child.id,
+        candidateID: reply.info.id,
+        attempt: input.repaired ? 1 : 0,
+        sources: {
+          brief: {
+            prompt: Intelligence.evidence(input.brief.brief, { limit: 8_000 }),
+            // A resumed task runs a new prompt under the brief it was launched with.
+            ...(input.prompt !== input.brief.brief
+              ? { latest_prompt: Intelligence.evidence(input.prompt, { limit: 4_000 }) }
+              : {}),
+            scope: input.brief.scope,
+            done_criteria: input.brief.criteria,
+            return_format: input.brief.returnFormat,
+            write_capable: input.brief.writeCapable,
+          },
+          checks: findings.map((finding) => finding.message),
+          tool_calls: Intelligence.evidence(SubagentReview.digest(parts, { directory: input.child.directory }), {
+            reference: `${input.child.id}/tool-calls`,
+            limit: 16_000,
+          }),
+        },
+        candidate: Intelligence.evidence(text, { reference: reply.info.id, limit: 12_000 }),
+        questions: SubagentReview.resultQuestions,
+      })
+      return SubagentReview.judge({ findings, evaluation, single: false, repaired: input.repaired })
+    })
+
+    const unreviewed: { review?: Pick<SubagentReview.ResultReview, "decision" | "issues" | "repaired"> } = {}
+
+    /** The verdict on the child's latest result, when its parent reviews it. */
+    const resultOf = (sessionID: SessionID) =>
+      sessions.get(sessionID).pipe(
+        Effect.map((session) => {
+          const brief = SubagentReview.fromMetadata(session.metadata)
+          return SubagentReview.supervised(brief) ? brief.result : undefined
+        }),
+        Effect.orElseSucceed(() => undefined),
+      )
 
     const run = Effect.fn("TaskTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -415,6 +512,9 @@ export const TaskTool = Tool.define(
             }
           : {}),
         ...(runInBackground ? { background: true } : {}),
+        // Filled in when a foreground result is reviewed; declared here so every result the tool
+        // returns has the same metadata shape.
+        ...unreviewed,
       }
 
       yield* ctx.metadata({
@@ -425,26 +525,13 @@ export const TaskTool = Tool.define(
       const ops = ctx.extra?.promptOps as TaskPromptOps
       if (!ops) return yield* Effect.fail(new Error("TaskTool requires promptOps in ctx.extra"))
 
-      const runTask = Effect.fn("TaskTool.runTask")(function* () {
-        const brief = SubagentReview.instructions({
-          scope: params.scope,
-          criteria: params.done_criteria,
-          returnFormat: params.return_format,
-        })
-        const resolved = [
-          ...(yield* ops.resolvePromptParts(params.prompt)),
-          ...(brief ? [{ type: "text" as const, text: brief, synthetic: true }] : []),
-        ]
-        // The goal is copied, never shared: a child session is blank by design, so the parent's
-        // objective rides in as a synthetic part ahead of the task, read fresh each run — the
-        // goal may have been dropped or changed since the child was first created.
-        const goal = SessionGoal.fromMetadata((yield* sessions.get(ctx.sessionID)).metadata)
-        const parts =
-          goal?.status === "active"
-            ? [{ type: "text" as const, text: SessionGoal.inherit(goal), synthetic: true }, ...resolved]
-            : resolved
+      /** One prompt to the child; a subagent that died is a failed task, never an empty result. */
+      const send = Effect.fn("TaskTool.send")(function* (
+        messageID: MessageID,
+        parts: SessionPrompt.PromptInput["parts"],
+      ) {
         const result = yield* ops.prompt({
-          messageID: MessageID.ascending(),
+          messageID,
           sessionID: nextSession.id,
           model: {
             modelID: model.modelID,
@@ -468,7 +555,52 @@ export const TaskTool = Tool.define(
         if (failed?.type === "tool" && failed.state.status === "error") {
           return yield* Effect.fail(new Error(`Subagent failed (task_id: ${nextSession.id}): ${failed.state.error}`))
         }
-        return result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        return result
+      })
+
+      /** Keeps the verdict in the child's metadata, where the result's reader finds it, and hands back the text. */
+      const settle = (verdict: SubagentReview.ResultReview, reply: SessionV1.WithParts) =>
+        sessions
+          .updateMetadata(nextSession.id, (metadata) => {
+            const stored = SubagentReview.fromMetadata(metadata)
+            return stored ? SubagentReview.toMetadata(metadata, { ...stored, result: verdict }) : metadata
+          })
+          .pipe(Effect.as(reply.parts.findLast((item) => item.type === "text")?.text ?? ""))
+
+      const runTask = Effect.fn("TaskTool.runTask")(function* () {
+        const brief = SubagentReview.instructions({
+          scope: params.scope,
+          criteria: params.done_criteria,
+          returnFormat: params.return_format,
+        })
+        const resolved = [
+          ...(yield* ops.resolvePromptParts(params.prompt)),
+          ...(brief ? [{ type: "text" as const, text: brief, synthetic: true }] : []),
+        ]
+        // The goal is copied, never shared: a child session is blank by design, so the parent's
+        // objective rides in as a synthetic part ahead of the task, read fresh each run — the
+        // goal may have been dropped or changed since the child was first created.
+        const goal = SessionGoal.fromMetadata((yield* sessions.get(ctx.sessionID)).metadata)
+        const parts =
+          goal?.status === "active"
+            ? [{ type: "text" as const, text: SessionGoal.inherit(goal), synthetic: true }, ...resolved]
+            : resolved
+        const from = MessageID.ascending()
+        const first = yield* send(from, parts)
+        const child = yield* sessions.get(nextSession.id)
+        const supervision = SubagentReview.fromMetadata(child.metadata)
+        if (!SubagentReview.supervised(supervision))
+          return first.parts.findLast((item) => item.type === "text")?.text ?? ""
+
+        const subject = { sessionID: ctx.sessionID, child, brief: supervision, prompt: params.prompt, from }
+        const verdict = yield* reviewResult({ ...subject, replies: [first], repaired: false })
+        if (verdict.decision !== "needs_revision") return yield* settle(verdict, first)
+        // One repair round a run, in the same child session, and one review after it: the parent
+        // reads whatever that second review says.
+        const second = yield* send(MessageID.ascending(), [
+          { type: "text", text: SubagentReview.repair(verdict), synthetic: true },
+        ])
+        return yield* settle(yield* reviewResult({ ...subject, replies: [first, second], repaired: true }), second)
       })
 
       const inject = Effect.fn("TaskTool.injectBackgroundResult")(function* (
@@ -476,6 +608,7 @@ export const TaskTool = Tool.define(
         text: string,
       ) {
         const currentParent = yield* sessions.get(ctx.sessionID)
+        const result = state === "completed" ? yield* resultOf(nextSession.id) : undefined
         yield* ops
           .prompt({
             sessionID: ctx.sessionID,
@@ -492,6 +625,7 @@ export const TaskTool = Tool.define(
                     state === "completed"
                       ? `Background task completed: ${params.description}`
                       : `Background task failed: ${params.description}`,
+                  result,
                   text,
                 }),
               },
@@ -606,13 +740,20 @@ export const TaskTool = Tool.define(
             if (result?.metadata?.background === true) return backgroundResult()
             if (result?.status === "error") return yield* Effect.fail(new Error(result.error ?? "Task failed"))
             if (result?.status === "cancelled") return yield* Effect.fail(new Error("Task cancelled"))
+            const verdict = yield* resultOf(nextSession.id)
             return {
               title: params.description,
-              metadata,
+              metadata: {
+                ...metadata,
+                ...(verdict
+                  ? { review: { decision: verdict.decision, issues: verdict.issues, repaired: verdict.repaired } }
+                  : {}),
+              },
               output: renderOutput({
                 sessionID: nextSession.id,
                 state: "completed",
                 review,
+                result: verdict,
                 text: result?.output ?? "",
               }),
             }

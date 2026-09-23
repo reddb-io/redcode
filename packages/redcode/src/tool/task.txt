@@ -20,12 +20,12 @@ Say whether you expect code changes or research only, and how the work can be ve
 Before the subagent starts, the brief is reviewed against the user's request, and in single reasoning only its structure is checked. A brief that needs revision fails the call with the issues and the questions to answer. Revise it and call again; nothing was launched. Only one revision per request is expected: a second rejection lets the task run with a warning.
 
 Reading the result:
-The task output can carry a <brief_review verdict="..."> note, and later a review of the result against the brief. Verdicts mean:
-- verified: the reviewer checked it against the brief and found no gap.
-- inconclusive: the reviewer could not decide, or was unavailable. Treat the result as unverified.
-- needs_revision: gaps remain after the allowed revision. Weigh the result against the listed issues before relying on it.
-- unverified (single reasoning): only structural checks ran. Check the claims that matter yourself.
-A subagent that finished did not necessarily do what was asked. Check its claims against its evidence before you rely on them or report them to the user.
+The task output can carry a <brief_review verdict="..."> note on the brief, and, when the brief has scope, done_criteria or return_format, a <review decision="..."> block on the result. The result is checked against the brief and the subagent's own tool calls: done criteria, claims without evidence (such as tests reported passing with no command that exited 0), changes outside the scope, the requested output, and contradictions with the brief. A result that falls short gets one repair round in the same subagent before the verdict. Decisions mean:
+- verified: the result was checked against the brief and its evidence, and no gap was found. Rely on it, citing the evidence it reports.
+- needs_revision: gaps remain after the repair round; the block lists them. Verify those points yourself, or re-delegate with a sharper brief, before relying on the result or reporting it.
+- inconclusive: the reviewer could not settle it. Check the listed points that matter yourself; this never forces more work.
+- unverified: nothing semantic was checked, because reasoning is single or the reviewer was unavailable. Treat the result as unchecked and verify the claims that matter.
+The brief verdicts read the same way. A subagent that finished did not necessarily do what was asked: without a verified review, check its claims against its evidence before you rely on them or report them to the user.
 
 Usage notes:
 1. Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses. Concurrency, nesting depth and the number of subagents per user request are capped, and a call over a cap fails with the reason.

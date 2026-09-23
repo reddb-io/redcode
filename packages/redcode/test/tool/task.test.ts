@@ -16,6 +16,7 @@ import type { SessionPrompt } from "../../src/session/prompt"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
+import { SessionSpend } from "@/session/spend"
 
 import { TaskTool, type TaskPromptOps } from "../../src/tool/task"
 import { ToolOutputBridge } from "@/tool/output-bridge"
@@ -105,6 +106,7 @@ const nodes = () =>
     Intelligence.node,
     Todo.node,
     SessionPlan.node,
+    SessionSpend.node,
   ])
 
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
@@ -116,6 +118,12 @@ const noBackground = testEffect(layer({ experimentalBackgroundSubagents: false }
 const dual = testEffect(
   LayerNode.compile(nodes(), [
     [RuntimeFlags.node, RuntimeFlags.layer({})],
+    [Intelligence.node, intelligenceNode],
+  ]),
+)
+const dualBackground = testEffect(
+  LayerNode.compile(nodes(), [
+    [RuntimeFlags.node, RuntimeFlags.layer({ experimentalBackgroundSubagents: true })],
     [Intelligence.node, intelligenceNode],
   ]),
 )
@@ -1499,5 +1507,262 @@ describe("tool.task fan-out caps", () => {
         expect(resumed.metadata.sessionId).toBe(first.metadata.sessionId)
       }),
     { config: { experimental: { subagent_limits: { per_request: 1 } } } },
+  )
+})
+
+/** A subagent's final message with the tool calls it made on the way: [tool, input, exit code]. */
+function worked(
+  input: SessionPrompt.PromptInput,
+  text: string,
+  calls: ReadonlyArray<readonly [string, Record<string, unknown>, number?]>,
+): SessionV1.WithParts {
+  const message = reply(input, text)
+  return {
+    ...message,
+    parts: [
+      ...calls.map(
+        ([tool, args, exit]): SessionV1.Part => ({
+          id: PartID.ascending(),
+          messageID: message.info.id,
+          sessionID: input.sessionID,
+          type: "tool",
+          callID: `call_${crypto.randomUUID()}`,
+          tool,
+          state: {
+            status: "completed",
+            input: args,
+            output: exit === undefined ? "ok" : `exit ${exit}`,
+            title: tool,
+            metadata: exit === undefined ? {} : { exit },
+            time: { start: 1, end: 2 },
+          },
+        }),
+      ),
+      ...message.parts,
+    ],
+  }
+}
+
+const promptText = (input: SessionPrompt.PromptInput) =>
+  input.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+
+/** What a subagent that did the job hands back: the criterion named, the change in scope, the check passing. */
+const DONE = "The key is built by cacheKey in src/cache/key.ts line 12, named with its file and line; bun test passes."
+
+describe("tool.task result review", () => {
+  dual.instance("a result that meets the brief is verified, and its S1 spend is the parent's", () =>
+    Effect.gen(function* () {
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set()
+      const sessions = yield* Session.Service
+      const spend = yield* SessionSpend.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const seen: SessionPrompt.PromptInput[] = []
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.sync(() => {
+            seen.push(input)
+            return worked(input, DONE, [
+              ["edit", { filePath: "src/cache/key.ts" }],
+              ["bash", { command: "bun test test/cache" }, 0],
+            ])
+          }),
+      }
+      const result = yield* def.execute(brief, context(chat.id, assistant.id, promptOps))
+
+      expect(seen).toHaveLength(1)
+      expect(result.output).toContain(`<review decision="verified">`)
+      expect(result.output).toContain(DONE)
+      expect(result.metadata).toMatchObject({ review: { decision: "verified", issues: [], repaired: false } })
+      const stored = SubagentReview.fromMetadata((yield* sessions.get(result.metadata.sessionId)).metadata)
+      expect(stored?.result?.decision).toBe("verified")
+      // One brief review and one result review, each reporting one input and one output token.
+      expect(s1.calls).toBe(2)
+      expect((yield* spend.totals(chat.id)).tokens).toBe(4)
+    }),
+  )
+
+  dual.instance("an incomplete result gets one repair round in the same subagent, then a verdict", () =>
+    Effect.gen(function* () {
+      s1.down = false
+      s1.flagged = new Set(["unmet_criterion", "missing_output"])
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const seen: SessionPrompt.PromptInput[] = []
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.sync(() => {
+            seen.push(input)
+            if (!promptText(input).startsWith(SubagentReview.REPAIR)) return reply(input, "Looked around.")
+            // The repaired result holds up.
+            s1.flagged = new Set()
+            return worked(input, DONE, [["bash", { command: "bun test test/cache" }, 0]])
+          }),
+      }
+      const result = yield* def.execute(brief, context(chat.id, assistant.id, promptOps))
+
+      expect(seen).toHaveLength(2)
+      expect(seen[1]?.sessionID).toBe(seen[0]?.sessionID)
+      const repair = promptText(seen[1]!)
+      expect(repair).toContain("unmet_criterion")
+      expect(repair).toContain("missing_output")
+      expect(repair).toContain("only repair round")
+      expect(result.output).toContain(`<review decision="verified" repaired="true">`)
+      expect(result.output).toContain(DONE)
+      expect(result.output).not.toContain("Looked around.")
+      expect(result.metadata).toMatchObject({ review: { decision: "verified", repaired: true } })
+    }),
+  )
+
+  dual.instance("S1 calls per task are bounded: one repair, one more review, then the verdict stands", () =>
+    Effect.gen(function* () {
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set(Object.keys(SubagentReview.resultQuestions))
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const promptOps = stubOps({ onPrompt: () => void prompts++, text: "Looked around." })
+      const result = yield* def.execute(brief, context(chat.id, assistant.id, promptOps))
+
+      expect(prompts).toBe(2)
+      // One brief review, one result review, one review after the repair.
+      expect(s1.calls).toBe(3)
+      expect(result.output).toContain(`<review decision="needs_revision" repaired="true">`)
+      expect(result.output).toContain("re-delegate")
+      expect(result.metadata).toMatchObject({
+        review: { decision: "needs_revision", issues: expect.arrayContaining(["unmet_criterion"]), repaired: true },
+      })
+    }),
+  )
+
+  dual.instance("a change outside the scope needs revision without asking S1", () =>
+    Effect.gen(function* () {
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set()
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.sync(() => {
+            prompts++
+            return worked(input, DONE, [
+              ["edit", { filePath: "src/db/pool.ts" }],
+              ["bash", { command: "bun test test/cache" }, 0],
+            ])
+          }),
+      }
+      const result = yield* def.execute(brief, context(chat.id, assistant.id, promptOps))
+
+      expect(prompts).toBe(2)
+      // Only the brief review: a blocking finding settles each result review on its own.
+      expect(s1.calls).toBe(1)
+      expect(result.output).toContain(`<review decision="needs_revision" repaired="true">`)
+      expect(result.output).toContain("src/db/pool.ts")
+      expect(result.metadata).toMatchObject({ review: { decision: "needs_revision", issues: ["out_of_scope"] } })
+    }),
+  )
+
+  dual.instance("single reasoning runs the mechanical checks only and labels the result unverified", () =>
+    Effect.gen(function* () {
+      const intelligence = yield* Intelligence.Service
+      yield* intelligence.save({ settings: { ...(yield* intelligence.read()), reasoning: "single" } })
+      s1.calls = 0
+      s1.down = false
+      s1.flagged = new Set(Object.keys(SubagentReview.resultQuestions))
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const result = yield* def.execute(
+        brief,
+        context(chat.id, assistant.id, stubOps({ onPrompt: () => void prompts++, text: "Looked around." })),
+      )
+
+      expect(s1.calls).toBe(0)
+      expect(prompts).toBe(1)
+      expect(result.output).toContain(`<review decision="unverified">`)
+      expect(result.output).toContain(Intelligence.UNVERIFIED)
+      expect(result.output).toContain("does not mention a done criterion")
+      expect(result.metadata).toMatchObject({ review: { decision: "unverified", repaired: false } })
+    }),
+  )
+
+  dual.instance("an S1 that fails leaves the result unverified, never verified", () =>
+    Effect.gen(function* () {
+      s1.down = true
+      s1.flagged = new Set()
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const result = yield* def.execute(
+        brief,
+        context(chat.id, assistant.id, stubOps({ onPrompt: () => void prompts++, text: DONE })),
+      )
+      s1.down = false
+
+      expect(prompts).toBe(1)
+      expect(result.output).toContain(`<review decision="unverified">`)
+      expect(result.output).toContain("S1 could not review the result")
+      expect(result.output).toContain(DONE)
+      expect(result.metadata).toMatchObject({ review: { decision: "unverified" } })
+    }),
+  )
+
+  dual.instance("a task without a structured brief is not reviewed on the way out", () =>
+    Effect.gen(function* () {
+      s1.down = false
+      s1.flagged = new Set()
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const result = yield* def.execute(
+        { description: "review", prompt: "review", subagent_type: "general" },
+        context(chat.id, assistant.id, stubOps(), { bypassAgentCheck: true }),
+      )
+
+      expect(result.output).not.toContain("<review")
+      expect(result.metadata).not.toHaveProperty("review")
+    }),
+  )
+
+  dualBackground.instance("a background task reports its verdict when it finishes", () =>
+    Effect.gen(function* () {
+      s1.down = false
+      s1.flagged = new Set()
+      const jobs = yield* BackgroundJob.Service
+      const { chat, assistant } = yield* seed()
+      const def = yield* (yield* TaskTool).init()
+      const injected = defer<SessionPrompt.PromptInput>()
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) => {
+          if (input.sessionID === chat.id) {
+            injected.resolve(input)
+            return Effect.succeed(reply(input, "noted"))
+          }
+          return Effect.succeed(
+            worked(input, DONE, [
+              ["edit", { filePath: "src/cache/key.ts" }],
+              ["bash", { command: "bun test test/cache" }, 0],
+            ]),
+          )
+        },
+      }
+      const started = yield* def.execute({ ...brief, background: true }, context(chat.id, assistant.id, promptOps))
+      expect(started.output).toContain(`state="running"`)
+
+      const waited = yield* jobs.wait({ id: started.metadata.sessionId, timeout: 1_000 })
+      expect(waited.info?.status).toBe("completed")
+      const notification = promptText(yield* Effect.promise(() => injected.promise))
+      expect(notification).toContain("Background task completed")
+      expect(notification).toContain(`<review decision="verified">`)
+      expect(notification).toContain(DONE)
+    }),
   )
 })

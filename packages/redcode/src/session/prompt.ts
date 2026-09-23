@@ -1,5 +1,6 @@
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { LoopGuard } from "@reddb-io/redcode-core/session/loop-guard"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
@@ -2177,13 +2178,18 @@ const layer = Layer.effect(
                       message.info.id < lastAssistantMsg.info.id,
                   )
                 : lastAssistantMsg
-            const evaluation = responseCandidate
-              ? yield* reviewResponse(sessionID, msgs, responseCandidate, responseRepairs).pipe(
-                  Effect.catch((error) =>
-                    reportIntelligenceFailure(sessionID, "response_quality", String(error)).pipe(Effect.as(undefined)),
-                  ),
-                )
-              : undefined
+            // A subagent under a structured brief has its result reviewed by its parent against that
+            // brief (the task tool); a generic review here as well would only double the S1 cost.
+            const evaluation =
+              responseCandidate && !SubagentReview.supervised(SubagentReview.fromMetadata(session.metadata))
+                ? yield* reviewResponse(sessionID, msgs, responseCandidate, responseRepairs).pipe(
+                    Effect.catch((error) =>
+                      reportIntelligenceFailure(sessionID, "response_quality", String(error)).pipe(
+                        Effect.as(undefined),
+                      ),
+                    ),
+                  )
+                : undefined
             if (
               evaluation &&
               evaluation.decision !== "accepted" &&

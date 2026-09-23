@@ -254,3 +254,322 @@ describe("SubagentReview.resultStructure", () => {
     expect(finding?.criteria).toEqual(["the changelog has an entry"])
   })
 })
+
+const shell = (command: string, exit: number | undefined, status = "completed"): SubagentReview.Part => ({
+  type: "tool",
+  tool: "bash",
+  state: {
+    status,
+    input: { command },
+    ...(status === "error" ? { error: "boom" } : { output: `ran ${command}` }),
+    ...(exit === undefined ? {} : { metadata: { exit } }),
+  },
+})
+
+const accepted = { id: "eval_1", decision: "accepted" as const, issues: [] }
+
+describe("SubagentReview.supervised", () => {
+  const brief: SubagentReview.Brief = {
+    brief: "do it",
+    agent: "general",
+    scope: [],
+    criteria: [],
+    writeCapable: true,
+    parentSessionID: "ses_parent",
+    verdict: "verified",
+    issues: [],
+    created: 1,
+  }
+  const cases: Array<[string, SubagentReview.Brief | undefined, boolean]> = [
+    ["no brief", undefined, false],
+    ["a brief without structure", brief, false],
+    ["a brief with scope", { ...brief, scope: ["src/**"] }, true],
+    ["a brief with criteria", { ...brief, criteria: ["tests pass"] }, true],
+    ["a brief with a return format", { ...brief, returnFormat: "a list" }, true],
+    ["a blank return format", { ...brief, returnFormat: "  " }, false],
+    // A brief the user wrote is not reviewed on the way in, nor on the way out.
+    ["a skipped brief", { ...brief, criteria: ["tests pass"], verdict: "skipped" }, false],
+    ["an unverified brief", { ...brief, criteria: ["tests pass"], verdict: "unverified" }, true],
+  ]
+  test.each(cases)("%s", (_name, input, expected) => {
+    expect(SubagentReview.supervised(input)).toBe(expected)
+  })
+
+  test("the result verdict round-trips through metadata; a malformed one is dropped", () => {
+    const result: SubagentReview.ResultReview = { decision: "verified", issues: [], repaired: true }
+    const metadata = SubagentReview.toMetadata(undefined, { ...brief, result })
+    expect(SubagentReview.fromMetadata(metadata)?.result).toEqual(result)
+    const malformed = SubagentReview.toMetadata(undefined, {
+      ...brief,
+      result: { decision: "great", issues: [], repaired: false } as unknown as SubagentReview.ResultReview,
+    })
+    expect(SubagentReview.fromMetadata(malformed)?.result).toBeUndefined()
+  })
+})
+
+describe("SubagentReview.failingVerifications", () => {
+  const cases: Array<[string, SubagentReview.Part[], string[]]> = [
+    ["a passing command", [shell("bun test", 0)], []],
+    ["a failing command", [shell("bun test", 1)], ["bun test"]],
+    ["the last run wins: failed then passed", [shell("bun test", 1), shell("bun test", 0)], []],
+    ["the last run wins: passed then failed", [shell("bun test", 0), shell("bun test", 2)], ["bun test"]],
+    ["an errored command", [shell("bun run build", undefined, "error")], ["bun run build"]],
+    // A search with no match exits 1 and proves nothing either way.
+    ["a read-only command", [shell("grep -rn foo src", 1)], []],
+    ["no exit code recorded", [shell("bun test", undefined)], []],
+    ["not a shell", [{ type: "tool", tool: "edit", state: { status: "error", input: {} } }], []],
+  ]
+  test.each(cases)("%s", (_name, parts, commands) => {
+    expect(SubagentReview.failingVerifications(parts).map((run) => run.command)).toEqual(commands)
+  })
+})
+
+describe("SubagentReview.resultChecks", () => {
+  const edit = (path: string): SubagentReview.Part => ({
+    type: "tool",
+    tool: "edit",
+    state: { status: "completed", input: { filePath: path }, output: "ok" },
+  })
+  const cases: Array<[string, string, SubagentReview.Part[], SubagentReview.ResultCheck[], boolean]> = [
+    [
+      "a clean result",
+      "Fixed src/cache/key.ts; bun test passes.",
+      [edit("/repo/src/cache/key.ts"), shell("bun test", 0)],
+      [],
+      false,
+    ],
+    ["an empty result blocks", " ", [edit("/repo/src/cache/key.ts")], ["empty_result"], true],
+    [
+      "a change outside the scope blocks",
+      "Fixed src/cache/key.ts; bun test passes.",
+      [edit("/repo/src/cache/key.ts"), edit("/repo/src/db/pool.ts"), shell("bun test", 0)],
+      ["out_of_scope"],
+      true,
+    ],
+    [
+      "a failing check is reported but does not block",
+      "Fixed src/cache/key.ts; bun test passes.",
+      [edit("/repo/src/cache/key.ts"), shell("bun test", 1)],
+      ["failing_verification"],
+      false,
+    ],
+    [
+      "reading outside the scope is fine",
+      "Fixed src/cache/key.ts; bun test passes.",
+      [
+        { type: "tool", tool: "read", state: { status: "completed", input: { filePath: "/repo/src/db/pool.ts" } } },
+        edit("/repo/src/cache/key.ts"),
+        shell("bun test", 0),
+      ],
+      [],
+      false,
+    ],
+  ]
+  test.each(cases)("%s", (_name, text, parts, ids, blocking) => {
+    const findings = SubagentReview.resultChecks(
+      { text, parts },
+      { criteria: ["bun test passes"], scope: ["src/cache/**"], changesRequested: true, directory: "/repo" },
+    )
+    expect(findings.map((finding) => finding.id)).toEqual(ids)
+    expect(findings.some((finding) => finding.blocking)).toBe(blocking)
+  })
+
+  test("names the files changed outside the scope and the exit codes of failing commands", () => {
+    const findings = SubagentReview.resultChecks(
+      { text: "bun test passes", parts: [edit("/repo/src/db/pool.ts"), shell("bun test", 3)] },
+      { criteria: ["bun test passes"], scope: ["src/cache/**"], changesRequested: true, directory: "/repo" },
+    )
+    expect(findings.find((finding) => finding.id === "out_of_scope")?.message).toContain("/repo/src/db/pool.ts")
+    expect(findings.find((finding) => finding.id === "failing_verification")?.message).toContain("bun test (exit 3)")
+  })
+})
+
+describe("SubagentReview.digest", () => {
+  test("keeps settled calls with their command or files, exit code and the tail of the output", () => {
+    const result = SubagentReview.digest(
+      [
+        { type: "text" },
+        { type: "tool", tool: "bash", state: { status: "running", input: { command: "bun test" } } },
+        shell("bun test", 1),
+        {
+          type: "tool",
+          tool: "edit",
+          state: { status: "completed", input: { filePath: "src/a.ts" }, output: "x".repeat(1000) },
+        },
+        { type: "tool", tool: "edit", state: { status: "error", input: { filePath: "src/b.ts" }, error: "no match" } },
+      ],
+      { directory: "/repo" },
+    )
+    expect(result.total).toBe(3)
+    expect(result.omitted).toBe(0)
+    expect(result.calls[0]).toEqual({
+      tool: "bash",
+      status: "completed",
+      command: "bun test",
+      exit: 1,
+      output: "ran bun test",
+    })
+    expect(result.calls[1]?.files).toEqual(["/repo/src/a.ts"])
+    // Bounded: the tail of a long output, in code points.
+    expect([...(result.calls[1]?.output ?? "")].length).toBe(401)
+    expect(result.calls[2]).toMatchObject({ status: "error", output: "no match" })
+  })
+
+  test("keeps the most recent calls and counts the rest", () => {
+    const parts = Array.from({ length: 50 }, (_, index) => shell(`bun test ${index}`, 0))
+    const result = SubagentReview.digest(parts, { calls: 10 })
+    expect(result.total).toBe(50)
+    expect(result.omitted).toBe(40)
+    expect(result.calls.map((call) => call.command)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `bun test ${40 + index}`),
+    )
+  })
+})
+
+describe("SubagentReview.judge", () => {
+  const advice = { id: "criteria_not_mentioned", blocking: false, message: "The result does not mention a criterion" }
+  const blocking = { id: "out_of_scope", blocking: true, message: "Changed files outside the scope" }
+  const cases: Array<
+    [string, Parameters<typeof SubagentReview.judge>[0], SubagentReview.ResultDecision, ReadonlyArray<string>]
+  > = [
+    [
+      "single reasoning is unverified, whatever the findings",
+      { findings: [advice], single: true, repaired: false },
+      "unverified",
+      ["criteria_not_mentioned"],
+    ],
+    ["S1 accepts", { findings: [advice], evaluation: accepted, single: false, repaired: false }, "verified", []],
+    [
+      "S1 needs revision",
+      {
+        findings: [],
+        evaluation: { id: "e", decision: "needs_revision", issues: ["unmet_criterion"] },
+        single: false,
+        repaired: false,
+      },
+      "needs_revision",
+      ["unmet_criterion"],
+    ],
+    [
+      "S1 inconclusive only annotates",
+      {
+        findings: [],
+        evaluation: { id: "e", decision: "inconclusive", issues: ["claim_without_evidence"] },
+        single: false,
+        repaired: true,
+      },
+      "inconclusive",
+      ["claim_without_evidence"],
+    ],
+    [
+      "a blocking finding needs revision without S1",
+      { findings: [blocking], single: false, repaired: false },
+      "needs_revision",
+      ["out_of_scope"],
+    ],
+    [
+      "a blocking finding overrides an S1 accept",
+      { findings: [blocking], evaluation: accepted, single: false, repaired: false },
+      "needs_revision",
+      ["out_of_scope"],
+    ],
+    [
+      "S1 unavailable fails open, labelled",
+      {
+        findings: [advice],
+        evaluation: {
+          id: "e",
+          decision: "unavailable",
+          issues: ["Evaluation unavailable: 503. Previous state preserved."],
+        },
+        single: false,
+        repaired: false,
+      },
+      "unverified",
+      ["criteria_not_mentioned"],
+    ],
+    ["S1 not enabled fails open", { findings: [], single: false, repaired: false }, "unverified", []],
+  ]
+  test.each(cases)("%s", (_name, input, decision, issues) => {
+    const review = SubagentReview.judge(input)
+    expect(review.decision).toBe(decision)
+    expect(review.issues).toEqual(issues)
+    expect(review.repaired).toBe(input.repaired)
+  })
+
+  test("an unavailable S1 says why, without the gate wording", () => {
+    const review = SubagentReview.judge({
+      findings: [],
+      evaluation: {
+        id: "e",
+        decision: "unavailable",
+        issues: ["Evaluation unavailable: 503. Previous state preserved."],
+      },
+      single: false,
+      repaired: false,
+    })
+    expect(review.unavailable).toBe("Evaluation unavailable: 503.")
+  })
+})
+
+describe("SubagentReview.repair and reviewBlock", () => {
+  test("the repair message opens with its marker and asks for each issue once", () => {
+    const text = SubagentReview.repair({
+      issues: ["unmet_criterion", "0:unmet_criterion", "out_of_scope"],
+      findings: [{ id: "out_of_scope", blocking: true, message: "Changed src/db/pool.ts" }],
+    })
+    expect(text.startsWith(SubagentReview.REPAIR)).toBe(true)
+    expect(text).toContain("Changed src/db/pool.ts")
+    expect(text.split("Meet every done criterion").length).toBe(2)
+    expect(text).toContain("only repair round")
+  })
+
+  const cases: Array<[string, SubagentReview.ResultReview, ReadonlyArray<string>]> = [
+    [
+      "verified",
+      { decision: "verified", issues: [], repaired: false, evaluationID: "e1" },
+      ['<review decision="verified">', "e1", "no gap"],
+    ],
+    [
+      "needs revision after the repair",
+      { decision: "needs_revision", issues: ["unmet_criterion"], repaired: true },
+      [
+        '<review decision="needs_revision" repaired="true">',
+        "unmet_criterion",
+        "after one repair round",
+        "re-delegate",
+      ],
+    ],
+    [
+      "inconclusive",
+      { decision: "inconclusive", issues: ["claim_without_evidence"], repaired: false },
+      ["claim_without_evidence", "Check the claims"],
+    ],
+    [
+      "unverified in single reasoning",
+      { decision: "unverified", issues: [], repaired: false },
+      [Intelligence.UNVERIFIED, "mechanical checks", "unchecked"],
+    ],
+    [
+      "unverified because S1 failed",
+      { decision: "unverified", issues: [], repaired: false, unavailable: "Evaluation unavailable: 503." },
+      ["S1 could not review the result (Evaluation unavailable: 503.)", "unchecked"],
+    ],
+  ]
+  test.each(cases)("%s", (_name, review, fragments) => {
+    const block = SubagentReview.reviewBlock(review)
+    expect(block.endsWith("</review>")).toBe(true)
+    for (const fragment of fragments) expect(block).toContain(fragment)
+  })
+
+  test("the result questions are yes-is-an-error noul questions", () => {
+    expect(Object.keys(SubagentReview.resultQuestions)).toEqual([
+      "unmet_criterion",
+      "claim_without_evidence",
+      "out_of_scope",
+      "missing_output",
+      "contradicts_brief",
+    ])
+    for (const question of Object.values(SubagentReview.resultQuestions)) expect(question.type).toBe("noul")
+  })
+})
