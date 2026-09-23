@@ -318,6 +318,8 @@ export const TaskTool = Tool.define(
       return SubagentReview.judge({ findings, evaluation, single: false, repaired: input.repaired })
     })
 
+    const unreviewed: { review?: Pick<SubagentReview.ResultReview, "decision" | "issues" | "repaired"> } = {}
+
     /** The verdict on the child's latest result, when its parent reviews it. */
     const resultOf = (sessionID: SessionID) =>
       sessions.get(sessionID).pipe(
@@ -510,6 +512,9 @@ export const TaskTool = Tool.define(
             }
           : {}),
         ...(runInBackground ? { background: true } : {}),
+        // Filled in when a foreground result is reviewed; declared here so every result the tool
+        // returns has the same metadata shape.
+        ...unreviewed,
       }
 
       yield* ctx.metadata({
