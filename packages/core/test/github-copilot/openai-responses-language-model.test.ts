@@ -79,6 +79,51 @@ describe("doGenerate", () => {
   })
 })
 
+describe("reasoning model classification", () => {
+  test.each([
+    ["gpt-5.5", true],
+    ["gpt-6-sol", true],
+    ["gpt-6-luna", true],
+    ["gpt-5-chat-latest", false],
+    ["gpt-6-chat-latest", false],
+    ["gpt-4.1", false],
+  ])("%s is a reasoning model: %p", async (modelId, reasoning) => {
+    const mockFetch = createMockFetch({
+      id: "resp_1",
+      created_at: 0,
+      model: modelId,
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          id: "msg_1",
+          content: [{ type: "output_text", text: "Hello there", annotations: [] }],
+        },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    })
+    const model = new OpenAIResponsesLanguageModel(modelId, {
+      provider: "copilot",
+      url: () => "https://api.test.com/responses",
+      headers: () => ({ Authorization: "Bearer test-token" }),
+      fetch: mockFetch as any,
+    })
+
+    await model.doGenerate({
+      prompt: [{ role: "system", content: "Be brief." }, ...TEST_PROMPT],
+      temperature: 0.5,
+      providerOptions: { copilot: { reasoningEffort: "high" } },
+      includeRawChunks: false,
+    } as any)
+
+    const calls = mockFetch.mock.calls as unknown as [string, RequestInit][]
+    const body = JSON.parse(String(calls[0][1].body))
+    expect(body.reasoning).toEqual(reasoning ? { effort: "high" } : undefined)
+    expect(body.temperature).toEqual(reasoning ? undefined : 0.5)
+    expect(body.input[0].role).toBe(reasoning ? "developer" : "system")
+  })
+})
+
 describe("convertToOpenAIResponsesInput", () => {
   test("echoes a stale tool-call itemId from the copilot namespace as the function_call id", async () => {
     const { input } = await convertToOpenAIResponsesInput({

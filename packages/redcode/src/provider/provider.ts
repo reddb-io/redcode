@@ -2066,7 +2066,7 @@ const layer = Layer.effect(
       }
 
       const priority = providerID.startsWith("opencode")
-        ? ["gpt-nano"]
+        ? ["gpt-luna", "gpt-nano"]
         : providerID.startsWith("github-copilot")
           ? ["gpt-mini", ...smallModelFamilyPriority]
           : smallModelFamilyPriority
@@ -2142,7 +2142,7 @@ const layer = Layer.effect(
 )
 
 const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro"]
-const smallModelFamilyPriority = ["gemini-flash", "gpt-nano", "claude-haiku"]
+const smallModelFamilyPriority = ["gpt-luna", "gemini-flash", "gpt-nano", "claude-haiku"]
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(
     models,

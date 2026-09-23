@@ -627,6 +627,40 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
     const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
+
+  test.each(["gpt-6-sol", "gpt-6-luna", "gpt-6-astra"])("%s gets the GPT-5 reasoning defaults on OpenAI", (id) => {
+    const result = ProviderTransform.options({ model: createGpt5Model(id), sessionID, providerOptions: {} })
+    expect(result.reasoningEffort).toBe("medium")
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toEqual(["reasoning.encrypted_content"])
+    // Low verbosity stays a gpt-5.x default.
+    expect(result.textVerbosity).toBeUndefined()
+  })
+
+  test("gpt-6-sol on OpenCode Zen gets the cache key and encrypted reasoning", () => {
+    const model = {
+      ...createGpt5Model("gpt-6-sol"),
+      id: "opencode/gpt-6-sol",
+      providerID: "opencode",
+      api: { id: "gpt-6-sol", url: "https://opencode.ai/zen/v1", npm: "@ai-sdk/openai-compatible" },
+    }
+    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    expect(result.reasoningEffort).toBe("medium")
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toEqual(["reasoning.encrypted_content"])
+    expect(result.promptCacheKey).toBe(sessionID)
+  })
+
+  test.each(["gpt-6-chat", "gpt-6-pro"])("%s keeps the chat and pro exclusions", (id) => {
+    const result = ProviderTransform.options({ model: createGpt5Model(id), sessionID, providerOptions: {} })
+    expect(result.reasoningEffort).toBeUndefined()
+  })
+
+  test("gpt-4.1 gets no reasoning defaults", () => {
+    const result = ProviderTransform.options({ model: createGpt5Model("gpt-4.1"), sessionID, providerOptions: {} })
+    expect(result.reasoningEffort).toBeUndefined()
+    expect(result.include).toBeUndefined()
+  })
 })
 
 describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
@@ -715,6 +749,72 @@ describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
     })
 
     expect(result.reasoningEffort).toBe("medium")
+  })
+
+  test("gpt-6-sol counts as newer than gpt-5.5 for the completions API", () => {
+    const result = ProviderTransform.options({
+      model: createModel("gpt-6-sol"),
+      sessionID,
+      providerOptions: { useCompletionUrls: true },
+    })
+
+    expect(result.reasoningEffort).toBeUndefined()
+  })
+
+  test("gpt-5-mini still sets reasoningEffort for the completions API", () => {
+    const result = ProviderTransform.options({
+      model: createModel("gpt-5-mini"),
+      sessionID,
+      providerOptions: { useCompletionUrls: true },
+    })
+
+    expect(result.reasoningEffort).toBe("medium")
+  })
+
+  test("gpt-6-sol gets the reasoning defaults for the responses API", () => {
+    const result = ProviderTransform.options({
+      model: createModel("gpt-6-sol"),
+      sessionID,
+      providerOptions: {},
+    })
+
+    expect(result.reasoningEffort).toBe("medium")
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toBeUndefined()
+  })
+})
+
+describe("ProviderTransform.supportsForcedToolChoice", () => {
+  const claude = (id: string) => ({ api: { id } }) as any
+
+  test.each([
+    "claude-opus-5-5",
+    "claude-opus-5.5",
+    "anthropic/claude-opus-5.5",
+    "anthropic.claude-opus-5-5",
+    "us.anthropic.claude-opus-5-5-v1:0",
+    "claude-opus-5-5@default",
+    "claude-5-5-opus",
+    "claude-opus-6",
+    "claude-fable-5-1",
+    "claude-fable-5",
+    "claude-mythos-5-1",
+    "global.anthropic.claude-mythos-5-2-v1:0",
+  ])("rejects forced tool choice for %s", (id) => {
+    expect(ProviderTransform.supportsForcedToolChoice(claude(id))).toBe(false)
+  })
+
+  test.each([
+    "claude-opus-5",
+    "claude-opus-5-1",
+    "claude-opus-5-20260724",
+    "claude-opus-4-8",
+    "claude-sonnet-5-5",
+    "claude-haiku-4-5",
+    "gpt-6-sol",
+    "test-model",
+  ])("allows forced tool choice for %s", (id) => {
+    expect(ProviderTransform.supportsForcedToolChoice(claude(id))).toBe(true)
   })
 })
 
@@ -887,13 +987,19 @@ describe("ProviderTransform.providerOptions", () => {
           "claude-sonnet-5-2",
           "claude-mythos-5-2",
           "claude-mythos-5-10",
+          "claude-opus-5-5",
+          "claude-opus-5.5",
           "claude-opus-6",
           "claude-6-opus",
           "claude-mythos-6-20270901",
         ])("adds binding for %s", (id) => {
           const model = claude(sdk.npm, id)
+          // Without a variant the default thinking still asks for summarized text, which these models omit.
           expect(ProviderTransform.providerOptions(model, {})).toEqual({
-            [sdk.key]: { [sdk.option]: { type: "adaptive", blockBinding: binding } },
+            [sdk.key]: { [sdk.option]: { type: "adaptive", display: "summarized", blockBinding: binding } },
+          })
+          expect(ProviderTransform.providerOptions(model, { [sdk.option]: { type: "adaptive", display: "omitted" } })).toEqual({
+            [sdk.key]: { [sdk.option]: { type: "adaptive", display: "omitted", blockBinding: binding } },
           })
           expect(
             ProviderTransform.providerOptions(model, { [sdk.option]: { type: "adaptive", display: "summarized" } }),
@@ -1039,6 +1145,35 @@ describe("ProviderTransform.providerOptions", () => {
       })
     })
 
+    test("sends summarized adaptive thinking for Claude Opus 5.5 without a variant", async () => {
+      const requests: Request[] = []
+      const capture = Object.assign(
+        async (...args: Parameters<typeof fetch>) => {
+          requests.push(new Request(...args))
+          return Response.json({
+            type: "message",
+            id: "msg_1",
+            model: "claude-opus-5-5",
+            role: "assistant",
+            content: [{ type: "text", text: "ok" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 1, output_tokens: 1 },
+          })
+        },
+        { preconnect: () => undefined },
+      )
+      const model = claude("@ai-sdk/anthropic", "claude-opus-5-5")
+      await generateText({
+        model: createAnthropic({ apiKey: "test-key", fetch: capture })(model.api.id),
+        prompt: "hi",
+        maxOutputTokens: 32000,
+        providerOptions: ProviderTransform.providerOptions(model, {}),
+      })
+      expect(requests).toHaveLength(1)
+      const body = await requests[0].json()
+      expect(body.thinking).toMatchObject({ type: "adaptive", display: "summarized" })
+    })
+
     test("leaves disabled thinking alone", () => {
       const model = claude("@ai-sdk/anthropic", "claude-fable-5-1")
       expect(ProviderTransform.providerOptions(model, { thinking: { type: "disabled" } })).toEqual({
@@ -1061,7 +1196,7 @@ describe("ProviderTransform.providerOptions", () => {
         bedrock: { reasoningConfig: { type: "adaptive", maxReasoningEffort: "high", blockBinding: binding } },
       })
       expect(ProviderTransform.providerOptions(model, {})).toEqual({
-        bedrock: { reasoningConfig: { type: "adaptive", blockBinding: binding } },
+        bedrock: { reasoningConfig: { type: "adaptive", display: "summarized", blockBinding: binding } },
       })
     })
 
@@ -1110,6 +1245,7 @@ describe("ProviderTransform.providerOptions", () => {
       })
       expect(sent?.body.thinking).toEqual({
         type: "adaptive",
+        display: "summarized",
         block_binding: { prefix_mismatch_behavior: "drop_block" },
       })
       expect(sent?.headers.get("anthropic-beta")?.split(",")).toContain("thinking-binding-controls-2026-08-01")
@@ -1159,6 +1295,7 @@ describe("ProviderTransform.providerOptions", () => {
       expect(sent?.body.anthropic_version).toBe("vertex-2023-10-16")
       expect(sent?.body.thinking).toEqual({
         type: "adaptive",
+        display: "summarized",
         block_binding: { prefix_mismatch_behavior: "drop_block" },
       })
       expect(sent?.headers.get("anthropic-beta")?.split(",")).toContain("thinking-binding-controls-2026-08-01")

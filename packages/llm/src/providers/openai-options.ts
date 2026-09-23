@@ -46,7 +46,8 @@ export const gpt5DefaultOptions = (
   options: { readonly textVerbosity?: boolean } = {},
 ): ProviderOptions | undefined => {
   const id = modelID.toLowerCase()
-  if (!id.includes("gpt-5") || id.includes("gpt-5-chat") || id.includes("gpt-5-pro")) return undefined
+  // GPT-5 and every later generation (gpt-6-sol, gpt-6-luna, ...) share these defaults.
+  if (!(Number(/gpt-(\d+)/.exec(id)?.[1]) >= 5) || /gpt-\d+-(?:chat|pro)/.test(id)) return undefined
   return openAIProviderOptions({
     reasoningEffort: "medium",
     reasoningSummary: "auto",

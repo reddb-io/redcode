@@ -8678,3 +8678,75 @@ it.instance(
     }).pipe(Effect.ensuring(forgetTestModel)),
   90_000,
 )
+
+/** The test model served as a Claude model through the real Anthropic SDK against the fake server. */
+function claudeCfg(url: string, id: string) {
+  const base = sdkCfg(url, "@ai-sdk/anthropic", { context: 100_000, output: 32_000 })
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      test: { ...base.provider.test, models: { "test-model": { ...base.provider.test.models["test-model"], id } } },
+    },
+  }
+}
+
+const promptStructured = Effect.fn("test.promptStructured")(function* () {
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  const chat = yield* sessions.create({ title: "Structured output" })
+  yield* prompt.prompt({
+    sessionID: chat.id,
+    agent: "build",
+    noReply: true,
+    parts: [{ type: "text", text: "What is 2 + 2?" }],
+    format: new SessionV1.OutputFormatJsonSchema({
+      type: "json_schema",
+      schema: { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] },
+      retryCount: 2,
+    }),
+  })
+  return { chat, prompt, sessions }
+})
+
+const structuredOf = (messages: SessionV1.WithParts[]) => {
+  const answer = messages.findLast((message) => message.info.role === "assistant")
+  return answer?.info.role === "assistant" ? answer.info.structured : undefined
+}
+
+it.instance(
+  "structured output on Claude Opus 5.5 asks for the tool instead of forcing it",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => claudeCfg(url, "claude-opus-5-5"))
+      const { chat, prompt, sessions } = yield* promptStructured()
+      yield* llm.text("It is 4.")
+      yield* llm.tool("StructuredOutput", { answer: 4 })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(2)
+      hits.forEach((hit) => expect(hit.body.tool_choice).toMatchObject({ type: "auto" }))
+      // The plain-text answer was followed by a reminder to call the tool.
+      expect(requestText(hits[1]!)).toContain("Call the StructuredOutput tool now")
+      expect(structuredOf(yield* sessions.messages({ sessionID: chat.id }))).toEqual({ answer: 4 })
+    }),
+  60_000,
+)
+
+it.instance(
+  "structured output on Claude Opus 5 still forces the tool",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => claudeCfg(url, "claude-opus-5"))
+      const { chat, prompt, sessions } = yield* promptStructured()
+      yield* llm.tool("StructuredOutput", { answer: 4 })
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the loop never finished", "60 seconds")
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.body.tool_choice).toMatchObject({ type: "any" })
+      expect(structuredOf(yield* sessions.messages({ sessionID: chat.id }))).toEqual({ answer: 4 })
+    }),
+  60_000,
+)

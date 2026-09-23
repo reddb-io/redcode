@@ -740,19 +740,36 @@ function anthropicBlockBinding(model: Provider.Model, options: { [x: string]: an
   switch (model.api.npm) {
     case "@ai-sdk/anthropic":
     case "@ai-sdk/google-vertex/anthropic": {
-      const thinking = options.thinking ?? { type: "adaptive" }
+      const thinking = options.thinking ?? adaptiveThinkingDefault(model.api.id)
       if (thinking.type !== "adaptive" && thinking.type !== "enabled") return options
       if (thinking.blockBinding !== undefined) return options
       return { ...options, thinking: { ...thinking, blockBinding: ANTHROPIC_BLOCK_BINDING } }
     }
     case "@ai-sdk/amazon-bedrock": {
-      const reasoningConfig = options.reasoningConfig ?? { type: "adaptive" }
+      const reasoningConfig = options.reasoningConfig ?? adaptiveThinkingDefault(model.api.id)
       if (reasoningConfig.type !== "adaptive" && reasoningConfig.type !== "enabled") return options
       if (reasoningConfig.blockBinding !== undefined) return options
       return { ...options, reasoningConfig: { ...reasoningConfig, blockBinding: ANTHROPIC_BLOCK_BINDING } }
     }
   }
   return options
+}
+
+// Claude 4.7+ omits thinking text unless asked, so a request without a variant would stream none.
+function adaptiveThinkingDefault(apiId: string) {
+  return { type: "adaptive", ...(anthropicOmitsThinking(apiId) ? { display: "summarized" } : {}) }
+}
+
+// Claude Opus 5.5 and the Fable and Mythos models always think, and the API answers a forced
+// tool_choice ("any" or a named tool) with a 400 for them.
+export function supportsForcedToolChoice(model: Provider.Model) {
+  const id = model.api.id.toLowerCase()
+  if (!id.includes("claude-")) return true
+  if (/(?:^|[^a-z])(?:fable|mythos)(?:[^a-z]|$)/.test(id)) return false
+  const version = /claude-(?:([a-z]+)-)?(\d+)(?:[.-](\d{1,2}))?(?:-([a-z]+))?(?:[.@-]|$)/.exec(id)
+  if (!version || (version[1] ?? version[4]) !== "opus") return true
+  const major = Number(version[2])
+  return major < 5 || (major === 5 && Number(version[3] ?? 0) < 5)
 }
 
 function googleThinkingLevelEfforts(apiId: string) {
@@ -1348,8 +1365,9 @@ export function options(input: {
 
   // Any gpt version above 5.4 in combination with azure does not support reasoningEffort
   // so we should return early here.
-  const [, gptMajorVersion, gptMinorVersion] = input.model.api.id.match(/gpt-(\d+)\.(\d+)/) ?? []
-  const isGpt55OrNewer = Number(gptMajorVersion) > 5 || (Number(gptMajorVersion) === 5 && Number(gptMinorVersion) >= 5)
+  const [, gptMajorVersion, gptMinorVersion] = input.model.api.id.match(/gpt-(\d+)(?:\.(\d+))?/) ?? []
+  const isGpt55OrNewer =
+    Number(gptMajorVersion) > 5 || (Number(gptMajorVersion) === 5 && Number(gptMinorVersion ?? 0) >= 5)
   if (input.model.api.npm === "@ai-sdk/azure" && input.providerOptions?.useCompletionUrls) {
     if (!isGpt55OrNewer) {
       result["reasoningEffort"] = "medium"
@@ -1357,8 +1375,8 @@ export function options(input: {
     return result
   }
 
-  if (input.model.api.id.includes("gpt-5") && !input.model.api.id.includes("gpt-5-chat")) {
-    if (!input.model.api.id.includes("gpt-5-pro")) {
+  if (openaiReasoningGeneration(input.model.api.id)) {
+    if (!/gpt-\d+-pro/.test(input.model.api.id)) {
       result["reasoningEffort"] = "medium"
       if (
         input.model.api.npm === "@ai-sdk/openai" ||
@@ -1394,6 +1412,12 @@ export function options(input: {
   }
 
   return result
+}
+
+// GPT-5 and every later generation (gpt-6-sol, gpt-6-luna, ...) share the reasoning defaults;
+// gpt-N-chat ids are the non-reasoning chat snapshots.
+function openaiReasoningGeneration(apiId: string) {
+  return Number(/gpt-(\d+)/.exec(apiId)?.[1]) >= 5 && !/gpt-\d+-chat/.test(apiId)
 }
 
 export function smallOptions(model: Provider.Model) {
