@@ -10,7 +10,7 @@ const turn = (input: Partial<ReasoningAuto.Input> & { readonly turnID: string })
   ReasoningAuto.decideEffort({ variants: OPENAI, ...input })!
 
 describe("ReasoningAuto.decideEffort", () => {
-  test.each([
+  test.each<[number, string]>([
     [0, "minimal"],
     [0.14, "minimal"],
     [0.15, "low"],
@@ -155,7 +155,7 @@ describe("ReasoningAuto.decideEffort", () => {
 })
 
 describe("ReasoningAuto signals", () => {
-  test.each([
+  test.each<[string, boolean]>([
     ["Think hard about this", true],
     ["please THINK CAREFULLY before editing", true],
     ["ultrathink", true],
