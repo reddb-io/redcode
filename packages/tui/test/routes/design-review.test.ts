@@ -11,13 +11,13 @@ function server(input: { launchRoute?: boolean } = {}) {
   const fetch = async (url: URL, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push(`${init?.method ?? "GET"} ${url.pathname}`)
-    if (url.pathname === "/design/session/ses_a/launch" && input.launchRoute !== false)
+    if (url.pathname === "/api/design/session/ses_a/launch" && input.launchRoute !== false)
       return Response.json({ url: review, ...presence.claim("ses_a", { explicit: body.explicit === true }) })
-    if (url.pathname === "/design/session/ses_a/launch/release") {
+    if (url.pathname === "/api/design/session/ses_a/launch/release") {
       presence.release("ses_a", body.token)
       return new Response(null, { status: 204 })
     }
-    if (url.pathname === "/design/session/ses_a/open") return Response.json({ url: review })
+    if (url.pathname === "/api/design/session/ses_a/open") return Response.json({ url: review })
     return new Response(null, { status: 404 })
   }
   return { presence, calls, fetch }
@@ -68,7 +68,10 @@ describe("TUI Open Design review", () => {
       launch: browser.launch,
     })
     expect(notice).toEqual({ variant: "error", message: `Could not open a browser. Design review: ${review}` })
-    expect(remote.calls).toEqual(["POST /design/session/ses_a/launch", "POST /design/session/ses_a/launch/release"])
+    expect(remote.calls).toEqual([
+      "POST /api/design/session/ses_a/launch",
+      "POST /api/design/session/ses_a/launch/release",
+    ])
     expect(remote.presence.claim("ses_a").outcome).toBe("claimed")
   })
 
