@@ -170,10 +170,17 @@ const live: Layer.Layer<
         isWorkflow,
         hooks,
       })
+      const declared = cfg.provider?.[input.model.providerID]?.models?.[input.model.id]
       const headers = {
         ...prepared.headers,
-        ...(yield* routerHeaders(input, item, info, cfg.provider?.[input.model.providerID]?.models?.[input.model.id])),
+        ...(yield* routerHeaders(input, item, info, declared)),
       }
+      // Every session request crosses this boundary, so a model that answers a forced tool choice
+      // with a 400 (Claude Opus 5.5, Fable, Mythos, or a router that says so) is only ever asked.
+      const toolChoice =
+        input.toolChoice === "required" && !ProviderTransform.supportsForcedToolChoice(input.model, declared)
+          ? "auto"
+          : input.toolChoice
 
       // Provider-native tool search, as SessionTools chose it for this step (a fallback attempt
       // runs without it). History keeps only search parts the request can replay, and a deferred
@@ -319,7 +326,7 @@ const live: Layer.Layer<
                 return { advertise: plan.advertise, toolSearch: { deferred: plan.deferred } }
               })()
             : { advertise: activeTools }),
-          toolChoice: input.toolChoice,
+          toolChoice,
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
           topK: prepared.params.topK,
@@ -414,7 +421,7 @@ const live: Layer.Layer<
           // tools are advertised flagged and the provider search tool replaces tool_search.
           activeTools,
           tools: nativeSearch?.tools ?? prepared.tools,
-          toolChoice: input.toolChoice,
+          toolChoice,
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
           headers,

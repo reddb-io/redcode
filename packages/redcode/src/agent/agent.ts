@@ -5,7 +5,7 @@ import { Config } from "@/config/config"
 import { serviceUse } from "@reddb-io/redcode-core/effect/service-use"
 import { Provider } from "@/provider/provider"
 
-import { generateObject, streamObject, type ModelMessage } from "ai"
+import { generateObject, generateText, streamObject, type ModelMessage } from "ai"
 import { ToolOutputBridge } from "@/tool/output-bridge"
 import { Auth } from "../auth"
 import { ProviderTransform } from "@/provider/transform"
@@ -24,7 +24,7 @@ import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
-import { Effect, Context, Layer, Schema } from "effect"
+import { Cause, Effect, Context, Exit, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import * as Option from "effect/Option"
 import * as OtelTracer from "@effect/opentelemetry/Tracer"
@@ -563,11 +563,43 @@ const layer = Layer.effect(
           })
         }
 
+        // generateObject forces a JSON tool wherever a provider lacks native structured output
+        // (Vertex, gateway ids), and models that refuse a forced tool choice answer that with a 400.
+        const declared = cfg.provider?.[resolved.providerID]?.models?.[resolved.id]
+        if (!ProviderTransform.supportsForcedToolChoice(resolved, declared))
+          return yield* Effect.promise(() => generatePromptedAgent(params))
+
         return yield* Effect.promise(() => generateObject(params).then((r) => r.object))
       }),
     })
   }),
 )
+
+// The prompt already asks for the bare JSON object; the reply is validated and repaired once.
+async function generatePromptedAgent(params: Parameters<typeof generateText>[0] & { messages: ModelMessage[] }) {
+  const first = await generateText(params)
+  const parsed = Schema.decodeUnknownExit(GeneratedAgentJson)(unfence(first.text))
+  if (Exit.isSuccess(parsed)) return parsed.value
+  const repair = await generateText({
+    ...params,
+    messages: [
+      ...params.messages,
+      { role: "assistant", content: first.text },
+      {
+        role: "user",
+        content: `That reply was not a valid agent configuration: ${Cause.pretty(parsed.cause)}\n\nReturn ONLY the JSON object with the string fields "identifier", "whenToUse" and "systemPrompt", no other text, do not wrap in backticks.`,
+      },
+    ],
+  })
+  return Schema.decodeUnknownSync(GeneratedAgentJson)(unfence(repair.text))
+}
+
+const GeneratedAgentJson = Schema.UnknownFromJsonString.pipe(Schema.decodeTo(GeneratedAgent))
+
+// Models asked for bare JSON still wrap it in a fenced block now and then.
+function unfence(text: string) {
+  return /^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text)?.[1] ?? text.trim()
+}
 
 const locationServiceMapNode = LayerNode.make({
   service: LocationServiceMap.Service,
