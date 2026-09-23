@@ -328,6 +328,8 @@ type Endpoint4_4Input = {
   readonly engine: Endpoint4_4Request["payload"]["engine"]
   readonly kind: Endpoint4_4Request["payload"]["kind"]
   readonly application?: Endpoint4_4Request["payload"]["application"]
+  readonly target?: Endpoint4_4Request["payload"]["target"]
+  readonly platform?: Endpoint4_4Request["payload"]["platform"]
 }
 const Endpoint4_4 = (raw: RawClient["server.design"]) => (input: Endpoint4_4Input) =>
   raw["design.create"]({
@@ -338,6 +340,8 @@ const Endpoint4_4 = (raw: RawClient["server.design"]) => (input: Endpoint4_4Inpu
       engine: input["engine"],
       kind: input["kind"],
       application: input["application"],
+      target: input["target"],
+      platform: input["platform"],
     },
   }).pipe(Effect.mapError(mapClientError))
 
@@ -360,6 +364,8 @@ type Endpoint4_6Input = {
   readonly controls?: Endpoint4_6Request["payload"]["controls"]
   readonly presets?: Endpoint4_6Request["payload"]["presets"]
   readonly name?: Endpoint4_6Request["payload"]["name"]
+  readonly target?: Endpoint4_6Request["payload"]["target"]
+  readonly platform?: Endpoint4_6Request["payload"]["platform"]
   readonly brief?: Endpoint4_6Request["payload"]["brief"]
   readonly decisions?: Endpoint4_6Request["payload"]["decisions"]
   readonly questions?: Endpoint4_6Request["payload"]["questions"]
@@ -378,6 +384,8 @@ const Endpoint4_6 = (raw: RawClient["server.design"]) => (input: Endpoint4_6Inpu
       controls: input["controls"],
       presets: input["presets"],
       name: input["name"],
+      target: input["target"],
+      platform: input["platform"],
       brief: input["brief"],
       decisions: input["decisions"],
       questions: input["questions"],

@@ -2154,6 +2154,8 @@ export type DesignsListOutput = ReadonlyArray<{
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -2266,6 +2268,8 @@ export type DesignsCreateInput = {
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
   }["name"]
   readonly journey: {
     readonly name: string
@@ -2273,6 +2277,8 @@ export type DesignsCreateInput = {
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
   }["journey"]
   readonly engine: {
     readonly name: string
@@ -2280,6 +2286,8 @@ export type DesignsCreateInput = {
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
   }["engine"]
   readonly kind: {
     readonly name: string
@@ -2287,6 +2295,8 @@ export type DesignsCreateInput = {
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
   }["kind"]
   readonly application?: {
     readonly name: string
@@ -2294,7 +2304,27 @@ export type DesignsCreateInput = {
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
   }["application"]
+  readonly target?: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+  }["target"]
+  readonly platform?: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+  }["platform"]
 }
 
 export type DesignsCreateOutput = {
@@ -2335,6 +2365,8 @@ export type DesignsCreateOutput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -2482,6 +2514,8 @@ export type DesignsGetOutput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -2630,6 +2664,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -2705,6 +2741,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -2780,6 +2818,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -2855,6 +2895,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -2930,6 +2972,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -2964,6 +3008,160 @@ export type DesignsUpdateInput = {
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["name"]
+  readonly target?: {
+    readonly notes?: ReadonlyArray<{
+      readonly feedback: string
+      readonly index: number
+      readonly status: "resolved" | "partial" | "unresolved" | "accepted"
+      readonly reason?: string
+      readonly evidence?: { readonly job: string }
+    }>
+    readonly by?: "reviewer"
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly screen?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["target"]
+  readonly platform?: {
+    readonly notes?: ReadonlyArray<{
+      readonly feedback: string
+      readonly index: number
+      readonly status: "resolved" | "partial" | "unresolved" | "accepted"
+      readonly reason?: string
+      readonly evidence?: { readonly job: string }
+    }>
+    readonly by?: "reviewer"
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly screen?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
+    readonly designSystem?: string
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["platform"]
   readonly brief?: {
     readonly notes?: ReadonlyArray<{
       readonly feedback: string
@@ -3005,6 +3203,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3080,6 +3280,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3155,6 +3357,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3230,6 +3434,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3305,6 +3511,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3380,6 +3588,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3455,6 +3665,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3530,6 +3742,8 @@ export type DesignsUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
       readonly audience: string
@@ -3604,6 +3818,8 @@ export type DesignsUpdateOutput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -3758,6 +3974,8 @@ export type DesignsRevisionsOutput = ReadonlyArray<{
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly root: string
     readonly application: string
     readonly entry: string
@@ -3930,6 +4148,8 @@ export type DesignsPublishOutput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly root: string
     readonly application: string
     readonly entry: string
@@ -4086,6 +4306,8 @@ export type DesignsRestoreOutput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
     readonly root: string
     readonly application: string
     readonly entry: string
@@ -4234,6 +4456,8 @@ export type DesignsReopenOutput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -4381,6 +4605,8 @@ export type DesignsRefreshOutput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation"
+  readonly platform?: "ios" | "android"
   readonly root: string
   readonly application: string
   readonly entry: string
@@ -5065,6 +5291,8 @@ export type DesignsApprovalOutput = {
       readonly journey: "new" | "existing"
       readonly engine: "html" | "react" | "solid"
       readonly kind: "screen" | "flow" | "comparison" | "deck"
+      readonly target?: "web" | "app" | "presentation"
+      readonly platform?: "ios" | "android"
       readonly root: string
       readonly application: string
       readonly entry: string
@@ -7249,6 +7477,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7274,6 +7503,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7299,6 +7529,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7324,6 +7555,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7349,6 +7581,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7374,6 +7607,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7399,6 +7633,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_brief"
       | "subagent_progress"
       | "subagent_result"
+      | "design_target"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7428,6 +7663,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "subagent_brief"
     | "subagent_progress"
     | "subagent_result"
+    | "design_target"
   readonly kind?: "classification" | "gate"
   readonly subjectID?: string
   readonly candidateID?: string
