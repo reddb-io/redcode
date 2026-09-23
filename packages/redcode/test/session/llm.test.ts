@@ -2424,6 +2424,106 @@ describe("session.llm.stream", () => {
     },
   )
 
+  const forcedToolChoice = (modelID: string) =>
+    Effect.gen(function* () {
+      const request = waitRequest(
+        "/messages",
+        createEventResponse([
+          {
+            type: "message_start",
+            message: {
+              id: "msg-forced",
+              model: modelID,
+              usage: { input_tokens: 1, cache_creation_input_tokens: null, cache_read_input_tokens: null },
+            },
+          },
+          { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+          { type: "content_block_stop", index: 0 },
+          {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null, container: null },
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              cache_creation_input_tokens: null,
+              cache_read_input_tokens: null,
+            },
+          },
+          { type: "message_stop" },
+        ]),
+      )
+      const resolved = yield* Provider.use.getModel(ProviderV2.ID.make("anthropic"), ModelV2.ID.make(modelID))
+      const sessionID = SessionID.make("session-test-forced-tool-choice")
+      const agent = {
+        name: "test",
+        mode: "primary",
+        options: {},
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      } satisfies Agent.Info
+      yield* drain({
+        user: {
+          id: MessageID.make("msg_user-forced-tool-choice"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make("anthropic"), modelID: resolved.id },
+        },
+        sessionID,
+        model: resolved,
+        agent,
+        system: [],
+        messages: [{ role: "user", content: "Answer with the StructuredOutput tool." }],
+        tools: {
+          StructuredOutput: tool({
+            description: "Stub structured output tool",
+            inputSchema: z.object({ answer: z.string() }),
+            execute: async () => ({ output: "stub" }),
+          }),
+        },
+        toolChoice: "required",
+      })
+      return (yield* Effect.promise(() => request)).body
+    })
+
+  const forcedToolChoiceConfig = (modelID: string) => () => {
+    const model = loadFixture("anthropic", "claude-opus-4-6").model
+    return {
+      enabled_providers: ["anthropic"],
+      provider: {
+        anthropic: {
+          name: "Anthropic",
+          env: ["ANTHROPIC_API_KEY"],
+          npm: "@ai-sdk/anthropic",
+          api: "https://api.anthropic.com/v1",
+          models: { [modelID]: { ...configModel(model), id: modelID, name: modelID } as ConfigModel },
+          options: { apiKey: "test-anthropic-key", baseURL: `${state.server!.url.origin}/v1` },
+        },
+      },
+    }
+  }
+
+  it.instance(
+    "asks a model that refuses a forced tool choice instead of forcing the tool",
+    () =>
+      Effect.gen(function* () {
+        const body = yield* forcedToolChoice("claude-opus-5-5")
+        expect(body.tool_choice).toMatchObject({ type: "auto" })
+      }),
+    { config: forcedToolChoiceConfig("claude-opus-5-5") },
+  )
+
+  it.instance(
+    "forces the tool on a model that accepts a forced tool choice",
+    () =>
+      Effect.gen(function* () {
+        const body = yield* forcedToolChoice("claude-opus-4-6")
+        expect(body.tool_choice).toMatchObject({ type: "any" })
+      }),
+    { config: forcedToolChoiceConfig("claude-opus-4-6") },
+  )
+
   const geminiFixture = { providerID: "google", modelID: "gemini-2.5-flash" }
   it.instance(
     "sends Google API payload for Gemini models",
