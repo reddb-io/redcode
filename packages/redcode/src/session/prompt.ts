@@ -201,6 +201,10 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
+// Stored messages read back as plain JSON, but publishing a user message encodes its format as the
+// schema class, so a stored format is decoded again before the message is republished.
+const decodeFormat = Schema.decodeUnknownSync(SessionV1.Format)
+
 const STRUCTURED_OUTPUT_REMINDER = `Your last response was plain text, but structured output was requested. Call the StructuredOutput tool now with your final answer formatted according to the schema.`
 
 function mcpResourceBase64Size(value: string) {
@@ -1434,6 +1438,7 @@ const layer = Layer.effect(
         const info: SessionV1.User = {
           ...message.value.info,
           time: { ...message.value.info.time, created: DateTime.toEpochMillis(now) },
+          ...(message.value.info.format ? { format: decodeFormat(message.value.info.format) } : {}),
         }
         yield* sessions.updateMessage(info)
         yield* events.publish(SessionV1.Event.MessagePromoted, { sessionID, messageID })
@@ -2865,7 +2870,7 @@ const layer = Layer.effect(
                     time: { created: Date.now() },
                     agent: lastUser.agent,
                     model: lastUser.model,
-                    format: lastUser.format,
+                    format: decodeFormat(format),
                   }
                   yield* sessions.updateMessage(reminder)
                   yield* sessions.updatePart({
