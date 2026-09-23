@@ -22,7 +22,7 @@ import {
   TransportReason,
   UnknownProviderReason,
 } from "../schema"
-import { isContextOverflowBody } from "../provider-error"
+import { isContentPolicyFailure, isContextOverflowBody, isQuotaFailure } from "../provider-error"
 
 export interface Interface {
   readonly execute: (
@@ -239,8 +239,11 @@ const statusReason = (input: {
   readonly http: HttpContext
 }) => {
   const body = input.http.body ?? ""
-  if (/content[-_\s]?policy|content_filter|safety/i.test(body)) {
+  if (/content[-_\s]?policy|content_filter|safety/i.test(body) || isContentPolicyFailure({ body })) {
     return new ContentPolicyReason({ message: input.message, http: input.http })
+  }
+  if (isQuotaFailure({ status: input.status, body })) {
+    return new QuotaExceededReason({ message: input.message, http: input.http })
   }
   if (input.status === 401) {
     return new AuthenticationReason({ message: input.message, kind: "invalid", http: input.http })
@@ -249,9 +252,6 @@ const statusReason = (input: {
     return new AuthenticationReason({ message: input.message, kind: "insufficient-permissions", http: input.http })
   }
   if (input.status === 429) {
-    if (/insufficient[-_\s]?quota|quota[-_\s]?exceeded/i.test(body)) {
-      return new QuotaExceededReason({ message: input.message, http: input.http })
-    }
     return new RateLimitReason({
       message: input.message,
       retryAfterMs: input.retryAfterMs,

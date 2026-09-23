@@ -2,7 +2,13 @@ import { APICallError } from "ai"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import type { ProviderV2 } from "@reddb-io/redcode-core/provider"
-import { isContextOverflow, isContextOverflowBody, isContextOverflowCode } from "@reddb-io/redcode-llm"
+import {
+  isContentPolicyFailure,
+  isContextOverflow,
+  isContextOverflowBody,
+  isContextOverflowCode,
+  isQuotaFailure,
+} from "@reddb-io/redcode-llm"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 export class HeaderTimeoutError extends Error {
@@ -102,6 +108,9 @@ function json(input: unknown): any {
   return undefined
 }
 
+const QUOTA_HINT =
+  "the account's quota, credits or free-tier limit is exhausted; check the plan and billing with the provider, or switch models"
+
 export type ParsedStreamError =
   | {
       type: "context_overflow"
@@ -170,6 +179,22 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
       }
   }
 
+  const detail = typeof body?.error?.message === "string" && body.error.message ? body.error.message : undefined
+  if (isQuotaFailure({ body }))
+    return {
+      type: "api_error",
+      message: detail ? `${detail} (${QUOTA_HINT})` : `Quota exceeded: ${QUOTA_HINT}.`,
+      isRetryable: false,
+      responseBody,
+    }
+  if (isContentPolicyFailure({ body }))
+    return {
+      type: "api_error",
+      message: detail ?? "The provider refused the request under its content policy.",
+      isRetryable: false,
+      responseBody,
+    }
+
   // A mid-stream error object with a code we do not recognise is still an error, and
   // gateways invent codes freely. Falling off the end returned undefined, which the caller
   // reads as "not an error worth retrying", so the turn died instead of backing off.
@@ -215,13 +240,17 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
 
   const metadata = input.error.url ? { url: input.error.url } : undefined
   const routed = routerRetry(input.error.responseHeaders)
+  // A router that names its reason owns the decision; its `quota_exhausted` is a cooling-down account.
+  const quota =
+    !routed && isQuotaFailure({ status: input.error.statusCode, body: input.error.responseBody, message: m })
   return {
     type: "api_error",
-    message: routed?.message ? `${m} (${routed.message})` : m,
+    message: quota ? `${m} (${QUOTA_HINT})` : routed?.message ? `${m} (${routed.message})` : m,
     statusCode: input.error.statusCode,
     isRetryable:
-      routed?.retryable ??
-      (input.providerID.startsWith("openai") ? isOpenAiErrorRetryable(input.error) : input.error.isRetryable),
+      !quota &&
+      (routed?.retryable ??
+        (input.providerID.startsWith("openai") ? isOpenAiErrorRetryable(input.error) : input.error.isRetryable)),
     responseHeaders: input.error.responseHeaders,
     responseBody: input.error.responseBody,
     metadata,

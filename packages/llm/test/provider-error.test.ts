@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { contextOverflowNumbers, isContextOverflow, isContextOverflowBody, isContextOverflowCode } from "../src"
+import {
+  contextOverflowNumbers,
+  isContentPolicyFailure,
+  isContextOverflow,
+  isContextOverflowBody,
+  isContextOverflowCode,
+  isQuotaFailure,
+} from "../src"
 
 describe("provider error classification", () => {
   test("classifies provider token limit messages as context overflow", () => {
@@ -173,5 +180,58 @@ describe("contextOverflowNumbers", () => {
     // Arithmetic without max_tokens says nothing.
     expect(contextOverflowNumbers("3 + 4 > 5 items")).toBeUndefined()
     expect(isContextOverflow("3 + 4 > 5 items")).toBe(false)
+  })
+
+  test("classifies 402 and gateway account limits as exhausted quota", () => {
+    const typed = (type: string, message: string) => ({ type: "error", error: { type, message } })
+    const cases: ReadonlyArray<{ status?: number; body?: unknown; message?: string }> = [
+      { status: 402, message: "Payment Required" },
+      { status: 402, body: '{"error":{"code":402,"message":"This request requires more credits"}}' },
+      {
+        status: 429,
+        body: JSON.stringify(typed("FreeUsageLimitError", "Rate limit exceeded. Please try again later.")),
+      },
+      { status: 429, body: JSON.stringify(typed("GoUsageLimitError", "Go usage limit exceeded")) },
+      { status: 402, body: typed("CreditLimitExceeded", "Credit limit exceeded.") },
+      { status: 429, body: '{"error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}' },
+      { status: 429, message: "Account budget exceeded" },
+      { status: 429, message: "Insufficient credits to complete this request" },
+      // Mid-stream errors carry no status; the code alone decides.
+      { body: { type: "error", error: { type: "usage_limit_reached", message: "You have hit your usage limit" } } },
+      // A router forwards the upstream error in its metadata.
+      {
+        status: 403,
+        body: { error: { code: 403, metadata: { raw: JSON.stringify({ error: { code: "billing_error" } }) } } },
+      },
+      // OpenCode Zen keeps an upstream code it does not forward as a label.
+      { status: 400, message: "Upstream request failed: [insufficient_quota] quota exhausted" },
+    ]
+    expect(cases.map(isQuotaFailure)).toEqual(Array(cases.length).fill(true))
+  })
+
+  test("keeps throttles and other client errors out of quota", () => {
+    const cases: ReadonlyArray<{ status?: number; body?: unknown; message?: string }> = [
+      { status: 429, message: "Rate limit exceeded, please retry after 30 seconds." },
+      { status: 429, body: '{"error":{"type":"rate_limit_error","message":"Too many requests"}}' },
+      // Quota wording only counts on a 429, where throttles and account caps share a status.
+      { status: 400, message: "usage limit for images is 20" },
+      { status: 400, body: '{"error":{"type":"invalid_request_error","message":"Bad parameter"}}' },
+      { status: 404, message: "Not Found" },
+      { body: "not-json" },
+    ]
+    expect(cases.map(isQuotaFailure)).toEqual(Array(cases.length).fill(false))
+  })
+
+  test("classifies content policy refusals by provider codes", () => {
+    expect(
+      [
+        { body: { error: { code: "content_filter", innererror: { code: "ResponsibleAIPolicyViolation" } } } },
+        { body: '{"error":{"code":400,"metadata":{"error_type":"content_policy_violation"}}}' },
+        { body: { error: { code: "image_content_policy_violation" } } },
+        { message: "Upstream request failed: [content_filter] blocked" },
+      ].map(isContentPolicyFailure),
+    ).toEqual([true, true, true, true])
+    expect(isContentPolicyFailure({ body: '{"error":{"code":"invalid_prompt"}}' })).toBe(false)
+    expect(isContentPolicyFailure({ status: 402, message: "Payment Required" })).toBe(false)
   })
 })

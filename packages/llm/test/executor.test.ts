@@ -168,6 +168,35 @@ describe("RequestExecutor", () => {
     ),
   )
 
+  it.effect("classifies 402 and gateway account limits as quota without retrying", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0)
+      const classify = (response: Response) =>
+        Effect.gen(function* () {
+          const executor = yield* RequestExecutor.Service
+          const error = expectLLMError(yield* executor.execute(request).pipe(Effect.flip))
+          return error.reason._tag
+        }).pipe(Effect.provide(countedResponsesLayer(attempts, [response, new Response("ok", { status: 200 })])))
+
+      const tags = [
+        yield* classify(new Response('{"error":{"message":"Insufficient credits"}}', { status: 402 })),
+        yield* classify(
+          new Response(
+            JSON.stringify({
+              type: "error",
+              error: { type: "FreeUsageLimitError", message: "Rate limit exceeded. Please try again later." },
+            }),
+            { status: 429, headers: { "retry-after-ms": "0" } },
+          ),
+        ),
+      ]
+
+      expect(tags).toEqual(["QuotaExceeded", "QuotaExceeded"])
+      // Each failure was answered once: an exhausted account is not a throttle to wait out.
+      expect(yield* Ref.get(attempts)).toBe(2)
+    }),
+  )
+
   it.effect("does not classify ordinary invalid requests as context overflow", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service
