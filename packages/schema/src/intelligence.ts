@@ -99,6 +99,9 @@ export const Operation = Schema.Literals([
   "compact_now",
   "task_completion",
   "goal_completion",
+  "subagent_brief",
+  "subagent_progress",
+  "subagent_result",
 ])
 export type Operation = typeof Operation.Type
 export const Decision = Schema.Literals(["accepted", "needs_revision", "inconclusive", "unavailable"])

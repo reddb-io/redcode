@@ -398,9 +398,27 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
       "description": "A short (3-5 words) description of the task",
       "type": "string",
     },
+    "done_criteria": {
+      "description": "Observable conditions that mean the task is done, one per entry, e.g. bun test test/session passes, or every caller of foo() is listed.",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
     "prompt": {
       "description": "The task for the agent to perform",
       "type": "string",
+    },
+    "return_format": {
+      "description": "What the subagent must hand back and in what shape, e.g. a list of file:line findings with one line of explanation each.",
+      "type": "string",
+    },
+    "scope": {
+      "description": "Globs, relative to the project root, of the files and directories the subagent may change, e.g. packages/core/src/session/**. Expected for agents that can edit files or run commands; name the non-goals in the prompt.",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
     },
     "subagent_type": {
       "description": "The type of specialized agent to use for this task",
