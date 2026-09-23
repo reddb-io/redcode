@@ -16,7 +16,18 @@ import { Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ConsoleSwitchPayload, SessionListQuery, ToolListQuery, WorktreeApiError } from "../groups/experimental"
+import {
+  ConsoleSwitchPayload,
+  SessionListQuery,
+  ToolListQuery,
+  WorktreeApiError,
+  WorktreeInventoryApiError,
+  WorktreeInventoryCleanPayload,
+  WorktreeInventoryQuery,
+  WorktreeInventoryRemovePayload,
+} from "../groups/experimental"
+import { WorktreeInventory } from "@reddb-io/redcode-core/worktree-inventory"
+import { WorktreeSessions } from "@/worktree/sessions"
 
 function mapWorktreeError<A, R>(self: Effect.Effect<A, Worktree.Error, R>) {
   return self.pipe(
@@ -137,6 +148,72 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return true
     })
 
+    // Worktrees of recently active sessions are protected; the listing names the sessions in each one.
+    const worktreeSessions = sessions.listGlobal({ limit: 1000 })
+    const inventoryCall = <A>(run: () => Promise<A>) =>
+      Effect.tryPromise({
+        try: run,
+        catch: (error) =>
+          new WorktreeInventoryApiError({ message: error instanceof Error ? error.message : String(error) }),
+      })
+
+    const worktreeInventory = Effect.fn("ExperimentalHttpApi.worktreeInventory")(function* (ctx: {
+      query: typeof WorktreeInventoryQuery.Type
+    }) {
+      const directory = yield* InstanceState.directory
+      const rows = yield* worktreeSessions
+      const inventory = yield* inventoryCall(() =>
+        WorktreeInventory.list({
+          directory,
+          protect: WorktreeSessions.busy(rows),
+          pullRequests: ctx.query.pullRequests,
+        }),
+      )
+      return WorktreeSessions.attach(inventory, rows)
+    })
+
+    const worktreeInventoryRemove = Effect.fn("ExperimentalHttpApi.worktreeInventoryRemove")(function* (ctx: {
+      payload: typeof WorktreeInventoryRemovePayload.Type
+    }) {
+      const instance = yield* InstanceState.context
+      const rows = yield* worktreeSessions
+      const result = yield* inventoryCall(() =>
+        WorktreeInventory.remove({
+          directory: instance.directory,
+          target: ctx.payload.target,
+          force: ctx.payload.force,
+          deleteBranch: ctx.payload.deleteBranch,
+          protect: [...WorktreeSessions.busy(rows), ...(ctx.payload.protect ?? [])],
+          // A squash-merged branch is only known merged through its pull request.
+          pullRequests: ctx.payload.deleteBranch,
+        }),
+      )
+      yield* project.removeSandbox(instance.project.id, result.path)
+      return result
+    })
+
+    const worktreeInventoryClean = Effect.fn("ExperimentalHttpApi.worktreeInventoryClean")(function* (ctx: {
+      payload: typeof WorktreeInventoryCleanPayload.Type
+    }) {
+      const instance = yield* InstanceState.context
+      const rows = yield* worktreeSessions
+      const result = yield* inventoryCall(() =>
+        WorktreeInventory.clean({
+          directory: instance.directory,
+          merged: ctx.payload.merged,
+          staleDays: ctx.payload.staleDays,
+          dryRun: ctx.payload.dryRun,
+          deleteBranch: ctx.payload.deleteBranch,
+          pullRequests: ctx.payload.pullRequests,
+          protect: [...WorktreeSessions.busy(rows), ...(ctx.payload.protect ?? [])],
+        }),
+      )
+      yield* Effect.forEach(result.removed, (removed) => project.removeSandbox(instance.project.id, removed), {
+        discard: true,
+      })
+      return result
+    })
+
     const session = Effect.fn("ExperimentalHttpApi.session")(function* (ctx: { query: typeof SessionListQuery.Type }) {
       const limit = ctx.query.limit ?? 100
       const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
@@ -192,6 +269,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("worktreeCreate", worktreeCreate)
       .handle("worktreeRemove", worktreeRemove)
       .handle("worktreeReset", worktreeReset)
+      .handle("worktreeInventory", worktreeInventory)
+      .handle("worktreeInventoryRemove", worktreeInventoryRemove)
+      .handle("worktreeInventoryClean", worktreeInventoryClean)
       .handle("session", session)
       .handle("sessionBackground", sessionBackground)
       .handle("resource", resource)

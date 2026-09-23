@@ -19,6 +19,7 @@ import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
+import { WorktreeInventory } from "@reddb-io/redcode-core/worktree-inventory"
 
 const ConsoleStateResponse = Schema.Struct({
   consoleManagedProviders: Schema.mutable(Schema.Array(Schema.String)),
@@ -78,6 +79,34 @@ export class WorktreeApiError extends Schema.ErrorClass<WorktreeApiError>("Workt
   },
   { httpApiStatus: 400 },
 ) {}
+export class WorktreeInventoryApiError extends Schema.ErrorClass<WorktreeInventoryApiError>("WorktreeInventoryError")(
+  { message: Schema.String },
+  { httpApiStatus: 400 },
+) {}
+export const WorktreeInventoryQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  pullRequests: Schema.optional(QueryBoolean),
+})
+export const WorktreeInventoryRemovePayload = Schema.Struct({
+  target: Schema.String.annotate({
+    description: "Worktree path (absolute or relative to the repository), name or branch",
+  }),
+  force: Schema.optional(
+    Schema.Boolean.annotate({ description: "Discard uncommitted changes or remove a locked worktree" }),
+  ),
+  deleteBranch: Schema.optional(Schema.Boolean.annotate({ description: "Delete the local branch when it is merged" })),
+  protect: Schema.optional(
+    Schema.Array(Schema.String).annotate({ description: "Directories whose worktrees must be kept" }),
+  ),
+}).annotate({ identifier: "WorktreeInventoryRemoveInput" })
+export const WorktreeInventoryCleanPayload = Schema.Struct({
+  merged: Schema.optional(Schema.Boolean),
+  staleDays: Schema.optional(Schema.Finite),
+  dryRun: Schema.optional(Schema.Boolean),
+  deleteBranch: Schema.optional(Schema.Boolean),
+  pullRequests: Schema.optional(Schema.Boolean),
+  protect: Schema.optional(Schema.Array(Schema.String)),
+}).annotate({ identifier: "WorktreeInventoryCleanInput" })
 export const SessionListQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
   roots: Schema.optional(QueryBoolean),
@@ -97,6 +126,9 @@ export const ExperimentalPaths = {
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
   worktreeReset: "/experimental/worktree/reset",
+  worktreeInventory: "/experimental/worktree/inventory",
+  worktreeInventoryRemove: "/experimental/worktree/inventory/remove",
+  worktreeInventoryClean: "/experimental/worktree/inventory/clean",
   session: "/experimental/session",
   sessionBackground: "/experimental/session/:sessionID/background",
   resource: "/experimental/resource",
@@ -220,6 +252,44 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "worktree.reset",
             summary: "Reset worktree",
             description: "Reset a worktree branch to the primary default branch.",
+          }),
+        ),
+        HttpApiEndpoint.get("worktreeInventory", ExperimentalPaths.worktreeInventory, {
+          query: WorktreeInventoryQuery,
+          success: described(WorktreeInventory.Inventory, "The repository's worktrees"),
+          error: WorktreeInventoryApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "worktree.inventory.list",
+            summary: "List worktree inventory",
+            description:
+              "List the repository's linked worktrees with size, pending changes, divergence from the default branch, merge state, activity and linked sessions.",
+          }),
+        ),
+        HttpApiEndpoint.post("worktreeInventoryRemove", ExperimentalPaths.worktreeInventoryRemove, {
+          query: WorkspaceRoutingQuery,
+          payload: WorktreeInventoryRemovePayload,
+          success: described(WorktreeInventory.RemoveResult, "Worktree removed"),
+          error: WorktreeInventoryApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "worktree.inventory.remove",
+            summary: "Remove a worktree safely",
+            description:
+              "Remove one linked worktree. Uncommitted changes need force; the primary checkout and worktrees of active sessions are never removed.",
+          }),
+        ),
+        HttpApiEndpoint.post("worktreeInventoryClean", ExperimentalPaths.worktreeInventoryClean, {
+          query: WorkspaceRoutingQuery,
+          payload: WorktreeInventoryCleanPayload,
+          success: described(WorktreeInventory.CleanResult, "Worktrees cleaned or previewed"),
+          error: WorktreeInventoryApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "worktree.inventory.clean",
+            summary: "Clean merged or stale worktrees",
+            description:
+              "Remove clean worktrees whose branch merged or that saw no activity for a number of days, and prune stale registrations. dryRun only reports what would go.",
           }),
         ),
         HttpApiEndpoint.get("session", ExperimentalPaths.session, {

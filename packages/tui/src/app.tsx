@@ -57,6 +57,7 @@ import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
 import { DialogDesignList } from "./component/dialog-design-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
+import { DialogWorktrees } from "./component/dialog-worktrees"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
@@ -869,6 +870,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             },
           ]
         : []),
+      {
+        name: "worktree.list",
+        title: "Manage worktrees",
+        category: "Workspace",
+        slashName: "worktrees",
+        run: () => {
+          dialog.replace(() => <DialogWorktrees />)
+        },
+      },
       {
         name: "opencode.status",
         title: "View status",
