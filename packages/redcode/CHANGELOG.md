@@ -1,5 +1,16 @@
 # opencode
 
+## 0.44.1
+
+### Patch Changes
+
+- 120c6d0: Language servers that exit at startup (for example when their Node rejects a `NODE_OPTIONS` flag) no longer surface an unhandled `EPIPE` from the client's first write; the restart without the rejected flag proceeds as intended.
+- a05bc8a: Remote MCP servers that rotate refresh tokens no longer lose their sign-in when several connections refresh at once. Concurrent refreshes of the same token now share one request, and a connection whose stale token was rejected no longer deletes the newer tokens another connection or process already stored.
+- 875f7c9: Claude Opus 5.5 and GPT-6 models now work with the same defaults as their predecessors. GPT-6 Sol, Luna and Astra get medium reasoning effort, reasoning summaries and encrypted reasoning on OpenAI, Azure, GitHub Copilot and OpenCode Zen, plus the Codex subscription context limits. Claude Opus 5.5 shows summarized thinking without picking a variant, and structured output on Opus 5.5, Fable and Mythos asks for the StructuredOutput tool instead of forcing it, which those models reject. GPT Luna is now the preferred small model for titles and summaries.
+- b37e57e: `--verbose` now explains prompt cache misses. Each provider request logs a `prompt.cache` entry that compares it with the session's previous request: `initial`, `stable`, `append-only`, or `changed:<component>` naming the first model setting, tool, system part or message that changed. Only hashes are kept, for at most 100 sessions, and nothing is computed without `--verbose`.
+- c4ab71a: Provider-requested retry waits (`retry-after`, `retry-after-ms`, and a router's `X-9Router-Retry-At`) are now capped at fifteen minutes, so a hostile or buggy header can no longer stall a session for hours or days.
+- d491b62: Catch up with upstream quick wins: GPT-6 models use the Astra system prompt; every GitHub Copilot Claude model with adaptive thinking requests summarized thinking; Amazon Bedrock models other than Claude, Nova and Llama 4 get tool-result images as a follow-up user message instead of failing; DashScope's "Range of input length should be" errors are treated as context overflow; `/effort` opens the model variant picker; and code-mode programs receive JSON returned as text by MCP tools without an output schema as an object.
+
 ## 0.44.0
 
 ### Minor Changes
