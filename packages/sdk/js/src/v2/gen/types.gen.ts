@@ -6147,6 +6147,10 @@ export type ProviderV2Info = {
   disabled?: boolean
   api: ProviderApi
   request: ProviderRequest
+  /**
+   * Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.
+   */
+  router?: RouterConnection
 }
 
 export type IntegrationWhen = {
