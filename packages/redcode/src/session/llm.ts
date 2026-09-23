@@ -40,6 +40,7 @@ import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timi
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { RedRouter } from "@/provider/red-router"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { PromptCacheDiagnostics } from "@reddb-io/redcode-core/session/prompt-cache-diagnostics"
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider"
 
@@ -568,25 +569,38 @@ const live: Layer.Layer<
         ),
       )
 
-    /**
+      /**
      * A RedRouter reports the version of the model catalog the key sees. When it is not the one the
      * connection's saved models were read at, its combos, members or limits may have changed, so
-     * they are read again in the background, once per version. It never delays or fails the turn,
-     * and the refreshed models apply once the configuration is next loaded.
+     * they are read again in the background, once per version. It never delays or fails the turn.
+     * Saved ids the router renamed move to the new ids, clients are told what changed, and the
+     * refreshed models apply once the configuration is next loaded.
      */
     const refreshCatalog = Effect.fnUntraced(
       function* (model: Provider.Model, metadata: Parameters<typeof ProviderRouter.reportedCatalogVersion>[0]) {
         const version = ProviderRouter.reportedCatalogVersion(metadata)
         if (!version) return
-        const baseURL = (yield* provider.getProvider(model.providerID)).options.baseURL
+        const connection = yield* provider.getProvider(model.providerID)
+        const baseURL = connection.options.baseURL
         if (typeof baseURL !== "string" || !ProviderRouter.catalogChanged(model.providerID, baseURL, version)) return
         yield* RedRouter.refresh({ http, config, auth }, { providerID: model.providerID, baseURL }).pipe(
           Effect.flatMap((result) =>
             result
-              ? Effect.logInfo("router catalog changed; models refreshed", {
-                  providerID: model.providerID,
-                  version,
-                  models: result.models.length,
+              ? Effect.gen(function* () {
+                  yield* Effect.logInfo("router catalog changed; models refreshed", {
+                    providerID: model.providerID,
+                    version,
+                    models: result.models.length,
+                  })
+                  const renamed = Object.keys(result.changes.renamed).length
+                  if (!result.changes.added && !result.changes.removed && !renamed) return
+                  yield* events.publish(Router.Event.CatalogUpdated, {
+                    providerID: model.providerID,
+                    name: connection.name,
+                    added: result.changes.added,
+                    removed: result.changes.removed,
+                    renamed,
+                  })
                 })
               : Effect.void,
           ),
@@ -659,7 +673,7 @@ const routerHeaders = Effect.fnUntraced(function* (
     wanted.tokenSaver === false ||
     hinted ||
     wanted.reasoning?.auto === true ||
-    (!!wanted.reasoning && (input.model.providerID === RedRouter.PROVIDER_ID || declared?.router !== undefined))
+    (!!wanted.reasoning && (RedRouter.isConnection(provider) || declared?.router !== undefined))
   if (!probe && !wanted.reasoning) return {}
   const baseURL = provider.options.baseURL
   if (typeof baseURL !== "string" || !["@ai-sdk/openai-compatible", "@ai-sdk/openai"].includes(input.model.api.npm))

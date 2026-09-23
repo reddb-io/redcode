@@ -16,6 +16,7 @@ import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
+import { migrateModelState, resolveModel, routerLabel } from "../util/model-origin"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -119,16 +120,23 @@ export const {
     onMount(() => void intelligence.refresh())
     onCleanup(() => abort.abort())
 
+    // An id a router renamed resolves to the model's current id.
+    function resolveRef(model: { providerID: string; modelID: string }) {
+      const found = resolveModel(sync.data.provider.find((item) => item.id === model.providerID), model.modelID)
+      if (!found) return undefined
+      return { providerID: model.providerID, modelID: found.modelID }
+    }
+
     function isModelValid(model: { providerID: string; modelID: string }) {
-      const provider = sync.data.provider.find((item) => item.id === model.providerID)
-      return !!provider?.models[model.modelID]
+      return !!resolveRef(model)
     }
 
     function getFirstValidModel(...modelFns: (() => { providerID: string; modelID: string } | undefined)[]) {
       for (const modelFn of modelFns) {
         const model = modelFn()
         if (!model) continue
-        if (isModelValid(model)) return model
+        const resolved = resolveRef(model)
+        if (resolved) return resolved
       }
     }
 
@@ -252,37 +260,39 @@ export const {
           if (state.pending) save()
         })
 
+      // Routers rename model ids (RedRouter moved to readable ids); saved choices follow once providers load.
+      createEffect(() => {
+        if (!modelStore.ready || sync.data.provider.length === 0) return
+        const next = migrateModelState(sync.data.provider, {
+          model: modelStore.model,
+          recent: modelStore.recent,
+          favorite: modelStore.favorite,
+          variant: modelStore.variant,
+        })
+        if (!next) return
+        batch(() => {
+          setModelStore("model", reconcile(next.model))
+          setModelStore("recent", next.recent)
+          setModelStore("favorite", next.favorite)
+          setModelStore("variant", reconcile(next.variant))
+        })
+        save()
+      })
+
       const fallbackModel = createMemo(() => {
-        if (args.model) {
-          const { providerID, modelID } = parseModel(args.model)
-          if (isModelValid({ providerID, modelID })) {
-            return {
-              providerID,
-              modelID,
-            }
-          }
-        }
+        const requested = args.model ? resolveRef(parseModel(args.model)) : undefined
+        if (requested) return requested
 
         const principal = intelligenceState.status?.settings.principal
         if (intelligence.ready() && principal) {
           return { providerID: principal.providerID, modelID: principal.id }
         }
 
-        if (sync.data.config.model) {
-          const { providerID, modelID } = parseModel(sync.data.config.model)
-          if (isModelValid({ providerID, modelID })) {
-            return {
-              providerID,
-              modelID,
-            }
-          }
-        }
+        const configured = sync.data.config.model ? resolveRef(parseModel(sync.data.config.model)) : undefined
+        if (configured) return configured
 
-        for (const item of modelStore.recent) {
-          if (isModelValid(item)) {
-            return item
-          }
-        }
+        const recent = modelStore.recent.map(resolveRef).find((item) => item !== undefined)
+        if (recent) return recent
 
         const provider = sync.data.provider[0]
         if (!provider) return undefined
@@ -325,6 +335,8 @@ export const {
               provider: "Connect a provider",
               model: "No provider selected",
               reasoning: false,
+              router: undefined,
+              upstream: undefined,
             }
           }
           const provider = sync.data.provider.find((item) => item.id === value.providerID)
@@ -333,6 +345,8 @@ export const {
             provider: provider?.name ?? value.providerID,
             model: info?.name ?? value.modelID,
             reasoning: info?.capabilities?.reasoning ?? false,
+            router: provider ? routerLabel(provider) : undefined,
+            upstream: info?.upstream?.name,
           }
         }),
         cycle(direction: 1 | -1) {
@@ -380,11 +394,12 @@ export const {
           setModelStore("recent", recentModels(next, modelStore.recent))
           save()
         },
-        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
+        set(input: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
           batch(() => {
-            if (!isModelValid(model)) {
+            const model = resolveRef(input)
+            if (!model) {
               toast.show({
-                message: `Model ${model.providerID}/${model.modelID} is not valid`,
+                message: `Model ${input.providerID}/${input.modelID} is not valid`,
                 variant: "warning",
                 duration: 3000,
               })
@@ -399,11 +414,12 @@ export const {
             }
           })
         },
-        toggleFavorite(model: { providerID: string; modelID: string }) {
+        toggleFavorite(input: { providerID: string; modelID: string }) {
           batch(() => {
-            if (!isModelValid(model)) {
+            const model = resolveRef(input)
+            if (!model) {
               toast.show({
-                message: `Model ${model.providerID}/${model.modelID} is not valid`,
+                message: `Model ${input.providerID}/${input.modelID} is not valid`,
                 variant: "warning",
                 duration: 3000,
               })

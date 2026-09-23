@@ -28,6 +28,8 @@ import { EffectPromise } from "@/effect/promise"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { isRecord } from "@/util/record"
 import { optional } from "@reddb-io/redcode-core/schema"
+import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { ProviderTransform } from "./transform"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
@@ -1109,6 +1111,33 @@ export const Model = Schema.Struct({
   headers: Schema.Record(Schema.String, Schema.String),
   release_date: Schema.String,
   variants: optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Any))),
+  upstream: optional(Router.Upstream).annotate({
+    description:
+      "The provider behind a model a router serves (RedRouter reports it), so clients can say where a model really comes from.",
+  }),
+  aliases: optional(Schema.Array(Schema.String)).annotate({
+    description: "Earlier ids of the model at its router. A request for one of them resolves to this model.",
+  }),
+  modes: optional(Schema.Array(Schema.String)).annotate({
+    description: "Modes the router serves the model in besides its default, such as review.",
+  }),
+  routerVariants: optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: optional(Schema.String),
+        level: optional(Schema.String),
+        mode: optional(Schema.String),
+        aliases: optional(Schema.Array(Schema.String)),
+      }),
+    ),
+  ).annotate({
+    description:
+      "Reasoning levels and modes the router serves under this model rather than as separate models. Each id (and its earlier ids) requests that level or mode.",
+  }),
+  via: optional(Schema.String).annotate({
+    description: "The router in between when another router serves the model, e.g. a remote RedRouter.",
+  }),
 }).annotate({ identifier: "Model" })
 export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 
@@ -1119,6 +1148,9 @@ export const Info = Schema.Struct({
   env: Schema.Array(Schema.String),
   key: optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),
+  router: optional(Router.Connection).annotate({
+    description: "Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.",
+  }),
   models: Schema.Record(Schema.String, Model),
 }).annotate({ identifier: "Provider" })
 export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
@@ -1385,6 +1417,64 @@ function modeOptions(model: Model, body: Record<string, unknown> | undefined) {
   return { ...rest, reasoningMode: reasoning.mode }
 }
 
+/**
+ * What clients are told about a routed model: who serves it, its earlier ids, its modes and the
+ * router in between. A combo's upstream is the combo itself.
+ */
+function routedModel(router: RouterInfo | undefined) {
+  if (!router) return {}
+  const modes = [
+    ...new Set([
+      ...(router.parameters?.modes ?? []),
+      ...(router.variants ?? []).flatMap((variant) => (variant.mode ? [variant.mode] : [])),
+    ]),
+  ]
+  const upstream: ConfigProviderV1.RouterUpstream | undefined =
+    router.provider ?? (router.owned_by === "combo" ? { id: "combo", name: "Combo", category: "combo" } : undefined)
+  return {
+    ...(upstream
+      ? {
+          upstream: {
+            id: upstream.id,
+            name: upstream.name ?? upstream.slug ?? upstream.id,
+            ...(upstream.slug ? { slug: upstream.slug } : {}),
+            ...(upstream.category ? { category: upstream.category } : {}),
+            ...(upstream.subscription !== undefined ? { subscription: upstream.subscription } : {}),
+          },
+        }
+      : {}),
+    ...(router.aliases?.length ? { aliases: [...router.aliases] } : {}),
+    ...(modes.length ? { modes } : {}),
+    ...(router.variants?.length
+      ? {
+          routerVariants: router.variants.map((variant) => ({
+            ...variant,
+            ...(variant.aliases ? { aliases: [...variant.aliases] } : { aliases: undefined }),
+          })),
+        }
+      : {}),
+    ...(router.via ? { via: router.via } : {}),
+  }
+}
+
+type RouterInfo = NonNullable<(typeof ConfigProviderV1.Model.Type)["router"]>
+
+/**
+ * The model a router now lists under another id, for a request by an id it no longer lists. An
+ * earlier id of the model itself resolves to the model under its new id; the id (or an earlier
+ * id) of a reasoning level or mode it serves resolves to the model with that id sent to the
+ * router, which still answers to it, so the level or mode is kept.
+ */
+export function aliasedModel(provider: Pick<Info, "models">, modelID: string) {
+  const models = Object.values(provider.models)
+  const model = models.find((item) => item.aliases?.includes(modelID))
+  if (model) return model
+  const serving = models.find((item) =>
+    item.routerVariants?.some((variant) => variant.id === modelID || variant.aliases?.includes(modelID)),
+  )
+  return serving && { ...serving, api: { ...serving.api, id: modelID } }
+}
+
 function modelSuggestions(provider: Info | undefined, modelID: ModelV2.ID, enableExperimentalModels: boolean) {
   const available = provider
     ? Object.keys(provider.models).filter((id) => {
@@ -1528,6 +1618,7 @@ const layer = Layer.effect(
             env: provider.env ?? existing?.env ?? [],
             options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
             source: "config",
+            ...(provider.router ? { router: { ...provider.router } } : {}),
             models: existing?.models ?? {},
           }
 
@@ -1615,6 +1706,7 @@ const layer = Layer.effect(
               family: model.family ?? existingModel?.family ?? "",
               release_date: model.release_date ?? existingModel?.release_date ?? "",
               variants: {},
+              ...routedModel(model.router),
             }
             const variants = levels
               ? ProviderTransform.effortVariants(parsedModel, levels)
@@ -1718,6 +1810,7 @@ const layer = Layer.effect(
           if (provider.env) partial.env = provider.env
           if (provider.name) partial.name = provider.name
           if (provider.options) partial.options = provider.options
+          if (provider.router) partial.router = { ...provider.router }
           mergeProvider(providerID, partial)
         }
 
@@ -1970,7 +2063,9 @@ const layer = Layer.effect(
         return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
       }
 
-      const info = provider.models[modelID]
+      // A router that renamed its models still answers to the old ids, so a saved reference to one
+      // (a session, a project file, a CLI flag) keeps working until it is moved to the new id.
+      const info = provider.models[modelID] ?? aliasedModel(provider, modelID)
       if (!info) {
         const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
         const suggestions = current.length
@@ -1980,7 +2075,7 @@ const layer = Layer.effect(
       }
       // A limit the provider taught us caps the declared one; the person's own limit, set or
       // changed after the lesson, wins over it.
-      const observed = yield* limits.get(providerID, modelID, declaredLimit(yield* config.get(), providerID, modelID))
+      const observed = yield* limits.get(providerID, info.id, declaredLimit(yield* config.get(), providerID, info.id))
       const input = ModelLimit.effectiveInput(
         info.limit,
         observed,

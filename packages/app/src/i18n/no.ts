@@ -336,6 +336,11 @@ export const dict = {
 
   "model.tag.free": "Gratis",
   "model.tag.latest": "Nyeste",
+  "model.origin.direct": "direct",
+  "model.origin.via": "via {{router}}",
+  "model.origin.subscription": "subscription",
+  "model.origin.alsoVia": "also via {{router}}",
+  "model.origin.alsoDirect": "also direct",
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
   "model.provider.google": "Google",
@@ -1136,6 +1141,7 @@ export const dict = {
   "model.tooltip.inputs": "Inndata",
   "model.tooltip.model": "Modell",
   "model.tooltip.provider": "Leverandør",
+  "model.tooltip.connection": "Connection",
   "model.tooltip.reasoning": "Resonnering",
 
   "common.clear": "Tøm",

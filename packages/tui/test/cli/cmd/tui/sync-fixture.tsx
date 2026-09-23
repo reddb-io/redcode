@@ -8,6 +8,7 @@ import { SDKProvider } from "../../../../src/context/sdk"
 import { SyncProvider, useSync, type SyncTiming } from "../../../../src/context/sync"
 import { PermissionProvider } from "../../../../src/context/permission"
 import { ExitProvider } from "../../../../src/context/exit"
+import { ToastProvider, useToast } from "../../../../src/ui/toast"
 import { createEventSource, createFetch, type FetchHandler, directory } from "../../../fixture/tui-sdk"
 import { TestTuiContexts } from "../../../fixture/tui-environment"
 export { createEventSource, createFetch, directory, eventSource, json, worktree } from "../../../fixture/tui-sdk"
@@ -22,7 +23,12 @@ export async function wait(fn: () => boolean, timeout = 10_000) {
   }
 }
 
-type Ctx = { kv: ReturnType<typeof useKV>; project: ReturnType<typeof useProject>; sync: ReturnType<typeof useSync> }
+type Ctx = {
+  kv: ReturnType<typeof useKV>
+  project: ReturnType<typeof useProject>
+  sync: ReturnType<typeof useSync>
+  toast: ReturnType<typeof useToast>
+}
 
 export async function mount(
   override?: FetchHandler,
@@ -42,17 +48,19 @@ export async function mount(
   let sync!: ReturnType<typeof useSync>
   let project!: ReturnType<typeof useProject>
   let kv!: ReturnType<typeof useKV>
+  let toast!: ReturnType<typeof useToast>
   let done!: () => void
   const ready = new Promise<void>((resolve) => {
     done = resolve
   })
 
   function Probe() {
-    const ctx: Ctx = { kv: useKV(), project: useProject(), sync: useSync() }
+    const ctx: Ctx = { kv: useKV(), project: useProject(), sync: useSync(), toast: useToast() }
     onMount(() => {
       sync = ctx.sync
       project = ctx.project
       kv = ctx.kv
+      toast = ctx.toast
       done()
     })
     return <box>{children?.()}</box>
@@ -67,9 +75,11 @@ export async function mount(
               <PermissionProvider>
                 <ProjectProvider>
                   <ExitProvider exit={input.exit ?? (() => {})}>
-                    <SyncProvider timing={input.timing}>
-                      <Probe />
-                    </SyncProvider>
+                    <ToastProvider>
+                      <SyncProvider timing={input.timing}>
+                        <Probe />
+                      </SyncProvider>
+                    </ToastProvider>
                   </ExitProvider>
                 </ProjectProvider>
               </PermissionProvider>
@@ -83,5 +93,5 @@ export async function mount(
 
   await ready
   await wait(() => (input.ready === "partial" ? sync.ready : sync.status === "complete"))
-  return { app, emit: events.emit, kv, project, sync, session: calls.session }
+  return { app, emit: events.emit, kv, project, sync, toast, session: calls.session }
 }

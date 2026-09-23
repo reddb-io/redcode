@@ -22,6 +22,7 @@ import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./dialog-select-model-search"
+import { modelAlternatives, modelGroup, modelKey, modelOrigin, type ModelAlternatives } from "./model-origin"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -29,19 +30,43 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
 type ModelState = ReturnType<typeof useLocal>["model"]
 type ModelItem = ReturnType<ModelState["list"]>[number]
 
-const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
 
 const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
-  const aIndex = popularProviders.indexOf(a.category)
-  const bIndex = popularProviders.indexOf(b.category)
+  const aIndex = popularProviders.indexOf(a.items[0].provider.id)
+  const bIndex = popularProviders.indexOf(b.items[0].provider.id)
   const aPopular = aIndex >= 0
   const bPopular = bIndex >= 0
 
   if (aPopular && !bPopular) return -1
   if (!aPopular && bPopular) return 1
   if (aPopular && bPopular) return aIndex - bIndex
-  return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
+  return modelGroup(a.items[0]).label.localeCompare(modelGroup(b.items[0]).label)
+}
+
+const visibleModels = (model: ModelState) =>
+  model.list().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
+
+/** `direct`, or `via RedRouter · OpenAI Codex · subscription`, plus where else the same model is offered. */
+function originLabel(
+  language: ReturnType<typeof useLanguage>,
+  item: ModelItem,
+  alternatives: ModelAlternatives | undefined,
+) {
+  const origin = modelOrigin(item)
+  const source =
+    origin.type === "direct"
+      ? [language.t("model.origin.direct")]
+      : [
+          language.t("model.origin.via", { router: origin.router }),
+          ...(origin.upstream ? [origin.upstream] : []),
+          ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
+        ]
+  return [
+    ...source,
+    ...(alternatives?.direct ? [language.t("model.origin.alsoDirect")] : []),
+    ...(alternatives?.routers ?? []).map((router) => language.t("model.origin.alsoVia", { router })),
+  ].join(" · ")
 }
 
 const ModelList: Component<{
@@ -54,12 +79,9 @@ const ModelList: Component<{
   const model = props.model ?? useLocal().model
   const language = useLanguage()
 
-  const models = createMemo(() =>
-    model
-      .list()
-      .filter((m) => model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
-  )
+  const visible = createMemo(() => visibleModels(model))
+  const models = createMemo(() => visible().filter((m) => (props.provider ? m.provider.id === props.provider : true)))
+  const alternatives = createMemo(() => modelAlternatives(visible()))
 
   return (
     <List
@@ -69,9 +91,9 @@ const ModelList: Component<{
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
       current={model.current()}
-      filterKeys={["provider.name", "name", "id"]}
+      filterKeys={["provider.name", "upstream.name", "name", "id"]}
       sortBy={(a, b) => a.name.localeCompare(b.name)}
-      groupBy={(x) => x.provider.name}
+      groupBy={(x) => modelGroup(x).label}
       sortGroupsBy={(a, b) => {
         const aProvider = a.items[0].provider.id
         const bProvider = b.items[0].provider.id
@@ -106,6 +128,10 @@ const ModelList: Component<{
           <Show when={i.latest}>
             <Tag>{language.t("model.tag.latest")}</Tag>
           </Show>
+          <For each={i.modes ?? []}>{(mode) => <Tag>{mode}</Tag>}</For>
+          <span class="ml-auto min-w-0 truncate text-12-regular text-text-weak">
+            {originLabel(language, i, alternatives().get(modelKey(i)))}
+          </span>
         </div>
       )}
     </List>
@@ -240,6 +266,7 @@ export function ModelSelectorPopoverV2(props: {
       trigger={props.trigger}
       models={controller.models}
       groups={controller.groups}
+      origin={controller.origin}
       current={controller.current}
       select={controller.select}
       onManage={() => {
@@ -258,28 +285,32 @@ function createModelSelectorController(input: {
   onSelect: () => void
 }) {
   const model = input.model ?? useLocal().model
+  const language = useLanguage()
+  const visible = createMemo(() => visibleModels(model))
   const allModels = createMemo(() =>
-    model
-      .list()
-      .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+    visible().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
+  const alternatives = createMemo(() => modelAlternatives(visible()))
 
   return {
     models: (search: string) => {
       const query = search.trim()
       const filtered = query
-        ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
+        ? allModels().filter((item) =>
+            matchesModelSearch(query, [item.name, item.id, item.provider.name, item.upstream?.name ?? ""]),
+          )
         : allModels()
       return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
     },
     groups: (models: ModelItem[]) => {
-      const byProvider = new Map<string, ModelItem[]>()
+      const byGroup = new Map<string, ModelItem[]>()
       for (const item of models) {
-        byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
+        const key = modelGroup(item).key
+        byGroup.set(key, [...(byGroup.get(key) ?? []), item])
       }
-      return Array.from(byProvider, ([category, items]) => ({ category, items })).sort(sortModelGroups)
+      return Array.from(byGroup, ([category, items]) => ({ category, items })).sort(sortModelGroups)
     },
+    origin: (item: ModelItem) => originLabel(language, item, alternatives().get(modelKey(item))),
     current: () => {
       const value = model.current()
       return value ? modelKey(value) : undefined
@@ -295,6 +326,7 @@ function ModelSelectorPopoverV2View(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
+  origin: (item: ModelItem) => string
   current: () => string | undefined
   select: (item: ModelItem) => void
   onManage: () => void
@@ -451,7 +483,7 @@ function ModelSelectorPopoverV2View(props: {
                   {(group) => (
                     <MenuV2.Group>
                       <MenuV2.GroupLabel class="sticky top-0 z-10 gap-2 bg-v2-background-bg-layer-01 px-3">
-                        <span class="min-w-0 truncate">{group.items[0].provider.name}</span>
+                        <span class="min-w-0 truncate">{modelGroup(group.items[0]).label}</span>
                       </MenuV2.GroupLabel>
                       <MenuV2.RadioGroup value={props.current()}>
                         <For each={group.items}>
@@ -489,6 +521,10 @@ function ModelSelectorPopoverV2View(props: {
                                 <Show when={item.latest}>
                                   <TagV2 class="shrink-0">{language.t("model.tag.latest")}</TagV2>
                                 </Show>
+                                <For each={item.modes ?? []}>{(mode) => <TagV2 class="shrink-0">{mode}</TagV2>}</For>
+                                <span class="ml-auto min-w-0 truncate text-[12px] leading-5 text-v2-text-text-faint">
+                                  {props.origin(item)}
+                                </span>
                               </MenuV2.RadioItem>
                             </TooltipV2>
                           )}

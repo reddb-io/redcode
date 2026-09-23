@@ -688,6 +688,63 @@ test("a failed S2 probe names the model and leaves the cursor on Change S2 model
   }
 })
 
+test("setup groups RedRouter models per upstream provider and says where each model comes from", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const router = {
+    ...provider,
+    id: "red-router",
+    name: "RedRouter",
+    router: { kind: "red-router" },
+    models: {
+      "codex/sol": {
+        ...provider.models.model,
+        id: "codex/sol",
+        providerID: "red-router",
+        name: "Sol",
+        upstream: { id: "codex", slug: "codex", name: "Codex", subscription: true },
+        modes: ["review"],
+      },
+      smart: {
+        ...provider.models.model,
+        id: "smart",
+        providerID: "red-router",
+        name: "Smart",
+        upstream: { id: "combo", name: "Combo", category: "combo" },
+      },
+    },
+  }
+  const codex = {
+    ...provider,
+    id: "codex",
+    name: "Codex",
+    models: { sol: { ...provider.models.model, id: "sol", providerID: "codex", name: "Sol" } },
+  }
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json(intelligence)
+      if (url.pathname === "/config/providers")
+        return json({ providers: [router, codex], default: { "red-router": "smart", codex: "sol" } })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "single" }} />,
+    { height: 40 },
+  )
+  try {
+    await ready(setup.app, "RedRouter · Combo")
+    const frame = setup.app.captureCharFrame()
+    expect(frame).toContain("2 models · current")
+    expect(frame).toContain("1 model · direct")
+    expect(frame).toContain("RedRouter · Codex")
+    expect(frame).toContain("Sol via RedRouter · Codex")
+    expect(frame).toContain("review")
+    expect(frame).toContain("Smart via RedRouter · Combo")
+    expect(frame.indexOf("RedRouter · Codex")).toBeLessThan(frame.indexOf("RedRouter · Combo"))
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
 async function ready(app: Awaited<ReturnType<typeof mount>>["app"], text: string) {
   await wait(() => app.captureCharFrame().includes(text))
   await wait(

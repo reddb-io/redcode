@@ -256,7 +256,13 @@ export function Prompt(props: PromptProps) {
   const workspace = usePromptWorkspace(props.sessionID)
   const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
   const [cursorVersion, setCursorVersion] = createSignal(0)
-  const currentProviderLabel = createMemo(() => local.model.parsed().provider)
+  // A routed model names its router (and the upstream provider when there is room) instead of the provider.
+  const currentProviderLabel = createMemo(() => {
+    const parsed = local.model.parsed()
+    if (!parsed.router) return parsed.provider
+    if (dimensions().width < 100 || !parsed.upstream) return `via ${parsed.router}`
+    return `via ${parsed.router} · ${parsed.upstream}`
+  })
   const intelligenceOverride = createMemo(() => {
     const principal = local.intelligence.state.status?.settings.principal
     const current = local.model.current()
@@ -1746,7 +1752,7 @@ export function Prompt(props: PromptProps) {
                             S2 {Locale.truncate(local.model.parsed().model, dimensions().width < 100 ? 22 : 40)}
                             {intelligenceOverride() ? "*" : ""}
                           </text>
-                          <Show when={dimensions().width >= 100}>
+                          <Show when={dimensions().width >= 100 || local.model.parsed().router}>
                             <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
                           </Show>
                           <IntelligenceIndicator sessionID={props.sessionID} />

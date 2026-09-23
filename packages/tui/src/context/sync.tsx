@@ -34,6 +34,7 @@ import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
 import { useToastOptional } from "../ui/toast"
+import { catalogUpdateMessage } from "../util/model-origin"
 import { steeredAt, type SteeredAt } from "../prompt/steer"
 import { MemoryReport } from "@reddb-io/redcode-core/observability/memory"
 
@@ -408,6 +409,10 @@ export const {
 
         case "models-dev.refreshed":
           void reloadProviders()
+          break
+        case "provider.catalog.updated":
+          void reloadProviders()
+          toast?.show({ variant: "info", message: catalogUpdateMessage(event.properties), duration: 5000 })
           break
         case "permission.replied": {
           snapshot?.permissions.add(event.properties.requestID)

@@ -1,5 +1,6 @@
 import { Show, type Component, type JSX } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { modelOrigin, routerKind } from "./model-origin"
 
 type InputKey = "text" | "image" | "audio" | "video" | "pdf"
 type InputMap = Record<InputKey, boolean>
@@ -8,7 +9,16 @@ type ModelInfo = {
   id: string
   name: string
   provider: {
+    id: string
     name: string
+    router?: {
+      kind: "red-router" | "9router"
+    }
+  }
+  upstream?: {
+    id: string
+    name: string
+    subscription?: boolean
   }
   capabilities?: {
     reasoning: boolean
@@ -37,6 +47,9 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
 ) => {
   const language = useLanguage()
   const sourceName = (model: ModelInfo) => {
+    // A router names the provider that really serves the model; guessing from the id would call
+    // every routed GPT or Codex model OpenAI.
+    if (routerKind(model.provider)) return model.upstream?.name ?? model.provider.name
     const value = `${model.id} ${model.name}`.toLowerCase()
 
     if (/claude|anthropic/.test(value)) return language.t("model.provider.anthropic")
@@ -90,6 +103,14 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
       ? language.t("model.tooltip.reasoning.allowed")
       : language.t("model.tooltip.reasoning.none")
   }
+  const connection = () => {
+    const origin = modelOrigin(props.model)
+    if (origin.type === "direct") return language.t("model.origin.direct")
+    return [
+      language.t("model.origin.via", { router: origin.router }),
+      ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
+    ].join(" · ")
+  }
   const context = () => language.t("model.tooltip.context", { limit: props.model.limit.context.toLocaleString() })
   const contextLimit = () => props.model.limit.context.toLocaleString(language.intl())
 
@@ -97,7 +118,11 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
     return (
       <div class="flex w-[180px] flex-col gap-2">
         <ModelTooltipRow name={language.t("model.tooltip.model")} value={name()} />
-        <ModelTooltipRow name={language.t("model.tooltip.provider")} value={props.model.provider.name} />
+        <ModelTooltipRow
+          name={language.t("model.tooltip.provider")}
+          value={routerKind(props.model.provider) ? sourceName(props.model) : props.model.provider.name}
+        />
+        <ModelTooltipRow name={language.t("model.tooltip.connection")} value={connection()} />
         <Show when={inputs()}>
           {(value) => <ModelTooltipRow name={language.t("model.tooltip.inputs")} value={value()} />}
         </Show>
@@ -110,6 +135,7 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
   return (
     <div class="flex flex-col gap-1 py-1">
       <div class="text-13-medium">{title()}</div>
+      <div class="text-12-regular text-text-invert-base">{connection()}</div>
       <Show when={inputs()}>
         {(value) => (
           <div class="text-12-regular text-text-invert-base">

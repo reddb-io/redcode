@@ -11,6 +11,7 @@ import { DialogConnectProvider, useProviderConnectController } from "../dialog-c
 import { DialogCustomProvider } from "../dialog-custom-provider"
 import { useProviderRemove } from "../dialog-remove-provider"
 import { SettingsListV2 } from "./parts/list"
+import { routerName } from "../model-origin"
 import "./settings-v2.css"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
@@ -70,6 +71,8 @@ export const SettingsProvidersV2: Component<{
   }
 
   const type = (item: ProviderItem) => {
+    const router = routerName(item)
+    if (router) return router
     const current = source(item)
     if (current === "env") return language.t("settings.providers.tag.environment")
     if (current === "api") return language.t("provider.connect.method.apiKey")

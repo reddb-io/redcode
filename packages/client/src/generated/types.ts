@@ -6005,6 +6005,11 @@ export type ProvidersListOutput = {
       readonly headers: { readonly [x: string]: string }
       readonly body: { readonly [x: string]: JsonValue }
     }
+    readonly router?: {
+      readonly kind: "red-router" | "9router"
+      readonly instanceID?: string
+      readonly version?: string
+    }
   }>
 }
 
@@ -6037,6 +6042,11 @@ export type ProvidersGetOutput = {
     readonly request: {
       readonly headers: { readonly [x: string]: string }
       readonly body: { readonly [x: string]: JsonValue }
+    }
+    readonly router?: {
+      readonly kind: "red-router" | "9router"
+      readonly instanceID?: string
+      readonly version?: string
     }
   }
 }

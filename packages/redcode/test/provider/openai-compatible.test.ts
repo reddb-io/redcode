@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import type { Auth } from "../../src/auth"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { ProviderDiscovery } from "../../src/provider/discovery"
 import { OpenAICompatible } from "../../src/provider/openai-compatible"
 import { TestConfig } from "../fixture/config"
@@ -571,3 +572,163 @@ describe("renameReferences", () => {
     })
   })
 })
+
+describe("renameModelReferences", () => {
+  test("points the connection's renamed models at their new ids and leaves everything else", () => {
+    expect(
+      OpenAICompatible.renameModelReferences(
+        {
+          model: "red-router/cx/gpt-5.6-sol",
+          small_model: "red-router/kept",
+          agent: { build: { model: "red-router/cc/claude-sonnet" }, plan: { model: "other/cx/gpt-5.6-sol" } },
+          command: { review: { model: "red-router/cx/gpt-5.6-sol-review" } },
+        },
+        "red-router",
+        {
+          "cx/gpt-5.6-sol": "codex/gpt-5.6-sol",
+          "cc/claude-sonnet": "claude-code/claude-sonnet",
+          "cx/gpt-5.6-sol-review": "codex/gpt-5.6-sol",
+        },
+      ),
+    ).toEqual({
+      model: "red-router/codex/gpt-5.6-sol",
+      agent: { build: { model: "red-router/claude-code/claude-sonnet" } },
+      command: { review: { model: "red-router/codex/gpt-5.6-sol" } },
+    })
+  })
+})
+
+describe("OpenAICompatible.plan with renamed router ids", () => {
+  const limit = { context: 400_000, output: 128_000 }
+  const sol = {
+    id: "codex/gpt-5.6-sol",
+    name: "GPT-5.6 Sol",
+    limit,
+    router: {
+      owned_by: "codex",
+      provider: { id: "codex", slug: "codex", prefix: "cx", name: "OpenAI Codex", subscription: true },
+      aliases: ["cx/gpt-5.6-sol"],
+      variants: [{ id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] }],
+    },
+  }
+
+  test("moves a saved model to its new id with what it carried, instead of pruning it", () => {
+    const existing = {
+      "cx/gpt-5.6-sol": { name: "cx/gpt-5.6-sol", limit, options: { store: false }, router: { owned_by: "cx" } },
+      "cx/gpt-5.6-sol-review": { name: "cx/gpt-5.6-sol-review", limit },
+      "cx/gone": { name: "cx/gone", limit },
+    }
+    const result = OpenAICompatible.plan(existing, [sol], { prune: true })
+    expect(result.models["codex/gpt-5.6-sol"]).toEqual({
+      name: "GPT-5.6 Sol",
+      limit,
+      options: { store: false },
+      router: sol.router,
+    })
+    expect(result.renamed).toEqual({
+      "cx/gpt-5.6-sol": "codex/gpt-5.6-sol",
+      "cx/gpt-5.6-sol-review": "codex/gpt-5.6-sol",
+    })
+    expect(result.moved).toEqual({ "cx/gpt-5.6-sol": "codex/gpt-5.6-sol" })
+    expect(result.remove.toSorted()).toEqual(["cx/gone", "cx/gpt-5.6-sol", "cx/gpt-5.6-sol-review"])
+  })
+
+  test("keeps a name someone chose when the model moves", () => {
+    const existing = { "cx/gpt-5.6-sol": { name: "My Sol", limit } }
+    expect(OpenAICompatible.plan(existing, [sol], { prune: true }).models["codex/gpt-5.6-sol"]).toMatchObject({
+      name: "My Sol",
+    })
+  })
+
+  test("a model already saved under its new id stays as it is and only the old entry goes", () => {
+    const existing = {
+      "codex/gpt-5.6-sol": { name: "Sol", limit },
+      "cx/gpt-5.6-sol": { name: "cx/gpt-5.6-sol", limit },
+    }
+    const result = OpenAICompatible.plan(existing, [sol], { prune: true })
+    expect(result.models["codex/gpt-5.6-sol"]).toEqual({ router: sol.router })
+    expect(result.moved).toEqual({})
+    expect(result.renamed).toEqual({ "cx/gpt-5.6-sol": "codex/gpt-5.6-sol" })
+    expect(result.remove).toEqual(["cx/gpt-5.6-sol"])
+  })
+
+  test("an id-named model takes the router's name", () => {
+    const existing = { "codex/gpt-5.6-sol": { name: "codex/gpt-5.6-sol", limit } }
+    expect(OpenAICompatible.plan(existing, [sol], { prune: true }).models["codex/gpt-5.6-sol"]).toEqual({
+      name: "GPT-5.6 Sol",
+      router: sol.router,
+    })
+  })
+})
+
+it.effect("a router connection saves what answered, moves renamed models and the references to them", () =>
+  Effect.gen(function* () {
+    const server = yield* serve((request) => {
+      const path = new URL(request.url).pathname
+      if (path === "/v1/capabilities")
+        return Response.json({ product: "red-router", version: "3.4.0", instance_id: "inst-1" })
+      if (path === "/v1/models")
+        return Response.json({
+          data: [
+            {
+              id: "codex/gpt-5.6-sol",
+              name: "GPT-5.6 Sol",
+              owned_by: "codex",
+              provider: { id: "codex", slug: "codex", prefix: "cx", name: "OpenAI Codex", subscription: true },
+              aliases: ["cx/gpt-5.6-sol"],
+              parameters: { context_length: 400000, max_completion_tokens: 128000, modes: ["review"] },
+            },
+            { id: "claude-code/claude-sonnet", name: "Claude Sonnet", aliases: ["cc/claude-sonnet"] },
+          ],
+        })
+      return new Response("not found", { status: 404 })
+    })
+    const baseURL = `${server.url.href}v1`
+    const fake = fakes({
+      data: {
+        model: "rr/cx/gpt-5.6-sol",
+        agent: { build: { model: "rr/cc/claude-sonnet" } },
+        provider: {
+          rr: {
+            name: "RedRouter",
+            options: { baseURL },
+            models: {
+              "cx/gpt-5.6-sol": { name: "cx/gpt-5.6-sol", limit: { context: 400000, output: 128000 } },
+              "cc/claude-sonnet": { name: "cc/claude-sonnet", limit: { context: 200000, output: 64000 } },
+            },
+          },
+        },
+      },
+      auth: { rr: { type: "api", key: "router-key", metadata: { baseURL } } as Auth.Info },
+    })
+    const http = yield* HttpClient.HttpClient
+    const result = yield* OpenAICompatible.connect(
+      { http, config: fake.config, auth: fake.auth },
+      { providerID: "rr", baseURL },
+      { detect: true },
+    )
+    const write = fake.writes[0]
+    expect(provider(write, "rr").router).toEqual({ kind: "red-router", version: "3.4.0", instanceID: "inst-1" })
+    const models = provider(write, "rr").models as Record<string, Record<string, unknown>>
+    expect(Object.keys(models).toSorted()).toEqual(["claude-code/claude-sonnet", "codex/gpt-5.6-sol"])
+    expect(models["codex/gpt-5.6-sol"]).toMatchObject({
+      name: "GPT-5.6 Sol",
+      router: { provider: { id: "codex", name: "OpenAI Codex", subscription: true }, aliases: ["cx/gpt-5.6-sol"] },
+    })
+    expect(write.patch.model).toBe("rr/codex/gpt-5.6-sol")
+    expect(write.patch.agent).toEqual({ build: { model: "rr/claude-code/claude-sonnet" } })
+    expect(write.remove).toEqual(
+      expect.arrayContaining([
+        ["provider", "rr", "models", "cx/gpt-5.6-sol"],
+        ["provider", "rr", "models", "cc/claude-sonnet"],
+      ]),
+    )
+    expect(result.changes).toEqual({
+      added: 0,
+      removed: 0,
+      renamed: { "cx/gpt-5.6-sol": "codex/gpt-5.6-sol", "cc/claude-sonnet": "claude-code/claude-sonnet" },
+    })
+    // The kept key learns which router it belongs to.
+    expect(fake.credentials.rr).toMatchObject({ metadata: { baseURL, router: "red-router" } })
+  }).pipe(Effect.ensuring(Effect.sync(() => ProviderRouter.forget()))),
+)

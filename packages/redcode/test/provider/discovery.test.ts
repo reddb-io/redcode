@@ -299,3 +299,52 @@ it.live("keeps what a router says about each model beyond its limits", () =>
     expect(result.models.find((model) => model.id === "fast")?.limit).toEqual({ context: 200000, output: 32000 })
   }),
 )
+
+test("keeps RedRouter's upstream provider, earlier ids, collapsed variants and remote hop per model", () => {
+  expect(
+    ProviderDiscovery.routerInfo({
+      id: "codex/gpt-5.6-sol",
+      name: "GPT-5.6 Sol",
+      owned_by: "codex",
+      provider: {
+        id: "codex",
+        slug: "codex",
+        prefix: "cx",
+        name: "OpenAI Codex",
+        category: "subscription",
+        subscription: true,
+      },
+      aliases: ["cx/gpt-5.6-sol", "codex/gpt-5.6-sol", "", 7],
+      parameters: { modes: ["review"], thinking_levels: ["low", "high"] },
+      variants: [
+        { id: "codex/gpt-5.6-sol(high)", name: "GPT-5.6 Sol (high)", level: "high" },
+        { id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] },
+        { name: "no id" },
+      ],
+      via: "red-router",
+    }),
+  ).toEqual({
+    owned_by: "codex",
+    thinking_levels: ["low", "high"],
+    parameters: { modes: ["review"], thinking_levels: ["low", "high"] },
+    provider: {
+      id: "codex",
+      slug: "codex",
+      prefix: "cx",
+      name: "OpenAI Codex",
+      category: "subscription",
+      subscription: true,
+    },
+    aliases: ["cx/gpt-5.6-sol"],
+    variants: [
+      { id: "codex/gpt-5.6-sol(high)", name: "GPT-5.6 Sol (high)", level: "high" },
+      { id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] },
+    ],
+    via: "red-router",
+  })
+  // A provider block without an id says nothing; a missing name falls back to the slug.
+  expect(ProviderDiscovery.routerInfo({ id: "x", provider: { name: "Nameless" } })).toBeUndefined()
+  expect(ProviderDiscovery.routerInfo({ id: "x", provider: { id: "kilo-code", slug: "kilo-code" } })).toEqual({
+    provider: { id: "kilo-code", slug: "kilo-code", name: "kilo-code" },
+  })
+})

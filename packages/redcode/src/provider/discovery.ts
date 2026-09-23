@@ -23,6 +23,16 @@ export const RouterInfo = Schema.Struct({
   members: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "The provider/model ids a combo can route to, nested combos expanded.",
   }),
+  provider: Schema.optional(ConfigProviderV1.RouterUpstream).annotate({
+    description: "The provider behind the model: the one RedRouter sends it to, or `combo` for a combo.",
+  }),
+  aliases: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "Earlier ids of the model at the router, such as the short-code ids RedRouter used before.",
+  }),
+  variants: Schema.optional(Schema.Array(ConfigProviderV1.RouterVariant)),
+  via: Schema.optional(Schema.String).annotate({
+    description: "The router in between when the model is served by another router, e.g. a remote RedRouter.",
+  }),
 })
 export const Model = Schema.Struct({
   id: Schema.String,
@@ -90,6 +100,10 @@ const Catalog = Schema.Struct({
       capabilities: Schema.optional(Schema.Unknown),
       parameters: Schema.optional(Schema.Unknown),
       members: Schema.optional(Schema.Unknown),
+      provider: Schema.optional(Schema.Unknown),
+      aliases: Schema.optional(Schema.Unknown),
+      variants: Schema.optional(Schema.Unknown),
+      via: Schema.optional(Schema.Unknown),
       [NESTED]: Schema.optional(Schema.Unknown),
       ...Object.fromEntries(
         [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
@@ -343,16 +357,61 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
   // A combo's own levels are already what all its members accept; parameters say the same.
   const levels = strings(item.thinking_levels) ?? strings(parameters?.thinking_levels)
   const members = strings(item.members)
+  const upstream = routerUpstream(item.provider)
+  const aliases = strings(item.aliases)?.filter((alias) => alias !== item.id && validModelID(alias))
+  const variants = routerVariants(item.variants)
   const info = {
     ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),
     ...(levels?.length ? { thinking_levels: levels } : {}),
     ...(isRecord(item.capabilities) ? { capabilities: item.capabilities } : {}),
     ...(parameters ? { parameters } : {}),
     ...(members?.length ? { members } : {}),
+    ...(upstream ? { provider: upstream } : {}),
+    ...(aliases?.length ? { aliases } : {}),
+    ...(variants?.length ? { variants } : {}),
+    ...(typeof item.via === "string" && item.via.trim() ? { via: item.via.trim() } : {}),
   }
   const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
   if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }
   return Object.keys(info).length ? info : undefined
+}
+
+/**
+ * RedRouter's `provider` block: who serves the model. An entry without an id is dropped; a missing
+ * name falls back to the slug, then the id.
+ */
+function routerUpstream(value: unknown): ConfigProviderV1.RouterUpstream | undefined {
+  if (!isRecord(value)) return
+  const text = (item: unknown) => (typeof item === "string" && item.trim() ? item.trim() : undefined)
+  const id = text(value.id)
+  if (!id) return
+  return defined({
+    id,
+    slug: text(value.slug),
+    prefix: text(value.prefix),
+    name: text(value.name) ?? text(value.slug) ?? id,
+    category: text(value.category),
+    subscription: typeof value.subscription === "boolean" ? value.subscription : undefined,
+  }) as ConfigProviderV1.RouterUpstream
+}
+
+/** RedRouter's `variants`: the reasoning levels and modes collapsed into one model entry. */
+function routerVariants(value: unknown): ConfigProviderV1.RouterVariant[] | undefined {
+  if (!Array.isArray(value)) return
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || !validModelID(item.id)) return []
+    const text = (field: unknown) => (typeof field === "string" && field.trim() ? field.trim() : undefined)
+    const aliases = strings(item.aliases)
+    return [
+      defined({
+        id: item.id,
+        name: text(item.name),
+        level: text(item.level),
+        mode: text(item.mode),
+        aliases: aliases?.length ? aliases : undefined,
+      }) as ConfigProviderV1.RouterVariant,
+    ]
+  })
 }
 
 /**
@@ -374,6 +433,7 @@ function routerParameters(value: unknown): ConfigProviderV1.RouterParameters | u
     forced_tool_choice: flag(value.forced_tool_choice),
     tools: flag(value.tools),
     search: flag(value.search),
+    modes: strings(value.modes),
     modalities: Object.keys(io).length ? io : undefined,
   })
   return Object.keys(parameters).length ? parameters : undefined

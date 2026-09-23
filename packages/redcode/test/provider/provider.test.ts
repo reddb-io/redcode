@@ -618,6 +618,85 @@ it.instance(
 )
 
 it.instance(
+  "a RedRouter connection says it is one and where each model really comes from, and old ids still resolve",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const router = providers[ProviderV2.ID.make("work-router")]
+    expect(router.router).toEqual({ kind: "red-router", version: "3.4.0" })
+    const sol = router.models["codex/gpt-5.6-sol"]
+    expect(sol.name).toBe("GPT-5.6 Sol")
+    expect(sol.upstream).toEqual({
+      id: "codex",
+      slug: "codex",
+      name: "OpenAI Codex",
+      category: "subscription",
+      subscription: true,
+    })
+    expect(sol.aliases).toEqual(["cx/gpt-5.6-sol"])
+    expect(sol.modes).toEqual(["review"])
+    expect(router.models["smart"].upstream).toEqual({ id: "combo", name: "Combo", category: "combo" })
+
+    // The model's earlier id resolves to the model under its new id.
+    const renamed = yield* Provider.use.getModel(ProviderV2.ID.make("work-router"), ModelV2.ID.make("cx/gpt-5.6-sol"))
+    expect(renamed.id).toBe(ModelV2.ID.make("codex/gpt-5.6-sol"))
+    expect(renamed.api.id).toBe("codex/gpt-5.6-sol")
+    // A mode's id (or its earlier id) is sent as is, so the router keeps serving that mode.
+    const review = yield* Provider.use.getModel(
+      ProviderV2.ID.make("work-router"),
+      ModelV2.ID.make("cx/gpt-5.6-sol-review"),
+    )
+    expect(review.id).toBe(ModelV2.ID.make("codex/gpt-5.6-sol"))
+    expect(review.api.id).toBe("cx/gpt-5.6-sol-review")
+  }),
+  {
+    config: {
+      provider: {
+        "work-router": {
+          name: "Work RedRouter",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          options: { apiKey: "test-key", baseURL: "http://127.0.0.1:25050/v1" },
+          router: { kind: "red-router", version: "3.4.0" },
+          models: {
+            "codex/gpt-5.6-sol": {
+              name: "GPT-5.6 Sol",
+              limit: { context: 400000, output: 128000 },
+              router: {
+                owned_by: "codex",
+                provider: {
+                  id: "codex",
+                  slug: "codex",
+                  prefix: "cx",
+                  name: "OpenAI Codex",
+                  category: "subscription",
+                  subscription: true,
+                },
+                aliases: ["cx/gpt-5.6-sol"],
+                parameters: { modes: ["review"] },
+                variants: [
+                  { id: "codex/gpt-5.6-sol(high)", name: "GPT-5.6 Sol (high)", level: "high" },
+                  {
+                    id: "codex/gpt-5.6-sol-review",
+                    name: "GPT-5.6 Sol Review",
+                    mode: "review",
+                    aliases: ["cx/gpt-5.6-sol-review"],
+                  },
+                ],
+              },
+            },
+            smart: {
+              name: "smart",
+              limit: { context: 128000, output: 8192 },
+              router: { owned_by: "combo", strategy: "smart", members: ["codex/gpt-5.6-sol"] },
+            },
+          },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "model config preserves explicitly empty models.dev variants",
   Effect.gen(function* () {
     yield* set("OPENAI_API_KEY", "test-api-key")
