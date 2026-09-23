@@ -120,32 +120,6 @@ jobs:
           GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --filter=!@reddb-io/redcode-core --filter=!@reddb-io/redcode-tui --filter=!@reddb-io/redcode-server "${scope[@]}" --continue=dependencies-successful || status=1
           exit $status
 
-      # TEMPORARY (revert before merge): repeat core suites to catch a stall.
-      - name: Fish for core stall
-        if: ${{ !cancelled() }}
-        timeout-minutes: 45
-        working-directory: packages/core
-        run: |
-          sudo sysctl -w kernel.yama.ptrace_scope=0 || true
-          command -v gdb || (sudo apt-get install -y -qq gdb > /dev/null 2>&1 || true)
-          sed -i 's/const SILENCE_MS = 4 \* 60_000/const SILENCE_MS = 60_000/' script/test-ci.ts
-          for i in $(seq 1 40); do
-            if ! GITHUB_ACTIONS=false timeout 600 bun run test:ci test/plugin > fish-plugin-$i.log 2>&1; then
-              echo "::group::plugin attempt $i failed"
-              grep -E '\(fail\)' fish-plugin-$i.log || true
-              sed -n '/test run stalled/,$p' fish-plugin-$i.log | head -400
-              echo "::endgroup::"
-            fi
-          done
-          for i in 1 2 3; do
-            if ! GITHUB_ACTIONS=false timeout 900 bun run test:ci > fish-all-$i.log 2>&1; then
-              echo "::group::full attempt $i failed"
-              grep -E '\(fail\)' fish-all-$i.log || true
-              sed -n '/test run stalled/,$p' fish-all-$i.log | head -400
-              echo "::endgroup::"
-            fi
-          done
-
       # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.
       - name: Save Turbo cache
         if: ${{ !cancelled() }}
