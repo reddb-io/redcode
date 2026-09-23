@@ -1,3 +1,5 @@
+import type { Design } from "@reddb-io/redcode-schema/design"
+
 /**
  * How to build each kind of artifact well.
  *
@@ -31,7 +33,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
     structure: [
       '1. Establish the brief: design_document with action="create" or "list"; use the Design system block (paths and counts of docs, token files, component roots and their exported components) and read .red/DESIGN.md plus the listed docs with the read tool when they exist, then action="update" with brief, designSystem, decisions and scenarios. State in designSystem which roots and token files the prototype uses, or that the project has none. Give variant-specific scenarios their variant ID; unscoped scenarios apply to every variant. Write only in the returned root.',
-      '2. Build a coherent draft. design_preview {id,name} freezes it; design_export {id,input:{revision,format:"audit"}} starts inspection at 390, 768 and 1440px. Poll design_jobs {id} until terminal. Read its named PNG captures with the image-capable read tool, plus the HTML report when findings are truncated. A path, a screenshot you did not open, or a clean axe result is not a visual review.',
+      '2. Build a coherent draft. design_preview {id,name} freezes it; design_export {id,input:{revision,format:"audit"}} starts inspection at the viewports of the design target (for web the configured breakpoints, 390, 768 and 1440px by default). Poll design_jobs {id} until terminal. Read its named PNG captures with the image-capable read tool, plus the HTML report when findings are truncated. A path, a screenshot you did not open, or a clean axe result is not a visual review.',
       "3. First pass, structure and use: compare each rendered variant with the brief, reading order, primary task, real content, useful density and distinct composition. Exercise primary actions, keyboard flow, validation, loading, empty, error and recovery states. Check every required surface is present. Record findings as revision-linked decisions with a stable quality-pass-1 identifier, target, evidence, impact and proposed correction (these are your own decisions, not review notes, so design_document update decisions carries them); put unresolved decisions in questions.",
       "4. Apply justified corrections using read plus edit/write/apply_patch inside the prototype root. Import components from the listed roots and reference the listed token files; add CSS only for what the system lacks. Use design_media then design_generate with the discovered schema, or design_asset, only when real visual assets help. Preserve sources and label illustrative data. Publish a new revision and audit it; inspect the same variants, states and widths before calling a fix resolved.",
       "5. Second pass, craft and regression: inspect hierarchy, type, spacing rhythm, contrast, alignment, responsive composition, labels, focus, feedback and reduced-motion behavior. Review the advisory pattern signals against the brief. Compare the earlier findings one by one as resolved, partial, unresolved or accepted-with-reason. Record quality-pass-2 decisions. Fix remaining material issues as one batch, then republish, re-audit and inspect the affected captures.",
@@ -300,6 +302,34 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
   },
   {
+    id: "mobile-app",
+    use_when: "Design screens or flows of a mobile app for iOS, Android or both (a design with target app)",
+    choose: [
+      "Follow the platform the design names: Apple's Human Interface Guidelines for ios, Material Design for android. With no platform, design one flow and adapt its navigation and controls to each platform rather than averaging them.",
+      "Design for the phone viewport the review uses (393×852 for iOS, 412×915 for Android) in portrait first; the review page and audit use those sizes.",
+      "Prefer the platform's native patterns over web patterns: a hover state, a wide sidebar or a page footer has no place on a phone screen.",
+    ],
+    structure: [
+      "Mark each app screen with data-design-screen and navigate between them with data-design-go, as for a flow; one screen fills one phone viewport, with its own scroll area when the content is longer.",
+      "Place persistent navigation where the platform expects it: a tab bar at the bottom on iOS; a navigation bar or navigation rail with a top app bar on Android. Put the primary action where the platform does (a toolbar button on iOS, a floating action button or top bar action on Android).",
+      "Leave room for the system areas: the status bar at the top and the home indicator or gesture bar at the bottom; keep content and controls inside the safe area.",
+    ],
+    design_rules: [
+      "Touch targets are at least 44×44 pt on iOS and 48×48 dp on Android, with enough spacing that neighbours are not hit by mistake.",
+      "Use the platform type scale and system fonts (SF Pro on iOS, Roboto on Android) unless the project's design system says otherwise; body text stays at 16 px or larger.",
+      "Use the platform's controls and their states: iOS switches, segmented controls, sheets and swipe actions; Android switches, chips, bottom sheets, snackbars and Material elevation.",
+      "Show loading, empty, error and offline states in place, with a retry action; a phone often loses its connection.",
+    ],
+    pitfalls: [
+      "Do not shrink a desktop web page into the phone frame; recompose it for one column and thumb reach.",
+      "Do not mix the platforms: no iOS back chevron with a Material floating action button on the same screen.",
+      "Do not rely on hover, tiny links or multi-column tables.",
+    ],
+    review_notes: [
+      "Review each screen at the phone size of its platform; switch between iOS and Android when the design targets both.",
+    ],
+  },
+  {
     id: "slides",
     use_when: "Create a deliberate presentation when slides are requested",
     choose: [
@@ -331,6 +361,13 @@ export const PLAYBOOKS: readonly Playbook[] = [
 ]
 
 export const ids = () => PLAYBOOKS.map((item) => item.id)
+
+/** The playbooks a design of this target starts from; a design without a target is web. */
+export function forTarget(target: Design.Surface | undefined) {
+  if (target === "app") return ["mobile-app", "quality"]
+  if (target === "presentation") return ["slides"]
+  return ["screen", "flow", "quality"]
+}
 
 export const find = (id: string) => PLAYBOOKS.find((item) => item.id === id.trim().toLowerCase())
 

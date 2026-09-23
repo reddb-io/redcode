@@ -8,6 +8,9 @@ export const DesignTable = sqliteTable(
     session_id: text().notNull(),
     directory: text().notNull(),
     data: text({ mode: "json" }).$type<Design.Info>().notNull(),
+    // The target and platform are authoritative here; documents created before them read as web.
+    target: text().$type<Design.Surface>().notNull().default("web"),
+    platform: text().$type<Design.Platform>(),
   },
   (table) => [index("design_document_session_idx").on(table.session_id)],
 )

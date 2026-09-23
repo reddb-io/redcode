@@ -25,6 +25,7 @@ import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { SessionSchema } from "@reddb-io/redcode-core/session/schema"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
 import sessionMetadataMigration from "@reddb-io/redcode-core/database/migration/20260511173437_session-metadata"
+import designTargetMigration from "@reddb-io/redcode-core/database/migration/20260923190000_design_target"
 import type { SqlClient as SqlClientService } from "effect/unstable/sql/SqlClient"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -211,6 +212,27 @@ describe("DatabaseMigration", () => {
 
         expect(yield* db.get(sql`SELECT agent FROM session_context_epoch WHERE session_id = 'ses_existing'`)).toEqual({
           agent: "build",
+        })
+      }),
+    )
+  })
+
+  test("reads existing Design documents as web designs without a platform", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(
+          sql`CREATE TABLE design_document (id text PRIMARY KEY, session_id text NOT NULL, directory text NOT NULL, data text NOT NULL)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO design_document (id, session_id, directory, data) VALUES ('design_existing', 'ses_existing', '/repo', '{}')`,
+        )
+
+        yield* DatabaseMigration.applyOnly(db, [designTargetMigration])
+
+        expect(yield* db.get(sql`SELECT target, platform FROM design_document WHERE id = 'design_existing'`)).toEqual({
+          target: "web",
+          platform: null,
         })
       }),
     )

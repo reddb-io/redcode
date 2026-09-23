@@ -28,6 +28,7 @@ import { Effect, DateTime, Schema, Cause, Exit, Fiber, Layer } from "effect"
 import { Question } from "../../src/question"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignTarget } from "@reddb-io/redcode-core/design/target"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { AppNodeBuilderV1 } from "../../src/effect/app-node-builder-v1"
 import { DesignStudio } from "../../src/design/studio"
@@ -56,6 +57,16 @@ const it = testEffect(
         },
       })
       yield* Effect.addFinalizer(() => intelligence.save({ settings: previous }).pipe(Effect.orDie))
+      // These tests exercise other Design flows, so new designs take a forced target instead of asking
+      // for one; the dual-reasoning target confirmation has its own test below.
+      const forced = process.env["REDCODE_DESIGN_TARGET"]
+      process.env["REDCODE_DESIGN_TARGET"] = "web"
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (forced === undefined) delete process.env["REDCODE_DESIGN_TARGET"]
+          else process.env["REDCODE_DESIGN_TARGET"] = forced
+        }),
+      )
     }),
   ).pipe(
     Layer.provideMerge(
@@ -704,6 +715,51 @@ it.instance("design_document asks once to adopt a detected design system and wri
     expect(yield* questions.list()).toHaveLength(0)
     expect(second.output).not.toContain("adopted the detected design system")
     expect(second.output).toContain("Configured: paths src/components")
+  }),
+)
+
+it.instance("design_document create confirms the System One target with the detection preselected", () =>
+  Effect.gen(function* () {
+    delete process.env["REDCODE_DESIGN_TARGET"]
+    yield* Effect.addFinalizer(() => Effect.sync(() => void (process.env["REDCODE_DESIGN_TARGET"] = "web")))
+    const registry = yield* ToolRegistry.Service
+    const sessions = yield* Session.Service
+    const agents = yield* Agent.Service
+    const permissions = yield* Permission.Service
+    const questions = yield* Question.Service
+    const session = yield* sessions.create({ agent: "design" })
+    const agent = yield* agents.get("design")
+    const document = (yield* registry.all()).find((tool) => tool.id === "design_document")!
+    const context: Tool.Context = {
+      sessionID: session.id,
+      messageID: MessageID.ascending(),
+      agent: "design",
+      abort: new AbortController().signal,
+      messages: [],
+      metadata: () => Effect.void,
+      ask: (request) =>
+        permissions.ask({ ...request, sessionID: session.id, ruleset: agent!.permission }).pipe(Effect.orDie),
+    }
+    const fiber = yield* document
+      .execute({ action: "create", input: { name: "Runner", engine: "html", journey: "new", kind: "screen" } }, context)
+      .pipe(Effect.forkChild)
+    let pending = yield* questions.list()
+    for (let attempt = 0; pending.length === 0 && attempt < 500; attempt++) {
+      yield* Effect.sleep("10 millis")
+      pending = yield* questions.list()
+    }
+    expect(pending).toHaveLength(1)
+    const asked = pending[0]!.questions[0]!
+    expect(asked.header).toBe(DesignTarget.HEADER)
+    expect(asked.question).toContain("System One suggests Web")
+    expect(asked.options[0]!.label).toBe("Web (Recommended)")
+    yield* questions.reply({ requestID: pending[0]!.id, answers: [["iOS app"]] })
+    const created = yield* Fiber.join(fiber)
+    expect(created.output).toContain("Target: iOS app · playbooks: mobile-app, quality")
+    expect(created.output).toContain("chosen by the user")
+    const studio = yield* DesignStudio.Service
+    const designs = yield* studio.use(DesignStore.Service.use((store) => store.list(session.id)))
+    expect(designs[0]).toMatchObject({ target: "app", platform: "ios" })
   }),
 )
 

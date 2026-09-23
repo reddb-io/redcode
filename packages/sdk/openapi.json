@@ -39844,6 +39844,16 @@
           },
           "browser": {
             "type": "string"
+          },
+          "breakpoints": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 240,
+              "maximum": 3840
+            },
+            "minItems": 1,
+            "maxItems": 6
           }
         },
         "additionalProperties": false
@@ -44290,6 +44300,14 @@
             "type": "string",
             "enum": ["screen", "flow", "comparison", "deck"]
           },
+          "target": {
+            "type": "string",
+            "enum": ["web", "app", "presentation"]
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
+          },
           "root": {
             "type": "string"
           },
@@ -44489,6 +44507,14 @@
           },
           "application": {
             "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "enum": ["web", "app", "presentation"]
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
           }
         },
         "required": ["name", "journey", "engine", "kind"],
@@ -44539,6 +44565,14 @@
           "by": {
             "type": "string",
             "enum": ["reviewer"]
+          },
+          "target": {
+            "type": "string",
+            "enum": ["web", "app", "presentation"]
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
           },
           "controls": {
             "type": "array",

@@ -10,6 +10,16 @@ export type ID = typeof ID.Type
 export const Kind = Schema.Literals(["screen", "flow", "comparison", "deck"])
 export const Journey = Schema.Literals(["new", "existing"])
 export const Engine = Schema.Literals(["html", "react", "solid"])
+/**
+ * What the design is for: a responsive web frontend, a mobile app or a presentation. It decides the
+ * viewports the review and the audit use and the playbook the agent follows; `Kind` still describes
+ * the artifact's shape. Documents stored before targets existed are web.
+ */
+export const Surface = Schema.Literals(["web", "app", "presentation"])
+export type Surface = typeof Surface.Type
+/** The mobile platform an app design follows (Human Interface Guidelines or Material); absent means both. */
+export const Platform = Schema.Literals(["ios", "android"])
+export type Platform = typeof Platform.Type
 
 export const Decision = Schema.Struct({
   id: Schema.String,
@@ -240,6 +250,10 @@ export const Create = Schema.Struct({
   engine: Engine,
   kind: Kind,
   application: Schema.String.pipe(optional),
+  /** Defaults to web. */
+  target: Surface.pipe(optional),
+  /** Only meaningful when target is app. */
+  platform: Platform.pipe(optional),
 }).annotate({ identifier: "Design.Create" })
 export interface Create extends Schema.Schema.Type<typeof Create> {}
 
@@ -253,6 +267,10 @@ export const Update = Schema.Struct({
   controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
   presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   name: Schema.NonEmptyString.pipe(optional),
+  /** Changing the target away from app drops the platform. */
+  target: Surface.pipe(optional),
+  /** Only accepted when the resulting target is app. */
+  platform: Platform.pipe(optional),
   brief: Brief.pipe(optional),
   decisions: Schema.Array(Decision).pipe(optional),
   questions: Schema.Array(Schema.String).pipe(optional),
@@ -273,6 +291,9 @@ export const Info = Schema.Struct({
   journey: Journey,
   engine: Engine,
   kind: Kind,
+  /** Absent only on revisions and approvals recorded before targets existed; those are web. */
+  target: Surface.pipe(optional),
+  platform: Platform.pipe(optional),
   root: Schema.String,
   application: Schema.String,
   entry: Schema.String,

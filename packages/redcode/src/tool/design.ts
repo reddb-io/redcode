@@ -27,6 +27,8 @@ import { SessionGoal } from "@/session/goal"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@reddb-io/redcode-core/global"
 import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
+import { DesignTarget } from "@reddb-io/redcode-core/design/target"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import type { ConfigDesign } from "@reddb-io/redcode-core/config/design"
 import path from "node:path"
 
@@ -38,6 +40,7 @@ export const DesignTools = Effect.gen(function* () {
   const provider = yield* Provider.Service
   const sessions = yield* Session.Service
   const questions = yield* Question.Service
+  const intelligence = yield* Intelligence.Service
   const run = <A, E>(
     name: string,
     ctx: Tool.Context,
@@ -231,11 +234,39 @@ export const DesignTools = Effect.gen(function* () {
             const reported = (document: Design.Info, report: string) =>
               report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
             if (input.action === "create") {
+              const target = yield* DesignTarget.choose({
+                requested: input.input,
+                forced: DesignTarget.forced(),
+                mode: Intelligence.mode(
+                  yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults)),
+                ),
+                detect: intelligence.evaluate(
+                  DesignTarget.evaluation({
+                    sessionID: ctx.sessionID,
+                    // A continuation the runtime wrote for itself is not a request.
+                    requests: ctx.messages.flatMap((message) => {
+                      const text = message.parts
+                        .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+                        .join("\n")
+                      return message.info.role === "user" && text ? [text] : []
+                    }),
+                    design: { name: input.input.name, kind: input.input.kind },
+                  }),
+                ),
+                ask: (request) =>
+                  questions
+                    .ask({
+                      sessionID: ctx.sessionID,
+                      tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                      questions: [request],
+                    })
+                    .pipe(Effect.map((answers) => answers[0]?.[0])),
+              })
               const created = yield* DesignProposal.around(
                 yield* proposal(input.input.application),
-                store.create(ctx.sessionID, input.input),
+                store.create(ctx.sessionID, { ...input.input, target: target.target, platform: target.platform }),
               )
-              return result(describe(reported(created.value, created.report)))
+              return result(`${describe(reported(created.value, created.report))}\n${target.note}`)
             }
             const current = yield* store.get(input.id, ctx.sessionID)
             if (input.action === "refresh") {
@@ -505,7 +536,7 @@ export const DesignTools = Effect.gen(function* () {
 })
 
 function describe(document: Design.Info, system = DesignSystem.describe(document)) {
-  return `Design ${document.id}: ${document.name}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${system}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`
+  return `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nRevision: ${document.revision ?? "unpublished"}\nPreview: design_preview ${JSON.stringify({ id: document.id, name: document.name })}\n${document.designSystem}\n${system}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}`
 }
 
 function define<S extends Schema.Decoder<unknown>>(

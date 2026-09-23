@@ -51,6 +51,7 @@ export const dict = {
   "settings.intelligence.operation.subagent_brief": "Subagent brief",
   "settings.intelligence.operation.subagent_progress": "Subagent progress",
   "settings.intelligence.operation.subagent_result": "Subagent result",
+  "settings.intelligence.operation.design_target": "Design target",
   "settings.intelligence.decision.accepted": "Accepted",
   "settings.intelligence.decision.needs_revision": "Needs revision",
   "settings.intelligence.decision.inconclusive": "Inconclusive",

@@ -11,7 +11,12 @@ export const DesignCommand = cmd({
       .option("model", { type: "string", describe: "provider/model for a new session" })
       .option("directory", { type: "string", describe: "project directory for a new session" })
       .option("attach", { type: "string", describe: "connect to an existing Redcode server" })
-      .option("open", { type: "boolean", default: false, describe: "open browser review on startup" }),
+      .option("open", { type: "boolean", default: false, describe: "open browser review on startup" })
+      .option("target", {
+        choices: ["web", "app", "presentation"] as const,
+        describe: "design target for new designs; skips target detection",
+      })
+      .option("platform", { choices: ["ios", "android"] as const, describe: "app platform, with --target app" }),
   async handler(args) {
     if (!process.stdin.isTTY || !process.stdout.isTTY)
       throw new Error("The Design terminal requires an interactive terminal. Use redcode run for noninteractive work.")

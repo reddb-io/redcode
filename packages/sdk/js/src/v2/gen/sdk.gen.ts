@@ -9522,6 +9522,7 @@ export class Intelligence extends HeyApiClient {
         | "subagent_brief"
         | "subagent_progress"
         | "subagent_result"
+        | "design_target"
       subjectID?: string
       candidateID?: string
       decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

@@ -21,6 +21,7 @@ import { DesignRaster } from "./raster"
 import { DesignRuntime } from "./runtime"
 import { DesignQuality } from "./quality"
 import { DesignRounds } from "./rounds"
+import { DesignViewports } from "./viewports"
 import { screens } from "@reddb-io/redcode-design/screens"
 
 /**
@@ -252,6 +253,7 @@ const make = Effect.gen(function* () {
     const started = Date.now()
     yield* store.putJob({ ...job, status: "running", started })
     const revision = yield* store.revision(job.designID, job.input.revision)
+    const sizes = DesignViewports.of(revision.document, yield* store.configured(revision.document.sessionID))
     const root = yield* directory(revision)
     const progress = (value: number) => store.putJob({ ...job, status: "running", started, progress: value })
     const output = path.join(
@@ -384,7 +386,8 @@ const make = Effect.gen(function* () {
           const scenarios = revision.document.scenarios.filter((scenario) => !scenario.notApplicable)
           if (!scenarios.length)
             report.push("<p>No acceptance scenarios were supplied. These screenshots require manual review.</p>")
-          for (const width of [390, 768, 1440]) {
+          for (const [index, viewport] of sizes.entries()) {
+            const width = viewport.width
             const images: Buffer[] = []
             for (const source of [root, candidateRoot]) {
               yield* io(() => page.unrouteAll())
@@ -413,7 +416,7 @@ const make = Effect.gen(function* () {
                   })
                 }),
               )
-              yield* io(() => page.setViewportSize({ width, height: 900 }))
+              yield* io(() => page.setViewportSize({ width, height: viewport.height }))
               for (const scenario of scenarios.length ? scenarios : [undefined]) {
                 yield* io(() => page.goto(`http://design.local/${source === root ? entry : "index.html"}`))
                 yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
@@ -466,7 +469,7 @@ const make = Effect.gen(function* () {
                 `<p>${width}px · ${escape(scenarios[index]?.name ?? "Page")}: ${different.toFixed(2)}% of pixels changed. This is visual evidence, not automatic approval.</p>`,
               )
             }
-            yield* progress([390, 768, 1440].indexOf(width) / 3 + 1 / 3)
+            yield* progress((index + 1) / sizes.length)
           }
           yield* io(() =>
             DesignFiles.atomic(
@@ -486,7 +489,9 @@ const make = Effect.gen(function* () {
               code: "invalid",
               message: round === undefined ? "No feedback round to verify yet" : `Round ${round} has no notes`,
             })
-          const WIDTH = 1440
+          // One width is enough to find a note's element: the widest viewport shows the most of the page.
+          const VIEWPORT = sizes.reduce((best, item) => (item.width > best.width ? item : best))
+          const WIDTH = VIEWPORT.width
           /** One note's budget; a note that exceeds it is recorded as timed out and the job goes on. */
           const NOTE_BUDGET = "45 seconds"
           const VARIANT = /^[a-zA-Z0-9_-]{1,64}$/
@@ -633,7 +638,7 @@ const make = Effect.gen(function* () {
                 await page.screenshot({ type: "jpeg", quality: 80, fullPage: true, clip, animations: "disabled" }),
               )
             })
-          yield* io(() => page.setViewportSize({ width: WIDTH, height: 900 }))
+          yield* io(() => page.setViewportSize({ width: WIDTH, height: VIEWPORT.height }))
           /** Records what the job has so far, so a timeout or crash keeps every finished note. */
           const record = (done: number) =>
             store.putJob({
@@ -916,12 +921,13 @@ const make = Effect.gen(function* () {
             yield* io(async () => DesignFiles.atomic(file, await page.screenshot({ fullPage, animations: "disabled" })))
             captures.push({ file, width, variant, scenario, fullPage })
           })
-          for (const width of [390, 768, 1440]) {
-            yield* io(() => page.setViewportSize({ width, height: 900 }))
+          for (const [index, viewport] of sizes.entries()) {
+            const width = viewport.width
+            yield* io(() => page.setViewportSize({ width, height: viewport.height }))
             for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
               if (captures.length >= 36) continue
               yield* reset(variant)
-              if (width === 390 && screensMarked) {
+              if (index === 0 && screensMarked) {
                 // A framework may mount its screens after load; give it a moment before reading them.
                 yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
                 // Passed as the function itself so it runs on the page's own document, without eval.
@@ -995,7 +1001,7 @@ const make = Effect.gen(function* () {
                 yield* inspect(width, variant, scenario.id)
               }
             }
-            yield* progress(([390, 768, 1440].indexOf(width) + 1) / 3)
+            yield* progress((index + 1) / sizes.length)
           }
           if (captures.length >= 36)
             findings.push(
