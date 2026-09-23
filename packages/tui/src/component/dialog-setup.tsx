@@ -250,11 +250,12 @@ export function DialogSetup(
     // Single reasoning keeps a saved S1 evaluator untouched (runtime ignores it) but never probes it.
     const evaluator = state.reasoning === "dual" ? state.settings.evaluator : undefined
     const apiKey = evaluator && state.key ? { apiKey: state.key } : {}
-    const principal = state.settings.principal
     const models = [
-      { role: "S2 model", ref: principal },
+      { role: "S2 model", ref: state.settings.principal },
       { role: "S2 transformations model", ref: state.settings.fast },
-    ].filter((item, index) => item.ref && (index === 0 || JSON.stringify(item.ref) !== JSON.stringify(principal)))
+    ].filter(
+      (item, index, list) => item.ref && (index === 0 || JSON.stringify(item.ref) !== JSON.stringify(list[0]?.ref)),
+    )
     for (const model of models) {
       if (!model.ref) continue
       const checked = await api.probeModel(model.ref)
