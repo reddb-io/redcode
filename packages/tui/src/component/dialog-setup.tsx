@@ -12,6 +12,7 @@ import { useToast } from "../ui/toast"
 import { DialogSelect, type DialogSelectOption, type DialogSelectRef } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
+import { modeBadge, originCategory, originDescription, originIndex, routerLabel } from "../util/model-origin"
 
 type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
@@ -147,6 +148,7 @@ export function DialogSetup(
         { title: "Change System Two model…", value: "change" },
       ]
     const provider = activeProvider()
+    const index = originIndex(sync.data.provider)
     // Every connected provider is listed above the active provider's models so switching stays visible.
     return [
       ...(state.step === "fast" && principal
@@ -166,18 +168,29 @@ export function DialogSetup(
           {
             title: item.name,
             value: { provider: item.id },
-            description: `${total} model${total === 1 ? "" : "s"}${item.id === provider?.id ? " · current" : ""}`,
+            description: [
+              `${total} model${total === 1 ? "" : "s"}`,
+              ...(item.id === provider?.id ? ["current"] : []),
+              // The connection kind, unless the provider's name already says it.
+              ...[routerLabel(item) ?? "direct"].filter((kind) => kind !== item.name),
+            ].join(" · "),
             category: "Providers",
           },
         ]
       }),
       { title: "Connect another provider…", value: "connect" as const, category: "Providers" },
       ...(provider
-        ? generative(provider).map((model) => ({
-            title: model.name,
-            value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
-            category: `${provider.name} models`,
-          }))
+        ? generative(provider)
+            .map((model) => ({
+              title: model.name,
+              value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(model.id) },
+              description: originDescription(index, provider, model),
+              footer: modeBadge(model),
+              // A router's models are grouped per upstream provider, like the model picker.
+              category:
+                routerLabel(provider) && model.upstream ? originCategory(provider, model) : `${provider.name} models`,
+            }))
+            .toSorted((a, b) => a.category.localeCompare(b.category))
         : []),
     ]
   }

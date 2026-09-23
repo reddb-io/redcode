@@ -8,6 +8,7 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
+import { modeBadge, originCategory, originDescription, originIndex, routerLabel } from "../util/model-origin"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
@@ -19,12 +20,14 @@ export function DialogModel(props: { providerID?: string }) {
   const providers = createDialogProviderOptions()
 
   const showExtra = createMemo(() => connected() && !props.providerID)
+  const origins = createMemo(() => originIndex(sync.data.provider))
 
   const options = createMemo(() => {
     const needle = query().trim()
     const showSections = showExtra() && needle.length === 0
     const favorites = connected() ? local.model.favorite() : []
     const recents = local.model.recent()
+    const index = origins()
 
     function toOptions(items: typeof favorites, category: string) {
       if (!showSections) return []
@@ -33,15 +36,17 @@ export function DialogModel(props: { providerID?: string }) {
         if (!provider) return []
         const model = provider.models[item.modelID]
         if (!model) return []
+        const origin = originDescription(index, provider, model)
         return [
           {
             key: item,
             value: { providerID: provider.id, modelID: model.id },
             title: model.name ?? item.modelID,
-            description: provider.name,
+            // Outside its provider's section the row names the provider unless the router label already does.
+            description: routerLabel(provider) === provider.name ? origin : `${provider.name} · ${origin}`,
             category,
             disabled: provider.id === "opencode" && model.id.includes("-nano"),
-            footer: model.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
+            footer: model.cost?.input === 0 && provider.id === "opencode" ? "Free" : modeBadge(model),
             onSelect: () => {
               onSelect(provider.id, model.id)
             },
@@ -75,11 +80,11 @@ export function DialogModel(props: { providerID?: string }) {
             title: info.name ?? model,
             releaseDate: info.release_date,
             description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
-              ? "(Favorite)"
-              : undefined,
-            category: connected() ? provider.name : undefined,
+              ? `${originDescription(index, provider, info)} (Favorite)`
+              : originDescription(index, provider, info),
+            category: connected() ? originCategory(provider, info) : undefined,
             disabled: provider.id === "opencode" && model.includes("-nano"),
-            footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
+            footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : modeBadge(info),
             onSelect() {
               onSelect(provider.id, model)
             },
@@ -101,6 +106,8 @@ export function DialogModel(props: { providerID?: string }) {
             return true
           }),
           (options) => sortModelOptions(options, props.providerID !== undefined),
+          // Keeps each upstream group of a router together (the sort is stable).
+          (options) => sortBy(options, (option) => option.category ?? ""),
         ),
       ),
     )

@@ -12,6 +12,7 @@ import { DialogCustomProvider } from "./dialog-custom-provider"
 import { useProviderRemove } from "./dialog-remove-provider"
 import { SettingsList } from "./settings-list"
 import { SettingsServerPicker, SettingsServerScope } from "./settings-server-picker"
+import { routerName } from "./model-origin"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
@@ -73,6 +74,8 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   }
 
   const type = (item: ProviderItem) => {
+    const router = routerName(item)
+    if (router) return router
     const current = source(item)
     if (current === "env") return language.t("settings.providers.tag.environment")
     if (current === "api") return language.t("provider.connect.method.apiKey")

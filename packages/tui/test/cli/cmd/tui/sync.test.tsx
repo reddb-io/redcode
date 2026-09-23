@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../../../fixture/fixture"
-import { mount, wait } from "./sync-fixture"
+import { directory, json, mount, wait } from "./sync-fixture"
 import type { GlobalEvent } from "@reddb-io/redcode-sdk/v2"
 
 function branchEvent(branch: string, workspace?: string): GlobalEvent {
@@ -58,6 +58,33 @@ describe("tui sync", () => {
       await wait(() => sync.data.vcs?.branch === "feature")
 
       expect(sync.data.vcs?.branch).toBe("feature")
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
+  test("a router catalog refresh reloads providers and announces the change", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const catalog = { providers: [] as unknown[] }
+    const { app, emit, sync, toast } = await mount((url) => {
+      if (url.pathname === "/config/providers") return json({ providers: catalog.providers, default: {} })
+    }, tmp.path)
+
+    try {
+      expect(sync.data.provider).toEqual([])
+      catalog.providers = [{ id: "red-router", name: "RedRouter", env: [], options: {}, source: "config", models: {} }]
+      emit({
+        directory,
+        project: "proj_test",
+        payload: {
+          id: "evt_catalog",
+          type: "provider.catalog.updated",
+          properties: { providerID: "red-router", name: "RedRouter", added: 3, removed: 1, renamed: 2 },
+        },
+      })
+      await wait(() => sync.data.provider.length === 1)
+      expect(toast.currentToast?.message).toBe("RedRouter catalog updated: +3/−1 models, 2 renamed")
     } finally {
       app.renderer.destroy()
     }
