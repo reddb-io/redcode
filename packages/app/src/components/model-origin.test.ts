@@ -52,12 +52,14 @@ describe("modelOrigin", () => {
       router: "RedRouter",
       upstream: "OpenAI Codex",
       subscription: true,
+      via: undefined,
     })
     expect(modelOrigin({ id: "gpt-5.5", provider: legacyRedRouter })).toEqual({
       type: "router",
       router: "RedRouter",
       upstream: undefined,
       subscription: false,
+      via: undefined,
     })
   })
 })
