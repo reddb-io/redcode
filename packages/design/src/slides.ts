@@ -207,7 +207,7 @@ export function slides(logic: typeof deck) {
     attributeFilter: ["class", "id", "data-design-screen"],
     characterData: true,
   })
-  addEventListener("resize", fit)
+  window.addEventListener("resize", fit)
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", () => {
       mark()

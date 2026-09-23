@@ -1,3 +1,6 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+
 import type { ReviewCopy } from "./copy"
 import type { deck, Show } from "./slides"
 import type { stage } from "./stage"
@@ -125,7 +128,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
         tick()
       }
     }
-  addEventListener("message", (event) => {
+  window.addEventListener("message", (event) => {
     const data = event.data
     // The next-slide frame only needs to be kept on the next slide once it can take it.
     if (upcoming && event.source === upcoming.contentWindow) {
@@ -181,7 +184,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
     if (typeof current === "string" && current !== state.show.slide) go(current)
     else draw()
   })
-  addEventListener("keydown", (event) => {
+  window.addEventListener("keydown", (event) => {
     if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return
     const target = event.target
     if (target instanceof HTMLElement && target.matches("input, textarea, select")) return
