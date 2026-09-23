@@ -659,6 +659,22 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("applies the GPT-5 reasoning defaults to GPT-6 models", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+        LLM.request({
+          model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses("gpt-6-sol"),
+          prompt: "hi",
+        }),
+      )
+
+      expect(prepared.body.store).toBe(false)
+      expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
+      expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
+      expect(prepared.body.text).toBeUndefined()
+    }),
+  )
+
   it.effect("lets callers opt out of the GPT-5 default include", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(

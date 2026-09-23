@@ -1671,14 +1671,15 @@ type ResponsesModelConfig = {
 }
 
 function getResponsesModelConfig(modelId: string): ResponsesModelConfig {
+  // GPT-5 and every later generation (gpt-6-sol, gpt-6-luna, ...) follow the gpt-5 rules.
+  const gpt5OrNewer = Number(/^gpt-(\d+)/.exec(modelId)?.[1]) >= 5
+  const gptChat = /^gpt-\d+-chat/.test(modelId)
   const supportsFlexProcessing =
-    modelId.startsWith("o3") ||
-    modelId.startsWith("o4-mini") ||
-    (modelId.startsWith("gpt-5") && !modelId.startsWith("gpt-5-chat"))
+    modelId.startsWith("o3") || modelId.startsWith("o4-mini") || (gpt5OrNewer && !gptChat)
   const supportsPriorityProcessing =
     modelId.startsWith("gpt-4") ||
     modelId.startsWith("gpt-5-mini") ||
-    (modelId.startsWith("gpt-5") && !modelId.startsWith("gpt-5-nano") && !modelId.startsWith("gpt-5-chat")) ||
+    (gpt5OrNewer && !/^gpt-\d+-nano/.test(modelId) && !gptChat) ||
     modelId.startsWith("o3") ||
     modelId.startsWith("o4-mini")
   const defaults = {
@@ -1688,8 +1689,8 @@ function getResponsesModelConfig(modelId: string): ResponsesModelConfig {
     supportsPriorityProcessing,
   }
 
-  // gpt-5-chat models are non-reasoning
-  if (modelId.startsWith("gpt-5-chat")) {
+  // gpt-5-chat and later gpt-N-chat models are non-reasoning
+  if (gpt5OrNewer && gptChat) {
     return {
       ...defaults,
       isReasoningModel: false,
@@ -1699,7 +1700,7 @@ function getResponsesModelConfig(modelId: string): ResponsesModelConfig {
   // o series reasoning models:
   if (
     modelId.startsWith("o") ||
-    modelId.startsWith("gpt-5") ||
+    gpt5OrNewer ||
     modelId.startsWith("codex-") ||
     modelId.startsWith("computer-use")
   ) {

@@ -821,6 +821,53 @@ it.instance(
 )
 
 it.instance(
+  "getSmallModel prefers GPT Luna",
+  Effect.gen(function* () {
+    const model = yield* Provider.use.getSmallModel(ProviderV2.ID.make("test-provider"))
+    expect(model?.id).toBe(ModelV2.ID.make("gpt-6-luna"))
+  }),
+  {
+    config: {
+      provider: {
+        "test-provider": {
+          name: "Test Provider",
+          npm: "@ai-sdk/openai-compatible",
+          models: {
+            "gemini-flash": { family: "gemini-flash", release_date: "2026-09-01" },
+            "gpt-5-nano": { family: "gpt-nano", release_date: "2026-01-01" },
+            "gpt-6-luna": { family: "gpt-luna", release_date: "2026-09-22" },
+          },
+          options: { apiKey: "test-key" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "getSmallModel prefers GPT Luna over GPT Nano on OpenCode providers",
+  Effect.gen(function* () {
+    const model = yield* Provider.use.getSmallModel(ProviderV2.ID.make("opencode-test"))
+    expect(model?.id).toBe(ModelV2.ID.make("gpt-6-luna"))
+  }),
+  {
+    config: {
+      provider: {
+        "opencode-test": {
+          name: "OpenCode Test",
+          npm: "@ai-sdk/openai-compatible",
+          models: {
+            "gpt-5-nano": { family: "gpt-nano", release_date: "2026-09-23" },
+            "gpt-6-luna": { family: "gpt-luna", release_date: "2026-09-22" },
+          },
+          options: { apiKey: "test-key" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "getSmallModel ignores model IDs without family metadata",
   Effect.gen(function* () {
     const model = yield* Provider.use.getSmallModel(ProviderV2.ID.make("test-provider"))

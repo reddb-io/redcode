@@ -201,6 +201,8 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
+const STRUCTURED_OUTPUT_REMINDER = `Your last response was plain text, but structured output was requested. Call the StructuredOutput tool now with your final answer formatted according to the schema.`
+
 function mcpResourceBase64Size(value: string) {
   const trimmed = value.replace(/\s/g, "")
   const padding = trimmed.endsWith("==") ? 2 : trimmed.endsWith("=") ? 1 : 0
@@ -1608,6 +1610,8 @@ const layer = Layer.effect(
         let todoContinuations = 0
         let reconnects = 0
         let responseRepairs = 0
+        // Reminders sent to a model that cannot be forced to call StructuredOutput and answered in text.
+        let structuredReminders = 0
         const promptAssessments = new Map<string, Intelligence.Evaluation | undefined>()
         const intelligenceAttempts = new Map<string, Intelligence.Evaluation | undefined>()
         const toolAssessments = new Map<string, Intelligence.Evaluation | undefined>()
@@ -1643,6 +1647,7 @@ const layer = Layer.effect(
           todoContinuations = 0
           reconnects = 0
           responseRepairs = 0
+          structuredReminders = 0
           reviewed = undefined
           ineffectiveCompactions = 0
           overflowRecoveries = 0
@@ -2786,7 +2791,13 @@ const layer = Layer.effect(
               messages: stepMessages,
               tools,
               model,
-              toolChoice: format.type === "json_schema" ? "required" : undefined,
+              // Models that always think reject a forced tool choice; they are asked for the tool instead.
+              toolChoice:
+                format.type === "json_schema"
+                  ? ProviderTransform.supportsForcedToolChoice(model)
+                    ? "required"
+                    : "auto"
+                  : undefined,
               estimate: requestEstimate,
               // System One already chose this turn's tools and skills; a RedRouter must not choose again.
               // Its hint lets a RedRouter combo pick the model for the turn; Redcode never switches it.
@@ -2841,9 +2852,35 @@ const layer = Layer.effect(
                 return "break" as const
               }
               if (format.type === "json_schema") {
+                // Without a forced tool choice the model may answer in text; remind it before failing.
+                if (
+                  !ProviderTransform.supportsForcedToolChoice(model) &&
+                  structuredReminders < (format.retryCount ?? 2)
+                ) {
+                  structuredReminders++
+                  const reminder: SessionV1.User = {
+                    id: MessageID.ascending(),
+                    sessionID,
+                    role: "user",
+                    time: { created: Date.now() },
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                    format: lastUser.format,
+                  }
+                  yield* sessions.updateMessage(reminder)
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    sessionID,
+                    messageID: reminder.id,
+                    type: "text",
+                    text: STRUCTURED_OUTPUT_REMINDER,
+                    synthetic: true,
+                  })
+                  return "continue" as const
+                }
                 handle.message.error = new SessionV1.StructuredOutputError({
                   message: "Model did not produce structured output",
-                  retries: 0,
+                  retries: structuredReminders,
                 }).toObject()
                 yield* sessions.updateMessage(handle.message)
                 return "break" as const
