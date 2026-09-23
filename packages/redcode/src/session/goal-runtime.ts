@@ -254,6 +254,8 @@ const layer = Layer.effect(
           model: mdl,
           sessionID: input.session.id,
           retries: 2,
+          // The judge weighs the evidence as written; a router must not trim it.
+          router: { tokenSaver: false },
           messages: [{ role: "user", content }],
         })
         .pipe(

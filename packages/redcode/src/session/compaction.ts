@@ -953,6 +953,8 @@ const layer = Layer.effect(
           system: [systemPrompt],
           model,
           maxOutputTokens: summaryOutput,
+          // The summary must see the history whole, never a router's trimmed copy of it.
+          router: { tokenSaver: false },
           messages: [
             {
               role: "user",

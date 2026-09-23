@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import type { HttpClient } from "effect/unstable/http"
 import type { Auth } from "@/auth"
 import type { Config } from "@/config/config"
@@ -54,7 +55,9 @@ export const connect = Effect.fn("RedRouter.connect")(function* (
         "No models are available. Connect an account or create a combo in the provider dashboard, then retry.",
     },
   ).pipe(Effect.mapError((error) => new ProviderDiscovery.DiscoveryError({ message: error.message })))
-  return { baseURL: result.baseURL, models: result.models }
+  // Probed afresh with the key just saved; it never fails, and an unrecognised router is `none`.
+  const router = yield* ProviderRouter.detect({ baseURL: result.baseURL, apiKey: input.apiKey, fresh: true })
+  return { baseURL: result.baseURL, models: result.models, router }
 })
 
 export * as RedRouter from "./red-router"

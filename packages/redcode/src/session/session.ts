@@ -9,6 +9,7 @@ import { ProjectDir } from "@reddb-io/redcode-core/project-dir"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { BackgroundJob } from "@/background/job"
 import { Decimal } from "decimal.js"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import type { ProviderMetadata, Usage } from "@reddb-io/redcode-llm"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { Database } from "@reddb-io/redcode-core/database/database"
@@ -419,21 +420,25 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
       ? input.model.cost.experimentalOver200K
       : input.model.cost)
   const totalNanoAiu = input.metadata?.["copilot"]?.["totalNanoAiu"]
+  // What the router billed wins over a catalog price: a combo or routed model has none of its own.
+  const routed = ProviderRouter.reportedCost(input.metadata)
   return {
     cost:
-      typeof totalNanoAiu === "number" && Number.isFinite(totalNanoAiu) && totalNanoAiu >= 0
-        ? new Decimal(totalNanoAiu).div(100_000_000_000).toNumber()
-        : safe(
-            new Decimal(0)
-              .add(new Decimal(tokens.input).mul(finite(costInfo?.input ?? 0)).div(1_000_000))
-              .add(new Decimal(tokens.output).mul(finite(costInfo?.output ?? 0)).div(1_000_000))
-              .add(new Decimal(tokens.cache.read).mul(finite(costInfo?.cache?.read ?? 0)).div(1_000_000))
-              .add(new Decimal(tokens.cache.write).mul(finite(costInfo?.cache?.write ?? 0)).div(1_000_000))
-              // TODO: update models.dev to have better pricing model, for now:
-              // charge reasoning tokens at the same rate as output tokens
-              .add(new Decimal(tokens.reasoning).mul(finite(costInfo?.output ?? 0)).div(1_000_000))
-              .toNumber(),
-          ),
+      routed !== undefined
+        ? routed
+        : typeof totalNanoAiu === "number" && Number.isFinite(totalNanoAiu) && totalNanoAiu >= 0
+          ? new Decimal(totalNanoAiu).div(100_000_000_000).toNumber()
+          : safe(
+              new Decimal(0)
+                .add(new Decimal(tokens.input).mul(finite(costInfo?.input ?? 0)).div(1_000_000))
+                .add(new Decimal(tokens.output).mul(finite(costInfo?.output ?? 0)).div(1_000_000))
+                .add(new Decimal(tokens.cache.read).mul(finite(costInfo?.cache?.read ?? 0)).div(1_000_000))
+                .add(new Decimal(tokens.cache.write).mul(finite(costInfo?.cache?.write ?? 0)).div(1_000_000))
+                // TODO: update models.dev to have better pricing model, for now:
+                // charge reasoning tokens at the same rate as output tokens
+                .add(new Decimal(tokens.reasoning).mul(finite(costInfo?.output ?? 0)).div(1_000_000))
+                .toNumber(),
+            ),
     tokens,
   }
 }

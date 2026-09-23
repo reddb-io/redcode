@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 import type { ProviderMetadata, Usage } from "@reddb-io/redcode-llm"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { Config } from "@/config/config"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import type { Provider } from "@/provider/provider"
@@ -227,7 +228,11 @@ const layer = Layer.effect(
         const delta: SessionBudget.Totals = {
           cost: usage.cost,
           tokens,
-          unpriced: usage.cost > 0 || priced(input.model) ? 0 : tokens,
+          // A cost the router reported is known even when it is zero.
+          unpriced:
+            usage.cost > 0 || priced(input.model) || ProviderRouter.reportedCost(input.metadata) !== undefined
+              ? 0
+              : tokens,
         }
         const cfg = (yield* config.get()).session
         for (const session of yield* chain(input.sessionID as SessionID)) {

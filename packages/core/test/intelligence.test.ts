@@ -5,6 +5,7 @@ import { EffectDrizzleSqlite } from "@reddb-io/redcode-effect-drizzle-sqlite"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Intelligence } from "../src/intelligence"
+import { ProviderRouter } from "../src/provider/router"
 import { Credential } from "../src/credential"
 import { Answer, Evaluation } from "@reddb-io/redcode-schema/intelligence"
 import { Integration } from "@reddb-io/redcode-schema/integration"
@@ -1242,4 +1243,97 @@ test("official Zen reuses an existing OpenCode connection and otherwise uses its
       ])
     }),
   )
+})
+
+test("a connected RedRouter serving System One is offered with the provider key, only for its address", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      if (request.headers.get("authorization") !== "Bearer router-key") return new Response("refused", { status: 401 })
+      const path = new URL(request.url).pathname
+      if (path === "/v1/capabilities")
+        return Response.json({
+          product: "red-router",
+          version: "3.2.0",
+          systemone: { endpoint: "/v1/systemone", available: true, models: ["jev/jev-latest"] },
+        })
+      if (path === "/v1/systemone") return Response.json(response(0.02))
+      return new Response("not found", { status: 404 })
+    },
+  })
+  try {
+    const baseURL = `http://localhost:${server.port}/v1`
+    const provider = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === provider.id ? provider : undefined),
+          list: (id) => Effect.succeed(id === provider.integrationID ? [provider] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    const router = await Effect.runPromise(service.router())
+    expect(router).toMatchObject({
+      providerID: "red-router",
+      baseURL,
+      detection: { kind: "red-router", version: "3.2.0", systemOne: { available: true } },
+      evaluator: { transport: "red-router", baseURL, model: "jev/jev-latest", credentialID: provider.id },
+    })
+    const options = await Effect.runPromise(service.options())
+    expect(options.find((option) => option.evaluator.transport === "red-router")?.evaluator).toMatchObject({
+      baseURL,
+      credentialID: provider.id,
+    })
+    // Either loopback name reaches the address the key was saved for.
+    const loopback = { ...router!.evaluator!, baseURL: `http://127.0.0.1:${server.port}/v1` }
+    expect(await Effect.runPromise(service.request(loopback, "systemone", { model: "jev/jev-latest" }))).toEqual(
+      response(0.02),
+    )
+    const elsewhere = await Effect.runPromise(
+      service.request({ ...loopback, baseURL: "http://127.0.0.1:9/v1" }, "systemone", {}).pipe(Effect.result),
+    )
+    expect(elsewhere._tag).toBe("Failure")
+    if (elsewhere._tag === "Failure") expect(elsewhere.failure.message).toContain("does not belong")
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("no RedRouter is offered when the connected router does not answer as one", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("not found", { status: 404 }) })
+  try {
+    const provider = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL: `http://127.0.0.1:${server.port}/v1` } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: () => Effect.succeed(provider),
+          list: (id) => Effect.succeed(id === provider.integrationID ? [provider] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    expect(await Effect.runPromise(service.router())).toBeUndefined()
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
 })

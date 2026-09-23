@@ -1,9 +1,19 @@
 import { Effect, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { Router } from "@reddb-io/redcode-schema/router"
 
 export const Input = Schema.Struct({ baseURL: Schema.String, apiKey: Schema.String })
 export const Limit = Schema.Struct({ context: Schema.Number, output: Schema.Number })
+/** What a router says about a model beyond its limits: RedRouter lists combos and thinking levels. */
+export const RouterInfo = Schema.Struct({
+  owned_by: Schema.optional(Schema.String),
+  strategy: Schema.optional(Schema.String).annotate({ description: "How a combo walks its members." }),
+  thinking_levels: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "Reasoning levels the router accepts for this model; they become its variants.",
+  }),
+  capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+})
 export const Model = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -12,10 +22,18 @@ export const Model = Schema.Struct({
     description:
       "True when the router and the models catalog did not describe this model, so its limits are a conservative guess.",
   }),
+  router: Schema.optional(RouterInfo),
 })
-export const Result = Schema.Struct({ baseURL: Schema.String, models: Schema.Array(Model) })
+export const Result = Schema.Struct({
+  baseURL: Schema.String,
+  models: Schema.Array(Model),
+  router: Schema.optional(Router.Detection).annotate({
+    description: "What answered at the URL, probed after connecting. Absent when the probe was not run.",
+  }),
+})
 
 export type Limit = typeof Limit.Type
+export type RouterInfo = typeof RouterInfo.Type
 export type Result = typeof Result.Type
 
 /**
@@ -53,6 +71,10 @@ const Catalog = Schema.Struct({
     Schema.Struct({
       id: Schema.String,
       name: Schema.optional(Schema.String),
+      owned_by: Schema.optional(Schema.Unknown),
+      strategy: Schema.optional(Schema.Unknown),
+      thinking_levels: Schema.optional(Schema.Unknown),
+      capabilities: Schema.optional(Schema.Unknown),
       [NESTED]: Schema.optional(Schema.Unknown),
       ...Object.fromEntries(
         [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
@@ -259,10 +281,18 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
       ...new Map(
         body.data
           .filter((model) => validModelID(model.id))
-          .map((model) => [
-            model.id,
-            { id: model.id, name: model.name?.trim() || model.id, ...resolveLimit(model, options.catalog) },
-          ]),
+          .map((model) => {
+            const router = routerInfo(model)
+            return [
+              model.id,
+              {
+                id: model.id,
+                name: model.name?.trim() || model.id,
+                ...resolveLimit(model, options.catalog),
+                ...(router ? { router } : {}),
+              },
+            ] as const
+          }),
       ).values(),
     ]
     if (!models.length) {
@@ -283,6 +313,30 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
     }),
   )
 })
+
+/**
+ * The router fields of a model list entry. `owned_by` alone is every OpenAI-compatible server's
+ * boilerplate, so it is kept only for a combo or next to another router field.
+ */
+export function routerInfo(item: Record<string, unknown>): RouterInfo | undefined {
+  const levels = Array.isArray(item.thinking_levels)
+    ? [
+        ...new Set(
+          item.thinking_levels.filter((level): level is string => typeof level === "string" && !!level.trim()),
+        ),
+      ]
+    : undefined
+  const info = {
+    ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),
+    ...(levels?.length ? { thinking_levels: levels } : {}),
+    ...(typeof item.capabilities === "object" && item.capabilities !== null && !Array.isArray(item.capabilities)
+      ? { capabilities: item.capabilities as Record<string, unknown> }
+      : {}),
+  }
+  const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
+  if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }
+  return Object.keys(info).length ? info : undefined
+}
 
 /** A model ID that can be a config key: not blank and not an object prototype key. */
 export function validModelID(id: string) {

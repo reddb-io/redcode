@@ -13,11 +13,13 @@ export const IntelligenceHandler = HttpApiBuilder.group(Api, "server.intelligenc
       Effect.gen(function* () {
         const service = yield* Intelligence.Service
         const settings = yield* checked(service.read())
+        const router = yield* checked(service.router())
         return {
           settings,
           environment: service.environment,
           evaluators: yield* checked(service.options()),
           effective: Intelligence.reasoning(settings),
+          ...(router ? { router } : {}),
         }
       }),
     )

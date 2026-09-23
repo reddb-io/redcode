@@ -1,4 +1,5 @@
 import { Intelligence } from "../../intelligence"
+import { ProviderRouter } from "../../provider/router"
 import { Semantic } from "../../semantic"
 import {
   LLM,
@@ -983,6 +984,11 @@ const layer = Layer.effect(
             "x-session-affinity": session.id,
             "X-Session-Id": session.id,
             ...(session.parentID ? { "x-parent-session-id": session.parentID } : {}),
+            // Only a RedRouter this process already detected (on connect, by the legacy runner or
+            // by System One setup); the runner never waits on a probe.
+            ...ProviderRouter.requestHeaders(ProviderRouter.known(model.route.endpoint.baseURL ?? ""), {
+              decision: mcpContext || skillContext ? false : undefined,
+            }),
           },
         },
         providerOptions: {
