@@ -376,3 +376,12 @@ describe("ProviderRouter headers", () => {
     expect(ProviderRouter.sameEndpoint("https://router.example/v1", "http://router.example/v1")).toBe(false)
   })
 })
+
+test("the served model a step's metadata carries from RedRouter's report", () => {
+  expect(
+    ProviderRouter.reportedServedModel({ [ProviderRouter.METADATA]: { servedModel: "codex/gpt-5.6-sol" } }),
+  ).toBe("codex/gpt-5.6-sol")
+  expect(ProviderRouter.reportedServedModel({ [ProviderRouter.METADATA]: { servedModel: "" } })).toBeUndefined()
+  expect(ProviderRouter.reportedServedModel({ other: { servedModel: "x" } })).toBeUndefined()
+  expect(ProviderRouter.reportedServedModel(undefined)).toBeUndefined()
+})

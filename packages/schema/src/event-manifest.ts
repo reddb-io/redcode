@@ -19,6 +19,7 @@ import { ProjectDirectories } from "./project-directories"
 import { Pty } from "./pty"
 import { Question } from "./question"
 import { QuestionV1 } from "./question-v1"
+import { Router } from "./router"
 import { Reference } from "./reference"
 import { ServerEvent } from "./server-event"
 import { SessionCompactionEvent } from "./session-compaction-event"
@@ -38,6 +39,7 @@ const coreDefinitions = Event.inventory(...sessionV1DurableDefinitions, ...Sessi
 
 const foundationDefinitions = Event.inventory(
   ...ModelsDev.Event.Definitions,
+  ...Router.Event.Definitions,
   ...Integration.Event.Definitions,
   ...Catalog.Event.Definitions,
   ...coreDefinitions,

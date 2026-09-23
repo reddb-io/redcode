@@ -254,6 +254,9 @@ export const StepFinishPart = Schema.Struct({
   type: Schema.Literal("step-finish"),
   reason: Schema.String,
   snapshot: Schema.optional(Schema.String),
+  servedModel: Schema.optional(Schema.String).annotate({
+    description: "The model that actually served the step, when a router such as RedRouter reported it.",
+  }),
   cost: Schema.Finite,
   tokens: Schema.Struct({
     total: Schema.optional(Schema.Finite),

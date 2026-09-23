@@ -6,6 +6,7 @@ export type ClientOptions = {
 
 export type Event =
   | EventModelsDevRefreshed
+  | EventProviderCatalogUpdated
   | EventIntegrationUpdated
   | EventIntegrationConnectionUpdated
   | EventCatalogUpdated
@@ -582,6 +583,10 @@ export type StepFinishPart = {
   type: "step-finish"
   reason: string
   snapshot?: string
+  /**
+   * The model that actually served the step, when a router such as RedRouter reported it.
+   */
+  servedModel?: string
   cost: number
   tokens: {
     total?: number
@@ -790,6 +795,17 @@ export type GlobalEvent = {
         type: "models-dev.refreshed"
         properties: {
           [key: string]: unknown
+        }
+      }
+    | {
+        id: string
+        type: "provider.catalog.updated"
+        properties: {
+          providerID: string
+          name: string
+          added: number
+          removed: number
+          renamed: number
         }
       }
     | {
@@ -2341,6 +2357,46 @@ export type Model = {
       [key: string]: unknown
     }
   }
+  /**
+   * The provider behind a model a router serves (RedRouter reports it), so clients can say where a model really comes from.
+   */
+  upstream?: RouterUpstream
+  /**
+   * Earlier ids of the model at its router. A request for one of them resolves to this model.
+   */
+  aliases?: Array<string>
+  /**
+   * Modes the router serves the model in besides its default, such as review.
+   */
+  modes?: Array<string>
+  /**
+   * Reasoning levels and modes the router serves under this model rather than as separate models. Each id (and its earlier ids) requests that level or mode.
+   */
+  routerVariants?: Array<{
+    id: string
+    name?: string
+    level?: string
+    mode?: string
+    aliases?: Array<string>
+  }>
+  /**
+   * The router in between when another router serves the model, e.g. a remote RedRouter.
+   */
+  via?: string
+}
+
+export type RouterUpstream = {
+  id: string
+  slug?: string
+  name: string
+  category?: string
+  subscription?: boolean
+}
+
+export type RouterConnection = {
+  kind: "red-router" | "9router"
+  instanceID?: string
+  version?: string
 }
 
 export type Provider = {
@@ -2352,6 +2408,10 @@ export type Provider = {
   options: {
     [key: string]: unknown
   }
+  /**
+   * Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.
+   */
+  router?: RouterConnection
   models: {
     [key: string]: Model
   }
@@ -3248,6 +3308,7 @@ export type QuestionRejected2 = {
 
 export type V2Event =
   | ModelsDevRefreshed
+  | ProviderCatalogUpdated
   | IntegrationUpdated
   | IntegrationConnectionUpdated
   | CatalogUpdated
@@ -6222,6 +6283,27 @@ export type ModelsDevRefreshed = {
   }
 }
 
+export type ProviderCatalogUpdated = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "provider.catalog.updated"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    providerID: string
+    name: string
+    added: number
+    removed: number
+    renamed: number
+  }
+}
+
 export type IntegrationUpdated = {
   id: string
   metadata?: {
@@ -7527,6 +7609,18 @@ export type EventModelsDevRefreshed = {
   type: "models-dev.refreshed"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventProviderCatalogUpdated = {
+  id: string
+  type: "provider.catalog.updated"
+  properties: {
+    providerID: string
+    name: string
+    added: number
+    removed: number
+    renamed: number
   }
 }
 

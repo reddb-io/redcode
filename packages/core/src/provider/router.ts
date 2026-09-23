@@ -244,6 +244,14 @@ export function reportedCost(metadata: Readonly<Record<string, Readonly<Record<s
   return dollars(metadata?.[METADATA]?.costUSD)
 }
 
+/** The model a step's provider metadata says actually served it, from `reported`. */
+export function reportedServedModel(
+  metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
+) {
+  const model = metadata?.[METADATA]?.servedModel
+  return typeof model === "string" && model ? model : undefined
+}
+
 /** The catalog version a step's provider metadata carries from `reported`. */
 export function reportedCatalogVersion(
   metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,

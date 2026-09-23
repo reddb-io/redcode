@@ -1441,3 +1441,52 @@ test("no RedRouter is offered when the connected router does not answer as one",
     await server.stop(true)
   }
 })
+
+test("a RedRouter connected under another provider id is found by the router its key recorded", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      if (request.headers.get("authorization") !== "Bearer work-key") return new Response("refused", { status: 401 })
+      if (new URL(request.url).pathname === "/v1/capabilities")
+        return Response.json({ product: "red-router", version: "3.4.0" })
+      return new Response("not found", { status: 404 })
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const unrelated = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("local-llm"),
+      label: "Provider connection",
+      value: { type: "key", key: "other-key", metadata: { baseURL: "http://127.0.0.1:9/v1" } },
+    })
+    const provider = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("work-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "work-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          all: () => Effect.succeed([unrelated, provider]),
+          get: (id) => Effect.succeed(id === provider.id ? provider : undefined),
+          list: () => Effect.succeed([]),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    expect(await Effect.runPromise(service.router())).toMatchObject({
+      providerID: "work-router",
+      baseURL,
+      detection: { kind: "red-router", version: "3.4.0" },
+    })
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})

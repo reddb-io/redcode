@@ -32,6 +32,7 @@ import { Usage, type LLMEvent } from "@reddb-io/redcode-llm"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
+import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 /** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
 const LOOP_WINDOW = 16
@@ -550,6 +551,7 @@ const layer = Layer.effect(
               cacheWrite: usage.tokens.cache.write,
               cost: usage.cost,
             }))
+            const servedModel = ProviderRouter.reportedServedModel(value.providerMetadata)
             yield* session.updatePart({
               id: nextPartID(),
               reason: value.reason,
@@ -557,6 +559,7 @@ const layer = Layer.effect(
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
               type: "step-finish",
+              ...(servedModel ? { servedModel } : {}),
               tokens: usage.tokens,
               cost: usage.cost,
             })

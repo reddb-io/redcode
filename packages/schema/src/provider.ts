@@ -3,6 +3,7 @@ export * as Provider from "./provider"
 import { Schema } from "effect"
 import { optional } from "./schema"
 import { Integration } from "./integration"
+import { Router } from "./router"
 import { statics } from "./schema"
 
 export const ID = Schema.String.pipe(
@@ -57,6 +58,9 @@ export const Info = Schema.Struct({
   disabled: Schema.Boolean.pipe(optional),
   api: Api,
   request: Request,
+  router: Router.Connection.pipe(optional).annotate({
+    description: "Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.",
+  }),
 })
   .annotate({ identifier: "ProviderV2.Info" })
   .pipe(

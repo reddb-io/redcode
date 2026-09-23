@@ -3,6 +3,7 @@ export * as ConfigProvider from "./provider"
 import { Schema } from "effect"
 import { ProviderV2 } from "../provider"
 import { ModelV2 } from "../model"
+import { Router } from "@reddb-io/redcode-schema/router"
 
 export class Request extends Schema.Class<Request>("ConfigV2.Provider.Request")({
   headers: Schema.Record(Schema.String, Schema.String).pipe(Schema.optional),
@@ -90,5 +91,8 @@ export class Info extends Schema.Class<Info>("ConfigV2.Provider")({
   }),
   api: ProviderV2.Api.pipe(Schema.optional),
   request: Request.pipe(Schema.optional),
+  router: Router.Connection.pipe(Schema.optional).annotate({
+    description: "The router this connection was found to be, written when it is connected or its models are refreshed.",
+  }),
   models: Schema.Record(Schema.String, Model).pipe(Schema.optional),
 }) {}

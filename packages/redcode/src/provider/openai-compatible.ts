@@ -4,6 +4,7 @@ import { Auth } from "@/auth"
 import type { Config } from "@/config/config"
 import { isRecord } from "@/util/record"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { ProviderDiscovery } from "./discovery"
 import { ProviderRemove } from "./remove"
 
@@ -111,17 +112,28 @@ export class ConnectError extends Schema.TaggedErrorClass<ConnectError>()("Provi
 /** The only fields discovery writes on a model. A model with any other field was customized. */
 const DISCOVERY_FIELDS = new Set(["name", "limit", "router"])
 
-type ModelPatch = { name?: string; limit?: ProviderDiscovery.Limit; router?: ProviderDiscovery.RouterInfo }
+type ModelPatch = {
+  name?: string
+  limit?: ProviderDiscovery.Limit
+  router?: ProviderDiscovery.RouterInfo
+  [field: string]: unknown
+}
 type Found = { id: string; name: string; limit: ProviderDiscovery.Limit; router?: ProviderDiscovery.RouterInfo }
 
 /**
  * Computes the model changes for a connection. New models get their name and limits. Existing
  * models are left alone, except that one without limits gets them (a zero context would disable
- * proactive compaction), one whose context was typed in gets that limit, and one whose limits are
- * still the ones the router's parameters last reported follows the router when they change. What a
- * router reports about a model (combo strategy, members, thinking levels, parameters) is the
- * router's and is refreshed on every connection. With `prune`, models that are no longer listed
- * are removed only when they carry nothing but discovery's own fields; customized models are kept.
+ * proactive compaction), one whose context was typed in gets that limit, one whose limits are
+ * still the ones the router's parameters last reported follows the router when they change, and
+ * one still named after its id takes the router's name. What a router reports about a model
+ * (combo strategy, members, thinking levels, parameters, upstream provider, aliases) is the
+ * router's and is refreshed on every connection.
+ *
+ * A saved model the router now lists under another id (its old id is one of the new entry's
+ * aliases) is moved to the new id with everything it carried, and `renamed` maps each old id to
+ * the new one so references can follow; a reasoning level or mode that used to be its own model
+ * maps to the model that now serves it. With `prune`, models that are no longer listed are removed
+ * only when they carry nothing but discovery's own fields; customized models are kept.
  */
 export function plan(
   existing: Record<string, unknown> | undefined,
@@ -130,24 +142,72 @@ export function plan(
 ) {
   const current: Record<string, unknown> = existing ?? {}
   const ids = new Set(found.map((model) => model.id))
+  const renamed = Object.fromEntries(
+    Object.keys(current).flatMap((id) => {
+      const target = ids.has(id) ? undefined : aliasTarget(found, id)
+      return target ? [[id, target] as const] : []
+    }),
+  )
+  // Only an old id of the model itself moves its entry; a variant's old id just points at it.
+  const moved = new Map(
+    found.flatMap((model) => {
+      const from = Object.hasOwn(current, model.id)
+        ? undefined
+        : model.router?.aliases?.find((alias) => renamed[alias] === model.id && isRecord(current[alias]))
+      return from ? [[model.id, from] as const] : []
+    }),
+  )
   const models: Record<string, ModelPatch> = {}
   for (const model of found) {
-    const entry = Object.hasOwn(current, model.id) ? current[model.id] : undefined
+    const from = moved.get(model.id)
+    const entry = from ? current[from] : Object.hasOwn(current, model.id) ? current[model.id] : undefined
     const router = model.router ? { router: model.router } : {}
-    if (!isRecord(entry)) models[model.id] = { name: model.name, limit: { ...model.limit }, ...router }
-    else if (options.explicit?.has(model.id) || !isRecord(entry.limit) || reportedLimit(entry, model))
-      models[model.id] = { limit: { ...model.limit }, ...router }
-    else models[model.id] = router
+    if (!isRecord(entry)) {
+      models[model.id] = { name: model.name, limit: { ...model.limit }, ...router }
+      continue
+    }
+    const limit =
+      options.explicit?.has(model.id) || !isRecord(entry.limit) || reportedLimit(entry, model)
+        ? { limit: { ...model.limit } }
+        : {}
+    // A name that is only the old id was never chosen by anyone; the router's name replaces it.
+    const name =
+      model.name !== model.id && (entry.name === model.id || (from !== undefined && entry.name === from))
+        ? { name: model.name }
+        : {}
+    // A moved entry lands under an id the file does not have yet, so it is written whole.
+    models[model.id] = from ? { ...entry, ...name, ...limit, ...router } : { ...name, ...limit, ...router }
   }
-  const remove = options.prune
-    ? Object.entries(current)
-        .filter(
-          ([id, entry]) =>
-            !ids.has(id) && Object.keys(isRecord(entry) ? entry : {}).every((key) => DISCOVERY_FIELDS.has(key)),
-        )
-        .map(([id]) => id)
-    : []
-  return { models, remove }
+  const remove = [
+    ...moved.values(),
+    ...(options.prune
+      ? Object.entries(current)
+          .filter(
+            ([id, entry]) =>
+              !ids.has(id) &&
+              ![...moved.values()].includes(id) &&
+              Object.keys(isRecord(entry) ? entry : {}).every((key) => DISCOVERY_FIELDS.has(key)),
+          )
+          .map(([id]) => id)
+      : []),
+  ]
+  return { models, remove, renamed, moved: Object.fromEntries([...moved].map(([to, from]) => [from, to])) }
+}
+
+/**
+ * The listed model an id now belongs to: the model whose aliases include it, or the model serving
+ * a variant (reasoning level or mode) with that id or old id. RedRouter still answers to these ids,
+ * so a request for one reaches the same model.
+ */
+export function aliasTarget(
+  found: ReadonlyArray<{ id: string; router?: Pick<ProviderDiscovery.RouterInfo, "aliases" | "variants"> }>,
+  id: string,
+) {
+  return (
+    found.find((model) => model.router?.aliases?.includes(id))?.id ??
+    found.find((model) => model.router?.variants?.some((variant) => variant.id === id || variant.aliases?.includes(id)))
+      ?.id
+  )
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -193,7 +253,15 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     env?: (name: string) => string | undefined
   },
   input: Input,
-  options: { requireKey?: boolean; emptyMessage?: string } = {},
+  options: {
+    requireKey?: boolean
+    emptyMessage?: string
+    /**
+     * Probe the address for a router before saving, and save what answered on the provider (see
+     * `Router.Connection`). Only router connections ask for it; other endpoints are never probed.
+     */
+    detect?: boolean
+  } = {},
 ) {
   const fail = (reason: Reason, message: string) => new ConnectError({ reason, message })
   const env = deps.env ?? ((name: string) => process.env[name])
@@ -355,6 +423,15 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     explicit: new Set((manual ?? []).filter((model) => model.context !== undefined).map((model) => model.id)),
   })
 
+  // Probed afresh with the key being saved; it never fails, and an unrecognised router is `none`,
+  // which leaves a router saved earlier in place rather than forgetting it on a slow probe.
+  const detection =
+    options.detect && manual === undefined
+      ? yield* ProviderRouter.detect({ baseURL, apiKey: discoveryKey, fresh: true })
+      : undefined
+  const router = detection && routerConnection(detection)
+
+  const moved = new Set(Object.values(next.moved))
   const name = input.name?.trim() || (typeof source.name === "string" && source.name.trim()) || providerID
   const npm =
     input.npm ??
@@ -387,6 +464,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
           : {}),
       ...(Object.keys(keptHeaders).length && (moveFrom || headers) ? { headers: keptHeaders } : {}),
     },
+    ...(router ? { router } : {}),
     models: moveFrom ? { ...existingModels, ...mergeModels(existingModels, next.models) } : next.models,
   }
   const remove: string[][] = []
@@ -395,6 +473,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     remove.push(["provider", moveFrom])
     Object.assign(patch, renameReferences(latest.data, moveFrom, providerID))
   } else {
+    Object.assign(patch, renameModelReferences(latest.data, providerID, next.renamed))
     remove.push(...next.remove.map((id) => ["provider", providerID, "models", id]))
     if ((credential === "stored" || credential === "none") && sourceOptions.apiKey !== undefined)
       remove.push(["provider", providerID, "options", "apiKey"])
@@ -415,8 +494,15 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     .updateGlobal(patch as Parameters<Config.Interface["updateGlobal"]>[0], { remove })
     .pipe(Effect.asVoid)
 
-  // The key remembers the address it was saved for, so System One shares it only with that address.
-  const stored = (key: string) => new Auth.Api({ type: "api", key, metadata: { baseURL } })
+  // The key remembers the address it was saved for, so System One shares it only with that address,
+  // and the router that answered there, so a RedRouter is found by what it is rather than its id.
+  const stored = (key: string) =>
+    new Auth.Api({ type: "api", key, metadata: { baseURL, ...(router ? { router: router.kind } : {}) } })
+  // A key saved before the router was known learns it on the next refresh.
+  const relabel =
+    credential === "kept" && !moveFrom && router && savedAuth?.type === "api" && savedAuth.metadata?.router !== router.kind
+      ? new Auth.Api({ ...savedAuth, metadata: { ...savedAuth.metadata, router: router.kind } })
+      : undefined
   yield* Effect.uninterruptible(
     moveFrom
       ? // The credential lands under the new id before the configuration moves, and leaves the old id
@@ -432,6 +518,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
       : Effect.gen(function* () {
           yield* write
           if (credential === "stored") yield* deps.auth.set(providerID, stored(rawKey!)).pipe(Effect.orDie)
+          else if (relabel) yield* deps.auth.set(providerID, relabel).pipe(Effect.orDie)
           // A reference or an explicit "no key" replaces the stored key, which would otherwise win.
           else if (credential !== "kept" && savedAuth) yield* deps.auth.remove(providerID).pipe(Effect.orDie)
         }),
@@ -439,7 +526,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
   // The models just saved are this catalog version; a response reporting another one means they are stale.
   if (catalogVersion) ProviderRouter.recordCatalog(providerID, baseURL, catalogVersion)
 
-  return {
+  const result = {
     providerID,
     name,
     baseURL,
@@ -450,7 +537,30 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     configPath: latest.path,
     ...(moveFrom ? { movedFrom: moveFrom } : {}),
   } satisfies Result
+  // Not part of the API result: what the connection changed, for a caller that reports it.
+  return {
+    ...result,
+    ...(router ? { router } : {}),
+    changes: {
+      added: found.filter((model) => !Object.hasOwn(existingModels, model.id) && !moved.has(model.id)).length,
+      removed: next.remove.filter((id) => !Object.hasOwn(next.moved, id)).length,
+      renamed: next.renamed,
+    },
+  }
 })
+
+/**
+ * The part of a detection saved on the provider: what the router is, not what it offered then.
+ * Undefined when nothing recognisable answered.
+ */
+export function routerConnection(detection: Router.Detection): Router.Connection | undefined {
+  if (detection.kind === "none") return
+  return {
+    kind: detection.kind,
+    ...(detection.instanceID ? { instanceID: detection.instanceID } : {}),
+    ...(detection.version ? { version: detection.version } : {}),
+  }
+}
 
 function sameURL(saved: unknown, baseURL: string) {
   return typeof saved === "string" && ProviderDiscovery.normalizeBaseURL(saved) === baseURL
@@ -461,8 +571,32 @@ function sameURL(saved: unknown, baseURL: string) {
  * models, agent and command models, and the enabled and disabled provider lists.
  */
 export function renameReferences(data: Record<string, unknown>, from: string, to: string) {
-  const model = (value: unknown) =>
-    typeof value === "string" && value.startsWith(`${from}/`) ? `${to}/${value.slice(from.length + 1)}` : undefined
+  const patch = rewriteModels(data, (value) =>
+    value.startsWith(`${from}/`) ? `${to}/${value.slice(from.length + 1)}` : undefined,
+  )
+  for (const key of ["enabled_providers", "disabled_providers"]) {
+    const list = data[key]
+    if (Array.isArray(list) && list.includes(from))
+      patch[key] = [...new Set(list.map((item) => (item === from ? to : item)))]
+  }
+  return patch
+}
+
+/**
+ * The global settings that name a model of `providerID` by an id the router renamed (`renamed`
+ * maps old model ids to new ones), pointed at the new id: the default and small models and agent
+ * and command models.
+ */
+export function renameModelReferences(data: Record<string, unknown>, providerID: string, renamed: Record<string, string>) {
+  return rewriteModels(data, (value) => {
+    if (!value.startsWith(`${providerID}/`)) return
+    const target = renamed[value.slice(providerID.length + 1)]
+    return target ? `${providerID}/${target}` : undefined
+  })
+}
+
+function rewriteModels(data: Record<string, unknown>, rename: (value: string) => string | undefined) {
+  const model = (value: unknown) => (typeof value === "string" ? rename(value) : undefined)
   const patch: Record<string, unknown> = {}
   for (const key of ["model", "small_model"]) {
     const renamed = model(data[key])
@@ -473,11 +607,6 @@ export function renameReferences(data: Record<string, unknown>, from: string, to
       .map(([name, entry]) => [name, model(record(entry).model)] as const)
       .filter((entry): entry is readonly [string, string] => entry[1] !== undefined)
     if (entries.length) patch[key] = Object.fromEntries(entries.map(([name, value]) => [name, { model: value }]))
-  }
-  for (const key of ["enabled_providers", "disabled_providers"]) {
-    const list = data[key]
-    if (Array.isArray(list) && list.includes(from))
-      patch[key] = [...new Set(list.map((item) => (item === from ? to : item)))]
   }
   return patch
 }

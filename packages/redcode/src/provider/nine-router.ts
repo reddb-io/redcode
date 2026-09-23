@@ -52,10 +52,11 @@ export const connect = Effect.fn("NineRouter.connect")(function* (
       requireKey: true,
       emptyMessage:
         "No models are available. Connect an account or create a combo in the provider dashboard, then retry.",
+      detect: true,
     },
   ).pipe(Effect.mapError((error) => new ProviderDiscovery.DiscoveryError({ message: error.message })))
-  // Probed afresh with the key just saved; it never fails, and an unrecognised router is `none`.
-  const router = yield* ProviderRouter.detect({ baseURL: result.baseURL, apiKey: input.apiKey, fresh: true })
+  // Probed afresh by the connection with the key just saved, so this reads the cached result.
+  const router = yield* ProviderRouter.detect({ baseURL: result.baseURL, apiKey: input.apiKey })
   return { baseURL: result.baseURL, models: result.models, router }
 })
 

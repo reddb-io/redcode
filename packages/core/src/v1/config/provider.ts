@@ -1,6 +1,7 @@
 export * as ConfigProviderV1 from "./provider"
 
 import { Schema } from "effect"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { PositiveInt } from "../../schema"
 
 export const ModelStatus = Schema.Literals(["alpha", "beta", "deprecated", "active"])
@@ -26,6 +27,9 @@ export const RouterParameters = Schema.Struct({
   }),
   tools: Schema.optional(Schema.Boolean),
   search: Schema.optional(Schema.Boolean),
+  modes: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: "Modes the router serves the model in besides its default, e.g. review.",
+  }),
   modalities: Schema.optional(
     Schema.Struct({
       input: Schema.optional(Schema.Array(Schema.String)),
@@ -34,6 +38,27 @@ export const RouterParameters = Schema.Struct({
   ),
 })
 export type RouterParameters = typeof RouterParameters.Type
+
+/** The provider behind a routed model, as RedRouter's model list reports it. */
+export const RouterUpstream = Schema.Struct({
+  id: Schema.String,
+  slug: Schema.optional(Schema.String),
+  prefix: Schema.optional(Schema.String).annotate({ description: "The legacy short code of the provider, e.g. cx." }),
+  name: Schema.optional(Schema.String),
+  category: Schema.optional(Schema.String),
+  subscription: Schema.optional(Schema.Boolean),
+})
+export type RouterUpstream = typeof RouterUpstream.Type
+
+/** A reasoning level (`level`) or mode (`mode`, e.g. review) RedRouter serves under a model. */
+export const RouterVariant = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.String),
+  level: Schema.optional(Schema.String),
+  mode: Schema.optional(Schema.String),
+  aliases: Schema.optional(Schema.Array(Schema.String)),
+})
+export type RouterVariant = typeof RouterVariant.Type
 
 export const Model = Schema.Struct({
   id: Schema.optional(Schema.String),
@@ -107,6 +132,19 @@ export const Model = Schema.Struct({
       members: Schema.optional(Schema.Array(Schema.String)).annotate({
         description: "The provider/model ids a combo can route to, nested combos expanded.",
       }),
+      provider: Schema.optional(RouterUpstream).annotate({
+        description: "The provider behind the model, as the router reported it.",
+      }),
+      aliases: Schema.optional(Schema.Array(Schema.String)).annotate({
+        description:
+          "Earlier ids of this model at the router. A saved reference to one of them is moved to this model's id.",
+      }),
+      variants: Schema.optional(Schema.Array(RouterVariant)).annotate({
+        description: "Reasoning levels and modes the router serves under this model instead of as separate models.",
+      }),
+      via: Schema.optional(Schema.String).annotate({
+        description: "Set when the router serves this model through another router, such as a remote RedRouter.",
+      }),
     }),
   ).annotate({
     description:
@@ -173,6 +211,10 @@ export const Info = Schema.Struct({
       [Schema.Record(Schema.String, Schema.Any)],
     ),
   ),
+  router: Schema.optional(Router.Connection).annotate({
+    description:
+      "The router this connection was found to be (RedRouter or 9Router), written when it is connected or its models are refreshed.",
+  }),
   models: Schema.optional(Schema.Record(Schema.String, Model)),
 }).annotate({ identifier: "ProviderConfig" })
 export type Info = Schema.Schema.Type<typeof Info>

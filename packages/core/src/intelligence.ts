@@ -256,7 +256,7 @@ export function validateClassification(
 
 export const make = (
   root: string,
-  credentials: Pick<Credential.Interface, "get" | "create" | "list">,
+  credentials: Pick<Credential.Interface, "get" | "create" | "list"> & Partial<Pick<Credential.Interface, "all">>,
   fetcher: typeof fetch = fetch,
   catalog: Record<string, ModelsDev.Provider> = {},
   database?: Database.Interface["db"],
@@ -951,7 +951,12 @@ export const make = (
     const generation = (record: GenerationInput) =>
       write(path.join(root, "generations", `${randomUUID()}.json`), { ...record, created: Date.now() })
     const router = Effect.fn("Intelligence.router")(function* () {
-      const credential = (yield* credentials.list(Integration.ID.make("red-router")))
+      // A connection's key records the router that answered at its address, so a RedRouter saved
+      // under any provider id is found; one saved before that is found by the RedRouter id.
+      const tagged = credentials.all
+        ? (yield* credentials.all()).filter((item) => stringMetadata(item.value.metadata, "router") === "red-router")
+        : []
+      const credential = [...(yield* credentials.list(Integration.ID.make("red-router"))), ...tagged]
         .toReversed()
         .find((item) => credentialValue(item.value))
       const key = credentialValue(credential?.value) ?? process.env.RED_ROUTER_API_KEY
@@ -961,7 +966,7 @@ export const make = (
       if (!ProviderRouter.isRedRouter(detection)) return undefined
       const model = detection.systemOne?.available ? detection.systemOne.models[0] : undefined
       return {
-        providerID: "red-router",
+        providerID: credential?.integrationID ?? "red-router",
         baseURL,
         detection,
         ...(model
