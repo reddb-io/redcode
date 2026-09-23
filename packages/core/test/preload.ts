@@ -5,8 +5,23 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
-import { afterAll } from "bun:test"
+import { appendFileSync } from "fs"
+import { afterAll, afterEach, beforeEach } from "bun:test"
 import { removeOnExit, removeTempPaths, sharePlaywrightBrowsers } from "./fixture/temp-root"
+
+// Set by script/test-ci.ts only: every worker notes each file it starts and finishes, so a stalled CI
+// run can name the file it is stuck in. `Bun.main` is the test file, since each file re-runs this.
+const progress = process.env.REDCODE_TEST_PROGRESS
+if (progress) {
+  const log = path.join(progress, String(process.pid))
+  appendFileSync(log, `start ${Date.now()} ${Bun.main}\n`)
+  // Tests are numbered in run order: a stall names the test it is in, or none when the file
+  // never finished loading.
+  let count = 0
+  beforeEach(() => appendFileSync(log, `test ${Date.now()} #${++count} started\n`))
+  afterEach(() => appendFileSync(log, `test ${Date.now()} #${count} finished\n`))
+  afterAll(() => appendFileSync(log, `end ${Date.now()} ${Bun.main}\n`))
+}
 
 // Before HOME and XDG_CACHE_HOME are repointed below, or every run downloads its own Chromium.
 sharePlaywrightBrowsers()
@@ -37,6 +52,11 @@ process.env.XDG_CONFIG_HOME = path.join(dir, "config")
 process.env.XDG_STATE_HOME = path.join(dir, "state")
 
 process.env.REDCODE_DB = ":memory:"
+// fff locates its native library by running `ldd --version` through `execSync`, once per module
+// instance and so once per test file. Under Bun 1.4.1 that synchronous spawn now and then never
+// returns in a parallel test worker: the main thread spins at full CPU beside the unreaped `sh`, no
+// test timeout can fire, and the whole CI run hung. Search falls back to ripgrep, as on Windows.
+process.env.REDCODE_DISABLE_FFF ??= "1"
 process.env.REDCODE_MODELS_PATH = path.join(import.meta.dir, "plugin", "fixtures", "models-dev.json")
 process.env.REDCODE_DISABLE_MODELS_FETCH = "true"
 // The installer under test must never reach npm's audit endpoint.

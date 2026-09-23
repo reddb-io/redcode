@@ -58,6 +58,10 @@ for (const mode of ["abort", "timeout", "success"] as const)
         while (!(await Bun.file(ready).exists()) && Date.now() < deadline) await Bun.sleep(10)
         owned.child = Number(await Bun.file(ready).text())
         owned.parent = Number(await Bun.file(parent).text())
+        // The leader exits right after spawning, but on a loaded machine the descendant can report
+        // ready before that exit lands.
+        const exited = Date.now() + 1500
+        while ((await alive(owned.parent)) && Date.now() < exited) await Bun.sleep(10)
         expect(await alive(owned.parent)).toBe(false)
         if (mode === "abort") controller.abort()
         expect((await running)._tag).toBe(mode === "success" ? "Success" : "Failure")
