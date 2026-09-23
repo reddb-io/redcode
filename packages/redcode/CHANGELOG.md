@@ -1,5 +1,22 @@
 # opencode
 
+## 0.48.0
+
+### Minor Changes
+
+- 41945f0: Writing sessions now get their own worktree automatically. In a Git repository, the first edit, write or build command a session makes in the primary checkout creates `.red/worktrees/<name>` on a new branch `<name>` (named after the session, with `-2`, `-3` on collisions), moves the session and its subagents there and runs the action in it. The primary checkout is never stashed, reset or cleaned, and `.red/worktrees/` is added to `.git/info/exclude`. Reading never creates a worktree; non-Git directories and YOLO mode are unchanged. The session sidebar footer now shows the project, the worktree and the branch on three short lines.
+- de9760f: Subagent briefs are reviewed before a subagent starts. The task tool takes `scope` (globs the subagent may change), `done_criteria` and `return_format`, and passes them to the subagent after its prompt. In dual reasoning, S1 checks the brief against the user's request, the goal, the tasks and the plan (missing criteria, scope, context or output, misalignment, overreach); a brief that needs revision fails the call with the issues and the questions to answer, and a second rejection for the same request lets the task run with a warning. Single reasoning checks the structure only and labels the task "not verified (single reasoning)"; an unavailable or undecided S1 lets the task run with a visible warning. Briefs from commands and @mentions are not reviewed. The accepted brief and its verdict are kept in the child session's metadata. Fan-out is capped in code: `experimental.subagent_limits.concurrent` (foreground subagents running at once per session, default 4) and `experimental.subagent_limits.per_request` (new subagents per user message, default 12), alongside `subagent_depth`. The task tool description no longer says subagent output should be trusted and explains the verdicts.
+
+### Patch Changes
+
+- 9cb404f: Follow the member that serves a RedRouter fallback combo. Discovery now keeps each combo's `parameters_basis` and `member_parameters`. When a response reports that a member other than the lead served it, the session switches to that member's context window (used for compaction), output limit, thinking levels (in the variant picker too), `thinking_can_disable` and forced tool choice. It switches back when the lead serves again. The member's parameters come from the saved catalog. A member missing from it is read once from `GET /v1/models/<id>`. The switch lives only in session memory: it never writes config or moves the catalog version. Combos whose parameters are the strictest member's, and RedRouters older than per-member parameters, behave as before.
+- 36e6fea: File search on Linux no longer runs `ldd --version` to choose its native library, which could freeze redcode at startup under Bun 1.4.
+- 0738e58: A hook or command that exits without reading its input no longer raises an uncaught EPIPE error.
+- 04d1fde: Structured output (`LLM.generateObject`) now works on models that refuse a forced tool choice, such as Claude Opus 5.5, Fable and Mythos: it asks for the JSON object, validates it against the schema and repairs it once. A quota, credits or content-policy error that arrives mid-stream on the native Anthropic, OpenAI Responses or Bedrock paths is no longer retried, and a quota error says to check the plan and billing or switch models.
+- ed58d3e: A language server that exits at startup no longer produces an unhandled EPIPE error. On Windows, redcode now also recovers Node language servers whose `NODE_OPTIONS` flag is rejected, restarting them without that flag.
+- 069a25b: A background RedRouter catalog refresh now reloads the providers of the running server, so the TUI and web model pickers show new, removed and renamed models right away instead of after a restart; a refresh that only changed limits updates the pickers without a toast. RedRouter's review mode is selectable as a variant (TUI variant picker and web) and requests the router's review id, a model served through another router shows `via RedRouter → <router>`, and the v2 provider and model APIs report the router connection and each model's upstream provider, earlier ids, modes and router variants.
+- 97beb4b: In dual reasoning, the prompt footer and the web indicator now name the S1 evaluator model (e.g. `S1 jev-1.13`) next to the S2 model, instead of a bare `S1 · S2`.
+
 ## 0.47.0
 
 ### Minor Changes
