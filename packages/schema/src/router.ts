@@ -77,6 +77,20 @@ export const Upstream = Schema.Struct({
 export interface Upstream extends Schema.Schema.Type<typeof Upstream> {}
 
 /**
+ * A reasoning level (`level`) or mode (`mode`, e.g. review) a router serves under one model entry
+ * instead of as a separate model. Requesting `id` (or one of its earlier `aliases`) asks the router
+ * for that level or mode.
+ */
+export const Variant = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String.pipe(optional),
+  level: Schema.String.pipe(optional),
+  mode: Schema.String.pipe(optional),
+  aliases: Schema.Array(Schema.String).pipe(optional),
+}).annotate({ identifier: "Router.Variant" })
+export interface Variant extends Schema.Schema.Type<typeof Variant> {}
+
+/**
  * A model a router recommends for one role, from the accounts the key has connected: its model id
  * at the router, display name, the upstream provider that serves it and why it was chosen.
  */

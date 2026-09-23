@@ -5,6 +5,7 @@ import {
   latestServed,
   migrateModelState,
   modeBadge,
+  modeID,
   originCategory,
   originDescription,
   originIndex,
@@ -123,6 +124,20 @@ describe("model origin", () => {
     expect(resolveModel(router, "cx/gpt-5.6-sol")).toEqual({ modelID: "codex/gpt-5.6-sol", level: undefined })
     expect(resolveModel(router, "cx/gpt-5.6-sol-high")).toEqual({ modelID: "codex/gpt-5.6-sol", level: "high" })
     expect(resolveModel(router, "missing")).toBeUndefined()
+    // A collapsed mode is kept as the variant the base model offers for it.
+    const reviewing = provider(
+      "red-router",
+      "RedRouter",
+      [
+        model("red-router", "codex/gpt-5.6-sol", {
+          modes: ["review"],
+          variants: { review: {} },
+          routerVariants: [{ id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] }],
+        }),
+      ],
+      { router: { kind: "red-router" } },
+    )
+    expect(resolveModel(reviewing, "cx/gpt-5.6-sol-review")).toEqual({ modelID: "codex/gpt-5.6-sol", level: "review" })
     expect(resolveModel(undefined, "cx/gpt-5.6-sol")).toBeUndefined()
   })
 
@@ -187,6 +202,30 @@ describe("model origin", () => {
     expect(catalogUpdateMessage({ name: "RedRouter", added: 0, removed: 0, renamed: 3 })).toBe(
       "RedRouter catalog updated: +0/−0 models, 3 renamed",
     )
+    // Only limits or modes changed: nothing to announce.
+    expect(catalogUpdateMessage({ name: "RedRouter", added: 0, removed: 0, renamed: 0 })).toBeUndefined()
+  })
+
+  test("names the router a remote router serves a model through", () => {
+    const remote = provider(
+      "red-router",
+      "RedRouter",
+      [model("red-router", "codex/gpt-5.6-sol", { upstream: codex, via: "office" })],
+      { router: { kind: "red-router" } },
+    )
+    expect(originDescription(originIndex([remote]), remote, remote.models["codex/gpt-5.6-sol"])).toBe(
+      "via RedRouter → office · OpenAI Codex · subscription",
+    )
+  })
+
+  test("a router mode chosen as the variant requests the router's id for it", () => {
+    const sol = model("red-router", "codex/gpt-5.6-sol", {
+      modes: ["review"],
+      routerVariants: [{ id: "codex/gpt-5.6-sol-review", mode: "review" }],
+    })
+    expect(modeID(sol, "review")).toBe("codex/gpt-5.6-sol-review")
+    expect(modeID({ ...sol, routerVariants: undefined }, "review")).toBe("codex/gpt-5.6-sol-review")
+    expect(modeID(sol, "high")).toBeUndefined()
   })
 
   test("follows the variants of the fallback combo member that served the session last", () => {

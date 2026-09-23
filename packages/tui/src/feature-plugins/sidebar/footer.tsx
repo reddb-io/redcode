@@ -1,8 +1,10 @@
 import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { createMemo, Show } from "solid-js"
+import { createMemo, createResource, For, Show } from "solid-js"
+import path from "path"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
+import { SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX } from "../../routes/session/sidebar-width"
 
 const id = "internal:sidebar-footer"
 
@@ -16,18 +18,27 @@ export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
   )
   const done = createMemo(() => props.api.kv.get("dismissed_getting_started", false))
   const show = createMemo(() => !has() && !done())
-  const path = createMemo(() => {
-    const session = props.api.state.session.get(props.sessionID)
-    const dir = session?.directory || props.api.state.path.directory || paths.cwd
-    const out = abbreviateHome(dir, paths.home)
-    const branch = session?.directory === props.api.state.path.directory ? props.api.state.vcs?.branch : undefined
-    const text = branch ? out + ":" + branch : out
-    const list = text.split("/")
-    return {
-      parent: list.slice(0, -1).join("/"),
-      name: list.at(-1) ?? "",
-    }
-  })
+  const directory = createMemo(
+    () => props.api.state.session.get(props.sessionID)?.directory || props.api.state.path.directory || paths.cwd,
+  )
+  // The synced VCS state describes the TUI's own directory; a session moved into a worktree asks for its own.
+  const [moved] = createResource(
+    () => (directory() === props.api.state.path.directory ? undefined : directory()),
+    (dir) =>
+      props.api.client?.vcs
+        .get({ directory: dir })
+        .then((result) => result.data?.branch)
+        .catch(() => undefined),
+  )
+  const lines = createMemo(() =>
+    locationLines({
+      directory: directory(),
+      checkout: props.api.state.path.worktree,
+      branch: directory() === props.api.state.path.directory ? props.api.state.vcs?.branch : moved(),
+      home: paths.home,
+      width: Math.min(Number(props.api.kv.get("sidebar_width", SIDEBAR_WIDTH_DEFAULT)), SIDEBAR_WIDTH_MAX) - 4,
+    }),
+  )
 
   return (
     <box gap={1}>
@@ -64,12 +75,60 @@ export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
           </box>
         </box>
       </Show>
-      <text>
-        <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
-        <span style={{ fg: theme().text }}>{path().name}</span>
-      </text>
+      <box>
+        <For each={lines()}>
+          {(line, index) => (
+            <text fg={index() === 0 ? theme().text : theme().textMuted} wrapMode="none">
+              {line}
+            </text>
+          )}
+        </For>
+      </box>
     </box>
   )
+}
+
+/**
+ * Project, worktree and branch as three short lines: the primary checkout's directory, then the
+ * worktree (relative to the project when nested under it) and the branch. Outside Git only the
+ * directory remains. Each line keeps its end and loses its start to fit `width`.
+ */
+export function locationLines(input: {
+  directory: string
+  /** The TUI's own checkout, taken as the primary one for directories inside it. */
+  checkout?: string
+  branch?: string
+  home: string
+  width: number
+}) {
+  const nested = input.directory.match(/^(.*?)[\\/]\.red[\\/]worktrees[\\/]([^\\/]+)/)
+  const prepared = input.directory.match(/^(.*?)[\\/]\.redcode-worktrees[\\/]([^\\/]+)[\\/]([^\\/]+)/)
+  const project = nested
+    ? nested[1]
+    : prepared
+      ? path.join(prepared[1], prepared[2])
+      : input.checkout && input.checkout !== "/" && contains(input.checkout, input.directory)
+        ? input.checkout
+        : input.directory
+  const worktree = nested
+    ? [".red", "worktrees", nested[2]].join("/")
+    : prepared
+      ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
+      : undefined
+  const fit = (prefix: string, text: string) => {
+    const room = Math.max(1, input.width - prefix.length)
+    return prefix + (text.length > room ? "…" + text.slice(text.length - room + 1) : text)
+  }
+  return [
+    fit("", abbreviateHome(project, input.home)),
+    ...(worktree || input.branch ? [fit("⎇ ", worktree ?? "primary checkout")] : []),
+    ...(input.branch ? [fit("⑂ ", input.branch)] : []),
+  ]
+}
+
+function contains(parent: string, child: string) {
+  const relative = path.relative(parent, child)
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
 const tui: TuiPlugin = async (api) => {

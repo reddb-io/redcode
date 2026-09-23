@@ -59,6 +59,7 @@ import type {
 } from "@opencode-ai/client/promise"
 import { toggleMcp } from "./global-sync/mcp"
 import { mcpBrowserOpenFailedToast, readMcpBrowserOpenFailed } from "./global-sync/mcp-browser-open-failed"
+import { catalogUpdate } from "@/components/model-origin"
 import { usePlatform } from "./platform"
 import { createServerSession, type ServerSession } from "./server-session"
 
@@ -545,6 +546,12 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     }
     homeSessions.refresh(event.type)
     if (eventType === "integration.connection.updated") void refreshProviders()
+    // A router's models were read again: the server already reloaded them, so the pickers follow.
+    if (eventType === "provider.catalog.updated") {
+      void refreshProviders()
+      const update = catalogUpdate(event)
+      if (update) showToast({ variant: "default", title: language.t("model.catalog.updated", update) })
+    }
     // Without a browser the MCP OAuth flow stalls silently unless the user gets the authorization URL.
     const browserOpenFailed = readMcpBrowserOpenFailed(event)
     if (browserOpenFailed)

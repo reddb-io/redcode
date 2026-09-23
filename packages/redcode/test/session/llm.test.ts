@@ -2861,3 +2861,90 @@ describe("session.llm RedRouter reasoning contract", () => {
     },
   )
 })
+
+describe("session.llm RedRouter review mode", () => {
+  const requested: string[] = []
+  const routerState = { server: null as ReturnType<typeof Bun.serve> | null }
+
+  beforeAll(() => {
+    routerState.server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname !== "/v1/chat/completions") return new Response("not found", { status: 404 })
+        const body = (await request.json()) as { model: string }
+        requested.push(body.model)
+        return new Response(createChatStream("Hello"), { headers: { "Content-Type": "text/event-stream" } })
+      },
+    })
+  })
+
+  afterAll(() => {
+    ProviderRouter.forget()
+    void routerState.server?.stop(true)
+  })
+
+  it.instance(
+    "the review variant requests the router's review id and the default requests the model",
+    () =>
+      Effect.gen(function* () {
+        const model = yield* Provider.use.getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("codex/sol"))
+        expect(Object.keys(model.variants ?? {})).toContain("review")
+        const sessionID = SessionID.make("session-review-mode")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: MessageID.make("msg_user-review-mode"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make("red-router"), modelID: model.id, variant: "review" },
+        } satisfies SessionV1.User
+        const input = {
+          user,
+          sessionID,
+          model,
+          agent,
+          system: ["You are a helpful assistant."],
+          messages: [{ role: "user" as const, content: "Hello" }],
+          tools: {},
+        }
+        yield* drain(input)
+        yield* drain({ ...input, user: { ...user, model: { ...user.model, variant: undefined } } })
+        // A small request (a title) never takes the person's variant.
+        yield* drain({ ...input, small: true })
+        expect(requested).toEqual(["codex/sol-review", "codex/sol", "codex/sol"])
+      }),
+    {
+      config: () => ({
+        enabled_providers: ["red-router"],
+        provider: {
+          "red-router": {
+            name: "RedRouter",
+            npm: "@ai-sdk/openai-compatible",
+            options: { apiKey: "test-key", baseURL: `${routerState.server!.url.origin}/v1` },
+            router: { kind: "red-router" },
+            models: {
+              "codex/sol": {
+                name: "Sol",
+                tool_call: true,
+                limit: { context: 128000, output: 8192 },
+                router: {
+                  owned_by: "codex",
+                  parameters: { modes: ["review"] },
+                  variants: [{ id: "codex/sol-review", mode: "review" }],
+                },
+              },
+            },
+          },
+        },
+      }),
+    },
+  )
+})

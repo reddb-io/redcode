@@ -3,6 +3,7 @@ export * as ConfigProviderPlugin from "./provider"
 import { define } from "../../plugin/internal"
 import { Effect } from "effect"
 import { Config } from "../../config"
+import { ConfigProvider } from "../provider"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 
@@ -60,6 +61,7 @@ export const Plugin = define({
                 Object.assign(provider.request.headers, item.request.headers)
                 Object.assign(provider.request.body, item.request.body)
               }
+              if (item.router !== undefined) provider.router = { ...item.router }
             })
             for (const [id, config] of Object.entries(item.models ?? {})) {
               catalog.model.update(providerID, id, (model) => {
@@ -106,6 +108,7 @@ export const Plugin = define({
                 }
                 if (config.disabled !== undefined) model.enabled = !config.disabled
                 if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
+                if (config.router !== undefined) Object.assign(model, routing(config.router))
               })
             }
           }
@@ -118,6 +121,46 @@ export const Plugin = define({
     )
   }),
 })
+
+/**
+ * What clients are told about a model a router serves: the provider behind it (a combo's is the
+ * combo itself), its earlier ids, the modes and reasoning levels it serves under this id, and the
+ * router in between. The same fields the legacy provider list reports.
+ */
+function routing(router: NonNullable<NonNullable<ConfigProvider.Info["models"]>[string]["router"]>) {
+  const modes = [
+    ...new Set([
+      ...(router.modes ?? []),
+      ...(router.variants ?? []).flatMap((variant) => (variant.mode ? [variant.mode] : [])),
+    ]),
+  ]
+  const upstream: typeof router.provider =
+    router.provider ?? (router.owned_by === "combo" ? { id: "combo", name: "Combo", category: "combo" } : undefined)
+  return {
+    ...(upstream
+      ? {
+          upstream: {
+            id: upstream.id,
+            name: upstream.name ?? upstream.slug ?? upstream.id,
+            ...(upstream.slug ? { slug: upstream.slug } : {}),
+            ...(upstream.category ? { category: upstream.category } : {}),
+            ...(upstream.subscription !== undefined ? { subscription: upstream.subscription } : {}),
+          },
+        }
+      : {}),
+    ...(router.aliases?.length ? { aliases: [...router.aliases] } : {}),
+    ...(modes.length ? { modes } : {}),
+    ...(router.variants?.length
+      ? {
+          routerVariants: router.variants.map((variant) => ({
+            ...variant,
+            ...(variant.aliases ? { aliases: [...variant.aliases] } : {}),
+          })),
+        }
+      : {}),
+    ...(router.via ? { via: router.via } : {}),
+  }
+}
 
 /**
  * A provider block may override the endpoint through `api.url` or `request.body.baseURL`, but `npm`

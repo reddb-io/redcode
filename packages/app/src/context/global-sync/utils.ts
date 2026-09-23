@@ -81,6 +81,7 @@ export function normalizeProviderList(
       env: [],
       options: provider.settings ?? {},
       models: {},
+      ...routerOf(provider),
     })
   }
 
@@ -133,6 +134,7 @@ export function normalizeProviderList(
       headers: model.headers ?? {},
       release_date: new Date(model.time.released).toISOString().slice(0, 10),
       variants: Object.fromEntries(model.variants.map((variant) => [variant.id, variant.settings ?? {}])),
+      ...routingOf(model),
     }
   }
 
@@ -150,6 +152,71 @@ export function normalizeProviderList(
       }),
     ),
   }
+}
+
+type ProviderModel = Provider["models"][string]
+
+/**
+ * The router a current server reports on a provider (RedRouter or 9Router), so a routed connection
+ * is recognised by what it is rather than by its id. Servers that do not report one leave it out.
+ */
+function routerOf(provider: object): Pick<Provider, "router"> {
+  const router = "router" in provider && isRecord(provider.router) ? provider.router : {}
+  const kind = router.kind
+  if (kind !== "red-router" && kind !== "9router") return {}
+  return {
+    router: {
+      kind,
+      ...(typeof router.instanceID === "string" ? { instanceID: router.instanceID } : {}),
+      ...(typeof router.version === "string" ? { version: router.version } : {}),
+    },
+  }
+}
+
+/** What a current server reports about a routed model: its upstream, earlier ids, modes and router in between. */
+function routingOf(model: object): Pick<ProviderModel, "upstream" | "aliases" | "modes" | "routerVariants" | "via"> {
+  const value: Record<string, unknown> = { ...model }
+  const upstream = value.upstream
+  const variants = Array.isArray(value.routerVariants)
+    ? value.routerVariants.flatMap((item) =>
+        isRecord(item) && typeof item.id === "string" ? [variantOf(item, item.id)] : [],
+      )
+    : []
+  return {
+    ...(isRecord(upstream) && typeof upstream.id === "string" && typeof upstream.name === "string"
+      ? {
+          upstream: {
+            id: upstream.id,
+            name: upstream.name,
+            ...(typeof upstream.slug === "string" ? { slug: upstream.slug } : {}),
+            ...(typeof upstream.category === "string" ? { category: upstream.category } : {}),
+            ...(typeof upstream.subscription === "boolean" ? { subscription: upstream.subscription } : {}),
+          },
+        }
+      : {}),
+    ...(strings(value.aliases).length ? { aliases: strings(value.aliases) } : {}),
+    ...(strings(value.modes).length ? { modes: strings(value.modes) } : {}),
+    ...(variants.length ? { routerVariants: variants } : {}),
+    ...(typeof value.via === "string" ? { via: value.via } : {}),
+  }
+}
+
+function variantOf(item: Record<string, unknown>, id: string) {
+  return {
+    id,
+    ...(typeof item.name === "string" ? { name: item.name } : {}),
+    ...(typeof item.level === "string" ? { level: item.level } : {}),
+    ...(typeof item.mode === "string" ? { mode: item.mode } : {}),
+    ...(strings(item.aliases).length ? { aliases: strings(item.aliases) } : {}),
+  }
+}
+
+function strings(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
 
 export function sanitizeProject(project: Project) {

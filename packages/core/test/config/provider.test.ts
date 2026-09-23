@@ -55,6 +55,55 @@ function request(headers: Record<string, string>, variant?: string) {
 const decode = Schema.decodeUnknownSync(Config.Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("reports a router connection and the upstream, earlier ids, modes and via of its models", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.make("home-router")
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  "home-router": {
+                    api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://router.test/v1" },
+                    router: { kind: "red-router", version: "2.0.0" },
+                    models: {
+                      "codex/gpt-5.6-sol": {
+                        router: {
+                          owned_by: "codex",
+                          provider: { id: "codex", slug: "cx", name: "OpenAI Codex", subscription: true },
+                          aliases: ["cx/gpt-5.6-sol"],
+                          modes: ["review"],
+                          variants: [{ id: "codex/gpt-5.6-sol-review", mode: "review" }],
+                          via: "remote",
+                        },
+                      },
+                      "combo/fast": { router: { owned_by: "combo", strategy: "auto" } },
+                    },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      expect(required(yield* catalog.provider.get(providerID)).router).toEqual({ kind: "red-router", version: "2.0.0" })
+      const sol = required(yield* catalog.model.get(providerID, ModelV2.ID.make("codex/gpt-5.6-sol")))
+      expect(sol.upstream).toEqual({ id: "codex", slug: "cx", name: "OpenAI Codex", subscription: true })
+      expect(sol.aliases).toEqual(["cx/gpt-5.6-sol"])
+      expect(sol.modes).toEqual(["review"])
+      expect(sol.routerVariants).toEqual([{ id: "codex/gpt-5.6-sol-review", mode: "review" }])
+      expect(sol.via).toBe("remote")
+      const combo = required(yield* catalog.model.get(providerID, ModelV2.ID.make("combo/fast")))
+      expect(combo.upstream).toEqual({ id: "combo", name: "Combo", category: "combo" })
+      expect(combo.modes).toBeUndefined()
+    }),
+  )
+
   it.effect("keeps configured model variant bodies unchanged", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service

@@ -3,6 +3,7 @@ export * as Model from "./model"
 import { Schema } from "effect"
 import { optional } from "./schema"
 import { Provider } from "./provider"
+import { Router } from "./router"
 import { statics } from "./schema"
 
 export const ID = Schema.String.pipe(Schema.brand("ModelV2.ID"))
@@ -83,6 +84,21 @@ export const Info = Schema.Struct({
     context: Schema.Int,
     input: Schema.Int.pipe(optional),
     output: Schema.Int,
+  }),
+  upstream: Router.Upstream.pipe(optional).annotate({
+    description: "The provider behind a model a router serves, so clients can say where it really comes from.",
+  }),
+  aliases: Schema.Array(Schema.String)
+    .pipe(optional)
+    .annotate({ description: "Earlier ids of the model at its router. A request for one resolves to this model." }),
+  modes: Schema.Array(Schema.String)
+    .pipe(optional)
+    .annotate({ description: "Modes the router serves the model in besides its default, such as review." }),
+  routerVariants: Schema.Array(Router.Variant).pipe(optional).annotate({
+    description: "Reasoning levels and modes the router serves under this model rather than as separate models.",
+  }),
+  via: Schema.String.pipe(optional).annotate({
+    description: "The router in between when another router serves the model, e.g. a remote RedRouter.",
   }),
 })
   .annotate({ identifier: "ModelV2.Info" })
