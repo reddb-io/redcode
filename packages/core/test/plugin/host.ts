@@ -325,6 +325,12 @@ function modelInfo(value: ModelV2.Info | ModelV2.MutableInfo) {
     })),
     time: { ...value.time },
     cost: value.cost.map((cost) => ({ ...cost, tier: cost.tier && { ...cost.tier }, cache: { ...cost.cache } })),
+    aliases: value.aliases && [...value.aliases],
+    modes: value.modes && [...value.modes],
+    routerVariants: value.routerVariants?.map((variant) => ({
+      ...variant,
+      aliases: variant.aliases && [...variant.aliases],
+    })),
     limit: { ...value.limit },
   }
 }

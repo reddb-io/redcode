@@ -115,6 +115,46 @@ describe("normalizeProviderList", () => {
     })
   })
 
+  test("recognises a router connection and groups its models by the provider behind them", () => {
+    const result = normalizeProviderList(
+      [
+        { id: "home", name: "Home RedRouter", package: "@ai-sdk/openai-compatible", router: { kind: "red-router" } },
+      ] as unknown as ProviderListOutput["data"],
+      [
+        {
+          id: "codex/sol",
+          modelID: "codex/sol",
+          providerID: "home",
+          name: "Sol",
+          capabilities: { tools: true, input: ["text"], output: ["text"] },
+          variants: [{ id: "high" }],
+          time: { released: 1 },
+          cost: [],
+          status: "active",
+          enabled: true,
+          limit: { context: 1, output: 1 },
+          upstream: { id: "codex", name: "OpenAI Codex", subscription: true },
+          aliases: ["cx/sol"],
+          modes: ["review"],
+          routerVariants: [{ id: "codex/sol-review", mode: "review" }],
+          via: "office",
+        },
+      ] as unknown as ModelListOutput["data"],
+      null,
+    )
+
+    const provider = result.all.get("home")
+    expect(provider?.router).toEqual({ kind: "red-router" })
+    expect(provider?.models["codex/sol"]).toMatchObject({
+      upstream: { id: "codex", name: "OpenAI Codex", subscription: true },
+      aliases: ["cx/sol"],
+      modes: ["review"],
+      routerVariants: [{ id: "codex/sol-review", mode: "review" }],
+      via: "office",
+      variants: { high: {} },
+    })
+  })
+
   test("preserves an empty current default", () => {
     expect(normalizeProviderList([] as ProviderListOutput["data"], [], null).defaultModel).toBeNull()
   })

@@ -1459,6 +1459,22 @@ function routedModel(router: RouterInfo | undefined) {
 
 type RouterInfo = NonNullable<(typeof ConfigProviderV1.Model.Type)["router"]>
 
+/** A variant per mode a router serves the model in, so a mode is picked like a reasoning level. */
+function modeVariants(model: Pick<Model, "modes">): Record<string, Record<string, never>> {
+  return Object.fromEntries((model.modes ?? []).map((mode) => [mode, {}]))
+}
+
+/**
+ * The model to request when the chosen variant is a mode its router serves (e.g. review): the
+ * router's id for that mode, `<model>-<mode>` when it listed the mode without one. Any other
+ * variant, or none, requests the model itself.
+ */
+export function modeModel(model: Model, variant: string | undefined): Model {
+  if (!variant || !model.modes?.includes(variant)) return model
+  const id = model.routerVariants?.find((item) => item.mode === variant)?.id ?? `${model.api.id}-${variant}`
+  return { ...model, api: { ...model.api, id } }
+}
+
 /**
  * The model a router now lists under another id, for a request by an id it no longer lists. An
  * earlier id of the model itself resolves to the model under its new id; the id (or an earlier
@@ -1713,7 +1729,8 @@ const layer = Layer.effect(
               : existingModel?.api.npm === parsedModel.api.npm
                 ? (existingModel.variants ?? ProviderTransform.variants(parsedModel))
                 : ProviderTransform.variants(parsedModel)
-            const merged = mergeDeep(variants, model.variants ?? {})
+            // A mode the router serves (review) is chosen like a reasoning level; see `modeModel`.
+            const merged = mergeDeep({ ...modeVariants(parsedModel), ...variants }, model.variants ?? {})
             parsedModel.variants = mapValues(
               pickBy(merged, (v) => !v.disabled),
               (v) => omit(v, ["disabled"]),
@@ -1899,10 +1916,13 @@ const layer = Layer.effect(
     // The models catalog refreshes in the background (ModelsDev.refresh). The state above
     // captured the catalog at build time, so drop it when the catalog changes and let the
     // next Provider call rebuild from the new data instead of serving the startup snapshot.
+    // A router connection whose models were read again (RedRouter.refresh) changed the configuration
+    // the same way; its instance reloaded the configuration before the event.
     const unsubscribe = yield* events.listen((event) => {
-      if (event.type !== ModelsDev.Event.Refreshed.type) return Effect.void
+      if (event.type !== ModelsDev.Event.Refreshed.type && event.type !== Router.Event.CatalogUpdated.type)
+        return Effect.void
       return ScopedCache.invalidateAll(state.cache).pipe(
-        Effect.andThen(Effect.logInfo("models catalog refreshed, provider state invalidated")),
+        Effect.andThen(Effect.logInfo("models catalog refreshed, provider state invalidated", { event: event.type })),
       )
     })
     yield* Effect.addFinalizer(() => unsubscribe)
@@ -2088,7 +2108,8 @@ const layer = Layer.effect(
     const getLanguage = Effect.fn("Provider.getLanguage")(function* (model: Model) {
       const s = yield* InstanceState.get(state)
       const envs = yield* env.all()
-      const key = `${model.providerID}/${model.id}`
+      // Keyed by the id sent too: a router mode or an earlier id requests another id for the same model.
+      const key = `${model.providerID}/${model.id}/${model.api.id}`
       if (s.models.has(key)) return s.models.get(key)!
 
       const provider = s.providers[model.providerID]

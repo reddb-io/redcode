@@ -256,7 +256,40 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type, packageName?: st
       input: info.limit.input === undefined ? undefined : int(info.limit.input),
       output: int(info.limit.output),
     },
-    router: info.router && { owned_by: info.router.owned_by, strategy: info.router.strategy },
+    router: info.router && migrateRouter(info.router),
+  }
+}
+
+function migrateRouter(router: NonNullable<(typeof ConfigProviderV1.Model.Type)["router"]>) {
+  return {
+    owned_by: router.owned_by,
+    strategy: router.strategy,
+    ...(router.provider
+      ? {
+          provider: {
+            id: router.provider.id,
+            ...(router.provider.slug === undefined ? {} : { slug: router.provider.slug }),
+            ...(router.provider.name === undefined ? {} : { name: router.provider.name }),
+            ...(router.provider.category === undefined ? {} : { category: router.provider.category }),
+            ...(router.provider.subscription === undefined ? {} : { subscription: router.provider.subscription }),
+          },
+        }
+      : {}),
+    ...(router.aliases ? { aliases: [...router.aliases] } : {}),
+    ...(router.parameters?.modes ? { modes: [...router.parameters.modes] } : {}),
+    ...(router.variants
+      ? {
+          // Router.Variant rejects a key set to undefined, so only the fields present are copied.
+          variants: router.variants.map((variant) => ({
+            id: variant.id,
+            ...(variant.name === undefined ? {} : { name: variant.name }),
+            ...(variant.level === undefined ? {} : { level: variant.level }),
+            ...(variant.mode === undefined ? {} : { mode: variant.mode }),
+            ...(variant.aliases === undefined ? {} : { aliases: [...variant.aliases] }),
+          })),
+        }
+      : {}),
+    ...(router.via ? { via: router.via } : {}),
   }
 }
 

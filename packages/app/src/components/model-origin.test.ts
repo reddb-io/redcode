@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { modelAlternatives, modelGroup, modelOrigin, routerKind, routerName } from "./model-origin"
+import {
+  catalogUpdate,
+  modelAlternatives,
+  modelGroup,
+  modelOrigin,
+  routerKind,
+  routerName,
+  routerPath,
+} from "./model-origin"
 
 const redRouter = { id: "red-router", name: "RedRouter", router: { kind: "red-router" as const } }
 const legacyRedRouter = { id: "red-router", name: "RedRouter" }
@@ -44,12 +52,14 @@ describe("modelOrigin", () => {
       router: "RedRouter",
       upstream: "OpenAI Codex",
       subscription: true,
+      via: undefined,
     })
     expect(modelOrigin({ id: "gpt-5.5", provider: legacyRedRouter })).toEqual({
       type: "router",
       router: "RedRouter",
       upstream: undefined,
       subscription: false,
+      via: undefined,
     })
   })
 })
@@ -104,5 +114,35 @@ describe("modelAlternatives", () => {
       { id: "codex/gpt-5.5", provider: nineRouter, upstream: codexUpstream },
     ])
     expect(result.size).toBe(0)
+  })
+})
+
+describe("routerPath", () => {
+  test("names the router in between when a remote router serves the model", () => {
+    const origin = modelOrigin({ id: "codex/gpt-5.5", provider: redRouter, upstream: codexUpstream, via: "office" })
+    expect(origin).toMatchObject({ type: "router", router: "RedRouter", via: "office" })
+    expect(routerPath({ router: "RedRouter", via: "office" })).toBe("RedRouter → office")
+    expect(routerPath({ router: "RedRouter" })).toBe("RedRouter")
+  })
+})
+
+describe("catalogUpdate", () => {
+  test("announces a refresh that added, removed or renamed models", () => {
+    expect(
+      catalogUpdate({
+        type: "provider.catalog.updated",
+        properties: { providerID: "red-router", name: "RedRouter", added: 2, removed: 1, renamed: 0 },
+      }),
+    ).toEqual({ name: "RedRouter", added: 2, removed: 1, renamed: 0 })
+  })
+
+  test("stays quiet when only limits or modes changed, or for other events", () => {
+    expect(
+      catalogUpdate({
+        type: "provider.catalog.updated",
+        properties: { providerID: "red-router", name: "RedRouter", added: 0, removed: 0, renamed: 0 },
+      }),
+    ).toBeUndefined()
+    expect(catalogUpdate({ type: "models-dev.refreshed", properties: {} })).toBeUndefined()
   })
 })

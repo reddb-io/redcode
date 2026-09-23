@@ -5973,6 +5973,23 @@ export type ModelsListOutput = {
     readonly status: "alpha" | "beta" | "deprecated" | "active"
     readonly enabled: boolean
     readonly limit: { readonly context: number; readonly input?: number; readonly output: number }
+    readonly upstream?: {
+      readonly id: string
+      readonly slug?: string
+      readonly name: string
+      readonly category?: string
+      readonly subscription?: boolean
+    }
+    readonly aliases?: ReadonlyArray<string>
+    readonly modes?: ReadonlyArray<string>
+    readonly routerVariants?: ReadonlyArray<{
+      readonly id: string
+      readonly name?: string
+      readonly level?: string
+      readonly mode?: string
+      readonly aliases?: ReadonlyArray<string>
+    }>
+    readonly via?: string
   }>
 }
 

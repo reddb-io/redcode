@@ -89,4 +89,30 @@ describe("tui sync", () => {
       app.renderer.destroy()
     }
   })
+
+  test("a router catalog refresh that only changed limits reloads providers without a toast", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const catalog = { providers: [] as unknown[] }
+    const { app, emit, sync, toast } = await mount((url) => {
+      if (url.pathname === "/config/providers") return json({ providers: catalog.providers, default: {} })
+    }, tmp.path)
+
+    try {
+      catalog.providers = [{ id: "red-router", name: "RedRouter", env: [], options: {}, source: "config", models: {} }]
+      emit({
+        directory,
+        project: "proj_test",
+        payload: {
+          id: "evt_catalog_limits",
+          type: "provider.catalog.updated",
+          properties: { providerID: "red-router", name: "RedRouter", added: 0, removed: 0, renamed: 0 },
+        },
+      })
+      await wait(() => sync.data.provider.length === 1)
+      expect(toast.currentToast).toBeNull()
+    } finally {
+      app.renderer.destroy()
+    }
+  })
 })

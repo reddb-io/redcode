@@ -22,7 +22,14 @@ import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./dialog-select-model-search"
-import { modelAlternatives, modelGroup, modelKey, modelOrigin, type ModelAlternatives } from "./model-origin"
+import {
+  modelAlternatives,
+  modelGroup,
+  modelKey,
+  modelOrigin,
+  routerPath,
+  type ModelAlternatives,
+} from "./model-origin"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -58,7 +65,7 @@ function originLabel(
     origin.type === "direct"
       ? [language.t("model.origin.direct")]
       : [
-          language.t("model.origin.via", { router: origin.router }),
+          language.t("model.origin.via", { router: routerPath(origin) }),
           ...(origin.upstream ? [origin.upstream] : []),
           ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
         ]

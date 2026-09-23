@@ -6,6 +6,7 @@ import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { Effect, Layer } from "effect"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
 import { EventV2 } from "@reddb-io/redcode-core/event"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { Global } from "@reddb-io/redcode-core/global"
@@ -124,6 +125,26 @@ catalog.instance("provider state rebuilds after the models catalog refreshes", (
     yield* EventV2.Service.use((events) => events.publish(ModelsDev.Event.Refreshed, {}))
     const after = yield* list
     expect(after[ProviderV2.ID.anthropic]).toBeUndefined()
+  }),
+)
+
+catalog.instance("provider state rebuilds after a router catalog refresh", () =>
+  Effect.gen(function* () {
+    yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")
+    expect((yield* list)[ProviderV2.ID.anthropic]).toBeDefined()
+    yield* remove("ANTHROPIC_API_KEY")
+    expect((yield* list)[ProviderV2.ID.anthropic]).toBeDefined()
+    // RedRouter.refresh rewrote the connection's models; the next call reads them.
+    yield* EventV2.Service.use((events) =>
+      events.publish(Router.Event.CatalogUpdated, {
+        providerID: "red-router",
+        name: "RedRouter",
+        added: 1,
+        removed: 0,
+        renamed: 0,
+      }),
+    )
+    expect((yield* list)[ProviderV2.ID.anthropic]).toBeUndefined()
   }),
 )
 
@@ -647,6 +668,19 @@ it.instance(
     )
     expect(review.id).toBe(ModelV2.ID.make("codex/gpt-5.6-sol"))
     expect(review.api.id).toBe("cx/gpt-5.6-sol-review")
+
+    // The review mode is picked like a reasoning level and requests the router's id for it.
+    expect(sol.variants?.review).toEqual({})
+    expect(Provider.modeModel(sol, "review").api.id).toBe("codex/gpt-5.6-sol-review")
+    expect(Provider.modeModel(sol, "high")).toBe(sol)
+    expect(Provider.modeModel(sol, undefined)).toBe(sol)
+    // A mode listed without its own id is requested as `<model>-<mode>`.
+    expect(Provider.modeModel({ ...sol, routerVariants: undefined }, "review").api.id).toBe("codex/gpt-5.6-sol-review")
+    // The same model requested under another id gets its own language model.
+    const base = yield* Provider.use.getLanguage(sol)
+    const reviewing = yield* Provider.use.getLanguage(Provider.modeModel(sol, "review"))
+    expect(base.modelId).toBe("codex/gpt-5.6-sol")
+    expect(reviewing.modelId).toBe("codex/gpt-5.6-sol-review")
   }),
   {
     config: {

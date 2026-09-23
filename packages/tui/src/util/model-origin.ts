@@ -47,7 +47,8 @@ export function originDescription(index: OriginIndex, provider: Provider, model:
   const also = index.also(provider, model)
   if (!router) return ["direct", ...(also.length ? [`also via ${also.join(", ")}`] : [])].join(" · ")
   return [
-    `via ${router}`,
+    // A router serving the model through another router (a remote RedRouter) names that one too.
+    model.via ? `via ${router} → ${model.via}` : `via ${router}`,
     ...(model.upstream ? [model.upstream.name] : []),
     ...(model.upstream?.subscription ? ["subscription"] : []),
     ...(also.length ? [`also ${also.join(", ")}`] : []),
@@ -66,8 +67,20 @@ export function modeBadge(model: Pick<Model, "modes">) {
   return model.modes.join(" · ")
 }
 
+/**
+ * The id a router serves one of the model's modes under (e.g. review) when that mode is chosen as
+ * the variant, `<model>-<mode>` when the router listed the mode without one. Undefined for a
+ * reasoning level.
+ */
+export function modeID(model: Pick<Model, "api" | "modes" | "routerVariants">, variant: string) {
+  if (!model.modes?.includes(variant)) return undefined
+  return model.routerVariants?.find((item) => item.mode === variant)?.id ?? `${model.api.id}-${variant}`
+}
+
 /** Announces a background router catalog refresh, e.g. `RedRouter catalog updated: +2/−1 models, 3 renamed`. */
 export function catalogUpdateMessage(update: { name: string; added: number; removed: number; renamed: number }) {
+  // Limits or modes alone changed: the pickers already show them, nothing to announce.
+  if (!update.added && !update.removed && !update.renamed) return undefined
   const renamed = update.renamed > 0 ? `, ${update.renamed} renamed` : ""
   return `${update.name} catalog updated: +${update.added}/−${update.removed} models${renamed}`
 }
@@ -86,8 +99,8 @@ export function servedModel(message: ModelRef, parts: Part[]) {
 
 /**
  * Resolves a model id at a provider, following the earlier ids a router renamed and the reasoning
- * levels it collapsed into a base model. A collapsed level carries its effort level along when the
- * base model offers it.
+ * levels and modes it collapsed into a base model. A collapsed level or mode carries along as the
+ * variant when the base model offers it.
  */
 export function resolveModel(provider: Provider | undefined, modelID: string) {
   if (!provider) return undefined
@@ -98,7 +111,9 @@ export function resolveModel(provider: Provider | undefined, modelID: string) {
   )
   if (!match) return undefined
   const variant = match[1].routerVariants?.find(earlier)
-  return { modelID: match[0], level: variant?.level && match[1].variants?.[variant.level] ? variant.level : undefined }
+  // A collapsed mode (review) is kept the same way: it is offered as a variant too.
+  const choice = variant?.level ?? variant?.mode
+  return { modelID: match[0], level: choice && match[1].variants?.[choice] ? choice : undefined }
 }
 
 /**

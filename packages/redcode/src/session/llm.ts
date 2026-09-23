@@ -153,7 +153,8 @@ const live: Layer.Layer<
 
       const [language, cfg, item, info] = yield* Effect.all(
         [
-          provider.getLanguage(input.model),
+          // A router mode chosen as the variant (review) is served under its own id.
+          provider.getLanguage(input.small ? input.model : Provider.modeModel(input.model, input.user.model.variant)),
           config.get(),
           provider.getProvider(input.model.providerID),
           auth.get(input.model.providerID),
@@ -569,12 +570,12 @@ const live: Layer.Layer<
         ),
       )
 
-      /**
+    /**
      * A RedRouter reports the version of the model catalog the key sees. When it is not the one the
      * connection's saved models were read at, its combos, members or limits may have changed, so
      * they are read again in the background, once per version. It never delays or fails the turn.
-     * Saved ids the router renamed move to the new ids, clients are told what changed, and the
-     * refreshed models apply once the configuration is next loaded.
+     * Saved ids the router renamed move to the new ids, this instance reloads its configuration
+     * and clients are told, so the provider state and every picker show the new models at once.
      */
     const refreshCatalog = Effect.fnUntraced(
       function* (model: Provider.Model, metadata: Parameters<typeof ProviderRouter.reportedCatalogVersion>[0]) {
@@ -592,14 +593,22 @@ const live: Layer.Layer<
                     version,
                     models: result.models.length,
                   })
-                  const renamed = Object.keys(result.changes.renamed).length
-                  if (!result.changes.added && !result.changes.removed && !renamed) return
+                  // A configuration that no longer loads keeps the last usable one; clients still reload.
+                  yield* config.reload().pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("router catalog changed; reloading configuration failed", {
+                        cause: Cause.pretty(cause),
+                      }),
+                    ),
+                  )
+                  // Published even when no model was added, removed or renamed: limits or modes may
+                  // have changed. Provider state drops on it and clients reload their providers.
                   yield* events.publish(Router.Event.CatalogUpdated, {
                     providerID: model.providerID,
                     name: connection.name,
                     added: result.changes.added,
                     removed: result.changes.removed,
-                    renamed,
+                    renamed: Object.keys(result.changes.renamed).length,
                   })
                 })
               : Effect.void,

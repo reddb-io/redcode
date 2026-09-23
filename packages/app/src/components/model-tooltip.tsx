@@ -1,6 +1,6 @@
 import { Show, type Component, type JSX } from "solid-js"
 import { useLanguage } from "@/context/language"
-import { modelOrigin, routerKind } from "./model-origin"
+import { modelOrigin, routerKind, routerPath } from "./model-origin"
 
 type InputKey = "text" | "image" | "audio" | "video" | "pdf"
 type InputMap = Record<InputKey, boolean>
@@ -20,6 +20,7 @@ type ModelInfo = {
     name: string
     subscription?: boolean
   }
+  via?: string
   capabilities?: {
     reasoning: boolean
     input: InputMap
@@ -107,7 +108,7 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
     const origin = modelOrigin(props.model)
     if (origin.type === "direct") return language.t("model.origin.direct")
     return [
-      language.t("model.origin.via", { router: origin.router }),
+      language.t("model.origin.via", { router: routerPath(origin) }),
       ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
     ].join(" · ")
   }
