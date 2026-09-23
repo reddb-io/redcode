@@ -133,24 +133,24 @@ const it = testEffect(
               if (reasoning === "single") return undefined
               if (input.operation === "design_target") {
                 classifications.push(input)
-                return {
+                const classified: Intelligence.Evaluation = {
                   id: crypto.randomUUID(),
                   fingerprint: "fixture",
                   sessionID: input.sessionID,
                   operation: input.operation,
-                  kind: "classification" as const,
+                  kind: "classification",
                   policy: "fixture",
-                  decision: "accepted" as const,
+                  decision: "accepted",
                   model: "jev",
                   answers: {
                     target: {
-                      type: "choice" as const,
+                      type: "choice",
                       choice: "presentation",
                       probabilities: { web: 0.1, app: 0, presentation: 0.9 },
                       confidence: 0.9,
                     },
                     platform: {
-                      type: "choice" as const,
+                      type: "choice",
                       choice: "either",
                       probabilities: { ios: 0, android: 0, either: 1 },
                       confidence: 1,
@@ -161,6 +161,7 @@ const it = testEffect(
                   duration: 1,
                   usage: { input_tokens: 10, output_tokens: 5 },
                 }
+                return classified
               }
               if (input.operation === "goal_completion" || input.operation === "plan") {
                 requests.push(input)
