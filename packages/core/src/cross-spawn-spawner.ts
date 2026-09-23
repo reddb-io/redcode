@@ -228,6 +228,12 @@ export const make = Effect.gen(function* () {
     Effect.suspend(() => {
       let sink: Sink.Sink<void, unknown, never, PlatformError.PlatformError> = Sink.drain
       if (Predicate.isNotNull(proc.stdin)) {
+        // Bun buffers a small write and flushes it only when the stream is destroyed after
+        // `end()`. If the child exited without reading its input, that flush fails with EPIPE
+        // after the sink has stopped listening, and it escapes as an uncaught error. The sink
+        // still reports errors while it is attached. The #360 patch covers only Effect's
+        // NodeChildProcessSpawner, which this spawner replaces.
+        proc.stdin.on("error", () => {})
         sink = NodeSink.fromWritable({
           evaluate: () => proc.stdin!,
           onError: (err) => toPlatformError("fromWritable(stdin)", toError(err), command),
