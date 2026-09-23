@@ -1,4 +1,4 @@
-import { batch, createEffect, on, onCleanup, onMount, Switch, Match } from "solid-js"
+import { batch, createEffect, createMemo, on, onCleanup, onMount, Switch, Match } from "solid-js"
 import { createStore } from "solid-js/store"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -167,6 +167,9 @@ export function DialogSetup(
     state.step === "principal" || state.step === "fast"
       ? recommendation(state.step === "principal" ? "default" : "fast")
       : undefined
+  // Memoized so the cursor effect below reruns only when the recommended model changes, not on every
+  // router or provider update.
+  const recommendedID = createMemo(() => stepRecommendation()?.ref.id)
   const options = (): DialogSelectOption<ModelChoice>[] => {
     const principal = state.settings.principal
     if (state.step === "principal" && principal && !state.changing)
@@ -249,7 +252,7 @@ export function DialogSetup(
   // provider lands on that provider's models instead.
   createEffect(
     on(
-      [() => state.step, () => state.changing, () => activeProvider()?.id, () => stepRecommendation()?.ref.id],
+      [() => state.step, () => state.changing, () => activeProvider()?.id, recommendedID],
       ([step, changing, , recommended], previous) => {
         if (step !== "principal" && step !== "fast") return
         const entered = !previous || previous[0] !== step || previous[1] !== changing || previous[3] !== recommended
