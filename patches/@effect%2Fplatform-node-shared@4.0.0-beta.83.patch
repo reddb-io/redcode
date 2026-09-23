@@ -1,0 +1,14 @@
+diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
+--- a/dist/NodeChildProcessSpawner.js
++++ b/dist/NodeChildProcessSpawner.js
+@@ -188,6 +188,10 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+     // sink that will attached to the process handle
+     let sink = Sink.drain;
+     if (Predicate.isNotNull(childProcess.stdin)) {
++      // A child that exits without reading its input closes the pipe, and the pending write then
++      // fails with EPIPE after the sink stopped listening: an uncaught error. The sink still
++      // reports errors while it is attached; this only keeps a late one from escaping.
++      childProcess.stdin.on("error", () => {});
+       sink = NodeSink.fromWritable({
+         evaluate: () => childProcess.stdin,
+         onError: error => toPlatformError("fromWritable(stdin)", toError(error), command),
