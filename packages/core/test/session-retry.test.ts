@@ -45,4 +45,16 @@ describe("SessionRetry over LLMError (v2 runner)", () => {
     expect(SessionRetry.delayLLM(1, transient, 1)).toBe(2_500)
     expect(SessionRetry.RETRY_MAX_RETRIES).toBe(5)
   })
+
+  test("caps an excessive provider retry-after at fifteen minutes", () => {
+    expect(SessionRetry.delayLLM(1, failure(new RateLimitReason({ message: "slow", retryAfterMs: 3_600_000 })))).toBe(
+      900_000,
+    )
+    expect(
+      SessionRetry.delayLLM(
+        1,
+        failure(new ProviderInternalReason({ message: "busy", status: 503, retryAfterMs: 899_999 })),
+      ),
+    ).toBe(899_999)
+  })
 })
