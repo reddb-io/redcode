@@ -3595,6 +3595,100 @@ it.instance(
   60_000,
 )
 
+// A second model on the test provider, configured as the small model that names sessions.
+function smallModelCfg(url: string) {
+  const base = providerCfg(url)
+  return {
+    ...base,
+    small_model: "test/test-small",
+    provider: {
+      ...base.provider,
+      test: {
+        ...base.provider.test,
+        models: {
+          ...base.provider.test.models,
+          "test-small": { ...base.provider.test.models["test-model"], id: "test-small", name: "Test Small" },
+        },
+      },
+    },
+  }
+}
+
+const titleModels = Effect.fn("test.titleModels")(function* () {
+  const llm = yield* TestLLMServer
+  return (yield* llm.hits)
+    .filter((hit) => JSON.stringify(hit.body).includes("Generate a title for this conversation"))
+    .map((hit) => hit.body.model)
+})
+
+it.instance(
+  "names the session with its own model when the small model fails",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(smallModelCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: `New session - ${new Date().toISOString()}` })
+
+      yield* llm.failTitles("test-small")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "say something" }],
+      })
+      yield* llm.text("done")
+      yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never finished", "20 seconds")
+
+      const title = yield* pollWithTimeout(
+        sessions.get(chat.id).pipe(Effect.map((info) => (info.title === "E2E Title" ? info.title : undefined))),
+        "the session was never named",
+        "10 seconds",
+      )
+      expect(title).toBe("E2E Title")
+      expect(yield* titleModels()).toEqual(["test-small", "test-model"])
+    }),
+  60_000,
+)
+
+it.instance(
+  "tries the session model only once when naming the session keeps failing",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(smallModelCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const title = `New session - ${new Date().toISOString()}`
+      const chat = yield* sessions.create({ title })
+
+      yield* llm.failTitles("test-small")
+      yield* llm.failTitles("test-model")
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "say something" }],
+      })
+      yield* llm.text("done")
+      const result = yield* awaitWithTimeout(
+        prompt.loop({ sessionID: chat.id }),
+        "the turn never finished",
+        "20 seconds",
+      )
+
+      yield* pollWithTimeout(
+        titleModels().pipe(Effect.map((models) => (models.length >= 2 ? models : undefined))),
+        "the session model was never asked for a title",
+        "10 seconds",
+      )
+      // A failed name never costs the turn, and the session keeps its default name.
+      expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
+      expect(yield* titleModels()).toEqual(["test-small", "test-model"])
+      expect((yield* sessions.get(chat.id)).title).toBe(title)
+    }),
+  60_000,
+)
+
 it.instance(
   "writes down that a guard intervened, so the thresholds can be argued from evidence",
   () =>

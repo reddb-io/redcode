@@ -466,59 +466,92 @@ const layer = Layer.effect(
 
       const ag = yield* agents.get("title")
       if (!ag) return
-      const mdl = ag.model
-        ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
-        : ((yield* provider.getSmallModel(input.providerID)) ??
-          (yield* provider.getModel(input.providerID, input.modelID)))
-      const msgs = onlySubtasks
-        ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
-        : yield* MessageV2.toModelMessagesEffect(context, mdl)
-      const titleMs = AuxDeadline.deadlineMs("title", (yield* config.get()).experimental?.aux_timeout)
-      const text = yield* llm
-        .stream({
-          agent: ag,
-          user: firstInfo,
-          system: [],
-          small: true,
-          tools: {},
-          model: mdl,
-          sessionID: input.session.id,
-          retries: 2,
-          messages: [{ role: "user", content: "Generate a title for this conversation:\n" }, ...msgs],
-        })
-        .pipe(
-          Stream.filter(LLMEvent.is.textDelta),
-          Stream.map((e) => e.text),
-          Stream.mkString,
-          Effect.orDie,
-          // Naming the session happens inside the turn loop, so a small model that stops answering
-          // holds up the work the user actually asked for. A session keeping its default name is a
-          // far smaller loss than a turn that never starts.
-          titleMs === undefined
-            ? (self) => self
-            : Effect.timeoutOrElse({
-                duration: Duration.millis(titleMs),
-                orElse: () =>
-                  Effect.gen(function* () {
-                    yield* guards.record({
-                      sessionID: input.session.id,
-                      guard: "aux",
-                      action: "stop",
-                      subject: "title",
-                      detail: AuxDeadline.message("title", titleMs),
-                    })
-                    yield* Effect.logWarning(AuxDeadline.message("title", titleMs), {
-                      "session.id": input.session.id,
-                    })
-                    return ""
-                  }),
-              }),
+      // A configured title model that no longer resolves is not fatal: the session's model can still name it.
+      const preferred = ag.model
+        ? yield* provider
+            .getModel(ag.model.providerID, ag.model.modelID)
+            .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        : yield* provider.getSmallModel(input.providerID)
+      // One attempt with one model. A failed request, a provider error or an answer with no usable
+      // line all come back as `undefined`; each attempt's usage is charged by the LLM stream to the
+      // model that actually answered.
+      const generate = (mdl: Provider.Model) =>
+        Effect.gen(function* () {
+          const msgs = onlySubtasks
+            ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
+            : yield* MessageV2.toModelMessagesEffect(context, mdl)
+          const events = Array.from(
+            yield* llm
+              .stream({
+                agent: ag,
+                user: firstInfo,
+                system: [],
+                small: true,
+                tools: {},
+                model: mdl,
+                sessionID: input.session.id,
+                retries: 2,
+                messages: [{ role: "user", content: "Generate a title for this conversation:\n" }, ...msgs],
+              })
+              .pipe(Stream.runCollect),
+          )
+          if (events.some(LLMEvent.is.providerError)) return undefined
+          return events
+            .filter(LLMEvent.is.textDelta)
+            .map((event) => event.text)
+            .join("")
+            .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+            .split("\n")
+            .map((line) => line.trim())
+            .find((line) => line.length > 0)
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("title generation failed", {
+              "session.id": input.session.id,
+              providerID: mdl.providerID,
+              modelID: mdl.id,
+              error: error instanceof Error ? error.message : String(error),
+            }).pipe(Effect.as(undefined)),
+          ),
         )
-      const cleaned = text
-        .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
-        .split("\n")
-        .map((line) => line.trim())
-        .find((line) => line.length > 0)
+      const titleMs = AuxDeadline.deadlineMs("title", (yield* config.get()).experimental?.aux_timeout)
+      const cleaned = yield* Effect.gen(function* () {
+        const first = preferred ? yield* generate(preferred) : undefined
+        if (first) return first
+        const primary = yield* provider.getModel(input.providerID, input.modelID)
+        if (!preferred) return yield* generate(primary)
+        if (preferred.providerID === primary.providerID && preferred.id === primary.id) return undefined
+        // The title model failed or answered with nothing usable; the session's own model gets one try.
+        yield* Effect.logInfo("title model failed, retrying with the session model", {
+          "session.id": input.session.id,
+          providerID: preferred.providerID,
+          modelID: preferred.id,
+        })
+        return yield* generate(primary)
+      }).pipe(
+        // Naming the session happens inside the turn loop, so a small model that stops answering
+        // holds up the work the user actually asked for. A session keeping its default name is a
+        // far smaller loss than a turn that never starts. The deadline covers both attempts.
+        titleMs === undefined
+          ? (self) => self
+          : Effect.timeoutOrElse({
+              duration: Duration.millis(titleMs),
+              orElse: () =>
+                Effect.gen(function* () {
+                  yield* guards.record({
+                    sessionID: input.session.id,
+                    guard: "aux",
+                    action: "stop",
+                    subject: "title",
+                    detail: AuxDeadline.message("title", titleMs),
+                  })
+                  yield* Effect.logWarning(AuxDeadline.message("title", titleMs), {
+                    "session.id": input.session.id,
+                  })
+                  return undefined
+                }),
+            }),
+      )
       if (!cleaned) return
       const t = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
       yield* sessions
