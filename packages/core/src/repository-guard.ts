@@ -1,8 +1,11 @@
 export * as RepositoryGuard from "./repository-guard"
 
 import path from "node:path"
-import { lstat, realpath, mkdir } from "node:fs/promises"
+import { lstat, realpath, mkdir, readdir } from "node:fs/promises"
 import { Effect, Schema } from "effect"
+
+/** Session worktrees live inside the primary checkout, hidden from it through `info/exclude`. */
+export const WORKTREES = ".red/worktrees"
 
 export const FORBIDDEN = [
   "reset",
@@ -15,12 +18,12 @@ export const FORBIDDEN = [
   "update-ref",
 ] as const
 
-export const INSTRUCTIONS = `Repository preflight is mandatory before coding, without waiting for a user reminder. Call worktree_prepare automatically and use the returned task directory:
-1. Inspect the repository root, branch, git status --short and git worktree list --porcelain. Preserve existing tracked and untracked work.
-2. In a Git repository, perform all source creation, editing, deletion, builds and tests in a separate linked worktree. A new branch in the primary checkout is insufficient. Reuse the current linked worktree only when it belongs to this task; otherwise create a uniquely named branch/worktree outside the source checkout with git worktree add -b <branch> <absolute-directory> HEAD. Never stash, reset or clean to make room. An unborn repository needs an initial user-owned commit before a worktree can be created.
-3. Verify the worktree root and branch and compare git rev-parse --git-dir with git rev-parse --git-common-dir. Read the worktree's instructions and files before editing. Use absolute worktree paths for file tools and workdir; shell calls do not change the session directory. Keep subsequent edits, tests and commits in that same worktree. Record these checks in the task checklist before the first edit.
+export const INSTRUCTIONS = `Repository placement is handled by the harness. Follow these rules without waiting for a user reminder:
+1. Reading, searching and answering questions happen wherever the session is; they never create a worktree.
+2. In a Git repository, the first source creation, edit, deletion or build/test command that the session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Existing tracked and untracked work in the primary checkout is never stashed, reset or cleaned; the new worktree starts from HEAD, so inspect relevant uncommitted primary changes before copying any over.
+3. After the move, use the worktree's absolute paths for file tools and workdir; keep subsequent edits, tests and commits in that same worktree. Do not create another worktree by hand. worktree_prepare is optional: it creates or reuses the same session worktree early and reports its root, branch and status. Subagents inherit the session's worktree.
 4. The harness blocks git ${FORBIDDEN.join(", git ")}, forced/deleting pushes, forced branch changes/deletions, discard switches, and worktree removal/pruning. Do not bypass the policy through aliases, wrappers, scripts, another tool or equivalent filesystem operations. Report a blocked operation and use a preserving alternative.
-5. Recheck status and diff before delivery. Retain the worktree and all unrelated work. A non-Git directory does not require a worktree. Harness-owned session records and caches are not source edits.`
+5. Recheck status and diff before delivery. Retain the worktree and all unrelated work. A non-Git directory does not require a worktree. An unborn repository needs an initial user-owned commit before a worktree can be created. Harness-owned session records and caches are not source edits.`
 
 export class Violation extends Schema.TaggedErrorClass<Violation>()("RepositoryGuard.Violation", {
   message: Schema.String,
@@ -106,7 +109,7 @@ async function writable(target: string) {
   if (!repository) return
   if (!repository.linked)
     throw new Violation({
-      message: `Source edits are blocked in the primary Git checkout: ${repository.root}. Complete the repository preflight and create a separate linked worktree with git worktree add -b <branch> <absolute-directory> HEAD. Read and edit the worktree copy; existing changes have been preserved.`,
+      message: `Source edits are blocked in the primary Git checkout: ${repository.root}. The harness moves the session into its own worktree under ${WORKTREES} on the first edit; call worktree_prepare to create it now, then edit the worktree copy. Existing changes have been preserved.`,
     })
   if (within(path.join(repository.root, ".git"), path.resolve(target)))
     throw new Violation({
@@ -153,6 +156,22 @@ export function forbidden(command: string) {
   }
 }
 
+/** Output filters a read-only primary command may pipe into. */
+const FILTERS = ["head", "tail", "wc", "sort", "grep", "cut", "tr", "cat"]
+
+/** Whether a command only reads the primary checkout, so it runs there without a session worktree. */
+export function readOnly(command: string) {
+  if (/[;&<>$`()\r\n]|\|\|/.test(command)) return false
+  const [first, ...rest] = command.split("|")
+  return (
+    primaryAllowed(first.trim()) &&
+    rest.every((segment) => {
+      const args = tokens(segment.trim())
+      return FILTERS.includes(args[0]) && !(args[0] === "sort" && args.some((arg) => /^-[^-]*o|^--output/.test(arg)))
+    })
+  )
+}
+
 function primaryAllowed(command: string) {
   if (/[;&|<>$`()\r\n]/.test(command)) return false
   const args = tokens(command)
@@ -181,7 +200,7 @@ async function shell(directory: string, command: string) {
     })
   const repository = await inspect(directory)
   const args = tokens(command)
-  if (repository && !repository.linked && !primaryAllowed(command)) {
+  if (repository && !repository.linked && !readOnly(command)) {
     const setup =
       args[0] === "git" &&
       args[1] === "worktree" &&
@@ -200,7 +219,7 @@ async function shell(directory: string, command: string) {
       message: `Run this command in a separate linked worktree, not the primary Git checkout ${repository.root}. First inspect status and worktrees with separate read-only commands, then run git worktree add -b <branch> <absolute-directory-outside-repository> HEAD. Set workdir to the new absolute path. No command was executed.`,
     })
   }
-  if (primaryAllowed(command)) return
+  if (readOnly(command)) return
   for (const arg of args) {
     if (path.isAbsolute(arg) || arg.startsWith("../") || arg.startsWith("./"))
       await writable(path.resolve(directory, arg))
@@ -244,7 +263,7 @@ async function prepareWorktree(directory: string, task?: string) {
   if (yolo()) return directory
   const repository = await inspect(directory)
   if (!repository || repository.linked) return directory
-  const branch = `redcode-${task ? new Bun.CryptoHasher("sha256").update(task).digest("hex").slice(0, 16) : crypto.randomUUID().slice(0, 8)}`
+  const branch = task ? taskBranch(task) : `redcode-${crypto.randomUUID().slice(0, 8)}`
   const target = path.join(path.dirname(worktreePattern(repository.root)), branch)
   if (task && (await lstat(target).catch(missing))) {
     const existing = await inspect(target)
@@ -279,6 +298,195 @@ async function prepareWorktree(directory: string, task?: string) {
   if (!(await inspect(target))?.linked)
     throw new Violation({ message: "Created directory is not a linked worktree; source edits remain blocked." })
   return path.join(target, path.relative(repository.root, directory))
+}
+
+const taskBranch = (task: string) => `redcode-${new Bun.CryptoHasher("sha256").update(task).digest("hex").slice(0, 16)}`
+
+/** A session's linked worktree inside the primary checkout it was created from. */
+export type Claim = {
+  /** Root of the primary checkout. */
+  readonly root: string
+  /** Root of the session's linked worktree. */
+  readonly worktree: string
+  readonly branch: string
+  readonly created: boolean
+}
+
+/** File in a linked worktree's Git directory naming the session that owns it. */
+const OWNER = "redcode-session"
+
+const STOPWORDS = new Set([
+  ...["a", "an", "the", "to", "of", "for", "in", "on", "at", "by", "with", "and", "or", "into", "from", "about"],
+  ...["please", "can", "could", "would", "should", "will", "you", "i", "me", "my", "we", "us", "our", "it", "its"],
+  ...["this", "that", "these", "those", "is", "are", "be", "do", "does", "let", "lets", "some", "just", "so", "now"],
+  ...["hey", "hi", "how", "what", "why", "need", "want"],
+  // Portuguese and Spanish function words.
+  ...["o", "os", "as", "um", "uma", "de", "da", "das", "dos", "e", "em", "no", "na", "nos", "nas", "para", "por"],
+  ...["com", "que", "se", "eu", "voce", "el", "la", "los", "las", "y", "en", "con", "un", "una", "del", "al", "lo"],
+])
+
+/** Latin letters that Unicode decomposition does not reduce to ASCII. */
+const LETTERS: Record<string, string> = { ß: "ss", æ: "ae", œ: "oe", ø: "o", đ: "d", ð: "d", ł: "l", þ: "th", ı: "i" }
+
+/** Up to three kebab-case ASCII words naming a session worktree and its branch; "task" when none survive. */
+export function slug(text: string) {
+  const words = text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/[ßæœøđðłþı]/g, (letter) => LETTERS[letter] ?? "")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+  const meaningful = words.filter((word) => !STOPWORDS.has(word))
+  return (
+    (meaningful.length > 0 ? meaningful : words)
+      .slice(0, 3)
+      .map((word) => word.slice(0, 20))
+      .join("-") || "task"
+  )
+}
+
+/** The first of `name`, `name-2`, `name-3`, … that no branch or worktree directory already uses. */
+export function nextName(name: string, taken: ReadonlySet<string>) {
+  if (!taken.has(name)) return name
+  for (let index = 2; ; index++) if (!taken.has(`${name}-${index}`)) return `${name}-${index}`
+}
+
+const claiming = new Map<string, Promise<Claim | undefined>>()
+
+/**
+ * Creates or reuses the session's worktree at `<primary root>/.red/worktrees/<slug>` on branch `<slug>`,
+ * based on the primary checkout's HEAD. From inside the session's own worktree it returns that worktree.
+ * Returns nothing in YOLO mode, outside Git, or from any other linked worktree. The primary checkout is
+ * never stashed, reset or cleaned.
+ */
+export function claim(input: { directory: string; session: string; name: string }) {
+  const key = `${input.directory}\0${input.session}`
+  const existing = claiming.get(key)
+  if (existing) return existing
+  const result = claimWorktree(input).finally(() => claiming.delete(key))
+  claiming.set(key, result)
+  return result
+}
+
+async function claimWorktree(input: { directory: string; session: string; name: string }): Promise<Claim | undefined> {
+  if (yolo()) return
+  const repository = await inspect(input.directory)
+  if (!repository) return
+  if (repository.linked) return adopted(repository, input.session)
+  await exclude(repository.commonDirectory)
+  const base = path.join(repository.root, WORKTREES)
+  const entries = await readdir(base).catch(() => [] as string[])
+  const owners = await Promise.all(entries.map((entry) => owner(path.join(base, entry))))
+  const owned = entries.find((_, index) => owners[index] === input.session)
+  if (owned)
+    return { root: repository.root, worktree: await realpath(path.join(base, owned)), branch: owned, created: false }
+  const prepared = await preparedWorktree(repository, input.session)
+  if (prepared) return prepared
+  const branches = await git(repository.root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+  const branch = nextName(
+    slug(input.name),
+    new Set([...entries, ...branches.output.split("\n").map((line) => line.trim())]),
+  )
+  const target = path.join(base, branch)
+  await mkdir(base, { recursive: true })
+  const created = await git(repository.root, ["worktree", "add", "-b", branch, target, "HEAD"])
+  if (created.exit !== 0)
+    throw new Violation({
+      message: `Cannot create the session worktree ${WORKTREES}/${branch}: ${created.error.slice(0, 400).trim()} Source edits stay blocked in the primary checkout ${repository.root}, which is unchanged.`,
+    })
+  const worktree = await inspect(target)
+  if (!worktree?.linked)
+    throw new Violation({ message: "Created directory is not a linked worktree; source edits remain blocked." })
+  await Bun.write(path.join(worktree.gitDirectory, OWNER), input.session)
+  return { root: repository.root, worktree: worktree.root, branch, created: true }
+}
+
+/** A session already working in its own worktree keeps it, so stale primary paths still map into it. */
+async function adopted(repository: { root: string; commonDirectory: string }, session: string) {
+  if (path.basename(repository.commonDirectory) !== ".git") return
+  if ((await owner(repository.root)) !== session) return
+  const root = path.dirname(repository.commonDirectory)
+  return { root, worktree: repository.root, branch: path.basename(repository.root), created: false }
+}
+
+/** A worktree `worktree_prepare` already made for this session outside the checkout keeps serving it. */
+async function preparedWorktree(repository: { root: string; commonDirectory: string }, session: string) {
+  const branch = taskBranch(session)
+  const target = path.join(path.dirname(worktreePattern(repository.root)), branch)
+  if (!(await lstat(target).catch(() => undefined))) return
+  const existing = await inspect(target).catch(() => undefined)
+  if (!existing?.linked || existing.commonDirectory !== repository.commonDirectory) return
+  if (existing.root !== (await realpath(target))) return
+  return { root: repository.root, worktree: existing.root, branch, created: false }
+}
+
+async function owner(worktree: string) {
+  const pointer = await Bun.file(path.join(worktree, ".git"))
+    .text()
+    .catch(() => "")
+  const gitdir = pointer.match(/^gitdir:\s*(.+?)\s*$/m)?.[1]
+  if (!gitdir) return
+  return (
+    await Bun.file(path.join(path.resolve(worktree, gitdir), OWNER))
+      .text()
+      .catch(() => "")
+  ).trim()
+}
+
+/** Keeps nested session worktrees out of the primary checkout's status without touching `.gitignore`. */
+async function exclude(commonDirectory: string) {
+  const file = path.join(commonDirectory, "info", "exclude")
+  const current = await Bun.file(file)
+    .text()
+    .catch(() => "")
+  if (current.split(/\r?\n/).some((line) => [`/${WORKTREES}/`, `${WORKTREES}/`].includes(line.trim()))) return
+  await mkdir(path.dirname(file), { recursive: true })
+  await Bun.write(file, `${current}${current && !current.endsWith("\n") ? "\n" : ""}/${WORKTREES}/\n`)
+}
+
+/**
+ * The same path inside the session worktree for a target in its primary checkout. Targets elsewhere,
+ * in Git metadata or already under a session worktree are returned unchanged.
+ */
+export async function relocate(claim: Claim, target: string) {
+  const resolved = await canonical(target)
+  if (
+    !within(claim.root, resolved) ||
+    within(path.join(claim.root, ".git"), resolved) ||
+    within(path.join(claim.root, WORKTREES), resolved)
+  )
+    return target
+  return path.join(claim.worktree, path.relative(claim.root, resolved))
+}
+
+/** The real path of the nearest existing ancestor, followed by the parts that do not exist yet. */
+async function canonical(target: string) {
+  const rest: string[] = []
+  let current = path.resolve(target)
+  for (;;) {
+    const resolved = await realpath(current).catch(() => undefined)
+    if (resolved) return path.join(resolved, ...rest)
+    const parent = path.dirname(current)
+    if (parent === current) return path.resolve(target)
+    rest.unshift(path.basename(current))
+    current = parent
+  }
+}
+
+async function git(directory: string, args: string[]) {
+  const proc = Bun.spawn(["git", "-C", directory, ...args], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_"))),
+  })
+  const [output, error, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { output, error, exit }
 }
 
 export async function preflight(directory: string, task: string, plan?: string) {
