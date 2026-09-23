@@ -56,8 +56,8 @@ export async function run(args: {
   }
   // `--open` and `/review` claim the launch on the server, which counts connected review pages and sees
   // the Design tool's and the TUI's launches: no tab while a page is connected or one was just requested.
-  // A server without the launch route (a V2-only server) cannot report pages opened elsewhere, so the
-  // claim falls back to this process and says so.
+  // A server without the `design.host` launch route (an older one) cannot report pages opened elsewhere,
+  // so the claim falls back to this process and says so.
   const local = DesignReviewPresence.make()
   const review = async (sessionID: string) => {
     const id = encodeURIComponent(sessionID)
@@ -76,12 +76,12 @@ export async function run(args: {
       url,
       local,
       claim: async () => {
-        const response = await post(`/design/session/${id}/launch`, { explicit: true })
+        const response = await post(`/api/design/session/${id}/launch`, { explicit: true })
         if (!response.ok) return undefined
         const reply = DesignReviewPresence.parseClaim(await response.json())
         return reply && { ...reply, url }
       },
-      release: (token) => post(`/design/session/${id}/launch/release`, { token }),
+      release: (token) => post(`/api/design/session/${id}/launch/release`, { token }),
       launch: (target) => Effect.runPromise(DesignBrowser.open(target, { browser })),
     })
     const note = {

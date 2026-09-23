@@ -74,6 +74,10 @@ export type DesignError = {
 export const isDesignError = (value: unknown): value is DesignError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "Design.Error"
 
+export type ForbiddenError = { readonly _tag: "ForbiddenError"; readonly message: string }
+export const isForbiddenError = (value: unknown): value is ForbiddenError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ForbiddenError"
+
 export type ProviderNotFoundError = {
   readonly _tag: "ProviderNotFoundError"
   readonly providerID: string
@@ -5951,6 +5955,642 @@ export type DesignsAssetFileInput = {
 }
 
 export type DesignsAssetFileOutput = Uint8Array
+
+export type DesignHostListInput = { readonly directory: { readonly directory: string }["directory"] }
+
+export type DesignHostListOutput = ReadonlyArray<{
+  readonly sessionID: string
+  readonly title: string
+  readonly updated: number
+  readonly designs: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+  }>
+}>
+
+export type DesignHostOpenInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type DesignHostOpenOutput = { readonly url: string; readonly connected: number }
+
+export type DesignHostLaunchInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly explicit?: { readonly explicit?: boolean | undefined }["explicit"]
+}
+
+export type DesignHostLaunchOutput = {
+  readonly url: string
+  readonly outcome: "claimed" | "connected" | "pending"
+  readonly token?: number | undefined
+}
+
+export type DesignHostReleaseInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly token: { readonly token: number }["token"]
+}
+
+export type DesignHostReleaseOutput = void
+
+export type DesignHostFeedInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly after?: { readonly after?: number | undefined }["after"]
+}
+
+export type DesignHostFeedOutput =
+  | { readonly seq: number; readonly at: number; readonly type: "state"; readonly state: "working" | "idle" }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "user"
+      readonly id: string
+      readonly text: string
+      readonly notes: number
+      readonly pending?: boolean
+    }
+  | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "tool"
+      readonly id: string
+      readonly tool: string
+      readonly status: "running" | "done" | "failed"
+      readonly summary: string
+    }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "published"
+      readonly design: string
+      readonly revision: string
+      readonly name: string
+    }
+  | { readonly seq: number; readonly at: number; readonly type: "agent"; readonly agent: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "verified"
+      readonly design: string
+      readonly revision: string
+      readonly round: number
+      readonly job: string
+      readonly notes: ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly label: string
+        readonly verdict: "pass" | "warn" | "fail"
+        readonly reason: string
+      }>
+    }
+
+export type DesignHostFeedbackInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly action?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["action"]
+  readonly params?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["params"]
+  readonly id: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["id"]
+  readonly revision: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["revision"]
+  readonly text: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["text"]
+  readonly items: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["items"]
+  readonly assets: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["assets"]
+  readonly snapshot: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["snapshot"]
+  readonly whiteboards?: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["whiteboards"]
+  readonly delivery: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["delivery"]
+  readonly end: {
+    readonly action?: {
+      readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+      readonly variants: ReadonlyArray<string>
+      readonly labels?: ReadonlyArray<string>
+      readonly name?: string
+      readonly order?: ReadonlyArray<string>
+      readonly text?: string
+    }
+    readonly params?: {
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly preset?: string
+      readonly variant?: string
+      readonly component?: string
+      readonly screen?: string
+    }
+    readonly id: string
+    readonly revision: string
+    readonly text: string
+    readonly items: ReadonlyArray<{
+      readonly target: string
+      readonly text: string
+      readonly params?: {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string
+        readonly variant?: string
+        readonly component?: string
+        readonly screen?: string
+      }
+      readonly tag?: string
+      readonly elementText?: string
+      readonly selectedText?: string
+      readonly label?: string
+      readonly xpath?: string
+      readonly context?: string
+      readonly parent?: string
+      readonly revision?: string
+      readonly resent?: { readonly feedback: string; readonly index: number }
+    }>
+    readonly assets: ReadonlyArray<string>
+    readonly snapshot: string
+    readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: JsonValue }>
+    readonly delivery: "steer" | "queue"
+    readonly end: boolean
+  }["end"]
+}
+
+export type DesignHostFeedbackOutput = { readonly id: string; readonly status: "pending" | "admitted" }
+
+export type DesignHostApproveInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly revision: {
+    readonly revision: string
+    readonly variant?: { readonly id: string; readonly name: string }
+  }["revision"]
+  readonly variant?: {
+    readonly revision: string
+    readonly variant?: { readonly id: string; readonly name: string }
+  }["variant"]
+}
+
+export type DesignHostApproveOutput = { readonly plan: string; readonly revision: string }
+
+export type DesignHostPermissionInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly permission: {
+    readonly permission: string
+    readonly patterns: ReadonlyArray<string>
+    readonly always?: ReadonlyArray<string> | undefined
+    readonly metadata?: { readonly [x: string]: unknown } | undefined
+  }["permission"]
+  readonly patterns: {
+    readonly permission: string
+    readonly patterns: ReadonlyArray<string>
+    readonly always?: ReadonlyArray<string> | undefined
+    readonly metadata?: { readonly [x: string]: unknown } | undefined
+  }["patterns"]
+  readonly always?: {
+    readonly permission: string
+    readonly patterns: ReadonlyArray<string>
+    readonly always?: ReadonlyArray<string> | undefined
+    readonly metadata?: { readonly [x: string]: unknown } | undefined
+  }["always"]
+  readonly metadata?: {
+    readonly permission: string
+    readonly patterns: ReadonlyArray<string>
+    readonly always?: ReadonlyArray<string> | undefined
+    readonly metadata?: { readonly [x: string]: unknown } | undefined
+  }["metadata"]
+}
+
+export type DesignHostPermissionOutput = { readonly granted: boolean }
 
 export type MessagesListInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]

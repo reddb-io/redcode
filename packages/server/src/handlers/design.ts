@@ -4,7 +4,7 @@ import path from "node:path"
 import { stat } from "node:fs/promises"
 import { Cause, DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
-import { HttpServerResponse } from "effect/unstable/http"
+import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignBuild } from "@reddb-io/redcode-core/design/build"
@@ -14,6 +14,7 @@ import { DesignFeed } from "@reddb-io/redcode-core/design/feed"
 import { DesignReviewPresence } from "@reddb-io/redcode-core/design/review-presence"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
+import { DesignConversations } from "@reddb-io/redcode-core/design/conversations"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionGoal } from "@reddb-io/redcode-core/session/goal"
 import { PermissionV2 } from "@reddb-io/redcode-core/permission"
@@ -25,6 +26,114 @@ import { annotations } from "@reddb-io/redcode-design/annotations"
 import { viewports } from "@reddb-io/redcode-design/viewports"
 import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
+
+// The standalone server runs conversations on SessionV2; an embedding process with another runtime
+// provides its own `design.host` handler instead (see `baseHandlers`).
+const feed = Effect.fn(function* (sessionID: SessionV2.ID, after: number | undefined) {
+  const sessions = yield* SessionV2.Service
+  const session = yield* sessions
+    .get(sessionID)
+    .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
+  const now = DateTime.now.pipe(Effect.map(DateTime.toEpochMillis))
+  const agent: Design.FeedEvent = { type: "agent", seq: 0, at: yield* now, agent: session.agent ?? "" }
+  // Working state is the process-local execution set sampled twice a second; only changes are sent.
+  const state = Stream.make(undefined).pipe(
+    Stream.concat(Stream.tick("500 millis")),
+    Stream.mapEffect(() => sessions.active),
+    Stream.map((active) => (active.has(sessionID) ? ("working" as const) : ("idle" as const))),
+    Stream.changes,
+    Stream.mapEffect((state) => Effect.map(now, (at): Design.FeedEvent => ({ type: "state", seq: 0, at, state }))),
+  )
+  const durable = sessions.events({ sessionID, after }).pipe(
+    Stream.orDie,
+    Stream.mapAccum(() => DesignFeed.initial, DesignFeed.reduce),
+  )
+  // A subscriber is a connected review page; publishing does not open another tab while it lasts.
+  return Stream.unwrap(
+    Effect.as(
+      DesignReviewPresence.hold(sessionID),
+      Stream.make(agent).pipe(Stream.concat(Stream.merge(durable, state))),
+    ),
+  )
+})
+
+const approve = Effect.fn(function* (sessionID: SessionV2.ID, designID: Design.ID, input: Design.Approve) {
+  const store = yield* DesignStore.Service
+  yield* store.get(designID, sessionID)
+  const session = yield* SessionV2.Service
+  const result = yield* store.approve(designID, input.revision, input.variant)
+  const goals = yield* SessionGoal.Service
+  const goal = yield* goals
+    .get(sessionID)
+    .pipe(Effect.mapError((error) => new Design.Error({ code: "conflict", message: error.message })))
+  if (goal?.stopAfter === "design" && (goal.status === "active" || goal.status === "waiting")) return result
+  yield* session
+    .switchAgent({ sessionID, agent: "plan" })
+    .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
+  return result
+})
+
+const review = (request: HttpServerRequest.HttpServerRequest, sessionID: SessionV2.ID) =>
+  new URL(
+    `/api/session/${encodeURIComponent(sessionID)}/design/review`,
+    `http://${request.headers.host ?? "localhost"}`,
+  ).toString()
+
+export const DesignHostHandler = HttpApiBuilder.group(Api, "design.host", (handlers) =>
+  handlers
+    .handle("designHost.list", (ctx) => DesignConversations.list(ctx.query.directory))
+    .handle("designHost.open", (ctx) =>
+      Effect.succeed({
+        url: review(ctx.request, ctx.params.sessionID),
+        connected: DesignReviewPresence.shared.connected(ctx.params.sessionID),
+      }),
+    )
+    .handle("designHost.launch", (ctx) =>
+      Effect.sync(() => ({
+        url: review(ctx.request, ctx.params.sessionID),
+        ...DesignReviewPresence.shared.claim(ctx.params.sessionID, { explicit: ctx.payload.explicit === true }),
+      })),
+    )
+    .handle("designHost.release", (ctx) =>
+      Effect.sync(() => DesignReviewPresence.shared.release(ctx.params.sessionID, ctx.payload.token)),
+    )
+    .handle("designHost.feed", (ctx) => feed(ctx.params.sessionID, ctx.query.after))
+    .handle("designHost.feedback", (ctx) =>
+      DesignFeedback.admit(ctx.params.sessionID, ctx.params.designID, ctx.payload),
+    )
+    .handle("designHost.approve", (ctx) => approve(ctx.params.sessionID, ctx.params.designID, ctx.payload))
+    .handle(
+      "designHost.permission",
+      Effect.fn(function* (ctx) {
+        const sessions = yield* SessionV2.Service
+        const permissions = yield* PermissionV2.Service
+        const session = yield* sessions
+          .get(ctx.params.sessionID)
+          .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
+        return yield* permissions
+          .assert({
+            action: ctx.payload.permission,
+            resources: ctx.payload.patterns,
+            save: ctx.payload.always ?? [],
+            sessionID: ctx.params.sessionID,
+            agent: session.agent,
+            metadata: { ...ctx.payload.metadata, origin: "design.host" },
+          })
+          .pipe(
+            Effect.as({ granted: true }),
+            Effect.catchCause((cause) => {
+              const error = Cause.squash(cause)
+              return error instanceof PermissionV2.DeclinedError ||
+                error instanceof PermissionV2.CorrectedError ||
+                error instanceof PermissionV2.BlockedError
+                ? Effect.succeed({ granted: false })
+                : Effect.failCause(cause)
+            }),
+            Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })),
+          )
+      }),
+    ),
+)
 
 export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handlers) => {
   const owned = Effect.fn(function* (params: { designID: Design.ID; sessionID: SessionV2.ID }) {
@@ -137,38 +246,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
         ),
       ),
     )
-    .handle(
-      "design.feed",
-      Effect.fn(function* (ctx) {
-        const sessions = yield* SessionV2.Service
-        const session = yield* sessions
-          .get(ctx.params.sessionID)
-          .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
-        const now = DateTime.now.pipe(Effect.map(DateTime.toEpochMillis))
-        const agent: Design.FeedEvent = { type: "agent", seq: 0, at: yield* now, agent: session.agent ?? "" }
-        // Working state is the process-local execution set sampled twice a second; only changes are sent.
-        const state = Stream.make(undefined).pipe(
-          Stream.concat(Stream.tick("500 millis")),
-          Stream.mapEffect(() => sessions.active),
-          Stream.map((active) => (active.has(ctx.params.sessionID) ? ("working" as const) : ("idle" as const))),
-          Stream.changes,
-          Stream.mapEffect((state) =>
-            Effect.map(now, (at): Design.FeedEvent => ({ type: "state", seq: 0, at, state })),
-          ),
-        )
-        const durable = sessions.events({ sessionID: ctx.params.sessionID, after: ctx.query.after }).pipe(
-          Stream.orDie,
-          Stream.mapAccum(() => DesignFeed.initial, DesignFeed.reduce),
-        )
-        // A subscriber is a connected review page; publishing does not open another tab while it lasts.
-        return Stream.unwrap(
-          Effect.as(
-            DesignReviewPresence.hold(ctx.params.sessionID),
-            Stream.make(agent).pipe(Stream.concat(Stream.merge(durable, state))),
-          ),
-        )
-      }),
-    )
+    .handle("design.feed", (ctx) => feed(ctx.params.sessionID, ctx.query.after))
     .handle(
       "design.list",
       Effect.fn(function* (ctx) {
@@ -266,23 +344,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
       }),
     )
     .handle("design.feedback", (ctx) => DesignFeedback.admit(ctx.params.sessionID, ctx.params.designID, ctx.payload))
-    .handle(
-      "design.approve",
-      Effect.fn(function* (ctx) {
-        const store = yield* owned(ctx.params)
-        const session = yield* SessionV2.Service
-        const result = yield* store.approve(ctx.params.designID, ctx.payload.revision, ctx.payload.variant)
-        const goals = yield* SessionGoal.Service
-        const goal = yield* goals
-          .get(ctx.params.sessionID)
-          .pipe(Effect.mapError((error) => new Design.Error({ code: "conflict", message: error.message })))
-        if (goal?.stopAfter === "design" && (goal.status === "active" || goal.status === "waiting")) return result
-        yield* session
-          .switchAgent({ sessionID: ctx.params.sessionID, agent: "plan" })
-          .pipe(Effect.mapError((error) => new Design.Error({ code: "not-found", message: error.message })))
-        return result
-      }),
-    )
+    .handle("design.approve", (ctx) => approve(ctx.params.sessionID, ctx.params.designID, ctx.payload))
     .handle(
       "design.approval",
       Effect.fn(function* (ctx) {

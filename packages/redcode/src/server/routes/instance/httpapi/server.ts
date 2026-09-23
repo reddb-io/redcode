@@ -115,7 +115,8 @@ import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
 import { redskilledHandlers } from "./handlers/redskilled"
-import { handlers } from "@reddb-io/redcode-server/handlers"
+import { baseHandlers } from "@reddb-io/redcode-server/handlers"
+import { designHostHandlers } from "./handlers/design-host"
 import { buildLocationServiceMap, LocationServiceMap } from "@reddb-io/redcode-core/location-services"
 import { layer as locationLayer } from "@reddb-io/redcode-server/location"
 import { sessionLocationLayer } from "@reddb-io/redcode-server/middleware/session-location"
@@ -191,8 +192,9 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
 const instanceRoutes = instanceApiRoutes.pipe(
   Layer.provide([httpApiAuthLayer, workspaceRoutingLive, instanceContextLayer, schemaErrorLayer]),
 )
+// The session side of Design reaches the legacy loop that runs this process's conversations.
 const serverRoutes = HttpApiBuilder.layer(Api).pipe(
-  Layer.provide(handlers),
+  Layer.provide([baseHandlers, designHostHandlers]),
   Layer.provide(PluginPtyEnvironment.layer),
   Layer.provide([serverHttpApiAuthLayer, v2SchemaErrorLayer]),
 )
