@@ -54,6 +54,8 @@ import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogSetup } from "../dialog-setup"
 import { IntelligenceIndicator } from "../dialog-intelligence"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
+import { reasoningLabel } from "../../util/reasoning"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive } from "../../keymap"
 import { useTuiConfig } from "../../config"
@@ -1569,6 +1571,13 @@ export function Prompt(props: PromptProps) {
     return !!current
   })
 
+  // For `auto`, the level the last turn applied and why, as the server recorded it on the session.
+  const variantLabel = createMemo(() => {
+    const current = local.model.variant.current()
+    if (current !== ReasoningAuto.AUTO) return current
+    return reasoningLabel(props.sessionID ? sync.session.get(props.sessionID)?.metadata : undefined)
+  })
+
   const agentMetaAlpha = createFadeIn(() => !!local.agent.current(), animationsEnabled)
   const modelMetaAlpha = createFadeIn(() => !!local.agent.current() && store.mode === "normal", animationsEnabled)
   const variantMetaAlpha = createFadeIn(
@@ -1745,7 +1754,7 @@ export function Prompt(props: PromptProps) {
                             <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>
                               <span style={{ fg: fadeColor(theme.warning, variantMetaAlpha()), bold: true }}>
-                                {local.model.variant.current()}
+                                {variantLabel()}
                               </span>
                             </text>
                           </Show>

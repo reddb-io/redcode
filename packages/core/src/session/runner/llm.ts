@@ -36,6 +36,7 @@ import { Verbose } from "../../observability/verbose"
 import { HumanWait } from "../human-wait"
 import { PromptCacheDiagnostics } from "../prompt-cache-diagnostics"
 import { LoopGuard } from "../loop-guard"
+import { ReasoningAuto } from "../reasoning-auto"
 import { SessionRetry } from "../retry"
 import { SessionStall } from "../stall"
 import { ToolDeadline } from "../tool-deadline"
@@ -106,6 +107,40 @@ const CONTENT_EVENTS = new Set([
   "tool-input-start",
   "tool-input-delta",
 ])
+
+/** The settled tool calls and text of the current user turn, as the loop guard reads them. */
+const loopParts = (messages: ReadonlyArray<SessionMessage.Message>) =>
+  messages
+    .slice(messages.findLastIndex((message) => message.type === "user") + 1)
+    .flatMap((message): LoopGuard.Part[] =>
+      message.type !== "assistant"
+        ? []
+        : message.content.flatMap((item): LoopGuard.Part[] => {
+            if (item.type === "text") return [{ type: "text", text: item.text }]
+            if (item.type !== "tool" || item.provider?.executed === true) return []
+            if (item.state.status === "completed")
+              return [
+                {
+                  type: "tool",
+                  tool: item.name,
+                  state: {
+                    status: "completed",
+                    input: item.state.input,
+                    output: JSON.stringify([item.state.content, item.state.structured]),
+                  },
+                },
+              ]
+            if (item.state.status === "error")
+              return [
+                {
+                  type: "tool",
+                  tool: item.name,
+                  state: { status: "error", input: item.state.input, error: item.state.error.message },
+                },
+              ]
+            return []
+          }),
+    )
 
 const prefixLength = <A>(items: ReadonlyArray<A>, keep: (item: A) => boolean) => {
   const index = items.findIndex((item) => !keep(item))
@@ -533,37 +568,7 @@ const layer = Layer.effect(
         return { type: "ok" } as LoopGuard.Decision
       // Like legacy: history that cannot be read means no streak, never a failed tool.
       const messages = yield* getContext(sessionID).pipe(Effect.orElseSucceed(() => []))
-      const last = messages.findLastIndex((message) => message.type === "user")
-      const parts = messages.slice(last + 1).flatMap((message): LoopGuard.Part[] =>
-        message.type !== "assistant"
-          ? []
-          : message.content.flatMap((item): LoopGuard.Part[] => {
-              if (item.type === "text") return [{ type: "text", text: item.text }]
-              if (item.type !== "tool" || item.provider?.executed === true) return []
-              if (item.state.status === "completed")
-                return [
-                  {
-                    type: "tool",
-                    tool: item.name,
-                    state: {
-                      status: "completed",
-                      input: item.state.input,
-                      output: JSON.stringify([item.state.content, item.state.structured]),
-                    },
-                  },
-                ]
-              if (item.state.status === "error")
-                return [
-                  {
-                    type: "tool",
-                    tool: item.name,
-                    state: { status: "error", input: item.state.input, error: item.state.error.message },
-                  },
-                ]
-              return []
-            }),
-      )
-      const decision = LoopGuard.assess({ parts, next: { tool, input }, limits })
+      const decision = LoopGuard.assess({ parts: loopParts(messages), next: { tool, input }, limits })
       if (decision.type === "ok") return decision
       yield* recordGuard({
         sessionID,
@@ -768,7 +773,7 @@ const layer = Layer.effect(
       const system =
         initialized ??
         (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id))
-      const model = yield* models.resolve(session)
+      const resolved = yield* models.resolve(session)
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
       const lastContext = context.at(-1)
@@ -928,6 +933,47 @@ const layer = Layer.effect(
       // Read per turn, like legacy, so an edited redcode.json applies from the next turn.
       const configEntries = yield* config.entries()
       const experimental = Config.latest(configEntries, "experimental")
+      // `auto`: one of the model's own variants, chosen at the user-message boundary (see
+      // ReasoningAuto). Resolved again only for such sessions, once the turn's signals are known.
+      const auto = session.model?.variant === ReasoningAuto.AUTO
+      const progress = auto
+        ? {
+            ...ReasoningAuto.progress(loopParts(context)),
+            toolIssues: toolReview?.decision !== "accepted" && !!toolReview?.issues.includes("failed_result"),
+            repair: responseRepair,
+          }
+        : undefined
+      const model = auto
+        ? yield* models.resolve(session, (variants) => {
+            const decision = ReasoningAuto.decideEffort({
+              variants,
+              turnID: latestUser?.id ?? session.id,
+              previous: ReasoningAuto.recall(session.id),
+              assessment: Intelligence.effortAssessment(assessment),
+              context: {
+                tokens: batch?.tokens
+                  ? batch.tokens.input + batch.tokens.cache.read + batch.tokens.cache.write
+                  : undefined,
+                window: resolved.route.defaults.limits?.context,
+              },
+              progress,
+              plan: agent.id === "plan",
+              text: latestUser?.text,
+              floor: Config.latest(configEntries, "reasoning")?.auto?.floor,
+              ceiling: Config.latest(configEntries, "reasoning")?.auto?.ceiling,
+            })
+            if (decision) ReasoningAuto.remember(session.id, decision.state)
+            return decision?.level
+          })
+        : resolved
+      const effort = auto ? ReasoningAuto.recall(session.id)?.level : undefined
+      const variant = effort ? ModelV2.VariantID.make(effort) : session.model?.variant
+      const dual = auto
+        ? yield* intelligence.read().pipe(
+            Effect.map((settings) => Intelligence.mode(settings) === "dual"),
+            Effect.orElseSucceed(() => false),
+          )
+        : false
       const searchConfig = experimental?.tool_search
       const native = withoutNative ? undefined : NativeToolSearch.detect({ model, config: searchConfig })
       const deferral: ToolRegistry.Deferral = {
@@ -980,6 +1026,18 @@ const layer = Layer.effect(
           : undefined
       const mcpContext = Intelligence.toolContext(mcpSelection)
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
+      // Only a RedRouter this process already detected (on connect, by the legacy runner or by
+      // System One setup); the runner never waits on a probe. A combo that picks its member per
+      // request gets System One's hint and chooses the model; the runner never switches it. Who
+      // decides the effort is settled against that router (ReasoningAuto.coordinate).
+      const detection = ProviderRouter.known(model.route.endpoint.baseURL ?? "")
+      const routed = Config.latest(configEntries, "providers")?.[model.provider ?? ""]?.models?.[model.id]?.router
+      const reasoning = ReasoningAuto.coordinate(
+        { auto, dual, level: effort },
+        detection,
+        ProviderRouter.routesByHint(routed),
+      )
+      if (reasoning.decider !== "none") ReasoningAuto.note(session.id, reasoning.decider)
       const request = LLM.request({
         model,
         http: {
@@ -987,13 +1045,15 @@ const layer = Layer.effect(
             "x-session-affinity": session.id,
             "X-Session-Id": session.id,
             ...(session.parentID ? { "x-parent-session-id": session.parentID } : {}),
-            // Only a RedRouter this process already detected (on connect, by the legacy runner or
-            // by System One setup); the runner never waits on a probe. A combo that picks its member
-            // per request gets System One's hint and chooses the model; the runner never switches it.
-            ...ProviderRouter.requestHeaders(ProviderRouter.known(model.route.endpoint.baseURL ?? ""), {
+            ...ProviderRouter.requestHeaders(detection, {
               decision: mcpContext || skillContext ? false : undefined,
-              hint: Intelligence.routerHint(assessment, mcpSelection),
-              model: Config.latest(configEntries, "providers")?.[model.provider ?? ""]?.models?.[model.id]?.router,
+              hint: Intelligence.routerHint(
+                assessment,
+                mcpSelection,
+                auto ? { stall: ReasoningAuto.stalled(progress) } : undefined,
+              ),
+              model: routed,
+              reasoning,
             }),
           },
         },
@@ -1051,7 +1111,7 @@ const layer = Layer.effect(
           model: {
             id: ModelV2.ID.make(model.id),
             providerID: ProviderV2.ID.make(model.provider ?? ""),
-            ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
+            ...(variant === undefined ? {} : { variant }),
           },
         }).failAssistant(preflight.reason)
         return {
@@ -1132,7 +1192,7 @@ const layer = Layer.effect(
         model: {
           id: ModelV2.ID.make(model.id),
           providerID: ProviderV2.ID.make(model.provider),
-          ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
+          ...(variant === undefined ? {} : { variant }),
         },
         snapshot: startSnapshot,
         messageDisplay: (message) => hooks.run({ event: "MessageDisplay", session_id: session.id, message }),

@@ -24,6 +24,10 @@ export const Feature = Schema.Literals([
   "cost",
   "stream-usage-cost",
   "catalog",
+  "reasoning",
+  "reasoning-auto",
+  "reasoning-applies",
+  "hint-signals",
 ]).annotate({ identifier: "Router.Feature" })
 export type Feature = typeof Feature.Type
 

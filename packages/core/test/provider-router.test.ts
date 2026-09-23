@@ -113,6 +113,54 @@ describe("ProviderRouter.detect", () => {
     expect(without.features).not.toContain("catalog")
   })
 
+  test("records the reasoning autopilot contract a RedRouter advertises", async () => {
+    const router = serve({
+      "/v1/capabilities": () =>
+        Response.json({
+          ...capabilities,
+          decision: {
+            ...capabilities.decision,
+            hint_keys: [
+              "complexity",
+              "deliberation",
+              "needs_tool",
+              "tier",
+              "effort",
+              "stall",
+              "feedback",
+              "frustration",
+            ],
+          },
+          reasoning: {
+            mode: "off",
+            header: "x-red-router-reasoning",
+            response_header: "X-RedRouter-Reasoning",
+            applies: false,
+            floor: "low",
+            ceiling: "high",
+            accepts: ["off", "auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"],
+            ladder: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+          },
+        }),
+    })
+    const detection = await Effect.runPromise(ProviderRouter.detect({ baseURL: router.baseURL, apiKey: "k" }))
+    expect(detection.features).toEqual(expect.arrayContaining(["reasoning", "reasoning-auto", "hint-signals"]))
+    expect(detection.features).not.toContain("reasoning-applies")
+
+    // A build before the auto contract: the header is read, `auto` is not, and its autopilot covers the key.
+    const older = serve({
+      "/v1/capabilities": () =>
+        Response.json({
+          ...capabilities,
+          reasoning: { mode: "enforce", header: "x-red-router-reasoning", applies: true },
+        }),
+    })
+    const before = await Effect.runPromise(ProviderRouter.detect({ baseURL: older.baseURL, apiKey: "k" }))
+    expect(before.features).toEqual(expect.arrayContaining(["reasoning", "reasoning-applies"]))
+    expect(before.features).not.toContain("reasoning-auto")
+    expect(before.features).not.toContain("hint-signals")
+  })
+
   test("falls back to the System One catalog, then to the public version fingerprint", async () => {
     const older = serve({
       "/v1/models/systemone": () => Response.json({ object: "list", data: [{ id: "jev/jev-latest" }] }),
@@ -185,7 +233,9 @@ describe("ProviderRouter headers", () => {
 
   test("asks a detected RedRouter only for what it advertised", () => {
     expect(ProviderRouter.requestHeaders(detected, { decision: false })).toEqual({ "x-red-router-decision": "off" })
-    expect(ProviderRouter.requestHeaders(detected, { tokenSaver: false })).toEqual({ "x-red-router-token-saver": "off" })
+    expect(ProviderRouter.requestHeaders(detected, { tokenSaver: false })).toEqual({
+      "x-red-router-token-saver": "off",
+    })
     expect(ProviderRouter.requestHeaders(detected, { decision: true })).toEqual({})
     expect(ProviderRouter.requestHeaders({ ...detected, features: ["decision"] }, { tokenSaver: false })).toEqual({})
     expect(ProviderRouter.requestHeaders({ ...detected, kind: "9router" }, { decision: false })).toEqual({})
@@ -207,6 +257,57 @@ describe("ProviderRouter headers", () => {
     expect(ProviderRouter.requestHeaders(hinting, { hint: "tier=huge", model: { strategy: "auto" } })).toEqual({})
   })
 
+  test("sends the reasoning header only to a router that reads it, and the hint when the router decides", () => {
+    const reasoning: Router.Detection = { ...detected, features: ["hint", "reasoning", "reasoning-auto"] }
+    const hint = "complexity=0.5;stall=true;feedback=corrects;frustration=0.5"
+    expect(ProviderRouter.requestHeaders(reasoning, { reasoning: { header: "off", hint: false } })).toEqual({
+      "x-red-router-reasoning": "off",
+    })
+    expect(ProviderRouter.requestHeaders(detected, { reasoning: { header: "off", hint: false } })).toEqual({})
+    // The router decides on a direct model: it reads the hint too, without the signal keys it does not list.
+    expect(ProviderRouter.requestHeaders(reasoning, { hint, reasoning: { header: "auto", hint: true } })).toEqual({
+      "x-red-router-reasoning": "auto",
+      "x-red-router-hint": "complexity=0.5",
+    })
+    expect(
+      ProviderRouter.requestHeaders(
+        { ...reasoning, features: [...reasoning.features, "hint-signals"] },
+        { hint, reasoning: { header: "auto", hint: true } },
+      ),
+    ).toEqual({ "x-red-router-reasoning": "auto", "x-red-router-hint": hint })
+    // Only signal keys, to a router that does not read them: no hint at all.
+    expect(
+      ProviderRouter.requestHeaders(reasoning, { hint: "stall=false", reasoning: { header: "auto", hint: true } }),
+    ).toEqual({ "x-red-router-reasoning": "auto" })
+    expect(ProviderRouter.requestHeaders(reasoning, { hint, reasoning: { header: "off", hint: false } })).toEqual({
+      "x-red-router-reasoning": "off",
+    })
+  })
+
+  test("reads the reasoning level RedRouter reports applying", () => {
+    expect(ProviderRouter.reported({ "X-RedRouter-Reasoning": "low->high; cause=feedback" })).toEqual({
+      reasoning: { level: "high", from: "low", cause: "feedback" },
+    })
+    expect(ProviderRouter.reasoningReport("-->xhigh; cause=hint")).toEqual({ level: "xhigh", cause: "hint" })
+    expect(ProviderRouter.reasoningReport("-->medium; cause=jev; shadow")).toEqual({
+      level: "medium",
+      cause: "jev",
+      shadow: true,
+    })
+    expect(ProviderRouter.reasoningReport("medium")).toBeUndefined()
+    expect(ProviderRouter.reasoningReport("low->")).toBeUndefined()
+    const metadata = (value: string) => ({
+      [ProviderRouter.METADATA]: ProviderRouter.reported({ "x-redrouter-reasoning": value })!,
+    })
+    expect(ProviderRouter.reportedReasoning(metadata("low->high; cause=stall"))).toEqual({
+      level: "high",
+      cause: "stall",
+    })
+    // A shadow decision was not applied.
+    expect(ProviderRouter.reportedReasoning(metadata("-->high; cause=jev; shadow"))).toBeUndefined()
+    expect(ProviderRouter.reportedReasoning(undefined)).toBeUndefined()
+  })
+
   test("accepts only hints in RedRouter's grammar", () => {
     for (const valid of [
       "complexity=0",
@@ -215,6 +316,8 @@ describe("ProviderRouter headers", () => {
       "complexity=1.000000",
       "complexity=reasoning",
       "deliberation=0.5;needs_tool=false;tier=simple",
+      "effort=xhigh;stall=false;feedback=neutral;frustration=0.25",
+      "feedback=rejects",
     ])
       expect(ProviderRouter.validHint(valid)).toBe(true)
     for (const invalid of [
@@ -227,6 +330,10 @@ describe("ProviderRouter headers", () => {
       "needs_tool=yes",
       "tier=0.5",
       "mood=calm",
+      "effort=auto",
+      "stall=1",
+      "feedback=angry",
+      "frustration=high",
       "complexity=0.5;",
       "complexity=0.5;complexity=0.6",
       "complexity",

@@ -13,6 +13,7 @@ import { reusePendingTask } from "./runtime.shared"
 import { resolveSession, sessionHistory } from "./session.shared"
 import type { RunDiffStyle, RunInput, RunPrompt, RunProvider, RunTuiConfig } from "./types"
 import { pickVariant } from "./variant.shared"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 
 export type ModelInfo = {
   providers: RunProvider[]
@@ -133,7 +134,7 @@ const layer = Layer.effect(
       const info = providers.find((item) => item.id === model.providerID)?.models?.[model.modelID]
       return {
         providers,
-        variants: Object.keys(info?.variants ?? {}),
+        variants: ReasoningAuto.options(Object.keys(info?.variants ?? {})),
         limits,
       }
     })

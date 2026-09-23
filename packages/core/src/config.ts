@@ -23,6 +23,7 @@ import { ConfigMCP } from "./config/mcp"
 import { ConfigModels } from "./config/models"
 import { ConfigPlugin } from "./config/plugin"
 import { ConfigProvider } from "./config/provider"
+import { ConfigReasoning } from "./config/reasoning"
 import { ConfigReference } from "./config/reference"
 import { ConfigSession } from "./config/session"
 import { ConfigToolOutput } from "./config/tool-output"
@@ -104,6 +105,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   models: ConfigModels.Info.pipe(Schema.optional).annotate({
     description: "Models catalog sources, for networks that block the public catalog endpoints",
+  }),
+  reasoning: ConfigReasoning.Info.pipe(Schema.optional).annotate({
+    description: "Reasoning effort: the bounds of the auto variant",
   }),
   skills: Schema.String.pipe(Schema.Array, Schema.optional).annotate({
     description: "Additional paths or URLs to discover skills from",

@@ -15,6 +15,7 @@ import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 import { SessionSchema } from "../schema"
+import { ReasoningAuto } from "../reasoning-auto"
 
 export class ModelNotSelectedError extends Schema.TaggedErrorClass<ModelNotSelectedError>()(
   "SessionRunnerModel.ModelNotSelectedError",
@@ -73,8 +74,11 @@ export type Error =
   | Integration.AuthorizationError
   | Intelligence.Error
 
+/** Picks the concrete variant of an `auto` session from the model's variant names. */
+export type Choose = (variants: ReadonlyArray<string>) => string | undefined
+
 export interface Interface {
-  readonly resolve: (session: SessionSchema.Info) => Effect.Effect<Model, Error>
+  readonly resolve: (session: SessionSchema.Info, choose?: Choose) => Effect.Effect<Model, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/v2/SessionRunnerModel") {}
@@ -106,10 +110,19 @@ const withDefaults = (model: ModelV2.Info, route: AnyRoute) => {
 const withVariant = (
   model: ModelV2.Info,
   variantID: ModelV2.VariantID | undefined,
+  choose?: Choose,
 ): Effect.Effect<ModelV2.Info, VariantUnavailableError> => {
-  const id = variantID === "default" || variantID === undefined ? model.request.variant : variantID
+  // `auto` is never sent: it becomes one of the model's own variants, or the default when the
+  // caller cannot choose (fail open).
+  const automatic = variantID === ReasoningAuto.AUTO
+  const id =
+    variantID === "default" || variantID === undefined
+      ? model.request.variant
+      : automatic
+        ? (choose?.(model.variants.map((item) => item.id)) ?? model.request.variant)
+        : variantID
   const variant = model.variants.find((item) => item.id === id)
-  if (!variant && variantID !== undefined && variantID !== "default")
+  if (!variant && variantID !== undefined && variantID !== "default" && !automatic)
     return Effect.fail(
       new VariantUnavailableError({
         providerID: model.providerID,
@@ -171,8 +184,15 @@ export const fromCatalogModel = (
   )
 }
 
-export const resolve = (session: SessionSchema.Info, model: ModelV2.Info, credential?: Credential.Value) =>
-  withVariant(model, session.model?.variant).pipe(Effect.flatMap((model) => fromCatalogModel(model, credential)))
+export const resolve = (
+  session: SessionSchema.Info,
+  model: ModelV2.Info,
+  credential?: Credential.Value,
+  choose?: Choose,
+) =>
+  withVariant(model, session.model?.variant, choose).pipe(
+    Effect.flatMap((model) => fromCatalogModel(model, credential)),
+  )
 
 export const supported = (model: ModelV2.Info) =>
   model.capabilities.protocol !== "systemone" &&
@@ -189,7 +209,7 @@ export const locationLayer = Layer.effect(
     const integrations = yield* Integration.Service
     const intelligence = yield* Intelligence.Service
     return Service.of({
-      resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session) {
+      resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, choose) {
         const settings = yield* intelligence.read()
         yield* Intelligence.requireConfigured(settings)
         if (settings.enabled && !session.model && settings.principal)
@@ -218,6 +238,7 @@ export const locationLayer = Layer.effect(
           session,
           selected,
           connection ? yield* integrations.connection.resolve(connection) : undefined,
+          choose,
         )
       }),
     })

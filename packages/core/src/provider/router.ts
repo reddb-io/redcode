@@ -13,6 +13,8 @@ export const TIMEOUT = 3_000
 export const Header = {
   decision: "x-red-router-decision",
   hint: "x-red-router-hint",
+  reasoning: "x-red-router-reasoning",
+  reasoningReport: "x-redrouter-reasoning",
   tokenSaver: "x-red-router-token-saver",
   servedModel: "x-redrouter-served-model",
   cost: "x-redrouter-cost-usd",
@@ -91,8 +93,10 @@ export const HINT_LIMIT = 512
  * router's own decision layer off (Redcode's System One already chose tools for this turn);
  * `tokenSaver: false` keeps the prompt intact (compaction and validation must see all of it);
  * `hint` tells a combo that picks its member per request (`model`, the router's own description
- * of the selected model) what System One made of the turn. Anything the router did not
- * advertise, and any hint outside its grammar, is left out.
+ * of the selected model) what System One made of the turn, and tells the reasoning autopilot how
+ * the turn is going when `reasoning.hint` says the router decides this request's effort;
+ * `reasoning.header` is the `x-red-router-reasoning` value (see `ReasoningAuto.coordinate`).
+ * Anything the router did not advertise, and any hint outside its grammar, is left out.
  */
 export function requestHeaders(
   detection: Router.Detection | undefined,
@@ -101,17 +105,33 @@ export function requestHeaders(
     readonly tokenSaver?: boolean
     readonly hint?: string
     readonly model?: { readonly strategy?: string }
+    readonly reasoning?: { readonly header?: string; readonly hint: boolean }
   },
 ): Record<string, string> {
   if (!isRedRouter(detection)) return {}
   const features = new Set(detection?.features)
+  const hint = features.has("hint-signals") ? input.hint : withoutSignals(input.hint)
   return {
     ...(input.decision === false && features.has("decision") ? { [Header.decision]: "off" } : {}),
     ...(input.tokenSaver === false && features.has("token-saver") ? { [Header.tokenSaver]: "off" } : {}),
-    ...(input.hint && features.has("hint") && routesByHint(input.model) && validHint(input.hint)
-      ? { [Header.hint]: input.hint }
+    ...(hint && features.has("hint") && (routesByHint(input.model) || input.reasoning?.hint) && validHint(hint)
+      ? { [Header.hint]: hint }
       : {}),
+    ...(input.reasoning?.header && features.has("reasoning") ? { [Header.reasoning]: input.reasoning.header } : {}),
   }
+}
+
+/** Hint keys only a router that lists them in `decision.hint_keys` reads; an older one rejects them. */
+export const SIGNAL_KEYS = ["effort", "stall", "feedback", "frustration"]
+
+function withoutSignals(hint: string | undefined) {
+  if (!hint) return hint
+  return (
+    hint
+      .split(";")
+      .filter((pair) => !SIGNAL_KEYS.includes(pair.split("=")[0] ?? ""))
+      .join(";") || undefined
+  )
 }
 
 /**
@@ -124,8 +144,10 @@ export const routesByHint = (model: { readonly strategy?: string } | undefined) 
 /**
  * Whether a value follows RedRouter's `x-red-router-hint` grammar: `;`-separated `key=value`
  * pairs, at most 512 characters. Keys are `complexity` (a unit or a tier), `deliberation` (a
- * unit), `needs_tool` (`true` or `false`) and `tier`. The router ignores the whole header when any
- * pair is malformed or out of range, so an invalid hint must never be sent.
+ * unit), `needs_tool` (`true` or `false`), `tier`, and the reasoning signals `effort` (a ladder
+ * level), `stall` (`true` or `false`), `feedback` (`agrees`, `corrects`, `rejects` or `neutral`)
+ * and `frustration` (a unit). The router ignores the whole header when any pair is malformed or
+ * out of range, so an invalid hint must never be sent.
  */
 export function validHint(value: string) {
   if (!value || value.length > HINT_LIMIT) return false
@@ -143,34 +165,68 @@ export function hintUnit(value: number) {
 }
 
 const TIERS = new Set(["simple", "medium", "complex", "reasoning"])
+const EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max"])
+const FEEDBACK = new Set(["agrees", "corrects", "rejects", "neutral"])
 
 function validHintPair(key: string, value: string) {
   const unit = /^[01](\.\d{1,6})?$/.test(value) && Number(value) <= 1
   if (key === "complexity") return unit || TIERS.has(value)
   if (key === "deliberation") return unit
-  if (key === "needs_tool") return value === "true" || value === "false"
+  if (key === "needs_tool" || key === "stall") return value === "true" || value === "false"
   if (key === "tier") return TIERS.has(value)
+  if (key === "effort") return EFFORTS.has(value)
+  if (key === "feedback") return FEEDBACK.has(value)
+  if (key === "frustration") return unit
   return false
 }
 
 /**
- * What RedRouter reported about a finished response: the model that served it, its cost in USD
- * and the version of the model catalog the key sees. The cost header is set on non-streaming
- * responses; streams carry `usage.cost` in their final usage instead, which is trusted only next
- * to RedRouter's served-model header so another provider's `usage.cost` (in its own units) is
- * never read as dollars.
+ * What RedRouter reported about a finished response: the model that served it, its cost in USD,
+ * the version of the model catalog the key sees and the reasoning level it applied. The cost
+ * header is set on non-streaming responses; streams carry `usage.cost` in their final usage
+ * instead, which is trusted only next to RedRouter's served-model header so another provider's
+ * `usage.cost` (in its own units) is never read as dollars.
  */
 export function reported(headers: Readonly<Record<string, string>> | undefined, usage?: unknown) {
   const servedModel = header(headers, Header.servedModel)
   const cost =
     dollars(header(headers, Header.cost)) ?? (servedModel && isRecord(usage) ? dollars(usage.cost) : undefined)
   const catalogVersion = header(headers, Header.catalogVersion)
-  if (servedModel === undefined && cost === undefined && catalogVersion === undefined) return
+  const reasoning = reasoningReport(header(headers, Header.reasoningReport))
+  if (servedModel === undefined && cost === undefined && catalogVersion === undefined && reasoning === undefined) return
   return {
     ...(servedModel ? { servedModel } : {}),
     ...(cost !== undefined ? { costUSD: cost } : {}),
     ...(catalogVersion ? { catalogVersion } : {}),
+    ...(reasoning ? { reasoning } : {}),
   }
+}
+
+/**
+ * `X-RedRouter-Reasoning: <from|->-><level>; cause=<cause>[; shadow]`: the level the router applied
+ * (or, in shadow, would have), the client's own level it replaced, and why.
+ */
+export function reasoningReport(value: string | undefined) {
+  if (!value) return
+  const [move = "", ...rest] = value.split(";").map((part) => part.trim())
+  const arrow = move.lastIndexOf("->")
+  const level = arrow === -1 ? "" : move.slice(arrow + 2)
+  if (!level) return
+  const from = move.slice(0, arrow)
+  const cause = rest.find((part) => part.startsWith("cause="))?.slice("cause=".length)
+  return {
+    level,
+    ...(from && from !== "-" ? { from } : {}),
+    ...(cause ? { cause } : {}),
+    ...(rest.includes("shadow") ? { shadow: true } : {}),
+  }
+}
+
+/** The reasoning level a step's provider metadata carries from `reported`, when RedRouter applied one. */
+export function reportedReasoning(metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined) {
+  const report = metadata?.[METADATA]?.reasoning
+  if (!isRecord(report) || typeof report.level !== "string" || report.shadow === true) return
+  return { level: report.level, ...(typeof report.cause === "string" ? { cause: report.cause } : {}) }
 }
 
 /** A header value by case-insensitive name; blank is absent. */
@@ -291,6 +347,9 @@ function fromCapabilities(document: Record<string, unknown>, now: number): Route
   const decision = record(document.decision)
   const session = record(document.session)
   const catalog = record(document.catalog)
+  const reasoning = record(document.reasoning)
+  const accepts = Array.isArray(reasoning.accepts) ? reasoning.accepts : []
+  const hintKeys = Array.isArray(decision.hint_keys) ? decision.hint_keys : []
   const models = Array.isArray(systemOne.models)
     ? systemOne.models.filter((item): item is string => typeof item === "string" && item.length > 0)
     : []
@@ -307,6 +366,10 @@ function fromCapabilities(document: Record<string, unknown>, now: number): Route
     ["cost", typeof document.cost_header === "string"],
     ["stream-usage-cost", document.stream_usage_cost === true],
     ["catalog", catalog.model_parameters === true],
+    ["reasoning", typeof reasoning.header === "string"],
+    ["reasoning-auto", typeof reasoning.header === "string" && accepts.includes("auto")],
+    ["reasoning-applies", typeof reasoning.header === "string" && reasoning.applies === true],
+    ["hint-signals", ["stall", "feedback", "frustration"].every((key) => hintKeys.includes(key))],
   ]
   return {
     kind: "red-router",

@@ -378,7 +378,12 @@ test("prompt classification v2 separates route, impact, timing, interaction, and
     "complexity",
     "consequence",
     "frustration",
+    "user_feedback",
   ])
+  expect(Intelligence.promptQuestions.user_feedback).toMatchObject({
+    type: "choice",
+    criteria: { agrees: expect.any(String), corrects: expect.any(String), rejects: expect.any(String) },
+  })
   expect(Intelligence.promptQuestions).not.toHaveProperty("urgency")
   expect(Intelligence.promptQuestions).not.toHaveProperty("actionability")
 })
@@ -411,6 +416,7 @@ test("the RedRouter hint maps confident complexity and consequence to units, tie
         ...base.answers,
         complexity: score(base.answers.complexity, complexity),
         consequence: score(base.answers.consequence, consequence),
+        frustration: score(base.answers.frustration, 0),
       },
     } as typeof Evaluation.Type
   }
@@ -427,14 +433,20 @@ test("the RedRouter hint maps confident complexity and consequence to units, tie
     },
   } as typeof Evaluation.Type
 
-  expect(Intelligence.routerHint(scored(0, 0), undefined)).toBe("complexity=0;deliberation=0;tier=simple")
-  expect(Intelligence.routerHint(scored(1, 2), undefined)).toBe("complexity=0.333333;deliberation=0.666667;tier=medium")
-  expect(Intelligence.routerHint(scored(2, 0), tools)).toBe(
-    "complexity=0.666667;deliberation=0.666667;needs_tool=true;tier=complex",
+  expect(Intelligence.routerHint(scored(0, 0), undefined)).toBe("complexity=0;deliberation=0;tier=simple;frustration=0")
+  expect(Intelligence.routerHint(scored(1, 2), undefined)).toBe(
+    "complexity=0.333333;deliberation=0.666667;tier=medium;frustration=0",
   )
-  expect(Intelligence.routerHint(scored(3, 3), undefined)).toBe("complexity=1;deliberation=1;tier=reasoning")
+  expect(Intelligence.routerHint(scored(2, 0), tools)).toBe(
+    "complexity=0.666667;deliberation=0.666667;needs_tool=true;tier=complex;frustration=0",
+  )
+  expect(Intelligence.routerHint(scored(3, 3), undefined)).toBe(
+    "complexity=1;deliberation=1;tier=reasoning;frustration=0",
+  )
   // Out-of-range scores are clamped rather than producing a header the router would reject.
-  expect(Intelligence.routerHint(scored(7, -2), undefined)).toBe("complexity=1;deliberation=1;tier=reasoning")
+  expect(Intelligence.routerHint(scored(7, -2), undefined)).toBe(
+    "complexity=1;deliberation=1;tier=reasoning;frustration=0",
+  )
   // Unresolved answers say nothing; tool guidance alone still does.
   expect(Intelligence.routerHint(scored(3, 3, 0.59), undefined)).toBeUndefined()
   expect(Intelligence.routerHint(scored(3, 3, 0.59), tools)).toBe("needs_tool=true")
@@ -445,6 +457,51 @@ test("the RedRouter hint maps confident complexity and consequence to units, tie
       const hint = Intelligence.routerHint(scored(complexity, consequence), tools)
       expect(hint === undefined || ProviderRouter.validHint(hint)).toBe(true)
     }
+})
+
+test("the RedRouter hint carries the reasoning signals: stall, the user's feedback and frustration", () => {
+  const base = classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })
+  const judged = (choice: string, confidence: number, frustration: number) =>
+    ({
+      ...base,
+      answers: {
+        ...base.answers,
+        frustration: { ...base.answers.frustration!, score: frustration } as (typeof base.answers)[string],
+        user_feedback: {
+          type: "choice",
+          choice,
+          confidence,
+          probabilities: { [choice]: confidence, neutral: 1 - confidence },
+        },
+      },
+    }) as typeof Evaluation.Type
+
+  expect(Intelligence.routerHint(judged("corrects", 0.9, 2), undefined, { stall: true })).toBe(
+    "complexity=0.333333;deliberation=0.333333;tier=medium;stall=true;feedback=corrects;frustration=0.666667",
+  )
+  // Unresolved feedback is left out; stall is said only when the caller knows it.
+  expect(Intelligence.routerHint(judged("rejects", 0.5, 0), undefined)).toBe(
+    "complexity=0.333333;deliberation=0.333333;tier=medium;frustration=0",
+  )
+  expect(Intelligence.routerHint(undefined, undefined, { stall: false })).toBe("stall=false")
+  expect(Intelligence.routerHint(judged("sarcastic", 0.9, 0), undefined)).not.toContain("feedback")
+
+  expect(Intelligence.effortAssessment(judged("agrees", 0.9, 3))).toEqual({
+    complexity: 1 / 3,
+    consequence: 1 / 3,
+    impact: 0,
+    frustration: 1,
+    mustClarify: 0.05,
+    feedback: "agrees",
+  })
+  expect(Intelligence.effortAssessment(undefined)).toBeUndefined()
+  expect(Intelligence.effortAssessment({ ...base, decision: "unavailable" })).toBeUndefined()
+
+  expect(Intelligence.promptContext(judged("rejects", 0.8, 1))).toContain(
+    "Feedback on the previous turn: rejects (confidence 0.80)",
+  )
+  // Evaluations made before the question existed still render.
+  expect(Intelligence.promptContext(base)).not.toContain("Feedback on the previous turn")
 })
 
 test("clarification policy permits inspection under uncertainty and never grants external authorization", () => {
