@@ -94,7 +94,11 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
       trigger={
         <>
           <span classList={{ "text-icon-warning-base": attention() }}>
-            {single() ? language.t("intelligence.mode.single") : "S1 · S2"}
+            {single()
+              ? language.t("intelligence.mode.single")
+              : settings()?.evaluator?.model
+                ? `S1 ${settings()!.evaluator!.model.split("/").at(-1)}`
+                : "S1 · S2"}
           </span>
           <Show when={!single() && !intelligence().ready()}>
             <span class="truncate">{language.t("intelligence.setup")}</span>
