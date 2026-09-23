@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Option, Schema } from "effect"
 import { LLMError, ProviderErrorEvent } from "./schema"
 
 const patterns = [
@@ -82,6 +82,100 @@ export const isContextOverflowBody = (body: string | undefined): boolean => {
     return false
   }
 }
+
+/**
+ * Codes for an exhausted account: no quota, no credits, a spent budget or a free-tier cap. Gateways
+ * such as OpenCode Zen report these as typed 429 or 402 errors that are not throttles, so waiting
+ * and sending the request again does not help.
+ */
+const quotaCodes = new Set([
+  "insufficient_quota",
+  "usage_not_included",
+  "billing_error",
+  "usage_limit",
+  "usage_limit_reached",
+  "usage_limit_exceeded",
+  "insufficient_credits",
+  "gousagelimiterror",
+  "freeusagelimiterror",
+  "creditlimitexceeded",
+])
+
+// Only consulted on 429, where throttles and account caps share a status.
+const quotaText =
+  /insufficient[-_\s]?(?:quota|credits|funds|balance)|quota[-_\s]?exceeded|budget exceeded|usage[-_\s]?limit|credit limit|requires more credits|out of credits/i
+
+/**
+ * Codes for a request refused by a content or safety policy. Azure OpenAI reports `content_filter`
+ * with `innererror.code` ResponsibleAIPolicyViolation; OpenRouter tags failures with `error_type`.
+ */
+const contentPolicyCodes = new Set([
+  "content_filter",
+  "responsibleaipolicyviolation",
+  "content_policy_violation",
+  "image_content_policy_violation",
+  "refusal",
+])
+
+// OpenCode Zen replaces upstream codes outside its allow-list but keeps the original as a `[code]`
+// label at the start of the rewritten message.
+const gatewayCodeLabel = /^[^:\n]+: \[([A-Za-z0-9_.-]+)\]/
+
+export type ProviderFailureInput = {
+  readonly status?: number
+  /** The response or stream error body, as text or already decoded. */
+  readonly body?: unknown
+  readonly message?: string
+}
+
+/**
+ * Whether a provider failure is an exhausted account (quota, credits, billing, a free-tier cap)
+ * rather than a throttle: HTTP 402, a quota code anywhere a provider or router puts one, or quota
+ * wording on a 429.
+ */
+export const isQuotaFailure = (input: ProviderFailureInput) =>
+  input.status === 402 ||
+  failureCodes(input).some((code) => quotaCodes.has(code)) ||
+  (input.status === 429 && [input.message, bodyText(input.body)].some((text) => !!text && quotaText.test(text)))
+
+/** Whether a provider failure carries a content or safety policy code; the same request is refused again. */
+export const isContentPolicyFailure = (input: ProviderFailureInput) =>
+  failureCodes(input).some((code) => contentPolicyCodes.has(code))
+
+const failureCodes = (input: ProviderFailureInput) =>
+  [
+    ...providerCodes(input.body),
+    ...providerCodes(input.message),
+    ...(gatewayCodeLabel.exec(input.message ?? "")?.slice(1) ?? []),
+  ].map((code) => code.trim().toLowerCase())
+
+const bodyText = (body: unknown) =>
+  typeof body === "string" ? body : body === undefined ? undefined : JSON.stringify(body)
+
+/**
+ * The codes a provider or router sets on an error body, including the upstream error a router
+ * forwards in `error.metadata.raw`.
+ */
+const providerCodes = (value: unknown): string[] => {
+  const decoded = record(typeof value === "string" ? Option.getOrUndefined(decodeJson(value)) : value)
+  if (!decoded) return []
+  const error = record(decoded.error)
+  const metadata = record(error?.metadata)
+  const raw = metadata?.raw
+  return [
+    decoded.code,
+    decoded.error_type,
+    error?.code,
+    error?.type,
+    error?.error_type,
+    record(error?.innererror)?.code,
+    metadata?.error_type,
+  ]
+    .filter((code): code is string => typeof code === "string")
+    .concat(typeof raw === "string" ? providerCodes(raw) : [])
+}
+
+const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 
 export const isContextOverflowFailure = (failure: unknown) =>
   failure instanceof LLMError

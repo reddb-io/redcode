@@ -338,7 +338,7 @@ describe("session.retry.retryable", () => {
   test.each([
     ["FreeUsageLimitError", "Free usage exceeded"],
     ["GoUsageLimitError", "Subscription quota exceeded. You can continue using free models."],
-  ])("reports provider usage limits (%s) with the provider message and no upsell action", (type, message) => {
+  ])("does not retry gateway account limits (%s) even with a retry-after", (type, message) => {
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({
         message,
@@ -353,9 +353,116 @@ describe("session.retry.retryable", () => {
       }).toObject(),
     )
 
-    const retry = SessionRetry.retryable(error, "opencode-go")
-    expect(retry).toEqual({ message })
-    expect(JSON.stringify(retry)).not.toContain("opencode.ai")
+    expect(SessionRetry.retryable(error, "opencode-go")).toBeUndefined()
+  })
+
+  test("does not retry 402 payment required, whatever its body says", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Payment Required: Insufficient credits, please try again later",
+        isRetryable: false,
+        statusCode: 402,
+        responseBody: '{"error":{"code":402,"message":"Insufficient credits, please try again later"}}',
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test("does not retry content-policy refusals", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Provider returned error",
+        isRetryable: true,
+        statusCode: 400,
+        responseBody: JSON.stringify({ error: { code: 400, metadata: { error_type: "content_policy_violation" } } }),
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+    expect(
+      SessionRetry.retryable(
+        wrap(JSON.stringify({ error: { code: "content_filter", message: "try again" } })),
+        retryProvider,
+      ),
+    ).toBeUndefined()
+  })
+
+  test("does not let substituted server codes make a 4xx rejection retryable", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Bad Request: Upstream request failed: Model is unavailable.",
+        isRetryable: false,
+        statusCode: 400,
+        responseBody: JSON.stringify({
+          error: { type: "server_error", message: "Upstream request failed: Model is unavailable." },
+        }),
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+})
+
+describe("provider quota errors", () => {
+  const quotaError = (statusCode: number, responseBody: string, headers: Record<string, string> = {}) =>
+    new APICallError({
+      message: "Request failed",
+      url: "https://gateway.example/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode,
+      responseHeaders: headers,
+      responseBody,
+      isRetryable: statusCode === 429,
+    })
+
+  test.each([
+    [402, '{"error":{"code":402,"message":"This request requires more credits"}}'],
+    [
+      429,
+      '{"type":"error","error":{"type":"FreeUsageLimitError","message":"Rate limit exceeded. Please try again later."}}',
+    ],
+    [429, '{"error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}'],
+  ])("reports HTTP %i account limits as a non-retryable quota error with a clear message", (status, body) => {
+    const error = MessageV2.fromError(quotaError(status, body), { providerID })
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(error.data.isRetryable).toBe(false)
+    expect(error.data.message).toContain("quota, credits or free-tier limit is exhausted")
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test("reports mid-stream gateway account limits as non-retryable", () => {
+    const parsed = ProviderError.parseStreamError({
+      type: "error",
+      error: { type: "CreditLimitExceeded", message: "Credit limit exceeded." },
+    })
+    expect(parsed).toMatchObject({ type: "api_error", isRetryable: false })
+    expect(parsed?.message).toContain("Credit limit exceeded.")
+    expect(parsed?.message).toContain("quota, credits or free-tier limit is exhausted")
+  })
+
+  test("keeps a throttling 429 retryable", () => {
+    const error = MessageV2.fromError(
+      quotaError(429, '{"error":{"type":"rate_limit_error","message":"Too many requests"}}'),
+      { providerID },
+    )
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(error.data.isRetryable).toBe(true)
+    expect(SessionRetry.retryable(error, retryProvider)).toBeDefined()
+  })
+
+  test("leaves a router's cooling-down quota to the router", () => {
+    const at = new Date(Date.now() + 60_000).toISOString()
+    const error = MessageV2.fromError(
+      quotaError(429, '{"error":{"message":"quota exceeded"}}', {
+        "x-9router-reason": "quota_exhausted",
+        "x-9router-retry-at": at,
+      }),
+      { providerID },
+    )
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(error.data.isRetryable).toBe(true)
+    expect(SessionRetry.retryable(error, retryProvider)).toBeDefined()
   })
 })
 

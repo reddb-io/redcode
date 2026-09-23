@@ -1,5 +1,5 @@
 import type { LLMError } from "@reddb-io/redcode-llm"
-import { isContextOverflowFailure } from "@reddb-io/redcode-llm"
+import { isContentPolicyFailure, isContextOverflowFailure, isQuotaFailure } from "@reddb-io/redcode-llm"
 import type { NamedError } from "../util/error"
 import { SessionV1 } from "../v1/session"
 import { Cause, Clock, Duration, Effect, Schedule } from "effect"
@@ -32,12 +32,17 @@ export const CONNECTION_CONTINUATION_MAX_RETRIES = 3
 export const CONNECTION_CONTINUATION_PROMPT =
   "The provider connection was interrupted after producing durable output. Continue the task from the existing assistant output and completed tool results. Do not repeat completed tools or text already present."
 
+// Transport failures: the request may never have reached the provider, whatever status came back.
+const TRANSPORT_MESSAGE_PATTERNS = [
+  /terminated|fetch failed|failed to fetch|network[-_\s]error|upstream connect|connection error|connection refused|connection lost|connection reset|socket connection was closed|socket hang up|reset before headers|getaddrinfo|enotfound|eai_again|econnrefused|econnreset|etimedout/i,
+  /^timeout$|\b(?:request|response|connection|network|stream|read) (?:timeout|timed out|time out)\b/i,
+]
+
 const RETRYABLE_MESSAGE_PATTERNS = [
   /429|500|502|503|504|524/i,
   /rate increased too quickly|rate limit|rate-limit|rate_limit|too many requests/i,
   /overloaded|service unavailable|service_unavailable|service-unavailable|internal error|internal_error|internal server error|server error|server_error|server-error|provider returned error|provider_returned_error|provider-returned-error/i,
-  /terminated|fetch failed|failed to fetch|network[-_\s]error|upstream connect|connection error|connection refused|connection lost|connection reset|socket connection was closed|socket hang up|reset before headers|getaddrinfo|enotfound|eai_again|econnrefused|econnreset|etimedout/i,
-  /^timeout$|\b(?:request|response|connection|network|stream|read) (?:timeout|timed out|time out)\b/i,
+  ...TRANSPORT_MESSAGE_PATTERNS,
   /try your request again|retry your request|resource exhausted|resource_exhausted/i,
   /\btry again (later|in)\b|\b(currently|temporarily) at capacity\b/i,
 ]
@@ -99,15 +104,19 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
-    if (!routerRetryable(error.data.responseHeaders)) return undefined
+    const headers = error.data.responseHeaders
+    if (!routerRetryable(headers)) return undefined
     const status = error.data.statusCode
+    // A router that names its reason owns the decision: its `quota_exhausted` is a cooling-down account.
+    if (!routed(headers) && refused({ status, body: error.data.responseBody, message: error.data.message }))
+      return undefined
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
     if (
       !error.data.isRetryable &&
       !(status !== undefined && status >= 500) &&
-      !matchesRetryableMessage(error.data.message) &&
-      !matchesRetryableMessage(error.data.responseBody)
+      !matchesRetryableMessage(error.data.message, status) &&
+      !matchesRetryableMessage(error.data.responseBody, status)
     )
       return undefined
     return { message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message }
@@ -115,6 +124,7 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
 
   const message = isRecord(error.data) ? error.data.message : undefined
   if (typeof message !== "string") return undefined
+  if (refused({ body: message })) return undefined
   const lower = message.toLowerCase()
   if (lower.includes("too_many_requests")) return { message: "Too Many Requests" }
   if (lower.includes("exhausted") || lower.includes("unavailable")) return { message: "Provider is overloaded" }
@@ -136,8 +146,27 @@ function routerRetryable(headers: Readonly<Record<string, string>> | undefined) 
   return ProviderRouter.header(headers, ProviderRouter.Header.reason) !== "no_active_credentials"
 }
 
-function matchesRetryableMessage(value: unknown) {
-  return typeof value === "string" && RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(value))
+function routed(headers: Readonly<Record<string, string>> | undefined) {
+  return ProviderRouter.header(headers, ProviderRouter.Header.reason) !== undefined
+}
+
+/**
+ * An exhausted account (quota, credits, a free-tier cap) or a content-policy refusal: the same
+ * request fails the same way, so it is surfaced instead of retried.
+ */
+function refused(input: { status?: number; body?: unknown; message?: string }) {
+  return isQuotaFailure(input) || isContentPolicyFailure(input)
+}
+
+/**
+ * Whether error text marks a transient failure. A 4xx other than 408, 409 or 429 is a rejected
+ * request: gateways substitute server codes such as `server_error` for upstream codes they do not
+ * forward, so only a transport failure makes such a response worth sending again.
+ */
+function matchesRetryableMessage(value: unknown, status?: number) {
+  const rejected = status !== undefined && status >= 400 && status < 500 && ![408, 409, 429].includes(status)
+  const patterns = rejected ? TRANSPORT_MESSAGE_PATTERNS : RETRYABLE_MESSAGE_PATTERNS
+  return typeof value === "string" && patterns.some((pattern) => pattern.test(value))
 }
 
 function matchesConnectionInterruption(value: unknown) {
@@ -157,12 +186,15 @@ export function retryableLLM(error: LLMError): Retryable | undefined {
   const reason = error.reason
   const status = "status" in reason ? reason.status : "http" in reason ? reason.http?.response?.status : undefined
   const body = "http" in reason ? reason.http?.body : undefined
-  if (!routerRetryable("http" in reason ? reason.http?.response?.headers : undefined)) return undefined
+  const headers = "http" in reason ? reason.http?.response?.headers : undefined
+  if (!routerRetryable(headers)) return undefined
+  if (reason._tag === "QuotaExceeded" || reason._tag === "ContentPolicy") return undefined
+  if (!routed(headers) && refused({ status, body, message: reason.message })) return undefined
   if (
     !reason.retryable &&
     !(status !== undefined && status >= 500) &&
-    !matchesRetryableMessage(reason.message) &&
-    !matchesRetryableMessage(body)
+    !matchesRetryableMessage(reason.message, status) &&
+    !matchesRetryableMessage(body, status)
   )
     return undefined
   return { message: reason.message.includes("Overloaded") ? "Provider is overloaded" : reason.message }

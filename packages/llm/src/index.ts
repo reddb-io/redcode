@@ -7,8 +7,10 @@ export {
   isContextOverflowBody,
   isContextOverflowCode,
   isContextOverflowFailure,
+  isContentPolicyFailure,
+  isQuotaFailure,
 } from "./provider-error"
-export type { ContextOverflowNumbers } from "./provider-error"
+export type { ContextOverflowNumbers, ProviderFailureInput } from "./provider-error"
 export type {
   RouteModelInput,
   RouteRoutedModelInput,
